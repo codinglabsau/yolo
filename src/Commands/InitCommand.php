@@ -9,6 +9,7 @@ use Codinglabs\Yolo\Manifest;
 use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
+use function Laravel\Prompts\error;
 use function Laravel\Prompts\text;
 use function Laravel\Prompts\confirm;
 
@@ -24,6 +25,10 @@ class InitCommand extends Command
 
     public function handle(): void
     {
+        if (! Helpers::keyedEnv('AWS_PROFILE')) {
+            error(sprintf("You need to specify YOLO_%s_AWS_PROFILE in your .env file before proceeding", strtoupper(Helpers::environment())));
+        }
+
         if (! file_exists(Paths::base('yolo.yml'))) {
             info("Creating yolo.yml...");
             $this->initialiseManifest();
@@ -79,10 +84,6 @@ class InitCommand extends Command
         $bucketName = sprintf('%s-%s-yolo-artefacts', Manifest::name(), Helpers::environment());
 
         note("Creating S3 bucket {$bucketName}...");
-
-        ray(Aws::accountId());
-
-        exit;
 
         Aws::s3()->createBucket([
             'Bucket' => $bucketName,
