@@ -4,7 +4,6 @@ environments:
   production:
     aws:
       region: {AWS_REGION}
-      bucket:
       cloudfront: // todo use magic [account level]
       alb: // todo use magic
       sns-topic: // todo use magic / drop

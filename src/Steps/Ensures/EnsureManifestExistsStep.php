@@ -59,5 +59,9 @@ class EnsureManifestExistsStep implements Step
                 'php artisan migrate --force',
             ]);
         }
+
+        if ($s3Bucket = text("What is the name of the S3 bucket used for app storage?", placeholder: "Leave blank to skip"))  {
+            Manifest::put('aws.bucket', $s3Bucket);
+        }
     }
 }
