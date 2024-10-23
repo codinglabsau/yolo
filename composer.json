@@ -1,58 +1,33 @@
 {
-  "name": "codinglabsau/:package_slug",
-  "description": ":package_description",
-  "keywords": [
-    "Codinglabs",
-    "laravel",
-    ":package_slug"
-  ],
-  "homepage": "https://github.com/codinglabsau/:package_slug",
-  "license": "MIT",
+  "name": "codinglabsau/yolo",
+  "description": "YOLO infrastructure cli tool for deploying Laravel apps",
+  "homepage": "https://github.com/codinglabsau/yolo",
+  "license": "proprietary",
   "authors": [
     {
-      "name": ":author_name",
-      "email": "author@domain.com",
+      "name": "Steve Thomas",
+      "email": "steve@codinglabs.com.au",
       "role": "Developer"
     }
   ],
   "require": {
-    "php": "^8.1",
-    "illuminate/contracts": "^10.0|^11.0",
-    "spatie/laravel-package-tools": "^1.9.2"
+    "php": "^8.3",
+    "illuminate/contracts": "^11.0",
+    "spatie/ray": "^1.41"
   },
   "require-dev": {
-    "codinglabsau/php-styles": "dev-main",
-    "nunomaduro/collision": "^7.0",
-    "orchestra/testbench": "^8.0",
-    "phpunit/phpunit": "^10.0",
-    "spatie/laravel-ray": "^1.26"
+    "codinglabsau/php-styles": "dev-main"
   },
   "autoload": {
     "psr-4": {
-      "Codinglabs\\Skeleton\\": "src",
-      "Codinglabs\\Skeleton\\Database\\Factories\\": "database/factories"
-    }
-  },
-  "autoload-dev": {
-    "psr-4": {
-      "Codinglabs\\Skeleton\\Tests\\": "tests"
+      "Codinglabs\\Yolo\\": "src"
     }
   },
   "scripts": {
-    "test": "vendor/bin/phpunit"
+    "fix": "vendor/bin/php-cs-fixer fix"
   },
   "config": {
     "sort-packages": true
-  },
-  "extra": {
-    "laravel": {
-      "providers": [
-        "Codinglabs\\Skeleton\\SkeletonServiceProvider"
-      ],
-      "aliases": {
-        "Skeleton": "Codinglabs\\Skeleton\\Facades\\Skeleton"
-      }
-    }
   },
   "minimum-stability": "dev",
   "prefer-stable": true
