@@ -11,8 +11,7 @@ if (file_exists(__DIR__ . '/../../autoload.php')) {
 }
 
 // path to the app root
-//const BASE_PATH = __DIR__ . '/../../';
-const BASE_PATH = '/Users/stevethomas/code/codinglabs';
+const BASE_PATH = __DIR__ . '/../../';
 
 Dotenv::createImmutable(BASE_PATH)->load();
 
