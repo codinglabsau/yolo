@@ -4,22 +4,24 @@ namespace Codinglabs\Yolo\Steps\Ensures;
 
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Steps\TenantStep;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class EnsureTenantHostedZonesExistStep extends TenantStep
+class EnsureHostedZonesExistStep implements Step
 {
     /**
      * @throws ResourceDoesNotExistException
      */
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::isMultitenanted()) {
+        if (Manifest::isMultitenanted()) {
             return StepResult::SKIPPED;
         }
 
-        AwsResources::hostedZone($this->config['apex']);
+        Manifest::get('apex')
+            ? AwsResources::hostedZone(Manifest::get('apex'))
+            : AwsResources::hostedZone(Manifest::get('domain'));
 
         return StepResult::SYNCED;
     }
