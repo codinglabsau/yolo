@@ -4,8 +4,8 @@ namespace Codinglabs\Yolo\Steps\Start;
 
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Contracts\RunsOnAws;
 use Symfony\Component\Process\Process;
+use Codinglabs\Yolo\Contracts\RunsOnAws;
 
 class SyncPhpConfigurationStep implements RunsOnAws
 {

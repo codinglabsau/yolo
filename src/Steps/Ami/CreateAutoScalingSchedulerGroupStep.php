@@ -3,9 +3,9 @@
 namespace Codinglabs\Yolo\Steps\Ami;
 
 use Codinglabs\Yolo\Aws;
+use Illuminate\Support\Str;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Illuminate\Support\Str;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Concerns\UsesEc2;
 use Codinglabs\Yolo\Enums\StepResult;
