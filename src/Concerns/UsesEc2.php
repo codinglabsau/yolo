@@ -176,7 +176,8 @@ trait UsesEc2
             return static::$vpc;
         }
 
-        $name = Helpers::keyedResourceName();
+        $name = Helpers::keyedResourceName(exclusive: false);
+
         $vpcs = Aws::ec2()->describeVpcs([
             'Filters' => [
                 [

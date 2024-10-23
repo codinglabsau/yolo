@@ -20,8 +20,16 @@ class Helpers
         return env("YOLO_{$environment}_$key");
     }
 
-    public static function keyedResourceName(string $name = null): string
+    public static function keyedResourceName(string $name = null, $exclusive = true): string
     {
+        if ($exclusive) {
+            // exclusive assets are specific to the current application
+            return $name
+                ? sprintf("yolo-%s-%s-%s", static::environment(), Manifest::name(), $name)
+                : sprintf("yolo-%s-%s", static::environment(), Manifest::name());
+        }
+
+        // non-exclusive assets are shared across multiple yolo applications on the same AWS account
         return $name
             ? sprintf("yolo-%s-%s", static::environment(), $name)
             : sprintf("yolo-%s", static::environment());

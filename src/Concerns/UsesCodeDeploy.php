@@ -30,12 +30,12 @@ trait UsesCodeDeploy
         $applications = Aws::codeDeploy()->listApplications();
 
         foreach ($applications['applications'] as $application) {
-            if ($application === Helpers::keyedResourceName(Manifest::name())) {
+            if ($application === Helpers::keyedResourceName()) {
                 return static::$application = $application;
             }
         }
 
-        throw new ResourceDoesNotExistException(sprintf("Could not find CodeDeploy application %s", Helpers::keyedResourceName(Manifest::name())));
+        throw new ResourceDoesNotExistException(sprintf("Could not find CodeDeploy application %s", Helpers::keyedResourceName()));
     }
 
     public static function OneThirdAtATimeDeploymentConfig(): array

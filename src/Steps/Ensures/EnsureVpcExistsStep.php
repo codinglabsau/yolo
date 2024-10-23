@@ -13,7 +13,7 @@ class EnsureVpcExistsStep implements Step
 {
     public function __invoke(): StepResult
     {
-        $vpcName = Helpers::keyedResourceName();
+        $vpcName = Helpers::keyedResourceName(exclusive: false);
 
         try {
             if (AwsResources::vpc()) {
