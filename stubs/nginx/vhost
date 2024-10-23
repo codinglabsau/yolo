@@ -1,13 +1,8 @@
 #
-# YOLO Virtual Host configuration for Laravel Octane
+# YOLO Virtual Host configuration
 #
 
-{FORWARD_NON_WWW}
-
-map $http_upgrade $connection_upgrade {
-    default upgrade;
-    ''      close;
-}
+{FORWARDING_RULES}
 
 server {
     # listen on 80 (behind load balancer)
@@ -29,7 +24,7 @@ server {
     # max filesize
     client_max_body_size 128M;
 
-    server_name _;
+    server_name {SERVER_NAME};
 
     root /var/www/{NAME}/public;
 
@@ -39,21 +34,17 @@ server {
 
     access_log /var/log/nginx/access.log enhanced;
 
-    location /index.php {
-        try_files /not_exists @octane;
-    }
-
     # disable logging on favicon
     location = /favicon.ico {
         access_log off;
         log_not_found off;
     }
 
-    # disable logging on robots.txt, forward requests to octane
+    # disable logging on robots.txt, forward requests to php-fpm
     location = /robots.txt  {
         access_log off;
         log_not_found off;
-        try_files $uri @octane;
+        try_files $uri /index.php?$query_string;
     }
 
     location / {
@@ -64,25 +55,18 @@ server {
 
         # First attempt to serve request as file, then
         # as directory, then fall back to displaying a 404.
-        try_files $uri $uri/ @octane;
+        try_files $uri $uri/ /index.php?$query_string;
     }
 
-    location @octane {
-        set $suffix "";
+    # pass the PHP scripts to FastCGI server
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
 
-        if ($uri = /index.php) {
-            set $suffix ?$query_string;
-        }
+        # increase buffer sizes
+        fastcgi_buffers 16 16k;
+        fastcgi_buffer_size 32k;
 
-        proxy_http_version 1.1;
-        proxy_set_header Host $http_host;
-        proxy_set_header Scheme $scheme;
-        proxy_set_header SERVER_PORT $server_port;
-        proxy_set_header REMOTE_ADDR $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-
-        proxy_pass http://127.0.0.1:8000$suffix;
+        # With php8.3-fpm:
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
     }
 }

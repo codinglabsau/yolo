@@ -1,0 +1,6 @@
+server {
+    listen 80;
+    server_name {WWW_FQDN};
+
+    return 301 https://{NON_WWW_FQDN}$request_uri;
+}
