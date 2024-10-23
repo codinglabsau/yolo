@@ -1,0 +1,9 @@
+[program:landlord-queue-worker]
+process_name=%(program_name)s_%(process_num)02d
+command=php /var/www/{NAME}/artisan queue:work --queue={AWS_SQS_ENDPOINT} --sleep=0.25 --tries=3 --max-jobs=1000
+autostart=true
+autorestart=true
+user=www-data
+numprocs=1
+redirect_stderr=true
+stdout_logfile=/var/log/supervisor/landlord-queue-worker.log

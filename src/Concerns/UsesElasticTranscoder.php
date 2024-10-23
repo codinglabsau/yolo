@@ -1,0 +1,49 @@
+<?php
+
+namespace Codinglabs\Yolo\Concerns;
+
+use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
+
+trait UsesElasticTranscoder
+{
+    protected static array $elasticTranscoderPipeline;
+    protected static array $elasticTranscoderPreset;
+
+    public static function elasticTranscoderPipeline(): array
+    {
+        if (isset(static::$elasticTranscoderPipeline)) {
+            return static::$elasticTranscoderPipeline;
+        }
+
+        $name = Helpers::keyedResourceName();
+        $pipelines = Aws::elasticTranscoder()->listPipelines();
+
+        foreach ($pipelines['Pipelines'] as $pipeline) {
+            if ($pipeline['Name'] === $name) {
+                return $pipeline;
+            }
+        }
+
+        throw new ResourceDoesNotExistException("Could not find Elastic Transcoder pipeline with name $name");
+    }
+
+    public static function elasticTranscoderPreset(): array
+    {
+        if (isset(static::$elasticTranscoderPreset)) {
+            return static::$elasticTranscoderPreset;
+        }
+
+        $name = Helpers::keyedResourceName();
+        $presets = Aws::elasticTranscoder()->listPresets();
+
+        foreach ($presets['Presets'] as $preset) {
+            if ($preset['Name'] === $name) {
+                return $preset;
+            }
+        }
+
+        throw new ResourceDoesNotExistException("Could not find Elastic Transcoder preset with name $name");
+    }
+}

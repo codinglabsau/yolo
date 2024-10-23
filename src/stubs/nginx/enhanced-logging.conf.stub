@@ -1,0 +1,4 @@
+# setup log format
+log_format enhanced '$remote_addr - [$time_local] '
+   '"$request" $status $body_bytes_sent '
+   '"$http_host" "$http_user_agent"';

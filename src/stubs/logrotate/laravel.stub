@@ -1,0 +1,9 @@
+/var/www/{NAME}/storage/logs/*.log {
+    su www-data www-data
+    weekly
+    missingok
+    rotate 52
+    compress
+    notifempty
+    create 755 www-data www-data
+}

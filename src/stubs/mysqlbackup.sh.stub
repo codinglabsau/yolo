@@ -1,0 +1,40 @@
+#!/bin/bash
+
+#
+# backup (via mysqldump) all databases
+#
+
+# paths & dates
+START_TIME=$(date +%s)
+DATE=`date +%Y-%m-%d`
+DUMP_DIR=/home/ubuntu/dumps
+
+# make sure dumps dir exists
+mkdir -p ${DUMP_DIR}
+
+# delete any old complete or incomplete dumps
+find ${DUMP_DIR} -name *.tmp -delete
+find ${DUMP_DIR} -name *.xz -delete
+
+# get the list of dbs to backup, excluding some system ones
+DATABASES=$(mysql -u {DB_USERNAME} -p{DB_PASSWORD} -h {DB_HOST} -rssBe 'show databases' | sed -r '/(tmp|awsdms_control|mysql|information_schema|performance_schema|sys)/d')
+
+# loop databases and backup
+for DB in ${DATABASES}
+do
+    # file to write
+	TMP_FILE=`mktemp ${DUMP_DIR}/${DB}-XXXX.sql.xz.tmp`
+	DUMP_FILE=${DUMP_DIR}/${DB}.sql.xz
+
+	# dump and write to ${DUMP_FILE}
+	mysqldump -u {DB_USERNAME} -p{DB_PASSWORD} -h {DB_HOST} --single-transaction --quick --databases ${DB} | nice -10 pbzip2 > ${TMP_FILE}
+	mv ${TMP_FILE} ${DUMP_FILE}
+
+	# copy to s3 and delete
+	aws s3 cp ${DUMP_FILE} s3://{AWS_BUCKET}/dumps/${DB}.sql.xz
+	rm ${DUMP_FILE}
+done
+
+# output the script duration in seconds
+FINISH_TIME=$(date +%s)
+echo "mysqldump completed in $((FINISH_TIME - START_TIME)) seconds."

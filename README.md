@@ -1,11 +1,10 @@
 # YOLO
 
-:package_name does something awesome.
+YOLO is a deployment tool inspired by Laravel Vapor CLI. 
 
-Here is a bit more about why it is awesome.
+YOLO sits approximately in between Laravel Forge and Laravel Vapor. It creates highly available resources on AWS, but uses EC2 instead of Lambda.
 
-- awesome!
-- much awesome!
+The goal is to heavily leverage AWS, and support moderate to very heavy traffic web apps. 
 
 ___
 ## Installation

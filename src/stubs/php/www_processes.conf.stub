@@ -1,0 +1,17 @@
+[www]
+; PHP FPM custom config. filename is significant in load order.
+
+; maximum number of fpm child processes
+pm.max_children = 110
+
+; number of start processes
+pm.start_servers = 20
+
+; desired minimum idle processes
+pm.min_spare_servers = 10
+
+; desired maximum idle processes
+pm.max_spare_servers = 20
+
+; maximum requests before restarting process (helps with memory leaks)
+pm.max_requests = 250

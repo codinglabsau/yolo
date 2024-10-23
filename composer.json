@@ -12,17 +12,28 @@
   ],
   "require": {
     "php": "^8.3",
-    "illuminate/contracts": "^11.0",
-    "spatie/ray": "^1.41"
+    "aws/aws-sdk-php": "^3.324",
+    "guzzlehttp/guzzle": "^7.9",
+    "illuminate/container": "^11.29",
+    "illuminate/filesystem": "^11.29",
+    "illuminate/support": "^11.29",
+    "laravel/prompts": "^0.3.1",
+    "spatie/ray": "^1.41",
+    "symfony/yaml": "^7.1",
+    "vlucas/phpdotenv": "^5.6"
   },
   "require-dev": {
-    "codinglabsau/php-styles": "dev-main"
+    "codinglabsau/php-styles": "dev-main",
+    "phpstan/phpstan": "^1.12"
   },
   "autoload": {
     "psr-4": {
       "Codinglabs\\Yolo\\": "src"
     }
   },
+  "bin": [
+    "yolo"
+  ],
   "scripts": {
     "fix": "vendor/bin/php-cs-fixer fix"
   },

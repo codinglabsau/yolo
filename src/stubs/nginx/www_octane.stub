@@ -1,0 +1,88 @@
+#
+# YOLO Virtual Host configuration for Laravel Octane
+#
+
+{FORWARD_NON_WWW}
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    # listen on 80 (behind load balancer)
+    listen 80 default_server;
+    listen [::]:80 default_server;
+
+    # do not reveal nginx version info
+    server_tokens off;
+
+    # redirect if not on a https connection
+    if ($http_x_forwarded_proto = "http") {
+        return 301 https://$host$request_uri;
+    }
+
+    # get real IP from trusted proxy (AWS ELB)
+    real_ip_header X-Forwarded-For;
+    set_real_ip_from 10.0.0.0/8;
+
+    # max filesize
+    client_max_body_size 128M;
+
+    server_name _;
+
+    root /var/www/{NAME}/public;
+
+    index index.php;
+
+    charset utf-8;
+
+    access_log /var/log/nginx/access.log enhanced;
+
+    location /index.php {
+        try_files /not_exists @octane;
+    }
+
+    # disable logging on favicon
+    location = /favicon.ico {
+        access_log off;
+        log_not_found off;
+    }
+
+    # disable logging on robots.txt, forward requests to octane
+    location = /robots.txt  {
+        access_log off;
+        log_not_found off;
+        try_files $uri @octane;
+    }
+
+    location / {
+        # CORS for accepting external fonts
+        location ~* \.(eot|ttf|woff|woff2)$ {
+            add_header Access-Control-Allow-Origin *;
+        }
+
+        # First attempt to serve request as file, then
+        # as directory, then fall back to displaying a 404.
+        try_files $uri $uri/ @octane;
+    }
+
+    location @octane {
+        set $suffix "";
+
+        if ($uri = /index.php) {
+            set $suffix ?$query_string;
+        }
+
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header Scheme $scheme;
+        proxy_set_header SERVER_PORT $server_port;
+        proxy_set_header REMOTE_ADDR $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+
+        proxy_pass http://127.0.0.1:8000$suffix;
+    }
+}

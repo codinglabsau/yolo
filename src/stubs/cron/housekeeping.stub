@@ -1,0 +1,6 @@
+#
+# cron job for all servers
+#
+
+# delete /tmp php files > 180 minutes old every hour
+0 * * * *       root        find /tmp/. -name 'php??????' -mmin +180 -exec rm '{}' \;

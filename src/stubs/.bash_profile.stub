@@ -1,0 +1,4 @@
+alias art="php artisan"
+alias yolo="php yolo"
+
+cd /var/www

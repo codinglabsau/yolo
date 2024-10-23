@@ -1,0 +1,55 @@
+<?php
+
+namespace Codinglabs\Yolo;
+
+use Illuminate\Support\Arr;
+use Symfony\Component\Yaml\Yaml;
+
+class Manifest
+{
+    public static function current(): array
+    {
+        return Yaml::parse(file_get_contents(Paths::manifest()));
+    }
+
+    public static function name(): string
+    {
+        return Arr::get(static::current(), 'name');
+    }
+
+    public static function get(string $key): string|array|null
+    {
+        return Arr::get(static::current()['environments'][Helpers::environment()], $key) ?? null;
+    }
+
+    public static function put(string $key, mixed $value): false|int
+    {
+        $manifest = static::current();
+
+        Arr::set($manifest, sprintf("environments.%s.%s", Helpers::environment(), $key), $value);
+
+        return file_put_contents(
+            Paths::manifest(),
+            str_replace("'", '', Yaml::dump($manifest, inline: 20, indent: 2))
+        );
+    }
+
+    /**
+     * @return array<int, array{
+     *     domain: string,
+     *     apex: string,
+     *     subdomain: bool
+     * }>
+     */
+    public static function tenants(): array
+    {
+        return collect(static::get('tenants'))
+            ->mapWithKeys(function (array $config, string $tenantId) {
+                // normalise tenant config
+                $config['subdomain'] = array_key_exists('apex', $config);
+                $config['apex'] = $config['apex'] ?? $config['domain'];
+
+                return [$tenantId => $config];
+            })->toArray();
+    }
+}
