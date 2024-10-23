@@ -21,7 +21,7 @@ class Paths
 
     public static function stubs($path = null): string
     {
-        return __DIR__ . '/stubs' . ($path ? '/' . ltrim($path, '/') : '');
+        return __DIR__ . '/../stubs' . ($path ? '/' . ltrim($path, '/') : '');
     }
 
     public static function buildAssets(): string
