@@ -3,10 +3,12 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Concerns\RegistersAws;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Command\Command as SymfonyCommand;
+use function Laravel\Prompts\error;
 
 abstract class Command extends SymfonyCommand
 {
@@ -25,6 +27,11 @@ abstract class Command extends SymfonyCommand
         }
 
         Helpers::app()->instance('environment', $this->argument('environment'));
+
+        if (Manifest::exists() && ! Manifest::environmentExists($this->argument('environment'))) {
+            error("Could not find '{$this->argument('environment')}' in the YOLO manifest");
+            return 1;
+        }
 
         $this->registerAwsServices();
 

@@ -12,6 +12,15 @@ class Manifest
         return file_exists(Paths::manifest());
     }
 
+    public static function environmentExists(string $environment): bool
+    {
+        if (! static::exists()) {
+            return false;
+        }
+
+        return array_key_exists($environment, static::current()['environments']);
+    }
+
     public static function current(): array
     {
         return Yaml::parse(file_get_contents(Paths::manifest()));
