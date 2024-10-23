@@ -6,11 +6,14 @@ use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Concerns\RegistersAws;
 use function Laravel\Prompts\text;
 use function Laravel\Prompts\confirm;
 
 class EnsureManifestExistsStep implements Step
 {
+    use RegistersAws;
+
     public function __invoke(): StepResult
     {
         if (file_exists(Paths::base('yolo.yml'))) {
@@ -18,6 +21,7 @@ class EnsureManifestExistsStep implements Step
         }
 
         $this->initialiseManifest();
+        $this->registerAwsServices();
 
         return StepResult::CREATED;
     }

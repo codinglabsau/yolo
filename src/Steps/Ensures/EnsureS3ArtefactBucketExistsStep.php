@@ -27,11 +27,11 @@ class EnsureS3ArtefactBucketExistsStep implements Step
     {
         $bucketName = sprintf('%s-%s-yolo-artefacts', Manifest::name(), Helpers::environment());
 
-        note("Creating S3 bucket {$bucketName}...");
-
-        Aws::s3()->createBucket([
-            'Bucket' => $bucketName,
-        ]);
+        if (! Aws::s3()->doesBucketExistV2($bucketName)) {
+            Aws::s3()->createBucket([
+                'Bucket' => $bucketName,
+            ]);
+        }
 
         Manifest::put('aws.artefacts-bucket', $bucketName);
     }

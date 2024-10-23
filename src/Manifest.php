@@ -7,6 +7,11 @@ use Symfony\Component\Yaml\Yaml;
 
 class Manifest
 {
+    public static function exists(): bool
+    {
+        return file_exists(Paths::manifest());
+    }
+
     public static function current(): array
     {
         return Yaml::parse(file_get_contents(Paths::manifest()));
