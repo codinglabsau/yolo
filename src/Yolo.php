@@ -10,6 +10,8 @@ class Yolo
     protected Application $app;
 
     protected array $commands = [
+        Commands\InitCommand::class,
+
         // AWS
         Commands\AmiCreateCommand::class,
         Commands\AmiListCommand::class,

@@ -1,0 +1,31 @@
+name: {NAME}
+
+environments:
+  production:
+    aws:
+      region: {AWS_REGION}
+      vpc:
+      bucket:
+      artefacts-bucket:
+      cloudfront:
+      alb:
+      sns-topic:
+      security-group-id:
+      autoscaling:
+        web:
+        queue:
+        scheduler:
+      ec2:
+        os-image-id:
+        instance-type: t3.small
+        instance-profile:
+        octane: true
+
+    build:
+      - composer install --no-cache --no-interaction --optimize-autoloader --no-progress --classmap-authoritative --no-dev
+      - npm ci
+      - npm run build
+      - rm -rf package-lock.json resources/js resources/css node_modules database/seeders database/factories resources/seeding
+
+    deploy-all:
+      - php artisan optimize
