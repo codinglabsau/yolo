@@ -15,7 +15,7 @@ class EnsureTranscoderExistsStep implements Step
      */
     public function __invoke(): StepResult
     {
-        if (Manifest::get('transcoder') === null) {
+        if (Manifest::get('aws.transcoder') === null) {
             return StepResult::SKIPPED;
         }
 

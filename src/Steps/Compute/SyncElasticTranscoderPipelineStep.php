@@ -15,6 +15,10 @@ class SyncElasticTranscoderPipelineStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
+        if (Manifest::get('aws.transcoder') === null) {
+            return StepResult::SKIPPED;
+        }
+
         try {
             AwsResources::elasticTranscoderPipeline();
             return StepResult::SYNCED;

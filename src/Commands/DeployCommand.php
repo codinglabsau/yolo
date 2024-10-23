@@ -20,7 +20,7 @@ class DeployCommand extends Command
     protected array $steps = [
         Steps\Ensures\EnsureTranscoderExistsStep::class,
         Steps\Ensures\EnsureHostedZonesExistStep::class,
-        Steps\Ensures\EnsureTenantHostedZonesExistStep::class,
+        Steps\Ensures\EnsureMultitenancyHostedZonesExistStep::class,
         Steps\Ensures\EnsureEnvIsConfiguredCorrectlyStep::class,
         Steps\Ensures\EnsureAutoscalingGroupSchedulerExistsStep::class,
         Steps\Ensures\EnsureAutoscalingGroupQueueExistsStep::class,

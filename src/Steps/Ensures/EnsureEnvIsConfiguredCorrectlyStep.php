@@ -4,9 +4,11 @@ namespace Codinglabs\Yolo\Steps\Ensures;
 
 use Dotenv\Dotenv;
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Illuminate\Filesystem\Filesystem;
+use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Illuminate\Contracts\Filesystem\FileNotFoundException;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -18,12 +20,21 @@ class EnsureEnvIsConfiguredCorrectlyStep implements Step
 
     }
 
+    public function __invoke(): StepResult
+    {
+        if (Manifest::get('aws.transcoder')) {
+            $this->checkTranscoderConfiguration();
+        }
+
+        return StepResult::SYNCED;
+    }
+
     /**
      * @throws IntegrityCheckException
      * @throws ResourceDoesNotExistException
      * @throws FileNotFoundException
      */
-    public function __invoke(): void
+    protected function checkTranscoderConfiguration(): void
     {
         $elasticTranscoderPipeline = AwsResources::elasticTranscoderPipeline();
         $elasticTranscoderPreset = AwsResources::elasticTranscoderPreset();

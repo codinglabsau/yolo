@@ -8,7 +8,7 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Steps\TenantStep;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class EnsureTenantHostedZonesExistStep extends TenantStep
+class EnsureMultitenancyHostedZonesExistStep extends TenantStep
 {
     /**
      * @throws ResourceDoesNotExistException
