@@ -37,7 +37,5 @@ jobs:
       - name: Code sniff
         run: vendor/bin/php-cs-fixer fix --dry-run
 
-      - name: Execute tests
-        run: composer test
-
-      - uses: codecov/codecov-action@v3
+      - name: Analyse
+        run: vendor/bin/phpstan
