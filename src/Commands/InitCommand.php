@@ -7,6 +7,7 @@ use Codinglabs\Yolo\Manifest;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\text;
+use function Laravel\Prompts\error;
 use function Laravel\Prompts\confirm;
 
 class InitCommand extends Command
@@ -20,6 +21,11 @@ class InitCommand extends Command
 
     public function handle(): void
     {
+        if (file_exists(Paths::base('yolo.yml'))) {
+            error("yolo.yml has already been initialised. Make changes to yolo.yml instead.");
+            return;
+        }
+
         note("Creating yolo.yml...");
 
         file_put_contents(
@@ -30,14 +36,14 @@ class InitCommand extends Command
                     '{AWS_REGION}',
                 ],
                 replace: [
-                    text('What is the name of this app?'),
+                    text('What is the name of this app?', placeholder: 'eg. codinglabs'),
                     text('Which AWS region do you want to deploy to?', default: env('AWS_DEFAULT_REGION', 'ap-southeast-2')),
                 ],
                 subject: file_get_contents(Paths::stubs('yolo.yml.stub'))
             )
         );
 
-        if (confirm("Is the app multi-tenant?")) {
+        if (confirm("Is the app multi-tenant?", default: false)) {
             Manifest::put('tenants', [
                 'tenant-id' => ['domain' => 'tenant-domain.tld']
             ]);
@@ -47,7 +53,7 @@ class InitCommand extends Command
                 'php artisan tenants:artisan "migrate --path=database/migrations/tenant --database=tenant --force"',
             ]);
         } else {
-            Manifest::put('domain', text("What is the domain?"));
+            Manifest::put('domain', text("What is the domain?", placeholder: 'eg. codinglabs.com.au'));
 
             Manifest::put('deploy', [
                 'php artisan migrate --force',
