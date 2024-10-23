@@ -5,8 +5,10 @@ use Dotenv\Dotenv;
 use Codinglabs\Yolo\Yolo;
 
 if (file_exists(__DIR__ . '/../../autoload.php')) {
+    echo 'using vendor autoload';
     require __DIR__ . '/../../autoload.php';
 } else {
+    echo 'using local autoload';
     require __DIR__ . '/vendor/autoload.php';
 }
 
