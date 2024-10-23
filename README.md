@@ -22,6 +22,8 @@ Optionally, install globally with:
 composer global require codinglabsau/yolo
 ```
 
+You should also gitignore the `.yolo` build directory.
+
 ## Usage
 See `vendor/bin/yolo` or `yolo` if you have installed globally.
 
@@ -33,7 +35,12 @@ Once configured, all future operations will leverage the profile.
 Note that for CI environments, AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are used instead. Ensure that any access keys provided in CI are using least-privileged scope as a safety guard against accidental AWS resource modification.
 
 ### `yolo init`
-Initalises the yolo.yml file in the app, and ensures the low level AWS resources exist. 
+Initalises the yolo.yml file in the app with a production environment, and ensures the low level AWS resources exist. 
+
+### `yolo build <environment>`
+Prior to building the environment, you'll need to create `.env.<environment>` followed by `yolo env:push <environment>`.
+
+With the .env.<environment> file in place, the build command takes care of building a deployment ready directory. 
 
 ## Credits
 - [Steve Thomas](https://github.com/stevethomas)
