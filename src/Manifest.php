@@ -48,11 +48,17 @@ class Manifest
         );
     }
 
+    public static function isMultitenanted(): bool
+    {
+        return ! empty(static::get('tenants'));
+    }
+
     /**
      * @return array<int, array{
      *     domain: string,
      *     apex: string,
-     *     subdomain: bool
+     *     subdomain: bool,
+     *     www: bool
      * }>
      */
     public static function tenants(): array
@@ -62,6 +68,7 @@ class Manifest
                 // normalise tenant config
                 $config['subdomain'] = array_key_exists('apex', $config);
                 $config['apex'] = $config['apex'] ?? $config['domain'];
+                $config['www'] = array_key_exists('www', $config) && $config['www'];
 
                 return [$tenantId => $config];
             })->toArray();
