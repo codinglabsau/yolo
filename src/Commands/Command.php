@@ -28,12 +28,14 @@ abstract class Command extends SymfonyCommand
 
         Helpers::app()->instance('environment', $this->argument('environment'));
 
-        if (Manifest::exists() && ! Manifest::environmentExists($this->argument('environment'))) {
-            error("Could not find '{$this->argument('environment')}' in the YOLO manifest");
-            return 1;
-        }
+        if (Manifest::exists()) {
+            if (! Manifest::environmentExists($this->argument('environment'))) {
+                error("Could not find '{$this->argument('environment')}' in the YOLO manifest");
+                return 1;
+            }
 
-        $this->registerAwsServices();
+            $this->registerAwsServices();
+        }
 
         $this->output->setVerbosity(OutputInterface::VERBOSITY_DEBUG);
 
