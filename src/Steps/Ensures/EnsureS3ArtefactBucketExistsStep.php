@@ -14,18 +14,11 @@ class EnsureS3ArtefactBucketExistsStep implements Step
 {
     public function __invoke(): StepResult
     {
-        if (Paths::s3ArtefactsBucket()) {
+        $bucketName = sprintf('%s-%s-yolo-artefacts', Manifest::name(), Helpers::environment());
+
+        if (Paths::s3ArtefactsBucket() && Aws::s3()->doesBucketExistV2($bucketName)) {
             return StepResult::SYNCED;
         }
-
-        $this->initialiseArtefactsBucket();
-
-        return StepResult::CREATED;
-    }
-
-    protected function initialiseArtefactsBucket(): void
-    {
-        $bucketName = sprintf('%s-%s-yolo-artefacts', Manifest::name(), Helpers::environment());
 
         if (! Aws::s3()->doesBucketExistV2($bucketName)) {
             Aws::s3()->createBucket([
@@ -34,5 +27,7 @@ class EnsureS3ArtefactBucketExistsStep implements Step
         }
 
         Manifest::put('aws.artefacts-bucket', $bucketName);
+
+        return StepResult::CREATED;
     }
 }
