@@ -1,0 +1,59 @@
+{
+  "name": "codinglabsau/:package_slug",
+  "description": ":package_description",
+  "keywords": [
+    "Codinglabs",
+    "laravel",
+    ":package_slug"
+  ],
+  "homepage": "https://github.com/codinglabsau/:package_slug",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": ":author_name",
+      "email": "author@domain.com",
+      "role": "Developer"
+    }
+  ],
+  "require": {
+    "php": "^8.1",
+    "illuminate/contracts": "^10.0|^11.0",
+    "spatie/laravel-package-tools": "^1.9.2"
+  },
+  "require-dev": {
+    "codinglabsau/php-styles": "dev-main",
+    "nunomaduro/collision": "^7.0",
+    "orchestra/testbench": "^8.0",
+    "phpunit/phpunit": "^10.0",
+    "spatie/laravel-ray": "^1.26"
+  },
+  "autoload": {
+    "psr-4": {
+      "Codinglabs\\Skeleton\\": "src",
+      "Codinglabs\\Skeleton\\Database\\Factories\\": "database/factories"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Codinglabs\\Skeleton\\Tests\\": "tests"
+    }
+  },
+  "scripts": {
+    "test": "vendor/bin/phpunit"
+  },
+  "config": {
+    "sort-packages": true
+  },
+  "extra": {
+    "laravel": {
+      "providers": [
+        "Codinglabs\\Skeleton\\SkeletonServiceProvider"
+      ],
+      "aliases": {
+        "Skeleton": "Codinglabs\\Skeleton\\Facades\\Skeleton"
+      }
+    }
+  },
+  "minimum-stability": "dev",
+  "prefer-stable": true
+}
