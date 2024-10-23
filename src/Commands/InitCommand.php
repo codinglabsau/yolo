@@ -19,6 +19,7 @@ class InitCommand extends Command
         Steps\Ensures\EnsureManifestExistsStep::class,
         Steps\Ensures\EnsureVpcExistsStep::class,
         Steps\Ensures\EnsureS3ArtefactBucketExistsStep::class,
+        Steps\Ensures\EnsureS3BucketExistsStep::class,
     ];
 
     protected function configure(): void
