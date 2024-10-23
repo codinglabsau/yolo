@@ -110,7 +110,7 @@ trait UsesCodeDeploy
         return [
             'applicationName' => AwsResources::application(),
             'outdatedInstancesStrategy' => 'UPDATE',
-            'serviceRoleArn' => sprintf('arn:aws:iam::%s:role/AWSCodeDeployServiceRole', Manifest::get('aws.account-id')),
+            'serviceRoleArn' => sprintf('arn:aws:iam::%s:role/AWSCodeDeployServiceRole', Aws::accountId()),
         ];
     }
 }

@@ -2,12 +2,14 @@
 
 namespace Codinglabs\Yolo\Commands;
 
+use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\text;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\confirm;
 
 class InitCommand extends Command
@@ -16,18 +18,29 @@ class InitCommand extends Command
     {
         $this
             ->setName('init')
+            ->addArgument('environment', InputArgument::OPTIONAL, 'The environment name', default: 'production')
             ->setDescription('Create the yolo.yml manifest in the current app root');
     }
 
     public function handle(): void
     {
-        if (file_exists(Paths::base('yolo.yml'))) {
-            error("yolo.yml has already been initialised. Make changes to yolo.yml instead.");
-            return;
+        if (! file_exists(Paths::base('yolo.yml'))) {
+            info("Creating yolo.yml...");
+            $this->initialiseManifest();
+        } else {
+            note("Skipping yolo.yml creation");
         }
 
-        note("Creating yolo.yml...");
+        if (! Paths::s3ArtefactsBucket()) {
+            note("Initialising artefacts bucket on S3...");
+            $this->initialiseArtefactsBucket();
+        }
 
+        info("YOLO initialised successfully");
+    }
+
+    protected function initialiseManifest(): void
+    {
         file_put_contents(
             Paths::base('yolo.yml'),
             str_replace(
@@ -59,7 +72,22 @@ class InitCommand extends Command
                 'php artisan migrate --force',
             ]);
         }
+    }
 
-        info("YOLO initialised successfully");
+    protected function initialiseArtefactsBucket(): void
+    {
+        $bucketName = sprintf('%s-%s-yolo-artefacts', Manifest::name(), Helpers::environment());
+
+        note("Creating S3 bucket {$bucketName}...");
+
+        ray(Aws::accountId());
+
+        exit;
+
+        Aws::s3()->createBucket([
+            'Bucket' => $bucketName,
+        ]);
+
+        Manifest::put('aws.artefacts-bucket', $bucketName);
     }
 }

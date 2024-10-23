@@ -20,15 +20,15 @@ abstract class Command extends SymfonyCommand
         Helpers::app()->instance('input', $this->input = $input);
         Helpers::app()->instance('output', $this->output = $output);
 
-        $this->input->hasArgument('environment')
-            ? Helpers::app()->instance('environment', $this->argument('environment'))
-            : Helpers::app()->instance('environment', 'production');
+        if (! $this->input->hasArgument('environment')) {
+            $this->input->setArgument('environment', 'production');
+        }
+
+        Helpers::app()->instance('environment', $this->argument('environment'));
+
+        $this->registerAwsServices();
 
         $this->output->setVerbosity(OutputInterface::VERBOSITY_DEBUG);
-
-        if (! $this instanceof InitCommand) {
-            $this->registerAwsServices();
-        }
 
         return (int)(Helpers::app()->call([$this, 'handle']) ?: 0);
     }

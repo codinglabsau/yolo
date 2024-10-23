@@ -24,7 +24,7 @@ class SyncElasticTranscoderPipelineStep implements Step
                     'Name' => Helpers::keyedResourceName(),
                     'InputBucket' => Manifest::get('aws.bucket'),
                     'OutputBucket' => Manifest::get('aws.bucket'),
-                    'Role' => 'arn:aws:iam::' . Manifest::get('aws.account-id') . ':role/Elastic_Transcoder_Default_Role',
+                    'Role' => 'arn:aws:iam::' . Aws::accountId() . ':role/Elastic_Transcoder_Default_Role',
                 ]);
 
                 return StepResult::CREATED;

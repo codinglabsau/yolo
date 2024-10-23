@@ -36,6 +36,15 @@ class Aws
         return Helpers::app('runningInAwsSchedulerEnvironment');
     }
 
+
+    public static function accountId(): string
+    {
+        return Aws::s3()
+            ->getCredentials()
+            ->wait()
+            ->getAccountId();
+    }
+
     public static function acm(): AcmClient
     {
         return Helpers::app('acm');
