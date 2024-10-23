@@ -4,21 +4,19 @@ environments:
   production:
     aws:
       region: {AWS_REGION}
-      vpc:
       bucket:
-      artefacts-bucket:
-      cloudfront:
-      alb:
-      sns-topic:
-      security-group-id:
+      cloudfront: // todo use magic [account level]
+      alb: // todo use magic
+      sns-topic: // todo use magic / drop
+      security-group-id: // todo use magic
       autoscaling:
         web:
         queue:
         scheduler:
       ec2:
-        os-image-id:
+        os-image-id: // todo use magic
         instance-type: t3.small
-        instance-profile:
+        instance-profile: // todo use magic
         octane: true
 
     build:

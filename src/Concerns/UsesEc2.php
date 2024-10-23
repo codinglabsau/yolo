@@ -5,10 +5,12 @@ namespace Codinglabs\Yolo\Concerns;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 trait UsesEc2
 {
+    protected static array $vpc;
     protected static array $launchTemplate;
     protected static array $loadBalancer;
     protected static array $targetGroup;
@@ -168,6 +170,32 @@ trait UsesEc2
         ];
     }
 
+    public static function vpc(): array
+    {
+        if (isset(static::$vpc)) {
+            return static::$vpc;
+        }
+
+        $name = Helpers::keyedResourceName();
+        $vpcs = Aws::ec2()->describeVpcs([
+            'Filters' => [
+                [
+                    'Name' => 'tag:Name',
+                    'Values' => [$name],
+                ],
+            ]
+        ])
+        ['Vpcs'];
+
+        if (count($vpcs) === 0) {
+            throw new ResourceDoesNotExistException(sprintf("Could not find VPC %s", $name));
+        }
+
+        static::$vpc = $vpcs[0];
+
+        return static::$vpc;
+    }
+
     public static function subnets(): array
     {
         if (isset(static::$subnets)) {
@@ -178,13 +206,13 @@ trait UsesEc2
             'Filters' => [
                 [
                     'Name' => 'vpc-id',
-                    'Values' => [Manifest::get('aws.vpc')],
+                    'Values' => [AwsResources::vpc()['VpcId']],
                 ],
             ],
         ])['Subnets'];
 
         if (count($subnets) === 0) {
-            throw new ResourceDoesNotExistException(sprintf("Could not find subnets for VPC %s", Manifest::get('aws.vpc')));
+            throw new ResourceDoesNotExistException(sprintf("Could not find subnets for VPC %s", AwsResources::vpc()['VpcId']));
         }
 
         static::$subnets = $subnets;

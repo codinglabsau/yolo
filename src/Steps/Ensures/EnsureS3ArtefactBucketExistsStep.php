@@ -5,18 +5,16 @@ namespace Codinglabs\Yolo\Steps\Ensures;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Helpers;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
-use Codinglabs\Yolo\Enums\StepResult;
 
 class EnsureS3ArtefactBucketExistsStep implements Step
 {
-    public function __invoke(): StepResult
+    public function __invoke(): string
     {
         $bucketName = Helpers::keyedResourceName('artefacts');
 
         if (Paths::s3ArtefactsBucket() && Aws::s3()->doesBucketExistV2($bucketName)) {
-            return StepResult::SYNCED;
+            return $bucketName;
         }
 
         if (! Aws::s3()->doesBucketExistV2($bucketName)) {
@@ -25,8 +23,6 @@ class EnsureS3ArtefactBucketExistsStep implements Step
             ]);
         }
 
-        Manifest::put('aws.artefacts-bucket', $bucketName);
-
-        return StepResult::CREATED;
+        return $bucketName;
     }
 }

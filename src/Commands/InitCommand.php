@@ -17,6 +17,7 @@ class InitCommand extends Command
 
     protected array $steps = [
         Steps\Ensures\EnsureManifestExistsStep::class,
+        Steps\Ensures\EnsureVpcExistsStep::class,
         Steps\Ensures\EnsureS3ArtefactBucketExistsStep::class,
     ];
 
