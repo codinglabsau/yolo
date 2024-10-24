@@ -12,7 +12,7 @@ apt-get upgrade -y
 # system stuff
 apt-get install -y htop git zip unzip pbzip2 fail2ban mcrypt supervisor language-pack-en
 
-# various database tools (re. mariadb-client: (https://stackoverflow.com/questions/75183032/mysqldump-for-aws-rds-flush-tables-error-on-linux-only))
+# various database tools (re. mariadb-client: (https://stackoverflow.com/questions/75183032/mysqldump-for-aws-rds-flush-tables-error-on-linux-only)
 apt-get install -y awscli mariadb-client percona-toolkit
 
 # web server
@@ -36,11 +36,6 @@ apt-get install -y \
 
 # PHP (Octane with Swoole)
 apt-get install -y php8.3-swoole
-
-# PHP (Octane via PECL)
-#apt-get install -y php-pear php8.3-dev
-#pecl channel-update pecl.php.net
-#pecl install openswoole
 
 # PHP (Sentry)
 apt-get install -y php-excimer
