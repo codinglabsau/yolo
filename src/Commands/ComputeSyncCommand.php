@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Concerns\RunsSteppedCommands;
 use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\info;
+use function Laravel\Prompts\intro;
 
 class ComputeSyncCommand extends Command
 {
@@ -30,7 +31,7 @@ class ComputeSyncCommand extends Command
     {
         $environment = $this->argument('environment');
 
-        info("Executing compute:sync steps...");
+        intro(sprintf("Executing compute:sync steps in %s", $environment));
 
         $totalTime = $this->handleSteps($environment);
 

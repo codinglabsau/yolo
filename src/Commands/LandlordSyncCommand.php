@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Concerns\RunsSteppedCommands;
 use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\info;
+use function Laravel\Prompts\intro;
 
 class LandlordSyncCommand extends Command
 {
@@ -29,7 +30,7 @@ class LandlordSyncCommand extends Command
     {
         $environment = $this->argument('environment');
 
-        info("Executing landlord:sync steps...");
+        intro(sprintf("Executing landlord:sync steps in %s", $environment));
 
         $totalTime = $this->handleSteps($environment);
 
