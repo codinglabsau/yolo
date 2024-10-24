@@ -35,6 +35,9 @@ abstract class Command extends SymfonyCommand
             }
 
             $this->registerAwsServices();
+        } elseif (! $this instanceof InitCommand) {
+            error("Could not find yolo.yml manifest in the current directory - run 'yolo init' to create one");
+            return 1;
         }
 
         $this->output->setVerbosity(OutputInterface::VERBOSITY_DEBUG);
