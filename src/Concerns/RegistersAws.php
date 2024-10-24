@@ -24,9 +24,6 @@ trait RegistersAws
 {
     protected function registerAwsServices(): void
     {
-        // make this available right away to determine which AWS credentials to use
-        Helpers::app()->singleton('runningInAws', fn () => static::detectAwsEnvironment());
-
         // common arguments for all AWS clients
         $arguments = [
             'region' => Manifest::get('aws.region'),

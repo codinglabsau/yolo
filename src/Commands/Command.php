@@ -23,6 +23,7 @@ abstract class Command extends SymfonyCommand
     {
         Helpers::app()->instance('input', $this->input = $input);
         Helpers::app()->instance('output', $this->output = $output);
+        Helpers::app()->singleton('runningInAws', fn () => static::detectAwsEnvironment());
 
         // bail if command should not be running
         if (! $this->shouldBeRunning($this)) {
