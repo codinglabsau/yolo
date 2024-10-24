@@ -20,18 +20,31 @@ find ${DUMP_DIR} -name *.xz -delete
 DATABASES=$(mysql -u {DB_USERNAME} -p{DB_PASSWORD} -h {DB_HOST} -rssBe 'show databases' | sed -r '/(tmp|awsdms_control|mysql|information_schema|performance_schema|sys)/d')
 
 # loop databases and backup
-for DB in ${DATABASES}
+for DATABASE in ${DATABASES}
 do
     # file to write
-	TMP_FILE=`mktemp ${DUMP_DIR}/${DB}-XXXX.sql.xz.tmp`
-	DUMP_FILE=${DUMP_DIR}/${DB}.sql.xz
+	TMP_FILE=`mktemp ${DUMP_DIR}/${DATABASE}-XXXX.sql.xz.tmp`
+	DUMP_FILE=${DUMP_DIR}/${DATABASE}.sql.xz
 
-	# dump and write to ${DUMP_FILE}
-	mysqldump -u {DB_USERNAME} -p{DB_PASSWORD} -h {DB_HOST} --single-transaction --quick --databases ${DB} | nice -10 pbzip2 > ${TMP_FILE}
+	# dump to tmp file ${DUMP_FILE}
+	mysqldump \
+	  -u {DB_USERNAME} \
+	  -p{DB_PASSWORD} \
+	  -h {DB_HOST} \
+	  --single-transaction \
+	  --skip-lock-tables \
+	  --quick \
+	  --databases \
+	  ${DATABASE} \
+	  | nice -10 pbzip2 > ${TMP_FILE}
+
+	# rename the tmp file to the final dump file
 	mv ${TMP_FILE} ${DUMP_FILE}
 
-	# copy to s3 and delete
-	aws s3 cp ${DUMP_FILE} s3://{AWS_BUCKET}/dumps/${DB}.sql.xz
+	# copy to s3
+	aws s3 cp ${DUMP_FILE} s3://{AWS_BUCKET}/dumps/${DATABASE}.sql.xz
+
+	# remove the local dump
 	rm ${DUMP_FILE}
 done
 
