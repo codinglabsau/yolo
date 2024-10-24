@@ -21,7 +21,7 @@ class SyncInternetGatewayAttachmentStep implements Step
 
         if (count($internetGateway['Attachments']) === 1
             && $internetGateway['Attachments'][0]['VpcId'] === $vpc['VpcId']
-            && $internetGateway['Attachments'][0]['State'] === 'attached') {
+            && $internetGateway['Attachments'][0]['State'] === 'available') {
             return StepResult::SYNCED;
         }
 
