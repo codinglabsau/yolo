@@ -2,12 +2,10 @@
 
 namespace Codinglabs\Yolo\Commands;
 
-use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Concerns\RunsSteppedCommands;
 use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\info;
-use function Laravel\Prompts\error;
 
 class CiSyncCommand extends Command
 {
@@ -32,11 +30,6 @@ class CiSyncCommand extends Command
 
     public function handle(): void
     {
-        if (Aws::runningInAws()) {
-            error("ci:sync command cannot be run in AWS.");
-            return;
-        }
-
         $environment = $this->argument('environment');
 
         info("Executing ci:sync steps...");

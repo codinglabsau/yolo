@@ -2,14 +2,13 @@
 
 namespace Codinglabs\Yolo\Commands;
 
-use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Steps;
+use Codinglabs\Yolo\Contracts\RunsOnAws;
 use Codinglabs\Yolo\Concerns\RunsSteppedCommands;
 use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\info;
-use function Laravel\Prompts\error;
 
-class StartCommand extends Command
+class StartCommand extends Command implements RunsOnAws
 {
     use RunsSteppedCommands;
 
@@ -45,11 +44,6 @@ class StartCommand extends Command
     public function handle(): void
     {
         $environment = $this->argument('environment');
-
-        if (! Aws::runningInAws()) {
-            error("You can only run the start command from within an AWS instance.");
-            return;
-        }
 
         info("Executing start steps...");
 

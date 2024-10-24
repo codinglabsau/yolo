@@ -2,7 +2,6 @@
 
 namespace Codinglabs\Yolo\Commands;
 
-use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Concerns\RunsSteppedCommands;
 use Symfony\Component\Console\Input\InputArgument;
@@ -35,11 +34,6 @@ class BuildCommand extends Command
 
     public function handle(): void
     {
-        if (Aws::runningInAws()) {
-            error("build command cannot be run in AWS.");
-            return;
-        }
-
         $appVersion = $this->option('app-version') ?? date('y.W.N.Hi');
 
         if (! str_starts_with($appVersion, date('y.W'))) {

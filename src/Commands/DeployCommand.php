@@ -2,14 +2,12 @@
 
 namespace Codinglabs\Yolo\Commands;
 
-use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Concerns\RunsSteppedCommands;
 use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\info;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\warning;
 
@@ -45,11 +43,6 @@ class DeployCommand extends Command
     public function handle(): void
     {
         $environment = $this->argument('environment');
-
-        if (Aws::runningInAws()) {
-            error("You can't run the deploy command from an AWS instance.");
-            return;
-        }
 
         $reuseBuild = false;
 

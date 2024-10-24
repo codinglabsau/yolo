@@ -2,12 +2,10 @@
 
 namespace Codinglabs\Yolo\Commands;
 
-use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Concerns\RunsSteppedCommands;
 use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\info;
-use function Laravel\Prompts\error;
 
 class AmiCreateCommand extends Command
 {
@@ -36,11 +34,6 @@ class AmiCreateCommand extends Command
 
     public function handle(): void
     {
-        if (Aws::runningInAws()) {
-            error("ami:create command cannot be run in AWS.");
-            return;
-        }
-
         $environment = $this->argument('environment');
 
         info("Executing build steps...");
