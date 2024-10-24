@@ -47,12 +47,12 @@ abstract class Command extends SymfonyCommand
             return 1;
         }
 
+        Helpers::app()->instance('environment', $this->argument('environment'));
+
         if (! Helpers::keyedEnv('AWS_PROFILE')) {
             error(sprintf("You need to specify YOLO_%s_AWS_PROFILE in your .env file before proceeding", strtoupper(Helpers::environment())));
             return 1;
         }
-
-        Helpers::app()->instance('environment', $this->argument('environment'));
 
         $this->registerAwsServices();
 
