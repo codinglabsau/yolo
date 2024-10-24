@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Concerns\RunsSteppedCommands;
 use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\info;
+use function Laravel\Prompts\intro;
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\warning;
 
@@ -56,7 +57,7 @@ class DeployCommand extends Command
             (new BuildCommand())->execute(Helpers::app('input'), Helpers::app('output'));
         }
 
-        info("Executing deploy steps...");
+        intro("Executing deploy steps...");
 
         $totalTime = $this->handleSteps($environment);
 
