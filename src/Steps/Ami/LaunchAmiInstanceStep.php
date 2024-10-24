@@ -17,7 +17,7 @@ class LaunchAmiInstanceStep implements Step
 
     public function __invoke(): StepResult
     {
-        if ($instance = static::findEc2ByName(
+        if ($instance = static::ec2ByName(
             'AMI',
             states: ['pending', 'running', 'stopping', 'stopped'],
             throws: false
@@ -80,7 +80,7 @@ class LaunchAmiInstanceStep implements Step
 
         while (true) {
             // wait for instance to be running with an assigned public IP address
-            if ($instance = static::findEc2ByName('AMI', throws: false)) {
+            if ($instance = static::ec2ByName('AMI', throws: false)) {
                 Helpers::app()->singleton('amiInstanceId', fn () => $instance['InstanceId']);
                 Helpers::app()->singleton('amiIp', fn () => $instance['PublicIpAddress']);
                 break;

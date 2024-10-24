@@ -20,7 +20,7 @@ class StopAmiInstanceStep implements Step
 
         while (true) {
             // wait for instance to stop
-            if (static::findEc2ByName('AMI', states: ['stopped'], throws: false)) {
+            if (static::ec2ByName('AMI', states: ['stopped'], throws: false)) {
                 break;
             }
 

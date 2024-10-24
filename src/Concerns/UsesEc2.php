@@ -17,7 +17,7 @@ trait UsesEc2
     protected static array $targetGroup;
     protected static array $subnets;
 
-    protected static function findEc2ByName(string $name, array $states = ['running'], bool $firstOnly = true, $throws = true): ?array
+    protected static function ec2ByName(string $name, array $states = ['running'], bool $firstOnly = true, $throws = true): ?array
     {
         $instances = collect(Aws::ec2()->describeInstances([
             'Filters' => [
@@ -49,13 +49,13 @@ trait UsesEc2
             : $instances->toArray();
     }
 
-    public static function findEc2IpByName(string $name, bool $firstOnly = true): string|array
+    public static function ec2IpByName(string $name, bool $firstOnly = true): string|array
     {
         if ($firstOnly) {
-            return static::findEc2ByName(name: $name)['PublicIpAddress'];
+            return static::ec2ByName(name: $name)['PublicIpAddress'];
         }
 
-        return collect(static::findEc2ByName(name: $name, firstOnly: false))
+        return collect(static::ec2ByName(name: $name, firstOnly: false))
             ->map(fn ($instance) => $instance['PublicIpAddress'])
             ->toArray();
     }
