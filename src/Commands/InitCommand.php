@@ -22,7 +22,9 @@ class InitCommand extends Command
     public function handle(): void
     {
         if (Manifest::exists()) {
-            confirm("A yolo.yml manifest already exists in the current directory. Do you want to overwrite it?", default: false);
+            if (! confirm("A yolo.yml manifest already exists in the current directory. Do you want to overwrite it?", default: false)) {
+                return;
+            }
         }
 
         intro("Initialising yolo.yml");
