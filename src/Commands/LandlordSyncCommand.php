@@ -2,12 +2,10 @@
 
 namespace Codinglabs\Yolo\Commands;
 
-use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Concerns\RunsSteppedCommands;
 use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\info;
-use function Laravel\Prompts\error;
 
 class LandlordSyncCommand extends Command
 {
@@ -29,11 +27,6 @@ class LandlordSyncCommand extends Command
 
     public function handle(): void
     {
-        if (Aws::runningInAws()) {
-            error("landlord:sync command cannot be run in AWS.");
-            return;
-        }
-
         $environment = $this->argument('environment');
 
         info("Executing landlord:sync steps...");

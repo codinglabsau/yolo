@@ -27,7 +27,7 @@ class SyncMysqlBackupStep implements RunsOnAwsScheduler
                     '{AWS_BUCKET}',
                 ],
                 replace: [
-                    env('DB_REPLICA_HOST', env('DB_HOST'),),
+                    env('DB_REPLICA_HOST', env('DB_HOST')),
                     env('DB_USERNAME'),
                     env('DB_PASSWORD'),
                     Paths::s3ArtefactsBucket(),
