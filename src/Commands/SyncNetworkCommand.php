@@ -19,6 +19,7 @@ class SyncNetworkCommand extends Command
         Steps\Network\SyncPublicSubnetAStep::class,
         Steps\Network\SyncPublicSubnetBStep::class,
         Steps\Network\SyncPublicSubnetCStep::class,
+        Steps\Network\SyncRouteTableStep::class,
     ];
 
     protected function configure(): void

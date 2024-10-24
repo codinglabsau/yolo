@@ -16,6 +16,7 @@ trait UsesEc2
     protected static array $loadBalancer;
     protected static array $targetGroup;
     protected static array $subnets;
+    protected static array $routeTable;
 
     protected static function ec2ByName(string $name, array $states = ['running'], bool $firstOnly = true, $throws = true): ?array
     {
@@ -223,6 +224,33 @@ trait UsesEc2
         static::$internetGateway = $internetGateways[0];
 
         return static::$internetGateway;
+    }
+
+    public static function routeTable(): array
+    {
+        if (isset(static::$routeTable)) {
+            return static::$routeTable;
+        }
+
+        $name = Helpers::keyedResourceName(exclusive: false);
+
+        $routeTables = Aws::ec2()->describeRouteTables([
+            'Filters' => [
+                [
+                    'Name' => 'tag:Name',
+                    'Values' => [$name],
+                ],
+            ]
+        ])
+        ['RouteTables'];
+
+        if (count($routeTables) === 0) {
+            throw new ResourceDoesNotExistException(sprintf("Could not find Route Table %s", $name));
+        }
+
+        static::$routeTable = $routeTables[0];
+
+        return static::$routeTable;
     }
 
     public static function subnets(): array
