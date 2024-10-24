@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Network;
+namespace Codinglabs\Yolo\Steps\S3;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
