@@ -16,6 +16,9 @@ class SyncNetworkCommand extends Command
         Steps\Network\SyncVpcStep::class,
         Steps\Network\SyncInternetGatewayStep::class,
         Steps\Network\SyncInternetGatewayAttachmentStep::class,
+        Steps\Network\SyncPublicSubnetAStep::class,
+        Steps\Network\SyncPublicSubnetBStep::class,
+        Steps\Network\SyncPublicSubnetCStep::class,
     ];
 
     protected function configure(): void

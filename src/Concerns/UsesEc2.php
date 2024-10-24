@@ -248,4 +248,37 @@ trait UsesEc2
 
         return static::$subnets;
     }
+
+    public static function subnetByName(string $name): array
+    {
+        $fullSubnetName = Helpers::keyedResourceName($name, exclusive: false);
+
+        foreach (static::subnets() as $subnet) {
+            foreach ($subnet['Tags'] as $tag) {
+                if ($tag['Key'] === 'Name' && $tag['Value'] === $fullSubnetName) {
+                    return $subnet;
+                }
+            }
+        }
+
+        throw new ResourceDoesNotExistException("Could not find subnet matching name $fullSubnetName");
+    }
+
+    public static function availabilityZones(string $region): array
+    {
+        $availabilityZones = Aws::ec2()->describeAvailabilityZones([
+            'Filters' => [
+                [
+                    'Name' => 'region-name',
+                    'Values' => [$region],
+                ],
+            ],
+        ])['AvailabilityZones'];
+
+        if (count($availabilityZones) === 0) {
+            throw new ResourceDoesNotExistException("Could not find availability zones for region $region");
+        }
+
+        return $availabilityZones;
+    }
 }

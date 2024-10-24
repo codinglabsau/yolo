@@ -8,7 +8,6 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class SyncInternetGatewayAttachmentStep implements Step
 {
