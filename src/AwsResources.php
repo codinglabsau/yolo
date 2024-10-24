@@ -2,6 +2,7 @@
 
 namespace Codinglabs\Yolo;
 
+use Codinglabs\Yolo\Concerns\UsesS3;
 use Codinglabs\Yolo\Concerns\UsesEc2;
 use Codinglabs\Yolo\Concerns\UsesSns;
 use Codinglabs\Yolo\Concerns\UsesSqs;
@@ -21,6 +22,7 @@ class AwsResources
     use UsesEc2;
     use UsesElasticTranscoder;
     use UsesRoute53;
+    use UsesS3;
     use UsesSns;
     use UsesSqs;
 }
