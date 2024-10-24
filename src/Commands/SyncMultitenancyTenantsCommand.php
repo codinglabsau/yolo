@@ -8,7 +8,7 @@ use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\intro;
 
-class TenantSyncCommand extends Command
+class SyncMultitenancyTenantsCommand extends Command
 {
     use RunsSteppedCommands;
 
@@ -24,7 +24,7 @@ class TenantSyncCommand extends Command
     protected function configure(): void
     {
         $this
-            ->setName('tenant:sync')
+            ->setName('sync:multitenancy-tenants')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('dry-run', null, null, 'Run the command without making changes')
             ->setDescription('Sync configured tenant AWS resources');

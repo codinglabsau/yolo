@@ -8,7 +8,7 @@ use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\intro;
 
-class ComputeSyncCommand extends Command
+class SyncComputeCommand extends Command
 {
     use RunsSteppedCommands;
 
@@ -21,7 +21,7 @@ class ComputeSyncCommand extends Command
     protected function configure(): void
     {
         $this
-            ->setName('compute:sync')
+            ->setName('sync:compute')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('dry-run', null, null, 'Run the command without making changes')
             ->setDescription('Sync configured compute AWS resources');

@@ -8,21 +8,20 @@ use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\intro;
 
-class NetworkSyncCommand extends Command
+class SyncNetworkCommand extends Command
 {
     use RunsSteppedCommands;
 
     protected array $steps = [
         Steps\Network\SyncVpcStep::class,
-        Steps\Network\SyncS3ArtefactBucketStep::class,
-        Steps\Network\SyncS3BucketStep::class,
     ];
 
     protected function configure(): void
     {
         $this
-            ->setName('network:sync')
+            ->setName('sync:network')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
+            ->addOption('dry-run', null, null, 'Run the command without making changes')
             ->setDescription('Sync the network resources for the given environment');
     }
 

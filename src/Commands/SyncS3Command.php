@@ -8,32 +8,29 @@ use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\intro;
 
-class CiSyncCommand extends Command
+class SyncS3Command extends Command
 {
     use RunsSteppedCommands;
 
     protected array $steps = [
-        Steps\Ci\SyncCodeDeployApplicationStep::class,
-        Steps\Ci\SyncCodeDeployDeploymentConfigStep::class,
-        Steps\Ci\SyncCodeDeploySchedulerDeploymentGroupStep::class,
-        Steps\Ci\SyncCodeDeployQueueDeploymentGroupStep::class,
-        Steps\Ci\SyncCodeDeployWebDeploymentGroupStep::class,
+        Steps\Network\SyncS3ArtefactBucketStep::class,
+        Steps\Network\SyncS3BucketStep::class,
     ];
 
     protected function configure(): void
     {
         $this
-            ->setName('ci:sync')
+            ->setName('sync:s3')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('dry-run', null, null, 'Run the command without making changes')
-            ->setDescription('Sync configured ci AWS resources');
+            ->setDescription('Sync the S3 resources for the given environment');
     }
 
     public function handle(): void
     {
         $environment = $this->argument('environment');
 
-        intro(sprintf("Executing ci:sync steps in %s", $environment));
+        intro(sprintf("Executing network:sync steps in %s", $environment));
 
         $totalTime = $this->handleSteps($environment);
 

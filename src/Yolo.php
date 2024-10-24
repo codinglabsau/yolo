@@ -19,27 +19,26 @@ class Yolo
         Commands\CommandCommand::class,
         Commands\Ec2ListCommand::class,
 
-        // CI
-        Commands\CiSyncCommand::class,
-
-        // Compute
-        Commands\ComputeSyncCommand::class,
-
-        // Build / Deploy
+        // Build
         Commands\BuildCommand::class,
+
+        // Deploy
+        Commands\StopCommand::class,
         Commands\DeployCommand::class,
         Commands\StartCommand::class,
-        Commands\StopCommand::class,
 
         // Environments
         Commands\EnvPullCommand::class,
         Commands\EnvPushCommand::class,
 
-        // Landlord
-        Commands\LandlordSyncCommand::class,
-
-        // Tenants
-        Commands\TenantSyncCommand::class,
+        // Sync
+        Commands\SyncCommand::class,
+        Commands\SyncCiCommand::class,
+        Commands\SyncComputeCommand::class,
+        Commands\SyncNetworkCommand::class,
+        Commands\SyncMultitenancyLandlordCommand::class,
+        Commands\SyncMultitenancyTenantsCommand::class,
+        Commands\SyncS3Command::class,
     ];
 
     public function __construct()

@@ -3,7 +3,6 @@
 namespace Codinglabs\Yolo\Steps\Network;
 
 use Codinglabs\Yolo\Aws;
-use Codinglabs\Yolo\Paths;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
