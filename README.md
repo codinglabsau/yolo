@@ -17,42 +17,46 @@ YOLO uses AWS profiles for authentication, so before getting started install the
 composer require codinglabsau/yolo
 ```
 
-Optionally, install globally with:
-```bash
-composer global require codinglabsau/yolo
-```
-
 You should also gitignore the `.yolo` build directory.
 
 ## Usage
-The entry point for YOLO is `vendor/bin/yolo` or `yolo` if you have installed globally.
+The entry point for YOLO is `vendor/bin/yolo` or `yolo` if you have `./vendor/bin` in your path.
 
 ### Authentication
-YOLO uses AWS profiles stored in `~/.aws/credentials` for authentication. You'll want to set a YOLO_{ENVIRONMENT}_AWS_PROFILE in the app `.env` file to point to the correct profile; eg. `YOLO_PRODUCTION_AWS_PROFILE=my-project-profile`.
+YOLO uses AWS profiles stored in `~/.aws/credentials` for authentication. You'll need to set a YOLO_{ENVIRONMENT}_AWS_PROFILE in the app `.env` file to point to the correct profile; eg. `YOLO_PRODUCTION_AWS_PROFILE=my-project-profile`.
 
 Once configured, future operations will authenticate using the profile.
 
 Note that for CI environments, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are used instead. Ensure that any access keys provided in CI are using least-privileged scope as a safety guard against accidental AWS resource modification.
 
 ### `yolo init`
-Initalises the yolo.yml file in the app with a production environment.
+Initalises the yolo.yml file in the app with a boilerplate production environment.
 
 ### `yolo sync`
 Runs through a series of commands to provision all required resources to AWS. The sub-commands are:
-- `yolo network:sync <environment>` prepares the VPC, subnets and security groups
-- `yolo ci:sync <environment>` prepares the continuous integration pipeline
-- `yolo compute:sync <environment>` prepares the compute resources
-- `yolo landlord:sync <environment>` prepares landlord resources (multitenancy apps only)
-- `yolo tenant:sync <environment>` prepares tenant resources (multitenancy apps only)
-- `yolo iam:sync <environment>` prepares `github-<environment>` user for CI and `yolo-<environment>` EC2 role
+- `yolo sync:network <environment>` prepares the VPC, subnets and security groups
+- `yolo sync:ci <environment>` prepares the continuous integration pipeline
+- `yolo sync:compute <environment>` prepares the compute resources
+- `yolo sync:landlord <environment>` prepares landlord resources (multitenancy apps only)
+- `yolo sync:tenant <environment>` prepares tenant resources (multitenancy apps only)
+- `yolo sync:iam <environment>` prepares `github-<environment>` user for CI and `yolo-<environment>` EC2 role
 
 ### `yolo ami:create <environment>`
-With all low-level resource provisioned, the next step is to create an AMI for EC2s. 
+With all low-level resource provisioned, the next step is to create an AMI for EC2s. All server types will utilise this AMI.
 
-### `yolo build <environment>`
+### `yolo prepare <environment>`
+Prepares autoscaling groups, EC2 launch template and alarms. 
+
+Requires the `--ami-id` option to specify the target AMI.
+
+### `yolo env:push <environment>`
 Prior to building the environment, you'll need to create `.env.<environment>` followed by `yolo env:push <environment>`.
 
-With the .env.<environment> file in place, the build command takes care of building a deployment ready directory. 
+### `yolo build <environment>`
+The build command takes care of building a deployment-ready directory in `./yolo`. 
+
+### `yolo deploy <environment>`
+The build command takes care of building and deploying. You can run this locally, or in CI. The deploy command will call the build step for you if a local build does not exist. 
 
 ## Full yolo.yml example
 This is a complete yolo.yml file, showing default values where applicable. 
