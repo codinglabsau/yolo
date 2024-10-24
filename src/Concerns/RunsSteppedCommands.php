@@ -60,10 +60,12 @@ trait RunsSteppedCommands
                 $i + 1,
                 static::normaliseStep($step, pad: true, bold: true, arrow: true),
                 match ($status) {
-                    StepResult::CREATED, StepResult::SYNCED, StepResult::SUCCESS => '✅',
+                    StepResult::CREATED => '<fg=green>CREATED</>',
+                    StepResult::SYNCED => '<fg=cyan>SYNCED</>',
+                    StepResult::SUCCESS => '<fg=green>SUCCESS</>',
                     StepResult::SKIPPED => '<fg=yellow>SKIPPED</>',
                     StepResult::CONDITIONAL => '<fg=yellow>CONDITIONAL</>',
-                    StepResult::WOULD_CREATE => '<fg=yellow>WOULD CREATE️</>',
+                    StepResult::WOULD_CREATE => '<fg=yellow>WOULD CREATE</>',
                     StepResult::WOULD_SYNC => '<fg=yellow>WOULD SYNC</>',
                     StepResult::TIMEOUT => '<fg=red>TIMEOUT</>',
                     default => is_string($status)
