@@ -2,53 +2,72 @@
 
 namespace Codinglabs\Yolo\Commands;
 
-use Codinglabs\Yolo\Aws;
-use Codinglabs\Yolo\Steps;
-use Codinglabs\Yolo\Helpers;
-use Codinglabs\Yolo\Concerns\RunsSteppedCommands;
-use Symfony\Component\Console\Input\InputArgument;
+use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Manifest;
 use function Laravel\Prompts\info;
-use function Laravel\Prompts\error;
+use function Laravel\Prompts\text;
 use function Laravel\Prompts\intro;
+use function Laravel\Prompts\confirm;
 
 class InitCommand extends Command
 {
-    use RunsSteppedCommands;
-
-    protected array $steps = [
-        Steps\Ensures\EnsureManifestExistsStep::class,
-        Steps\Ensures\EnsureVpcExistsStep::class,
-        Steps\Ensures\EnsureS3ArtefactBucketExistsStep::class,
-        Steps\Ensures\EnsureS3BucketExistsStep::class,
-    ];
-
     protected function configure(): void
     {
         $this
             ->setName('init')
-            ->addArgument('environment', InputArgument::OPTIONAL, 'The environment name', default: 'production')
-            ->setDescription('Create the yolo.yml manifest in the current app root');
+            ->setDescription('Create the yolo.yml manifest in the current app root')
+            ->addOption('dry-run', null, null, 'Run the command without making changes');
     }
 
     public function handle(): void
     {
-        if (Aws::runningInAws()) {
-            error("init command cannot be run in AWS.");
-            return;
+        if (Manifest::exists()) {
+            confirm("A yolo.yml manifest already exists in the current directory. Do you want to overwrite it?", default: false);
         }
 
-        if (! Helpers::keyedEnv('AWS_PROFILE')) {
-            error(sprintf("You need to specify YOLO_%s_AWS_PROFILE in your .env file before proceeding", strtoupper(Helpers::environment())));
+        intro("Initialising yolo.yml");
+
+        $this->initialiseManifest();
+
+        info('Manifest generated successfully.');
+    }
+
+    protected function initialiseManifest(): void
+    {
+        file_put_contents(
+            Paths::base('yolo.yml'),
+            str_replace(
+                search: [
+                    '{NAME}',
+                    '{AWS_REGION}',
+                ],
+                replace: [
+                    text('What is the name of this app?', placeholder: 'eg. codinglabs'),
+                    text('Which AWS region do you want to deploy to?', default: env('AWS_DEFAULT_REGION', 'ap-southeast-2')),
+                ],
+                subject: file_get_contents(Paths::stubs('yolo.yml.stub'))
+            )
+        );
+
+        if (confirm("Is the app multi-tenant?", default: false)) {
+            Manifest::put('tenants', [
+                'tenant-id' => ['domain' => 'tenant-domain.tld']
+            ]);
+
+            Manifest::put('deploy', [
+                'php artisan migrate --path=database/migrations/landlord --force',
+                'php artisan tenants:artisan "migrate --path=database/migrations/tenant --database=tenant --force"',
+            ]);
+        } else {
+            Manifest::put('domain', text("What is the domain?", placeholder: 'eg. codinglabs.com.au'));
+
+            Manifest::put('deploy', [
+                'php artisan migrate --force',
+            ]);
         }
 
-        $environment = $this->argument('environment');
-
-        intro(sprintf("Initialising YOLO in %s", $environment));
-
-        info("Executing initialisation steps...");
-
-        $totalTime = $this->handleSteps($environment);
-
-        info(sprintf('Completed successfully in %ss.', $totalTime));
+        if ($s3Bucket = text("What is the name of the S3 bucket used for app storage?", placeholder: "Leave blank to skip")) {
+            Manifest::put('aws.bucket', $s3Bucket);
+        }
     }
 }
