@@ -2,7 +2,6 @@
 
 namespace Codinglabs\Yolo\Concerns;
 
-use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Str;
 use Codinglabs\Yolo\Manifest;
 use Illuminate\Support\Collection;
@@ -12,7 +11,6 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\RunsOnAws;
 use Codinglabs\Yolo\Contracts\HasSubSteps;
 use Codinglabs\Yolo\Contracts\RunsOnBuild;
-use Codinglabs\Yolo\Contracts\RunsOnAwsWeb;
 use Codinglabs\Yolo\Contracts\RunsOnAwsQueue;
 use Codinglabs\Yolo\Contracts\ExecutesTenantStep;
 use Codinglabs\Yolo\Contracts\RunsOnAwsScheduler;
@@ -27,6 +25,8 @@ use function Laravel\Prompts\progress;
 
 trait RunsSteppedCommands
 {
+    use ChecksIfCommandsShouldBeRunning;
+
     protected function handleSteps(string $environment): int
     {
         $now = time();
@@ -120,25 +120,7 @@ trait RunsSteppedCommands
 
                 return [$step];
             })
-            ->filter(function (Step $step) {
-                if (Aws::runningInAws()) {
-                    if ($step instanceof RunsOnAwsWeb) {
-                        return Aws::runningInAwsWebEnvironment();
-                    }
-
-                    if ($step instanceof RunsOnAwsQueue) {
-                        return Aws::runningInAwsQueueEnvironment();
-                    }
-
-                    if ($step instanceof RunsOnAwsScheduler) {
-                        return Aws::runningInAwsSchedulerEnvironment();
-                    }
-
-                    return $step instanceof RunsOnAws;
-                }
-
-                return ! $step instanceof RunsOnAws;
-            });
+            ->filter(fn (Step $step) => $this->shouldBeRunning($step));
     }
 
     protected static function normaliseStep(Step $step, $pad = false, $bold = false, $arrow = false): string
