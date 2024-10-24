@@ -33,6 +33,7 @@ abstract class Command extends SymfonyCommand
 
         // special handling for `yolo init` command to execute early
         if ($this instanceof InitCommand) {
+            Helpers::app()->instance('environment', 'production');
             return (int)(Helpers::app()->call([$this, 'handle']) ?: 0);
         }
 
