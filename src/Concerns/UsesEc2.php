@@ -11,6 +11,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 trait UsesEc2
 {
     protected static array $vpc;
+    protected static array $internetGateway;
     protected static array $launchTemplate;
     protected static array $loadBalancer;
     protected static array $targetGroup;
@@ -195,6 +196,33 @@ trait UsesEc2
         static::$vpc = $vpcs[0];
 
         return static::$vpc;
+    }
+
+    public static function internetGateway(): array
+    {
+        if (isset(static::$internetGateway)) {
+            return static::$internetGateway;
+        }
+
+        $name = Helpers::keyedResourceName(exclusive: false);
+
+        $internetGateways = Aws::ec2()->describeInternetGateways([
+            'Filters' => [
+                [
+                    'Name' => 'tag:Name',
+                    'Values' => [$name],
+                ],
+            ]
+        ])
+        ['InternetGateways'];
+
+        if (count($internetGateways) === 0) {
+            throw new ResourceDoesNotExistException(sprintf("Could not find Internet Gateway %s", $name));
+        }
+
+        static::$internetGateway = $internetGateways[0];
+
+        return static::$internetGateway;
     }
 
     public static function subnets(): array

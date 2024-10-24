@@ -14,6 +14,8 @@ class SyncNetworkCommand extends Command
 
     protected array $steps = [
         Steps\Network\SyncVpcStep::class,
+        Steps\Network\SyncInternetGatewayStep::class,
+        Steps\Network\SyncInternetGatewayAttachmentStep::class,
     ];
 
     protected function configure(): void
