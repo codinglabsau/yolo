@@ -14,6 +14,10 @@ class SyncQueueAlarmStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
+        if (! Manifest::isMultitenanted()) {
+            return StepResult::SKIPPED;
+        }
+
         $alarmName = 'landlord-queue-depth-alarm';
 
         try {

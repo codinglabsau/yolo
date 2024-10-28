@@ -22,8 +22,8 @@ You should also gitignore the `.yolo` build directory.
 ## Usage
 The entry point for YOLO is `vendor/bin/yolo` or `yolo` if you have `./vendor/bin` in your path.
 
-### Authentication
-YOLO uses AWS profiles stored in `~/.aws/credentials` for authentication. You'll need to set a YOLO_{ENVIRONMENT}_AWS_PROFILE in the app `.env` file to point to the correct profile; eg. `YOLO_PRODUCTION_AWS_PROFILE=my-project-profile`.
+### Permissions & Authentication
+YOLO uses AWS profiles stored in `~/.aws/credentials` for authentication. You'll need to set a `YOLO_{ENVIRONMENT}_AWS_PROFILE` in the app `.env` file to point to the correct profile; eg. `YOLO_PRODUCTION_AWS_PROFILE=my-project-profile`.
 
 Once configured, future operations will authenticate using the profile.
 
