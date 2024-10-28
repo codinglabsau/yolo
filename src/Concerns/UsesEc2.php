@@ -14,10 +14,12 @@ trait UsesEc2
     protected static array $internetGateway;
     protected static array $launchTemplate;
     protected static array $loadBalancer;
-    protected static array $loadBalancerSecurityGroup;
     protected static array $targetGroup;
     protected static array $subnets;
     protected static array $routeTable;
+    protected static array $securityGroups;
+    protected static array $loadBalancerSecurityGroup;
+    protected static array $ec2SecurityGroup;
 
     protected static function ec2ByName(string $name, array $states = ['running'], bool $firstOnly = true, $throws = true): ?array
     {
@@ -80,31 +82,58 @@ trait UsesEc2
         throw new ResourceDoesNotExistException("Could not find load balancer");
     }
 
+    public static function securityGroups($refresh = false): array
+    {
+        if (! $refresh && isset(static::$securityGroups)) {
+            return static::$securityGroups;
+        }
+
+        $securityGroups = Aws::ec2()->describeSecurityGroups()['SecurityGroups'];
+
+        static::$securityGroups = $securityGroups;
+
+        return static::$securityGroups;
+    }
+
+    /**
+     * @throws ResourceDoesNotExistException
+     */
     public static function loadBalancerSecurityGroup(): array
     {
         if (isset(static::$loadBalancerSecurityGroup)) {
             return static::$loadBalancerSecurityGroup;
         }
 
-        $name = Helpers::keyedResourceName('load-balancer-security-group', exclusive: false);
-
-        $loadBalancerSecurityGroups = Aws::ec2()->describeSecurityGroups([
-            'Filters' => [
-                [
-                    'Name' => 'tag:Name',
-                    'Values' => [$name],
-                ],
-            ]
-        ])
-        ['SecurityGroups'];
-
-        if (count($loadBalancerSecurityGroups) === 0) {
-            throw new ResourceDoesNotExistException(sprintf("Could not find Security Group %s", $name));
-        }
-
-        static::$loadBalancerSecurityGroup = $loadBalancerSecurityGroups[0];
+        static::$loadBalancerSecurityGroup = static::securityGroupByName('load-balancer-security-group');
 
         return static::$loadBalancerSecurityGroup;
+    }
+
+    /**
+     * @throws ResourceDoesNotExistException
+     */
+    public static function ec2SecurityGroup(): array
+    {
+        if (isset(static::$ec2SecurityGroup)) {
+            return static::$ec2SecurityGroup;
+        }
+
+        static::$ec2SecurityGroup = static::securityGroupByName('ec2-security-group');
+
+        return static::$ec2SecurityGroup;
+    }
+
+    public static function securityGroupByName(string $name): array
+    {
+        $name = Helpers::keyedResourceName($name, exclusive: false);
+
+        foreach (static::securityGroups(refresh: true) as $securityGroup) {
+            if ($securityGroup['GroupName'] === $name) {
+                return $securityGroup;
+            }
+        }
+
+        throw new ResourceDoesNotExistException("Could not find Security Group matching name $name");
     }
 
     public static function targetGroup(): array

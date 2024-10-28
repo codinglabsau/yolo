@@ -14,6 +14,7 @@ class SyncPermissionsCommand extends Command
 
     protected array $steps = [
         Steps\Permissions\SyncLoadBalancerSecurityGroupStep::class,
+        Steps\Permissions\SyncEc2SecurityGroupStep::class,
     ];
 
     protected function configure(): void
