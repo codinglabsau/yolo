@@ -14,6 +14,7 @@ trait UsesEc2
     protected static array $internetGateway;
     protected static array $launchTemplate;
     protected static array $loadBalancer;
+    protected static array $loadBalancerSecurityGroup;
     protected static array $targetGroup;
     protected static array $subnets;
     protected static array $routeTable;
@@ -77,6 +78,33 @@ trait UsesEc2
         }
 
         throw new ResourceDoesNotExistException("Could not find load balancer");
+    }
+
+    public static function loadBalancerSecurityGroup(): array
+    {
+        if (isset(static::$loadBalancerSecurityGroup)) {
+            return static::$loadBalancerSecurityGroup;
+        }
+
+        $name = Helpers::keyedResourceName(exclusive: false);
+
+        $loadBalancerSecurityGroups = Aws::ec2()->describeSecurityGroups([
+            'Filters' => [
+                [
+                    'Name' => 'tag:Name',
+                    'Values' => [$name],
+                ],
+            ]
+        ])
+        ['SecurityGroups'];
+
+        if (count($loadBalancerSecurityGroups) === 0) {
+            throw new ResourceDoesNotExistException(sprintf("Could not find Security Group %s", $name));
+        }
+
+        static::$loadBalancerSecurityGroup = $loadBalancerSecurityGroups[0];
+
+        return static::$loadBalancerSecurityGroup;
     }
 
     public static function targetGroup(): array
