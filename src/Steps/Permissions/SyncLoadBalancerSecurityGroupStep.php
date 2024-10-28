@@ -15,7 +15,8 @@ class SyncLoadBalancerSecurityGroupStep implements Step
     public function __invoke(array $options): StepResult
     {
         try {
-            AwsResources::application();
+            AwsResources::loadBalancerSecurityGroup();
+
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {
@@ -34,6 +35,27 @@ class SyncLoadBalancerSecurityGroupStep implements Step
                                     'Value' => $name,
                                 ],
                             ],
+                        ],
+                    ],
+                ]);
+
+                $securityGroup = AwsResources::loadBalancerSecurityGroup();
+
+                // Authorize ingress for HTTP (port 80)
+                Aws::ec2()->authorizeSecurityGroupIngress([
+                    'GroupId' => $securityGroup['GroupId'],
+                    'IpPermissions' => [
+                        [
+                            'IpProtocol' => 'tcp',
+                            'FromPort' => 80,
+                            'ToPort' => 80,
+                            'IpRanges' => [['CidrIp' => '0.0.0.0/0']],
+                        ],
+                        [
+                            'IpProtocol' => 'tcp',
+                            'FromPort' => 443,
+                            'ToPort' => 443,
+                            'IpRanges' => [['CidrIp' => '0.0.0.0/0']],
                         ],
                     ],
                 ]);

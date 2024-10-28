@@ -86,7 +86,7 @@ trait UsesEc2
             return static::$loadBalancerSecurityGroup;
         }
 
-        $name = Helpers::keyedResourceName(exclusive: false);
+        $name = Helpers::keyedResourceName('load-balancer-security-group', exclusive: false);
 
         $loadBalancerSecurityGroups = Aws::ec2()->describeSecurityGroups([
             'Filters' => [
