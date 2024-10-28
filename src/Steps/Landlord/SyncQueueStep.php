@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Steps\Landlord;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -13,6 +14,10 @@ class SyncQueueStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
+        if (! Manifest::isMultitenanted()) {
+            return StepResult::SKIPPED;
+        }
+
         try {
             AwsResources::queue('landlord');
             return StepResult::SYNCED;
