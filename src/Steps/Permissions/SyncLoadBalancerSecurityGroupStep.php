@@ -19,17 +19,19 @@ class SyncLoadBalancerSecurityGroupStep implements Step
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {
+                $name = Helpers::keyedResourceName('load-balancer-security-group', exclusive: false);
+
                 Aws::ec2()->createSecurityGroup([
                     'Description' => 'Enable HTTP and HTTPS from anywhere',
-                    'GroupName' => Helpers::keyedResourceName('load-balancer-security-group', exclusive: false),
+                    'GroupName' => $name,
                     'VpcId' => AwsResources::vpc()['VpcId'],
                     'TagSpecifications' => [
                         [
-                            'ResourceType' => 'load-balancer',
+                            'ResourceType' => 'security-group',
                             'Tags' => [
                                 [
                                     'Key' => 'Name',
-                                    'Value' => Helpers::keyedResourceName('load-balancer-security-group', exclusive: false),
+                                    'Value' => $name,
                                 ],
                             ],
                         ],
