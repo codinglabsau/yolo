@@ -8,7 +8,7 @@ The goal is to heavily leverage AWS, and support moderate to very heavy traffic 
 
 ___
 ### Prerequisites
-YOLO uses AWS profiles for authentication, so before getting started install the AWS CLI tool.
+YOLO uses AWS profiles for authentication, so before getting started, install the AWS CLI tool.
 
 ## Installation
 

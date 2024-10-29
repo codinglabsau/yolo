@@ -46,18 +46,28 @@ class SyncEc2SecurityGroupStep implements Step
                     'GroupId' => $securityGroup['GroupId'],
                     'IpPermissions' => [
                         [
-                            // allow port 80 traffic from the load balancer
+                            // allow HTTP ingress from the load balancer
                             'IpProtocol' => 'tcp',
                             'FromPort' => 80,
                             'ToPort' => 80,
-                            'SourceSecurityGroupId' => AwsResources::loadBalancerSecurityGroup()['GroupId'], // todo: this is not working
+                            'UserIdGroupPairs' => [
+                                [
+                                    'GroupId' => AwsResources::loadBalancerSecurityGroup()['GroupId'],
+                                    'Description' => 'HTTP ingress from the load balancer',
+                                ],
+                            ],
                         ],
                         [
                             // allow SSH from the current IP
                             'IpProtocol' => 'tcp',
                             'FromPort' => 22,
                             'ToPort' => 22,
-                            'IpRanges' => [['CidrIp' => "$publicIp/32", 'Description' => 'YOLO-determined public IP during sync. Delete if unused.']],
+                            'IpRanges' => [
+                                [
+                                    'CidrIp' => "$publicIp/32",
+                                    'Description' => 'YOLO-determined public IP during sync. Delete if unused.'
+                                ],
+                            ],
                         ],
                     ],
                 ]);
