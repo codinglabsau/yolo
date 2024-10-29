@@ -83,7 +83,7 @@ class Aws
 
     public static function rds(): RdsClient
     {
-        return Helpers::app('rdsClient');
+        return Helpers::app('rds');
     }
 
     public static function route53(): Route53Client
