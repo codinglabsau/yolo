@@ -8,6 +8,7 @@ use Aws\Ec2\Ec2Client;
 use Aws\Sns\SnsClient;
 use Aws\Sqs\SqsClient;
 use GuzzleHttp\Client;
+use Aws\Rds\RdsClient;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
@@ -39,6 +40,7 @@ trait RegistersAws
         Helpers::app()->singleton('ec2', fn () => new Ec2Client($arguments));
         Helpers::app()->singleton('elasticLoadBalancingV2', fn () => new ElasticLoadBalancingV2Client($arguments));
         Helpers::app()->singleton('elasticTranscoder', fn () => new ElasticTranscoderClient($arguments));
+        Helpers::app()->singleton('rds', fn () => new RdsClient($arguments));
         Helpers::app()->singleton('route53', fn () => new Route53Client($arguments));
         Helpers::app()->singleton('s3', fn () => new S3Client($arguments));
         Helpers::app()->singleton('sns', fn () => new SnsClient($arguments));

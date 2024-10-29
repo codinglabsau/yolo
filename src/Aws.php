@@ -7,6 +7,7 @@ use Aws\Acm\AcmClient;
 use Aws\Ec2\Ec2Client;
 use Aws\Sns\SnsClient;
 use Aws\Sqs\SqsClient;
+use Aws\Rds\RdsClient;
 use Aws\Route53\Route53Client;
 use Aws\CloudWatch\CloudWatchClient;
 use Aws\CodeDeploy\CodeDeployClient;
@@ -78,6 +79,11 @@ class Aws
     public static function elasticTranscoder(): ElasticTranscoderClient
     {
         return Helpers::app('elasticTranscoder');
+    }
+
+    public static function rds(): RdsClient
+    {
+        return Helpers::app('rdsClient');
     }
 
     public static function route53(): Route53Client
