@@ -11,20 +11,20 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\SecurityGroups;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncLoadBalancerSecurityGroupStep implements Step
+class SyncRdsSecurityGroupStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
         try {
-            AwsResources::loadBalancerSecurityGroup();
+            AwsResources::rdsSecurityGroup();
 
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {
-                $name = Helpers::keyedResourceName(SecurityGroups::LOAD_BALANCER_SECURITY_GROUP, exclusive: false);
+                $name = Helpers::keyedResourceName(SecurityGroups::RDS_SECURITY_GROUP, exclusive: false);
 
                 Aws::ec2()->createSecurityGroup([
-                    'Description' => 'Enable HTTP and HTTPS from anywhere',
+                    'Description' => 'Enable EC2 to connect to RDS',
                     'GroupName' => $name,
                     'VpcId' => AwsResources::vpc()['VpcId'],
                     'TagSpecifications' => [
@@ -40,23 +40,22 @@ class SyncLoadBalancerSecurityGroupStep implements Step
                     ],
                 ]);
 
-                $securityGroup = AwsResources::loadBalancerSecurityGroup();
+                $securityGroup = AwsResources::rdsSecurityGroup();
 
-                // Authorize ingress for HTTP (port 80)
                 Aws::ec2()->authorizeSecurityGroupIngress([
                     'GroupId' => $securityGroup['GroupId'],
                     'IpPermissions' => [
                         [
+                            // Enable EC2 to connect to RDS
                             'IpProtocol' => 'tcp',
-                            'FromPort' => 80,
-                            'ToPort' => 80,
-                            'IpRanges' => [['CidrIp' => '0.0.0.0/0']],
-                        ],
-                        [
-                            'IpProtocol' => 'tcp',
-                            'FromPort' => 443,
-                            'ToPort' => 443,
-                            'IpRanges' => [['CidrIp' => '0.0.0.0/0']],
+                            'FromPort' => 3306,
+                            'ToPort' => 3306,
+                            'UserIdGroupPairs' => [
+                                [
+                                    'GroupId' => AwsResources::ec2SecurityGroup()['GroupId'],
+                                    'Description' => 'Enable EC2 to connect to RDS',
+                                ],
+                            ],
                         ],
                     ],
                 ]);

@@ -20,8 +20,12 @@ class Helpers
         return env("YOLO_{$environment}_$key");
     }
 
-    public static function keyedResourceName(string $name = null, $exclusive = true): string
+    public static function keyedResourceName(string|\BackedEnum $name = null, $exclusive = true): string
     {
+        if ($name instanceof \BackedEnum) {
+            $name = $name->value;
+        }
+
         if ($exclusive) {
             // exclusive assets are specific to the current application
             return $name

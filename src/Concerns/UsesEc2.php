@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\Enums\SecurityGroups;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 trait UsesEc2
@@ -20,6 +21,7 @@ trait UsesEc2
     protected static array $securityGroups;
     protected static array $loadBalancerSecurityGroup;
     protected static array $ec2SecurityGroup;
+    protected static array $rdsSecurityGroup;
 
     protected static function ec2ByName(string $name, array $states = ['running'], bool $firstOnly = true, $throws = true): ?array
     {
@@ -104,7 +106,7 @@ trait UsesEc2
             return static::$loadBalancerSecurityGroup;
         }
 
-        static::$loadBalancerSecurityGroup = static::securityGroupByName('load-balancer-security-group');
+        static::$loadBalancerSecurityGroup = static::securityGroupByName(SecurityGroups::LOAD_BALANCER_SECURITY_GROUP);
 
         return static::$loadBalancerSecurityGroup;
     }
@@ -118,13 +120,31 @@ trait UsesEc2
             return static::$ec2SecurityGroup;
         }
 
-        static::$ec2SecurityGroup = static::securityGroupByName('ec2-security-group');
+        static::$ec2SecurityGroup = static::securityGroupByName(SecurityGroups::EC2_SECURITY_GROUP);
 
         return static::$ec2SecurityGroup;
     }
 
-    public static function securityGroupByName(string $name): array
+    /**
+     * @throws ResourceDoesNotExistException
+     */
+    public static function rdsSecurityGroup(): array
     {
+        if (isset(static::$rdsSecurityGroup)) {
+            return static::$rdsSecurityGroup;
+        }
+
+        static::$rdsSecurityGroup = static::securityGroupByName(SecurityGroups::RDS_SECURITY_GROUP);
+
+        return static::$rdsSecurityGroup;
+    }
+
+    public static function securityGroupByName(string|\BackedEnum $name): array
+    {
+        if ($name instanceof \BackedEnum) {
+            $name = $name->value;
+        }
+
         $name = Helpers::keyedResourceName($name, exclusive: false);
 
         foreach (static::securityGroups(refresh: true) as $securityGroup) {
