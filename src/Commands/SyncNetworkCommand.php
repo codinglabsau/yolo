@@ -19,6 +19,7 @@ class SyncNetworkCommand extends Command
         Steps\Network\SyncPublicSubnetAStep::class,
         Steps\Network\SyncPublicSubnetBStep::class,
         Steps\Network\SyncPublicSubnetCStep::class,
+        Steps\Network\SyncRdsSubnetStep::class,
         Steps\Network\SyncRouteTableStep::class,
         Steps\Network\SyncDefaultRouteStep::class,
         Steps\Network\SyncPublicSubnetsAssociationToRouteTableStep::class,
