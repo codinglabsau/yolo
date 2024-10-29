@@ -6,6 +6,7 @@ use Illuminate\Support\Arr;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Enums\PublicSubnets;
 use Codinglabs\Yolo\Concerns\CreatesSubnets;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -15,7 +16,7 @@ class SyncPublicSubnetCStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        $publicSubnetName = 'public-subnet-c';
+        $publicSubnetName = PublicSubnets::PUBLIC_SUBNET_C->value;
 
         try {
             AwsResources::subnetByName($publicSubnetName);
