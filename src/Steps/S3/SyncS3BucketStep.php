@@ -29,6 +29,19 @@ class SyncS3BucketStep implements Step
                     'Bucket' => $bucketName,
                 ]);
 
+                Aws::s3()->waitUntil('BucketExists', [
+                    'Bucket' => $bucketName,
+                ]);
+
+                Aws::s3()->putBucketTagging([
+                    'Bucket' => $bucketName,
+                    'Tagging' => [
+                        ...Aws::tags([
+                            'Name' => $bucketName,
+                        ], wrap: 'TagSet'),
+                    ],
+                ]);
+
                 return StepResult::CREATED;
             }
 

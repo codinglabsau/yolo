@@ -37,7 +37,7 @@ class Aws
         return Helpers::app('runningInAwsSchedulerEnvironment');
     }
 
-    public static function tags(array $tags = []): array
+    public static function tags(array $tags = [], string $wrap = 'Tags'): array
     {
         $tags = [
             'yolo:environment' => Helpers::app('environment'),
@@ -45,7 +45,7 @@ class Aws
         ];
 
         return [
-            'Tags' => collect($tags)
+            $wrap => collect($tags)
                 ->map(fn ($value, $key) => [
                     'Key' => $key,
                     'Value' => $value,
