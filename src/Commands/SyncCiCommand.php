@@ -14,7 +14,7 @@ class SyncCiCommand extends Command
 
     protected array $steps = [
         Steps\Ci\SyncCodeDeployApplicationStep::class,
-        Steps\Ci\SyncCodeDeployDeploymentConfigStep::class,
+//        Steps\Ci\SyncCodeDeployDeploymentConfigStep::class, // todo: drop this once we have an Envoyer style deployment
         Steps\Ci\SyncCodeDeploySchedulerDeploymentGroupStep::class,
         Steps\Ci\SyncCodeDeployQueueDeploymentGroupStep::class,
         Steps\Ci\SyncCodeDeployWebDeploymentGroupStep::class,
