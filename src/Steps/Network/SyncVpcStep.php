@@ -26,12 +26,10 @@ class SyncVpcStep implements Step
                     'TagSpecifications' => [
                         [
                             'ResourceType' => 'vpc',
-                            'Tags' => [
-                                [
-                                    'Key' => 'Name',
-                                    'Value' => $vpcName,
-                                ],
-                            ],
+                            'Tags' => Aws::tags([
+                                'Key' => 'Name',
+                                'Value' => $vpcName,
+                            ]),
                         ],
                     ],
                 ]);

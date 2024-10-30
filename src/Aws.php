@@ -37,6 +37,17 @@ class Aws
         return Helpers::app('runningInAwsSchedulerEnvironment');
     }
 
+    public static function tags(array $tags = []): array
+    {
+        return [
+            $tags,
+            [
+                'Key' => 'yolo:environment',
+                'Value' => Helpers::app('environment'),
+            ],
+        ];
+    }
+
 
     public static function accountId(): string
     {
