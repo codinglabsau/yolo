@@ -30,12 +30,9 @@ class SyncLoadBalancerSecurityGroupStep implements Step
                     'TagSpecifications' => [
                         [
                             'ResourceType' => 'security-group',
-                            'Tags' => [
-                                [
-                                    'Key' => 'Name',
-                                    'Value' => $name,
-                                ],
-                            ],
+                            ...Aws::tags([
+                                'Name' => $name,
+                            ])
                         ],
                     ],
                 ]);
