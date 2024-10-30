@@ -26,12 +26,9 @@ class SyncRouteTableStep implements Step
                     'TagSpecifications' => [
                         [
                             'ResourceType' => 'route-table',
-                            'Tags' => [
-                                [
-                                    'Key' => 'Name',
-                                    'Value' => $routeTableName,
-                                ],
-                            ],
+                            ...Aws::tags([
+                                'Name' => $routeTableName,
+                            ])
                         ],
                     ],
                 ]);

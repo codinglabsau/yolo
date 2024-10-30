@@ -39,12 +39,19 @@ class Aws
 
     public static function tags(array $tags = []): array
     {
+        $tags = [
+            'yolo:environment' => Helpers::app('environment'),
+            ...$tags,
+        ];
+
         return [
-            $tags,
-            [
-                'Key' => 'yolo:environment',
-                'Value' => Helpers::app('environment'),
-            ],
+            'Tags' => collect($tags)
+                ->map(fn ($value, $key) => [
+                    'Key' => $key,
+                    'Value' => $value,
+                ])
+                ->values()
+                ->all(),
         ];
     }
 

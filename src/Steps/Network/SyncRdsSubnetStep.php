@@ -26,6 +26,7 @@ class SyncRdsSubnetStep implements Step
                     'SubnetIds' => collect(AwsResources::subnets())
                         ->pluck('SubnetId')
                         ->toArray(),
+                    ...Aws::tags(),
                 ]);
 
                 return StepResult::CREATED;

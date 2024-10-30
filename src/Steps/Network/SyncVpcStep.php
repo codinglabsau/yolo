@@ -26,9 +26,8 @@ class SyncVpcStep implements Step
                     'TagSpecifications' => [
                         [
                             'ResourceType' => 'vpc',
-                            'Tags' => Aws::tags([
-                                'Key' => 'Name',
-                                'Value' => $vpcName,
+                            ...Aws::tags([
+                                'Name' => $vpcName,
                             ]),
                         ],
                     ],

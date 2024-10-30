@@ -25,12 +25,9 @@ class SyncInternetGatewayStep implements Step
                     'TagSpecifications' => [
                         [
                             'ResourceType' => 'internet-gateway',
-                            'Tags' => [
-                                [
-                                    'Key' => 'Name',
-                                    'Value' => $internetGatewayName,
-                                ],
-                            ],
+                            ...Aws::tags([
+                                'Name' => $internetGatewayName,
+                            ]),
                         ],
                     ],
                 ]);

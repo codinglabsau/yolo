@@ -21,12 +21,9 @@ trait CreatesSubnets
             'TagSpecifications' => [
                 [
                     'ResourceType' => 'subnet',
-                    'Tags' => [
-                        [
-                            'Key' => 'Name',
-                            'Value' => Helpers::keyedResourceName($name, exclusive: false),
-                        ],
-                    ],
+                    ...Aws::tags([
+                        'Name' => Helpers::keyedResourceName($name, exclusive: false),
+                    ]),
                 ],
             ],
         ]);

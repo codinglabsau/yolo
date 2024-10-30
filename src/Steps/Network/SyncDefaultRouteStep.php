@@ -14,7 +14,7 @@ class SyncDefaultRouteStep implements Step
     {
         // note: there does not appear to be a way to retrieve this resource directly, and
         // calling createRoute() multiple times does not create additional resources. This
-        // resource is visible in the AWS console under VPC -> Route Tables -> Routes.
+        // resource is visible in the AWS console under VPC -> Route Tables -> $route > Routes.
         if (! Arr::get($options, 'dry-run')) {
             Aws::ec2()->createRoute([
                 'DestinationCidrBlock' => '0.0.0.0/0',
