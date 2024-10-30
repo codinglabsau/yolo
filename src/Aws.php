@@ -8,6 +8,7 @@ use Aws\Ec2\Ec2Client;
 use Aws\Rds\RdsClient;
 use Aws\Sns\SnsClient;
 use Aws\Sqs\SqsClient;
+use Aws\Sts\StsClient;
 use Aws\Route53\Route53Client;
 use Aws\CloudWatch\CloudWatchClient;
 use Aws\CodeDeploy\CodeDeployClient;
@@ -58,10 +59,12 @@ class Aws
 
     public static function accountId(): string
     {
-        return Aws::s3()
-            ->getCredentials()
-            ->wait()
-            ->getAccountId();
+        return Aws::sts()->getAccessKeyInfo([
+            'AccessKeyId' => Aws::s3()
+                ->getCredentials()
+                ->wait()
+                ->getAccessKeyId(),
+        ])['Account'];
     }
 
     public static function acm(): AcmClient
@@ -122,5 +125,10 @@ class Aws
     public static function sqs(): SqsClient
     {
         return Helpers::app('sqs');
+    }
+
+    public static function sts(): StsClient
+    {
+        return Helpers::app('sts');
     }
 }

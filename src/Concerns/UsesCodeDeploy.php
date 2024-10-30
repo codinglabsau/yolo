@@ -4,7 +4,6 @@ namespace Codinglabs\Yolo\Concerns;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
