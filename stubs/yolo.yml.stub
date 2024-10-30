@@ -7,7 +7,6 @@ environments:
       cloudfront: // todo use magic [account level]
       alb: // todo use magic
       sns-topic: // todo use magic / drop
-      security-group-id: // todo use magic
       autoscaling:
         web:
         queue:

@@ -240,10 +240,18 @@ trait UsesEc2
                 'InstanceType' => Manifest::get('aws.ec2.instance-type'),
                 'KeyName' => Manifest::name(),
                 'SecurityGroupIds' => [
-                    Manifest::get('aws.security-group-id'),
+                    AwsResources::ec2SecurityGroup()['GroupId'],
                 ],
                 'Monitoring' => [
                     'Enabled' => true,
+                ],
+            ],
+            'TagSpecifications' => [
+                [
+                    'ResourceType' => 'launch-template',
+                    ...Aws::tags([
+                        'Name' => Helpers::keyedResourceName(),
+                    ]),
                 ],
             ],
         ];

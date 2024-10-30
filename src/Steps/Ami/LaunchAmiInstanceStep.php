@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Concerns\UsesEc2;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -64,7 +65,7 @@ class LaunchAmiInstanceStep implements Step
             'MinCount' => 1,
 
             // use the existing security group and subnet
-            'SecurityGroupIds' => [Manifest::get('aws.security-group-id')],
+            'SecurityGroupIds' => [AwsResources::ec2SecurityGroup()['GroupId']],
             'SubnetId' => static::subnets()[0]['SubnetId'],
 
             // execute UserData scripts on launch
