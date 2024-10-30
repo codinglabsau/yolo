@@ -18,7 +18,7 @@ trait UsesCodeDeploy
 
     public static function applicationName(): string
     {
-        return Helpers::keyedResourceName(Manifest::name());
+        return Helpers::keyedResourceName();
     }
 
     public static function application(): string

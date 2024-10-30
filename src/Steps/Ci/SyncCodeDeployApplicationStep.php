@@ -23,6 +23,9 @@ class SyncCodeDeployApplicationStep implements Step
             if (! Arr::get($options, 'dry-run')) {
                 Aws::codeDeploy()->createApplication([
                     'applicationName' => static::applicationName(),
+                    ...Aws::tags([
+                        'Name' => static::applicationName(),
+                    ]),
                 ]);
 
                 return StepResult::CREATED;

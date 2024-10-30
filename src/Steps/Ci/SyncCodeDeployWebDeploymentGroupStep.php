@@ -41,7 +41,11 @@ class SyncCodeDeployWebDeploymentGroupStep implements Step
                                 ],
                             ],
                         ],
-                    ]]);
+                    ],
+                    ...Aws::tags([
+                        'Name' => Helpers::keyedResourceName('scheduler'),
+                    ]),
+                ]);
 
                 return StepResult::CREATED;
             }
