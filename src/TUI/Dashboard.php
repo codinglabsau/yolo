@@ -16,7 +16,7 @@ class Dashboard extends Prompt
     public array $tabs = [
         [
             'tab' => 'Dashboard',
-            'content' => "Hello! I'm Joe, a dedicated software engineer with a passion for crafting clean, efficient, and user-friendly applications. With a background in computer science and years of experience in the tech industry, I thrive on collaborating with teams to turn ideas into functional software solutions.\n\nI believe that innovation drives progress, and I am constantly exploring new technologies to stay ahead of the curve. When I'm not coding, you can find me exploring the intersection of art and technology or enjoying the great outdoors. Let's connect and create something amazing together!",
+            'content' => "Coming soon",
         ],
         [
             'tab' => 'Deployments',
