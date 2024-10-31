@@ -2,6 +2,7 @@
 
 namespace Codinglabs\Yolo;
 
+use BackedEnum;
 use Illuminate\Container\Container;
 
 class Helpers
@@ -20,9 +21,9 @@ class Helpers
         return env("YOLO_{$environment}_$key");
     }
 
-    public static function keyedResourceName(string|\BackedEnum $name = null, $exclusive = true): string
+    public static function keyedResourceName(string|BackedEnum $name = null, $exclusive = true): string
     {
-        if ($name instanceof \BackedEnum) {
+        if ($name instanceof BackedEnum) {
             $name = $name->value;
         }
 
@@ -54,8 +55,12 @@ class Helpers
         return 'artefact.tar.gz';
     }
 
-    public static function environment(): string
+    public static function environment(): ?string
     {
+        if (! static::app()->has('environment')) {
+            return null;
+        }
+
         return static::app('environment');
     }
 }
