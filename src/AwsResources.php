@@ -13,6 +13,7 @@ use Codinglabs\Yolo\Concerns\UsesCodeDeploy;
 use Codinglabs\Yolo\Concerns\UsesAutoscaling;
 use Codinglabs\Yolo\Concerns\UsesElasticTranscoder;
 use Codinglabs\Yolo\Concerns\UsesCertificateManager;
+use Codinglabs\Yolo\Concerns\UsesElasticLoadBalancingV2;
 
 class AwsResources
 {
@@ -21,6 +22,7 @@ class AwsResources
     use UsesCodeDeploy;
     use UsesCloudWatch;
     use UsesEc2;
+    use UsesElasticLoadBalancingV2;
     use UsesElasticTranscoder;
     use UsesRds;
     use UsesRoute53;
