@@ -3,7 +3,7 @@
 namespace Codinglabs\Yolo\Concerns;
 
 use Codinglabs\Yolo\Aws;
-use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 trait UsesElasticLoadBalancingV2
@@ -20,7 +20,7 @@ trait UsesElasticLoadBalancingV2
         $loadBalancers = Aws::elasticLoadBalancingV2()->describeLoadBalancers();
 
         foreach ($loadBalancers['LoadBalancers'] as $loadBalancer) {
-            if ($loadBalancer['LoadBalancerName'] === Manifest::get('aws.alb')) {
+            if ($loadBalancer['LoadBalancerName'] === Helpers::keyedResourceName(exclusive: false)) {
                 static::$loadBalancer = $loadBalancer;
                 return $loadBalancer;
             }

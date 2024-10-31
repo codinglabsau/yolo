@@ -14,6 +14,7 @@ class SyncComputeCommand extends Command
 
     protected array $steps = [
         Steps\Compute\SyncLaunchTemplateStep::class,
+        Steps\Compute\SyncApplicationLoadBalancerStep::class,
         Steps\Compute\SyncElasticTranscoderPipelineStep::class,
         Steps\Compute\SyncElasticTranscoderPresetStep::class,
     ];

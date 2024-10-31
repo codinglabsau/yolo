@@ -23,7 +23,7 @@ class Manifest
             return false;
         }
 
-        return array_key_exists($environment, static::environments());
+        return in_array($environment, static::environments());
     }
 
     public static function current(): array
