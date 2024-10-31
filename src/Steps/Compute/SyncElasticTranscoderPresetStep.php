@@ -65,14 +65,15 @@ class SyncElasticTranscoderPresetStep implements Step
                         'SizingPolicy' => 'ShrinkToFit',
                         'PaddingPolicy' => 'NoPad',
                     ],
-                    'TagSpecifications' => [
-                        [
-                            'ResourceType' => 'preset',
-                            ...Aws::tags([
-                                'Name' => Helpers::keyedResourceName(),
-                            ]),
-                        ],
-                    ],
+                    // note: Elastic Transcoder does not appear to support tagging
+//                    'TagSpecifications' => [
+//                        [
+//                            'ResourceType' => 'preset',
+//                            ...Aws::tags([
+//                                'Name' => Helpers::keyedResourceName(),
+//                            ]),
+//                        ],
+//                    ],
                 ]);
 
                 return StepResult::CREATED;
