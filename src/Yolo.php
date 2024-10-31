@@ -11,6 +11,7 @@ class Yolo
 
     protected array $commands = [
         Commands\InitCommand::class,
+        Commands\OpenCommand::class,
 
         // AWS
         Commands\AmiCreateCommand::class,

@@ -42,6 +42,11 @@ abstract class Command extends SymfonyCommand
             return 1;
         }
 
+        // special handling for `yolo open` command to execute early
+        if ($this instanceof OpenCommand) {
+            return (int)(Helpers::app()->call([$this, 'handle']) ?: 0);
+        }
+
         if (! Manifest::environmentExists($this->argument('environment'))) {
             error(sprintf("Could not find '%s' in the YOLO manifest", $this->argument('environment')));
             return 1;
