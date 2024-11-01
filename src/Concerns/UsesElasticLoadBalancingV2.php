@@ -35,17 +35,16 @@ trait UsesElasticLoadBalancingV2
             return static::$targetGroup;
         }
 
-        $targetGroups = Aws::elasticLoadBalancingV2()->describeTargetGroups([
-            'LoadBalancerArn' => static::loadBalancer()['LoadBalancerArn'],
-        ])['TargetGroups'];
+        $targetGroups = Aws::elasticLoadBalancingV2()->describeTargetGroups();
 
-        if (count($targetGroups) === 0) {
-            throw new ResourceDoesNotExistException(sprintf("Could not find target group for ALB %s", static::loadBalancer()['LoadBalancerName']));
+        foreach ($targetGroups['TargetGroups'] as $targetGroup) {
+            if ($targetGroup['TargetGroupName'] === Helpers::keyedResourceName(exclusive: false)) {
+                static::$targetGroup = $targetGroup;
+                return $targetGroup;
+            }
         }
 
-        static::$targetGroup = $targetGroups[0];
-
-        return static::$targetGroup;
+        throw new ResourceDoesNotExistException(sprintf("Could not find target group matching name %s", Helpers::keyedResourceName(exclusive: false)));
     }
 
     public static function loadBalancerListenerOnPort(int $port): array
