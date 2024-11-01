@@ -16,6 +16,8 @@ class SyncComputeCommand extends Command
         Steps\Compute\SyncLaunchTemplateStep::class,
         Steps\Compute\SyncApplicationLoadBalancerStep::class,
         Steps\Compute\SyncTargetGroupStep::class,
+        Steps\Compute\SyncListenerOnPort80Step::class,
+        Steps\Compute\SyncListenerOnPort443Step::class,
         Steps\Compute\SyncElasticTranscoderPipelineStep::class,
         Steps\Compute\SyncElasticTranscoderPresetStep::class,
     ];
