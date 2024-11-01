@@ -3,7 +3,6 @@
 namespace Codinglabs\Yolo\Steps\Compute;
 
 use Codinglabs\Yolo\Aws;
-use Codinglabs\Yolo\Paths;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\AwsResources;
@@ -42,23 +41,24 @@ class SyncApplicationLoadBalancerStep implements Step
                     sleep(3);
                 }
 
-                Aws::elasticLoadBalancingV2()->modifyLoadBalancerAttributes([
-                    'LoadBalancerArn' => AwsResources::loadBalancer()['LoadBalancerArn'],
-                    'Attributes' => [
-                        [
-                            'Key' => 'access_logs.s3.enabled',
-                            'Value' => 'true',
-                        ],
-                        [
-                            'Key' => 'access_logs.s3.bucket',
-                            'Value' => Paths::s3ArtefactsBucket(),
-                        ],
-                        [
-                            'Key' => 'access_logs.s3.prefix',
-                            'Value' => 'logs',
-                        ],
-                    ],
-                ]);
+                // todo: this is disabled due to issues dynamically generating the bucket policy
+                //                Aws::elasticLoadBalancingV2()->modifyLoadBalancerAttributes([
+                //                    'LoadBalancerArn' => AwsResources::loadBalancer()['LoadBalancerArn'],
+                //                    'Attributes' => [
+                //                        [
+                //                            'Key' => 'access_logs.s3.enabled',
+                //                            'Value' => 'true',
+                //                        ],
+                //                        [
+                //                            'Key' => 'access_logs.s3.bucket',
+                //                            'Value' => Paths::s3ArtefactsBucket(),
+                //                        ],
+                //                        [
+                //                            'Key' => 'access_logs.s3.prefix',
+                //                            'Value' => 'logs',
+                //                        ],
+                //                    ],
+                //                ]);
 
                 return StepResult::CREATED;
             }

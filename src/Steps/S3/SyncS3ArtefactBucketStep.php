@@ -38,20 +38,22 @@ class SyncS3ArtefactBucketStep implements Step
                     ],
                 ]);
 
-                Aws::s3()->putBucketPolicy([
-                    'Bucket' => $bucketName,
-                    'Policy' => json_encode([
-                        "Version" => '2008-10-17',
-                        'Statement' => [
-                            'Effect' => 'Allow',
-                            'Principal' => [
-                                'AWS' => sprintf("arn:aws:iam::%s:root", Aws::accountId()),
-                            ],
-                            'Action' => 's3:PutObject',
-                            'Resource' => "arn:aws:s3:::$bucketName/logs/*"
-                        ],
-                    ]),
-                ]);
+                // todo: this requires the ELB account ID, which is not the same as the account ID.
+                // todo: @see https://docs.aws.amazon.com/elasticloadbalancing/latest/application/enable-access-logging.html
+                //                Aws::s3()->putBucketPolicy([
+                //                    'Bucket' => $bucketName,
+                //                    'Policy' => json_encode([
+                //                        "Version" => '2008-10-17',
+                //                        'Statement' => [
+                //                            'Effect' => 'Allow',
+                //                            'Principal' => [
+                //                                'AWS' => sprintf("arn:aws:iam::%s:root", 'elb-account-id'),
+                //                            ],
+                //                            'Action' => 's3:PutObject',
+                //                            'Resource' => "arn:aws:s3:::$bucketName/logs/*"
+                //                        ],
+                //                    ]),
+                //                ]);
 
                 return StepResult::CREATED;
             }
