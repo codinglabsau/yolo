@@ -11,9 +11,9 @@ trait UsesElasticLoadBalancingV2
     protected static array $loadBalancer;
     protected static array $targetGroup;
 
-    public static function loadBalancer(): array
+    public static function loadBalancer($refresh = false): array
     {
-        if (isset(static::$loadBalancer)) {
+        if (! $refresh && isset(static::$loadBalancer)) {
             return static::$loadBalancer;
         }
 
