@@ -27,10 +27,10 @@ class DeployCommand extends Command
         Steps\Deploy\CreateArtefactStep::class,
         Steps\Deploy\PushArtefactToS3Step::class,
         Steps\Deploy\PushAssetsToS3Step::class,
-        Steps\Deploy\SyncRecordSetStep::class,
-        Steps\Deploy\SyncMultitenancyRecordSetStep::class,
         Steps\Deploy\UpdateCodeDeployDeploymentGroupStep::class,
         Steps\Deploy\CreateCodeDeployDeploymentsStep::class,
+        Steps\Deploy\SyncRecordSetStep::class,
+        Steps\Deploy\SyncMultitenancyRecordSetStep::class,
         Steps\Build\PurgeBuildStep::class,
     ];
 
