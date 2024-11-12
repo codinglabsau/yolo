@@ -15,6 +15,8 @@ class SyncComputeCommand extends Command
     protected array $steps = [
         Steps\Compute\SyncLaunchTemplateStep::class,
         Steps\Compute\SyncApplicationLoadBalancerStep::class,
+        Steps\Compute\AttachSslCertificateToLoadBalancerListenerStep::class,
+        Steps\Compute\AttachMultitenancySslCertificateToLoadBalancerListenerStep::class,
         Steps\Compute\SyncTargetGroupStep::class,
         Steps\Compute\SyncListenerOnPort80Step::class,
         Steps\Compute\SyncListenerOnPort443Step::class,
