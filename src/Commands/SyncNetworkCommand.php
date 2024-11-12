@@ -32,9 +32,12 @@ class SyncNetworkCommand extends Command
         Steps\Network\SyncPublicSubnetsAssociationToRouteTableStep::class,
 
         // security groups
-        Steps\Permissions\SyncLoadBalancerSecurityGroupStep::class,
-        Steps\Permissions\SyncEc2SecurityGroupStep::class,
-        Steps\Permissions\SyncRdsSecurityGroupStep::class,
+        Steps\Network\SyncLoadBalancerSecurityGroupStep::class,
+        Steps\Network\SyncEc2SecurityGroupStep::class,
+        Steps\Network\SyncRdsSecurityGroupStep::class,
+
+        // sns
+        Steps\Network\SyncSnsTopicStep::class,
     ];
 
     protected function configure(): void

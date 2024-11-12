@@ -5,7 +5,6 @@ environments:
     aws:
       region: {AWS_REGION}
       cloudfront: // todo use magic [account level]
-      sns-topic: // todo use magic / drop
       autoscaling:
         web:
         queue:
