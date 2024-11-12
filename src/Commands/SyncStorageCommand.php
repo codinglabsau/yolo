@@ -13,8 +13,8 @@ class SyncStorageCommand extends Command
     use RunsSteppedCommands;
 
     protected array $steps = [
-        Steps\S3\SyncS3ArtefactBucketStep::class,
-        Steps\S3\SyncS3BucketStep::class,
+        Steps\Storage\SyncS3ArtefactBucketStep::class,
+        Steps\Storage\SyncS3BucketStep::class,
     ];
 
     protected function configure(): void

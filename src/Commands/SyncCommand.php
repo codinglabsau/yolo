@@ -26,10 +26,10 @@ class SyncCommand extends Command
         collect([
             Commands\SyncNetworkCommand::class,
             Commands\SyncStorageCommand::class,
-            Commands\SyncCiCommand::class,
-            Commands\SyncComputeCommand::class,
             Commands\SyncMultitenancyLandlordCommand::class,
             Commands\SyncMultitenancyTenantsCommand::class,
+            Commands\SyncComputeCommand::class,
+            Commands\SyncCiCommand::class,
         ])->each(fn ($command) => (new $command())->execute(Helpers::app('input'), Helpers::app('output')));
 
         info('Sync command executed successfully.');
