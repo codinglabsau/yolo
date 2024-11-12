@@ -32,7 +32,7 @@ class SyncDomainCommand extends Command
     {
         $environment = $this->argument('environment');
 
-        intro(sprintf("Executing sync:tenant steps in %s", $environment));
+        intro(sprintf("Executing sync:domain steps in %s", $environment));
 
         $totalTime = $this->handleSteps($environment);
 

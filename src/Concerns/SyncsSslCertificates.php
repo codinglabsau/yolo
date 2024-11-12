@@ -36,21 +36,24 @@ trait SyncsSslCertificates
 
         Aws::route53()->changeResourceRecordSets([
             'ChangeBatch' => [
-                'Changes' => collect($certificate['DomainValidationOptions'])->map(function (array $option) {
-                    return [
-                        'Action' => 'UPSERT',
-                        'ResourceRecordSet' => [
-                            'Name' => $option['ResourceRecord']['Name'],
-                            'Type' => $option['ResourceRecord']['Type'],
-                            'ResourceRecords' => [
-                                [
-                                    'Value' => $option['ResourceRecord']['Value']
+                'Changes' => collect($certificate['DomainValidationOptions'])
+                    ->filter(fn (array $option) => $option['ValidationMethod'] === 'DNS'
+                        && ! str_starts_with($option['ValidationDomain'], '*'))
+                    ->map(function (array $option) {
+                        return [
+                            'Action' => 'UPSERT',
+                            'ResourceRecordSet' => [
+                                'Name' => $option['ResourceRecord']['Name'],
+                                'Type' => $option['ResourceRecord']['Type'],
+                                'ResourceRecords' => [
+                                    [
+                                        'Value' => $option['ResourceRecord']['Value']
+                                    ],
                                 ],
+                                'TTL' => 300,
                             ],
-                            'TTL' => 300,
-                        ],
-                    ];
-                })->toArray(),
+                        ];
+                    })->toArray(),
                 'Comment' => 'Created by yolo CLI',
             ],
             'HostedZoneId' => AwsResources::hostedZone($apex)['Id'],
