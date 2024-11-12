@@ -39,8 +39,7 @@ class Yolo
         Commands\SyncNetworkCommand::class,
         Commands\SyncMultitenancyLandlordCommand::class,
         Commands\SyncMultitenancyTenantsCommand::class,
-        Commands\SyncS3Command::class,
-        Commands\SyncPermissionsCommand::class,
+        Commands\SyncStorageCommand::class,
     ];
 
     public function __construct()

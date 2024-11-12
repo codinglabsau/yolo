@@ -25,7 +25,7 @@ class SyncCommand extends Command
 
         collect([
             Commands\SyncNetworkCommand::class,
-            Commands\SyncS3Command::class,
+            Commands\SyncStorageCommand::class,
             Commands\SyncCiCommand::class,
             Commands\SyncComputeCommand::class,
             Commands\SyncMultitenancyLandlordCommand::class,

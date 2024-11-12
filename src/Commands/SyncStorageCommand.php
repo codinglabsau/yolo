@@ -8,7 +8,7 @@ use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\intro;
 
-class SyncS3Command extends Command
+class SyncStorageCommand extends Command
 {
     use RunsSteppedCommands;
 
