@@ -4,20 +4,16 @@ namespace Codinglabs\Yolo\Steps\Deploy;
 
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\SyncsRecordSets;
+use Codinglabs\Yolo\Contracts\ExecutesDomainStep;
 
-class SyncRecordSetStep implements Step
+class SyncRecordSetStep implements ExecutesDomainStep
 {
     use SyncsRecordSets;
 
     public function __invoke(array $options): StepResult
     {
-        if (Manifest::isMultitenanted()) {
-            return StepResult::SKIPPED;
-        }
-
         if (! Arr::get($options, 'dry-run')) {
             $this->syncRecordSet(
                 apex: Manifest::get('apex', Manifest::get('domain')),

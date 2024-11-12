@@ -20,17 +20,17 @@ class SyncStorageCommand extends Command
     protected function configure(): void
     {
         $this
-            ->setName('sync:s3')
+            ->setName('sync:storage')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('dry-run', null, null, 'Run the command without making changes')
-            ->setDescription('Sync the S3 resources for the given environment');
+            ->setDescription('Sync the storage resources for the given environment');
     }
 
     public function handle(): void
     {
         $environment = $this->argument('environment');
 
-        intro(sprintf("Executing sync:network steps in %s", $environment));
+        intro(sprintf("Executing sync:storage steps in %s", $environment));
 
         $totalTime = $this->handleSteps($environment);
 

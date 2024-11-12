@@ -5,7 +5,6 @@ namespace Codinglabs\Yolo\Steps\Tenant;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Steps\TenantStep;
@@ -15,10 +14,6 @@ class SyncHostedZoneStep extends TenantStep
 {
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::isMultitenanted()) {
-            return StepResult::SKIPPED;
-        }
-
         try {
             AwsResources::hostedZone($this->config['apex']);
             return StepResult::SYNCED;

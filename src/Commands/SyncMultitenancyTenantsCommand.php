@@ -15,7 +15,6 @@ class SyncMultitenancyTenantsCommand extends Command
     protected array $steps = [
         Steps\Tenant\SyncHostedZoneStep::class,
         Steps\Tenant\SyncSslCertificateStep::class,
-        Steps\Tenant\AttachSslCertificateToLoadBalancerListenerStep::class,
         Steps\Tenant\SyncQueueStep::class,
         Steps\Tenant\SyncQueueAlarmStep::class,
     ];
@@ -33,7 +32,7 @@ class SyncMultitenancyTenantsCommand extends Command
     {
         $environment = $this->argument('environment');
 
-        intro(sprintf("Executing sync:tenant steps in %s", $environment));
+        intro(sprintf("Executing sync:multitenancy-tenants steps in %s", $environment));
 
         $totalTime = $this->handleSteps($environment);
 
