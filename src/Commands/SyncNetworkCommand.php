@@ -13,16 +13,28 @@ class SyncNetworkCommand extends Command
     use RunsSteppedCommands;
 
     protected array $steps = [
+        // vpc
         Steps\Network\SyncVpcStep::class,
+
+        // internet gateway
         Steps\Network\SyncInternetGatewayStep::class,
         Steps\Network\SyncInternetGatewayAttachmentStep::class,
+
+        // subnets
         Steps\Network\SyncPublicSubnetAStep::class,
         Steps\Network\SyncPublicSubnetBStep::class,
         Steps\Network\SyncPublicSubnetCStep::class,
         Steps\Network\SyncRdsSubnetStep::class,
+
+        // route table
         Steps\Network\SyncRouteTableStep::class,
         Steps\Network\SyncDefaultRouteStep::class,
         Steps\Network\SyncPublicSubnetsAssociationToRouteTableStep::class,
+
+        // security groups
+        Steps\Permissions\SyncLoadBalancerSecurityGroupStep::class,
+        Steps\Permissions\SyncEc2SecurityGroupStep::class,
+        Steps\Permissions\SyncRdsSecurityGroupStep::class,
     ];
 
     protected function configure(): void
