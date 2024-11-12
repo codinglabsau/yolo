@@ -55,5 +55,17 @@ trait SyncsSslCertificates
             ],
             'HostedZoneId' => AwsResources::hostedZone($apex)['Id'],
         ]);
+
+        // wait for the certificate to be issued
+        $certificate = AwsResources::certificate($apex);
+
+        if ($certificate['Status'] !== 'ISSUED') {
+            do {
+                $certificate = AwsResources::certificate($apex);
+
+                // take a little snooze until the certificate is issued
+                sleep(2);
+            } while ($certificate['Status'] !== 'ISSUED');
+        }
     }
 }

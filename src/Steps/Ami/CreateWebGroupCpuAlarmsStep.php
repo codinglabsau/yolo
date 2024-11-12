@@ -5,7 +5,6 @@ namespace Codinglabs\Yolo\Steps\Ami;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Str;
 use Codinglabs\Yolo\Helpers;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -19,7 +18,6 @@ class CreateWebGroupCpuAlarmsStep implements Step
     {
         $alarmName = Helpers::keyedResourceName(sprintf('web-cpu-scaling-alarm-%s', Str::random(8)));
         $asgWeb = AwsResources::autoScalingGroupWeb();
-        $snsTopic = AwsResources::topic(Manifest::get('aws.sns-topic'));
         $scaleUpPolicy = AwsResources::autoScalingGroupWebScaleUpPolicy();
         $scaleDownPolicy = AwsResources::autoScalingGroupWebScaleDownPolicy();
 
@@ -50,6 +48,7 @@ class CreateWebGroupCpuAlarmsStep implements Step
         ]);
 
         $alarmName = Helpers::keyedResourceName(sprintf('web-cpu-critical-alarm-%s', Str::random(8)));
+        $snsTopic = AwsResources::topic();
 
         Aws::cloudWatch()->putMetricAlarm([
             'ActionsEnabled' => true,

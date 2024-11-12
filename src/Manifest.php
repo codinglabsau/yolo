@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo;
 
 use Illuminate\Support\Arr;
 use Symfony\Component\Yaml\Yaml;
+use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 class Manifest
 {
@@ -51,6 +52,16 @@ class Manifest
             Paths::manifest(),
             str_replace("'", '', Yaml::dump($manifest, inline: 20, indent: 2))
         );
+    }
+
+    public static function apex(): string
+    {
+        if (static::isMultitenanted()) {
+            return throw new IntegrityCheckException('Cannot determine apex domain for multitenanted environments.');
+        }
+
+        // prefer the apex key when specified
+        return static::get('apex', static::get('domain'));
     }
 
     public static function isMultitenanted(): bool

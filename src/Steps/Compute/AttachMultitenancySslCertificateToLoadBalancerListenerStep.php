@@ -1,36 +1,20 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Tenant;
+namespace Codinglabs\Yolo\Steps\Compute;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Steps\TenantStep;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class AttachSslCertificateToLoadBalancerListenerStep extends TenantStep
+class AttachMultitenancySslCertificateToLoadBalancerListenerStep extends TenantStep
 {
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::isMultitenanted()) {
-            return StepResult::SKIPPED;
-        }
-
         if (Arr::get($options, 'dry-run')) {
             return StepResult::CONDITIONAL;
-        }
-
-        $certificate = AwsResources::certificate($this->config['apex']);
-
-        if ($certificate['Status'] !== 'ISSUED') {
-            do {
-                $certificate = AwsResources::certificate($this->config['apex']);
-
-                // take a little snooze until the certificate is issued
-                sleep(2);
-            } while ($certificate['Status'] !== 'ISSUED');
         }
 
         try {

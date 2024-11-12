@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Permissions;
+namespace Codinglabs\Yolo\Steps\Network;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
@@ -11,20 +11,20 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\SecurityGroups;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncEc2SecurityGroupStep implements Step
+class SyncRdsSecurityGroupStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
         try {
-            AwsResources::ec2SecurityGroup();
+            AwsResources::rdsSecurityGroup();
 
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {
-                $name = Helpers::keyedResourceName(SecurityGroups::EC2_SECURITY_GROUP, exclusive: false);
+                $name = Helpers::keyedResourceName(SecurityGroups::RDS_SECURITY_GROUP, exclusive: false);
 
                 Aws::ec2()->createSecurityGroup([
-                    'Description' => 'Enable load balancer and SSH traffic',
+                    'Description' => 'Enable EC2 to connect to RDS',
                     'GroupName' => $name,
                     'VpcId' => AwsResources::vpc()['VpcId'],
                     'TagSpecifications' => [
@@ -37,33 +37,20 @@ class SyncEc2SecurityGroupStep implements Step
                     ],
                 ]);
 
-                $securityGroup = AwsResources::ec2SecurityGroup();
-                $publicIp = file_get_contents("https://api.ipify.org");
+                $securityGroup = AwsResources::rdsSecurityGroup();
 
                 Aws::ec2()->authorizeSecurityGroupIngress([
                     'GroupId' => $securityGroup['GroupId'],
                     'IpPermissions' => [
                         [
-                            // allow HTTP ingress from the load balancer
+                            // Enable EC2 to connect to RDS
                             'IpProtocol' => 'tcp',
-                            'FromPort' => 80,
-                            'ToPort' => 80,
+                            'FromPort' => 3306,
+                            'ToPort' => 3306,
                             'UserIdGroupPairs' => [
                                 [
-                                    'GroupId' => AwsResources::loadBalancerSecurityGroup()['GroupId'],
-                                    'Description' => 'HTTP ingress from the load balancer',
-                                ],
-                            ],
-                        ],
-                        [
-                            // allow SSH from the current IP
-                            'IpProtocol' => 'tcp',
-                            'FromPort' => 22,
-                            'ToPort' => 22,
-                            'IpRanges' => [
-                                [
-                                    'CidrIp' => "$publicIp/32",
-                                    'Description' => 'YOLO-determined public IP during sync. Delete if unused.'
+                                    'GroupId' => AwsResources::ec2SecurityGroup()['GroupId'],
+                                    'Description' => 'Enable EC2 to connect to RDS',
                                 ],
                             ],
                         ],

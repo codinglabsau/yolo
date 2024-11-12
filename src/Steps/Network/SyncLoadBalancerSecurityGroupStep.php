@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Permissions;
+namespace Codinglabs\Yolo\Steps\Network;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;

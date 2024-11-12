@@ -16,7 +16,7 @@ class SyncRecordSetStep implements ExecutesDomainStep
     {
         if (! Arr::get($options, 'dry-run')) {
             $this->syncRecordSet(
-                apex: Manifest::get('apex', Manifest::get('domain')),
+                apex: Manifest::apex(),
                 domain: Manifest::get('domain'),
                 subdomain: Manifest::get('domain', default: false)
             );
