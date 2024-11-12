@@ -34,12 +34,13 @@ class Yolo
 
         // Sync
         Commands\SyncCommand::class,
-        Commands\SyncCiCommand::class,
-        Commands\SyncComputeCommand::class,
         Commands\SyncNetworkCommand::class,
+        Commands\SyncStorageCommand::class,
+        Commands\SyncDomainCommand::class,
         Commands\SyncMultitenancyLandlordCommand::class,
         Commands\SyncMultitenancyTenantsCommand::class,
-        Commands\SyncStorageCommand::class,
+        Commands\SyncComputeCommand::class,
+        Commands\SyncCiCommand::class,
     ];
 
     public function __construct()

@@ -35,7 +35,7 @@ class SyncComputeCommand extends Command
     {
         $environment = $this->argument('environment');
 
-        intro(sprintf("Executing compute:sync steps in %s", $environment));
+        intro(sprintf("Executing sync:compute steps in %s", $environment));
 
         $totalTime = $this->handleSteps($environment);
 

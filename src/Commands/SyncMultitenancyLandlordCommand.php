@@ -30,7 +30,7 @@ class SyncMultitenancyLandlordCommand extends Command
     {
         $environment = $this->argument('environment');
 
-        intro(sprintf("Executing landlord:sync steps in %s", $environment));
+        intro(sprintf("Executing sync:landlord steps in %s", $environment));
 
         $totalTime = $this->handleSteps($environment);
 

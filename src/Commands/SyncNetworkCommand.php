@@ -50,7 +50,7 @@ class SyncNetworkCommand extends Command
     {
         $environment = $this->argument('environment');
 
-        intro(sprintf("Executing network:sync steps in %s", $environment));
+        intro(sprintf("Executing sync:network steps in %s", $environment));
 
         $totalTime = $this->handleSteps($environment);
 

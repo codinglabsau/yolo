@@ -36,9 +36,9 @@ class Manifest
         return Arr::get(static::current(), 'name');
     }
 
-    public static function get(string $key): string|array|null
+    public static function get(string $key, $default = null): string|array|null
     {
-        return Arr::get(static::current()['environments'][Helpers::environment()], $key) ?? null;
+        return Arr::get(static::current()['environments'][Helpers::environment()], $key) ?? $default;
     }
 
     public static function put(string $key, mixed $value): false|int
