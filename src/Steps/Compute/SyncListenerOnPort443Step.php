@@ -5,12 +5,13 @@ namespace Codinglabs\Yolo\Steps\Compute;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
-use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Contracts\ExecutesDomainStep;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncListenerOnPort443Step implements Step
+class SyncListenerOnPort443Step implements ExecutesDomainStep
 {
     public function __invoke(array $options): StepResult
     {
@@ -23,7 +24,11 @@ class SyncListenerOnPort443Step implements Step
                     'LoadBalancerArn' => AwsResources::loadBalancer()['LoadBalancerArn'],
                     'Protocol' => 'HTTPS',
                     'Port' => 443,
-                    'Certificates' => [], // todo: cannot create this without any certificates
+                    'Certificates' => [
+                        [
+                            'CertificateArn' => AwsResources::certificate(Manifest::apex())['CertificateArn'],
+                        ],
+                    ],
                     'DefaultActions' => [
                         [
                             'Type' => 'forward',
@@ -31,7 +36,7 @@ class SyncListenerOnPort443Step implements Step
                         ],
                     ],
                     ...Aws::tags([
-                        'Name' => Helpers::keyedResourceName(exclusive: false)
+                        'Name' => Helpers::keyedResourceName('https', exclusive: false)
                     ]),
                 ]);
 

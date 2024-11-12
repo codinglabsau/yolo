@@ -15,11 +15,18 @@ class SyncComputeCommand extends Command
     protected array $steps = [
         Steps\Compute\SyncLaunchTemplateStep::class,
         Steps\Compute\SyncApplicationLoadBalancerStep::class,
-        Steps\Compute\AttachSslCertificateToLoadBalancerListenerStep::class,
-        Steps\Compute\AttachMultitenancySslCertificateToLoadBalancerListenerStep::class,
         Steps\Compute\SyncTargetGroupStep::class,
         Steps\Compute\SyncListenerOnPort80Step::class,
+
+        // domain
         Steps\Compute\SyncListenerOnPort443Step::class,
+        Steps\Compute\AttachSslCertificateToLoadBalancerListenerStep::class,
+
+        // multitenancy
+        Steps\Compute\SyncMultitenancyListenerOnPort443Step::class,
+        Steps\Compute\AttachMultitenancySslCertificateToLoadBalancerListenerStep::class,
+
+        // transcoder
         Steps\Compute\SyncElasticTranscoderPipelineStep::class,
         Steps\Compute\SyncElasticTranscoderPresetStep::class,
     ];
