@@ -3,7 +3,6 @@
 namespace Codinglabs\Yolo\Steps\Tenant;
 
 use Illuminate\Support\Arr;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Steps\TenantStep;
@@ -16,10 +15,6 @@ class SyncSslCertificateStep extends TenantStep
 
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::isMultitenanted()) {
-            return StepResult::SKIPPED;
-        }
-
         try {
             $certificate = AwsResources::certificate($this->config['apex']);
 

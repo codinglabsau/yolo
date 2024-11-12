@@ -14,10 +14,6 @@ class SyncQueueAlarmStep extends TenantStep
 {
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::isMultitenanted()) {
-            return StepResult::SKIPPED;
-        }
-
         $alarmName = "{$this->tenantId()}-queue-depth-alarm";
 
         try {
