@@ -21,6 +21,7 @@ trait UsesEc2
     protected static array $loadBalancerSecurityGroup;
     protected static array $ec2SecurityGroup;
     protected static array $rdsSecurityGroup;
+    protected static array $keyPair;
 
     protected static function ec2ByName(string $name, array $states = ['running'], bool $firstOnly = true, $throws = true): ?array
     {
@@ -326,5 +327,26 @@ trait UsesEc2
         }
 
         return $availabilityZones;
+    }
+
+    public static function keyPair(): array
+    {
+        if (isset(static::$keyPair)) {
+            return static::$keyPair;
+        }
+
+        $name = Helpers::keyedResourceName(exclusive: false);
+        $keyPairs = Aws::ec2()->describeKeyPairs();
+
+        foreach ($keyPairs['KeyPairs'] as $keyPair) {
+            if ($keyPair['KeyName'] === $name) {
+                static::$keyPair = $keyPair;
+                return $keyPair;
+            }
+        }
+
+        ResourceDoesNotExistException::make("Could not find key pair with name $name")
+            ->suggest('init')
+            ->throw();
     }
 }
