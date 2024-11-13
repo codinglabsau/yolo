@@ -61,6 +61,7 @@ abstract class Command extends SymfonyCommand
 
         $this->registerAwsServices();
 
+        // todo: remove once mvp is finished
         $this->output->setVerbosity(OutputInterface::VERBOSITY_DEBUG);
 
         return (int)(Helpers::app()->call([$this, 'handle']) ?: 0);

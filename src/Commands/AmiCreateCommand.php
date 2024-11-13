@@ -12,6 +12,7 @@ class AmiCreateCommand extends Command
     use RunsSteppedCommands;
 
     protected array $steps = [
+        Steps\Ensures\EnsureKeyPairExistsStep::class,
         Steps\Ensures\EnsureLaunchTemplateExistsStep::class,
         Steps\Ami\LaunchAmiInstanceStep::class,
         Steps\Ami\WaitForUserDataToExecuteStep::class,
