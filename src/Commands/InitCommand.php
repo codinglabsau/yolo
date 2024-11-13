@@ -21,7 +21,7 @@ class InitCommand extends Command
 
     public function handle(): void
     {
-        $this->ignoreBuildDirectory();
+        $this->gitIgnoreFilesAndDirectories();
 
         if (Manifest::exists()) {
             if (! confirm("A yolo.yml manifest already exists in the current directory. Do you want to overwrite it?", default: false)) {
@@ -75,12 +75,14 @@ class InitCommand extends Command
         }
     }
 
-    protected function ignoreBuildDirectory(): void
+    protected function gitIgnoreFilesAndDirectories(): void
     {
         if (file_exists(Paths::base('.gitignore'))) {
             file_put_contents(
                 Paths::base('.gitignore'),
-                ".yolo\n",
+                ".yolo" . PHP_EOL .
+                ".env.staging" . PHP_EOL,
+                ".env.production" . PHP_EOL .
                 FILE_APPEND
             );
         }
