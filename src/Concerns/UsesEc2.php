@@ -336,9 +336,8 @@ trait UsesEc2
         }
 
         $name = Helpers::keyedResourceName(exclusive: false);
-        $keyPairs = Aws::ec2()->describeKeyPairs();
 
-        foreach ($keyPairs['KeyPairs'] as $keyPair) {
+        foreach (Aws::ec2()->describeKeyPairs()['KeyPairs'] as $keyPair) {
             if ($keyPair['KeyName'] === $name) {
                 static::$keyPair = $keyPair;
                 return $keyPair;
