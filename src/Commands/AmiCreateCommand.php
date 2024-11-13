@@ -36,7 +36,7 @@ class AmiCreateCommand extends Command
     {
         $environment = $this->argument('environment');
 
-        info("Executing build steps...");
+        info("Executing ami:create steps...");
 
         $totalTime = $this->handleSteps($environment);
 

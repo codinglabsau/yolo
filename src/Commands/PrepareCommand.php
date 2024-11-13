@@ -42,7 +42,7 @@ class PrepareCommand extends Command
     {
         $environment = $this->argument('environment');
 
-        info("Executing build steps...");
+        info("Executing prepare steps...");
 
         $totalTime = $this->handleSteps($environment);
 

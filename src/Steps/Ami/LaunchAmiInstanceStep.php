@@ -8,17 +8,14 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
-use Codinglabs\Yolo\Concerns\UsesEc2;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Exceptions\ResourceExistsException;
 
 class LaunchAmiInstanceStep implements Step
 {
-    use UsesEc2;
-
     public function __invoke(): StepResult
     {
-        if ($instance = static::ec2ByName(
+        if ($instance = AwsResources::ec2ByName(
             'AMI',
             states: ['pending', 'running', 'stopping', 'stopped'],
             throws: false
@@ -26,9 +23,14 @@ class LaunchAmiInstanceStep implements Step
             throw new ResourceExistsException("AMI instance already exists in state '{$instance['State']['Name']}'. It must be manually terminated before creating a new AMI.");
         }
 
+        $imageId = Aws::ssm()->getParameter([
+            'Name' => '/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id',
+            'WithDecryption' => false,
+        ])['Parameter']['Value'];
+
         Aws::ec2()->runInstances([
             // Ubuntu 22.04 LTS
-            'ImageId' => Manifest::get('aws.ec2.os-image-id'),
+            'ImageId' => $imageId,
 
             // Set the AMI name
             'TagSpecifications' => [
@@ -66,7 +68,7 @@ class LaunchAmiInstanceStep implements Step
 
             // use the existing security group and subnet
             'SecurityGroupIds' => [AwsResources::ec2SecurityGroup()['GroupId']],
-            'SubnetId' => static::subnets()[0]['SubnetId'],
+            'SubnetId' => AwsResources::subnets()[0]['SubnetId'],
 
             // execute UserData scripts on launch
             'UserData' => base64_encode(file_get_contents(Paths::stubs('ami.sh'))),
@@ -81,7 +83,7 @@ class LaunchAmiInstanceStep implements Step
 
         while (true) {
             // wait for instance to be running with an assigned public IP address
-            if ($instance = static::ec2ByName('AMI', throws: false)) {
+            if ($instance = AwsResources::ec2ByName('AMI', throws: false)) {
                 Helpers::app()->singleton('amiInstanceId', fn () => $instance['InstanceId']);
                 Helpers::app()->singleton('amiIp', fn () => $instance['PublicIpAddress']);
                 break;

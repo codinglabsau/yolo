@@ -10,7 +10,6 @@ environments:
         queue:
         scheduler:
       ec2:
-        os-image-id: // todo use magic
         instance-type: t3.small
         instance-profile: // todo use magic
         octane: true

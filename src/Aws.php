@@ -9,6 +9,7 @@ use Aws\Rds\RdsClient;
 use Aws\Sns\SnsClient;
 use Aws\Sqs\SqsClient;
 use Aws\Sts\StsClient;
+use Aws\Ssm\SsmClient;
 use Aws\Route53\Route53Client;
 use Aws\CloudWatch\CloudWatchClient;
 use Aws\CodeDeploy\CodeDeployClient;
@@ -125,6 +126,11 @@ class Aws
     public static function sqs(): SqsClient
     {
         return Helpers::app('sqs');
+    }
+
+    public static function ssm(): SsmClient
+    {
+        return Helpers::app('ssm');
     }
 
     public static function sts(): StsClient

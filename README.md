@@ -100,7 +100,6 @@ environments:
         queue: 
         scheduler: 
       ec2:
-        os-image-id:
         instance-type: t3.small
         instance-profile:
         octane: true
