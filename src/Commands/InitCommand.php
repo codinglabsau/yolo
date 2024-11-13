@@ -21,6 +21,8 @@ class InitCommand extends Command
 
     public function handle(): void
     {
+        $this->ignoreBuildDirectory();
+
         if (Manifest::exists()) {
             if (! confirm("A yolo.yml manifest already exists in the current directory. Do you want to overwrite it?", default: false)) {
                 return;
@@ -70,6 +72,17 @@ class InitCommand extends Command
 
         if ($s3Bucket = text("What is the name of the S3 bucket used for app storage?", placeholder: "Leave blank to skip")) {
             Manifest::put('aws.bucket', $s3Bucket);
+        }
+    }
+
+    protected function ignoreBuildDirectory(): void
+    {
+        if (file_exists(Paths::base('.gitignore'))) {
+            file_put_contents(
+                Paths::base('.gitignore'),
+                ".yolo\n",
+                FILE_APPEND
+            );
         }
     }
 }
