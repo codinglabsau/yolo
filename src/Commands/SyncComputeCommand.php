@@ -13,6 +13,8 @@ class SyncComputeCommand extends Command
     use RunsSteppedCommands;
 
     protected array $steps = [
+        Steps\Ensures\EnsureKeyPairExistsStep::class,
+
         Steps\Compute\SyncLaunchTemplateStep::class,
         Steps\Compute\SyncApplicationLoadBalancerStep::class,
         Steps\Compute\SyncTargetGroupStep::class,
