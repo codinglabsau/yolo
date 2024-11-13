@@ -1,17 +1,31 @@
 # YOLO
 
-YOLO is a deployment tool inspired by Laravel Vapor CLI.
+YOLO helps you deploy high-availability PHP applications on AWS.
 
-YOLO sits approximately in between Laravel Forge and Laravel Vapor. It creates highly available resources on AWS, but
-uses EC2 instead of Lambda.
-
-The goal is to heavily leverage AWS, and support moderate to very heavy traffic web apps.
+The CLI tool takes care of provisioning and configuring all required resources on AWS, coupled with build and deployment
+commands to deploy applications to production from your local machine or CI pipeline.
 
 ___
+
+### Disclaimer
+
+YOLO is designed for PHP developers who want to manage AWS using an infrastructure-as-code approach, using plain-old PHP
+rather than CloudFormation / Terraform / K8s / Elastic Beanstalk / <some-other-exotic-alternative>.
+
+While YOLO has been battle-tested on apps serving millions of requests per day, it is not supposed to be a
+set-and-forget solution for busy apps, but rather allows you to grow and adapt your infrastructure as requirements
+change over time.
+
+Within the Laravel ecosystem there are several high quality commercial alternatives like Forge, Vapor and Cloud, which
+require less working knowledge of AWS.
+
+It goes without saying, but YOLO at your own risk.
 
 ### Prerequisites
 
 YOLO uses AWS profiles for authentication, so before getting started, install the AWS CLI tool.
+
+You'll also need an AWS account and at least some basic knowledge of AWS services.
 
 ## Installation
 
@@ -21,11 +35,9 @@ YOLO uses AWS profiles for authentication, so before getting started, install th
 composer require codinglabsau/yolo
 ```
 
-You should also gitignore the `.yolo` build directory.
-
 ## Usage
 
-The entry point for YOLO is `vendor/bin/yolo` or `yolo` if you have `./vendor/bin` in your path.
+The entry point to the YOLO CLI is `vendor/bin/yolo` or `yolo` if you have `./vendor/bin` in your path.
 
 ### Permissions & Authentication
 
@@ -40,18 +52,23 @@ keys provided in CI are using least-privileged scope as a safety guard against a
 
 ### `yolo init`
 
-Initalises the yolo.yml file in the app with a boilerplate production environment.
+Initalises the yolo.yml file in the app with a boilerplate production environment, and adds some entries to
+`.gitignore`.
 
-### `yolo sync`
+After initialising, you can customise the `yolo.yml` manifest file to suit your app's requirements.
 
-Runs through a series of commands to provision all required resources to AWS. The sub-commands are:
+### Sync Commands
 
-- `yolo sync:network <environment>` prepares the VPC, subnets and security groups
-- `yolo sync:ci <environment>` prepares the continuous integration pipeline
-- `yolo sync:compute <environment>` prepares the compute resources
+After initialising YOLO manifest, all remaining infrastructure commands are prefixed with `sync:`.
+
+The sync commands are:
+
+- `yolo sync:network <environment>` prepares the VPC, subnets, security groups and SSH keys
+- `yolo sync:domain <environment>` prepares domain resources (standard apps only)
 - `yolo sync:landlord <environment>` prepares landlord resources (multitenancy apps only)
 - `yolo sync:tenant <environment>` prepares tenant resources (multitenancy apps only)
-- `yolo sync:iam <environment>` prepares `github-<environment>` user for CI and `yolo-<environment>` EC2 role
+- `yolo sync:compute <environment>` prepares the compute resources
+- `yolo sync:ci <environment>` prepares the continuous integration pipeline
 
 ### `yolo ami:create <environment>`
 
@@ -90,20 +107,20 @@ environments:
   production:
     aws:
       region: ap-southeast-2
-      bucket: 
+      bucket:
       cloudfront:
       alb:
       security-group-id:
       transcoder: false
       autoscaling:
-        web: 
-        queue: 
-        scheduler: 
+        web:
+        queue:
+        scheduler:
       ec2:
         instance-type: t3.small
         instance-profile:
         octane: true
-    
+
     build:
       - composer install --no-cache --no-interaction --optimize-autoloader --no-progress --classmap-authoritative --no-dev
       - npm ci
@@ -114,7 +131,7 @@ environments:
     www: false
     pulse-worker: false
     mysqldump: false
-    
+
     deploy:
       - php artisan migrate --force
 

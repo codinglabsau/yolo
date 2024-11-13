@@ -10,7 +10,7 @@ class YoloException extends Exception
 
     public static function make(string $message): self
     {
-        return new self($message);
+        return new static($message);
     }
 
     public function suggest(string $suggestion): self

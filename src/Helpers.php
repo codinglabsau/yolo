@@ -14,11 +14,16 @@ class Helpers
             : Container::getInstance();
     }
 
-    public static function keyedEnv(string $key): ?string
+    public static function keyedEnvName(string $key): ?string
     {
         $environment = strtoupper(static::environment());
 
-        return env("YOLO_{$environment}_$key");
+        return "YOLO_{$environment}_$key";
+    }
+
+    public static function keyedEnv(string $key): ?string
+    {
+        return env(static::keyedEnvName($key));
     }
 
     public static function keyedResourceName(string|BackedEnum $name = null, $exclusive = true): string
