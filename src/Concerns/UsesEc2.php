@@ -23,7 +23,7 @@ trait UsesEc2
     protected static array $rdsSecurityGroup;
     protected static array $keyPair;
 
-    protected static function ec2ByName(string $name, array $states = ['running'], bool $firstOnly = true, $throws = true): ?array
+    public static function ec2ByName(string $name, array $states = ['running'], bool $firstOnly = true, $throws = true): ?array
     {
         $instances = collect(Aws::ec2()->describeInstances([
             'Filters' => [
