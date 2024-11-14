@@ -35,7 +35,7 @@ class SyncKeyPairStep implements Step
                 ],
             ]);
 
-            $envFilename = sprintf(".env.%s", Helpers::environment());
+            $envFilename = ".env";
             $suggestedPath = sprintf("~/.ssh/%s", Helpers::keyedResourceName(exclusive: false));
             $suggestedEnv = sprintf('%s=%s', Helpers::keyedEnvName('SSH_KEY'), $suggestedPath);
 

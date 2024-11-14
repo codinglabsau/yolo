@@ -14,7 +14,7 @@ trait FormatsSshCommands
             default => 'id_rsa',
         };
 
-        $base = "ssh -tt -o StrictHostKeyChecking=no -i ~/.ssh/$sshKey ubuntu@{$ipAddress}";
+        $base = "ssh -tt -o StrictHostKeyChecking=no -i $sshKey ubuntu@{$ipAddress}";
 
         return $command
             ? "$base \"$command\""
