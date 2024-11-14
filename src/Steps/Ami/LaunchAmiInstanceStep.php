@@ -5,7 +5,6 @@ namespace Codinglabs\Yolo\Steps\Ami;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Helpers;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -23,13 +22,14 @@ class LaunchAmiInstanceStep implements Step
             throw new ResourceExistsException("AMI instance already exists in state '{$instance['State']['Name']}'. It must be manually terminated before creating a new AMI.");
         }
 
+        // Ubuntu 22.04 LTS
         $imageId = Aws::ssm()->getParameter([
             'Name' => '/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id',
             'WithDecryption' => false,
         ])['Parameter']['Value'];
 
         Aws::ec2()->runInstances([
-            // Ubuntu 22.04 LTS
+            // Base OS image
             'ImageId' => $imageId,
 
             // Set the AMI name
@@ -60,7 +60,7 @@ class LaunchAmiInstanceStep implements Step
             'InstanceType' => 't3.xlarge',
 
             // use the existing key pair
-            'KeyName' => Manifest::name(),
+            'KeyName' => Helpers::keyedResourceName(exclusive: false),
 
             // 1 server only per favor (min+max are both required)
             'MaxCount' => 1,
