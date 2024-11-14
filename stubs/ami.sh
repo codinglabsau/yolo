@@ -38,7 +38,7 @@ apt-get install -y \
 apt-get install -y php8.3-swoole
 
 # PHP (Sentry)
-apt-get install -y php-excimer
+apt-get install -y php8.3-excimer
 
 # caching
 apt-get install -y memcached php8.3-memcached
