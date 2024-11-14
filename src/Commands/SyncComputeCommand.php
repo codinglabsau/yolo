@@ -3,15 +3,10 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Steps;
-use Codinglabs\Yolo\Concerns\RunsSteppedCommands;
 use Symfony\Component\Console\Input\InputArgument;
-use function Laravel\Prompts\info;
-use function Laravel\Prompts\intro;
 
-class SyncComputeCommand extends Command
+class SyncComputeCommand extends SteppedCommand
 {
-    use RunsSteppedCommands;
-
     protected array $steps = [
         Steps\Ensures\EnsureKeyPairExistsStep::class,
 
@@ -39,17 +34,7 @@ class SyncComputeCommand extends Command
             ->setName('sync:compute')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('dry-run', null, null, 'Run the command without making changes')
+            ->addOption('no-progress', null, null, 'Hide the progress output')
             ->setDescription('Sync configured compute AWS resources');
-    }
-
-    public function handle(): void
-    {
-        $environment = $this->argument('environment');
-
-        intro(sprintf("Executing sync:compute steps in %s", $environment));
-
-        $totalTime = $this->handleSteps($environment);
-
-        info(sprintf('Completed successfully in %ss.', $totalTime));
     }
 }

@@ -3,15 +3,10 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Steps;
-use Codinglabs\Yolo\Concerns\RunsSteppedCommands;
 use Symfony\Component\Console\Input\InputArgument;
-use function Laravel\Prompts\info;
-use function Laravel\Prompts\intro;
 
-class SyncNetworkCommand extends Command
+class SyncNetworkCommand extends SteppedCommand
 {
-    use RunsSteppedCommands;
-
     protected array $steps = [
         // vpc
         Steps\Network\SyncVpcStep::class,
@@ -49,17 +44,7 @@ class SyncNetworkCommand extends Command
             ->setName('sync:network')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('dry-run', null, null, 'Run the command without making changes')
+            ->addOption('no-progress', null, null, 'Hide the progress output')
             ->setDescription('Sync the network resources for the given environment');
-    }
-
-    public function handle(): void
-    {
-        $environment = $this->argument('environment');
-
-        intro(sprintf("Executing sync:network steps in %s", $environment));
-
-        $totalTime = $this->handleSteps($environment);
-
-        info(sprintf('Completed successfully in %ss.', $totalTime));
     }
 }

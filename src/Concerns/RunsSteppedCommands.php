@@ -38,15 +38,17 @@ trait RunsSteppedCommands
             return time() - $now;
         }
 
-        $progress = progress(
-            label: 'Starting first step...',
-            steps: count($steps)
-        );
+        $progress = $this->input->hasOption('no-progress')
+            ? null
+            : progress(
+                label: 'Starting first step...',
+                steps: count($steps)
+            );
 
-        $progress->start();
+        $progress?->start();
 
         $output = $steps->map(function (Step $step, int $i) use ($progress, $now) {
-            $progress->label(static::normaliseStep($step))
+            $progress?->label(static::normaliseStep($step))
                 ->hint(sprintf('%d seconds elapsed', time() - $now))
                 ->render();
 
@@ -54,7 +56,7 @@ trait RunsSteppedCommands
 
             $status = $step->__invoke($this->input->getOptions(), $this);
 
-            $progress->advance();
+            $progress?->advance();
 
             return [
                 $i + 1,
@@ -76,7 +78,7 @@ trait RunsSteppedCommands
             ];
         });
 
-        $progress->finish();
+        $progress?->finish();
 
         table(
             ['Step', 'Description', 'Status', 'Elapsed'],

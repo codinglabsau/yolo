@@ -8,7 +8,7 @@ use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\intro;
 
-class SyncCommand extends Command
+class SyncCommand extends SteppedCommand
 {
     protected function configure(): void
     {
@@ -16,6 +16,7 @@ class SyncCommand extends Command
             ->setName('sync')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('dry-run', null, null, 'Run the command without making changes')
+            ->addOption('no-progress', null, null, 'Hide the progress output')
             ->setDescription('Sync all resources for the given environment');
     }
 

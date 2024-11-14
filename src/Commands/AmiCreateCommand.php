@@ -3,14 +3,10 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Steps;
-use Codinglabs\Yolo\Concerns\RunsSteppedCommands;
 use Symfony\Component\Console\Input\InputArgument;
-use function Laravel\Prompts\info;
 
-class AmiCreateCommand extends Command
+class AmiCreateCommand extends SteppedCommand
 {
-    use RunsSteppedCommands;
-
     protected array $steps = [
         Steps\Ensures\EnsureKeyPairExistsStep::class,
         Steps\Ensures\EnsureLaunchTemplateExistsStep::class,
@@ -31,16 +27,5 @@ class AmiCreateCommand extends Command
             ->setName('ami:create')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->setDescription('Prepare a new Amazon Machine Image');
-    }
-
-    public function handle(): void
-    {
-        $environment = $this->argument('environment');
-
-        info("Executing ami:create steps...");
-
-        $totalTime = $this->handleSteps($environment);
-
-        info(sprintf('Completed successfully in %ss.', $totalTime));
     }
 }

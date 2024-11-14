@@ -3,15 +3,10 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Steps;
-use Codinglabs\Yolo\Concerns\RunsSteppedCommands;
 use Symfony\Component\Console\Input\InputArgument;
-use function Laravel\Prompts\info;
-use function Laravel\Prompts\intro;
 
-class SyncMultitenancyTenantsCommand extends Command
+class SyncMultitenancyTenantsCommand extends SteppedCommand
 {
-    use RunsSteppedCommands;
-
     protected array $steps = [
         Steps\Tenant\SyncHostedZoneStep::class,
         Steps\Tenant\SyncSslCertificateStep::class,
@@ -25,17 +20,7 @@ class SyncMultitenancyTenantsCommand extends Command
             ->setName('sync:multitenancy-tenants')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('dry-run', null, null, 'Run the command without making changes')
+            ->addOption('no-progress', null, null, 'Hide the progress output')
             ->setDescription('Sync configured tenant AWS resources');
-    }
-
-    public function handle(): void
-    {
-        $environment = $this->argument('environment');
-
-        intro(sprintf("Executing sync:multitenancy-tenants steps in %s", $environment));
-
-        $totalTime = $this->handleSteps($environment);
-
-        info(sprintf('Completed successfully in %ss.', $totalTime));
     }
 }
