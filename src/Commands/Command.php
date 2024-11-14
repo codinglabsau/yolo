@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Commands;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Concerns\RegistersAws;
+use Codinglabs\Yolo\Concerns\HasAfterCallbacks;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Codinglabs\Yolo\Concerns\ChecksIfCommandsShouldBeRunning;
@@ -14,6 +15,7 @@ use function Laravel\Prompts\error;
 abstract class Command extends SymfonyCommand
 {
     use RegistersAws;
+    use HasAfterCallbacks;
     use ChecksIfCommandsShouldBeRunning;
 
     public InputInterface $input;
@@ -64,7 +66,13 @@ abstract class Command extends SymfonyCommand
         // todo: remove once mvp is finished
         $this->output->setVerbosity(OutputInterface::VERBOSITY_DEBUG);
 
-        return (int)(Helpers::app()->call([$this, 'handle']) ?: 0);
+        $exitCode = (int)(Helpers::app()->call([$this, 'handle']) ?: 0);
+
+        foreach ($this->after as $closure) {
+            $closure();
+        }
+
+        return $exitCode;
     }
 
     protected function argument($key)

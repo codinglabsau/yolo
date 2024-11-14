@@ -52,7 +52,7 @@ trait RunsSteppedCommands
 
             $started = time();
 
-            $status = $step->__invoke($this->input->getOptions());
+            $status = $step->__invoke($this->input->getOptions(), $this);
 
             $progress->advance();
 
