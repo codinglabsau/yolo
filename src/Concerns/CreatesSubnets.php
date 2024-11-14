@@ -18,6 +18,7 @@ trait CreatesSubnets
             'AvailabilityZone' => $availabilityZones[$index]['ZoneName'],
             'CidrBlock' => "10.1.$index.0/24",
             'VpcId' => $vpc['VpcId'],
+            'MapPublicIpOnLaunch' => true,
             'TagSpecifications' => [
                 [
                     'ResourceType' => 'subnet',
