@@ -15,6 +15,6 @@ class EnsureKeyPairExistsStep implements Step
     {
         $this->ensure(fn () => AwsResources::keyPair());
 
-        return StepResult::SUCCESS;
+        return StepResult::SYNCED;
     }
 }
