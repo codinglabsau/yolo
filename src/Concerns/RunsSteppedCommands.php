@@ -38,7 +38,7 @@ trait RunsSteppedCommands
             return time() - $now;
         }
 
-        $progress = $this->input->hasOption('no-progress')
+        $progress = $this->option('no-progress')
             ? null
             : progress(
                 label: 'Starting first step...',

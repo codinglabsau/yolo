@@ -18,7 +18,7 @@ abstract class SteppedCommand extends Command
 
         $totalTime = $this->handleSteps($environment);
 
-        if (! $this->input->hasOption('no-progress')) {
+        if (! $this->option('no-progress')) {
             info(sprintf('Completed successfully in %ss.', $totalTime));
         }
     }
