@@ -79,8 +79,6 @@ AMI.
 
 Prepares autoscaling groups, EC2 launch template and alarms.
 
-Requires the `--ami-id` option to specify the target AMI.
-
 ### `yolo env:push <environment>`
 
 Prior to building the environment, you'll need to create `.env.<environment>` followed by `yolo env:push <environment>`.

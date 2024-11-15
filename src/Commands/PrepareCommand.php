@@ -2,14 +2,15 @@
 
 namespace Codinglabs\Yolo\Commands;
 
+use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Steps;
+use Illuminate\Support\Carbon;
 use Codinglabs\Yolo\Concerns\UsesEc2;
-use Symfony\Component\Console\Input\InputOption;
 use Codinglabs\Yolo\Concerns\RunsSteppedCommands;
 use Symfony\Component\Console\Input\InputArgument;
-use function Laravel\Prompts\info;
+use function Laravel\Prompts\select;
 
-class PrepareCommand extends Command
+class PrepareCommand extends SteppedCommand
 {
     use RunsSteppedCommands;
     use UsesEc2;
@@ -34,18 +35,35 @@ class PrepareCommand extends Command
         $this
             ->setName('prepare')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
-            ->addOption('ami-id', null, InputOption::VALUE_REQUIRED, 'The AMI ID to prepare for service')
+            ->addOption('dry-run', null, null, 'Run the command without making changes')
+            ->addOption('no-progress', null, null, 'Hide the progress output')
             ->setDescription('Prepare a new deployment group');
     }
 
     public function handle(): void
     {
-        $environment = $this->argument('environment');
+        $amis = collect(Aws::ec2()->describeImages(['Owners' => ['self']])['Images'])
+            ->filter(fn (array $image) => $image['State'] === 'available')
+            ->sortByDesc('LastLaunchedTime')
+            ->mapWithKeys(fn (array $image) => [
+                $image['ImageId'] => sprintf(
+                    '%s (%s) - created %s',
+                    $image['Name'],
+                    $image['ImageId'],
+                    Carbon::parse($image['CreationDate'])
+                        ->tz('Australia/Brisbane')
+                        ->diffForHumans(),
+                ),
+            ])->toArray();
 
-        info("Executing prepare steps...");
+        $amiId = select(
+            label: 'Which AMI do you want to use?',
+            options: $amis,
+            default: array_key_first($amis),
+        );
 
-        $totalTime = $this->handleSteps($environment);
+        $this->input->setOption('ami-id', $amiId);
 
-        info(sprintf('Completed successfully in %ss.', $totalTime));
+        parent::handle();
     }
 }
