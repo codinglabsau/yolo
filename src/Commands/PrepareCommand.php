@@ -17,7 +17,7 @@ class PrepareCommand extends SteppedCommand
     use UsesEc2;
 
     protected array $steps = [
-        // create new launch template version; requires the specified AMI ID
+        // create new launch template version; prompts for the desired AMI ID
         Steps\Ami\CreateLaunchTemplateVersionStep::class,
 
         // scheduler group
