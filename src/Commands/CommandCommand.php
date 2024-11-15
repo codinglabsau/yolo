@@ -25,7 +25,7 @@ class CommandCommand extends Command
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('command', null, InputArgument::OPTIONAL, 'The command to run')
             ->addOption('ssh-key', null, InputArgument::OPTIONAL, 'The SSH key to use')
-            ->addOption('group', null, InputArgument::OPTIONAL, 'The server group to run the command in', default: 'Scheduler')
+            ->addOption('group', null, InputArgument::OPTIONAL, 'The server group to run the command in', default: 'scheduler')
             ->setDescription('Run a command in the given environment');
     }
 

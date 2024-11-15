@@ -121,16 +121,16 @@ trait RegistersAws
 
     protected static function detectAwsWebEnvironment(): bool
     {
-        return static::detectAwsEnvironment('Web');
+        return static::detectAwsEnvironment('web');
     }
 
     protected static function detectAwsQueueEnvironment(): bool
     {
-        return static::detectAwsEnvironment('Queue');
+        return static::detectAwsEnvironment('queue');
     }
 
     protected static function detectAwsSchedulerEnvironment(): bool
     {
-        return static::detectAwsEnvironment('Scheduler');
+        return static::detectAwsEnvironment('scheduler');
     }
 }

@@ -31,7 +31,7 @@ class CreateAutoScalingQueueGroupStep implements Step
                     [
                         'Key' => 'Name',
                         'PropagateAtLaunch' => true,
-                        'Value' => 'Queue',
+                        'Value' => 'queue',
                     ],
                 ],
             ],

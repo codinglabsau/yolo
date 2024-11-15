@@ -29,7 +29,7 @@ class CreateAutoScalingWebGroupStep implements Step
                     [
                         'Key' => 'Name',
                         'PropagateAtLaunch' => true,
-                        'Value' => 'Web',
+                        'Value' => 'web',
                     ],
                 ],
             ],

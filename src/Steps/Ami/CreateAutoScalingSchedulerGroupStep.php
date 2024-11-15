@@ -31,7 +31,7 @@ class CreateAutoScalingSchedulerGroupStep implements Step
                     [
                         'Key' => 'Name',
                         'PropagateAtLaunch' => true,
-                        'Value' => 'Scheduler',
+                        'Value' => 'scheduler',
                     ],
                 ],
             ],
