@@ -8,7 +8,7 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\SyncsRecordSets;
 use Codinglabs\Yolo\Contracts\ExecutesDomainStep;
 
-class SyncRecordSetStep implements ExecutesDomainStep
+class SyncDomainRecordSetStep implements ExecutesDomainStep
 {
     use SyncsRecordSets;
 
