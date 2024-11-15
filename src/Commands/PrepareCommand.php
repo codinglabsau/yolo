@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Steps;
 use Illuminate\Support\Carbon;
 use Codinglabs\Yolo\Concerns\UsesEc2;
+use Symfony\Component\Console\Input\InputOption;
 use Codinglabs\Yolo\Concerns\RunsSteppedCommands;
 use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\select;
@@ -37,6 +38,7 @@ class PrepareCommand extends SteppedCommand
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('dry-run', null, null, 'Run the command without making changes')
             ->addOption('no-progress', null, null, 'Hide the progress output')
+            ->addOption('ami-id', null, InputOption::VALUE_OPTIONAL, 'The AMI ID to prepare for service')
             ->setDescription('Prepare a new deployment group');
     }
 
@@ -59,7 +61,7 @@ class PrepareCommand extends SteppedCommand
         $amiId = select(
             label: 'Which AMI do you want to use?',
             options: $amis,
-            default: array_key_first($amis),
+            default: $this->option('ami-id') ?? array_key_first($amis),
         );
 
         $this->input->setOption('ami-id', $amiId);
