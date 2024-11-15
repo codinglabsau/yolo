@@ -20,7 +20,6 @@ class SyncKeyPairStep implements Step
     {
         try {
             AwsResources::keyPair();
-
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException $e) {
             $key = Aws::ec2()->createKeyPair([

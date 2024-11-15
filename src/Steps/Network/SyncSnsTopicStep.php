@@ -14,12 +14,12 @@ class SyncSnsTopicStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        $name = Helpers::keyedResourceName(exclusive: false);
-
         try {
-            AwsResources::topic($name);
+            AwsResources::topic();
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException $e) {
+            $name = Helpers::keyedResourceName(exclusive: false);
+
             if (! Arr::get($options, 'dry-run')) {
                 Aws::sns()->createTopic([
                     'Name' => $name,
