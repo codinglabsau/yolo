@@ -7,7 +7,7 @@ commands to deploy applications to production from your local machine or CI pipe
 
 ___
 
-### Disclaimer
+## Disclaimer
 
 YOLO is designed for PHP developers who want to manage AWS using an infrastructure-as-code approach, using plain-old PHP
 rather than CloudFormation / Terraform / K8s / Elastic Beanstalk / <some-other-exotic-alternative>.
@@ -21,11 +21,30 @@ require less working knowledge of AWS.
 
 It goes without saying, but YOLO at your own risk.
 
-### Prerequisites
+## Prerequisites
 
-YOLO uses AWS profiles for authentication, so before getting started, install the AWS CLI tool.
+Before getting started, ensure you have [AWS CLI](https://aws.amazon.com/cli/) installed.
 
-You'll also need an AWS account and at least some basic knowledge of AWS services.
+You'll also need access to an AWS account, and some knowledge of AWS services.
+
+### Permissions & Authentication
+
+YOLO uses AWS profiles for authentication.
+
+Profiles are stored in `~/.aws/credentials` for authentication. You'll need to set a
+`YOLO_{ENVIRONMENT}_AWS_PROFILE` in the app `.env` file to point to the correct profile; eg.
+
+```bash
+YOLO_PRODUCTION_AWS_PROFILE=my-project-profile
+```
+
+Once configured, future operations will authenticate using this profile.
+
+You will need wide-ranging AWS credentials to provision everything required by YOLO; administrative permissions are
+recommended.
+
+For CI environments like GitHub Actions, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are used instead. Ensure that
+any access keys provided in CI are using least-privileged scope.
 
 ## Installation
 
@@ -39,21 +58,24 @@ composer require codinglabsau/yolo
 
 The entry point to the YOLO CLI is `vendor/bin/yolo` or `yolo` if you have `./vendor/bin` in your path.
 
-### Permissions & Authentication
+To get up and running, you'll need to complete the following steps:
 
-YOLO uses AWS profiles stored in `~/.aws/credentials` for authentication. You'll need to set a
-`YOLO_{ENVIRONMENT}_AWS_PROFILE` in the app `.env` file to point to the correct profile; eg.
-`YOLO_PRODUCTION_AWS_PROFILE=my-project-profile`.
+1. Setup authentication and update your .env to point to the correct AWS profile
+2. Initialise the YOLO manifest file
+3. Run the install command
+4. Run the deploy command
 
-Once configured, future operations will authenticate using the profile.
+After the initial install, you can simply add `yolo deploy <environment>` to your CI pipeline to deploy your app.
 
-Note that for CI environments, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are used instead. Ensure that any access
-keys provided in CI are using least-privileged scope as a safety guard against accidental AWS resource modification.
+### `yolo install`
 
-### `yolo init`
+The install command is the first command to run after installing YOLO. It does the following things:
 
-Initalises the yolo.yml file in the app with a boilerplate production environment, and adds some entries to
-`.gitignore`.
+- initialises the yolo.yml file in the app with a boilerplate production environment
+- adds some entries to `.gitignore`
+- provisions various resources on AWS
+- builds and registers an Amazon Machine Image for EC2s
+-
 
 After initialising, you can customise the `yolo.yml` manifest file to suit your app's requirements.
 
