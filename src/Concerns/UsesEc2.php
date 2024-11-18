@@ -149,7 +149,7 @@ trait UsesEc2
             'Filters' => [
                 [
                     'Name' => 'launch-template-name',
-                    'Values' => [Helpers::keyedResourceName()],
+                    'Values' => [Helpers::keyedResourceName(exclusive: false)],
                 ],
             ],
         ])['LaunchTemplates'];
@@ -166,13 +166,13 @@ trait UsesEc2
     public static function launchTemplatePayload(): array
     {
         return [
-            'LaunchTemplateName' => Helpers::keyedResourceName(),
+            'LaunchTemplateName' => Helpers::keyedResourceName(exclusive: false),
             'LaunchTemplateData' => [
                 'IamInstanceProfile' => [
                     'Name' => Manifest::get('aws.ec2.instance-profile'),
                 ],
                 'InstanceType' => Manifest::get('aws.ec2.instance-type'),
-                'KeyName' => Manifest::name(),
+                'KeyName' => Helpers::keyedResourceName(exclusive: false),
                 'SecurityGroupIds' => [
                     AwsResources::ec2SecurityGroup()['GroupId'],
                 ],
