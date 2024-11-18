@@ -34,8 +34,12 @@ trait UsesSsm
         }
     }
 
-    public static function putParameter(string $key, string $value, string $description): void
+    public static function putParameter(string|BackedEnum $key, string $value, string $description): void
     {
+        if ($key instanceof BackedEnum) {
+            $key = $key->value;
+        }
+
         $key = '/' . Helpers::keyedResourceName($key, exclusive: false, seperator: '/');
 
         if (static::getParameter($key) === null) {
