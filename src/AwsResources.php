@@ -7,6 +7,7 @@ use Codinglabs\Yolo\Concerns\UsesEc2;
 use Codinglabs\Yolo\Concerns\UsesRds;
 use Codinglabs\Yolo\Concerns\UsesSns;
 use Codinglabs\Yolo\Concerns\UsesSqs;
+use Codinglabs\Yolo\Concerns\UsesSsm;
 use Codinglabs\Yolo\Concerns\UsesRoute53;
 use Codinglabs\Yolo\Concerns\UsesCloudWatch;
 use Codinglabs\Yolo\Concerns\UsesCodeDeploy;
@@ -29,4 +30,5 @@ class AwsResources
     use UsesS3;
     use UsesSns;
     use UsesSqs;
+    use UsesSsm;
 }

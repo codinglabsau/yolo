@@ -22,15 +22,9 @@ class LaunchAmiInstanceStep implements Step
             throw new ResourceExistsException("AMI instance already exists in state '{$instance['State']['Name']}'. It must be manually terminated before creating a new AMI.");
         }
 
-        // Ubuntu 22.04 LTS
-        $imageId = Aws::ssm()->getParameter([
-            'Name' => '/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id',
-            'WithDecryption' => false,
-        ])['Parameter']['Value'];
-
         Aws::ec2()->runInstances([
             // Base OS image
-            'ImageId' => $imageId,
+            'ImageId' => AwsResources::ubuntuAmiId(),
 
             // Set the AMI name
             'TagSpecifications' => [
