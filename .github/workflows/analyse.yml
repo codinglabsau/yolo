@@ -1,0 +1,49 @@
+name: Analyse
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+    types: [ opened, synchronize, reopened, ready_for_review ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyse:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-22.04
+
+    env:
+      DB_DATABASE: testing
+      DB_USER: root
+      DB_PASSWORD: root
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: zip, sqlite3
+          coverage: none
+
+      - name: Install composer dependencies
+        run: composer install --no-cache --no-ansi --no-interaction --no-progress
+
+      - name: Code sniff
+        run: vendor/bin/php-cs-fixer fix --dry-run
+
+      - name: Code analysis
+        run: vendor/bin/phpstan analyse --memory-limit=1G
+
+      - name: Notify Slack of failure
+        if: failure()
+        run: |
+          curl -X POST -H 'Content-type: application/json' --data '{"text":"Code analysis failed on branch ${{github.ref_name}} for action https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}"}' https://hooks.slack.com/services/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
