@@ -73,7 +73,7 @@ class CommandCommand extends Command
     {
         $prefixes = [];
 
-        foreach (static::findEc2IpByName(name: $group, firstOnly: false) as $ipAddress) {
+        foreach (static::ec2IpByName(name: $group, firstOnly: false) as $ipAddress) {
             $prefixes[$ipAddress] = static::formatSshCommand(
                 ipAddress: $ipAddress,
                 sshKey: $this->option('ssh-key')
