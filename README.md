@@ -159,6 +159,30 @@ environments:
       - php artisan optimize
 ```
 
+## Development
+
+To debug or add features to YOLO, it is recommended to symlink to the local repository.
+
+Add this to composer.json with the path to the local repository:
+
+```json
+    // ...
+
+"repositories": [
+{
+"type": "path",
+"url": "/Users/username/code/yolo"
+}
+],
+```
+
+To call yolo from the app you are debugging, you'll need to tell yolo the path to the app. Set the `YOLO_BASE_PATH`
+environment to the root of the app as follows:
+
+```bash
+YOLO_BASE_PATH=$(pwd) yolo
+```
+
 ## Credits
 
 - [Steve Thomas](https://github.com/stevethomas)
