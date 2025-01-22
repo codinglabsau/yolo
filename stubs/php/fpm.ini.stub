@@ -1,4 +1,4 @@
-; Environment configuration for Live Platforms FPM
+; Environment configuration for FPM
 expose_php = Off
 session.gc_probability = '1'
 session.gc_divisor = '100'

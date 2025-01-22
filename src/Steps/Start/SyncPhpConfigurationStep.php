@@ -13,14 +13,14 @@ class SyncPhpConfigurationStep implements RunsOnAws
     {
         // .ini for PHP CLI
         file_put_contents(
-            "/etc/php/8.3/mods-available/{NAME}_cli.ini",
-            file_get_contents(Paths::stubs('php/{NAME}_cli.ini.stub'))
+            "/etc/php/8.3/mods-available/yolo_cli.ini",
+            file_get_contents(Paths::stubs('php/cli.ini.stub'))
         );
 
         // .ini for PHP FPM
         file_put_contents(
-            "/etc/php/8.3/mods-available/{NAME}_fpm.ini",
-            file_get_contents(Paths::stubs('php/{NAME}_fpm.ini.stub'))
+            "/etc/php/8.3/mods-available/yolo_fpm.ini",
+            file_get_contents(Paths::stubs('php/fpm.ini.stub'))
         );
 
         // configuration for PHP-FPM pool
@@ -32,8 +32,8 @@ class SyncPhpConfigurationStep implements RunsOnAws
         // enable mods
         (Process::fromShellCommandline(
             command: <<<'sh'
-                phpenmod -s cli {NAME}_cli
-                phpenmod -s fpm {NAME}_fpm
+                phpenmod -s cli yolo_cli
+                phpenmod -s fpm yolo_fpm
             sh
         ))->mustRun();
 
