@@ -34,8 +34,8 @@ class Yolo
         // Sync
         Commands\TenantSyncCommand::class,
         Commands\LandlordSyncCommand::class,
-        Commands\ComputeSyncCommand::class,
-        Commands\CiSyncCommand::class,
+        Commands\SyncComputeCommand::class,
+        Commands\SyncCiCommand::class,
     ];
 
     public function __construct()
