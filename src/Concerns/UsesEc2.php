@@ -14,6 +14,7 @@ trait UsesEc2
     protected static array $loadBalancer;
     protected static array $targetGroup;
     protected static array $subnets;
+    protected static array $keyPair;
 
     public static function ec2ByName(string $name, array $states = ['running'], bool $firstOnly = true, $throws = true): ?array
     {
@@ -207,7 +208,7 @@ trait UsesEc2
             return static::$keyPair;
         }
 
-        $name = Helpers::keyedResourceName(exclusive: false);
+        $name = Manifest::get('aws.ec2.key-pair', Helpers::keyedResourceName(exclusive: false));
 
         foreach (Aws::ec2()->describeKeyPairs()['KeyPairs'] as $keyPair) {
             if ($keyPair['KeyName'] === $name) {
@@ -217,7 +218,7 @@ trait UsesEc2
         }
 
         ResourceDoesNotExistException::make("Could not find key pair with name $name")
-            ->suggest('init')
+            ->suggest('sync:network')
             ->throw();
     }
 }
