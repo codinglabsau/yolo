@@ -2,17 +2,15 @@
 
 namespace Codinglabs\Yolo\Concerns;
 
-use Codinglabs\Yolo\Aws;
-use Codinglabs\Yolo\Manifest;
 use Illuminate\Support\Str;
-use Codinglabs\Yolo\Contracts\Step;
+use Codinglabs\Yolo\Manifest;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Stringable;
+use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\RunsOnAws;
 use Codinglabs\Yolo\Contracts\HasSubSteps;
 use Codinglabs\Yolo\Contracts\RunsOnBuild;
-use Codinglabs\Yolo\Contracts\RunsOnAwsWeb;
 use Codinglabs\Yolo\Contracts\RunsOnAwsQueue;
 use Codinglabs\Yolo\Contracts\ExecutesTenantStep;
 use Codinglabs\Yolo\Contracts\RunsOnAwsScheduler;
@@ -27,6 +25,8 @@ use function Laravel\Prompts\progress;
 
 trait RunsSteppedCommands
 {
+    use ChecksIfCommandsShouldBeRunning;
+
     protected function handleSteps(string $environment): int
     {
         $now = time();
@@ -38,32 +38,36 @@ trait RunsSteppedCommands
             return time() - $now;
         }
 
-        $progress = progress(
-            label: 'Starting first step...',
-            steps: count($steps)
-        );
+        $progress = $this->option('no-progress')
+            ? null
+            : progress(
+                label: 'Starting first step...',
+                steps: count($steps)
+            );
 
-        $progress->start();
+        $progress?->start();
 
         $output = $steps->map(function (Step $step, int $i) use ($progress, $now) {
-            $progress->label(static::normaliseStep($step))
+            $progress?->label(static::normaliseStep($step))
                 ->hint(sprintf('%d seconds elapsed', time() - $now))
                 ->render();
 
             $started = time();
 
-            $status = $step->__invoke($this->input->getOptions());
+            $status = $step->__invoke($this->input->getOptions(), $this);
 
-            $progress->advance();
+            $progress?->advance();
 
             return [
                 $i + 1,
                 static::normaliseStep($step, pad: true, bold: true, arrow: true),
                 match ($status) {
-                    StepResult::CREATED, StepResult::SYNCED, StepResult::SUCCESS => '✅',
+                    StepResult::CREATED => '<fg=green>CREATED</>',
+                    StepResult::SYNCED => '<fg=cyan>SYNCED</>',
+                    StepResult::SUCCESS => '<fg=green>SUCCESS</>',
                     StepResult::SKIPPED => '<fg=yellow>SKIPPED</>',
                     StepResult::CONDITIONAL => '<fg=yellow>CONDITIONAL</>',
-                    StepResult::WOULD_CREATE => '<fg=yellow>WOULD CREATE️</>',
+                    StepResult::WOULD_CREATE => '<fg=yellow>WOULD CREATE</>',
                     StepResult::WOULD_SYNC => '<fg=yellow>WOULD SYNC</>',
                     StepResult::TIMEOUT => '<fg=red>TIMEOUT</>',
                     default => is_string($status)
@@ -74,7 +78,7 @@ trait RunsSteppedCommands
             ];
         });
 
-        $progress->finish();
+        $progress?->finish();
 
         table(
             ['Step', 'Description', 'Status', 'Elapsed'],
@@ -120,25 +124,7 @@ trait RunsSteppedCommands
 
                 return [$step];
             })
-            ->filter(function (Step $step) {
-                if (Aws::runningInAws()) {
-                    if ($step instanceof RunsOnAwsWeb) {
-                        return Aws::runningInAwsWebEnvironment();
-                    }
-
-                    if ($step instanceof RunsOnAwsQueue) {
-                        return Aws::runningInAwsQueueEnvironment();
-                    }
-
-                    if ($step instanceof RunsOnAwsScheduler) {
-                        return Aws::runningInAwsSchedulerEnvironment();
-                    }
-
-                    return $step instanceof RunsOnAws;
-                }
-
-                return ! $step instanceof RunsOnAws;
-            });
+            ->filter(fn (Step $step) => $this->shouldBeRunning($step));
     }
 
     protected static function normaliseStep(Step $step, $pad = false, $bold = false, $arrow = false): string
