@@ -23,6 +23,7 @@ class StopCommand extends Command implements RunsOnAws
         $this
             ->setName('stop')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
+            ->addOption('no-progress', null, null, 'Hide the progress output')
             ->setDescription('Stop work before deployment');
     }
 
