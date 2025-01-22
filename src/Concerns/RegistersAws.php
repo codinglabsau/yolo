@@ -24,9 +24,6 @@ trait RegistersAws
 {
     protected function registerAwsServices(): void
     {
-        // make this available right away to determine which AWS credentials to use
-        Helpers::app()->singleton('runningInAws', fn () => static::detectAwsEnvironment());
-
         // common arguments for all AWS clients
         $arguments = [
             'region' => Manifest::get('aws.region'),
@@ -83,7 +80,7 @@ trait RegistersAws
     protected static function detectAwsEnvironment(string $name = null): bool
     {
         if (static::detectLocalEnvironment() || static::detectCiEnvironment()) {
-            // skip if we are in continuous integration
+            // skip if we are local or in continuous integration
             return false;
         }
 
