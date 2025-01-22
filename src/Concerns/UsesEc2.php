@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Concerns;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 trait UsesEc2
@@ -14,7 +15,7 @@ trait UsesEc2
     protected static array $targetGroup;
     protected static array $subnets;
 
-    protected static function findEc2ByName(string $name, array $states = ['running'], bool $firstOnly = true, $throws = true): ?array
+    public static function ec2ByName(string $name, array $states = ['running'], bool $firstOnly = true, $throws = true): ?array
     {
         $instances = collect(Aws::ec2()->describeInstances([
             'Filters' => [
@@ -46,13 +47,13 @@ trait UsesEc2
             : $instances->toArray();
     }
 
-    public static function findEc2IpByName(string $name, bool $firstOnly = true): string|array
+    public static function ec2IpByName(string $name, bool $firstOnly = true): string|array
     {
         if ($firstOnly) {
-            return static::findEc2ByName(name: $name)['PublicIpAddress'];
+            return static::ec2ByName(name: $name)['PublicIpAddress'];
         }
 
-        return collect(static::findEc2ByName(name: $name, firstOnly: false))
+        return collect(static::ec2ByName(name: $name, firstOnly: false))
             ->map(fn ($instance) => $instance['PublicIpAddress'])
             ->toArray();
     }
@@ -134,7 +135,7 @@ trait UsesEc2
             'Filters' => [
                 [
                     'Name' => 'launch-template-name',
-                    'Values' => [Helpers::keyedResourceName()],
+                    'Values' => [Helpers::keyedResourceName(exclusive: false)],
                 ],
             ],
         ])['LaunchTemplates'];
@@ -151,18 +152,26 @@ trait UsesEc2
     public static function launchTemplatePayload(): array
     {
         return [
-            'LaunchTemplateName' => Helpers::keyedResourceName(),
+            'LaunchTemplateName' => Helpers::keyedResourceName(exclusive: false),
             'LaunchTemplateData' => [
                 'IamInstanceProfile' => [
                     'Name' => Manifest::get('aws.ec2.instance-profile'),
                 ],
                 'InstanceType' => Manifest::get('aws.ec2.instance-type'),
-                'KeyName' => Manifest::name(),
+                'KeyName' => Helpers::keyedResourceName(exclusive: false),
                 'SecurityGroupIds' => [
-                    Manifest::get('aws.security-group-id'),
+                    AwsResources::ec2SecurityGroup()['GroupId'],
                 ],
                 'Monitoring' => [
                     'Enabled' => true,
+                ],
+            ],
+            'TagSpecifications' => [
+                [
+                    'ResourceType' => 'launch-template',
+                    ...Aws::tags([
+                        'Name' => Helpers::keyedResourceName(),
+                    ]),
                 ],
             ],
         ];
@@ -178,17 +187,37 @@ trait UsesEc2
             'Filters' => [
                 [
                     'Name' => 'vpc-id',
-                    'Values' => [Manifest::get('aws.vpc')],
+                    'Values' => [AwsResources::vpc()['VpcId']],
                 ],
             ],
         ])['Subnets'];
 
         if (count($subnets) === 0) {
-            throw new ResourceDoesNotExistException(sprintf("Could not find subnets for VPC %s", Manifest::get('aws.vpc')));
+            throw new ResourceDoesNotExistException(sprintf("Could not find subnets for VPC %s", AwsResources::vpc()['VpcId']));
         }
 
         static::$subnets = $subnets;
 
         return static::$subnets;
+    }
+
+    public static function keyPair(): array
+    {
+        if (isset(static::$keyPair)) {
+            return static::$keyPair;
+        }
+
+        $name = Helpers::keyedResourceName(exclusive: false);
+
+        foreach (Aws::ec2()->describeKeyPairs()['KeyPairs'] as $keyPair) {
+            if ($keyPair['KeyName'] === $name) {
+                static::$keyPair = $keyPair;
+                return $keyPair;
+            }
+        }
+
+        ResourceDoesNotExistException::make("Could not find key pair with name $name")
+            ->suggest('init')
+            ->throw();
     }
 }

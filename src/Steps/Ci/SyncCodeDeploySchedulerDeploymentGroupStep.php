@@ -34,7 +34,11 @@ class SyncCodeDeploySchedulerDeploymentGroupStep implements Step
                             'deploymentType' => 'IN_PLACE',
                             'deploymentOption' => 'WITHOUT_TRAFFIC_CONTROL',
                         ],
-                    ]]);
+                    ],
+                    ...Aws::tags([
+                        'Name' => Helpers::keyedResourceName('scheduler'),
+                    ]),
+                ]);
 
                 return StepResult::CREATED;
             }

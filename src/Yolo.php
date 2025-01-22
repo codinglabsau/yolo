@@ -32,6 +32,7 @@ class Yolo
         Commands\EnvPushCommand::class,
 
         // Sync
+        Commands\SyncStorageCommand::class,
         Commands\TenantSyncCommand::class,
         Commands\LandlordSyncCommand::class,
         Commands\SyncComputeCommand::class,

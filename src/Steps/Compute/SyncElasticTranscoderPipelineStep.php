@@ -15,6 +15,10 @@ class SyncElasticTranscoderPipelineStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
+        if (Manifest::get('aws.transcoder') === null) {
+            return StepResult::SKIPPED;
+        }
+
         try {
             AwsResources::elasticTranscoderPipeline();
             return StepResult::SYNCED;
@@ -24,7 +28,16 @@ class SyncElasticTranscoderPipelineStep implements Step
                     'Name' => Helpers::keyedResourceName(),
                     'InputBucket' => Manifest::get('aws.bucket'),
                     'OutputBucket' => Manifest::get('aws.bucket'),
-                    'Role' => 'arn:aws:iam::' . Manifest::get('aws.account-id') . ':role/Elastic_Transcoder_Default_Role',
+                    'Role' => 'arn:aws:iam::' . Aws::accountId() . ':role/Elastic_Transcoder_Default_Role',
+                    // note: Elastic Transcoder does not appear to support tagging
+//                    'TagSpecifications' => [
+//                        [
+//                            'ResourceType' => 'pipeline',
+//                            ...Aws::tags([
+//                                'Name' => Helpers::keyedResourceName(),
+//                            ]),
+//                        ],
+//                    ],
                 ]);
 
                 return StepResult::CREATED;
