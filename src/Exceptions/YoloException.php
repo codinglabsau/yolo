@@ -1,0 +1,35 @@
+<?php
+
+namespace Codinglabs\Yolo\Exceptions;
+
+use Exception;
+
+class YoloException extends Exception
+{
+    protected ?string $suggestion = null;
+
+    public static function make(string $message): self
+    {
+        return new static($message);
+    }
+
+    public function suggest(string $suggestion): self
+    {
+        $this->suggestion = $suggestion;
+
+        return $this;
+    }
+
+    public function getSuggestion(): string
+    {
+        return $this->suggestion;
+    }
+
+    /**
+     * @throws self
+     */
+    public function throw(): void
+    {
+        throw $this;
+    }
+}
