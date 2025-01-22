@@ -10,6 +10,8 @@ class Yolo
     protected Application $app;
 
     protected array $commands = [
+        Commands\InitCommand::class,
+
         // AWS
         Commands\AmiCreateCommand::class,
         Commands\AmiListCommand::class,
@@ -17,27 +19,23 @@ class Yolo
         Commands\CommandCommand::class,
         Commands\Ec2ListCommand::class,
 
-        // CI
-        Commands\CiSyncCommand::class,
-
-        // Compute
-        Commands\ComputeSyncCommand::class,
-
-        // Build / Deploy
+        // Build
         Commands\BuildCommand::class,
+
+        // Deploy
+        Commands\StopCommand::class,
         Commands\DeployCommand::class,
         Commands\StartCommand::class,
-        Commands\StopCommand::class,
 
         // Environments
         Commands\EnvPullCommand::class,
         Commands\EnvPushCommand::class,
 
-        // Landlord
-        Commands\LandlordSyncCommand::class,
-
-        // Tenants
+        // Sync
         Commands\TenantSyncCommand::class,
+        Commands\LandlordSyncCommand::class,
+        Commands\ComputeSyncCommand::class,
+        Commands\CiSyncCommand::class,
     ];
 
     public function __construct()

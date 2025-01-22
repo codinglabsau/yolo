@@ -7,6 +7,25 @@ use Symfony\Component\Yaml\Yaml;
 
 class Manifest
 {
+    public static function exists(): bool
+    {
+        return file_exists(Paths::manifest());
+    }
+
+    public static function environments(): array
+    {
+        return array_keys(static::current()['environments']);
+    }
+
+    public static function environmentExists(string $environment): bool
+    {
+        if (! static::exists()) {
+            return false;
+        }
+
+        return in_array($environment, static::environments());
+    }
+
     public static function current(): array
     {
         return Yaml::parse(file_get_contents(Paths::manifest()));
@@ -17,9 +36,9 @@ class Manifest
         return Arr::get(static::current(), 'name');
     }
 
-    public static function get(string $key): string|array|null
+    public static function get(string $key, $default = null): string|array|null
     {
-        return Arr::get(static::current()['environments'][Helpers::environment()], $key) ?? null;
+        return Arr::get(static::current()['environments'][Helpers::environment()], $key) ?? $default;
     }
 
     public static function put(string $key, mixed $value): false|int
@@ -38,7 +57,8 @@ class Manifest
      * @return array<int, array{
      *     domain: string,
      *     apex: string,
-     *     subdomain: bool
+     *     subdomain: bool,
+     *     www: bool
      * }>
      */
     public static function tenants(): array
@@ -48,6 +68,7 @@ class Manifest
                 // normalise tenant config
                 $config['subdomain'] = array_key_exists('apex', $config);
                 $config['apex'] = $config['apex'] ?? $config['domain'];
+                $config['www'] = array_key_exists('www', $config) && $config['www'];
 
                 return [$tenantId => $config];
             })->toArray();
