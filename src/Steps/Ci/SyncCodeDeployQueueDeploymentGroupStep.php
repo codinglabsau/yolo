@@ -3,8 +3,8 @@
 namespace Codinglabs\Yolo\Steps\Ci;
 
 use Codinglabs\Yolo\Aws;
-use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
+use Illuminate\Support\Arr;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -34,11 +34,7 @@ class SyncCodeDeployQueueDeploymentGroupStep implements Step
                             'deploymentType' => 'IN_PLACE',
                             'deploymentOption' => 'WITHOUT_TRAFFIC_CONTROL',
                         ],
-                    ],
-                    ...Aws::tags([
-                        'Name' => Helpers::keyedResourceName('scheduler'),
-                    ]),
-                ]);
+                    ]]);
 
                 return StepResult::CREATED;
             }

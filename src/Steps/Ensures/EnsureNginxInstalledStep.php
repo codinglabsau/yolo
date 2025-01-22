@@ -2,8 +2,8 @@
 
 namespace Codinglabs\Yolo\Steps\Ensures;
 
-use Illuminate\Support\Str;
 use Codinglabs\Yolo\Helpers;
+use Illuminate\Support\Str;
 use Codinglabs\Yolo\Contracts\Step;
 use Symfony\Component\Process\Process;
 use Codinglabs\Yolo\Concerns\FormatsSshCommands;

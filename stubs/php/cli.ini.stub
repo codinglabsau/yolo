@@ -1,3 +1,3 @@
-; Environment configuration {NAME} CLI
+; Environment configuration for Live Platforms CLI
 mysqli.reconnect = On
 date.timezone = UTC

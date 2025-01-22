@@ -9,41 +9,34 @@ use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\error;
 
-class AmiCreateCommand extends Command
+class LandlordSyncCommand extends Command
 {
     use RunsSteppedCommands;
 
     protected array $steps = [
-        Steps\Ensures\EnsureLaunchTemplateExistsStep::class,
-        Steps\Ami\LaunchAmiInstanceStep::class,
-        Steps\Ami\WaitForUserDataToExecuteStep::class,
-        Steps\Ensures\EnsurePhpInstalledStep::class,
-        Steps\Ensures\EnsureSwooleInstalledStep::class,
-        Steps\Ensures\EnsureNodeInstalledStep::class,
-        Steps\Ensures\EnsureNginxInstalledStep::class,
-        Steps\Ami\StopAmiInstanceStep::class,
-        Steps\Ami\CreateAmiStep::class,
-        Steps\Ami\TerminateAmiInstanceStep::class,
+        Steps\Landlord\SyncQueueStep::class,
+        Steps\Landlord\SyncQueueAlarmStep::class,
     ];
 
     protected function configure(): void
     {
         $this
-            ->setName('ami:create')
+            ->setName('landlord:sync')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
-            ->setDescription('Prepare a new Amazon Machine Image');
+            ->addOption('dry-run', null, null, 'Run the command without making changes')
+            ->setDescription('Sync configured landlord AWS resources');
     }
 
     public function handle(): void
     {
         if (Aws::runningInAws()) {
-            error("ami:create command cannot be run in AWS.");
+            error("landlord:sync command cannot be run in AWS.");
             return;
         }
 
         $environment = $this->argument('environment');
 
-        info("Executing build steps...");
+        info("Executing landlord:sync steps...");
 
         $totalTime = $this->handleSteps($environment);
 

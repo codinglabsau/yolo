@@ -21,7 +21,7 @@ class Paths
 
     public static function stubs($path = null): string
     {
-        return __DIR__ . '/../stubs' . ($path ? '/' . ltrim($path, '/') : '');
+        return __DIR__ . '/stubs' . ($path ? '/' . ltrim($path, '/') : '');
     }
 
     public static function buildAssets(): string
@@ -59,9 +59,9 @@ class Paths
         return 's3://' . static::s3BuildBucket() . '/' . static::versionedBuildAssets($appVersion) . '/assets';
     }
 
-    public static function s3ArtefactsBucket(): ?string
+    public static function s3ArtefactsBucket(): string
     {
-        return Helpers::keyedResourceName('artefacts');
+        return Manifest::get('aws.artefacts-bucket');
     }
 
     public static function s3Artefacts(string $appVersion, $path = null): string

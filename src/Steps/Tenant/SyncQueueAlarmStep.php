@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Steps\Tenant;
 
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Manifest;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -22,7 +23,7 @@ class SyncQueueAlarmStep extends TenantStep
             // always sync the alarm with the desired state.
         }
 
-        $snsTopic = AwsResources::topic();
+        $snsTopic = AwsResources::topic(Manifest::get('aws.sns-topic'));
 
         if (Arr::get($options, 'dry-run')) {
             return StepResult::WOULD_SYNC;

@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Concerns;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -17,7 +18,7 @@ trait UsesCodeDeploy
 
     public static function applicationName(): string
     {
-        return Helpers::keyedResourceName();
+        return Helpers::keyedResourceName(Manifest::name());
     }
 
     public static function application(): string
@@ -29,12 +30,12 @@ trait UsesCodeDeploy
         $applications = Aws::codeDeploy()->listApplications();
 
         foreach ($applications['applications'] as $application) {
-            if ($application === Helpers::keyedResourceName()) {
+            if ($application === Helpers::keyedResourceName(Manifest::name())) {
                 return static::$application = $application;
             }
         }
 
-        throw new ResourceDoesNotExistException(sprintf("Could not find CodeDeploy application %s", Helpers::keyedResourceName()));
+        throw new ResourceDoesNotExistException(sprintf("Could not find CodeDeploy application %s", Helpers::keyedResourceName(Manifest::name())));
     }
 
     public static function OneThirdAtATimeDeploymentConfig(): array
@@ -109,7 +110,7 @@ trait UsesCodeDeploy
         return [
             'applicationName' => AwsResources::application(),
             'outdatedInstancesStrategy' => 'UPDATE',
-            'serviceRoleArn' => sprintf('arn:aws:iam::%s:role/AWSCodeDeployServiceRole', Aws::accountId()),
+            'serviceRoleArn' => sprintf('arn:aws:iam::%s:role/AWSCodeDeployServiceRole', Manifest::get('aws.account-id')),
         ];
     }
 }

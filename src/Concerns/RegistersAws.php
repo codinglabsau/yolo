@@ -3,15 +3,12 @@
 namespace Codinglabs\Yolo\Concerns;
 
 use Aws\S3\S3Client;
+use Codinglabs\Yolo\Aws;
 use Aws\Acm\AcmClient;
 use Aws\Ec2\Ec2Client;
-use Aws\Rds\RdsClient;
 use Aws\Sns\SnsClient;
 use Aws\Sqs\SqsClient;
-use Aws\Sts\StsClient;
 use GuzzleHttp\Client;
-use Aws\Ssm\SsmClient;
-use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Aws\Route53\Route53Client;
@@ -27,6 +24,9 @@ trait RegistersAws
 {
     protected function registerAwsServices(): void
     {
+        // make this available right away to determine which AWS credentials to use
+        Helpers::app()->singleton('runningInAws', fn () => static::detectAwsEnvironment());
+
         // common arguments for all AWS clients
         $arguments = [
             'region' => Manifest::get('aws.region'),
@@ -42,13 +42,10 @@ trait RegistersAws
         Helpers::app()->singleton('ec2', fn () => new Ec2Client($arguments));
         Helpers::app()->singleton('elasticLoadBalancingV2', fn () => new ElasticLoadBalancingV2Client($arguments));
         Helpers::app()->singleton('elasticTranscoder', fn () => new ElasticTranscoderClient($arguments));
-        Helpers::app()->singleton('rds', fn () => new RdsClient($arguments));
         Helpers::app()->singleton('route53', fn () => new Route53Client($arguments));
         Helpers::app()->singleton('s3', fn () => new S3Client($arguments));
         Helpers::app()->singleton('sns', fn () => new SnsClient($arguments));
         Helpers::app()->singleton('sqs', fn () => new SqsClient($arguments));
-        Helpers::app()->singleton('ssm', fn () => new SsmClient($arguments));
-        Helpers::app()->singleton('sts', fn () => new StsClient($arguments));
 
         // with all clients registered, we can now determine specific environments
         Helpers::app()->singleton('runningInAwsWebEnvironment', fn () => static::detectAwsWebEnvironment());
@@ -86,7 +83,7 @@ trait RegistersAws
     protected static function detectAwsEnvironment(string $name = null): bool
     {
         if (static::detectLocalEnvironment() || static::detectCiEnvironment()) {
-            // skip if we are local or in continuous integration
+            // skip if we are in continuous integration
             return false;
         }
 
@@ -121,16 +118,16 @@ trait RegistersAws
 
     protected static function detectAwsWebEnvironment(): bool
     {
-        return static::detectAwsEnvironment('web');
+        return static::detectAwsEnvironment('Web');
     }
 
     protected static function detectAwsQueueEnvironment(): bool
     {
-        return static::detectAwsEnvironment('queue');
+        return static::detectAwsEnvironment('Queue');
     }
 
     protected static function detectAwsSchedulerEnvironment(): bool
     {
-        return static::detectAwsEnvironment('scheduler');
+        return static::detectAwsEnvironment('Scheduler');
     }
 }

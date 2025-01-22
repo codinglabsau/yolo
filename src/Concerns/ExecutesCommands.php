@@ -7,10 +7,7 @@ use Symfony\Component\Process\Process;
 
 trait ExecutesCommands
 {
-    public function __construct(protected string $environment, protected string $command)
-    {
-
-    }
+    public function __construct(protected string $environment, protected string $command) {}
 
     public function __invoke(): void
     {

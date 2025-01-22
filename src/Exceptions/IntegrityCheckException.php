@@ -2,7 +2,8 @@
 
 namespace Codinglabs\Yolo\Exceptions;
 
-class IntegrityCheckException extends YoloException
-{
+use Exception;
 
+class IntegrityCheckException extends Exception
+{
 }

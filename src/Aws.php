@@ -5,11 +5,8 @@ namespace Codinglabs\Yolo;
 use Aws\S3\S3Client;
 use Aws\Acm\AcmClient;
 use Aws\Ec2\Ec2Client;
-use Aws\Rds\RdsClient;
 use Aws\Sns\SnsClient;
 use Aws\Sqs\SqsClient;
-use Aws\Sts\StsClient;
-use Aws\Ssm\SsmClient;
 use Aws\Route53\Route53Client;
 use Aws\CloudWatch\CloudWatchClient;
 use Aws\CodeDeploy\CodeDeployClient;
@@ -37,35 +34,6 @@ class Aws
     public static function runningInAwsSchedulerEnvironment(): bool
     {
         return Helpers::app('runningInAwsSchedulerEnvironment');
-    }
-
-    public static function tags(array $tags = [], string $wrap = 'Tags'): array
-    {
-        $tags = [
-            'yolo:environment' => Helpers::app('environment'),
-            ...$tags,
-        ];
-
-        return [
-            $wrap => collect($tags)
-                ->map(fn ($value, $key) => [
-                    'Key' => $key,
-                    'Value' => $value,
-                ])
-                ->values()
-                ->all(),
-        ];
-    }
-
-
-    public static function accountId(): string
-    {
-        return Aws::sts()->getAccessKeyInfo([
-            'AccessKeyId' => Aws::s3()
-                ->getCredentials()
-                ->wait()
-                ->getAccessKeyId(),
-        ])['Account'];
     }
 
     public static function acm(): AcmClient
@@ -103,11 +71,6 @@ class Aws
         return Helpers::app('elasticTranscoder');
     }
 
-    public static function rds(): RdsClient
-    {
-        return Helpers::app('rds');
-    }
-
     public static function route53(): Route53Client
     {
         return Helpers::app('route53');
@@ -126,15 +89,5 @@ class Aws
     public static function sqs(): SqsClient
     {
         return Helpers::app('sqs');
-    }
-
-    public static function ssm(): SsmClient
-    {
-        return Helpers::app('ssm');
-    }
-
-    public static function sts(): StsClient
-    {
-        return Helpers::app('sts');
     }
 }

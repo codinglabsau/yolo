@@ -2,6 +2,7 @@
 
 namespace Codinglabs\Yolo\Commands;
 
+use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Concerns\RunsSteppedCommands;
 use Symfony\Component\Console\Input\InputArgument;
@@ -34,10 +35,23 @@ class BuildCommand extends Command
 
     public function handle(): void
     {
-        $appVersion = $this->option('app-version') ?? date('y.W.N.Hi');
+        if (Aws::runningInAws()) {
+            error("build command cannot be run in AWS.");
+            return;
+        }
 
-        if (! str_starts_with($appVersion, date('y.W'))) {
-            error(sprintf("App version must start with %s", date('y.W')));
+        // since the date uses the ISO week number and year, we have to format the year to 'o' and then extract the last two digits
+        $appVersion = $this->option('app-version') ?? substr(date('o'), -2) . '.' . date('W.N.Hi');
+
+        $date = now()->timezone('Australia/Brisbane');
+        $isoYear = $date->format('o');
+        $shortYear = substr($isoYear, -2);
+        $isoWeek = $date->format("W");
+
+        $requiredPrefix = "{$shortYear}.{$isoWeek}";
+
+        if (! str_starts_with($appVersion, $requiredPrefix)) {
+            error(sprintf("App version must start with %s, the version provided was %s", $requiredPrefix, $appVersion));
             return;
         }
 

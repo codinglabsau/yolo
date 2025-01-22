@@ -23,14 +23,18 @@ class SyncNginxConfigurationStep implements RunsOnAwsWeb
         // add enhanced logging format
         file_put_contents(
             '/etc/nginx/conf.d/enhanced-logging.conf',
-            file_get_contents(Paths::stubs('nginx/enhanced-logging.conf'))
+            file_get_contents(Paths::stubs('nginx/enhanced-logging.conf.stub'))
         );
+
+        // forwarding server configuration template for sites on www.
+        $forwardNonWwwTemplate = file_get_contents(Paths::stubs("nginx/forward_non_www.stub"));
 
         // main nginx vhost
         $vhostTemplate = Manifest::get('aws.ec2.octane')
-            ? file_get_contents(Paths::stubs('nginx/vhost_octane'))
-            : file_get_contents(Paths::stubs('nginx/vhost'));
+            ? file_get_contents(Paths::stubs('nginx/www_octane.stub'))
+            : file_get_contents(Paths::stubs('nginx/www.stub'));
 
+        // the directory where the app is located; ie. /var/www/$name
         $name = Manifest::name();
 
         // create a catch-all vhost with forwarding rules
@@ -39,13 +43,30 @@ class SyncNginxConfigurationStep implements RunsOnAwsWeb
             str_replace(
                 search: [
                     '{NAME}',
-                    '{FORWARDING_RULES}',
-                    '{SERVER_NAME}',
+                    '{FORWARD_NON_WWW}',
                 ],
                 replace: [
                     $name,
-                    $this->forwardingRules(),
-                    $this->serverName(),
+                    collect(Manifest::tenants())
+                        ->map(function (array $tenant) use ($forwardNonWwwTemplate) {
+                            if ($tenant['subdomain']) {
+                                // skip creating a non-www forwarding rule for subdomains
+                                return "#{$tenant['domain']} is a subdomain, skipping non-www forwarding";
+                            }
+
+                            return str_replace(
+                                search: [
+                                    '{NON_WWW_FQDN}',
+                                    '{WWW_FQDN}',
+                                ],
+                                replace: [
+                                    $tenant['domain'],
+                                    "www." . $tenant['domain'],
+                                ],
+                                subject: $forwardNonWwwTemplate
+                            );
+                        })
+                        ->join("\n"),
                 ],
                 subject: $vhostTemplate
             )
@@ -57,58 +78,5 @@ class SyncNginxConfigurationStep implements RunsOnAwsWeb
         ))->mustRun();
 
         return StepResult::SYNCED;
-    }
-
-    protected function forwardingRules(): string
-    {
-        if (Manifest::isMultitenanted()) {
-            return collect(Manifest::tenants())
-                ->map(function (array $tenant) {
-                    if ($tenant['subdomain']) {
-                        // skip creating a non-www forwarding rule for subdomains
-                        return "#{$tenant['domain']} is a subdomain, skipping non-www forwarding";
-                    }
-
-                    $forwardingTemplate = $tenant['www']
-                        ? file_get_contents(Paths::stubs("nginx/forward_non_www"))
-                        : file_get_contents(Paths::stubs("nginx/forward_www"));
-
-                    return str_replace(
-                        search: [
-                            '{NON_WWW_FQDN}',
-                            '{WWW_FQDN}',
-                        ],
-                        replace: [
-                            $tenant['domain'],
-                            "www." . $tenant['domain'],
-                        ],
-                        subject: $forwardingTemplate
-                    );
-                })
-                ->join("\n");
-        }
-
-        $forwardingTemplate = Manifest::get('www')
-            ? file_get_contents(Paths::stubs("nginx/forward_non_www"))
-            : file_get_contents(Paths::stubs("nginx/forward_www"));
-
-        return str_replace(
-            search: [
-                '{NON_WWW_FQDN}',
-                '{WWW_FQDN}',
-            ],
-            replace: [
-                Manifest::get('domain'),
-                "www." . Manifest::get('domain'),
-            ],
-            subject: $forwardingTemplate
-        );
-    }
-
-    protected function serverName(): string
-    {
-        return Manifest::isMultitenanted()
-            ? '_'
-            : Manifest::get('domain');
     }
 }

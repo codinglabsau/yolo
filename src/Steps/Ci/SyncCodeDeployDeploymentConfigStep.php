@@ -4,7 +4,6 @@ namespace Codinglabs\Yolo\Steps\Ci;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -26,9 +25,6 @@ class SyncCodeDeployDeploymentConfigStep implements Step
                         'type' => 'FLEET_PERCENT',
                         'value' => 60,
                     ],
-                    ...Aws::tags([
-                        'Name' => Helpers::keyedResourceName('OneThirdAtATime', exclusive: false),
-                    ]),
                 ]);
 
                 return StepResult::CREATED;

@@ -25,7 +25,7 @@ class CommandCommand extends Command
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('command', null, InputArgument::OPTIONAL, 'The command to run')
             ->addOption('ssh-key', null, InputArgument::OPTIONAL, 'The SSH key to use')
-            ->addOption('group', null, InputArgument::OPTIONAL, 'The server group to run the command in', default: 'scheduler')
+            ->addOption('group', null, InputArgument::OPTIONAL, 'The server group to run the command in', default: 'Scheduler')
             ->setDescription('Run a command in the given environment');
     }
 
@@ -73,7 +73,7 @@ class CommandCommand extends Command
     {
         $prefixes = [];
 
-        foreach (static::ec2IpByName(name: $group, firstOnly: false) as $ipAddress) {
+        foreach (static::findEc2IpByName(name: $group, firstOnly: false) as $ipAddress) {
             $prefixes[$ipAddress] = static::formatSshCommand(
                 ipAddress: $ipAddress,
                 sshKey: $this->option('ssh-key')

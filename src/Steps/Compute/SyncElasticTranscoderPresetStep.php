@@ -3,9 +3,8 @@
 namespace Codinglabs\Yolo\Steps\Compute;
 
 use Codinglabs\Yolo\Aws;
-use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
-use Codinglabs\Yolo\Manifest;
+use Illuminate\Support\Arr;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -15,10 +14,6 @@ class SyncElasticTranscoderPresetStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        if (Manifest::get('aws.transcoder') === null) {
-            return StepResult::SKIPPED;
-        }
-
         try {
             AwsResources::elasticTranscoderPreset();
             return StepResult::SYNCED;
@@ -65,15 +60,6 @@ class SyncElasticTranscoderPresetStep implements Step
                         'SizingPolicy' => 'ShrinkToFit',
                         'PaddingPolicy' => 'NoPad',
                     ],
-                    // note: Elastic Transcoder does not appear to support tagging
-//                    'TagSpecifications' => [
-//                        [
-//                            'ResourceType' => 'preset',
-//                            ...Aws::tags([
-//                                'Name' => Helpers::keyedResourceName(),
-//                            ]),
-//                        ],
-//                    ],
                 ]);
 
                 return StepResult::CREATED;

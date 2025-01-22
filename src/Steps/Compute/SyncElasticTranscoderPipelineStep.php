@@ -3,9 +3,9 @@
 namespace Codinglabs\Yolo\Steps\Compute;
 
 use Codinglabs\Yolo\Aws;
-use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Illuminate\Support\Arr;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -15,10 +15,6 @@ class SyncElasticTranscoderPipelineStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        if (Manifest::get('aws.transcoder') === null) {
-            return StepResult::SKIPPED;
-        }
-
         try {
             AwsResources::elasticTranscoderPipeline();
             return StepResult::SYNCED;
@@ -28,16 +24,7 @@ class SyncElasticTranscoderPipelineStep implements Step
                     'Name' => Helpers::keyedResourceName(),
                     'InputBucket' => Manifest::get('aws.bucket'),
                     'OutputBucket' => Manifest::get('aws.bucket'),
-                    'Role' => 'arn:aws:iam::' . Aws::accountId() . ':role/Elastic_Transcoder_Default_Role',
-                    // note: Elastic Transcoder does not appear to support tagging
-//                    'TagSpecifications' => [
-//                        [
-//                            'ResourceType' => 'pipeline',
-//                            ...Aws::tags([
-//                                'Name' => Helpers::keyedResourceName(),
-//                            ]),
-//                        ],
-//                    ],
+                    'Role' => 'arn:aws:iam::' . Manifest::get('aws.account-id') . ':role/Elastic_Transcoder_Default_Role',
                 ]);
 
                 return StepResult::CREATED;

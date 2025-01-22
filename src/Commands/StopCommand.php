@@ -3,12 +3,11 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Steps;
-use Codinglabs\Yolo\Contracts\RunsOnAws;
 use Codinglabs\Yolo\Concerns\RunsSteppedCommands;
 use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\info;
 
-class StopCommand extends Command implements RunsOnAws
+class StopCommand extends Command
 {
     use RunsSteppedCommands;
 

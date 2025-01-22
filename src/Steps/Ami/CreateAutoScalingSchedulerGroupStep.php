@@ -3,10 +3,9 @@
 namespace Codinglabs\Yolo\Steps\Ami;
 
 use Codinglabs\Yolo\Aws;
-use Illuminate\Support\Str;
-use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Illuminate\Support\Str;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Concerns\UsesEc2;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -17,33 +16,29 @@ class CreateAutoScalingSchedulerGroupStep implements Step
     use UsesAutoscaling;
     use UsesEc2;
 
-    public function __invoke(array $options): StepResult
+    public function __invoke(): StepResult
     {
-        if (! Arr::get($options, 'dry-run')) {
-            $name = Helpers::keyedResourceName(sprintf('scheduler-%s', Str::random(8)));
+        $name = Helpers::keyedResourceName(sprintf('scheduler-%s', Str::random(8)));
 
-            Aws::autoscaling()->createAutoScalingGroup([
-                ...static::autoScalingGroupPayload(),
-                ...[
-                    'AutoScalingGroupName' => $name,
-                    'MinSize' => 1,
-                    'MaxSize' => 1,
-                    'DesiredCapacity' => 1,
-                    'Tags' => [
-                        [
-                            'Key' => 'Name',
-                            'PropagateAtLaunch' => true,
-                            'Value' => 'scheduler',
-                        ],
+        Aws::autoscaling()->createAutoScalingGroup([
+            ...static::autoScalingGroupPayload(),
+            ...[
+                'AutoScalingGroupName' => $name,
+                'MinSize' => 1,
+                'MaxSize' => 1,
+                'DesiredCapacity' => 1,
+                'Tags' => [
+                    [
+                        'Key' => 'Name',
+                        'PropagateAtLaunch' => true,
+                        'Value' => 'Scheduler',
                     ],
                 ],
-            ]);
+            ],
+        ]);
 
-            Manifest::put('aws.autoscaling.scheduler', $name);
+        Manifest::put('aws.autoscaling.scheduler', $name);
 
-            return StepResult::SYNCED;
-        }
-
-        return StepResult::WOULD_CREATE;
+        return StepResult::SYNCED;
     }
 }
