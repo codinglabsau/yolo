@@ -29,6 +29,7 @@ class BuildCommand extends Command
             ->setName('build')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('app-version', null, InputArgument::OPTIONAL, 'The app version to tag the build with')
+            ->addOption('no-progress', null, null, 'Hide the progress output')
             ->setDescription('Prepare a build of the application for deployment');
     }
 
