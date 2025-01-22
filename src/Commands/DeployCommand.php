@@ -2,14 +2,13 @@
 
 namespace Codinglabs\Yolo\Commands;
 
-use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Concerns\RunsSteppedCommands;
 use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\info;
-use function Laravel\Prompts\error;
+use function Laravel\Prompts\intro;
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\warning;
 
@@ -19,7 +18,8 @@ class DeployCommand extends Command
 
     protected array $steps = [
         Steps\Ensures\EnsureTranscoderExistsStep::class,
-        Steps\Ensures\EnsureTenantHostedZonesExistStep::class,
+        Steps\Ensures\EnsureHostedZonesExistStep::class,
+        Steps\Ensures\EnsureMultitenancyHostedZonesExistStep::class,
         Steps\Ensures\EnsureEnvIsConfiguredCorrectlyStep::class,
         Steps\Ensures\EnsureAutoscalingGroupSchedulerExistsStep::class,
         Steps\Ensures\EnsureAutoscalingGroupQueueExistsStep::class,
@@ -45,11 +45,6 @@ class DeployCommand extends Command
     {
         $environment = $this->argument('environment');
 
-        if (Aws::runningInAws()) {
-            error("You can't run the deploy command from an AWS instance.");
-            return;
-        }
-
         $reuseBuild = false;
 
         if (is_dir(Paths::yolo())) {
@@ -62,7 +57,7 @@ class DeployCommand extends Command
             (new BuildCommand())->execute(Helpers::app('input'), Helpers::app('output'));
         }
 
-        info("Executing deploy steps...");
+        intro("Executing deploy steps...");
 
         $totalTime = $this->handleSteps($environment);
 
