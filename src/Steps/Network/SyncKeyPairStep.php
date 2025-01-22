@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Steps\Network;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Commands\Command;
@@ -22,20 +23,22 @@ class SyncKeyPairStep implements Step
             AwsResources::keyPair();
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException $e) {
+            $name = Manifest::get('aws.ec2.key-pair', Helpers::keyedResourceName(exclusive: false));
+
             $key = Aws::ec2()->createKeyPair([
-                'KeyName' => Helpers::keyedResourceName(exclusive: false),
+                'KeyName' => $name,
                 'TagSpecifications' => [
                     [
                         'ResourceType' => 'key-pair',
                         ...Aws::tags([
-                            'Name' => Helpers::keyedResourceName(exclusive: false),
+                            'Name' => $name,
                         ]),
                     ],
                 ],
             ]);
 
             $envFilename = ".env";
-            $suggestedPath = sprintf("~/.ssh/%s", Helpers::keyedResourceName(exclusive: false));
+            $suggestedPath = sprintf("~/.ssh/%s", $name);
             $suggestedEnv = sprintf('%s=%s', Helpers::keyedEnvName('SSH_KEY'), $suggestedPath);
 
             $command->after(function () use ($suggestedPath, $key) {
