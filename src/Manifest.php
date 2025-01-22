@@ -53,6 +53,11 @@ class Manifest
         );
     }
 
+    public static function isMultitenanted(): bool
+    {
+        return ! empty(static::get('tenants'));
+    }
+
     /**
      * @return array<int, array{
      *     domain: string,
