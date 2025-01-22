@@ -2,7 +2,7 @@
 
 namespace Codinglabs\Yolo\Contracts;
 
-interface Step
+interface ExecutesMultitenancyStep extends Step
 {
 
 }

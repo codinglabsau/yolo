@@ -2,7 +2,7 @@
 
 namespace Codinglabs\Yolo\Contracts;
 
-interface Step
+interface ExecutesDomainStep extends Step
 {
 
 }

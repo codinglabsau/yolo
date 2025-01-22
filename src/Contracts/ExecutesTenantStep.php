@@ -2,7 +2,7 @@
 
 namespace Codinglabs\Yolo\Contracts;
 
-interface ExecutesTenantStep extends Step
+interface ExecutesTenantStep extends ExecutesMultitenancyStep
 {
     public function tenantId(): string;
 
