@@ -13,10 +13,7 @@ class CreateCodeDeployDeploymentsStep implements Step
 {
     use UsesCodeDeploy;
 
-    public function __construct(protected string $environment, protected $filesystem = new Filesystem())
-    {
-
-    }
+    public function __construct(protected string $environment, protected $filesystem = new Filesystem()) {}
 
     public function __invoke(): void
     {

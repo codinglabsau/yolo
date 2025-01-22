@@ -12,10 +12,7 @@ use Codinglabs\Yolo\Contracts\ExecutesCommandStep;
 
 class ExecuteBuildCommandStep implements ExecutesCommandStep, RunsOnBuild
 {
-    public function __construct(protected string $environment, protected string $command, protected $filesystem = new Filesystem())
-    {
-
-    }
+    public function __construct(protected string $environment, protected string $command, protected $filesystem = new Filesystem()) {}
 
     public function __invoke(): void
     {

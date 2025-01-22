@@ -15,10 +15,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class EnsureEnvIsConfiguredCorrectlyStep implements Step
 {
-    public function __construct(protected string $environment, protected $filesystem = new Filesystem())
-    {
-
-    }
+    public function __construct(protected string $environment, protected $filesystem = new Filesystem()) {}
 
     public function __invoke(): StepResult
     {

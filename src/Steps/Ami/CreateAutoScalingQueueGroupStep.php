@@ -3,8 +3,8 @@
 namespace Codinglabs\Yolo\Steps\Ami;
 
 use Codinglabs\Yolo\Aws;
-use Illuminate\Support\Str;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Str;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;

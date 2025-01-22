@@ -2,7 +2,4 @@
 
 namespace Codinglabs\Yolo\Contracts;
 
-interface RunsOnAwsScheduler extends RunsOnAws
-{
-
-}
+interface RunsOnAwsScheduler extends RunsOnAws {}

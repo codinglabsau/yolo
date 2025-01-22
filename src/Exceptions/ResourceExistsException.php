@@ -2,7 +2,4 @@
 
 namespace Codinglabs\Yolo\Exceptions;
 
-class ResourceExistsException extends YoloException
-{
-
-}
+class ResourceExistsException extends YoloException {}
