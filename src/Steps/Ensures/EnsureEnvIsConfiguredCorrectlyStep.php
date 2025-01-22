@@ -11,7 +11,6 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Illuminate\Contracts\Filesystem\FileNotFoundException;
-use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class EnsureEnvIsConfiguredCorrectlyStep implements Step
 {
@@ -28,7 +27,6 @@ class EnsureEnvIsConfiguredCorrectlyStep implements Step
 
     /**
      * @throws IntegrityCheckException
-     * @throws ResourceDoesNotExistException
      * @throws FileNotFoundException
      */
     protected function checkTranscoderConfiguration(): void
@@ -39,7 +37,7 @@ class EnsureEnvIsConfiguredCorrectlyStep implements Step
         $dotenv = Dotenv::parse($this->filesystem->get(Paths::build('.env')));
 
         if ($dotenv['AWS_TRANSCODER_PIPELINE'] !== $elasticTranscoderPipeline['Id']) {
-            throw new IntegrityCheckException("Transcoder piepeline ID {$dotenv['AWS_TRANSCODER_PIPELINE']} does not match {$elasticTranscoderPipeline['Id']}");
+            throw new IntegrityCheckException("Transcoder pipeline ID {$dotenv['AWS_TRANSCODER_PIPELINE']} does not match {$elasticTranscoderPipeline['Id']}");
         }
 
         if ($dotenv['AWS_TRANSCODER_PRESET'] != $elasticTranscoderPreset['Id']) {
