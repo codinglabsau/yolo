@@ -141,6 +141,7 @@ environments:
         instance-type: t3.small
         instance-profile:
         octane: true
+        key-pair:
 
     build:
       - composer install --no-cache --no-interaction --optimize-autoloader --no-progress --classmap-authoritative --no-dev
