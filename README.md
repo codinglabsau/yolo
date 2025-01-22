@@ -128,6 +128,7 @@ environments:
     aws:
       region: ap-southeast-2
       bucket:
+      artefacts-bucket:
       cloudfront:
       alb:
       security-group-id:
