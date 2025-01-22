@@ -15,7 +15,7 @@ class CreateCodeDeployDeploymentsStep implements Step
 
     public function __construct(
         protected string $environment,
-        protected        $filesystem = new Filesystem()
+        protected $filesystem = new Filesystem()
     ) {}
 
     public function __invoke(): void

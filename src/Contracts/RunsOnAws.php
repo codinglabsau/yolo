@@ -2,7 +2,4 @@
 
 namespace Codinglabs\Yolo\Contracts;
 
-interface RunsOnAws extends Step
-{
-
-}
+interface RunsOnAws extends Step {}

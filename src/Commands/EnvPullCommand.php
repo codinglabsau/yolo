@@ -2,8 +2,8 @@
 
 namespace Codinglabs\Yolo\Commands;
 
-use Codinglabs\Yolo\Steps\Build\RetrieveEnvFileStep;
 use Symfony\Component\Console\Input\InputArgument;
+use Codinglabs\Yolo\Steps\Build\RetrieveEnvFileStep;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 

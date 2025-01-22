@@ -2,7 +2,4 @@
 
 namespace Codinglabs\Yolo\Contracts;
 
-interface Step
-{
-
-}
+interface Step {}

@@ -3,8 +3,8 @@
 namespace Codinglabs\Yolo\Steps\Landlord;
 
 use Codinglabs\Yolo\Aws;
-use Codinglabs\Yolo\Manifest;
 use Illuminate\Support\Arr;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;

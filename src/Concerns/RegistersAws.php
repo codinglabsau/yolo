@@ -3,12 +3,12 @@
 namespace Codinglabs\Yolo\Concerns;
 
 use Aws\S3\S3Client;
-use Codinglabs\Yolo\Aws;
 use Aws\Acm\AcmClient;
 use Aws\Ec2\Ec2Client;
 use Aws\Sns\SnsClient;
 use Aws\Sqs\SqsClient;
 use GuzzleHttp\Client;
+use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Aws\Route53\Route53Client;

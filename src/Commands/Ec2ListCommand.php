@@ -36,9 +36,9 @@ class Ec2ListCommand extends Command
                     $instance['State']['Name'],
                     isset($instance['PublicIpAddress'])
                         ? static::formatSshCommand(
-                        ipAddress: $instance['PublicIpAddress'],
-                        sshKey: $this->option('ssh-key'),
-                    )
+                            ipAddress: $instance['PublicIpAddress'],
+                            sshKey: $this->option('ssh-key'),
+                        )
                         : '',
                     $instance['PublicIpAddress'] ?? '',
                     $instance['PrivateIpAddress'] ?? '',

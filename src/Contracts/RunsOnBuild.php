@@ -2,7 +2,4 @@
 
 namespace Codinglabs\Yolo\Contracts;
 
-interface RunsOnBuild extends Step
-{
-
-}
+interface RunsOnBuild extends Step {}
