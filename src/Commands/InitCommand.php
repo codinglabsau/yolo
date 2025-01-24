@@ -42,10 +42,12 @@ class InitCommand extends Command
             str_replace(
                 search: [
                     '{NAME}',
+                    '{AWS_ACCOUNT_ID}',
                     '{AWS_REGION}',
                 ],
                 replace: [
                     text('What is the name of this app?', placeholder: 'eg. codinglabs'),
+                    text('What is the account ID of the AWS account you want to deploy to?'),
                     text('Which AWS region do you want to deploy to?', default: env('AWS_DEFAULT_REGION', 'ap-southeast-2')),
                 ],
                 subject: file_get_contents(Paths::stubs('yolo.yml.stub'))
