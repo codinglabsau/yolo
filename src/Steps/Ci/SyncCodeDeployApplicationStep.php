@@ -17,15 +17,25 @@ class SyncCodeDeployApplicationStep implements Step
     public function __invoke(array $options): StepResult
     {
         try {
-            AwsResources::application();
-            return StepResult::SYNCED;
+            $application = AwsResources::application();
+
+            if (! Arr::get($options, 'dry-run')) {
+                // AWS allows updates to the application name only,
+                // so we'll eager merge tags when syncing
+                Aws::codeDeploy()->tagResource([
+                    'ResourceArn' => static::arnForApplication($application),
+                    ...Aws::tags(),
+                ]);
+            }
+
+            return StepResult::IN_SYNC;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {
                 Aws::codeDeploy()->createApplication([
                     'applicationName' => static::applicationName(),
                     ...Aws::tags([
                         'Name' => static::applicationName(),
-                    ]),
+                    ], wrap: 'tags'),
                 ]);
 
                 return StepResult::CREATED;

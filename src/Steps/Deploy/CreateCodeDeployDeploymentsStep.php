@@ -7,6 +7,7 @@ use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Contracts\Step;
 use Illuminate\Filesystem\Filesystem;
+use Codinglabs\Yolo\Enums\DeploymentGroups;
 use Codinglabs\Yolo\Concerns\UsesCodeDeploy;
 
 class CreateCodeDeployDeploymentsStep implements Step
@@ -29,7 +30,7 @@ class CreateCodeDeployDeploymentsStep implements Step
         Aws::codeDeploy()->createDeployment([
             ...static::deploymentPayload($appVersion),
             ...[
-                'deploymentGroupName' => Helpers::keyedResourceName('scheduler'),
+                'deploymentGroupName' => Helpers::keyedResourceName(DeploymentGroups::SCHEDULER),
             ],
         ]);
     }
@@ -39,7 +40,7 @@ class CreateCodeDeployDeploymentsStep implements Step
         Aws::codeDeploy()->createDeployment([
             ...static::deploymentPayload($appVersion),
             ...[
-                'deploymentGroupName' => Helpers::keyedResourceName('queue'),
+                'deploymentGroupName' => Helpers::keyedResourceName(DeploymentGroups::QUEUE),
             ],
         ]);
     }
@@ -49,7 +50,7 @@ class CreateCodeDeployDeploymentsStep implements Step
         Aws::codeDeploy()->createDeployment([
             ...static::deploymentPayload($appVersion),
             ...[
-                'deploymentGroupName' => Helpers::keyedResourceName('web'),
+                'deploymentGroupName' => Helpers::keyedResourceName(DeploymentGroups::WEB),
             ],
         ]);
     }

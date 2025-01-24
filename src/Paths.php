@@ -61,7 +61,7 @@ class Paths
 
     public static function s3ArtefactsBucket(): ?string
     {
-        return Helpers::keyedResourceName('artefacts');
+        return Manifest::get('aws.artefacts-bucket', Helpers::keyedResourceName('artefacts'));
     }
 
     public static function s3Artefacts(string $appVersion, $path = null): string

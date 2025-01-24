@@ -68,4 +68,32 @@ class Helpers
 
         return static::app('environment');
     }
+
+    public static function payloadHasDifferences(array $expected, array $actual): bool
+    {
+        foreach ($expected as $key => $value) {
+            // check if the key exists in the second array
+            if (! array_key_exists($key, $actual)) {
+                // Key not found
+                return true;
+            }
+
+            // if the value is an array, call the function recursively
+            if (is_array($value)) {
+                if (! is_array($actual[$key]) || static::payloadHasDifferences($value, $actual[$key])) {
+                    // recursive comparison failed or not an array
+                    return true;
+                }
+            } else {
+                // compare the values directly
+                if ($value !== $actual[$key]) {
+                    // values do not match
+                    return true;
+                }
+            }
+        }
+
+        // all keys and values matched
+        return false;
+    }
 }
