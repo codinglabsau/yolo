@@ -65,7 +65,7 @@ trait UsesCodeDeploy
             return static::$webDeploymentGroup;
         }
 
-        return static::deploymentGroup(Helpers::keyedResourceName('web'));
+        return static::deploymentGroup(Helpers::keyedResourceName(DeploymentGroups::WEB));
     }
 
     /** @throws ResourceDoesNotExistException */
@@ -75,7 +75,7 @@ trait UsesCodeDeploy
             return static::$queueDeploymentGroup;
         }
 
-        return static::deploymentGroup(Helpers::keyedResourceName('queue'));
+        return static::deploymentGroup(Helpers::keyedResourceName(DeploymentGroups::QUEUE));
     }
 
     /** @throws ResourceDoesNotExistException */
