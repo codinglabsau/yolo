@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Enums\DeploymentGroups;
 use Codinglabs\Yolo\Concerns\UsesCodeDeploy;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -18,39 +19,64 @@ class SyncCodeDeployWebDeploymentGroupStep implements Step
     public function __invoke(array $options): StepResult
     {
         try {
-            AwsResources::webDeploymentGroup();
-            return StepResult::SYNCED;
+            $deploymentGroup = AwsResources::webDeploymentGroup();
+
+            $differences = Helpers::payloadHasDifferences(
+                expected: $this->payload(),
+                actual: static::normaliseDeploymentGroupForComparison($deploymentGroup)
+            );
+
+            if (! Arr::get($options, 'dry-run')) {
+                // always sync tags as they are not compared in the payload
+                static::applyTagsToDeploymentGroup($deploymentGroup);
+
+                if ($differences) {
+                    Aws::codeDeploy()->updateDeploymentGroup([
+                        'currentDeploymentGroupName' => $deploymentGroup['deploymentGroupName'],
+                        ...$this->payload(),
+                    ]);
+
+                    return StepResult::SYNCED;
+                }
+            }
+
+            return $differences
+                ? StepResult::OUT_OF_SYNC
+                : StepResult::IN_SYNC;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {
-                Aws::codeDeploy()->createDeploymentGroup([
-                    ...static::deploymentGroupPayload(),
-                    ...[
-                        'deploymentGroupName' => Helpers::keyedResourceName('web'),
-                        'deploymentConfigName' => 'OneThirdAtATime',
-                        'autoScalingGroups' => [
-                            AwsResources::autoScalingGroupWeb()['AutoScalingGroupName'],
-                        ],
-                        'deploymentStyle' => [
-                            'deploymentType' => 'IN_PLACE',
-                            'deploymentOption' => 'WITH_TRAFFIC_CONTROL',
-                        ],
-                        'loadBalancerInfo' => [
-                            'targetGroupInfoList' => [
-                                [
-                                    'name' => AwsResources::targetGroup()['TargetGroupName'],
-                                ],
-                            ],
-                        ],
-                    ],
-                    ...Aws::tags([
-                        'Name' => Helpers::keyedResourceName('scheduler'),
-                    ], wrap: 'tags'),
-                ]);
+                Aws::codeDeploy()->createDeploymentGroup($this->payload());
+                static::applyTagsToDeploymentGroup(AwsResources::webDeploymentGroup());
 
                 return StepResult::CREATED;
             }
 
             return StepResult::WOULD_CREATE;
         }
+    }
+
+    protected function payload(): array
+    {
+        return [
+            ...static::deploymentGroupPayload(),
+            ...[
+                'deploymentGroupName' => Helpers::keyedResourceName(DeploymentGroups::WEB),
+                'deploymentConfigName' => 'OneThirdAtATime',
+                'autoScalingGroups' => [
+                    AwsResources::autoScalingGroupWeb()['AutoScalingGroupName'],
+                ],
+                'deploymentStyle' => [
+                    'deploymentType' => 'IN_PLACE',
+                    'deploymentOption' => 'WITH_TRAFFIC_CONTROL',
+                ],
+                'loadBalancerInfo' => [
+                    'targetGroupInfoList' => [
+                        [
+                            'name' => AwsResources::targetGroup()['TargetGroupName'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
     }
 }

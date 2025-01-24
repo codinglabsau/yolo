@@ -4,7 +4,6 @@ namespace Codinglabs\Yolo\Steps\Ci;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -21,14 +20,10 @@ class SyncCodeDeployApplicationStep implements Step
             $application = AwsResources::application();
 
             if (! Arr::get($options, 'dry-run')) {
-                // AWS returns the application name only, so we'll eager update tags when syncing
+                // AWS allows updates to the application name only,
+                // so we'll eager merge tags when syncing
                 Aws::codeDeploy()->tagResource([
-                    'ResourceArn' => sprintf(
-                        'arn:aws:codedeploy:%s:%s:application:%s',
-                        Manifest::get('aws.region'),
-                        Aws::accountId(),
-                        $application
-                    ),
+                    'ResourceArn' => static::arnForApplication($application),
                     ...Aws::tags(),
                 ]);
             }

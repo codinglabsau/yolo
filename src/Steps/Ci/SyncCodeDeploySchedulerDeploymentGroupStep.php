@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Enums\DeploymentGroups;
 use Codinglabs\Yolo\Concerns\UsesCodeDeploy;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -18,32 +19,57 @@ class SyncCodeDeploySchedulerDeploymentGroupStep implements Step
     public function __invoke(array $options): StepResult
     {
         try {
-            AwsResources::schedulerDeploymentGroup();
-            return StepResult::SYNCED;
+            $deploymentGroup = AwsResources::schedulerDeploymentGroup();
+
+            $differences = Helpers::payloadHasDifferences(
+                expected: $this->payload(),
+                actual: static::normaliseDeploymentGroupForComparison($deploymentGroup)
+            );
+
+            if (! Arr::get($options, 'dry-run')) {
+                // always sync tags as they are not compared in the payload
+                static::applyTagsToDeploymentGroup($deploymentGroup);
+
+                if ($differences) {
+                    Aws::codeDeploy()->updateDeploymentGroup([
+                        'currentDeploymentGroupName' => $deploymentGroup['deploymentGroupName'],
+                        ...$this->payload(),
+                    ]);
+
+                    return StepResult::SYNCED;
+                }
+            }
+
+            return $differences
+                ? StepResult::OUT_OF_SYNC
+                : StepResult::IN_SYNC;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {
-                Aws::codeDeploy()->createDeploymentGroup([
-                    ...static::deploymentGroupPayload(),
-                    ...[
-                        'deploymentGroupName' => Helpers::keyedResourceName('scheduler'),
-                        'deploymentConfigName' => 'CodeDeployDefault.AllAtOnce',
-                        'autoScalingGroups' => [
-                            AwsResources::autoScalingGroupScheduler()['AutoScalingGroupName'],
-                        ],
-                        'deploymentStyle' => [
-                            'deploymentType' => 'IN_PLACE',
-                            'deploymentOption' => 'WITHOUT_TRAFFIC_CONTROL',
-                        ],
-                    ],
-                    ...Aws::tags([
-                        'Name' => Helpers::keyedResourceName('scheduler'),
-                    ], wrap: 'tags'),
-                ]);
+                Aws::codeDeploy()->createDeploymentGroup($this->payload());
+                static::applyTagsToDeploymentGroup(AwsResources::schedulerDeploymentGroup());
 
                 return StepResult::CREATED;
             }
 
             return StepResult::WOULD_CREATE;
         }
+    }
+
+    protected function payload(): array
+    {
+        return [
+            ...static::deploymentGroupPayload(),
+            ...[
+                'deploymentGroupName' => Helpers::keyedResourceName(DeploymentGroups::SCHEDULER),
+                'deploymentConfigName' => 'CodeDeployDefault.AllAtOnce',
+                'autoScalingGroups' => [
+                    AwsResources::autoScalingGroupScheduler()['AutoScalingGroupName'],
+                ],
+                'deploymentStyle' => [
+                    'deploymentType' => 'IN_PLACE',
+                    'deploymentOption' => 'WITHOUT_TRAFFIC_CONTROL',
+                ],
+            ],
+        ];
     }
 }

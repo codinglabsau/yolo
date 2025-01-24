@@ -4,7 +4,9 @@ namespace Codinglabs\Yolo\Concerns;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\Enums\DeploymentGroups;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 trait UsesCodeDeploy
@@ -83,7 +85,7 @@ trait UsesCodeDeploy
             return static::$schedulerDeploymentGroup;
         }
 
-        return static::deploymentGroup(Helpers::keyedResourceName('scheduler'));
+        return static::deploymentGroup(Helpers::keyedResourceName(DeploymentGroups::SCHEDULER));
     }
 
     protected static function deploymentGroup(string $name): array
@@ -110,6 +112,46 @@ trait UsesCodeDeploy
             'applicationName' => AwsResources::application(),
             'outdatedInstancesStrategy' => 'UPDATE',
             'serviceRoleArn' => sprintf('arn:aws:iam::%s:role/AWSCodeDeployServiceRole', Aws::accountId()),
+        ];
+    }
+
+    public static function arnForApplication(string $application): string
+    {
+        return sprintf(
+            'arn:aws:codedeploy:%s:%s:application:%s',
+            Manifest::get('aws.region'),
+            Aws::accountId(),
+            $application
+        );
+    }
+
+    public static function arnForDeploymentGroup(array $deploymentGroup): string
+    {
+        return sprintf(
+            'arn:aws:codedeploy:%s:%s:deploymentgroup:%s/%s',
+            Manifest::get('aws.region'),
+            Aws::accountId(),
+            $deploymentGroup['applicationName'],
+            $deploymentGroup['deploymentGroupName'],
+        );
+    }
+
+    protected function applyTagsToDeploymentGroup(array $deploymentGroup): void
+    {
+        Aws::codeDeploy()->tagResource([
+            'ResourceArn' => static::arnForDeploymentGroup($deploymentGroup),
+            ...Aws::tags([
+                'Name' => Helpers::keyedResourceName($deploymentGroup['deploymentGroupName']),
+            ]),
+        ]);
+    }
+
+    public static function normaliseDeploymentGroupForComparison(array $deploymentGroup): array
+    {
+        return [
+            ...$deploymentGroup,
+            // flatten autoScalingGroups value as AWS is injecting a name and hook key
+            'autoScalingGroups' => [$deploymentGroup['autoScalingGroups'][0]['name'] ?? null],
         ];
     }
 }
