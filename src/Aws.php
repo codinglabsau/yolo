@@ -58,12 +58,7 @@ class Aws
 
     public static function accountId(): string
     {
-        return Aws::sts()->getAccessKeyInfo([
-            'AccessKeyId' => Aws::s3()
-                ->getCredentials()
-                ->wait()
-                ->getAccessKeyId(),
-        ])['Account'];
+        return Manifest::get('aws.account-id');
     }
 
     public static function acm(): AcmClient
