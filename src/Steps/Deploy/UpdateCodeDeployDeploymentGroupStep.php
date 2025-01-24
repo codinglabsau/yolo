@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
+use Codinglabs\Yolo\Enums\DeploymentGroups;
 use Codinglabs\Yolo\Concerns\UsesCodeDeploy;
 
 class UpdateCodeDeployDeploymentGroupStep implements Step
@@ -16,7 +17,7 @@ class UpdateCodeDeployDeploymentGroupStep implements Step
     {
         Aws::codeDeploy()->updateDeploymentGroup([
             'applicationName' => static::applicationName(),
-            'currentDeploymentGroupName' => Helpers::keyedResourceName('web'),
+            'currentDeploymentGroupName' => Helpers::keyedResourceName(DeploymentGroups::WEB),
             'autoScalingGroups' => [
                 Manifest::get('aws.autoscaling.web'),
             ],
@@ -24,7 +25,7 @@ class UpdateCodeDeployDeploymentGroupStep implements Step
 
         Aws::codeDeploy()->updateDeploymentGroup([
             'applicationName' => static::applicationName(),
-            'currentDeploymentGroupName' => Helpers::keyedResourceName('queue'),
+            'currentDeploymentGroupName' => Helpers::keyedResourceName(DeploymentGroups::QUEUE),
             'autoScalingGroups' => [
                 Manifest::get('aws.autoscaling.queue'),
             ],
@@ -32,7 +33,7 @@ class UpdateCodeDeployDeploymentGroupStep implements Step
 
         Aws::codeDeploy()->updateDeploymentGroup([
             'applicationName' => static::applicationName(),
-            'currentDeploymentGroupName' => Helpers::keyedResourceName('scheduler'),
+            'currentDeploymentGroupName' => Helpers::keyedResourceName(DeploymentGroups::SCHEDULER),
             'autoScalingGroups' => [
                 Manifest::get('aws.autoscaling.scheduler'),
             ],
