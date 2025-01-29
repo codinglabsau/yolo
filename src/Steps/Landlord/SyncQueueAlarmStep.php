@@ -23,11 +23,11 @@ class SyncQueueAlarmStep implements ExecutesMultitenancyStep
             // always sync the alarm with the desired state.
         }
 
-        $snsTopic = AwsResources::topic();
-
         if (Arr::get($options, 'dry-run')) {
             return StepResult::WOULD_SYNC;
         }
+
+        $snsTopic = AwsResources::topic();
 
         Aws::cloudWatch()->putMetricAlarm([
             'ActionsEnabled' => true,
