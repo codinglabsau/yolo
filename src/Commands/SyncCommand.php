@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Commands;
+use Codinglabs\Yolo\Manifest;
 use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\intro;
@@ -27,9 +28,13 @@ class SyncCommand extends SteppedCommand
         collect([
             Commands\SyncNetworkCommand::class,
             Commands\SyncStorageCommand::class,
-//            Commands\SyncDomainCommand::class,
+            ...Manifest::isMultitenanted() ? [
 //            Commands\SyncMultitenancyLandlordCommand::class,
 //            Commands\SyncMultitenancyTenantsCommand::class,
+            ]
+                : [
+//            Commands\SyncStandaloneCommand::class,
+                ],
             Commands\SyncComputeCommand::class,
             Commands\SyncCiCommand::class,
         ])->each(fn ($command) => (new $command())->execute(Helpers::app('input'), Helpers::app('output')));

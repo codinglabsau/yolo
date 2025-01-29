@@ -1,21 +1,21 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Tenant;
+namespace Codinglabs\Yolo\Steps\Standalone;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Steps\TenantStep;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncQueueAlarmStep extends TenantStep
+class SyncQueueAlarmStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        $alarmName = Helpers::keyedResourceName(sprintf('%s-queue-depth-alarm', $this->tenantId()));
+        $alarmName = Helpers::keyedResourceName('queue-depth-alarm');
 
         try {
             AwsResources::alarm($alarmName);
@@ -38,7 +38,7 @@ class SyncQueueAlarmStep extends TenantStep
             'Dimensions' => [
                 [
                     'Name' => 'QueueName',
-                    'Value' => Helpers::keyedResourceName($this->tenantId()),
+                    'Value' => Helpers::keyedResourceName(),
                 ],
             ],
             'EvaluationPeriods' => 3, // number of breached of Period before alarm

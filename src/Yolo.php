@@ -35,8 +35,9 @@ class Yolo
         Commands\SyncCommand::class,
         Commands\SyncNetworkCommand::class,
         Commands\SyncStorageCommand::class,
-        Commands\TenantSyncCommand::class,
-        Commands\LandlordSyncCommand::class,
+        Commands\SyncStandaloneCommand::class,
+        Commands\SyncMultitenancyTenantsCommand::class,
+        Commands\SyncMultitenancyLandlordCommand::class,
         Commands\SyncComputeCommand::class,
         Commands\SyncCiCommand::class,
     ];

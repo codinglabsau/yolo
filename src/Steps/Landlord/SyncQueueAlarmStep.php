@@ -38,7 +38,7 @@ class SyncQueueAlarmStep implements ExecutesMultitenancyStep
             'Dimensions' => [
                 [
                     'Name' => 'QueueName',
-                    'Value' => 'landlord',
+                    'Value' => Helpers::keyedResourceName('landlord'),
                 ],
             ],
             'EvaluationPeriods' => 3, // number of breached of Period before alarm
