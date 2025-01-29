@@ -1,20 +1,20 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Domain;
+namespace Codinglabs\Yolo\Steps\Standalone;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Contracts\ExecutesDomainStep;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncQueueAlarmStep implements ExecutesDomainStep
+class SyncQueueAlarmStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        $alarmName = Helpers::keyedResourceName("queue-depth-alarm");
+        $alarmName = Helpers::keyedResourceName('queue-depth-alarm');
 
         try {
             AwsResources::alarm($alarmName);

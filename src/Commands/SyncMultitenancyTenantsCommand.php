@@ -9,7 +9,9 @@ class SyncMultitenancyTenantsCommand extends SteppedCommand
 {
     protected array $steps = [
         Steps\Tenant\SyncHostedZoneStep::class,
+        Steps\Tenant\SyncRecordSetStep::class,
         Steps\Tenant\SyncSslCertificateStep::class,
+        Steps\Tenant\AttachSslCertificateToLoadBalancerListenerStep::class,
         Steps\Tenant\SyncQueueStep::class,
         Steps\Tenant\SyncQueueAlarmStep::class,
     ];

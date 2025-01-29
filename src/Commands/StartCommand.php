@@ -21,14 +21,16 @@ class StartCommand extends Command implements RunsOnAws
         Steps\Start\SyncHousekeepingCronStep::class, // all
         Steps\Start\SyncSchedulerCronStep::class, // scheduler
         Steps\Start\SyncPulseWorkerStep::class, // all
-        Steps\Start\SyncLandlordQueueWorkerStep::class,  // queue
-        Steps\Start\SyncTenantQueueWorkerStep::class, // queue
+        Steps\Start\SyncQueueWorkerStep::class,  // queue
+        Steps\Start\SyncQueueLandlordWorkerStep::class,  // queue
+        Steps\Start\SyncQueueTenantWorkerStep::class, // queue
         Steps\Start\SyncOctaneWorkerStep::class, // web
         Steps\Start\SyncMysqlBackupStep::class, // scheduler
         Steps\Start\SyncPhpConfigurationStep::class, // all
         Steps\Start\SyncNginxConfigurationStep::class, // web
         Steps\Start\RestartServicesStep::class, // all
         Steps\Start\WarmApplicationStep::class, // web
+        Steps\Start\WarmMultitenantedApplicationStep::class, // web
         Steps\Start\ConfigureLoadBalancingStep::class, // web
     ];
 
