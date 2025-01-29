@@ -53,6 +53,16 @@ class Manifest
         );
     }
 
+    public static function apex(): string
+    {
+        if (static::isMultitenanted()) {
+            return throw new IntegrityCheckException('Cannot determine apex domain for multitenanted environments.');
+        }
+
+        // prefer the apex key when specified
+        return static::get('apex', static::get('domain'));
+    }
+
     public static function isMultitenanted(): bool
     {
         return ! empty(static::get('tenants'));
