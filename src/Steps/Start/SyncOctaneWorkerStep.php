@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Steps\Start;
 
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\RunsOnAwsWeb;
@@ -11,7 +12,7 @@ class SyncOctaneWorkerStep implements RunsOnAwsWeb
 {
     public function __invoke(array $options): StepResult
     {
-        $file = "/etc/supervisor/conf.d/octane-worker.conf";
+        $file = sprintf('/etc/supervisor/conf.d/%s', Helpers::keyedResourceName("octane-worker.conf"));
 
         if (! Manifest::get('aws.ec2.octane')) {
             if (file_exists($file)) {
