@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
-use Codinglabs\Yolo\Enums\DeploymentGroups;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 trait UsesCodeDeploy
@@ -65,7 +65,7 @@ trait UsesCodeDeploy
             return static::$webDeploymentGroup;
         }
 
-        return static::deploymentGroup(Helpers::keyedResourceName(DeploymentGroups::WEB));
+        return static::deploymentGroup(Helpers::keyedResourceName(ServerGroup::WEB));
     }
 
     /** @throws ResourceDoesNotExistException */
@@ -75,7 +75,7 @@ trait UsesCodeDeploy
             return static::$queueDeploymentGroup;
         }
 
-        return static::deploymentGroup(Helpers::keyedResourceName(DeploymentGroups::QUEUE));
+        return static::deploymentGroup(Helpers::keyedResourceName(ServerGroup::QUEUE));
     }
 
     /** @throws ResourceDoesNotExistException */
@@ -85,7 +85,7 @@ trait UsesCodeDeploy
             return static::$schedulerDeploymentGroup;
         }
 
-        return static::deploymentGroup(Helpers::keyedResourceName(DeploymentGroups::SCHEDULER));
+        return static::deploymentGroup(Helpers::keyedResourceName(ServerGroup::SCHEDULER));
     }
 
     protected static function deploymentGroup(string $name): array

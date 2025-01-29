@@ -16,6 +16,7 @@ use Aws\Route53\Route53Client;
 use Aws\CloudWatch\CloudWatchClient;
 use Aws\CodeDeploy\CodeDeployClient;
 use Aws\AutoScaling\AutoScalingClient;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Aws\Credentials\CredentialProvider;
 use GuzzleHttp\Exception\ConnectException;
 use Aws\ElasticTranscoder\ElasticTranscoderClient;
@@ -79,7 +80,7 @@ trait RegistersAws
         return env('CI', false) === true;
     }
 
-    protected static function detectAwsEnvironment(string $name = null): bool
+    protected static function detectAwsEnvironment(ServerGroup $serverGroup = null): bool
     {
         if (static::detectLocalEnvironment() || static::detectCiEnvironment()) {
             // skip if we are local or in continuous integration
@@ -91,7 +92,7 @@ trait RegistersAws
                 ->get('http://169.254.169.254/latest/meta-data/instance-id')
                 ->getBody();
 
-            if ($name) {
+            if ($serverGroup) {
                 $awsResult = Aws::ec2()->describeTags([
                     'Filters' => [
                         [
@@ -105,7 +106,7 @@ trait RegistersAws
                     ]
                 ]);
 
-                return ! empty($awsResult['Tags']) && $awsResult['Tags'][0]['Value'] === $name;
+                return ! empty($awsResult['Tags']) && $awsResult['Tags'][0]['Value'] === $serverGroup->value;
             }
 
             return true;
@@ -117,16 +118,16 @@ trait RegistersAws
 
     protected static function detectAwsWebEnvironment(): bool
     {
-        return static::detectAwsEnvironment('Web');
+        return static::detectAwsEnvironment(ServerGroup::WEB);
     }
 
     protected static function detectAwsQueueEnvironment(): bool
     {
-        return static::detectAwsEnvironment('Queue');
+        return static::detectAwsEnvironment(ServerGroup::QUEUE);
     }
 
     protected static function detectAwsSchedulerEnvironment(): bool
     {
-        return static::detectAwsEnvironment('Scheduler');
+        return static::detectAwsEnvironment(ServerGroup::QUEUE);
     }
 }

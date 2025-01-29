@@ -9,7 +9,7 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Enums\DeploymentGroups;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Concerns\UsesCodeDeploy;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -61,7 +61,7 @@ class SyncCodeDeployWebDeploymentGroupStep implements Step
         return [
             ...static::deploymentGroupPayload(),
             ...[
-                'deploymentGroupName' => Helpers::keyedResourceName(DeploymentGroups::WEB),
+                'deploymentGroupName' => Helpers::keyedResourceName(ServerGroup::WEB),
                 'deploymentConfigName' => Manifest::get('aws.codedeploy.with-load-balancing', false)
                     ? 'OneThirdAtATime'
                     : 'CodeDeployDefault.AllAtOnce',
