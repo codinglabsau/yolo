@@ -4,14 +4,10 @@ namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Contracts\RunsOnAws;
-use Codinglabs\Yolo\Concerns\RunsSteppedCommands;
 use Symfony\Component\Console\Input\InputArgument;
-use function Laravel\Prompts\info;
 
-class StartCommand extends Command implements RunsOnAws
+class StartCommand extends SteppedCommand implements RunsOnAws
 {
-    use RunsSteppedCommands;
-
     protected array $steps = [
         Steps\Start\SyncBashProfileStep::class, // all
         Steps\Start\ExecuteDeployStepsStep::class, // scheduler - note: migrations run here
@@ -42,16 +38,5 @@ class StartCommand extends Command implements RunsOnAws
             ->addOption('app-version', null, InputArgument::OPTIONAL, 'The app version to tag the build with')
             ->addOption('no-progress', null, null, 'Hide the progress output')
             ->setDescription('Prepare the server for a new deployment');
-    }
-
-    public function handle(): void
-    {
-        $environment = $this->argument('environment');
-
-        info("Executing start steps...");
-
-        $totalTime = $this->handleSteps($environment);
-
-        info(sprintf('Completed successfully in %ss.', $totalTime));
     }
 }
