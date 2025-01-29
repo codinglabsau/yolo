@@ -7,13 +7,11 @@ use Codinglabs\Yolo\Steps;
 use Illuminate\Support\Carbon;
 use Codinglabs\Yolo\Concerns\UsesEc2;
 use Symfony\Component\Console\Input\InputOption;
-use Codinglabs\Yolo\Concerns\RunsSteppedCommands;
 use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\select;
 
 class PrepareCommand extends SteppedCommand
 {
-    use RunsSteppedCommands;
     use UsesEc2;
 
     protected array $steps = [

@@ -5,17 +5,12 @@ namespace Codinglabs\Yolo\Commands;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Helpers;
-use Codinglabs\Yolo\Concerns\RunsSteppedCommands;
 use Symfony\Component\Console\Input\InputArgument;
-use function Laravel\Prompts\info;
-use function Laravel\Prompts\intro;
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\warning;
 
-class DeployCommand extends Command
+class DeployCommand extends SteppedCommand
 {
-    use RunsSteppedCommands;
-
     protected array $steps = [
         Steps\Ensures\EnsureTranscoderExistsStep::class,
         Steps\Ensures\EnsureHostedZonesExistStep::class,
@@ -46,8 +41,6 @@ class DeployCommand extends Command
 
     public function handle(): void
     {
-        $environment = $this->argument('environment');
-
         $reuseBuild = false;
 
         if (is_dir(Paths::yolo())) {
@@ -60,10 +53,6 @@ class DeployCommand extends Command
             (new BuildCommand())->execute(Helpers::app('input'), Helpers::app('output'));
         }
 
-        intro("Executing deploy steps...");
-
-        $totalTime = $this->handleSteps($environment);
-
-        info(sprintf('Completed successfully in %ss.', $totalTime));
+        parent::handle();
     }
 }

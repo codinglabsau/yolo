@@ -15,8 +15,7 @@ class InitCommand extends Command
     {
         $this
             ->setName('init')
-            ->setDescription('Create the yolo.yml manifest in the current app root')
-            ->addOption('dry-run', null, null, 'Run the command without making changes');
+            ->setDescription('Create the yolo.yml manifest in the current app root');
     }
 
     public function handle(): void
