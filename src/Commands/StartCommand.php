@@ -29,6 +29,7 @@ class StartCommand extends Command implements RunsOnAws
         Steps\Start\SyncNginxConfigurationStep::class, // web
         Steps\Start\RestartServicesStep::class, // all
         Steps\Start\WarmApplicationStep::class, // web
+        Steps\Start\WarmMultitenantedApplicationStep::class, // web
         Steps\Start\ConfigureLoadBalancingStep::class, // web
     ];
 
