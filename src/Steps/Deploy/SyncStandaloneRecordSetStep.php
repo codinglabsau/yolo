@@ -6,9 +6,9 @@ use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\SyncsRecordSets;
-use Codinglabs\Yolo\Contracts\ExecutesDomainStep;
+use Codinglabs\Yolo\Contracts\ExecutesStandaloneStep;
 
-class SyncDomainRecordSetStep implements ExecutesDomainStep
+class SyncStandaloneRecordSetStep implements ExecutesStandaloneStep
 {
     use SyncsRecordSets;
 
