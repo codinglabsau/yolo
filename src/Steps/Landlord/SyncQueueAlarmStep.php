@@ -4,17 +4,18 @@ namespace Codinglabs\Yolo\Steps\Landlord;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
-use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Contracts\ExecutesMultitenancyStep;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncQueueAlarmStep implements Step
+class SyncQueueAlarmStep implements ExecutesMultitenancyStep
 {
     public function __invoke(array $options): StepResult
     {
-        $alarmName = 'landlord-queue-depth-alarm';
+        $alarmName = Helpers::keyedResourceName('landlord-queue-depth-alarm');
 
         try {
             AwsResources::alarm($alarmName);

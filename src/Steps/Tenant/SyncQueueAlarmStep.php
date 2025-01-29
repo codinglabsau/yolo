@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Steps\Tenant;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -14,7 +15,7 @@ class SyncQueueAlarmStep extends TenantStep
 {
     public function __invoke(array $options): StepResult
     {
-        $alarmName = "{$this->tenantId()}-queue-depth-alarm";
+        $alarmName = Helpers::keyedResourceName("{$this->tenantId()}-queue-depth-alarm");
 
         try {
             AwsResources::alarm($alarmName);

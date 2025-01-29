@@ -33,13 +33,15 @@ class Helpers
         }
 
         if ($exclusive) {
-            // exclusive assets are specific to the current application
+            // exclusive resources are specific to the current application;
+            // e.g. yolo-production-<app-name> or yolo-production-<app-name>-<resource-name>
             return $name
                 ? sprintf("yolo$seperator%s$seperator%s$seperator%s", static::environment(), Manifest::name(), $name)
                 : sprintf("yolo$seperator%s$seperator%s", static::environment(), Manifest::name());
         }
 
-        // non-exclusive assets are shared across multiple yolo applications on the same AWS account
+        // non-exclusive resources are shared across multiple yolo applications on the same AWS account;
+        // e.g. yolo-production or yolo-production-<resource-name>
         return $name
             ? sprintf("yolo$seperator%s$seperator%s", static::environment(), $name)
             : sprintf("yolo$seperator%s", static::environment());
