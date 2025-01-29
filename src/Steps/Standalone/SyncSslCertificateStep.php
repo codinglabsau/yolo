@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Domain;
+namespace Codinglabs\Yolo\Steps\Standalone;
 
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
