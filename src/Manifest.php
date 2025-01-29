@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo;
 
 use Illuminate\Support\Arr;
 use Symfony\Component\Yaml\Yaml;
+use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 class Manifest
 {
