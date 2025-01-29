@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Steps\Start;
 
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\StepResult;
 use Symfony\Component\Process\Process;
@@ -31,11 +32,11 @@ class SyncNginxConfigurationStep implements RunsOnAwsWeb
             ? file_get_contents(Paths::stubs('nginx/vhost_octane'))
             : file_get_contents(Paths::stubs('nginx/vhost'));
 
-        $name = Manifest::name();
+        $filename = Helpers::keyedResourceName();
 
         // create a catch-all vhost with forwarding rules
         file_put_contents(
-            "/etc/nginx/sites-available/$name",
+            "/etc/nginx/sites-available/$filename",
             str_replace(
                 search: [
                     '{NAME}',
@@ -43,7 +44,7 @@ class SyncNginxConfigurationStep implements RunsOnAwsWeb
                     '{SERVER_NAME}',
                 ],
                 replace: [
-                    $name,
+                    Manifest::name(),
                     $this->forwardingRules(),
                     $this->serverName(),
                 ],
@@ -53,7 +54,7 @@ class SyncNginxConfigurationStep implements RunsOnAwsWeb
 
         // create a symbolic link to enable the app vhost, using -f force to supress file exists error
         (Process::fromShellCommandline(
-            command: "ln -sf /etc/nginx/sites-available/$name /etc/nginx/sites-enabled/"
+            command: "ln -sf /etc/nginx/sites-available/$filename /etc/nginx/sites-enabled/"
         ))->mustRun();
 
         return StepResult::SYNCED;
@@ -108,7 +109,7 @@ class SyncNginxConfigurationStep implements RunsOnAwsWeb
     protected function serverName(): string
     {
         return Manifest::isMultitenanted()
-            ? '_'
+            ? implode(' ', collect(Manifest::tenants())->pluck('domain')->toArray())
             : Manifest::get('domain');
     }
 }

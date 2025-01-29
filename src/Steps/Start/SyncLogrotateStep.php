@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Steps\Start;
 
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\RunsOnAws;
@@ -12,7 +13,7 @@ class SyncLogrotateStep implements RunsOnAws
     public function __invoke(): StepResult
     {
         file_put_contents(
-            "/etc/logrotate.d/laravel",
+            sprintf('/etc/logrotate.d/%s', Helpers::keyedResourceName()),
             str_replace(
                 search: [
                     '{NAME}',
