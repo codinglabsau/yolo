@@ -28,10 +28,11 @@ class SyncCommand extends SteppedCommand
         collect([
             Commands\SyncNetworkCommand::class,
             Commands\SyncStorageCommand::class,
-            ...Manifest::isMultitenanted() ? [
-//            Commands\SyncMultitenancyLandlordCommand::class,
+            ...Manifest::isMultitenanted()
+                ? [
+                    Commands\SyncMultitenancyLandlordCommand::class,
 //            Commands\SyncMultitenancyTenantsCommand::class,
-            ]
+                ]
                 : [
 //            Commands\SyncStandaloneCommand::class,
                 ],

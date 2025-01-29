@@ -31,8 +31,8 @@ class SyncNetworkCommand extends SteppedCommand
 //        Steps\Network\SyncEc2SecurityGroupStep::class,
 //        Steps\Network\SyncRdsSecurityGroupStep::class,
 //
-//        // sns
-//        Steps\Network\SyncSnsTopicStep::class,
+        // sns
+        Steps\Network\SyncSnsTopicStep::class,
 
         // ssh
         Steps\Network\SyncKeyPairStep::class,
