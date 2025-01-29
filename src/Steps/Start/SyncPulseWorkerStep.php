@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Steps\Start;
 
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\RunsOnAws;
@@ -12,7 +13,7 @@ class SyncPulseWorkerStep implements RunsOnAws
     public function __invoke(): StepResult
     {
         file_put_contents(
-            "/etc/supervisor/conf.d/pulse-worker.conf",
+            sprintf('/etc/supervisor/conf.d/%s', Helpers::keyedResourceName('pulse-worker.conf')),
             str_replace(
                 search: [
                     '{NAME}',

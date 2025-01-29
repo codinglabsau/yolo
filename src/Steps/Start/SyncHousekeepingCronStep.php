@@ -11,7 +11,7 @@ class SyncHousekeepingCronStep implements RunsOnAws
     public function __invoke(array $options): StepResult
     {
         file_put_contents(
-            "/etc/cron.d/housekeeping",
+            "/etc/cron.d/yolo-housekeeping",
             file_get_contents(Paths::stubs('cron/housekeeping.stub'))
         );
 

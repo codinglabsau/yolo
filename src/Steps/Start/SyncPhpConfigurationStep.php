@@ -25,7 +25,7 @@ class SyncPhpConfigurationStep implements RunsOnAws
 
         // configuration for PHP-FPM pool
         file_put_contents(
-            "/etc/php/8.3/fpm/pool.d/www_processes.conf",
+            "/etc/php/8.3/fpm/pool.d/yolo_www_processes.conf",
             file_get_contents(Paths::stubs('php/www_processes.conf.stub'))
         );
 
