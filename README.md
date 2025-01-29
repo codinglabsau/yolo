@@ -10,7 +10,7 @@ ___
 ## Disclaimer
 
 YOLO is designed for PHP developers who want to manage AWS using an infrastructure-as-code approach, using plain-old PHP
-rather than CloudFormation / Terraform / K8s / Elastic Beanstalk / <some-other-exotic-alternative>.
+rather than CloudFormation / Terraform / K8s / Elastic Beanstalk / <some-other-fancy-alternative>.
 
 While YOLO has been battle-tested on apps serving millions of requests per day, it is not supposed to be a
 set-and-forget solution for busy apps, but rather allows you to grow and adapt your infrastructure as requirements
@@ -19,7 +19,7 @@ change over time.
 Within the Laravel ecosystem there are several high quality commercial alternatives like Forge, Vapor and Cloud, which
 require less working knowledge of AWS.
 
-It goes without saying, but YOLO at your own risk.
+It goes without saying, but use YOLO at your own risk.
 
 ## Prerequisites
 
@@ -67,15 +67,13 @@ To get up and running, you'll need to complete the following steps:
 
 After the initial install, you can simply add `yolo deploy <environment>` to your CI pipeline to deploy your app.
 
-### `yolo install`
+### `yolo init`
 
-The install command is the first command to run after installing YOLO. It does the following things:
+The init command is the first command to run after installing YOLO. It does the following things:
 
 - initialises the yolo.yml file in the app with a boilerplate production environment
 - adds some entries to `.gitignore`
-- provisions various resources on AWS
-- builds and registers an Amazon Machine Image for EC2s
--
+- prompts for a few bits of information to setup the manifest file
 
 After initialising, you can customise the `yolo.yml` manifest file to suit your app's requirements.
 
@@ -140,6 +138,8 @@ environments:
         instance-type: t3.small
         instance-profile:
         octane: true
+      codedeploy:
+        strategy: without-load-balancing|with-load-balancing
 
     build:
       - composer install --no-cache --no-interaction --optimize-autoloader --no-progress --classmap-authoritative --no-dev
@@ -157,6 +157,30 @@ environments:
 
     deploy-all:
       - php artisan optimize
+```
+
+## Development
+
+To debug or add features to YOLO, it is recommended to symlink to the local repository.
+
+Add this to composer.json with the path to the local repository:
+
+```json
+    // ...
+
+"repositories": [
+{
+"type": "path",
+"url": "/Users/username/code/yolo"
+}
+],
+```
+
+To call yolo from the app you are debugging, you'll need to tell yolo the path to the app. Set the `YOLO_BASE_PATH`
+environment to the root of the app as follows:
+
+```bash
+YOLO_BASE_PATH=$(pwd) yolo
 ```
 
 ## Credits

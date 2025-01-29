@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Steps\Ci;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -61,13 +62,17 @@ class SyncCodeDeployWebDeploymentGroupStep implements Step
             ...static::deploymentGroupPayload(),
             ...[
                 'deploymentGroupName' => Helpers::keyedResourceName(DeploymentGroups::WEB),
-                'deploymentConfigName' => 'OneThirdAtATime',
+                'deploymentConfigName' => Manifest::get('aws.codedeploy.with-load-balancing', false)
+                    ? 'OneThirdAtATime'
+                    : 'CodeDeployDefault.AllAtOnce',
                 'autoScalingGroups' => [
                     AwsResources::autoScalingGroupWeb()['AutoScalingGroupName'],
                 ],
                 'deploymentStyle' => [
                     'deploymentType' => 'IN_PLACE',
-                    'deploymentOption' => 'WITH_TRAFFIC_CONTROL',
+                    'deploymentOption' => Manifest::get('aws.codedeploy.with-load-balancing', false)
+                        ? 'WITH_TRAFFIC_CONTROL'
+                        : 'WITHOUT_TRAFFIC_CONTROL',
                 ],
                 'loadBalancerInfo' => [
                     'targetGroupInfoList' => [

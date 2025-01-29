@@ -38,6 +38,7 @@ class StartCommand extends Command implements RunsOnAws
             ->setName('start')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('app-version', null, InputArgument::OPTIONAL, 'The app version to tag the build with')
+            ->addOption('no-progress', null, null, 'Hide the progress output')
             ->setDescription('Prepare the server for a new deployment');
     }
 

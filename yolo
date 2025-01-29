@@ -4,15 +4,12 @@
 use Dotenv\Dotenv;
 use Codinglabs\Yolo\Yolo;
 
-if (file_exists(__DIR__ . '/../../autoload.php')) {
-    require __DIR__ . '/../../autoload.php';
-} else {
-    require __DIR__ . '/vendor/autoload.php';
-}
+file_exists(__DIR__ . '/../../autoload.php')
+    ? require __DIR__ . '/../../autoload.php'
+    : require __DIR__ . '/vendor/autoload.php';
 
 // path to the app root
-//const BASE_PATH = __DIR__ . '/../../';
-const BASE_PATH = '/Users/stevethomas/code/codinglabs'; // todo: revert this
+define("BASE_PATH", $_ENV['YOLO_BASE_PATH'] ?? __DIR__ . '/../../../');
 
 Dotenv::createImmutable(BASE_PATH)->load();
 

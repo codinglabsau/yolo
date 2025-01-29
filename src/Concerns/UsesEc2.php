@@ -66,7 +66,6 @@ trait UsesEc2
             ->toArray();
     }
 
-
     public static function securityGroups($refresh = false): array
     {
         if (! $refresh && isset(static::$securityGroups)) {
@@ -155,7 +154,9 @@ trait UsesEc2
         ])['LaunchTemplates'];
 
         if (count($launchTemplates) === 0) {
-            throw new ResourceDoesNotExistException(sprintf("Could not find launch template %s. Run 'yolo compute:sync %s' to fix.", Helpers::keyedResourceName(), Helpers::environment()));
+            ResourceDoesNotExistException::make(sprintf("Could not find launch template %s", Helpers::keyedResourceName()))
+                ->suggest('compute:sync')
+                ->throw();
         }
 
         static::$launchTemplate = $launchTemplates[0];

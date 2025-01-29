@@ -3,6 +3,7 @@ name: {NAME}
 environments:
   production:
     aws:
+      account-id: {AWS_ACCOUNT_ID}
       region: {AWS_REGION}
       cloudfront: // todo use magic [account level]
       autoscaling:

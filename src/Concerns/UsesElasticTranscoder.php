@@ -26,7 +26,9 @@ trait UsesElasticTranscoder
             }
         }
 
-        throw new ResourceDoesNotExistException("Could not find Elastic Transcoder pipeline with name $name");
+        ResourceDoesNotExistException::make("Could not find Elastic Transcoder pipeline with name $name")
+            ->suggest('sync:compute')
+            ->throw();
     }
 
     public static function elasticTranscoderPreset(): array
@@ -44,6 +46,8 @@ trait UsesElasticTranscoder
             }
         }
 
-        throw new ResourceDoesNotExistException("Could not find Elastic Transcoder preset with name $name");
+        ResourceDoesNotExistException::make("Could not find Elastic Transcoder preset with name $name")
+            ->suggest('sync:compute')
+            ->throw();
     }
 }

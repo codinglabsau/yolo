@@ -17,6 +17,8 @@ trait UsesRoute53
             }
         }
 
-        throw new ResourceDoesNotExistException("Could not find Hosted Zone for domain $domain");
+        ResourceDoesNotExistException::make("Could not find Hosted Zone for domain $domain")
+            ->suggest('sync:compute')
+            ->throw();
     }
 }
