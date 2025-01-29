@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Contracts\RunsOnAwsScheduler;
 
 class SyncSchedulerCronStep implements RunsOnAwsScheduler
@@ -13,7 +14,7 @@ class SyncSchedulerCronStep implements RunsOnAwsScheduler
     public function __invoke(array $options): StepResult
     {
         file_put_contents(
-            sprintf('/etc/cron.d/%s', Helpers::keyedResourceName('scheduler')),
+            sprintf('/etc/cron.d/%s', Helpers::keyedResourceName(ServerGroup::SCHEDULER)),
             str_replace(
                 search: [
                     '{NAME}',
