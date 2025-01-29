@@ -17,12 +17,10 @@ trait ChecksIfCommandsShouldBeRunning
 {
     public function shouldBeRunning(Command|Step $instance): bool
     {
-        if ($instance instanceof ExecutesStandaloneStep) {
-            return ! Manifest::isMultitenanted();
-        }
-
-        if ($instance instanceof ExecutesMultitenancyStep) {
-            return Manifest::isMultitenanted();
+        if (
+            $instance instanceof ExecutesStandaloneStep && Manifest::isMultitenanted()
+            || $instance instanceof ExecutesMultitenancyStep && ! Manifest::isMultitenanted()) {
+            return false;
         }
 
         if (Aws::runningInAws()) {
