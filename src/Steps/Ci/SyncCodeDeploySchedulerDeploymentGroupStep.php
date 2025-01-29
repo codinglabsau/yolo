@@ -8,7 +8,7 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Enums\DeploymentGroups;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Concerns\UsesCodeDeploy;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -60,7 +60,7 @@ class SyncCodeDeploySchedulerDeploymentGroupStep implements Step
         return [
             ...static::deploymentGroupPayload(),
             ...[
-                'deploymentGroupName' => Helpers::keyedResourceName(DeploymentGroups::SCHEDULER),
+                'deploymentGroupName' => Helpers::keyedResourceName(ServerGroup::SCHEDULER),
                 'deploymentConfigName' => 'CodeDeployDefault.AllAtOnce',
                 'autoScalingGroups' => [
                     AwsResources::autoScalingGroupScheduler()['AutoScalingGroupName'],

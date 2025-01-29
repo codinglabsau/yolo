@@ -9,6 +9,7 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Concerns\UsesAutoscaling;
 
 class CreateAutoScalingWebGroupStep implements Step
@@ -31,7 +32,7 @@ class CreateAutoScalingWebGroupStep implements Step
                         [
                             'Key' => 'Name',
                             'PropagateAtLaunch' => true,
-                            'Value' => 'web',
+                            'Value' => ServerGroup::WEB->value,
                         ],
                     ],
                 ],

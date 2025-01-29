@@ -10,6 +10,7 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Concerns\UsesEc2;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Concerns\UsesAutoscaling;
 
 class CreateAutoScalingQueueGroupStep implements Step
@@ -33,7 +34,7 @@ class CreateAutoScalingQueueGroupStep implements Step
                         [
                             'Key' => 'Name',
                             'PropagateAtLaunch' => true,
-                            'Value' => 'queue',
+                            'Value' => ServerGroup::QUEUE->value,
                         ],
                     ],
                 ],

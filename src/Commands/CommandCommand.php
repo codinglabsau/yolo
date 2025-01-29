@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Concerns\UsesEc2;
 use Symfony\Component\Process\Process;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Concerns\FormatsSshCommands;
 use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\info;
@@ -25,7 +26,7 @@ class CommandCommand extends Command
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('command', null, InputArgument::OPTIONAL, 'The command to run')
             ->addOption('ssh-key', null, InputArgument::OPTIONAL, 'The SSH key to use')
-            ->addOption('group', null, InputArgument::OPTIONAL, 'The server group to run the command in', default: 'scheduler')
+            ->addOption('group', null, InputArgument::OPTIONAL, 'The server group to run the command in', default: ServerGroup::SCHEDULER->value)
             ->setDescription('Run a command in the given environment');
     }
 
