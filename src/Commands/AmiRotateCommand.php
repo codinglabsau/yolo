@@ -10,12 +10,12 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\select;
 
-class PrepareCommand extends SteppedCommand
+class AmiRotateCommand extends SteppedCommand
 {
     use UsesEc2;
 
     protected array $steps = [
-        // create new launch template version; prompts for the desired AMI ID
+        // create new launch template version
         Steps\Ami\CreateLaunchTemplateVersionStep::class,
 
         // scheduler group
@@ -32,7 +32,7 @@ class PrepareCommand extends SteppedCommand
     protected function configure(): void
     {
         $this
-            ->setName('prepare')
+            ->setName('ami:rotate')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('dry-run', null, null, 'Run the command without making changes')
             ->addOption('no-progress', null, null, 'Hide the progress output')

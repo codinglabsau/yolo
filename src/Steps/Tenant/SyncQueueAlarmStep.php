@@ -49,6 +49,7 @@ class SyncQueueAlarmStep extends TenantStep
             'TreatMissingData' => 'notBreaching',
             'AlarmActions' => [$snsTopic['TopicArn']],
             'OKActions' => [$snsTopic['TopicArn']],
+            ...Aws::tags(),
         ]);
 
         return StepResult::SYNCED;

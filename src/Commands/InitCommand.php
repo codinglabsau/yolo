@@ -30,6 +30,7 @@ class InitCommand extends Command
 
         $this->gitIgnoreFilesAndDirectories();
         $this->initialiseManifest();
+        $this->initialiseEnv();
 
         info('Manifest generated successfully.');
     }
@@ -83,6 +84,19 @@ class InitCommand extends Command
                 ".yolo" . PHP_EOL .
                 ".env.staging" . PHP_EOL .
                 ".env.production" . PHP_EOL,
+                FILE_APPEND
+            );
+        }
+    }
+
+    protected function initialiseEnv(): void
+    {
+        if (! file_exists(Paths::base('.env.production'))) {
+            file_put_contents(
+                Paths::base('.env.production'),
+                "APP_ENV=production" . PHP_EOL .
+                "APP_KEY=" . PHP_EOL .
+                "APP_DEBUG=false" . PHP_EOL .
                 FILE_APPEND
             );
         }

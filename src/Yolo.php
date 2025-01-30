@@ -16,7 +16,7 @@ class Yolo
         // AWS
         Commands\AmiCreateCommand::class,
         Commands\AmiListCommand::class,
-        Commands\PrepareCommand::class,
+        Commands\AmiRotateCommand::class,
         Commands\CommandCommand::class,
         Commands\Ec2ListCommand::class,
 
