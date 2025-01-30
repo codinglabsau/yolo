@@ -4,15 +4,11 @@ namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Steps;
-use Codinglabs\Yolo\Concerns\RunsSteppedCommands;
 use Symfony\Component\Console\Input\InputArgument;
-use function Laravel\Prompts\info;
 use function Laravel\Prompts\error;
 
-class AmiCreateCommand extends Command
+class AmiCreateCommand extends SteppedCommand
 {
-    use RunsSteppedCommands;
-
     protected array $steps = [
         Steps\Ensures\EnsureLaunchTemplateExistsStep::class,
         Steps\Ami\LaunchAmiInstanceStep::class,
@@ -41,12 +37,6 @@ class AmiCreateCommand extends Command
             return;
         }
 
-        $environment = $this->argument('environment');
-
-        info("Executing build steps...");
-
-        $totalTime = $this->handleSteps($environment);
-
-        info(sprintf('Completed successfully in %ss.', $totalTime));
+        parent::handle();
     }
 }
