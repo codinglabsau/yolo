@@ -10,12 +10,12 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\select;
 
-class PrepareCommand extends SteppedCommand
+class AmiRotateCommand extends SteppedCommand
 {
     use UsesEc2;
 
     protected array $steps = [
-        // create new launch template version; prompts for the desired AMI ID
+        // create new launch template version
         Steps\Ami\CreateLaunchTemplateVersionStep::class,
 
         // scheduler group
