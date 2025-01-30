@@ -12,20 +12,17 @@ ___
 YOLO is designed for PHP developers who want to manage AWS using an infrastructure-as-code approach, using plain-old PHP
 rather than CloudFormation / Terraform / K8s / Elastic Beanstalk / <some-other-fancy-alternative>.
 
-While YOLO has been battle-tested on apps serving millions of requests per day, it is not supposed to be a
-set-and-forget solution for busy apps, but rather allows you to grow and adapt your infrastructure as requirements
-change over time.
-
-Within the Laravel ecosystem there are several high quality commercial alternatives like Forge, Vapor and Cloud, which
-require less working knowledge of AWS.
+> [!IMPORTANT]
+> While YOLO has been battle-tested on apps serving millions of requests per day, it is not supposed to be a
+> set-and-forget solution for busy apps, but rather allows you to proactively manage, grow and adapt your infrastructure
+> as requirements
+> change over time.
 
 It goes without saying, but use YOLO at your own risk.
 
 ## Prerequisites
 
-Before getting started, ensure you have [AWS CLI](https://aws.amazon.com/cli/) installed.
-
-You'll also need access to an AWS account, and some knowledge of AWS services.
+You'll need access to an AWS account, and some knowledge of AWS services.
 
 ### Permissions & Authentication
 
@@ -54,63 +51,96 @@ any access keys provided in CI are using least-privileged scope.
 composer require codinglabsau/yolo
 ```
 
-## Usage
-
 The entry point to the YOLO CLI is `vendor/bin/yolo` or `yolo` if you have `./vendor/bin` in your path.
 
-To get up and running, you'll need to complete the following steps:
+Run `yolo` to see the available commands.
 
-1. Setup authentication and update your .env to point to the correct AWS profile
-2. Initialise the YOLO manifest file
-3. Run the install command
-4. Run the deploy command
+### Initialise YOLO
 
-After the initial install, you can simply add `yolo deploy <environment>` to your CI pipeline to deploy your app.
+After composer installing, run `yolo init`. The init command does the following:
 
-### `yolo init`
-
-The init command is the first command to run after installing YOLO. It does the following things:
-
-- initialises the yolo.yml file in the app with a boilerplate production environment
-- adds some entries to `.gitignore`
-- prompts for a few bits of information to setup the manifest file
+1. initialises the yolo.yml file in the app with a boilerplate production environment
+2. adds some entries to `.gitignore`
+3. prompts for a few bits of information to setup the manifest file
 
 After initialising, you can customise the `yolo.yml` manifest file to suit your app's requirements.
 
-### Sync Commands
+## Usage
 
-After initialising YOLO manifest, all remaining infrastructure commands are prefixed with `sync:`.
+### Provisioning resources
+
+YOLO is designed to create and manage all AWS resources required to run your application.
+
+After initialising the YOLO manifest, the next step is to start provisioning resources on AWS.
 
 The sync commands are:
 
 - `yolo sync:network <environment>` prepares the VPC, subnets, security groups and SSH keys
-- `yolo sync:domain <environment>` prepares domain resources (standard apps only)
+- `yolo sync:standalone <environment>` prepares standalone app resources (standalone apps only)
 - `yolo sync:landlord <environment>` prepares landlord resources (multitenancy apps only)
 - `yolo sync:tenant <environment>` prepares tenant resources (multitenancy apps only)
 - `yolo sync:compute <environment>` prepares the compute resources
 - `yolo sync:ci <environment>` prepares the continuous integration pipeline
 
-### `yolo ami:create <environment>`
+Alternatively, you can run all commands with `yolo sync <environment>`.
 
-With all low-level resource provisioned, the next step is to create an AMI for EC2s. All server types will utilise this
-AMI.
+> [!TIP]
+> All sync commands support a `--dry-run` argument; this is a great starting point to see what resources will be created
+> or modified without any actual changes occurring on AWS.
 
-### `yolo prepare <environment>`
+### Managing AMIs
 
-Prepares autoscaling groups, EC2 launch template and alarms.
+With all the low-level resource provisioned via the `sync` commands, the next step is to create an Amazon Machine
+Image (
+AMI) with Ubuntu OS as the foundation.
 
-### `yolo env:push <environment>`
+The AMI will be used as the base image for all server instances, and can be rotated
+over time to bring in improvements, such as new PHP versions.
 
-Prior to building the environment, you'll need to create `.env.<environment>` followed by `yolo env:push <environment>`.
+#### Create an AMI
 
-### `yolo build <environment>`
+Run `yolo ami:create <environment>` to prepare an AMI.
+> [!TIP]
+> This takes a few minutes to complete
+
+#### Rotating the AMI
+
+To rotate in the new AMI, run `yolo ami:rotate <environment>`.
+
+You will be prompted to select the AMI (the new one should be at the top of the list).
+
+After selecting which AMI to use, new EC2 autoscaling groups will be created, and one instance will be launched in each
+group using the new AMI.
+
+The yolo.yml manifest will also be configured with the new autoscaling groups.
+
+> [!NOTE]
+> Rotating in a new AMI does not have any impact on existing traffic until the updated manifest is deployed - the
+> previous
+> deployment will continue serving requests and autoscaling as per normal.
+
+### Managing .env files
+
+You'll need to push the initial .env file for the environment. Environment files are stored
+in the S3 artefacts bucket, and retrieved during deployment.
+
+If you have an existing .env file, be sure to copy that over to `.env.<environment>` in the root of the app, otherwise
+you can build on the stub provided by the `init` command.
+
+To push the .env file to the artefacts bucket, run `yolo env:push <environment>`.
+
+After the initial push, you can retrieve the .env file with `yolo env:pull <environment>`.
+
+### Building and deploying
+
+Builds can be created with `yolo build <environment>`.
 
 The build command takes care of building a deployment-ready directory in `./yolo`.
 
-### `yolo deploy <environment>`
+Builds can be deployed with `yolo deploy <environment>`.
 
-The build command takes care of building and deploying. You can run this locally, or in CI. The deploy command will call
-the build step for you if a local build does not exist.
+> [!TIP]
+> You can also build and deploy in a single command with `yolo deploy <environment>`.
 
 ## Full yolo.yml example
 
