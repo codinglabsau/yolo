@@ -31,7 +31,7 @@ class SyncCommand extends SteppedCommand
             ...Manifest::isMultitenanted()
                 ? [
                     Commands\SyncMultitenancyLandlordCommand::class,
-//            Commands\SyncMultitenancyTenantsCommand::class,
+                    Commands\SyncMultitenancyTenantsCommand::class,
                 ]
                 : [
 //            Commands\SyncStandaloneCommand::class,
