@@ -7,6 +7,7 @@ use Aws\Acm\AcmClient;
 use Aws\Ec2\Ec2Client;
 use Aws\Sns\SnsClient;
 use Aws\Sqs\SqsClient;
+use Aws\Ssm\SsmClient;
 use Aws\Sts\StsClient;
 use GuzzleHttp\Client;
 use Codinglabs\Yolo\Aws;
@@ -45,6 +46,7 @@ trait RegistersAws
         Helpers::app()->singleton('s3', fn () => new S3Client($arguments));
         Helpers::app()->singleton('sns', fn () => new SnsClient($arguments));
         Helpers::app()->singleton('sqs', fn () => new SqsClient($arguments));
+        Helpers::app()->singleton('ssm', fn () => new SsmClient($arguments));
         Helpers::app()->singleton('sts', fn () => new StsClient($arguments));
 
         // with all clients registered, we can now determine specific environments

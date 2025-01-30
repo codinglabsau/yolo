@@ -7,6 +7,7 @@ use Aws\Acm\AcmClient;
 use Aws\Ec2\Ec2Client;
 use Aws\Sns\SnsClient;
 use Aws\Sqs\SqsClient;
+use Aws\Ssm\SsmClient;
 use Aws\Sts\StsClient;
 use Aws\Route53\Route53Client;
 use Aws\CloudWatch\CloudWatchClient;
@@ -118,6 +119,11 @@ class Aws
     public static function sqs(): SqsClient
     {
         return Helpers::app('sqs');
+    }
+
+    public static function ssm(): SsmClient
+    {
+        return Helpers::app('ssm');
     }
 
     public static function sts(): StsClient
