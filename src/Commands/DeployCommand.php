@@ -15,7 +15,7 @@ class DeployCommand extends SteppedCommand
         Steps\Ensures\EnsureTranscoderExistsStep::class,
         Steps\Ensures\EnsureHostedZonesExistStep::class,
         Steps\Ensures\EnsureMultitenancyHostedZonesExistStep::class,
-        Steps\Ensures\EnsureEnvIsConfiguredCorrectlyStep::class,
+//        Steps\Ensures\EnsureEnvIsConfiguredCorrectlyStep::class, // todo: temp
         Steps\Ensures\EnsureAutoscalingGroupSchedulerExistsStep::class,
         Steps\Ensures\EnsureAutoscalingGroupQueueExistsStep::class,
         Steps\Ensures\EnsureAutoscalingGroupWebExistsStep::class,
