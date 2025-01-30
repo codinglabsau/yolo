@@ -2,6 +2,4 @@
 
 namespace Codinglabs\Yolo\Contracts;
 
-interface ExecutesStandaloneStep extends Step
-{
-}
+interface ExecutesStandaloneStep extends Step {}

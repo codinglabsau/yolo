@@ -5,8 +5,8 @@ namespace Codinglabs\Yolo\Steps\Stop\Scheduler;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\StepResult;
-use Symfony\Component\Process\Process;
 use Codinglabs\Yolo\Enums\ServerGroup;
+use Symfony\Component\Process\Process;
 use Codinglabs\Yolo\Contracts\RunsOnAwsScheduler;
 use Codinglabs\Yolo\Concerns\InteractsWithSupervisor;
 

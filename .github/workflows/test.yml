@@ -29,9 +29,6 @@ jobs:
           extensions: zip, sqlite3
           coverage: none
 
-      - name: Check composer compatability
-        run: composer check-platform-reqs
-
       - name: Install composer dependencies
         run: composer install --no-cache --no-ansi --no-interaction --no-progress
 
@@ -41,4 +38,4 @@ jobs:
       - name: Notify Slack of failure
         if: failure()
         run: |
-          curl -X POST -H 'Content-type: application/json' --data '{"text":"Tests failed on branch ${{github.ref_name}} for action https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}"}' https://hooks.slack.com/services/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
+          curl -X POST -H 'Content-type: application/json' --data '{"text":"YOLO tests failed on branch ${{github.ref_name}} for action https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}"}' https://hooks.slack.com/services/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

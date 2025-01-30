@@ -12,14 +12,6 @@ abstract class SteppedCommand extends Command
 
     public function handle(): void
     {
-//        if (! $this->shouldBeRunning($this)) {
-//            dd('gtfo');
-//        }
-//
-//        ray($this instanceof RunsOnLocal);
-//
-//        dd('no');
-
         $environment = $this->argument('environment');
 
         intro(sprintf("Executing %s steps in %s", $this->getName(), $environment));
