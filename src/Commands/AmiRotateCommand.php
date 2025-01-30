@@ -32,7 +32,7 @@ class AmiRotateCommand extends SteppedCommand
     protected function configure(): void
     {
         $this
-            ->setName('prepare')
+            ->setName('ami:rotate')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('dry-run', null, null, 'Run the command without making changes')
             ->addOption('no-progress', null, null, 'Hide the progress output')
