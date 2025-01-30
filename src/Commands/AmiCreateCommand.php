@@ -2,10 +2,8 @@
 
 namespace Codinglabs\Yolo\Commands;
 
-use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Steps;
 use Symfony\Component\Console\Input\InputArgument;
-use function Laravel\Prompts\error;
 
 class AmiCreateCommand extends SteppedCommand
 {
@@ -28,15 +26,5 @@ class AmiCreateCommand extends SteppedCommand
             ->setName('ami:create')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->setDescription('Prepare a new Amazon Machine Image');
-    }
-
-    public function handle(): void
-    {
-        if (Aws::runningInAws()) {
-            error("ami:create command cannot be run in AWS.");
-            return;
-        }
-
-        parent::handle();
     }
 }
