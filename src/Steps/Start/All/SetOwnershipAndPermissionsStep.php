@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Start;
+namespace Codinglabs\Yolo\Steps\Start\All;
 
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\RunsOnAws;

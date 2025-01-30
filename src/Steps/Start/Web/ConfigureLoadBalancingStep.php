@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Start;
+namespace Codinglabs\Yolo\Steps\Start\Web;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\AwsResources;

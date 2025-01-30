@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Stop;
+namespace Codinglabs\Yolo\Steps\Stop\Queue;
 
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\RunsOnAwsQueue;
