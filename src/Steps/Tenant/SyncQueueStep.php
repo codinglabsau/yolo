@@ -26,6 +26,7 @@ class SyncQueueStep extends TenantStep
                     'Attributes' => [
                         'MessageRetentionPeriod' => '1209600', // 14 days
                     ],
+                    ...Aws::tags(wrap: 'tags', associative: true),
                 ]);
 
                 return StepResult::CREATED;
