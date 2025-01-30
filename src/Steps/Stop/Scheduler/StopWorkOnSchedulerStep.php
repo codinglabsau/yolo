@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Stop;
+namespace Codinglabs\Yolo\Steps\Stop\Scheduler;
 
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;

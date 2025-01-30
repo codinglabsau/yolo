@@ -9,9 +9,9 @@ use Symfony\Component\Console\Input\InputArgument;
 class StopCommand extends SteppedCommand implements RunsOnAws
 {
     protected array $steps = [
-        Steps\Stop\StopWorkOnQueueStep::class,
-        Steps\Stop\StopWorkOnSchedulerStep::class,
-        Steps\Stop\StopWorkOnWebStep::class,
+        Steps\Stop\Queue\StopWorkOnQueueStep::class,
+        Steps\Stop\Scheduler\StopWorkOnSchedulerStep::class,
+        Steps\Stop\Web\StopWorkOnWebStep::class,
     ];
 
     protected function configure(): void

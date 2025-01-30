@@ -1,13 +1,13 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Start;
+namespace Codinglabs\Yolo\Steps\Start\Web;
 
 use GuzzleHttp\Client;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Steps\TenantStep;
 use Codinglabs\Yolo\Contracts\RunsOnAwsWeb;
 
-class WarmApplicationStep implements RunsOnAwsWeb
+class WarmMultitenantedApplicationStep extends TenantStep implements RunsOnAwsWeb
 {
     public function __invoke(array $options): StepResult
     {
@@ -15,7 +15,7 @@ class WarmApplicationStep implements RunsOnAwsWeb
         (new Client(['timeout' => 10]))
             ->get('localhost', [
                 'headers' => [
-                    'Host' => Manifest::get('domain'),
+                    'Host' => $this->config()['domain'],
                     'X-Forwarded-Proto' => 'https',
                     'User-Agent' => 'YOLO-Warmer/1.0',
                 ],

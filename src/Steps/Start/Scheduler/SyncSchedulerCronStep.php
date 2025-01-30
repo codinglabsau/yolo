@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Start;
+namespace Codinglabs\Yolo\Steps\Start\Scheduler;
 
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Helpers;
