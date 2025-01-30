@@ -19,7 +19,7 @@ class CreateAutoScalingWebGroupStep implements Step
     public function __invoke(array $options): StepResult
     {
         if (! Arr::get($options, 'dry-run')) {
-            $name = Helpers::keyedResourceName(sprintf('web-%s', Str::random(8)));
+            $name = Helpers::keyedResourceName(sprintf('%s-%s', ServerGroup::WEB->value, Str::random(8)));
 
             Aws::autoscaling()->createAutoScalingGroup([
                 ...static::autoScalingGroupPayload(),
@@ -33,6 +33,11 @@ class CreateAutoScalingWebGroupStep implements Step
                             'Key' => 'Name',
                             'PropagateAtLaunch' => true,
                             'Value' => ServerGroup::WEB->value,
+                        ],
+                        [
+                            'Key' => 'yolo:environment',
+                            'Value' => Helpers::app('environment'),
+                            'PropagateAtLaunch' => true,
                         ],
                     ],
                 ],

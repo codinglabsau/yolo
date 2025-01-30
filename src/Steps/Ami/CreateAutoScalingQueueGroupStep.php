@@ -21,7 +21,7 @@ class CreateAutoScalingQueueGroupStep implements Step
     public function __invoke(array $options): StepResult
     {
         if (! Arr::get($options, 'dry-run')) {
-            $name = Helpers::keyedResourceName(sprintf('queue-%s', Str::random(8)));
+            $name = Helpers::keyedResourceName(sprintf('%s-%s', ServerGroup::QUEUE->value, Str::random(8)));
 
             Aws::autoscaling()->createAutoScalingGroup([
                 ...static::autoScalingGroupPayload(),
@@ -30,11 +30,17 @@ class CreateAutoScalingQueueGroupStep implements Step
                     'MinSize' => 1,
                     'MaxSize' => 1,
                     'DesiredCapacity' => 1,
+                    // special use case to include 'PropagateAtLaunch' attribute
                     'Tags' => [
                         [
                             'Key' => 'Name',
                             'PropagateAtLaunch' => true,
                             'Value' => ServerGroup::QUEUE->value,
+                        ],
+                        [
+                            'Key' => 'yolo:environment',
+                            'Value' => Helpers::app('environment'),
+                            'PropagateAtLaunch' => true,
                         ],
                     ],
                 ],
