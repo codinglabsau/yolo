@@ -2,6 +2,7 @@
 
 namespace Codinglabs\Yolo\Commands;
 
+use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Concerns\RegistersAws;
@@ -51,7 +52,7 @@ abstract class Command extends SymfonyCommand
 
         Helpers::app()->instance('environment', $this->argument('environment'));
 
-        if (! Helpers::keyedEnv('AWS_PROFILE')) {
+        if (! Aws::runningInAws() && ! Helpers::keyedEnv('AWS_PROFILE')) {
             error(sprintf("You need to specify YOLO_%s_AWS_PROFILE in your .env file before proceeding", strtoupper(Helpers::environment())));
             return 1;
         }
