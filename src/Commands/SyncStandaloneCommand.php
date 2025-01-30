@@ -21,6 +21,6 @@ class SyncStandaloneCommand extends SteppedCommand
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('dry-run', null, null, 'Run the command without making changes')
             ->addOption('no-progress', null, null, 'Hide the progress output')
-            ->setDescription('Sync configured domain AWS resources');
+            ->setDescription('Sync AWS resources for standalone app');
     }
 }

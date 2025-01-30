@@ -10,6 +10,8 @@ abstract class SteppedCommand extends Command
 {
     use RunsSteppedCommands;
 
+    protected array $steps;
+
     public function handle(): void
     {
         $environment = $this->argument('environment');

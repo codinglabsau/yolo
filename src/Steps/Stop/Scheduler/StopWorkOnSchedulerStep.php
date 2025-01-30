@@ -2,8 +2,10 @@
 
 namespace Codinglabs\Yolo\Steps\Stop\Scheduler;
 
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Symfony\Component\Process\Process;
 use Codinglabs\Yolo\Contracts\RunsOnAwsScheduler;
 use Codinglabs\Yolo\Concerns\InteractsWithSupervisor;
@@ -21,7 +23,7 @@ class StopWorkOnSchedulerStep implements RunsOnAwsScheduler
 
         // disable scheduling
         Process::fromShellCommandline(
-            command: "sudo rm /etc/cron.d/scheduler"
+            command: sprintf('sudo rm /etc/cron.d/%s', Helpers::keyedResourceName(ServerGroup::SCHEDULER))
         )->run();
 
         $i = 0;

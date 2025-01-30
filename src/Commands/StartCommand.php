@@ -9,25 +9,25 @@ use Symfony\Component\Console\Input\InputArgument;
 class StartCommand extends SteppedCommand implements RunsOnAws
 {
     protected array $steps = [
-        Steps\Start\All\SyncBashProfileStep::class, // all
-        Steps\Start\Scheduler\ExecuteDeployStepsStep::class, // scheduler - note: migrations run here
-        Steps\Start\All\ExecuteAllGroupsDeployStepsStep::class, // all
+        Steps\Start\All\SyncBashProfileStep::class,
+        Steps\Start\Scheduler\ExecuteDeployStepsStep::class, // note: migrations run here
+        Steps\Start\All\ExecuteAllGroupsDeployStepsStep::class,
         Steps\Start\All\SetOwnershipAndPermissionsStep::class,
-        Steps\Start\All\SyncLogrotateStep::class, // all
-        Steps\Start\All\SyncHousekeepingCronStep::class, // all
-        Steps\Start\Scheduler\SyncSchedulerCronStep::class, // scheduler
-        Steps\Start\All\SyncPulseWorkerStep::class, // all
-        Steps\Start\Queue\SyncQueueWorkerStep::class,  // queue
-        Steps\Start\Queue\SyncQueueLandlordWorkerStep::class,  // queue
-        Steps\Start\Queue\SyncQueueTenantWorkerStep::class, // queue
-        Steps\Start\Web\SyncOctaneWorkerStep::class, // web
-        Steps\Start\Scheduler\SyncMysqlBackupStep::class, // scheduler
-        Steps\Start\All\SyncPhpConfigurationStep::class, // all
-        Steps\Start\Web\SyncNginxConfigurationStep::class, // web
-        Steps\Start\All\RestartServicesStep::class, // all
-        Steps\Start\Web\WarmApplicationStep::class, // web
-        Steps\Start\Web\WarmMultitenantedApplicationStep::class, // web
-        Steps\Start\Web\ConfigureLoadBalancingStep::class, // web
+        Steps\Start\All\SyncLogrotateStep::class,
+        Steps\Start\All\SyncHousekeepingCronStep::class,
+        Steps\Start\Scheduler\SyncSchedulerCronStep::class,
+        Steps\Start\All\SyncPulseWorkerStep::class,
+        Steps\Start\Queue\SyncQueueWorkerStep::class,
+        Steps\Start\Queue\SyncQueueLandlordWorkerStep::class,
+        Steps\Start\Queue\SyncQueueTenantWorkerStep::class,
+        Steps\Start\Web\SyncOctaneWorkerStep::class,
+        Steps\Start\Scheduler\SyncMysqlBackupStep::class,
+        Steps\Start\All\SyncPhpConfigurationStep::class,
+        Steps\Start\Web\SyncNginxConfigurationStep::class,
+        Steps\Start\All\RestartServicesStep::class,
+        Steps\Start\Web\WarmApplicationStep::class,
+        Steps\Start\Web\WarmMultitenantedApplicationStep::class,
+        Steps\Start\Web\ConfigureLoadBalancingStep::class,
     ];
 
     protected function configure(): void

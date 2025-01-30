@@ -1,0 +1,41 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+    types: [ opened, synchronize, reopened, ready_for_review ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: zip, sqlite3
+          coverage: none
+
+      - name: Install composer dependencies
+        run: composer install --no-cache --no-ansi --no-interaction --no-progress
+
+      - name: Execute tests
+        run: vendor/bin/pest --parallel --stop-on-failure
+
+      - name: Notify Slack of failure
+        if: failure()
+        run: |
+          curl -X POST -H 'Content-type: application/json' --data '{"text":"YOLO tests failed on branch ${{github.ref_name}} for action https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}"}' https://hooks.slack.com/services/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

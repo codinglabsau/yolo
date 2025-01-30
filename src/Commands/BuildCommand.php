@@ -3,16 +3,12 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Steps;
-use Codinglabs\Yolo\Concerns\RunsSteppedCommands;
 use Symfony\Component\Console\Input\InputArgument;
-use function Laravel\Prompts\info;
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\intro;
 
-class BuildCommand extends Command
+class BuildCommand extends SteppedCommand
 {
-    use RunsSteppedCommands;
-
     protected array $steps = [
         Steps\Build\PurgeBuildStep::class,
         Steps\Build\RetrieveEnvFileStep::class,
@@ -46,12 +42,6 @@ class BuildCommand extends Command
 
         intro("Building app version: {$appVersion}");
 
-        $environment = $this->argument('environment');
-
-        info("Executing build steps...");
-
-        $totalTime = $this->handleSteps($environment);
-
-        info(sprintf('Completed successfully in %ss.', $totalTime));
+        parent::handle();
     }
 }
