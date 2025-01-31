@@ -2,7 +2,7 @@
 
 namespace Codinglabs\Yolo\Enums;
 
-enum SecurityGroups: string
+enum SecurityGroup: string
 {
     case EC2_SECURITY_GROUP = 'ec2-security-group';
     case LOAD_BALANCER_SECURITY_GROUP = 'load-balancer-security-group';

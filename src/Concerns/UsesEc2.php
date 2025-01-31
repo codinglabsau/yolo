@@ -7,7 +7,7 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
-use Codinglabs\Yolo\Enums\SecurityGroups;
+use Codinglabs\Yolo\Enums\SecurityGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 trait UsesEc2
@@ -88,7 +88,7 @@ trait UsesEc2
             return static::$loadBalancerSecurityGroup;
         }
 
-        static::$loadBalancerSecurityGroup = static::securityGroupByName(SecurityGroups::LOAD_BALANCER_SECURITY_GROUP);
+        static::$loadBalancerSecurityGroup = static::securityGroupByName(SecurityGroup::LOAD_BALANCER_SECURITY_GROUP);
 
         return static::$loadBalancerSecurityGroup;
     }
@@ -102,7 +102,7 @@ trait UsesEc2
             return static::$ec2SecurityGroup;
         }
 
-        static::$ec2SecurityGroup = static::securityGroupByName(SecurityGroups::EC2_SECURITY_GROUP);
+        static::$ec2SecurityGroup = static::securityGroupByName(SecurityGroup::EC2_SECURITY_GROUP);
 
         return static::$ec2SecurityGroup;
     }
@@ -116,7 +116,7 @@ trait UsesEc2
             return static::$rdsSecurityGroup;
         }
 
-        static::$rdsSecurityGroup = static::securityGroupByName(SecurityGroups::RDS_SECURITY_GROUP);
+        static::$rdsSecurityGroup = static::securityGroupByName(SecurityGroup::RDS_SECURITY_GROUP);
 
         return static::$rdsSecurityGroup;
     }

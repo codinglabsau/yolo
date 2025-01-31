@@ -8,7 +8,7 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Enums\SecurityGroups;
+use Codinglabs\Yolo\Enums\SecurityGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class SyncEc2SecurityGroupStep implements Step
@@ -21,7 +21,7 @@ class SyncEc2SecurityGroupStep implements Step
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {
-                $name = Helpers::keyedResourceName(SecurityGroups::EC2_SECURITY_GROUP, exclusive: false);
+                $name = Helpers::keyedResourceName(SecurityGroup::EC2_SECURITY_GROUP, exclusive: false);
 
                 Aws::ec2()->createSecurityGroup([
                     'Description' => 'Enable load balancer and SSH traffic',
