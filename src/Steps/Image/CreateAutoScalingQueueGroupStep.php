@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Ami;
+namespace Codinglabs\Yolo\Steps\Image;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;

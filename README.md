@@ -43,9 +43,9 @@ recommended.
 For CI environments like GitHub Actions, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are used instead. Ensure that
 any access keys provided in CI are using least-privileged scope.
 
-## Installation
+## Step 1: Installation
 
-### Install With Composer
+### a) Install With Composer
 
 ```bash
 composer require codinglabsau/yolo
@@ -55,9 +55,9 @@ The entry point to the YOLO CLI is `vendor/bin/yolo` or `yolo` if you have `./ve
 
 Run `yolo` to see the available commands.
 
-### Initialise YOLO
+### b) Initialise yolo
 
-After composer installing, run `yolo init`. The init command does the following:
+Next, run `yolo init`. The init command does the following:
 
 1. initialises the yolo.yml file in the app with a boilerplate production environment
 2. adds some entries to `.gitignore`
@@ -65,15 +65,14 @@ After composer installing, run `yolo init`. The init command does the following:
 
 After initialising, you can customise the `yolo.yml` manifest file to suit your app's requirements.
 
-## Usage
-
-### Provisioning resources
+### Step 2: Provision resources
 
 YOLO is designed to create and manage all AWS resources required to run your application.
 
-After initialising the YOLO manifest, the next step is to start provisioning resources on AWS.
+Provision all resources by running `yolo sync <environment>`. This command runs all `sync` commands in the correct
+order.
 
-The sync commands are:
+The full list of available sync commands are:
 
 - `yolo sync:network <environment>` prepares the VPC, subnets, security groups and SSH keys
 - `yolo sync:standalone <environment>` prepares standalone app resources (standalone apps only)
@@ -82,47 +81,41 @@ The sync commands are:
 - `yolo sync:compute <environment>` prepares the compute resources
 - `yolo sync:ci <environment>` prepares the continuous integration pipeline
 
-Alternatively, you can run all commands with `yolo sync <environment>`.
-
 > [!TIP]
 > All sync commands support a `--dry-run` argument; this is a great starting point to see what resources will be created
 > or modified without any actual changes occurring on AWS.
 
-### Managing AMIs
+## Step 3: Prepare a server image
 
 With all the low-level resource provisioned via the `sync` commands, the next step is to create an Amazon Machine
 Image (
 AMI) with Ubuntu OS as the foundation.
 
-The AMI will be used as the base image for all server instances, and can be rotated
+The image will be used as the initial disk image for all server instances, and can be updated
 over time to bring in improvements, such as new PHP versions.
 
-#### Create an AMI
+### a) Create an image
 
-Run `yolo ami:create <environment>` to prepare an AMI.
-> [!TIP]
-> This takes a few minutes to complete
+Run `yolo image:create <environment>` to generate a new AMI.
 
-#### Rotating the AMI
+### b) Prepare the image for traffic
 
-To rotate in the new AMI, run `yolo ami:rotate <environment>`.
+To prepare the new image for traffic, run `yolo image:prepare <environment>`.
 
 You will be prompted to select the AMI (the new one should be at the top of the list).
 
-After selecting which AMI to use, new EC2 autoscaling groups will be created, and one instance will be launched in each
-group using the new AMI.
+After selecting which image to use, servers will be spun up, ready to receive app deployments.
 
-The yolo.yml manifest will also be configured with the new autoscaling groups.
+The yolo.yml manifest will also be configured to point to the new autoscaling groups.
 
 > [!NOTE]
-> Rotating in a new AMI does not have any impact on existing traffic until the updated manifest is deployed - the
-> previous
-> deployment will continue serving requests and autoscaling as per normal.
+> Rotating in a new image does not have any impact on existing traffic until the updated manifest is deployed - the
+> previous deployment will continue serving requests and autoscaling as per normal.
 
-### Managing .env files
+## Step 4. Setup .env file
 
-You'll need to push the initial .env file for the environment. Environment files are stored
-in the S3 artefacts bucket, and retrieved during deployment.
+You'll need to push the initial .env file for the environment. Environment files are stored in the S3 artefacts bucket,
+and retrieved during deployment.
 
 If you have an existing .env file, be sure to copy that over to `.env.<environment>` in the root of the app, otherwise
 you can build on the stub provided by the `init` command.
@@ -131,7 +124,7 @@ To push the .env file to the artefacts bucket, run `yolo env:push <environment>`
 
 After the initial push, you can retrieve the .env file with `yolo env:pull <environment>`.
 
-### Building and deploying
+## Step 5. Building and deploying
 
 Builds can be created with `yolo build <environment>`.
 
@@ -197,14 +190,12 @@ To debug or add features to YOLO, it is recommended to symlink to the local repo
 
 Add this to composer.json with the path to the local repository:
 
-```json
-    // ...
-
+```
 "repositories": [
-{
-"type": "path",
-"url": "/Users/username/code/yolo"
-}
+    {
+    "type": "path",
+    "url": "/Users/username/code/yolo"
+    }
 ],
 ```
 

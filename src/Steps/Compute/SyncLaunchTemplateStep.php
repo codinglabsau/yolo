@@ -14,7 +14,7 @@ class SyncLaunchTemplateStep implements Step
     public function __invoke(array $options): StepResult
     {
         try {
-            // ensure the launch template exists; refer to "yolo ami:create"
+            // ensure the launch template exists; refer to "yolo image:create"
             // to create new launch template versions with synced attributes.
             AwsResources::launchTemplate();
             return StepResult::SYNCED;
