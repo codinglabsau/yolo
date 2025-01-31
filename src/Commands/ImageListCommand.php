@@ -22,7 +22,7 @@ class ImageListCommand extends Command
         table(
             ['AMI Name', 'AMI ID', 'Visibility', 'State', 'Creation Date', 'Last Launched'],
             collect(Aws::ec2()->describeImages(['Owners' => ['self']])['Images'])
-                ->sortByDesc('LastLaunchedTime')
+                ->sortByDesc('CreationDate')
                 ->map(fn ($image) => [
                     $image['Name'],
                     $image['ImageId'],
