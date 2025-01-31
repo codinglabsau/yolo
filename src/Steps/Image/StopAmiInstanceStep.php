@@ -21,7 +21,7 @@ class StopAmiInstanceStep implements Step
 
         while (true) {
             // wait for instance to stop
-            if (AwsResources::ec2ByName('AMI', states: ['stopped'], throws: false)) {
+            if (AwsResources::ec2ByName(Helpers::keyedResourceName('ami'), states: ['stopped'], throws: false)) {
                 break;
             }
 

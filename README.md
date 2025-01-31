@@ -147,6 +147,8 @@ name: codinglabs
 environments:
   production:
     aws:
+      account-id:
+      vpc:
       region: ap-southeast-2
       bucket:
       artefacts-bucket:
