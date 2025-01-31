@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Steps\Image;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -14,12 +15,14 @@ class LaunchAmiInstanceStep implements Step
 {
     public function __invoke(): StepResult
     {
+        $name = Helpers::keyedResourceName('ami');
+
         if ($instance = AwsResources::ec2ByName(
-            'AMI',
+            $name,
             states: ['pending', 'running', 'stopping', 'stopped'],
             throws: false
         )) {
-            throw new ResourceExistsException("AMI instance already exists in state '{$instance['State']['Name']}'. It must be manually terminated before creating a new AMI.");
+            throw new ResourceExistsException(sprintf("AMI instance %s already exists in state '%s'. It must be manually terminated before creating a new AMI.", $name, $instance['State']['Name']));
         }
 
         Aws::ec2()->runInstances([
@@ -30,12 +33,7 @@ class LaunchAmiInstanceStep implements Step
             'TagSpecifications' => [
                 [
                     'ResourceType' => 'instance',
-                    'Tags' => [
-                        [
-                            'Key' => 'Name',
-                            'Value' => 'AMI',
-                        ],
-                    ],
+                    ...Aws::tags(['Name' => $name]),
                 ],
             ],
 
@@ -54,7 +52,7 @@ class LaunchAmiInstanceStep implements Step
             'InstanceType' => 't3.xlarge',
 
             // use the existing key pair
-            'KeyName' => Helpers::keyedResourceName(exclusive: false),
+            'KeyName' => Manifest::get('aws.ec2.key-pair', Helpers::keyedResourceName(exclusive: false)),
 
             // 1 server only per favor (min+max are both required)
             'MaxCount' => 1,
@@ -77,7 +75,7 @@ class LaunchAmiInstanceStep implements Step
 
         while (true) {
             // wait for instance to be running with an assigned public IP address
-            if ($instance = AwsResources::ec2ByName('AMI', throws: false)) {
+            if ($instance = AwsResources::ec2ByName($name, throws: false)) {
                 Helpers::app()->singleton('amiInstanceId', fn () => $instance['InstanceId']);
                 Helpers::app()->singleton('amiIp', fn () => $instance['PublicIpAddress']);
                 break;
