@@ -2,18 +2,24 @@
 
 namespace Codinglabs\Yolo\Concerns;
 
+use BackedEnum;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\Enums\SecurityGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 trait UsesEc2
 {
+    protected static array $vpc;
     protected static array $launchTemplate;
     protected static array $loadBalancer;
     protected static array $targetGroup;
     protected static array $subnets;
+    protected static array $securityGroups;
+    protected static array $loadBalancerSecurityGroup;
+    protected static array $ec2SecurityGroup;
     protected static array $keyPair;
 
     public static function ec2ByName(string $name, array $states = ['running'], bool $firstOnly = true, $throws = true): ?array
@@ -57,6 +63,64 @@ trait UsesEc2
         return collect(static::ec2ByName(name: $name, firstOnly: false))
             ->map(fn ($instance) => $instance['PublicIpAddress'])
             ->toArray();
+    }
+
+    public static function securityGroups($refresh = false): array
+    {
+        if (! $refresh && isset(static::$securityGroups)) {
+            return static::$securityGroups;
+        }
+
+        $securityGroups = Aws::ec2()->describeSecurityGroups()['SecurityGroups'];
+
+        static::$securityGroups = $securityGroups;
+
+        return static::$securityGroups;
+    }
+
+    /**
+     * @throws ResourceDoesNotExistException
+     */
+    public static function loadBalancerSecurityGroup(): array
+    {
+        if (isset(static::$loadBalancerSecurityGroup)) {
+            return static::$loadBalancerSecurityGroup;
+        }
+
+        static::$loadBalancerSecurityGroup = static::securityGroupByName(SecurityGroup::LOAD_BALANCER_SECURITY_GROUP);
+
+        return static::$loadBalancerSecurityGroup;
+    }
+
+    /**
+     * @throws ResourceDoesNotExistException
+     */
+    public static function ec2SecurityGroup(): array
+    {
+        if (isset(static::$ec2SecurityGroup)) {
+            return static::$ec2SecurityGroup;
+        }
+
+        static::$ec2SecurityGroup = static::securityGroupByName(SecurityGroup::EC2_SECURITY_GROUP);
+
+        return static::$ec2SecurityGroup;
+    }
+
+    public static function securityGroupByName(string|BackedEnum $name): array
+    {
+        if ($name instanceof BackedEnum) {
+            $name = $name->value;
+        }
+
+        $name = Helpers::keyedResourceName($name, exclusive: false);
+
+        foreach (static::securityGroups(refresh: true) as $securityGroup) {
+            if ($securityGroup['GroupName'] === $name) {
+                return $securityGroup;
+            }
+        }
+
+        throw new ResourceDoesNotExistException("Could not find Security Group matching name $name");
     }
 
     public static function loadBalancer(): array
@@ -161,7 +225,7 @@ trait UsesEc2
                     'Name' => Manifest::get('aws.ec2.instance-profile'),
                 ],
                 'InstanceType' => Manifest::get('aws.ec2.instance-type'),
-                'KeyName' => Helpers::keyedResourceName(exclusive: false),
+                'KeyName' => Manifest::get('aws.ec2.key-pair', Helpers::keyedResourceName(exclusive: false)),
                 'SecurityGroupIds' => [
                     AwsResources::ec2SecurityGroup()['GroupId'],
                 ],
@@ -178,6 +242,33 @@ trait UsesEc2
                 ],
             ],
         ];
+    }
+
+    public static function vpc(): array
+    {
+        if (isset(static::$vpc)) {
+            return static::$vpc;
+        }
+
+        $name = Manifest::get('aws.vpc', Helpers::keyedResourceName(exclusive: false));
+
+        $vpcs = Aws::ec2()->describeVpcs([
+            'Filters' => [
+                [
+                    'Name' => 'tag:Name',
+                    'Values' => [$name],
+                ],
+            ]
+        ])
+        ['Vpcs'];
+
+        if (count($vpcs) === 0) {
+            throw new ResourceDoesNotExistException(sprintf("Could not find VPC %s", $name));
+        }
+
+        static::$vpc = $vpcs[0];
+
+        return static::$vpc;
     }
 
     public static function subnets(): array
