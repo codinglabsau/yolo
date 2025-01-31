@@ -26,6 +26,7 @@ class ImageCreateCommand extends SteppedCommand
         $this
             ->setName('image:create')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
+            ->addOption('no-progress', null, null, 'Hide the progress output')
             ->setDescription('Prepare a new Amazon Machine Image');
     }
 }

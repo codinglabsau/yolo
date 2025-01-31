@@ -65,7 +65,7 @@ Next, run `yolo init`. The init command does the following:
 
 After initialising, you can customise the `yolo.yml` manifest file to suit your app's requirements.
 
-### Step 2: Provision resources
+## Step 2: Provision resources
 
 YOLO is designed to create and manage all AWS resources required to run your application.
 
@@ -102,7 +102,7 @@ Run `yolo image:create <environment>` to generate a new AMI.
 
 To prepare the new image for traffic, run `yolo image:prepare <environment>`.
 
-You will be prompted to select the AMI (the new one should be at the top of the list).
+You will be prompted to select the AMI (the newest image will be at the top of the list).
 
 After selecting which image to use, servers will be spun up, ready to receive app deployments.
 
