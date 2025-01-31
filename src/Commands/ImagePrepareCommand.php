@@ -10,29 +10,29 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\select;
 
-class AmiRotateCommand extends SteppedCommand
+class ImagePrepareCommand extends SteppedCommand
 {
     use UsesEc2;
 
     protected array $steps = [
         // create new launch template version
-        Steps\Ami\CreateLaunchTemplateVersionStep::class,
+        Steps\Image\CreateLaunchTemplateVersionStep::class,
 
         // scheduler group
-        Steps\Ami\CreateAutoScalingSchedulerGroupStep::class,
+        Steps\Image\CreateAutoScalingSchedulerGroupStep::class,
 
         // queue group
-        Steps\Ami\CreateAutoScalingQueueGroupStep::class,
+        Steps\Image\CreateAutoScalingQueueGroupStep::class,
 
         // web group
-        Steps\Ami\CreateAutoScalingWebGroupStep::class,
-        Steps\Ami\CreateWebGroupCpuAlarmsStep::class,
+        Steps\Image\CreateAutoScalingWebGroupStep::class,
+        Steps\Image\CreateWebGroupCpuAlarmsStep::class,
     ];
 
     protected function configure(): void
     {
         $this
-            ->setName('ami:rotate')
+            ->setName('image:sync')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('dry-run', null, null, 'Run the command without making changes')
             ->addOption('no-progress', null, null, 'Hide the progress output')

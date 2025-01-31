@@ -7,12 +7,12 @@ use Codinglabs\Yolo\Aws;
 use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\table;
 
-class AmiListCommand extends Command
+class ImageListCommand extends Command
 {
     protected function configure(): void
     {
         $this
-            ->setName('ami:list')
+            ->setName('image:list')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->setDescription('List the available Amazon Machine Images in the given environment');
     }

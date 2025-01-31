@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Ami;
+namespace Codinglabs\Yolo\Steps\Image;
 
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Contracts\Step;

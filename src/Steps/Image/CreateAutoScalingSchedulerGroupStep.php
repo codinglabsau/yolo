@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Ami;
+namespace Codinglabs\Yolo\Steps\Image;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
@@ -8,18 +8,20 @@ use Illuminate\Support\Str;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
+use Codinglabs\Yolo\Concerns\UsesEc2;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Concerns\UsesAutoscaling;
 
-class CreateAutoScalingWebGroupStep implements Step
+class CreateAutoScalingSchedulerGroupStep implements Step
 {
     use UsesAutoscaling;
+    use UsesEc2;
 
     public function __invoke(array $options): StepResult
     {
         if (! Arr::get($options, 'dry-run')) {
-            $name = Helpers::keyedResourceName(sprintf('%s-%s', ServerGroup::WEB->value, Str::random(8)));
+            $name = Helpers::keyedResourceName(sprintf('%s-%s', ServerGroup::SCHEDULER->value, Str::random(8)));
 
             Aws::autoscaling()->createAutoScalingGroup([
                 ...static::autoScalingGroupPayload(),
@@ -28,11 +30,12 @@ class CreateAutoScalingWebGroupStep implements Step
                     'MinSize' => 1,
                     'MaxSize' => 1,
                     'DesiredCapacity' => 1,
+                    // special use case to include 'PropagateAtLaunch' attribute
                     'Tags' => [
                         [
                             'Key' => 'Name',
                             'PropagateAtLaunch' => true,
-                            'Value' => ServerGroup::WEB->value,
+                            'Value' => ServerGroup::SCHEDULER->value,
                         ],
                         [
                             'Key' => 'yolo:environment',
@@ -43,28 +46,7 @@ class CreateAutoScalingWebGroupStep implements Step
                 ],
             ]);
 
-            Aws::autoscaling()->putScalingPolicy([
-                'AutoScalingGroupName' => $name,
-                'PolicyName' => "$name-up",
-                'AdjustmentType' => 'ChangeInCapacity',
-                'Cooldown' => 60,
-                'ScalingAdjustment' => 2,
-            ]);
-
-            Aws::autoscaling()->putScalingPolicy([
-                'AutoScalingGroupName' => $name,
-                'PolicyName' => "$name-down",
-                'AdjustmentType' => 'ChangeInCapacity',
-                'Cooldown' => 300,
-                'ScalingAdjustment' => -1,
-            ]);
-
-            Aws::autoscaling()->enableMetricsCollection([
-                'AutoScalingGroupName' => $name,
-                'Granularity' => '1Minute',
-            ]);
-
-            Manifest::put('aws.autoscaling.web', $name);
+            Manifest::put('aws.autoscaling.scheduler', $name);
 
             return StepResult::SYNCED;
         }

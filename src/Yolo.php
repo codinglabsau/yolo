@@ -13,17 +13,12 @@ class Yolo
         Commands\InitCommand::class,
         Commands\OpenCommand::class,
 
-        // AWS
-        Commands\AmiCreateCommand::class,
-        Commands\AmiListCommand::class,
-        Commands\AmiRotateCommand::class,
+        // General purpose
         Commands\CommandCommand::class,
         Commands\Ec2ListCommand::class,
 
-        // Build
+        // Build & deploy
         Commands\BuildCommand::class,
-
-        // Deploy
         Commands\StopCommand::class,
         Commands\DeployCommand::class,
         Commands\StartCommand::class,
@@ -31,6 +26,11 @@ class Yolo
         // Environments
         Commands\EnvPullCommand::class,
         Commands\EnvPushCommand::class,
+
+        // Images
+        Commands\ImageCreateCommand::class,
+        Commands\ImageListCommand::class,
+        Commands\ImagePrepareCommand::class,
 
         // Sync
         Commands\SyncCommand::class,
