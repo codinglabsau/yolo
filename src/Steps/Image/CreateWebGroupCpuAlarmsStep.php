@@ -47,6 +47,7 @@ class CreateWebGroupCpuAlarmsStep implements Step
                 'OKActions' => [
                     $scaleDownPolicy['PolicyARN'],
                 ],
+                ...Aws::tags(),
             ]);
 
             $alarmName = Helpers::keyedResourceName(sprintf('web-cpu-critical-alarm-%s', Str::random(8)));
@@ -76,6 +77,7 @@ class CreateWebGroupCpuAlarmsStep implements Step
                 'OKActions' => [
                     $snsTopic['TopicArn'],
                 ],
+                ...Aws::tags(),
             ]);
 
             return StepResult::SYNCED;
