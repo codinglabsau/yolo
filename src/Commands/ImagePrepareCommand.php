@@ -32,7 +32,7 @@ class ImagePrepareCommand extends SteppedCommand
     protected function configure(): void
     {
         $this
-            ->setName('image:sync')
+            ->setName('image:prepare')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('dry-run', null, null, 'Run the command without making changes')
             ->addOption('no-progress', null, null, 'Hide the progress output')
@@ -44,7 +44,7 @@ class ImagePrepareCommand extends SteppedCommand
     {
         $amis = collect(Aws::ec2()->describeImages(['Owners' => ['self']])['Images'])
             ->filter(fn (array $image) => $image['State'] === 'available')
-            ->sortByDesc('LastLaunchedTime')
+            ->sortByDesc('CreationDate')
             ->mapWithKeys(fn (array $image) => [
                 $image['ImageId'] => sprintf(
                     '%s (%s) - created %s',

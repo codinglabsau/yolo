@@ -8,9 +8,12 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\StepResult;
 use Symfony\Component\Process\Process;
 use Codinglabs\Yolo\Contracts\RunsOnAwsWeb;
+use Codinglabs\Yolo\Concerns\DetectsSubdomains;
 
 class SyncNginxConfigurationStep implements RunsOnAwsWeb
 {
+    use DetectsSubdomains;
+
     public function __invoke(): StepResult
     {
         // drop the default nginx vhost, using -f force to suppress file does not exist error
@@ -34,7 +37,7 @@ class SyncNginxConfigurationStep implements RunsOnAwsWeb
 
         $filename = Helpers::keyedResourceName();
 
-        // create a catch-all vhost with forwarding rules
+        // create a catch-all vhost with redirecting rules
         file_put_contents(
             "/etc/nginx/sites-available/$filename",
             str_replace(
@@ -65,44 +68,54 @@ class SyncNginxConfigurationStep implements RunsOnAwsWeb
         if (Manifest::isMultitenanted()) {
             return collect(Manifest::tenants())
                 ->map(function (array $tenant) {
-                    if ($tenant['subdomain']) {
-                        // skip creating a non-www forwarding rule for subdomains
-                        return "#{$tenant['domain']} is a subdomain, skipping non-www forwarding";
+                    if (! $this->domainHasWwwSubdomain($tenant['apex'], $tenant['domain'])) {
+                        return sprintf("# %s is a subdomain, skipping redirects", $tenant['domain']);
                     }
 
-                    $forwardingTemplate = $tenant['www']
-                        ? file_get_contents(Paths::stubs("nginx/forward_non_www"))
-                        : file_get_contents(Paths::stubs("nginx/forward_www"));
+                    $redirectTemplate = file_get_contents(Paths::stubs('nginx/redirect'));
 
                     return str_replace(
                         search: [
-                            '{NON_WWW_FQDN}',
-                            '{WWW_FQDN}',
+                            '{FROM}',
+                            '{TO}',
                         ],
                         replace: [
-                            $tenant['domain'],
-                            "www." . $tenant['domain'],
+                            str_starts_with($tenant['domain'], 'www.')
+                                ? $tenant['apex']
+                                : "www.{$tenant['domain']}",
+                            str_starts_with($tenant['domain'], 'www.')
+                                ? $tenant['domain']
+                                : $tenant['apex'],
                         ],
-                        subject: $forwardingTemplate
+                        subject: $redirectTemplate
                     );
                 })
                 ->join("\n");
         }
 
-        $forwardingTemplate = Manifest::get('www')
-            ? file_get_contents(Paths::stubs("nginx/forward_non_www"))
-            : file_get_contents(Paths::stubs("nginx/forward_www"));
+        if (! $this->domainHasWwwSubdomain(Manifest::get('apex'), Manifest::get('domain'))) {
+            return sprintf("# %s is a subdomain, skipping redirects", Manifest::get('domain'));
+        }
+
+        $redirectTemplate = file_get_contents(Paths::stubs('nginx/redirect'));
+
+        $apex = Manifest::apex();
+        $domain = Manifest::get('domain');
 
         return str_replace(
             search: [
-                '{NON_WWW_FQDN}',
-                '{WWW_FQDN}',
+                '{FROM}',
+                '{TO}',
             ],
             replace: [
-                Manifest::get('domain'),
-                "www." . Manifest::get('domain'),
+                str_starts_with($domain, 'www.')
+                    ? $apex
+                    : "www.$domain",
+                str_starts_with($domain, 'www.')
+                    ? $domain
+                    : $apex,
             ],
-            subject: $forwardingTemplate
+            subject: $redirectTemplate
         );
     }
 

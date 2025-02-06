@@ -18,7 +18,6 @@ class SyncStandaloneRecordSetStep implements ExecutesStandaloneStep
             $this->syncRecordSet(
                 apex: Manifest::apex(),
                 domain: Manifest::get('domain'),
-                subdomain: Manifest::get('domain', default: false)
             );
 
             return StepResult::SYNCED;

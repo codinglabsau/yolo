@@ -61,7 +61,13 @@ class Manifest
         }
 
         // prefer the apex key when specified
-        return static::get('apex', static::get('domain'));
+        $apex = static::get('apex', static::get('domain'));
+
+        if (str_starts_with($apex, 'www.')) {
+            return throw new IntegrityCheckException(sprintf("The apex record %s cannot start with 'www'.", $apex));
+        }
+
+        return $apex;
     }
 
     public static function isMultitenanted(): bool
@@ -73,7 +79,6 @@ class Manifest
      * @return array<int, array{
      *     domain: string,
      *     apex: string,
-     *     subdomain: bool,
      *     www: bool
      * }>
      */
@@ -82,9 +87,11 @@ class Manifest
         return collect(static::get('tenants'))
             ->mapWithKeys(function (array $config, string $tenantId) {
                 // normalise tenant config
-                $config['subdomain'] = array_key_exists('apex', $config);
                 $config['apex'] = $config['apex'] ?? $config['domain'];
-                $config['www'] = array_key_exists('www', $config) && $config['www'];
+
+                if (str_starts_with($config['apex'], 'www.')) {
+                    return throw new IntegrityCheckException(sprintf("The apex record %s cannot start with 'www'.", $config['apex']));
+                }
 
                 return [$tenantId => $config];
             })->toArray();

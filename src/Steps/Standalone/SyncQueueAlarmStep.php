@@ -49,6 +49,7 @@ class SyncQueueAlarmStep implements Step
             'TreatMissingData' => 'notBreaching',
             'AlarmActions' => [$snsTopic['TopicArn']],
             'OKActions' => [$snsTopic['TopicArn']],
+            ...Aws::tags(),
         ]);
 
         return StepResult::SYNCED;

@@ -173,7 +173,7 @@ trait UsesEc2
                     'Name' => Manifest::get('aws.ec2.instance-profile'),
                 ],
                 'InstanceType' => Manifest::get('aws.ec2.instance-type'),
-                'KeyName' => Helpers::keyedResourceName(exclusive: false),
+                'KeyName' => Manifest::get('aws.ec2.key-pair', Helpers::keyedResourceName(exclusive: false)),
                 'SecurityGroupIds' => [
                     AwsResources::ec2SecurityGroup()['GroupId'],
                 ],
@@ -198,7 +198,7 @@ trait UsesEc2
             return static::$vpc;
         }
 
-        $name = Helpers::keyedResourceName(exclusive: false);
+        $name = Manifest::get('aws.vpc', Helpers::keyedResourceName(exclusive: false));
 
         $vpcs = Aws::ec2()->describeVpcs([
             'Filters' => [
