@@ -17,7 +17,6 @@ class SyncMultitenancyRecordSetStep extends TenantStep
             $this->syncRecordSet(
                 apex: $this->config['apex'],
                 domain: $this->config['domain'],
-                subdomain: $this->config['subdomain']
             );
 
             return StepResult::SYNCED;

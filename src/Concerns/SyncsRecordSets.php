@@ -7,48 +7,68 @@ use Codinglabs\Yolo\AwsResources;
 
 trait SyncsRecordSets
 {
-    public function syncRecordSet(string $apex, string $domain, bool $subdomain = false): void
+    use DetectsSubdomains;
+
+    public function syncRecordSet(string $apex, string $domain): void
     {
-        $ALB = AwsResources::loadBalancer();
-
-        $changes = [
-            // naked domain alias
-            [
-                'Action' => 'UPSERT',
-                'ResourceRecordSet' => [
-                    'AliasTarget' => [
-                        'DNSName' => $ALB['DNSName'],
-                        'EvaluateTargetHealth' => false,
-                        'HostedZoneId' => $ALB['CanonicalHostedZoneId'],
-                    ],
-                    'Name' => $domain,
-                    'Type' => 'A',
-                ],
-            ],
-        ];
-
-        if (! $subdomain) {
-            // add a www. domain alias for non-subdomains
-            $changes[] = [
-                'Action' => 'UPSERT',
-                'ResourceRecordSet' => [
-                    'AliasTarget' => [
-                        'DNSName' => $ALB['DNSName'],
-                        'EvaluateTargetHealth' => false,
-                        'HostedZoneId' => $ALB['CanonicalHostedZoneId'],
-                    ],
-                    'Name' => "www.$domain",
-                    'Type' => 'A',
-                ],
-            ];
-        }
-
         Aws::route53()->changeResourceRecordSets([
             'ChangeBatch' => [
-                'Changes' => $changes,
+                'Changes' => $this->generateChanges($apex, $domain),
                 'Comment' => 'Created by yolo CLI',
             ],
             'HostedZoneId' => AwsResources::hostedZone($apex)['Id'],
         ]);
+    }
+
+    protected function generateChanges(string $apex, string $domain): array
+    {
+        $ALB = AwsResources::loadBalancer();
+
+        // handle apex and www. subdomains
+        if ($this->domainHasWwwSubdomain($apex, $domain)) {
+            // apex record, such as codinglabs.com.au
+            return [
+                [
+                    'Action' => 'UPSERT',
+                    'ResourceRecordSet' => [
+                        'AliasTarget' => [
+                            'DNSName' => $ALB['DNSName'],
+                            'HostedZoneId' => $ALB['CanonicalHostedZoneId'],
+                            'EvaluateTargetHealth' => false,
+                        ],
+                        'Name' => $apex,
+                        'Type' => 'A',
+                    ],
+                ],
+                [
+                    'Action' => 'UPSERT',
+                    'ResourceRecordSet' => [
+                        'AliasTarget' => [
+                            'DNSName' => $ALB['DNSName'],
+                            'HostedZoneId' => $ALB['CanonicalHostedZoneId'],
+                            'EvaluateTargetHealth' => false,
+                        ],
+                        'Name' => str_starts_with($domain, 'www.')
+                            ? $domain
+                            : "www.$domain",
+                        'Type' => 'A',
+                    ],
+                ]
+            ];
+        }
+
+        // subdomain record, like foo.codinglabs.com.au
+        return [
+            'Action' => 'UPSERT',
+            'ResourceRecordSet' => [
+                'AliasTarget' => [
+                    'DNSName' => $ALB['DNSName'],
+                    'HostedZoneId' => $ALB['CanonicalHostedZoneId'],
+                    'EvaluateTargetHealth' => false,
+                ],
+                'Name' => $domain,
+                'Type' => 'A',
+            ],
+        ];
     }
 }
