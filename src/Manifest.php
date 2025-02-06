@@ -61,7 +61,13 @@ class Manifest
         }
 
         // prefer the apex key when specified
-        return static::get('apex', static::get('domain'));
+        $apex = static::get('apex', static::get('domain'));
+
+        if (str_starts_with($apex, 'www.')) {
+            return throw new IntegrityCheckException("The apex record cannot start with 'www'.");
+        }
+
+        return $apex;
     }
 
     public static function isMultitenanted(): bool
