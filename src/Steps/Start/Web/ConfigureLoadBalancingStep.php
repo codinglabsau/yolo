@@ -25,5 +25,11 @@ class ConfigureLoadBalancingStep implements RunsOnAwsWeb
                 ],
             ],
         ]);
+
+        Aws::autoscaling()->updateAutoScalingGroup([
+            'AutoScalingGroupName' => $asgWeb['AutoScalingGroupName'],
+            'HealthCheckType' => 'ELB',
+            'HealthCheckGracePeriod' => 60,
+        ]);
     }
 }
