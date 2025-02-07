@@ -59,15 +59,17 @@ trait SyncsRecordSets
 
         // subdomain record, like foo.codinglabs.com.au
         return [
-            'Action' => 'UPSERT',
-            'ResourceRecordSet' => [
-                'AliasTarget' => [
-                    'DNSName' => $ALB['DNSName'],
-                    'HostedZoneId' => $ALB['CanonicalHostedZoneId'],
-                    'EvaluateTargetHealth' => false,
+            [
+                'Action' => 'UPSERT',
+                'ResourceRecordSet' => [
+                    'AliasTarget' => [
+                        'DNSName' => $ALB['DNSName'],
+                        'HostedZoneId' => $ALB['CanonicalHostedZoneId'],
+                        'EvaluateTargetHealth' => false,
+                    ],
+                    'Name' => $domain,
+                    'Type' => 'A',
                 ],
-                'Name' => $domain,
-                'Type' => 'A',
             ],
         ];
     }
