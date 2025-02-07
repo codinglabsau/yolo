@@ -6,8 +6,9 @@ use GuzzleHttp\Client;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\RunsOnAwsWeb;
+use Codinglabs\Yolo\Contracts\ExecutesStandaloneStep;
 
-class WarmApplicationStep implements RunsOnAwsWeb
+class WarmApplicationStep implements RunsOnAwsWeb, ExecutesStandaloneStep
 {
     public function __invoke(array $options): StepResult
     {
