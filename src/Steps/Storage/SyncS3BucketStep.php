@@ -3,8 +3,8 @@
 namespace Codinglabs\Yolo\Steps\Storage;
 
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Paths;
 use Illuminate\Support\Arr;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -14,7 +14,7 @@ class SyncS3BucketStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        $bucketName = Manifest::get('aws.bucket');
+        $bucketName = Paths::s3AppBucket();
 
         if (! $bucketName) {
             return StepResult::SKIPPED;

@@ -49,14 +49,14 @@ class Paths
         return Manifest::get('aws.cloudfront') . '/' . static::versionedBuildAssets($appVersion);
     }
 
-    public static function s3BuildBucket(): string
+    public static function s3AppBucket(): string
     {
         return Manifest::get('aws.bucket');
     }
 
     public static function s3BuildAssets(string $appVersion): string
     {
-        return 's3://' . static::s3BuildBucket() . '/' . static::versionedBuildAssets($appVersion) . '/assets';
+        return 's3://' . static::s3AppBucket() . '/' . static::versionedBuildAssets($appVersion) . '/assets';
     }
 
     public static function s3ArtefactsBucket(): ?string
