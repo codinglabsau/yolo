@@ -13,7 +13,6 @@ environments:
         scheduler:
       ec2:
         instance-type: t3.small
-        instance-profile: // todo use magic
         octane: true
 
     build:

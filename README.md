@@ -168,7 +168,7 @@ environments:
       ec2:
         instance-type: t3.small
         instance-profile:
-        octane: true
+        octane: truec
         key-pair:
       codedeploy:
         strategy: without-load-balancing|with-load-balancing
