@@ -18,15 +18,15 @@ class ImagePrepareCommand extends SteppedCommand
         // create new launch template version
         Steps\Image\CreateLaunchTemplateVersionStep::class,
 
-        // scheduler group
-        Steps\Image\CreateAutoScalingSchedulerGroupStep::class,
+        // web group
+        Steps\Image\CreateAutoScalingWebGroupStep::class,
+        Steps\Image\CreateWebGroupCpuAlarmsStep::class,
 
         // queue group
         Steps\Image\CreateAutoScalingQueueGroupStep::class,
 
-        // web group
-        Steps\Image\CreateAutoScalingWebGroupStep::class,
-        Steps\Image\CreateWebGroupCpuAlarmsStep::class,
+        // scheduler group
+        Steps\Image\CreateAutoScalingSchedulerGroupStep::class,
     ];
 
     protected function configure(): void

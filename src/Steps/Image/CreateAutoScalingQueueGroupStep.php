@@ -21,37 +21,42 @@ class CreateAutoScalingQueueGroupStep implements Step
     public function __invoke(array $options): StepResult
     {
         if (! Arr::get($options, 'dry-run')) {
-            $name = Helpers::keyedResourceName(sprintf('%s-%s', ServerGroup::QUEUE->value, Str::random(8)));
+            if (! Manifest::get('aws.autoscaling.combine', false)) {
+                $name = Helpers::keyedResourceName(sprintf('%s-%s', ServerGroup::QUEUE->value, Str::random(8)));
 
-            Aws::autoscaling()->createAutoScalingGroup([
-                ...static::autoScalingGroupPayload(),
-                ...[
-                    'AutoScalingGroupName' => $name,
-                    'MinSize' => 1,
-                    'MaxSize' => 1,
-                    'DesiredCapacity' => 1,
-                    // special use case to include 'PropagateAtLaunch' attribute
-                    'Tags' => [
-                        [
-                            'Key' => 'Name',
-                            'PropagateAtLaunch' => true,
-                            'Value' => ServerGroup::QUEUE->value,
-                        ],
-                        [
-                            'Key' => 'yolo:environment',
-                            'Value' => Helpers::app('environment'),
-                            'PropagateAtLaunch' => true,
+                Aws::autoscaling()->createAutoScalingGroup([
+                    ...static::autoScalingGroupPayload(),
+                    ...[
+                        'AutoScalingGroupName' => $name,
+                        'MinSize' => 1,
+                        'MaxSize' => 1,
+                        'DesiredCapacity' => 1,
+                        // special use case to include 'PropagateAtLaunch' attribute
+                        'Tags' => [
+                            [
+                                'Key' => 'Name',
+                                'PropagateAtLaunch' => true,
+                                'Value' => ServerGroup::QUEUE->value,
+                            ],
+                            [
+                                'Key' => 'yolo:environment',
+                                'Value' => Helpers::app('environment'),
+                                'PropagateAtLaunch' => true,
+                            ],
                         ],
                     ],
-                ],
-            ]);
+                ]);
 
-            Aws::autoscaling()->enableMetricsCollection([
-                'AutoScalingGroupName' => $name,
-                'Granularity' => '1Minute',
-            ]);
+                Aws::autoscaling()->enableMetricsCollection([
+                    'AutoScalingGroupName' => $name,
+                    'Granularity' => '1Minute',
+                ]);
 
-            Manifest::put('aws.autoscaling.queue', $name);
+                Manifest::put('aws.autoscaling.queue', $name);
+            } else {
+                // use the web ASG for the queue
+                Manifest::put('aws.autoscaling.queue', Manifest::get('aws.autoscaling.web'));
+            }
 
             return StepResult::SYNCED;
         }

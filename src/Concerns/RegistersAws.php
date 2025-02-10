@@ -108,7 +108,17 @@ trait RegistersAws
                     ]
                 ]);
 
-                return ! empty($awsResult['Tags']) && $awsResult['Tags'][0]['Value'] === $serverGroup->value;
+                $allowedMatch = Manifest::get('aws.autoscaling.combine', false)
+                    ? ServerGroup::WEB->value
+                    : $serverGroup->value;
+
+                foreach ($awsResult['Tags'] as $tag) {
+                    if ($tag['Key'] === 'Name' && $tag['Value'] === $allowedMatch) {
+                        return true;
+                    }
+                }
+
+                return false;
             }
 
             return true;
