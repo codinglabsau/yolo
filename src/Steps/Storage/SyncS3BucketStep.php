@@ -16,10 +16,6 @@ class SyncS3BucketStep implements Step
     {
         $bucketName = Paths::s3AppBucket();
 
-        if (! $bucketName) {
-            return StepResult::SKIPPED;
-        }
-
         try {
             AwsResources::bucket($bucketName);
             return StepResult::SYNCED;
