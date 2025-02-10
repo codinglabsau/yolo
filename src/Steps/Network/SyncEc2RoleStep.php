@@ -3,7 +3,6 @@
 namespace Codinglabs\Yolo\Steps\Network;
 
 use Codinglabs\Yolo\Aws;
-use Codinglabs\Yolo\Paths;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\AwsResources;
@@ -29,6 +28,7 @@ class SyncEc2RoleStep implements Step
                             "Statement" => [
                                 [
                                     "Effect" => "Allow",
+                                    "Resource" => "*",
                                     "Action" => [
                                         "autoscaling:AttachTrafficSources",
                                         "autoscaling:DescribeAutoScalingGroups",
@@ -46,31 +46,38 @@ class SyncEc2RoleStep implements Step
                                         "sqs:PurgeQueue",
                                         "sqs:ListQueues",
                                     ],
-                                    "Resource" => "*",
                                 ],
                                 [
+                                    "Effect" => "Allow",
                                     "Action" => [
+                                        "Resource" => [
+                                            "arn:aws:iam::*:role/Elastic_Transcoder_Default_Role",
+                                        ],
                                         "iam:PassRole",
                                     ],
-                                    "Resource" => [
-                                        "arn:aws:iam::*:role/Elastic_Transcoder_Default_Role",
-                                    ],
-                                    "Effect" => "Allow",
                                 ],
-                                [
-                                    "Action" => [
-                                        "s3:ListBucket",
-                                        "s3:GetObject",
-                                        "s3:PutObject",
-                                    ],
-                                    "Resource" => [
-                                        sprintf('arn:aws:s3:::%s', Paths::s3ArtefactsBucket()),
-                                        sprintf('arn:aws:s3:::%s/*', Paths::s3ArtefactsBucket()),
-                                    ],
-                                    "Effect" => "Allow",
-                                ],
+// todo: this allows access to the artefacts bucket, but is redundant due to the * S3 permissions
+//                                [
+//                                    "Effect" => "Allow",
+//                                    "Resource" => [
+//                                        sprintf('arn:aws:s3:::%s', Paths::s3ArtefactsBucket()),
+//                                        sprintf('arn:aws:s3:::%s/*', Paths::s3ArtefactsBucket()),
+//                                    ],
+//                                    "Action" => [
+//                                        "s3:ListBucket",
+//                                        "s3:GetObject",
+//                                        "s3:PutObject",
+//                                    ],
+//                                ],
                                 [
                                     "Effect" => "Allow",
+                                    // todo: ideally this would restrict access to the just the app bucket, however because multiple apps can
+                                    // todo: share the same EC2, it is not possible to restrict access to a single bucket through the role.
+                                    "Resource" => "*",
+//                                    "Resource" => [
+//                                        sprintf('arn:aws:s3:::%s', Paths::s3AppBucket()),
+//                                        sprintf('arn:aws:s3:::%s/*', Paths::s3AppBucket()),
+//                                    ],
                                     "Action" => [
                                         "s3:PutObject",
                                         "s3:GetObject",
@@ -79,10 +86,6 @@ class SyncEc2RoleStep implements Step
                                         "s3:GetObjectAcl",
                                         "s3:PutObjectAcl",
                                         "s3:GetObjectAttributes",
-                                    ],
-                                    "Resource" => [
-                                        sprintf('arn:aws:s3:::%s', Paths::s3AppBucket()),
-                                        sprintf('arn:aws:s3:::%s/*', Paths::s3AppBucket()),
                                     ],
                                 ],
                             ],
