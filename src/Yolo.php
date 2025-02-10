@@ -40,6 +40,7 @@ class Yolo
         Commands\SyncMultitenancyLandlordCommand::class,
         Commands\SyncComputeCommand::class,
         Commands\SyncCiCommand::class,
+        Commands\SyncIamCommand::class,
     ];
 
     public function __construct()
