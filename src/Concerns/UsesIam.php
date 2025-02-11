@@ -66,6 +66,7 @@ trait UsesIam
                         "autoscaling:AttachTrafficSources",
                         "autoscaling:DescribeAutoScalingGroups",
                         "autoscaling:DescribeLoadBalancerTargetGroups",
+                        "autoscaling:UpdateAutoScaling",
                         "elasticloadbalancing:DescribeTargetGroups",
                         "ec2:DescribeTags",
                         "elasticloadbalancing:DescribeLoadBalancers",
