@@ -8,9 +8,9 @@ use Symfony\Component\Console\Input\InputArgument;
 class SyncIamCommand extends SteppedCommand
 {
     protected array $steps = [
-        Steps\Network\SyncEc2PolicyStep::class,
-        Steps\Network\SyncEc2RoleStep::class,
-        Steps\Network\SyncEc2AttachRolePolicyStep::class,
+        Steps\Iam\SyncEc2PolicyStep::class,
+        Steps\Iam\SyncEc2RoleStep::class,
+        Steps\Iam\SyncEc2AttachRolePolicyStep::class,
     ];
 
     protected function configure(): void
