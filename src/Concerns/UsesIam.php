@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Concerns;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -41,7 +42,7 @@ trait UsesIam
 
     public static function instanceProfile(): array
     {
-        $name = Helpers::keyedResourceName(Iam::INSTANCE_PROFILE, exclusive: false);
+        $name = Manifest::get('aws.ec2.instance-profile', Helpers::keyedResourceName(Iam::INSTANCE_PROFILE, exclusive: false));
         $instanceProfiles = Aws::iam()->listInstanceProfiles();
 
         foreach ($instanceProfiles['InstanceProfiles'] as $instanceProfile) {

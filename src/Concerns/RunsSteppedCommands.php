@@ -75,9 +75,9 @@ trait RunsSteppedCommands
                     StepResult::CONDITIONAL => '<fg=yellow>CONDITIONAL</>',
                     StepResult::WOULD_CREATE => '<fg=yellow>WOULD CREATE</>',
                     StepResult::WOULD_SYNC => '<fg=yellow>WOULD SYNC</>',
-                    StepResult::OUT_OF_SYNC => '<fg=yellow>OUT OF SYNC</>',
 
                     // red
+                    StepResult::OUT_OF_SYNC => '<fg=red>OUT OF SYNC</>',
                     StepResult::TIMEOUT => '<fg=red>TIMEOUT</>',
                     default => is_string($status)
                         ? $status
