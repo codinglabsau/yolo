@@ -35,7 +35,7 @@ class CreateAutoScalingWebGroupStep implements Step
                         [
                             'Key' => 'Name',
                             'PropagateAtLaunch' => true,
-                            'Value' => ServerGroup::WEB->value,
+                            'Value' => Helpers::keyedResourceName(ServerGroup::WEB, exclusive: false),
                         ],
                         [
                             'Key' => 'yolo:environment',

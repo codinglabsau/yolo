@@ -39,7 +39,7 @@ class CreateAutoScalingSchedulerGroupStep implements Step
                             [
                                 'Key' => 'Name',
                                 'PropagateAtLaunch' => true,
-                                'Value' => ServerGroup::SCHEDULER->value,
+                                'Value' => Helpers::keyedResourceName(ServerGroup::SCHEDULER, exclusive: false),
                             ],
                             [
                                 'Key' => 'yolo:environment',

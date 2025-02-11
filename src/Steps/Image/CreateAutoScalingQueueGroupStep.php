@@ -39,7 +39,7 @@ class CreateAutoScalingQueueGroupStep implements Step
                             [
                                 'Key' => 'Name',
                                 'PropagateAtLaunch' => true,
-                                'Value' => ServerGroup::QUEUE->value,
+                                'Value' => Helpers::keyedResourceName(ServerGroup::QUEUE, exclusive: false),
                             ],
                             [
                                 'Key' => 'yolo:environment',
