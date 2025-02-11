@@ -17,8 +17,13 @@ class AttachRolePolicyStep implements Step
             $role = AwsResources::ec2Role();
 
             Aws::iam()->attachRolePolicy([
-                'PolicyArn' => $policy['Arn'],
                 'RoleName' => $role['RoleName'],
+                'PolicyArn' => $policy['Arn'],
+            ]);
+
+            Aws::iam()->attachRolePolicy([
+                'RoleName' => $role['RoleName'],
+                'PolicyArn' => 'arn:aws:iam::aws:policy/AmazonElasticTranscoder_JobsSubmitter',
             ]);
 
             return StepResult::SYNCED;
