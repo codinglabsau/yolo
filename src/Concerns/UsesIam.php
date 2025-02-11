@@ -38,6 +38,20 @@ trait UsesIam
         throw new ResourceDoesNotExistException("Could not find IAM role with name $name");
     }
 
+    public static function instanceProfile(): array
+    {
+        $name = Helpers::keyedResourceName(exclusive: false);
+        $instanceProfiles = Aws::iam()->listInstanceProfiles();
+
+        foreach ($instanceProfiles['InstanceProfiles'] as $instanceProfile) {
+            if ($instanceProfile['InstanceProfileName'] === $name) {
+                return $instanceProfile;
+            }
+        }
+
+        throw new ResourceDoesNotExistException("Could not find IAM instance profile with name $name");
+    }
+
     public static function policyDocument(): array
     {
         return [

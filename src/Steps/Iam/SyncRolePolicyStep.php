@@ -10,7 +10,7 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncEc2PolicyStep implements Step
+class SyncRolePolicyStep implements Step
 {
     public function __invoke(array $options): StepResult
     {

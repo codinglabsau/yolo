@@ -8,7 +8,7 @@ use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 
-class SyncEc2AttachRolePolicyStep implements Step
+class AttachRolePolicyStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
