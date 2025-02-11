@@ -10,7 +10,7 @@ class SyncIamCommand extends SteppedCommand
     protected array $steps = [
         Steps\Iam\SyncRoleStep::class,
         Steps\Iam\SyncRolePolicyStep::class,
-        Steps\Iam\AttachRolePolicyStep::class,
+        Steps\Iam\AttachRolePoliciesStep::class,
         Steps\Iam\SyncInstanceProfileStep::class,
         Steps\Iam\AttachRoleToInstanceProfileStep::class,
     ];
