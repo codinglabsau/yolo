@@ -16,82 +16,35 @@ class SyncEc2RoleStep implements Step
     {
         try {
             AwsResources::ec2Role();
-            return StepResult::SYNCED;
-        } catch (ResourceDoesNotExistException $e) {
-            $name = Helpers::keyedResourceName(exclusive: false);
 
             if (! Arr::get($options, 'dry-run')) {
-                Aws::iam()->createRole([
+                $name = Helpers::keyedResourceName(exclusive: false);
+
+                Aws::iam()->updateRole([
                     'RoleName' => $name,
-                    'AssumeRolePolicyDocument' => json_encode([
-                            "Version" => "2012-10-17",
-                            "Statement" => [
-                                [
-                                    "Effect" => "Allow",
-                                    "Resource" => "*",
-                                    "Action" => [
-                                        "autoscaling:AttachTrafficSources",
-                                        "autoscaling:DescribeAutoScalingGroups",
-                                        "autoscaling:DescribeLoadBalancerTargetGroups",
-                                        "elasticloadbalancing:DescribeTargetGroups",
-                                        "ec2:DescribeTags",
-                                        "elasticloadbalancing:DescribeLoadBalancers",
-                                        "elastictranscoder:ListPipelines",
-                                        "sqs:DeleteMessage",
-                                        "sqs:GetQueueUrl",
-                                        "sqs:ChangeMessageVisibility",
-                                        "sqs:ReceiveMessage",
-                                        "sqs:SendMessage",
-                                        "sqs:GetQueueAttributes",
-                                        "sqs:PurgeQueue",
-                                        "sqs:ListQueues",
-                                    ],
-                                ],
-                                [
-                                    "Effect" => "Allow",
-                                    "Action" => [
-                                        "Resource" => [
-                                            "arn:aws:iam::*:role/Elastic_Transcoder_Default_Role",
-                                        ],
-                                        "iam:PassRole",
-                                    ],
-                                ],
-// todo: this allows access to the artefacts bucket, but is redundant due to the * S3 permissions
-//                                [
-//                                    "Effect" => "Allow",
-//                                    "Resource" => [
-//                                        sprintf('arn:aws:s3:::%s', Paths::s3ArtefactsBucket()),
-//                                        sprintf('arn:aws:s3:::%s/*', Paths::s3ArtefactsBucket()),
-//                                    ],
-//                                    "Action" => [
-//                                        "s3:ListBucket",
-//                                        "s3:GetObject",
-//                                        "s3:PutObject",
-//                                    ],
-//                                ],
-                                [
-                                    "Effect" => "Allow",
-                                    // todo: ideally this would restrict access to the just the app bucket, however because multiple apps can
-                                    // todo: share the same EC2, it is not possible to restrict access to a single bucket through the role.
-                                    "Resource" => "*",
-//                                    "Resource" => [
-//                                        sprintf('arn:aws:s3:::%s', Paths::s3AppBucket()),
-//                                        sprintf('arn:aws:s3:::%s/*', Paths::s3AppBucket()),
-//                                    ],
-                                    "Action" => [
-                                        "s3:PutObject",
-                                        "s3:GetObject",
-                                        "s3:ListBucket",
-                                        "s3:DeleteObject",
-                                        "s3:GetObjectAcl",
-                                        "s3:PutObjectAcl",
-                                        "s3:GetObjectAttributes",
-                                    ],
-                                ],
-                            ],
-                        ]
-                    ),
                     'Description' => 'YOLO managed EC2 role',
+                ]);
+
+                Aws::iam()->updateAssumeRolePolicy([
+                    'RoleName' => $name,
+                    'PolicyDocument' => json_encode(AwsResources::rolePolicyDocument()),
+                ]);
+
+                Aws::iam()->tagRole([
+                    'RoleName' => $name,
+                    ...Aws::tags()
+                ]);
+
+                return StepResult::SYNCED;
+            }
+
+            return StepResult::WOULD_SYNC;
+        } catch (ResourceDoesNotExistException $e) {
+            if (! Arr::get($options, 'dry-run')) {
+                Aws::iam()->createRole([
+                    'RoleName' => Helpers::keyedResourceName(exclusive: false),
+                    'Description' => 'YOLO managed EC2 role',
+                    'AssumeRolePolicyDocument' => json_encode(AwsResources::rolePolicyDocument()),
                     ...Aws::tags(),
                 ]);
 
