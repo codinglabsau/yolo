@@ -84,6 +84,7 @@ The full list of available sync commands are:
 - `yolo sync:tenant <environment>` prepares tenant resources (multitenancy apps only)
 - `yolo sync:compute <environment>` prepares the compute resources
 - `yolo sync:ci <environment>` prepares the continuous integration pipeline
+- `yolo sync:iam <environment>` prepares necessary permissions
 
 > [!TIP]
 > All sync commands support a `--dry-run` argument; this is a great starting point to see what resources will be created
@@ -167,7 +168,7 @@ environments:
       ec2:
         instance-type: t3.small
         instance-profile:
-        octane: true
+        octane: false
         key-pair:
       codedeploy:
         strategy: without-load-balancing|with-load-balancing

@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo;
 
 use Codinglabs\Yolo\Concerns\UsesS3;
 use Codinglabs\Yolo\Concerns\UsesEc2;
+use Codinglabs\Yolo\Concerns\UsesIam;
 use Codinglabs\Yolo\Concerns\UsesSns;
 use Codinglabs\Yolo\Concerns\UsesSqs;
 use Codinglabs\Yolo\Concerns\UsesSsm;
@@ -22,6 +23,7 @@ class AwsResources
     use UsesCloudWatch;
     use UsesEc2;
     use UsesElasticTranscoder;
+    use UsesIam;
     use UsesRoute53;
     use UsesS3;
     use UsesSns;

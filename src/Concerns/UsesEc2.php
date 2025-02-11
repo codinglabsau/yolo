@@ -222,7 +222,7 @@ trait UsesEc2
             'LaunchTemplateName' => Helpers::keyedResourceName(exclusive: false),
             'LaunchTemplateData' => [
                 'IamInstanceProfile' => [
-                    'Name' => Manifest::get('aws.ec2.instance-profile'),
+                    'Name' => Manifest::get('aws.ec2.instance-profile', Helpers::keyedResourceName(exclusive: false)),
                 ],
                 'InstanceType' => Manifest::get('aws.ec2.instance-type'),
                 'KeyName' => Manifest::get('aws.ec2.key-pair', Helpers::keyedResourceName(exclusive: false)),

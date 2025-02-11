@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Concerns;
 use Aws\S3\S3Client;
 use Aws\Acm\AcmClient;
 use Aws\Ec2\Ec2Client;
+use Aws\Iam\IamClient;
 use Aws\Sns\SnsClient;
 use Aws\Sqs\SqsClient;
 use Aws\Ssm\SsmClient;
@@ -42,6 +43,7 @@ trait RegistersAws
         Helpers::app()->singleton('ec2', fn () => new Ec2Client($arguments));
         Helpers::app()->singleton('elasticLoadBalancingV2', fn () => new ElasticLoadBalancingV2Client($arguments));
         Helpers::app()->singleton('elasticTranscoder', fn () => new ElasticTranscoderClient($arguments));
+        Helpers::app()->singleton('iam', fn () => new IamClient($arguments));
         Helpers::app()->singleton('route53', fn () => new Route53Client($arguments));
         Helpers::app()->singleton('s3', fn () => new S3Client($arguments));
         Helpers::app()->singleton('sns', fn () => new SnsClient($arguments));

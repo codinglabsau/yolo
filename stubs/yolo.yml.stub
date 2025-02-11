@@ -5,6 +5,7 @@ environments:
     aws:
       account-id: {AWS_ACCOUNT_ID}
       region: {AWS_REGION}
+      bucket:
       cloudfront: // todo use magic [account level]
       autoscaling:
         web:
@@ -12,7 +13,6 @@ environments:
         scheduler:
       ec2:
         instance-type: t3.small
-        instance-profile: // todo use magic
         octane: true
 
     build:
