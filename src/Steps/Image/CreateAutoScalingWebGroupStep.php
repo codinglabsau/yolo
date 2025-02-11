@@ -19,7 +19,10 @@ class CreateAutoScalingWebGroupStep implements Step
     public function __invoke(array $options): StepResult
     {
         if (! Arr::get($options, 'dry-run')) {
-            $name = Helpers::keyedResourceName(sprintf('%s-%s', ServerGroup::WEB->value, Str::random(8)));
+            $name = Helpers::keyedResourceName(
+                sprintf('%s-%s', ServerGroup::WEB->value, Str::random(8)),
+                exclusive: false
+            );
 
             Aws::autoscaling()->createAutoScalingGroup([
                 ...static::autoScalingGroupPayload(),

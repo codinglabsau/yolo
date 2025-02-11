@@ -6,6 +6,7 @@ use BackedEnum;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Enums\SecurityGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -222,7 +223,7 @@ trait UsesEc2
             'LaunchTemplateName' => Helpers::keyedResourceName(exclusive: false),
             'LaunchTemplateData' => [
                 'IamInstanceProfile' => [
-                    'Name' => Manifest::get('aws.ec2.instance-profile', Helpers::keyedResourceName(exclusive: false)),
+                    'Name' => Manifest::get('aws.ec2.instance-profile', Helpers::keyedResourceName(Iam::INSTANCE_PROFILE, exclusive: false)),
                 ],
                 'InstanceType' => Manifest::get('aws.ec2.instance-type'),
                 'KeyName' => Manifest::get('aws.ec2.key-pair', Helpers::keyedResourceName(exclusive: false)),

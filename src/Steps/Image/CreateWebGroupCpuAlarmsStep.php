@@ -18,7 +18,10 @@ class CreateWebGroupCpuAlarmsStep implements Step
     public function __invoke(array $options): StepResult
     {
         if (! Arr::get($options, 'dry-run')) {
-            $alarmName = Helpers::keyedResourceName(sprintf('web-cpu-scaling-alarm-%s', Str::random(8)));
+            $alarmName = Helpers::keyedResourceName(
+                sprintf('web-cpu-scaling-alarm-%s', Str::random(8)),
+                exclusive: false
+            );
             $asgWeb = AwsResources::autoScalingGroupWeb();
             $scaleUpPolicy = AwsResources::autoScalingGroupWebScaleUpPolicy();
             $scaleDownPolicy = AwsResources::autoScalingGroupWebScaleDownPolicy();

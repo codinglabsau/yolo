@@ -22,7 +22,10 @@ class CreateAutoScalingSchedulerGroupStep implements Step
     {
         if (! Arr::get($options, 'dry-run')) {
             if (! Manifest::get('aws.autoscaling.combine', false)) {
-                $name = Helpers::keyedResourceName(sprintf('%s-%s', ServerGroup::SCHEDULER->value, Str::random(8)));
+                $name = Helpers::keyedResourceName(
+                    sprintf('%s-%s', ServerGroup::SCHEDULER->value, Str::random(8)),
+                    exclusive: false
+                );
 
                 Aws::autoscaling()->createAutoScalingGroup([
                     ...static::autoScalingGroupPayload(),
