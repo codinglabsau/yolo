@@ -142,6 +142,6 @@ trait RegistersAws
 
     protected static function detectAwsSchedulerEnvironment(): bool
     {
-        return static::detectAwsEnvironment(ServerGroup::QUEUE);
+        return static::detectAwsEnvironment(ServerGroup::SCHEDULER);
     }
 }
