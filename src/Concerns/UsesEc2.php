@@ -74,7 +74,7 @@ trait UsesEc2
      */
     public static function ec2SecurityGroup(): array
     {
-        return static::securityGroupByName(SecurityGroup::EC2_SECURITY_GROUP);
+        return Manifest::get('aws.ec2.security-group', static::securityGroupByName(SecurityGroup::EC2_SECURITY_GROUP));
     }
 
     public static function securityGroupByName(string|BackedEnum $name): array
