@@ -29,9 +29,6 @@ class CreateLaunchTemplateVersionStep implements Step
                 'DefaultVersion' => $launchTemplateVersion['VersionNumber'],
             ]);
 
-            // refresh the statically defined launch template to reference the new version
-            AwsResources::launchTemplate(refresh: true);
-
             return sprintf('version %s', $launchTemplateVersion['VersionNumber']);
         }
 

@@ -13,16 +13,6 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 trait UsesEc2
 {
-    protected static array $vpc;
-    protected static array $launchTemplate;
-    protected static array $loadBalancer;
-    protected static array $targetGroup;
-    protected static array $subnets;
-    protected static array $securityGroups;
-    protected static array $loadBalancerSecurityGroup;
-    protected static array $ec2SecurityGroup;
-    protected static array $keyPair;
-
     public static function ec2ByName(string $name, array $states = ['running'], bool $firstOnly = true, $throws = true): ?array
     {
         $instances = collect(Aws::ec2()->describeInstances([
@@ -66,17 +56,9 @@ trait UsesEc2
             ->toArray();
     }
 
-    public static function securityGroups($refresh = false): array
+    public static function securityGroups(): array
     {
-        if (! $refresh && isset(static::$securityGroups)) {
-            return static::$securityGroups;
-        }
-
-        $securityGroups = Aws::ec2()->describeSecurityGroups()['SecurityGroups'];
-
-        static::$securityGroups = $securityGroups;
-
-        return static::$securityGroups;
+        return Aws::ec2()->describeSecurityGroups()['SecurityGroups'];
     }
 
     /**
@@ -84,13 +66,7 @@ trait UsesEc2
      */
     public static function loadBalancerSecurityGroup(): array
     {
-        if (isset(static::$loadBalancerSecurityGroup)) {
-            return static::$loadBalancerSecurityGroup;
-        }
-
-        static::$loadBalancerSecurityGroup = static::securityGroupByName(SecurityGroup::LOAD_BALANCER_SECURITY_GROUP);
-
-        return static::$loadBalancerSecurityGroup;
+        return static::securityGroupByName(SecurityGroup::LOAD_BALANCER_SECURITY_GROUP);
     }
 
     /**
@@ -98,13 +74,7 @@ trait UsesEc2
      */
     public static function ec2SecurityGroup(): array
     {
-        if (isset(static::$ec2SecurityGroup)) {
-            return static::$ec2SecurityGroup;
-        }
-
-        static::$ec2SecurityGroup = static::securityGroupByName(SecurityGroup::EC2_SECURITY_GROUP);
-
-        return static::$ec2SecurityGroup;
+        return static::securityGroupByName(SecurityGroup::EC2_SECURITY_GROUP);
     }
 
     public static function securityGroupByName(string|BackedEnum $name): array
@@ -115,7 +85,7 @@ trait UsesEc2
 
         $name = Helpers::keyedResourceName($name, exclusive: false);
 
-        foreach (static::securityGroups(refresh: true) as $securityGroup) {
+        foreach (static::securityGroups() as $securityGroup) {
             if ($securityGroup['GroupName'] === $name) {
                 return $securityGroup;
             }
@@ -126,15 +96,10 @@ trait UsesEc2
 
     public static function loadBalancer(): array
     {
-        if (isset(static::$loadBalancer)) {
-            return static::$loadBalancer;
-        }
-
         $loadBalancers = Aws::elasticLoadBalancingV2()->describeLoadBalancers();
 
         foreach ($loadBalancers['LoadBalancers'] as $loadBalancer) {
             if ($loadBalancer['LoadBalancerName'] === Manifest::get('aws.alb')) {
-                static::$loadBalancer = $loadBalancer;
                 return $loadBalancer;
             }
         }
@@ -144,10 +109,6 @@ trait UsesEc2
 
     public static function targetGroup(): array
     {
-        if (isset(static::$targetGroup)) {
-            return static::$targetGroup;
-        }
-
         $targetGroups = Aws::elasticLoadBalancingV2()->describeTargetGroups([
             'LoadBalancerArn' => static::loadBalancer()['LoadBalancerArn'],
         ])['TargetGroups'];
@@ -156,9 +117,7 @@ trait UsesEc2
             throw new ResourceDoesNotExistException(sprintf("Could not find target group for ALB %s", static::loadBalancer()['LoadBalancerName']));
         }
 
-        static::$targetGroup = $targetGroups[0];
-
-        return static::$targetGroup;
+        return $targetGroups[0];
     }
 
     public static function loadBalancerListenerOnPort(int $port): array
@@ -191,12 +150,8 @@ trait UsesEc2
         throw new ResourceDoesNotExistException("Could not find listener certificate on listener $listenerArn");
     }
 
-    public static function launchTemplate($refresh = false): array
+    public static function launchTemplate(): array
     {
-        if (! $refresh && isset(static::$launchTemplate)) {
-            return static::$launchTemplate;
-        }
-
         $launchTemplates = Aws::ec2()->describeLaunchTemplates([
             'Filters' => [
                 [
@@ -212,9 +167,7 @@ trait UsesEc2
                 ->throw();
         }
 
-        static::$launchTemplate = $launchTemplates[0];
-
-        return static::$launchTemplate;
+        return $launchTemplates[0];
     }
 
     public static function launchTemplatePayload(): array
@@ -247,10 +200,6 @@ trait UsesEc2
 
     public static function vpc(): array
     {
-        if (isset(static::$vpc)) {
-            return static::$vpc;
-        }
-
         $name = Manifest::get('aws.vpc', Helpers::keyedResourceName(exclusive: false));
 
         $vpcs = Aws::ec2()->describeVpcs([
@@ -267,17 +216,11 @@ trait UsesEc2
             throw new ResourceDoesNotExistException(sprintf("Could not find VPC %s", $name));
         }
 
-        static::$vpc = $vpcs[0];
-
-        return static::$vpc;
+        return $vpcs[0];
     }
 
     public static function subnets(): array
     {
-        if (isset(static::$subnets)) {
-            return static::$subnets;
-        }
-
         $subnets = Aws::ec2()->describeSubnets([
             'Filters' => [
                 [
@@ -291,22 +234,15 @@ trait UsesEc2
             throw new ResourceDoesNotExistException(sprintf("Could not find subnets for VPC %s", AwsResources::vpc()['VpcId']));
         }
 
-        static::$subnets = $subnets;
-
-        return static::$subnets;
+        return $subnets;
     }
 
     public static function keyPair(): array
     {
-        if (isset(static::$keyPair)) {
-            return static::$keyPair;
-        }
-
         $name = Manifest::get('aws.ec2.key-pair', Helpers::keyedResourceName(exclusive: false));
 
         foreach (Aws::ec2()->describeKeyPairs()['KeyPairs'] as $keyPair) {
             if ($keyPair['KeyName'] === $name) {
-                static::$keyPair = $keyPair;
                 return $keyPair;
             }
         }

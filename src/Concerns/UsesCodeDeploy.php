@@ -11,12 +11,6 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 trait UsesCodeDeploy
 {
-    protected static string $application;
-    protected static array $oneThirdAtATimeDeploymentConfig;
-    protected static array $webDeploymentGroup;
-    protected static array $queueDeploymentGroup;
-    protected static array $schedulerDeploymentGroup;
-
     public static function applicationName(): string
     {
         return Helpers::keyedResourceName();
@@ -24,15 +18,11 @@ trait UsesCodeDeploy
 
     public static function application(): string
     {
-        if (isset(static::$application)) {
-            return static::$application;
-        }
-
         $applications = Aws::codeDeploy()->listApplications();
 
         foreach ($applications['applications'] as $application) {
             if ($application === Helpers::keyedResourceName()) {
-                return static::$application = $application;
+                return $application;
             }
         }
 
@@ -41,15 +31,11 @@ trait UsesCodeDeploy
 
     public static function OneThirdAtATimeDeploymentConfig(): array
     {
-        if (isset(static::$oneThirdAtATimeDeploymentConfig)) {
-            return static::$oneThirdAtATimeDeploymentConfig;
-        }
-
         $deploymentConfigs = Aws::codeDeploy()->listDeploymentConfigs();
 
         foreach ($deploymentConfigs['deploymentConfigsList'] as $deploymentConfig) {
             if ($deploymentConfig === 'OneThirdAtATime') {
-                return static::$oneThirdAtATimeDeploymentConfig = Aws::codeDeploy()->getDeploymentConfig([
+                return Aws::codeDeploy()->getDeploymentConfig([
                     'deploymentConfigName' => $deploymentConfig,
                 ])['deploymentConfigInfo'];
             }
@@ -61,30 +47,18 @@ trait UsesCodeDeploy
     /** @throws ResourceDoesNotExistException */
     public static function webDeploymentGroup(): array
     {
-        if (isset(static::$webDeploymentGroup)) {
-            return static::$webDeploymentGroup;
-        }
-
         return static::deploymentGroup(Helpers::keyedResourceName(ServerGroup::WEB));
     }
 
     /** @throws ResourceDoesNotExistException */
     public static function queueDeploymentGroup(): array
     {
-        if (isset(static::$queueDeploymentGroup)) {
-            return static::$queueDeploymentGroup;
-        }
-
         return static::deploymentGroup(Helpers::keyedResourceName(ServerGroup::QUEUE));
     }
 
     /** @throws ResourceDoesNotExistException */
     public static function schedulerDeploymentGroup(): array
     {
-        if (isset(static::$schedulerDeploymentGroup)) {
-            return static::$schedulerDeploymentGroup;
-        }
-
         return static::deploymentGroup(Helpers::keyedResourceName(ServerGroup::SCHEDULER));
     }
 
