@@ -160,9 +160,8 @@ trait UsesEc2
         ])['LaunchTemplates'];
 
         if (count($launchTemplates) === 0) {
-            ResourceDoesNotExistException::make(sprintf("Could not find launch template %s", Helpers::keyedResourceName()))
-                ->suggest('compute:sync')
-                ->throw();
+            throw ResourceDoesNotExistException::make(sprintf("Could not find launch template %s", Helpers::keyedResourceName()))
+                ->suggest('compute:sync');
         }
 
         return $launchTemplates[0];
@@ -245,8 +244,7 @@ trait UsesEc2
             }
         }
 
-        ResourceDoesNotExistException::make("Could not find key pair with name $name")
-            ->suggest('sync:network')
-            ->throw();
+        throw ResourceDoesNotExistException::make("Could not find key pair with name $name")
+            ->suggest('sync:network');
     }
 }
