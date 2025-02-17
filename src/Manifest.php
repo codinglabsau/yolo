@@ -37,7 +37,7 @@ class Manifest
         return Arr::get(static::current(), 'name');
     }
 
-    public static function get(string $key, $default = null): string|array|null
+    public static function get(string $key, $default = null): mixed
     {
         return Arr::get(static::current()['environments'][Helpers::environment()], $key) ?? $default;
     }
