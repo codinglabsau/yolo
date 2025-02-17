@@ -16,6 +16,7 @@ class SyncSnsTopicStep implements Step
     {
         try {
             AwsResources::topic();
+
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException $e) {
             $name = Helpers::keyedResourceName(exclusive: false);
