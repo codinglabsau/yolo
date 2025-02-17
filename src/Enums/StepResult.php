@@ -17,4 +17,5 @@ enum StepResult
     case TIMEOUT;
     case SKIPPED;
     case WOULD_SKIP;
+    case MANIFEST_INVALID;
 }

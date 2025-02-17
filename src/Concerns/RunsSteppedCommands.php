@@ -78,6 +78,7 @@ trait RunsSteppedCommands
                     StepResult::WOULD_SYNC => '<fg=yellow>WOULD SYNC</>',
 
                     // red
+                    StepResult::MANIFEST_INVALID => '<fg=red>MANIFEST INVALID</>',
                     StepResult::OUT_OF_SYNC => '<fg=red>OUT OF SYNC</>',
                     StepResult::TIMEOUT => '<fg=red>TIMEOUT</>',
                     default => is_string($status)

@@ -10,22 +10,23 @@ use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\SecurityGroup;
+use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class SyncEc2SecurityGroupStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        if (Manifest::get('aws.ec2.security-group', false)) {
-            return StepResult::SKIPPED;
-        }
-
         try {
             AwsResources::ec2SecurityGroup();
 
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {
+                if (Manifest::get('aws.ec2.security-group')) {
+                    throw IntegrityCheckException::make('yolo.yml specifies a custom EC2 security group which does not exist');
+                }
+
                 $name = Helpers::keyedResourceName(SecurityGroup::EC2_SECURITY_GROUP, exclusive: false);
 
                 Aws::ec2()->createSecurityGroup([
@@ -78,7 +79,9 @@ class SyncEc2SecurityGroupStep implements Step
                 return StepResult::CREATED;
             }
 
-            return StepResult::WOULD_CREATE;
+            return Manifest::get('aws.ec2.security-group')
+                ? StepResult::MANIFEST_INVALID
+                : StepResult::WOULD_CREATE;
         }
     }
 }
