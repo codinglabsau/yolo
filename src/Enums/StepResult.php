@@ -16,4 +16,5 @@ enum StepResult
     case CONDITIONAL;
     case TIMEOUT;
     case SKIPPED;
+    case WOULD_SKIP;
 }

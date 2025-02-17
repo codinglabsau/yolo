@@ -72,6 +72,7 @@ trait RunsSteppedCommands
 
                     // yellow
                     StepResult::SKIPPED => '<fg=yellow>SKIPPED</>',
+                    StepResult::WOULD_SKIP => '<fg=yellow>WOULD SKIP</>',
                     StepResult::CONDITIONAL => '<fg=yellow>CONDITIONAL</>',
                     StepResult::WOULD_CREATE => '<fg=yellow>WOULD CREATE</>',
                     StepResult::WOULD_SYNC => '<fg=yellow>WOULD SYNC</>',

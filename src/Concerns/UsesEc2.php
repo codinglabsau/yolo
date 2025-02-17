@@ -74,16 +74,14 @@ trait UsesEc2
      */
     public static function ec2SecurityGroup(): array
     {
-        return Manifest::get('aws.ec2.security-group', static::securityGroupByName(SecurityGroup::EC2_SECURITY_GROUP));
+        return static::securityGroupByName(Manifest::get('aws.ec2.security-group', SecurityGroup::EC2_SECURITY_GROUP));
     }
 
     public static function securityGroupByName(string|BackedEnum $name): array
     {
         if ($name instanceof BackedEnum) {
-            $name = $name->value;
+            $name = Helpers::keyedResourceName($name->value, exclusive: false);
         }
-
-        $name = Helpers::keyedResourceName($name, exclusive: false);
 
         foreach (static::securityGroups() as $securityGroup) {
             if ($securityGroup['GroupName'] === $name) {

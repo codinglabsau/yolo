@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Image;
+namespace Codinglabs\Yolo\Steps\Autoscaling;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
