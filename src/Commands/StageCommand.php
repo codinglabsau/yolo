@@ -17,17 +17,17 @@ class StageCommand extends SteppedCommand
 
     protected array $steps = [
         // create new launch template version
-        Steps\Autoscaling\CreateLaunchTemplateVersionStep::class,
+        Steps\Stage\CreateLaunchTemplateVersionStep::class,
 
         // web group
-        Steps\Autoscaling\ConfigureAutoScalingWebGroupStep::class,
-        Steps\Autoscaling\CreateWebGroupCpuAlarmsStep::class,
+        Steps\Stage\ConfigureAutoScalingWebGroupStep::class,
+        Steps\Stage\CreateWebGroupCpuAlarmsStep::class,
 
         // queue group
-        Steps\Autoscaling\ConfigureAutoScalingQueueGroupStep::class,
+        Steps\Stage\ConfigureAutoScalingQueueGroupStep::class,
 
         // scheduler group
-        Steps\Autoscaling\ConfigureAutoScalingSchedulerGroupStep::class,
+        Steps\Stage\ConfigureAutoScalingSchedulerGroupStep::class,
     ];
 
     protected function configure(): void
