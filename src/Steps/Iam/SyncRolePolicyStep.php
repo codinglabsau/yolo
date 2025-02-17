@@ -24,7 +24,8 @@ class SyncRolePolicyStep implements Step
                         'VersionId' => $policy['DefaultVersionId'],
                     ])['PolicyVersion']['Document']
                 ),
-                associative: true);
+                associative: true
+            );
 
             $hasDifferences = Helpers::payloadHasDifferences($currentPolicyDocument, AwsResources::policyDocument());
 

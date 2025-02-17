@@ -90,32 +90,46 @@ The full list of available sync commands are:
 > All sync commands support a `--dry-run` argument; this is a great starting point to see what resources will be created
 > or modified without any actual changes occurring on AWS.
 
-## Step 3: Prepare a server image
+## Step 3: Prepare the stage
 
-With all the low-level resource provisioned via the `sync` commands, the next step is to create an Amazon Machine
-Image (
-AMI) with Ubuntu OS as the foundation.
+The "Stage" refers to the current configuration that is used to serve the application, and is composed of several
+pieces:
+
+- An Amazon Machine Image (AMI) that is used as the initial disk image for all server instances
+- A launch template that defines the EC2 instance type, EC2 security group, and the AMI to use
+- Autoscaling groups for web, queue, and scheduler instances, plus the scaling configurations
+
+### a) Create an image
 
 The image will be used as the initial disk image for all server instances, and can be updated
 over time to bring in improvements, such as new PHP versions.
 
-### a) Create an image
-
 Run `yolo image:create <environment>` to generate a new AMI.
 
-### b) Prepare the image for traffic
+### b) Prepare the stage
 
-To prepare the new image for traffic, run `yolo image:prepare <environment>`.
+To prepare a new stage, run `yolo stage <environment>`.
 
-You will be prompted to select the AMI (the newest image will be at the top of the list).
+This interactive command walks you through updating or replacing the current stage configuration.
 
-After selecting which image to use, servers will be spun up, ready to receive app deployments.
+New stages have the benefit of allowing testing before migrating production workloads over, however simply updating the
+existing stage is recommended for minor changes.
 
-The yolo.yml manifest will also be configured to point to the new autoscaling groups.
+| Situation                   | Recommended strategy |
+|-----------------------------|----------------------|
+| Update EC2 security group   | update               |
+| Update EC2 type             | update               |
+| Update EC2 instance profile | update               |
+| Update AMI                  | create               |
+
+When creating a new stage, the yolo.yml manifest will also be updated to point to the new autoscaling groups on the next
+deployment.
 
 > [!NOTE]
-> Rotating in a new image does not have any impact on existing traffic until the updated manifest is deployed - the
-> previous deployment will continue serving requests and autoscaling as per normal.
+> The stage command does not have any impact on existing workloads:
+> - If replacing the stage, the previous deployment will continue serving requests and autoscaling until a deployment is
+    made
+> - If updating an existing stage, the new configuration will be applied to new instances as they are launched
 
 ## Step 4. Setup .env file
 
@@ -129,7 +143,7 @@ To push the .env file to the artefacts bucket, run `yolo env:push <environment>`
 
 After the initial push, you can retrieve the .env file with `yolo env:pull <environment>`.
 
-## Step 5. Building and deploying
+## Step 5. Build and deploy
 
 Builds can be created with `yolo build <environment>`.
 

@@ -29,7 +29,9 @@ class Yolo
         // Images
         Commands\ImageCreateCommand::class,
         Commands\ImageListCommand::class,
-        Commands\ImagePrepareCommand::class,
+
+        // Stage
+        Commands\StageCommand::class,
 
         // Sync
         Commands\SyncCommand::class,

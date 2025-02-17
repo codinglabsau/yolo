@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Image;
+namespace Codinglabs\Yolo\Steps\Autoscaling;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
@@ -18,6 +18,10 @@ class CreateWebGroupCpuAlarmsStep implements Step
     public function __invoke(array $options): StepResult
     {
         if (! Arr::get($options, 'dry-run')) {
+            if (Arr::get($options, 'update')) {
+                return StepResult::SKIPPED;
+            }
+
             $alarmName = Helpers::keyedResourceName(
                 sprintf('web-cpu-scaling-alarm-%s', Str::random(8)),
                 exclusive: false
@@ -86,6 +90,8 @@ class CreateWebGroupCpuAlarmsStep implements Step
             return StepResult::SYNCED;
         }
 
-        return StepResult::WOULD_CREATE;
+        return Arr::get($options, 'update')
+            ? StepResult::WOULD_SKIP
+            : StepResult::WOULD_CREATE;
     }
 }

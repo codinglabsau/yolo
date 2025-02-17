@@ -9,35 +9,37 @@ use Codinglabs\Yolo\Concerns\UsesEc2;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\select;
+use function Laravel\Prompts\confirm;
 
-class ImagePrepareCommand extends SteppedCommand
+class StageCommand extends SteppedCommand
 {
     use UsesEc2;
 
     protected array $steps = [
         // create new launch template version
-        Steps\Image\CreateLaunchTemplateVersionStep::class,
+        Steps\Autoscaling\CreateLaunchTemplateVersionStep::class,
 
         // web group
-        Steps\Image\CreateAutoScalingWebGroupStep::class,
-        Steps\Image\CreateWebGroupCpuAlarmsStep::class,
+        Steps\Autoscaling\ConfigureAutoScalingWebGroupStep::class,
+        Steps\Autoscaling\CreateWebGroupCpuAlarmsStep::class,
 
         // queue group
-        Steps\Image\CreateAutoScalingQueueGroupStep::class,
+        Steps\Autoscaling\ConfigureAutoScalingQueueGroupStep::class,
 
         // scheduler group
-        Steps\Image\CreateAutoScalingSchedulerGroupStep::class,
+        Steps\Autoscaling\ConfigureAutoScalingSchedulerGroupStep::class,
     ];
 
     protected function configure(): void
     {
         $this
-            ->setName('image:prepare')
+            ->setName('stage')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('dry-run', null, null, 'Run the command without making changes')
             ->addOption('no-progress', null, null, 'Hide the progress output')
             ->addOption('ami-id', null, InputOption::VALUE_OPTIONAL, 'The AMI ID to prepare for service')
-            ->setDescription('Prepare a new deployment group');
+            ->addOption('update', null, InputOption::VALUE_NONE, 'Whether to perform an update')
+            ->setDescription('Set the stage');
     }
 
     public function handle(): void
@@ -56,13 +58,15 @@ class ImagePrepareCommand extends SteppedCommand
                 ),
             ])->toArray();
 
-        $amiId = select(
+        $this->input->setOption('ami-id', select(
             label: 'Which AMI do you want to use?',
             options: $amis,
             default: $this->option('ami-id') ?? array_key_first($amis),
-        );
+        ));
 
-        $this->input->setOption('ami-id', $amiId);
+        if (! $this->option('update')) {
+            $this->input->setOption('update', ! confirm('The --update option was not provided. This will create new resources. Are you sure?'));
+        }
 
         parent::handle();
     }
