@@ -40,12 +40,12 @@ class SyncRolePolicyStep implements Step
                     return StepResult::SYNCED;
                 }
 
-                return StepResult::IN_SYNC;
+                return StepResult::SYNCED;
             }
 
             return $hasDifferences
                 ? StepResult::OUT_OF_SYNC
-                : StepResult::IN_SYNC;
+                : StepResult::SYNCED;
         } catch (ResourceDoesNotExistException $e) {
             if (! Arr::get($options, 'dry-run')) {
                 Aws::iam()->createPolicy([

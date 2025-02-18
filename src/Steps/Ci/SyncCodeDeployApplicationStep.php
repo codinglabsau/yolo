@@ -28,7 +28,7 @@ class SyncCodeDeployApplicationStep implements Step
                 ]);
             }
 
-            return StepResult::IN_SYNC;
+            return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {
                 Aws::codeDeploy()->createApplication([

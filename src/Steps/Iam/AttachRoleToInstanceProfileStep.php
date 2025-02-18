@@ -28,11 +28,11 @@ class AttachRoleToInstanceProfileStep implements Step
                     return StepResult::SYNCED;
                 }
 
-                return StepResult::IN_SYNC;
+                return StepResult::SYNCED;
             }
 
             return $attached
-                ? StepResult::IN_SYNC
+                ? StepResult::SYNCED
                 : StepResult::WOULD_SYNC;
         } catch (ResourceDoesNotExistException $e) {
             return StepResult::WOULD_SYNC;
