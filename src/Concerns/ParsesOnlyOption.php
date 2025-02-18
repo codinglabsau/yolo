@@ -27,9 +27,9 @@ trait ParsesOnlyOption
 
         foreach ($values as $server) {
             $servers[] = match ($server) {
-                'web' => ServerGroup::WEB,
-                'queue' => ServerGroup::QUEUE,
-                'scheduler' => ServerGroup::SCHEDULER,
+                ServerGroup::WEB->value => ServerGroup::WEB,
+                ServerGroup::QUEUE->value => ServerGroup::QUEUE,
+                ServerGroup::SCHEDULER->value => ServerGroup::SCHEDULER,
             };
         }
 
