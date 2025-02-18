@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Contracts\Step;
+use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Concerns\UsesCodeDeploy;
@@ -16,13 +17,15 @@ class CreateCodeDeployDeploymentsStep implements Step
 
     public function __construct(protected string $environment, protected $filesystem = new Filesystem()) {}
 
-    public function __invoke(): void
+    public function __invoke(): StepResult
     {
         $appVersion = $this->filesystem->get(Paths::version());
 
         $this->createSchedulerServerDeployment($appVersion);
         $this->createQueueServerDeployment($appVersion);
         $this->createWebServerDeployment($appVersion);
+
+        return StepResult::SUCCESS;
     }
 
     protected function createSchedulerServerDeployment(string $appVersion): void

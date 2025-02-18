@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
+use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Concerns\UsesCodeDeploy;
 
@@ -13,7 +14,7 @@ class UpdateCodeDeployDeploymentGroupStep implements Step
 {
     use UsesCodeDeploy;
 
-    public function __invoke(): void
+    public function __invoke(): StepResult
     {
         Aws::codeDeploy()->updateDeploymentGroup([
             'applicationName' => static::applicationName(),
@@ -38,5 +39,7 @@ class UpdateCodeDeployDeploymentGroupStep implements Step
                 Manifest::get('aws.autoscaling.scheduler'),
             ],
         ]);
+
+        return StepResult::SUCCESS;
     }
 }

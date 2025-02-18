@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Steps\Build;
 
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Contracts\Step;
+use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
 
 class PurgeBuildStep implements Step
@@ -13,8 +14,10 @@ class PurgeBuildStep implements Step
         protected $filesystem = new Filesystem()
     ) {}
 
-    public function __invoke(): void
+    public function __invoke(): StepResult
     {
         $this->filesystem->deleteDirectory(Paths::yolo());
+
+        return StepResult::SUCCESS;
     }
 }
