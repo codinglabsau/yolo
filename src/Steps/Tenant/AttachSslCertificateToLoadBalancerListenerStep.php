@@ -14,7 +14,7 @@ class AttachSslCertificateToLoadBalancerListenerStep extends TenantStep
     public function __invoke(array $options): StepResult
     {
         if (Arr::get($options, 'dry-run')) {
-            return StepResult::CONDITIONAL;
+            return StepResult::WOULD_SYNC;
         }
 
         $certificate = AwsResources::certificate($this->config['apex']);
