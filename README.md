@@ -182,7 +182,6 @@ environments:
         combine: false
       ec2:
         instance-type: t3.small
-        instance-profile:
         octane: false
         key-pair:
       codedeploy:

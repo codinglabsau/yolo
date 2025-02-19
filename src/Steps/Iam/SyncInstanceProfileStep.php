@@ -5,7 +5,6 @@ namespace Codinglabs\Yolo\Steps\Iam;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
@@ -16,7 +15,7 @@ class SyncInstanceProfileStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        $name = Manifest::get('aws.ec2.instance-profile', Helpers::keyedResourceName(Iam::INSTANCE_PROFILE, exclusive: false));
+        $name = Helpers::keyedResourceName(Iam::INSTANCE_PROFILE, exclusive: false);
 
         try {
             AwsResources::instanceProfile();
