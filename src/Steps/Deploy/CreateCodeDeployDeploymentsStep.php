@@ -28,7 +28,6 @@ class CreateCodeDeployDeploymentsStep implements Step
         }
 
         if ($this->shouldRunOnGroup(ServerGroup::QUEUE, $options)) {
-
             $this->createQueueServerDeployment($appVersion);
         }
 
