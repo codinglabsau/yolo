@@ -5,7 +5,6 @@ namespace Codinglabs\Yolo\Concerns;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Str;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 trait UsesAutoscaling
@@ -68,20 +67,5 @@ trait UsesAutoscaling
         }
 
         return $autoScalingGroupScalingPolicies;
-    }
-
-    public static function autoScalingGroupPayload(): array
-    {
-        return [
-            'VPCZoneIdentifier' => collect(AwsResources::subnets())
-                ->pluck('SubnetId')
-                ->implode(','),
-            'LaunchTemplate' => [
-                'LaunchTemplateId' => AwsResources::launchTemplate()['LaunchTemplateId'],
-                'Version' => AwsResources::launchTemplate()['LatestVersionNumber'],
-            ],
-            'DefaultCooldown' => 60,
-            'HealthCheckGracePeriod' => 60,
-        ];
     }
 }

@@ -167,13 +167,12 @@ environments:
   production:
     aws:
       account-id:
-      vpc:
       region: ap-southeast-2
+      vpc:
       bucket:
       artefacts-bucket:
       cloudfront:
       alb:
-      security-group-id:
       transcoder: false
       autoscaling:
         web:
@@ -182,16 +181,17 @@ environments:
         combine: false
       ec2:
         instance-type: t3.small
+        queue-instance-type:
+        scheduler-instance-type:
+        web-instance-type:
         octane: false
         key-pair:
+        security-group:
       codedeploy:
         strategy: without-load-balancing|with-load-balancing
 
-    build:
-      - composer install --no-cache --no-interaction --optimize-autoloader --no-progress --classmap-authoritative --no-dev
-      - npm ci
-      - npm run build
-      - rm -rf package-lock.json resources/js resources/css node_modules database/seeders database/factories resources/seeding
+    pulse-worker: false
+    mysqldump: false
 
     domain: example.com # standalone apps only
     apex: # standalone apps only
@@ -203,13 +203,22 @@ environments:
       fishing: # unique key for the tenant
         domain: fishing-with-yolo.com
 
-    pulse-worker: false
-    mysqldump: false
+    build:
+      - composer install --no-cache --no-interaction --optimize-autoloader --no-progress --classmap-authoritative --no-dev
+      - npm ci
+      - npm run build
+      - rm -rf package-lock.json resources/js resources/css node_modules database/seeders database/factories resources/seeding
 
-    deploy:
+    deploy: #runs on scheduler
       - php artisan migrate --force
 
-    deploy-all:
+    deploy-queue: # runs on queue
+      -
+
+    deploy-web: # runs on web
+      -
+
+    deploy-all: # runs on all instances
       - php artisan optimize
 ```
 
@@ -260,13 +269,18 @@ To debug or add features to YOLO, it is recommended to symlink to the local repo
 
 Add this to composer.json with the path to the local repository:
 
-```
-"repositories": [
+```json
+{
+  "require": {
+    "codinglabsau/yolo": "dev-main"
+  },
+  "repositories": [
     {
-    "type": "path",
-    "url": "/Users/username/code/yolo"
+      "type": "path",
+      "url": "~/code/yolo"
     }
-],
+  ]
+}
 ```
 
 To call yolo from the app you are debugging, you'll need to tell yolo the path to the app. Set the `YOLO_BASE_PATH`
