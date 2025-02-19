@@ -13,8 +13,8 @@ class RestartServicesStep implements HasSubSteps, RunsOnAws
             'supervisorctl reread',
             'supervisorctl update',
             'supervisorctl start all',
-            'systemctl reload php8.3-fpm',
-            'systemctl reload nginx',
+            'systemctl restart php8.3-fpm',
+            'systemctl restart nginx',
         ];
     }
 }
