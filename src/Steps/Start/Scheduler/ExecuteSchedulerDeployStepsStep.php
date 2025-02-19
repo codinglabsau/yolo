@@ -6,10 +6,10 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\HasSubSteps;
 use Codinglabs\Yolo\Contracts\RunsOnAwsScheduler;
 
-class ExecuteDeployStepsStep implements HasSubSteps, RunsOnAwsScheduler
+class ExecuteSchedulerDeployStepsStep implements HasSubSteps, RunsOnAwsScheduler
 {
     public function __invoke(): array
     {
-        return Manifest::get('deploy');
+        return Manifest::get('deploy', []);
     }
 }
