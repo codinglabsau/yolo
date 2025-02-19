@@ -57,7 +57,10 @@ class CreateWebGroupCpuAlarmsStep implements Step
                 ...Aws::tags(),
             ]);
 
-            $alarmName = Helpers::keyedResourceName(sprintf('web-cpu-critical-alarm-%s', Str::random(8)));
+            $alarmName = Helpers::keyedResourceName(
+                sprintf('web-cpu-critical-alarm-%s', Str::random(8)),
+                exclusive: false
+            );
             $snsTopic = AwsResources::topic();
 
             Aws::cloudWatch()->putMetricAlarm([

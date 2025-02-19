@@ -179,6 +179,7 @@ environments:
         web:
         queue:
         scheduler:
+        combine: false
       ec2:
         instance-type: t3.small
         instance-profile:
