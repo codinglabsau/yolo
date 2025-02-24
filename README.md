@@ -183,7 +183,6 @@ environments:
         instance-type: t3.small
         queue-instance-type:
         scheduler-instance-type:
-        web-instance-type:
         octane: false
         key-pair:
         security-group:
