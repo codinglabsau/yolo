@@ -190,6 +190,7 @@ environments:
       codedeploy:
         strategy: without-load-balancing|with-load-balancing
 
+    asset-domain: # defaults to aws.cloudfront
     pulse-worker: false
     mysqldump: false
 

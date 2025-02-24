@@ -27,7 +27,7 @@ class ConfigureEnvAndVersionStep implements Step
             Paths::build(".env.$this->environment"),
             PHP_EOL .
             'APP_VERSION=' . $appVersion . PHP_EOL .
-            'ASSET_URL=' . Paths::cloudfront($appVersion) . PHP_EOL
+            'ASSET_URL=' . Paths::assetUrl($appVersion) . PHP_EOL
         );
     }
 }
