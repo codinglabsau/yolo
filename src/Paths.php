@@ -46,7 +46,7 @@ class Paths
 
     public static function assetUrl(string $appVersion): string
     {
-        return Manifest::get('asset-domain', Manifest::get('aws.cloudfront')) . '/' . static::versionedBuildAssets($appVersion);
+        return Manifest::get('asset-url', Manifest::get('aws.cloudfront')) . '/' . static::versionedBuildAssets($appVersion);
     }
 
     public static function s3AppBucket(): string
