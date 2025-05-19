@@ -10,6 +10,11 @@ use Codinglabs\Yolo\Enums\StepResult;
 
 class AttachRolePoliciesStep implements Step
 {
+    protected array $managedPolicies = [
+        'arn:aws:iam::aws:policy/AmazonElasticTranscoder_JobsSubmitter',
+        'arn:aws:iam::aws:policy/IVSFullAccess',
+    ];
+
     public function __invoke(array $options): StepResult
     {
         if (! Arr::get($options, 'dry-run')) {
@@ -21,10 +26,12 @@ class AttachRolePoliciesStep implements Step
                 'PolicyArn' => $policy['Arn'],
             ]);
 
-            Aws::iam()->attachRolePolicy([
-                'RoleName' => $role['RoleName'],
-                'PolicyArn' => 'arn:aws:iam::aws:policy/AmazonElasticTranscoder_JobsSubmitter',
-            ]);
+            foreach ($this->managedPolicies as $policyArn) {
+                Aws::iam()->attachRolePolicy([
+                    'RoleName' => $role['RoleName'],
+                    'PolicyArn' => $policyArn,
+                ]);
+            }
 
             return StepResult::SYNCED;
         }
