@@ -13,6 +13,7 @@ class SyncIamCommand extends SteppedCommand
         Steps\Iam\AttachRolePoliciesStep::class,
         Steps\Iam\SyncInstanceProfileStep::class,
         Steps\Iam\AttachRoleToInstanceProfileStep::class,
+        Steps\Iam\AttachIVSFullAccessPoliciesStep::class,
     ];
 
     protected function configure(): void
