@@ -38,7 +38,7 @@ jobs:
         run: composer install --no-cache --no-ansi --no-interaction --no-progress
 
       - name: Code sniff
-        run: vendor/bin/php-cs-fixer fix --dry-run
+        run: vendor/bin/pint --test
 
       - name: Code analysis
         run: vendor/bin/phpstan analyse --memory-limit=1G
