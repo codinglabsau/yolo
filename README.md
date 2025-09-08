@@ -1,5 +1,8 @@
 # YOLO
 
+> [!IMPORTANT]
+> This package is active development - contributions are welcome!
+
 YOLO helps you deploy high-availability PHP applications on AWS.
 
 The CLI tool takes care of provisioning and configuring all required resources on AWS, coupled with build and deployment
@@ -15,8 +18,7 @@ rather than CloudFormation / Terraform / K8s / Elastic Beanstalk / <some-other-f
 > [!IMPORTANT]
 > While YOLO has been battle-tested on apps serving millions of requests per day, it is not supposed to be a
 > set-and-forget solution for busy apps, but rather allows you to proactively manage, grow and adapt your infrastructure
-> as requirements
-> change over time.
+> as requirements change over time.
 
 It goes without saying, but use YOLO at your own risk.
 
@@ -90,23 +92,20 @@ The full list of available sync commands are:
 > All sync commands support a `--dry-run` argument; this is a great starting point to see what resources will be created
 > or modified without any actual changes occurring on AWS.
 
-## Step 3: Prepare the stage
+## Step 3: Prepare a server image
 
-The "Stage" refers to the current configuration that is used to serve the application, and is composed of several
-pieces:
-
-- An Amazon Machine Image (AMI) that is used as the initial disk image for all server instances
-- A launch template that defines the EC2 instance type, EC2 security group, and the AMI to use
-- Autoscaling groups for web, queue, and scheduler instances, plus the scaling configurations
-
-### a) Create an image
+With all the low-level resource provisioned via the `sync` commands, the next step is to create an Amazon Machine
+Image (
+AMI) with Ubuntu OS as the foundation.
 
 The image will be used as the initial disk image for all server instances, and can be updated
 over time to bring in improvements, such as new PHP versions.
 
+### a) Create an image
+
 Run `yolo image:create <environment>` to generate a new AMI.
 
-### b) Prepare the stage
+### b) Prepare the image for traffic
 
 To prepare a new stage, run `yolo stage <environment>`.
 
@@ -126,10 +125,8 @@ When creating a new stage, the yolo.yml manifest will also be updated to point t
 deployment.
 
 > [!NOTE]
-> The stage command does not have any impact on existing workloads:
-> - If replacing the stage, the previous deployment will continue serving requests and autoscaling until a deployment is
-    made
-> - If updating an existing stage, the new configuration will be applied to new instances as they are launched
+> Rotating in a new image does not have any impact on existing traffic until the updated manifest is deployed - the
+> previous deployment will continue serving requests and autoscaling as per normal.
 
 ## Step 4. Setup .env file
 
@@ -143,7 +140,7 @@ To push the .env file to the artefacts bucket, run `yolo env:push <environment>`
 
 After the initial push, you can retrieve the .env file with `yolo env:pull <environment>`.
 
-## Step 5. Build and deploy
+## Step 5. Building and deploying
 
 Builds can be created with `yolo build <environment>`.
 
@@ -269,18 +266,13 @@ To debug or add features to YOLO, it is recommended to symlink to the local repo
 
 Add this to composer.json with the path to the local repository:
 
-```json
-{
-  "require": {
-    "codinglabsau/yolo": "dev-main"
-  },
-  "repositories": [
+```
+"repositories": [
     {
-      "type": "path",
-      "url": "~/code/yolo"
+    "type": "path",
+    "url": "/Users/username/code/yolo"
     }
-  ]
-}
+],
 ```
 
 To call yolo from the app you are debugging, you'll need to tell yolo the path to the app. Set the `YOLO_BASE_PATH`
