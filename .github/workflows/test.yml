@@ -34,8 +34,3 @@ jobs:
 
       - name: Execute tests
         run: vendor/bin/pest --parallel --stop-on-failure
-
-      - name: Notify Slack of failure
-        if: failure()
-        run: |
-          curl -X POST -H 'Content-type: application/json' --data '{"text":"YOLO tests failed on branch ${{github.ref_name}} for action https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}"}' https://hooks.slack.com/services/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
