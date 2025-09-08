@@ -11,6 +11,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Codinglabs\Yolo\Concerns\ChecksIfCommandsShouldBeRunning;
 use Symfony\Component\Console\Command\Command as SymfonyCommand;
+
 use function Laravel\Prompts\error;
 
 abstract class Command extends SymfonyCommand
@@ -40,7 +41,7 @@ abstract class Command extends SymfonyCommand
         if ($this instanceof InitCommand) {
             Helpers::app()->instance('environment', 'production');
 
-            return (int)(Helpers::app()->call([$this, 'handle']) ?: 0);
+            return (int) (Helpers::app()->call([$this, 'handle']) ?: 0);
         }
 
         if (! Manifest::exists()) {
@@ -68,7 +69,7 @@ abstract class Command extends SymfonyCommand
         // todo: remove once mvp is finished
         $this->output->setVerbosity(OutputInterface::VERBOSITY_DEBUG);
 
-        $exitCode = (int)(Helpers::app()->call([$this, 'handle']) ?: 0);
+        $exitCode = (int) (Helpers::app()->call([$this, 'handle']) ?: 0);
 
         foreach ($this->after as $closure) {
             $closure();
