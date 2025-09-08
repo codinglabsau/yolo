@@ -5,7 +5,6 @@ namespace Codinglabs\Yolo\Concerns;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Str;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 trait UsesAutoscaling
@@ -20,28 +19,16 @@ trait UsesAutoscaling
 
     public static function autoScalingGroupWeb(): array
     {
-        if (isset(static::$asgWeb)) {
-            return static::$asgWeb;
-        }
-
         return static::autoScalingGroup(Manifest::get('aws.autoscaling.web'));
     }
 
     public static function autoScalingGroupQueue(): array
     {
-        if (isset(static::$asgQueue)) {
-            return static::$asgQueue;
-        }
-
         return static::autoScalingGroup(Manifest::get('aws.autoscaling.queue'));
     }
 
     public static function autoScalingGroupScheduler(): array
     {
-        if (isset(static::$asgScheduler)) {
-            return static::$asgScheduler;
-        }
-
         return static::autoScalingGroup(Manifest::get('aws.autoscaling.scheduler'));
     }
 
@@ -72,10 +59,6 @@ trait UsesAutoscaling
 
     protected static function autoScalingGroupWebScalingPolicies(): array
     {
-        if (isset(static::$asgWebScalingPolicies)) {
-            return static::$asgWebScalingPolicies;
-        }
-
         return static::autoScalingGroupScalingPolicies(Manifest::get('aws.autoscaling.web'));
     }
 
@@ -92,20 +75,5 @@ trait UsesAutoscaling
         }
 
         return $autoScalingGroupScalingPolicies;
-    }
-
-    public static function autoScalingGroupPayload(): array
-    {
-        return [
-            'VPCZoneIdentifier' => collect(AwsResources::subnets())
-                ->pluck('SubnetId')
-                ->implode(','),
-            'LaunchTemplate' => [
-                'LaunchTemplateId' => AwsResources::launchTemplate()['LaunchTemplateId'],
-                'Version' => AwsResources::launchTemplate()['LatestVersionNumber'],
-            ],
-            'DefaultCooldown' => 60,
-            'HealthCheckGracePeriod' => 60,
-        ];
     }
 }

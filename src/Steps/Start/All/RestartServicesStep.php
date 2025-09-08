@@ -12,9 +12,9 @@ class RestartServicesStep implements HasSubSteps, RunsOnAws
         return [
             'supervisorctl reread',
             'supervisorctl update',
-            'supervisorctl start all', // note we already stopped supervisor workers in beforeInstall hook, so we "start" rather than "restart" here.
-            'systemctl reload php8.3-fpm',
-            'systemctl reload nginx',
+            'supervisorctl start all',
+            'systemctl restart php8.3-fpm',
+            'systemctl restart nginx',
         ];
     }
 }

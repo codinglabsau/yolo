@@ -74,12 +74,15 @@ trait RunsSteppedCommands
 
                     // yellow
                     StepResult::SKIPPED => '<fg=yellow>SKIPPED</>',
-                    StepResult::CONDITIONAL => '<fg=yellow>CONDITIONAL</>',
+                    StepResult::WOULD_SKIP => '<fg=yellow>WOULD SKIP</>',
+                    StepResult::CUSTOM_MANAGED => '<fg=yellow>CUSTOM MANAGED</>',
                     StepResult::WOULD_CREATE => '<fg=yellow>WOULD CREATE</>',
                     StepResult::WOULD_SYNC => '<fg=yellow>WOULD SYNC</>',
                     StepResult::OUT_OF_SYNC => '<fg=yellow>OUT OF SYNC</>',
 
                     // red
+                    StepResult::MANIFEST_INVALID => '<fg=red>MANIFEST INVALID</>',
+                    StepResult::OUT_OF_SYNC => '<fg=red>OUT OF SYNC</>',
                     StepResult::TIMEOUT => '<fg=red>TIMEOUT</>',
                     default => is_string($status)
                         ? $status

@@ -15,7 +15,13 @@ class CreateAmiStep implements Step
     {
         $ami = Aws::ec2()->createImage([
             'InstanceId' => Helpers::app('amiInstanceId'),
-            'Name' => sprintf('AMI %s', date('y.W.N.Hi')),
+            'Name' => Helpers::keyedResourceName(date('y.W.N.Hi'), exclusive: false),
+            'TagSpecifications' => [
+                [
+                    'ResourceType' => 'image',
+                    ...Aws::tags(),
+                ],
+            ],
         ]);
 
         while (true) {

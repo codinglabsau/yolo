@@ -14,10 +14,6 @@ trait UsesElasticTranscoder
 
     public static function elasticTranscoderPipeline(): array
     {
-        if (isset(static::$elasticTranscoderPipeline)) {
-            return static::$elasticTranscoderPipeline;
-        }
-
         $name = Helpers::keyedResourceName();
         $pipelines = Aws::elasticTranscoder()->listPipelines();
 
@@ -34,10 +30,6 @@ trait UsesElasticTranscoder
 
     public static function elasticTranscoderPreset(): array
     {
-        if (isset(static::$elasticTranscoderPreset)) {
-            return static::$elasticTranscoderPreset;
-        }
-
         $name = Helpers::keyedResourceName();
         $presets = Aws::elasticTranscoder()->listPresets();
 

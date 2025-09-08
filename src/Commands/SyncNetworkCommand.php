@@ -9,28 +9,28 @@ class SyncNetworkCommand extends SteppedCommand
 {
     protected array $steps = [
         // vpc
-        Steps\Network\SyncVpcStep::class,
-
-        // internet gateway
-        Steps\Network\SyncInternetGatewayStep::class,
-        Steps\Network\SyncInternetGatewayAttachmentStep::class,
-
-        // subnets
-        Steps\Network\SyncPublicSubnetAStep::class,
-        Steps\Network\SyncPublicSubnetBStep::class,
-        Steps\Network\SyncPublicSubnetCStep::class,
-        Steps\Network\SyncRdsSubnetStep::class,
-
-        // route table
-        Steps\Network\SyncRouteTableStep::class,
-        Steps\Network\SyncDefaultRouteStep::class,
-        Steps\Network\SyncPublicSubnetsAssociationToRouteTableStep::class,
-
-        // security groups
+        //        Steps\Network\SyncVpcStep::class,
+        //
+        //        // internet gateway
+        //        Steps\Network\SyncInternetGatewayStep::class,
+        //        Steps\Network\SyncInternetGatewayAttachmentStep::class,
+        //
+        //        // subnets
+        //        Steps\Network\SyncPublicSubnetAStep::class,
+        //        Steps\Network\SyncPublicSubnetBStep::class,
+        //        Steps\Network\SyncPublicSubnetCStep::class,
+        //        Steps\Network\SyncRdsSubnetStep::class,
+        //
+        //        // route table
+        //        Steps\Network\SyncRouteTableStep::class,
+        //        Steps\Network\SyncDefaultRouteStep::class,
+        //        Steps\Network\SyncPublicSubnetsAssociationToRouteTableStep::class,
+        //
+        //        // security groups
         Steps\Network\SyncLoadBalancerSecurityGroupStep::class,
         Steps\Network\SyncEc2SecurityGroupStep::class,
-        Steps\Network\SyncRdsSecurityGroupStep::class,
-
+        //        Steps\Network\SyncRdsSecurityGroupStep::class,
+        //
         // sns
         Steps\Network\SyncSnsTopicStep::class,
 

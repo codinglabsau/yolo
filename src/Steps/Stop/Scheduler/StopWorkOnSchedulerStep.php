@@ -23,7 +23,7 @@ class StopWorkOnSchedulerStep implements RunsOnAwsScheduler
 
         // disable scheduling
         Process::fromShellCommandline(
-            command: sprintf('sudo rm /etc/cron.d/%s', Helpers::keyedResourceName(ServerGroup::SCHEDULER))
+            command: sprintf('rm /etc/cron.d/%s', Helpers::keyedResourceName(ServerGroup::SCHEDULER))
         )->run();
 
         $i = 0;

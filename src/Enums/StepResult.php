@@ -14,6 +14,9 @@ enum StepResult
     case WOULD_SYNC;
 
     case CONDITIONAL;
+    case CUSTOM_MANAGED;
     case TIMEOUT;
     case SKIPPED;
+    case WOULD_SKIP;
+    case MANIFEST_INVALID;
 }

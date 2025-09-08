@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Commands;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Helpers;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Input\InputArgument;
 
 use function Laravel\Prompts\confirm;
@@ -35,8 +36,9 @@ class DeployCommand extends SteppedCommand
         $this
             ->setName('deploy')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
-            ->addOption('app-version', null, InputArgument::OPTIONAL, 'The app version to tag the build with')
-            ->addOption('no-progress', null, null, 'Hide the progress output')
+            ->addOption('app-version', null, InputOption::VALUE_REQUIRED, 'The app version to tag the build with')
+            ->addOption('no-progress', null, InputOption::VALUE_NONE, 'Hide the progress output')
+            ->addOption('only', null, InputOption::VALUE_REQUIRED, 'Deploy only to the specified server groups')
             ->setDescription('Deploy a build of the application to AWS');
     }
 

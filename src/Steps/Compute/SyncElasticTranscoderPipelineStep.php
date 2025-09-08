@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Steps\Compute;
 
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Paths;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
@@ -27,8 +28,8 @@ class SyncElasticTranscoderPipelineStep implements Step
             if (! Arr::get($options, 'dry-run')) {
                 Aws::elasticTranscoder()->createPipeline([
                     'Name' => Helpers::keyedResourceName(),
-                    'InputBucket' => Manifest::get('aws.bucket'),
-                    'OutputBucket' => Manifest::get('aws.bucket'),
+                    'InputBucket' => Paths::s3AppBucket(),
+                    'OutputBucket' => Paths::s3AppBucket(),
                     'Role' => 'arn:aws:iam::' . Aws::accountId() . ':role/Elastic_Transcoder_Default_Role',
                     // note: Elastic Transcoder does not appear to support tagging
                     //                    'TagSpecifications' => [

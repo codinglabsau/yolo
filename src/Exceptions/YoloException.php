@@ -10,7 +10,7 @@ class YoloException extends Exception
 
     public static function make(string $message): self
     {
-        return new static($message);
+        return new (get_called_class())($message);
     }
 
     public function suggest(string $suggestion): self
@@ -23,13 +23,5 @@ class YoloException extends Exception
     public function getSuggestion(): string
     {
         return $this->suggestion;
-    }
-
-    /**
-     * @throws self
-     */
-    public function throw(): void
-    {
-        throw $this;
     }
 }

@@ -11,7 +11,6 @@ class Yolo
 
     protected array $commands = [
         Commands\InitCommand::class,
-        Commands\OpenCommand::class,
 
         // General purpose
         Commands\CommandCommand::class,
@@ -30,7 +29,9 @@ class Yolo
         // Images
         Commands\ImageCreateCommand::class,
         Commands\ImageListCommand::class,
-        Commands\ImagePrepareCommand::class,
+
+        // Stage
+        Commands\StageCommand::class,
 
         // Sync
         Commands\SyncCommand::class,
@@ -41,6 +42,7 @@ class Yolo
         Commands\SyncMultitenancyLandlordCommand::class,
         Commands\SyncComputeCommand::class,
         Commands\SyncCiCommand::class,
+        Commands\SyncIamCommand::class,
     ];
 
     public function __construct()

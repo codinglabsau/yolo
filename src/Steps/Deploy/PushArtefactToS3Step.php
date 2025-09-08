@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Contracts\Step;
+use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
 
 class PushArtefactToS3Step implements Step
@@ -15,7 +16,7 @@ class PushArtefactToS3Step implements Step
         protected $filesystem = new Filesystem()
     ) {}
 
-    public function __invoke(): void
+    public function __invoke(): StepResult
     {
         $appVersion = $this->filesystem->get(Paths::version());
 
@@ -24,5 +25,7 @@ class PushArtefactToS3Step implements Step
             'Bucket' => Paths::s3ArtefactsBucket(),
             'Key' => Paths::s3Artefacts($appVersion, Helpers::artefactName()),
         ]);
+
+        return StepResult::SUCCESS;
     }
 }

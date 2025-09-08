@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Concerns\UsesEc2;
 use Codinglabs\Yolo\Enums\ServerGroup;
@@ -43,17 +44,17 @@ class CommandCommand extends Command
             return;
         }
 
-        $groups = str_contains($this->option('group'), ',')
+        $serverGroups = str_contains($this->option('group'), ',')
             ? explode(',', $this->option('group'))
             : [$this->option('group')];
 
-        foreach ($groups as $group) {
-            $instances = $this->findSshPrefixesForGroup($group);
+        foreach ($serverGroups as $serverGroup) {
+            $instances = $this->findSshPrefixesForGroup(ServerGroup::from($serverGroup));
 
-            info('Found ' . count($instances) . " instances in group $group on {$this->argument('environment')}");
+            info('Found ' . count($instances) . " instances in group $serverGroup on {$this->argument('environment')}");
 
             foreach ($instances as $ipAddress => $sshCommand) {
-                warning("Executing command '$command' in group $group on instance $ipAddress on {$this->argument('environment')}...");
+                warning("Executing command '$command' in group $serverGroup on instance $ipAddress on {$this->argument('environment')}...");
 
                 $process = new Process(
                     command: [
@@ -72,11 +73,11 @@ class CommandCommand extends Command
         }
     }
 
-    protected function findSshPrefixesForGroup(string $group): array
+    protected function findSshPrefixesForGroup(ServerGroup $serverGroup): array
     {
         $prefixes = [];
 
-        foreach (static::ec2IpByName(name: $group, firstOnly: false) as $ipAddress) {
+        foreach (static::ec2IpByName(name: Helpers::keyedResourceName($serverGroup, exclusive: false), firstOnly: false) as $ipAddress) {
             $prefixes[$ipAddress] = static::formatSshCommand(
                 ipAddress: $ipAddress,
                 sshKey: $this->option('ssh-key')

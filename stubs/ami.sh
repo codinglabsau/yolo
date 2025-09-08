@@ -31,6 +31,7 @@ apt-get install -y \
     php8.3-zip \
     php8.3-mysql \
     php8.3-gd \
+    php8.3-imagick \
     php8.3-bcmath \
     php8.3-intl
 

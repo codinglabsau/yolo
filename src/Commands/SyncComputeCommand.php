@@ -8,20 +8,18 @@ use Symfony\Component\Console\Input\InputArgument;
 class SyncComputeCommand extends SteppedCommand
 {
     protected array $steps = [
-        Steps\Ensures\EnsureKeyPairExistsStep::class,
-
         Steps\Compute\SyncLaunchTemplateStep::class,
-        Steps\Compute\SyncApplicationLoadBalancerStep::class,
-        Steps\Compute\SyncTargetGroupStep::class,
-        Steps\Compute\SyncListenerOnPort80Step::class,
-
-        // domain
-        Steps\Compute\SyncListenerOnPort443Step::class,
-        Steps\Compute\AttachSslCertificateToLoadBalancerListenerStep::class,
-
-        // multitenancy
-        Steps\Compute\SyncMultitenancyListenerOnPort443Step::class,
-        Steps\Compute\AttachMultitenancySslCertificateToLoadBalancerListenerStep::class,
+        //        Steps\Compute\SyncApplicationLoadBalancerStep::class,
+        //        Steps\Compute\SyncTargetGroupStep::class,
+        //        Steps\Compute\SyncListenerOnPort80Step::class,
+        //
+        //        // domain
+        //        Steps\Compute\SyncListenerOnPort443Step::class,
+        //        Steps\Compute\AttachSslCertificateToLoadBalancerListenerStep::class,
+        //
+        //        // multitenancy
+        //        Steps\Compute\SyncMultitenancyListenerOnPort443Step::class,
+        //        Steps\Compute\AttachMultitenancySslCertificateToLoadBalancerListenerStep::class,
 
         // transcoder
         Steps\Compute\SyncElasticTranscoderPipelineStep::class,

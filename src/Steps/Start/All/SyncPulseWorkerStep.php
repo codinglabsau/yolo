@@ -12,8 +12,18 @@ class SyncPulseWorkerStep implements RunsOnAws
 {
     public function __invoke(): StepResult
     {
+        $file = sprintf('/etc/supervisor/conf.d/%s', Helpers::keyedResourceName('pulse-worker.conf'));
+
+        if (! Manifest::get('pulse-worker', false)) {
+            if (file_exists($file)) {
+                unlink($file);
+            }
+
+            return StepResult::SKIPPED;
+        }
+
         file_put_contents(
-            sprintf('/etc/supervisor/conf.d/%s', Helpers::keyedResourceName('pulse-worker.conf')),
+            $file,
             str_replace(
                 search: [
                     '{NAME}',

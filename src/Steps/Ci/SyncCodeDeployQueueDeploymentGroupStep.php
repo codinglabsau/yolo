@@ -42,7 +42,7 @@ class SyncCodeDeployQueueDeploymentGroupStep implements Step
 
             return $differences
                 ? StepResult::OUT_OF_SYNC
-                : StepResult::IN_SYNC;
+                : StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {
                 Aws::codeDeploy()->createDeploymentGroup($this->payload());

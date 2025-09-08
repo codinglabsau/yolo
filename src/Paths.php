@@ -44,19 +44,19 @@ class Paths
         return static::yolo(Helpers::artefactName());
     }
 
-    public static function cloudfront(string $appVersion): string
+    public static function assetUrl(string $appVersion): string
     {
-        return Manifest::get('aws.cloudfront') . '/' . static::versionedBuildAssets($appVersion);
+        return Manifest::get('asset-url', Manifest::get('aws.cloudfront')) . '/' . static::versionedBuildAssets($appVersion);
     }
 
-    public static function s3BuildBucket(): string
+    public static function s3AppBucket(): string
     {
         return Manifest::get('aws.bucket');
     }
 
     public static function s3BuildAssets(string $appVersion): string
     {
-        return 's3://' . static::s3BuildBucket() . '/' . static::versionedBuildAssets($appVersion) . '/assets';
+        return 's3://' . static::s3AppBucket() . '/' . static::versionedBuildAssets($appVersion) . '/assets';
     }
 
     public static function s3ArtefactsBucket(): ?string

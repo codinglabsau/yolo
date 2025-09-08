@@ -10,6 +10,6 @@ class ExecuteAllGroupsDeployStepsStep implements HasSubSteps, RunsOnAws
 {
     public function __invoke(): array
     {
-        return Manifest::get('deploy-all');
+        return Manifest::get('deploy-all', []);
     }
 }

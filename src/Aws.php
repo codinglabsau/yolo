@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo;
 use Aws\S3\S3Client;
 use Aws\Acm\AcmClient;
 use Aws\Ec2\Ec2Client;
-use Aws\Rds\RdsClient;
+use Aws\Iam\IamClient;
 use Aws\Sns\SnsClient;
 use Aws\Sqs\SqsClient;
 use Aws\Ssm\SsmClient;
@@ -101,9 +101,9 @@ class Aws
         return Helpers::app('elasticTranscoder');
     }
 
-    public static function rds(): RdsClient
+    public static function iam(): IamClient
     {
-        return Helpers::app('rds');
+        return Helpers::app('iam');
     }
 
     public static function route53(): Route53Client

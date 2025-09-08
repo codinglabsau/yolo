@@ -6,6 +6,7 @@ use BackedEnum;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Enums\SecurityGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -85,8 +86,7 @@ trait UsesEc2
 
         static::$securityGroups = $securityGroups;
 
-        return static::$securityGroups;
-    }
+        return static::$securityGroups;    }
 
     /**
      * @throws ResourceDoesNotExistException
@@ -111,7 +111,7 @@ trait UsesEc2
             return static::$ec2SecurityGroup;
         }
 
-        static::$ec2SecurityGroup = static::securityGroupByName(SecurityGroup::EC2_SECURITY_GROUP);
+        static::$ec2SecurityGroup = static::securityGroupByName(Manifest::get('aws.ec2.security-group', SecurityGroup::EC2_SECURITY_GROUP));
 
         return static::$ec2SecurityGroup;
     }
@@ -133,12 +133,10 @@ trait UsesEc2
     public static function securityGroupByName(string|BackedEnum $name): array
     {
         if ($name instanceof BackedEnum) {
-            $name = $name->value;
+            $name = Helpers::keyedResourceName($name->value, exclusive: false);
         }
 
-        $name = Helpers::keyedResourceName($name, exclusive: false);
-
-        foreach (static::securityGroups(refresh: true) as $securityGroup) {
+        foreach (static::securityGroups() as $securityGroup) {
             if ($securityGroup['GroupName'] === $name) {
                 return $securityGroup;
             }
@@ -147,12 +145,64 @@ trait UsesEc2
         throw new ResourceDoesNotExistException("Could not find Security Group matching name $name");
     }
 
-    public static function launchTemplate($refresh = false): array
+    public static function loadBalancer(): array
     {
-        if (! $refresh && isset(static::$launchTemplate)) {
-            return static::$launchTemplate;
+        $loadBalancers = Aws::elasticLoadBalancingV2()->describeLoadBalancers();
+
+        foreach ($loadBalancers['LoadBalancers'] as $loadBalancer) {
+            if ($loadBalancer['LoadBalancerName'] === Manifest::get('aws.alb')) {
+                return $loadBalancer;
+            }
         }
 
+        throw new ResourceDoesNotExistException('Could not find load balancer');
+    }
+
+    public static function targetGroup(): array
+    {
+        $targetGroups = Aws::elasticLoadBalancingV2()->describeTargetGroups([
+            'LoadBalancerArn' => static::loadBalancer()['LoadBalancerArn'],
+        ])['TargetGroups'];
+
+        if (count($targetGroups) === 0) {
+            throw new ResourceDoesNotExistException(sprintf('Could not find target group for ALB %s', static::loadBalancer()['LoadBalancerName']));
+        }
+
+        return $targetGroups[0];
+    }
+
+    public static function loadBalancerListenerOnPort(int $port): array
+    {
+        $listeners = Aws::elasticLoadBalancingV2()->describeListeners([
+            'LoadBalancerArn' => static::loadBalancer()['LoadBalancerArn'],
+        ]);
+
+        foreach ($listeners['Listeners'] as $listener) {
+            if ($listener['Port'] === $port) {
+                return $listener;
+            }
+        }
+
+        throw new ResourceDoesNotExistException("Could not find listener on port $port");
+    }
+
+    public static function listenerCertificate(string $listenerArn, string $certificateArn): array
+    {
+        $listenerCertificates = Aws::elasticLoadBalancingV2()->describeListenerCertificates([
+            'ListenerArn' => $listenerArn,
+        ]);
+
+        foreach ($listenerCertificates['Certificates'] as $listenerCertificate) {
+            if ($listenerCertificate['CertificateArn'] === $certificateArn) {
+                return $listenerCertificate;
+            }
+        }
+
+        throw new ResourceDoesNotExistException("Could not find listener certificate on listener $listenerArn");
+    }
+
+    public static function launchTemplate(): array
+    {
         $launchTemplates = Aws::ec2()->describeLaunchTemplates([
             'Filters' => [
                 [
@@ -168,9 +218,7 @@ trait UsesEc2
                 ->throw();
         }
 
-        static::$launchTemplate = $launchTemplates[0];
-
-        return static::$launchTemplate;
+        return $launchTemplates[0];
     }
 
     public static function launchTemplatePayload(): array
@@ -179,7 +227,7 @@ trait UsesEc2
             'LaunchTemplateName' => Helpers::keyedResourceName(exclusive: false),
             'LaunchTemplateData' => [
                 'IamInstanceProfile' => [
-                    'Name' => Manifest::get('aws.ec2.instance-profile'),
+                    'Name' => Helpers::keyedResourceName(Iam::INSTANCE_PROFILE, exclusive: false),
                 ],
                 'InstanceType' => Manifest::get('aws.ec2.instance-type'),
                 'KeyName' => Manifest::get('aws.ec2.key-pair', Helpers::keyedResourceName(exclusive: false)),
@@ -281,10 +329,6 @@ trait UsesEc2
 
     public static function subnets(): array
     {
-        if (isset(static::$subnets)) {
-            return static::$subnets;
-        }
-
         $subnets = Aws::ec2()->describeSubnets([
             'Filters' => [
                 [
@@ -298,42 +342,7 @@ trait UsesEc2
             throw new ResourceDoesNotExistException(sprintf('Could not find subnets for VPC %s', AwsResources::vpc()['VpcId']));
         }
 
-        static::$subnets = $subnets;
-
-        return static::$subnets;
-    }
-
-    public static function subnetByName(string $name): array
-    {
-        $fullSubnetName = Helpers::keyedResourceName($name, exclusive: false);
-
-        foreach (static::subnets() as $subnet) {
-            foreach ($subnet['Tags'] as $tag) {
-                if ($tag['Key'] === 'Name' && $tag['Value'] === $fullSubnetName) {
-                    return $subnet;
-                }
-            }
-        }
-
-        throw new ResourceDoesNotExistException("Could not find subnet matching name $fullSubnetName");
-    }
-
-    public static function availabilityZones(string $region): array
-    {
-        $availabilityZones = Aws::ec2()->describeAvailabilityZones([
-            'Filters' => [
-                [
-                    'Name' => 'region-name',
-                    'Values' => [$region],
-                ],
-            ],
-        ])['AvailabilityZones'];
-
-        if (count($availabilityZones) === 0) {
-            throw new ResourceDoesNotExistException("Could not find availability zones for region $region");
-        }
-
-        return $availabilityZones;
+        return $subnets;
     }
 
     public static function keyPair(): array

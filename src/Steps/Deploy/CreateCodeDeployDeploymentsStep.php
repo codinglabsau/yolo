@@ -6,23 +6,36 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Contracts\Step;
+use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Concerns\UsesCodeDeploy;
+use Codinglabs\Yolo\Concerns\ParsesOnlyOption;
 
 class CreateCodeDeployDeploymentsStep implements Step
 {
+    use ParsesOnlyOption;
     use UsesCodeDeploy;
 
     public function __construct(protected string $environment, protected $filesystem = new Filesystem()) {}
 
-    public function __invoke(): void
+    public function __invoke(array $options): StepResult
     {
         $appVersion = $this->filesystem->get(Paths::version());
 
-        $this->createSchedulerServerDeployment($appVersion);
-        $this->createQueueServerDeployment($appVersion);
-        $this->createWebServerDeployment($appVersion);
+        if ($this->shouldRunOnGroup(ServerGroup::SCHEDULER, $options)) {
+            $this->createSchedulerServerDeployment($appVersion);
+        }
+
+        if ($this->shouldRunOnGroup(ServerGroup::QUEUE, $options)) {
+            $this->createQueueServerDeployment($appVersion);
+        }
+
+        if ($this->shouldRunOnGroup(ServerGroup::WEB, $options)) {
+            $this->createWebServerDeployment($appVersion);
+        }
+
+        return StepResult::SUCCESS;
     }
 
     protected function createSchedulerServerDeployment(string $appVersion): void
