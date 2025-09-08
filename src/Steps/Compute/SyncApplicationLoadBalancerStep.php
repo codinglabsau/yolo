@@ -33,7 +33,7 @@ class SyncApplicationLoadBalancerStep implements Step
 
                 while (true) {
                     // wait for load balancer to provision
-                    $loadBalancer = AwsResources::loadBalancer(refresh: true);
+                    $loadBalancer = AwsResources::loadBalancer();
 
                     if ($loadBalancer['State']['Code'] === 'active') {
                         break;
