@@ -9,6 +9,7 @@ use Codinglabs\Yolo\Enums\ServerGroup;
 use Symfony\Component\Process\Process;
 use Codinglabs\Yolo\Concerns\FormatsSshCommands;
 use Symfony\Component\Console\Input\InputArgument;
+
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\text;
 use function Laravel\Prompts\confirm;
@@ -38,6 +39,7 @@ class CommandCommand extends Command
 
         if (! $confirmed) {
             info('🐥 yolo');
+
             return;
         }
 
@@ -48,7 +50,7 @@ class CommandCommand extends Command
         foreach ($groups as $group) {
             $instances = $this->findSshPrefixesForGroup($group);
 
-            info("Found " . count($instances) . " instances in group $group on {$this->argument('environment')}");
+            info('Found ' . count($instances) . " instances in group $group on {$this->argument('environment')}");
 
             foreach ($instances as $ipAddress => $sshCommand) {
                 warning("Executing command '$command' in group $group on instance $ipAddress on {$this->argument('environment')}...");

@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Contracts\ExecutesTenantStep;
 abstract class TenantStep implements ExecutesTenantStep
 {
     protected string $tenantId;
+
     protected array $config;
 
     abstract public function __invoke(array $options): StepResult;

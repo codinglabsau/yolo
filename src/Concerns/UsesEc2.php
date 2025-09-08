@@ -13,14 +13,23 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 trait UsesEc2
 {
     protected static array $vpc;
+
     protected static array $internetGateway;
+
     protected static array $launchTemplate;
+
     protected static array $subnets;
+
     protected static array $routeTable;
+
     protected static array $securityGroups;
+
     protected static array $loadBalancerSecurityGroup;
+
     protected static array $ec2SecurityGroup;
+
     protected static array $rdsSecurityGroup;
+
     protected static array $keyPair;
 
     public static function ec2ByName(string $name, array $states = ['running'], bool $firstOnly = true, $throws = true): ?array
@@ -154,7 +163,7 @@ trait UsesEc2
         ])['LaunchTemplates'];
 
         if (count($launchTemplates) === 0) {
-            ResourceDoesNotExistException::make(sprintf("Could not find launch template %s", Helpers::keyedResourceName()))
+            ResourceDoesNotExistException::make(sprintf('Could not find launch template %s', Helpers::keyedResourceName()))
                 ->suggest('compute:sync')
                 ->throw();
         }
@@ -206,12 +215,11 @@ trait UsesEc2
                     'Name' => 'tag:Name',
                     'Values' => [$name],
                 ],
-            ]
-        ])
-        ['Vpcs'];
+            ],
+        ])['Vpcs'];
 
         if (count($vpcs) === 0) {
-            throw new ResourceDoesNotExistException(sprintf("Could not find VPC %s", $name));
+            throw new ResourceDoesNotExistException(sprintf('Could not find VPC %s', $name));
         }
 
         static::$vpc = $vpcs[0];
@@ -233,12 +241,11 @@ trait UsesEc2
                     'Name' => 'tag:Name',
                     'Values' => [$name],
                 ],
-            ]
-        ])
-        ['InternetGateways'];
+            ],
+        ])['InternetGateways'];
 
         if (count($internetGateways) === 0) {
-            throw new ResourceDoesNotExistException(sprintf("Could not find Internet Gateway %s", $name));
+            throw new ResourceDoesNotExistException(sprintf('Could not find Internet Gateway %s', $name));
         }
 
         static::$internetGateway = $internetGateways[0];
@@ -260,12 +267,11 @@ trait UsesEc2
                     'Name' => 'tag:Name',
                     'Values' => [$name],
                 ],
-            ]
-        ])
-        ['RouteTables'];
+            ],
+        ])['RouteTables'];
 
         if (count($routeTables) === 0) {
-            throw new ResourceDoesNotExistException(sprintf("Could not find Route Table %s", $name));
+            throw new ResourceDoesNotExistException(sprintf('Could not find Route Table %s', $name));
         }
 
         static::$routeTable = $routeTables[0];
@@ -289,7 +295,7 @@ trait UsesEc2
         ])['Subnets'];
 
         if (count($subnets) === 0) {
-            throw new ResourceDoesNotExistException(sprintf("Could not find subnets for VPC %s", AwsResources::vpc()['VpcId']));
+            throw new ResourceDoesNotExistException(sprintf('Could not find subnets for VPC %s', AwsResources::vpc()['VpcId']));
         }
 
         static::$subnets = $subnets;
@@ -341,6 +347,7 @@ trait UsesEc2
         foreach (Aws::ec2()->describeKeyPairs()['KeyPairs'] as $keyPair) {
             if ($keyPair['KeyName'] === $name) {
                 static::$keyPair = $keyPair;
+
                 return $keyPair;
             }
         }

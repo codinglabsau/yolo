@@ -11,7 +11,7 @@ class RetrieveEnvFileStep implements Step
 {
     public function __invoke(array $options = []): void
     {
-        $filename = sprintf(".env.%s", Helpers::environment());
+        $filename = sprintf('.env.%s', Helpers::environment());
         $path = array_key_exists('save-as', $options)
             ? $options['save-as']
             : Paths::base($filename);

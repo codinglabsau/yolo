@@ -26,7 +26,7 @@ class Helpers
         return env(static::keyedEnvName($key));
     }
 
-    public static function keyedResourceName(string|BackedEnum $name = null, $exclusive = true, string $seperator = '-'): string
+    public static function keyedResourceName(string|BackedEnum|null $name = null, $exclusive = true, string $seperator = '-'): string
     {
         if ($name instanceof BackedEnum) {
             $name = $name->value;

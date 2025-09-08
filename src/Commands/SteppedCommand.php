@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Concerns\RunsSteppedCommands;
+
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\intro;
 
@@ -16,7 +17,7 @@ abstract class SteppedCommand extends Command
     {
         $environment = $this->argument('environment');
 
-        intro(sprintf("Executing %s steps in %s", $this->getName(), $environment));
+        intro(sprintf('Executing %s steps in %s', $this->getName(), $environment));
 
         $totalTime = $this->handleSteps($environment);
 

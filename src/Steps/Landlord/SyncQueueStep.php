@@ -18,6 +18,7 @@ class SyncQueueStep implements ExecutesMultitenancyStep
 
         try {
             AwsResources::queue($name);
+
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {

@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Manifest;
+
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\text;
 use function Laravel\Prompts\intro;
@@ -21,12 +22,12 @@ class InitCommand extends Command
     public function handle(): void
     {
         if (Manifest::exists()) {
-            if (! confirm("A yolo.yml manifest already exists in the current directory. Do you want to overwrite it?", default: false)) {
+            if (! confirm('A yolo.yml manifest already exists in the current directory. Do you want to overwrite it?', default: false)) {
                 return;
             }
         }
 
-        intro("Initialising yolo.yml");
+        intro('Initialising yolo.yml');
 
         $this->gitIgnoreFilesAndDirectories();
         $this->initialiseManifest();
@@ -54,9 +55,9 @@ class InitCommand extends Command
             )
         );
 
-        if (confirm("Is the app multi-tenant?", default: false)) {
+        if (confirm('Is the app multi-tenant?', default: false)) {
             Manifest::put('tenants', [
-                'tenant-id' => ['domain' => 'tenant-domain.tld']
+                'tenant-id' => ['domain' => 'tenant-domain.tld'],
             ]);
 
             Manifest::put('deploy', [
@@ -64,14 +65,14 @@ class InitCommand extends Command
                 'php artisan tenants:artisan "migrate --path=database/migrations/tenant --database=tenant --force"',
             ]);
         } else {
-            Manifest::put('domain', text("What is the domain?", placeholder: 'eg. codinglabs.com.au'));
+            Manifest::put('domain', text('What is the domain?', placeholder: 'eg. codinglabs.com.au'));
 
             Manifest::put('deploy', [
                 'php artisan migrate --force',
             ]);
         }
 
-        if ($s3Bucket = text("What is the name of the S3 bucket used for app storage?", placeholder: "Leave blank to skip")) {
+        if ($s3Bucket = text('What is the name of the S3 bucket used for app storage?', placeholder: 'Leave blank to skip')) {
             Manifest::put('aws.bucket', $s3Bucket);
         }
     }
@@ -81,9 +82,9 @@ class InitCommand extends Command
         if (file_exists(Paths::base('.gitignore'))) {
             file_put_contents(
                 Paths::base('.gitignore'),
-                ".yolo" . PHP_EOL .
-                ".env.staging" . PHP_EOL .
-                ".env.production" . PHP_EOL,
+                '.yolo' . PHP_EOL .
+                '.env.staging' . PHP_EOL .
+                '.env.production' . PHP_EOL,
                 FILE_APPEND
             );
         }
@@ -94,9 +95,9 @@ class InitCommand extends Command
         if (! file_exists(Paths::base('.env.production'))) {
             file_put_contents(
                 Paths::base('.env.production'),
-                "APP_ENV=production" . PHP_EOL .
-                "APP_KEY=" . PHP_EOL .
-                "APP_DEBUG=false" . PHP_EOL .
+                'APP_ENV=production' . PHP_EOL .
+                'APP_KEY=' . PHP_EOL .
+                'APP_DEBUG=false' . PHP_EOL .
                 FILE_APPEND
             );
         }

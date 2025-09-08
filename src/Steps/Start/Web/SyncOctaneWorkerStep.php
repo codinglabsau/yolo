@@ -12,7 +12,7 @@ class SyncOctaneWorkerStep implements RunsOnAwsWeb
 {
     public function __invoke(array $options): StepResult
     {
-        $file = sprintf('/etc/supervisor/conf.d/%s', Helpers::keyedResourceName("octane-worker.conf"));
+        $file = sprintf('/etc/supervisor/conf.d/%s', Helpers::keyedResourceName('octane-worker.conf'));
 
         if (! Manifest::get('aws.ec2.octane')) {
             if (file_exists($file)) {

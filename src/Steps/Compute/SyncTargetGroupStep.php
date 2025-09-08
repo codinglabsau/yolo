@@ -16,6 +16,7 @@ class SyncTargetGroupStep implements Step
     {
         try {
             AwsResources::targetGroup();
+
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {
@@ -31,7 +32,7 @@ class SyncTargetGroupStep implements Step
                     'HealthCheckPath' => '/healthy',
                     'HealthCheckTimeoutSeconds' => 5,
                     ...Aws::tags([
-                        'Name' => Helpers::keyedResourceName(exclusive: false)
+                        'Name' => Helpers::keyedResourceName(exclusive: false),
                     ]),
                 ]);
 

@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Helpers;
 use Symfony\Component\Console\Input\InputArgument;
+
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\warning;
 
@@ -48,7 +49,7 @@ class DeployCommand extends SteppedCommand
         }
 
         if (! $reuseBuild) {
-            warning("Building fresh version...");
+            warning('Building fresh version...');
 
             (new BuildCommand())->execute(Helpers::app('input'), Helpers::app('output'));
         }

@@ -16,6 +16,7 @@ class SyncApplicationLoadBalancerStep implements Step
     {
         try {
             AwsResources::loadBalancer();
+
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {
@@ -26,7 +27,7 @@ class SyncApplicationLoadBalancerStep implements Step
                         ->pluck('SubnetId')
                         ->toArray(),
                     ...Aws::tags([
-                        'Name' => Helpers::keyedResourceName(exclusive: false)
+                        'Name' => Helpers::keyedResourceName(exclusive: false),
                     ]),
                 ]);
 

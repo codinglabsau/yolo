@@ -16,6 +16,7 @@ class SyncListenerOnPort80Step implements Step
     {
         try {
             AwsResources::loadBalancerListenerOnPort(80);
+
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {
@@ -30,7 +31,7 @@ class SyncListenerOnPort80Step implements Step
                         ],
                     ],
                     ...Aws::tags([
-                        'Name' => Helpers::keyedResourceName('http', exclusive: false)
+                        'Name' => Helpers::keyedResourceName('http', exclusive: false),
                     ]),
                 ]);
 

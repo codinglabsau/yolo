@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Paths;
 use Aws\S3\Exception\S3Exception;
 use Symfony\Component\Console\Input\InputArgument;
 use Codinglabs\Yolo\Steps\Build\RetrieveEnvFileStep;
+
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\error;
@@ -34,6 +35,7 @@ class EnvPushCommand extends Command
 
         if (! file_exists($path)) {
             error("Could not find $filename");
+
             return;
         }
 
@@ -42,7 +44,7 @@ class EnvPushCommand extends Command
                 'save-as' => Paths::base($temporaryFilename),
             ]);
 
-            note("Comparing changes...");
+            note('Comparing changes...');
 
             $oldContents = Dotenv::parse(file_get_contents(Paths::base($temporaryFilename)));
             $newContents = Dotenv::parse(file_get_contents($path));
@@ -63,12 +65,13 @@ class EnvPushCommand extends Command
             }
 
             $confirm = $differences->isEmpty()
-                ? confirm("No changes detected - do you want to upload anyway?")
-                : confirm("Are you sure you want to upload these changes?");
+                ? confirm('No changes detected - do you want to upload anyway?')
+                : confirm('Are you sure you want to upload these changes?');
 
             if (! $confirm) {
                 unlink(Paths::base($temporaryFilename));
                 info('🐥 yolo');
+
                 return;
             }
         } catch (S3Exception $e) {
@@ -86,6 +89,6 @@ class EnvPushCommand extends Command
 
         unlink(Paths::base($temporaryFilename));
 
-        info("Uploaded successfully.");
+        info('Uploaded successfully.');
     }
 }

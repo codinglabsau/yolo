@@ -17,6 +17,7 @@ class SyncHostedZoneStep implements ExecutesDomainStep
     {
         try {
             AwsResources::hostedZone(Manifest::apex());
+
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {

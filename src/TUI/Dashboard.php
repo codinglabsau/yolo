@@ -10,21 +10,21 @@ use Codinglabs\Yolo\TUI\Renderers\DashboardRenderer;
 
 class Dashboard extends Prompt
 {
-    use RegistersRenderers;
     use CreatesAnAltScreen;
+    use RegistersRenderers;
 
     public array $tabs = [
         [
             'tab' => 'Dashboard',
-            'content' => "Coming soon",
+            'content' => 'Coming soon',
         ],
         [
             'tab' => 'Deployments',
-            'content' => "Coming soon",
+            'content' => 'Coming soon',
         ],
         [
             'tab' => 'Infrastructure',
-            'content' => "Coming soon",
+            'content' => 'Coming soon',
         ],
     ];
 

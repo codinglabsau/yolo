@@ -23,7 +23,7 @@ class SyncInternetGatewayAttachmentStep implements Step
                 return StepResult::SYNCED;
             }
 
-            throw new ResourceDoesNotExistException("Could not find Internet Gateway Attachment");
+            throw new ResourceDoesNotExistException('Could not find Internet Gateway Attachment');
         } catch (ResourceDoesNotExistException $e) {
             if (! Arr::get($options, 'dry-run')) {
                 $vpc = AwsResources::vpc();

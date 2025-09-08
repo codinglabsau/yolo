@@ -17,6 +17,7 @@ class SyncLoadBalancerSecurityGroupStep implements Step
     {
         try {
             AwsResources::loadBalancerSecurityGroup();
+
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {
@@ -31,7 +32,7 @@ class SyncLoadBalancerSecurityGroupStep implements Step
                             'ResourceType' => 'security-group',
                             ...Aws::tags([
                                 'Name' => $name,
-                            ])
+                            ]),
                         ],
                     ],
                 ]);

@@ -16,6 +16,7 @@ class SyncHostedZoneStep extends TenantStep
     {
         try {
             AwsResources::hostedZone($this->config['apex']);
+
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {

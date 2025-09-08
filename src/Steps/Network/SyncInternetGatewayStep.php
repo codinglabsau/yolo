@@ -18,6 +18,7 @@ class SyncInternetGatewayStep implements Step
 
         try {
             AwsResources::internetGateway();
+
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException $e) {
             if (! Arr::get($options, 'dry-run')) {

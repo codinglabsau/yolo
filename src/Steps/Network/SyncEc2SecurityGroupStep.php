@@ -32,13 +32,13 @@ class SyncEc2SecurityGroupStep implements Step
                             'ResourceType' => 'security-group',
                             ...Aws::tags([
                                 'Name' => $name,
-                            ])
+                            ]),
                         ],
                     ],
                 ]);
 
                 $securityGroup = AwsResources::ec2SecurityGroup();
-                $publicIp = file_get_contents("https://api.ipify.org");
+                $publicIp = file_get_contents('https://api.ipify.org');
 
                 Aws::ec2()->authorizeSecurityGroupIngress([
                     'GroupId' => $securityGroup['GroupId'],
@@ -63,7 +63,7 @@ class SyncEc2SecurityGroupStep implements Step
                             'IpRanges' => [
                                 [
                                     'CidrIp' => "$publicIp/32",
-                                    'Description' => 'YOLO-determined public IP during sync. Delete if unused.'
+                                    'Description' => 'YOLO-determined public IP during sync. Delete if unused.',
                                 ],
                             ],
                         ],

@@ -17,6 +17,7 @@ class SyncMultitenancyListenerOnPort443Step implements ExecutesMultitenancyStep
     {
         try {
             AwsResources::loadBalancerListenerOnPort(443);
+
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {
@@ -36,7 +37,7 @@ class SyncMultitenancyListenerOnPort443Step implements ExecutesMultitenancyStep
                         ],
                     ],
                     ...Aws::tags([
-                        'Name' => Helpers::keyedResourceName(exclusive: false)
+                        'Name' => Helpers::keyedResourceName(exclusive: false),
                     ]),
                 ]);
 

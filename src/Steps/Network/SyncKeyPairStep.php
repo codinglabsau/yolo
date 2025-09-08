@@ -11,6 +11,7 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Commands\Command;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
+
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\intro;
 use function Laravel\Prompts\warning;
@@ -21,6 +22,7 @@ class SyncKeyPairStep implements Step
     {
         try {
             AwsResources::keyPair();
+
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException $e) {
             $name = Manifest::get('aws.ec2.key-pair', Helpers::keyedResourceName(exclusive: false));
@@ -37,14 +39,14 @@ class SyncKeyPairStep implements Step
                 ],
             ]);
 
-            $envFilename = ".env";
-            $suggestedPath = sprintf("~/.ssh/%s", $name);
+            $envFilename = '.env';
+            $suggestedPath = sprintf('~/.ssh/%s', $name);
             $suggestedEnv = sprintf('%s=%s', Helpers::keyedEnvName('SSH_KEY'), $suggestedPath);
 
             $command->after(function () use ($suggestedPath, $key) {
                 intro(
                     sprintf(
-                        "A key pair has been created to access EC2 instances. Save the below private key to somewhere like %s",
+                        'A key pair has been created to access EC2 instances. Save the below private key to somewhere like %s',
                         $suggestedPath
                     )
                 );

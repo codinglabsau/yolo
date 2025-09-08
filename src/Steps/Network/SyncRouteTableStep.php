@@ -18,6 +18,7 @@ class SyncRouteTableStep implements Step
 
         try {
             AwsResources::routeTable();
+
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException $e) {
             if (! Arr::get($options, 'dry-run')) {
@@ -28,7 +29,7 @@ class SyncRouteTableStep implements Step
                             'ResourceType' => 'route-table',
                             ...Aws::tags([
                                 'Name' => $routeTableName,
-                            ])
+                            ]),
                         ],
                     ],
                 ]);

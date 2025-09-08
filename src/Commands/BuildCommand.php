@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Steps;
 use Symfony\Component\Console\Input\InputArgument;
+
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\intro;
 
@@ -34,7 +35,8 @@ class BuildCommand extends SteppedCommand
         $appVersion = $this->option('app-version') ?? date('y.W.N.Hi');
 
         if (! str_starts_with($appVersion, date('y.W'))) {
-            error(sprintf("App version must start with %s", date('y.W')));
+            error(sprintf('App version must start with %s', date('y.W')));
+
             return;
         }
 

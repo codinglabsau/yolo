@@ -6,6 +6,7 @@ use Carbon\Carbon;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Concerns\FormatsSshCommands;
 use Symfony\Component\Console\Input\InputArgument;
+
 use function Laravel\Prompts\table;
 
 class Ec2ListCommand extends Command

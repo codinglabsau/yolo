@@ -23,7 +23,7 @@
     "vlucas/phpdotenv": "^5.6"
   },
   "require-dev": {
-    "codinglabsau/php-styles": "dev-main",
+    "laravel/pint": "^1.24",
     "pestphp/pest": "^3.7",
     "phpstan/phpstan": "^1.12",
     "spatie/ray": "^1.41"

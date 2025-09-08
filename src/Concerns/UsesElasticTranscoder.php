@@ -9,6 +9,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 trait UsesElasticTranscoder
 {
     protected static array $elasticTranscoderPipeline;
+
     protected static array $elasticTranscoderPreset;
 
     public static function elasticTranscoderPipeline(): array

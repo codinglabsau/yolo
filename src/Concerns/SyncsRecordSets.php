@@ -53,7 +53,7 @@ trait SyncsRecordSets
                             : "www.$domain",
                         'Type' => 'A',
                     ],
-                ]
+                ],
             ];
         }
 

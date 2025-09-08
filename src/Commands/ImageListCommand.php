@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Commands;
 use Carbon\Carbon;
 use Codinglabs\Yolo\Aws;
 use Symfony\Component\Console\Input\InputArgument;
+
 use function Laravel\Prompts\table;
 
 class ImageListCommand extends Command
@@ -33,7 +34,7 @@ class ImageListCommand extends Command
                         ->format('d/m/Y H:i:s'),
                     isset($image['LastLaunchedTime'])
                         ? Carbon::parse($image['LastLaunchedTime'])
-                        ->diffForHumans()
+                            ->diffForHumans()
                         : 'Never',
                 ])
         );

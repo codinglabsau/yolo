@@ -32,7 +32,7 @@ class DashboardRenderer extends Renderer
 
         $this->centerHorizontally($tabs->implode(str_repeat(' ', 4)), $width)->each($this->line(...));
 
-        $contentWidth = (int)floor($width * .75);
+        $contentWidth = (int) floor($width * .75);
 
         $this->centerHorizontally($this->dim(str_repeat('─', $contentWidth + 4)), $width)->each($this->line(...));
 

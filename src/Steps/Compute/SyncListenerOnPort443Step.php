@@ -17,6 +17,7 @@ class SyncListenerOnPort443Step implements ExecutesDomainStep
     {
         try {
             AwsResources::loadBalancerListenerOnPort(443);
+
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {
@@ -36,7 +37,7 @@ class SyncListenerOnPort443Step implements ExecutesDomainStep
                         ],
                     ],
                     ...Aws::tags([
-                        'Name' => Helpers::keyedResourceName('https', exclusive: false)
+                        'Name' => Helpers::keyedResourceName('https', exclusive: false),
                     ]),
                 ]);
 

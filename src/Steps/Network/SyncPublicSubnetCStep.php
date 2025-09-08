@@ -20,6 +20,7 @@ class SyncPublicSubnetCStep implements Step
 
         try {
             AwsResources::subnetByName($publicSubnetName);
+
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException $e) {
             if (! Arr::get($options, 'dry-run')) {

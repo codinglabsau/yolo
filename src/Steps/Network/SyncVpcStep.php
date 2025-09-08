@@ -18,6 +18,7 @@ class SyncVpcStep implements Step
 
         try {
             AwsResources::vpc();
+
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException $e) {
             if (! Arr::get($options, 'dry-run')) {

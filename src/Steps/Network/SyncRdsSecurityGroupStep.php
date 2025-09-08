@@ -32,7 +32,7 @@ class SyncRdsSecurityGroupStep implements Step
                             'ResourceType' => 'security-group',
                             ...Aws::tags([
                                 'Name' => $name,
-                            ])
+                            ]),
                         ],
                     ],
                 ]);

@@ -21,6 +21,7 @@ class SyncElasticTranscoderPipelineStep implements Step
 
         try {
             AwsResources::elasticTranscoderPipeline();
+
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {
@@ -30,14 +31,14 @@ class SyncElasticTranscoderPipelineStep implements Step
                     'OutputBucket' => Manifest::get('aws.bucket'),
                     'Role' => 'arn:aws:iam::' . Aws::accountId() . ':role/Elastic_Transcoder_Default_Role',
                     // note: Elastic Transcoder does not appear to support tagging
-//                    'TagSpecifications' => [
-//                        [
-//                            'ResourceType' => 'pipeline',
-//                            ...Aws::tags([
-//                                'Name' => Helpers::keyedResourceName(),
-//                            ]),
-//                        ],
-//                    ],
+                    //                    'TagSpecifications' => [
+                    //                        [
+                    //                            'ResourceType' => 'pipeline',
+                    //                            ...Aws::tags([
+                    //                                'Name' => Helpers::keyedResourceName(),
+                    //                            ]),
+                    //                        ],
+                    //                    ],
                 ]);
 
                 return StepResult::CREATED;

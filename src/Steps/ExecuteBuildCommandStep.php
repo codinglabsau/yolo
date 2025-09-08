@@ -28,13 +28,13 @@ class ExecuteBuildCommandStep implements ExecutesCommandStep, RunsOnBuild
             env: [
                 ...collect($dotenv)
                     ->filter(fn ($value, $key) => in_array($key, [
-                            'APP_ENV', // for npm
-                            'ASSET_URL', // for vite
-                        ]) || Str::startsWith($key, 'VITE_'))
+                        'APP_ENV', // for npm
+                        'ASSET_URL', // for vite
+                    ]) || Str::startsWith($key, 'VITE_'))
                     ->toArray(),
                 ...[
                     'CACHE_DRIVER' => 'null',
-                ]
+                ],
             ],
             timeout: null
         );

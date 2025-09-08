@@ -11,8 +11,11 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 trait UsesAutoscaling
 {
     protected static array $asgWeb;
+
     protected static array $asgQueue;
+
     protected static array $asgScheduler;
+
     protected static array $asgWebScalingPolicies;
 
     public static function autoScalingGroupWeb(): array
@@ -85,7 +88,7 @@ trait UsesAutoscaling
         )['ScalingPolicies'];
 
         if (count($autoScalingGroupScalingPolicies) === 0) {
-            throw new ResourceDoesNotExistException(sprintf("Could not find asg scaling policies %s", $asgName));
+            throw new ResourceDoesNotExistException(sprintf('Could not find asg scaling policies %s', $asgName));
         }
 
         return $autoScalingGroupScalingPolicies;

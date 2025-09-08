@@ -11,11 +11,11 @@ class SyncBashProfileStep implements RunsOnAws
     public function __invoke(array $options): StepResult
     {
         file_put_contents(
-            "/home/ubuntu/.bash_profile",
+            '/home/ubuntu/.bash_profile',
             file_get_contents(Paths::stubs('.bash_profile.stub'))
         );
 
-        chown("/home/ubuntu/.bash_profile", "ubuntu");
+        chown('/home/ubuntu/.bash_profile', 'ubuntu');
 
         return StepResult::SYNCED;
     }

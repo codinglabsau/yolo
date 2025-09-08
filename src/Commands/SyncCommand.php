@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Commands;
 use Codinglabs\Yolo\Manifest;
 use Symfony\Component\Console\Input\InputArgument;
+
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\intro;
 
@@ -23,7 +24,7 @@ class SyncCommand extends SteppedCommand
 
     public function handle(): void
     {
-        intro("Executing sync commands...");
+        intro('Executing sync commands...');
 
         collect([
             Commands\SyncNetworkCommand::class,
