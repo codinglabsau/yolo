@@ -86,7 +86,8 @@ trait UsesEc2
 
         static::$securityGroups = $securityGroups;
 
-        return static::$securityGroups;    }
+        return static::$securityGroups;
+    }
 
     /**
      * @throws ResourceDoesNotExistException

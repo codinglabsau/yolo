@@ -1,10 +1,6 @@
 <?php
 
-<<<<<<<< HEAD:src/Steps/Image/CreateWebGroupCpuAlarmsStep.php
-namespace Codinglabs\Yolo\Steps\Image;
-========
 namespace Codinglabs\Yolo\Steps\Stage;
->>>>>>>> main:src/Steps/Stage/CreateWebGroupCpuAlarmsStep.php
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;

@@ -1,10 +1,6 @@
 <?php
 
-<<<<<<<< HEAD:src/Steps/Image/CreateLaunchTemplateVersionStep.php
-namespace Codinglabs\Yolo\Steps\Image;
-========
 namespace Codinglabs\Yolo\Steps\Stage;
->>>>>>>> main:src/Steps/Stage/CreateLaunchTemplateVersionStep.php
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
