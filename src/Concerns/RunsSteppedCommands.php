@@ -19,7 +19,6 @@ use Codinglabs\Yolo\Steps\ExecuteBuildCommandStep;
 use Codinglabs\Yolo\Steps\ExecuteCommandOnAwsStep;
 use Codinglabs\Yolo\Steps\ExecuteCommandOnAwsQueueStep;
 use Codinglabs\Yolo\Steps\ExecuteCommandOnAwsSchedulerStep;
-
 use function Laravel\Prompts\table;
 use function Laravel\Prompts\warning;
 use function Laravel\Prompts\progress;
@@ -67,9 +66,6 @@ trait RunsSteppedCommands
                     // green
                     StepResult::CREATED => '<fg=green>CREATED</>',
                     StepResult::SUCCESS => '<fg=green>SUCCESS</>',
-                    StepResult::IN_SYNC => '<fg=green>IN SYNC</>',
-
-                    // cyan
                     StepResult::SYNCED => '<fg=cyan>SYNCED</>',
 
                     // yellow
@@ -78,7 +74,6 @@ trait RunsSteppedCommands
                     StepResult::CUSTOM_MANAGED => '<fg=yellow>CUSTOM MANAGED</>',
                     StepResult::WOULD_CREATE => '<fg=yellow>WOULD CREATE</>',
                     StepResult::WOULD_SYNC => '<fg=yellow>WOULD SYNC</>',
-                    StepResult::OUT_OF_SYNC => '<fg=yellow>OUT OF SYNC</>',
 
                     // red
                     StepResult::MANIFEST_INVALID => '<fg=red>MANIFEST INVALID</>',
