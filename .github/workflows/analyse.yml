@@ -42,8 +42,3 @@ jobs:
 
       - name: Code analysis
         run: vendor/bin/phpstan analyse --memory-limit=1G
-
-      - name: Notify Slack of failure
-        if: failure()
-        run: |
-          curl -X POST -H 'Content-type: application/json' --data '{"text":"Code analysis failed on branch ${{github.ref_name}} for action https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}"}' https://hooks.slack.com/services/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
