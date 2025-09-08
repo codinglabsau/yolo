@@ -9,18 +9,38 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 trait UsesAutoscaling
 {
+    protected static array $asgWeb;
+
+    protected static array $asgQueue;
+
+    protected static array $asgScheduler;
+
+    protected static array $asgWebScalingPolicies;
+
     public static function autoScalingGroupWeb(): array
     {
+        if (isset(static::$asgWeb)) {
+            return static::$asgWeb;
+        }
+
         return static::autoScalingGroup(Manifest::get('aws.autoscaling.web'));
     }
 
     public static function autoScalingGroupQueue(): array
     {
+        if (isset(static::$asgQueue)) {
+            return static::$asgQueue;
+        }
+
         return static::autoScalingGroup(Manifest::get('aws.autoscaling.queue'));
     }
 
     public static function autoScalingGroupScheduler(): array
     {
+        if (isset(static::$asgScheduler)) {
+            return static::$asgScheduler;
+        }
+
         return static::autoScalingGroup(Manifest::get('aws.autoscaling.scheduler'));
     }
 
@@ -51,6 +71,10 @@ trait UsesAutoscaling
 
     protected static function autoScalingGroupWebScalingPolicies(): array
     {
+        if (isset(static::$asgWebScalingPolicies)) {
+            return static::$asgWebScalingPolicies;
+        }
+
         return static::autoScalingGroupScalingPolicies(Manifest::get('aws.autoscaling.web'));
     }
 

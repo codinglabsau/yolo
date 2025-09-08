@@ -13,6 +13,44 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 trait UsesEc2
 {
+    protected static array $vpc;
+
+    protected static array $internetGateway;
+
+    protected static array $launchTemplate;
+
+    protected static array $subnets;
+
+    protected static array $routeTable;
+
+    protected static array $securityGroups;
+
+    protected static array $loadBalancerSecurityGroup;
+
+    protected static array $ec2SecurityGroup;
+
+    protected static array $rdsSecurityGroup;
+
+    protected static array $keyPair;
+
+    public static function availabilityZones(string $region): array
+    {
+        $availabilityZones = Aws::ec2()->describeAvailabilityZones([
+            'Filters' => [
+                [
+                    'Name' => 'region-name',
+                    'Values' => [$region],
+                ],
+            ],
+        ])['AvailabilityZones'];
+
+        if (count($availabilityZones) === 0) {
+            throw new ResourceDoesNotExistException("Could not find availability zones for region $region");
+        }
+
+        return $availabilityZones;
+    }
+
     public static function ec2ByName(string $name, array $states = ['running'], bool $firstOnly = true, $throws = true): ?array
     {
         $instances = collect(Aws::ec2()->describeInstances([
@@ -56,9 +94,17 @@ trait UsesEc2
             ->toArray();
     }
 
-    public static function securityGroups(): array
+    public static function securityGroups($refresh = false): array
     {
-        return Aws::ec2()->describeSecurityGroups()['SecurityGroups'];
+        if (! $refresh && isset(static::$securityGroups)) {
+            return static::$securityGroups;
+        }
+
+        $securityGroups = Aws::ec2()->describeSecurityGroups()['SecurityGroups'];
+
+        static::$securityGroups = $securityGroups;
+
+        return static::$securityGroups;
     }
 
     /**
@@ -66,7 +112,13 @@ trait UsesEc2
      */
     public static function loadBalancerSecurityGroup(): array
     {
-        return static::securityGroupByName(SecurityGroup::LOAD_BALANCER_SECURITY_GROUP);
+        if (isset(static::$loadBalancerSecurityGroup)) {
+            return static::$loadBalancerSecurityGroup;
+        }
+
+        static::$loadBalancerSecurityGroup = static::securityGroupByName(SecurityGroup::LOAD_BALANCER_SECURITY_GROUP);
+
+        return static::$loadBalancerSecurityGroup;
     }
 
     /**
@@ -74,7 +126,27 @@ trait UsesEc2
      */
     public static function ec2SecurityGroup(): array
     {
-        return static::securityGroupByName(Manifest::get('aws.ec2.security-group', SecurityGroup::EC2_SECURITY_GROUP));
+        if (isset(static::$ec2SecurityGroup)) {
+            return static::$ec2SecurityGroup;
+        }
+
+        static::$ec2SecurityGroup = static::securityGroupByName(Manifest::get('aws.ec2.security-group', SecurityGroup::EC2_SECURITY_GROUP));
+
+        return static::$ec2SecurityGroup;
+    }
+
+    /**
+     * @throws ResourceDoesNotExistException
+     */
+    public static function rdsSecurityGroup(): array
+    {
+        if (isset(static::$rdsSecurityGroup)) {
+            return static::$rdsSecurityGroup;
+        }
+
+        static::$rdsSecurityGroup = static::securityGroupByName(SecurityGroup::RDS_SECURITY_GROUP);
+
+        return static::$rdsSecurityGroup;
     }
 
     public static function securityGroupByName(string|BackedEnum $name): array
@@ -92,64 +164,12 @@ trait UsesEc2
         throw new ResourceDoesNotExistException("Could not find Security Group matching name $name");
     }
 
-    public static function loadBalancer(): array
+    public static function launchTemplate($refresh = false): array
     {
-        $loadBalancers = Aws::elasticLoadBalancingV2()->describeLoadBalancers();
-
-        foreach ($loadBalancers['LoadBalancers'] as $loadBalancer) {
-            if ($loadBalancer['LoadBalancerName'] === Manifest::get('aws.alb')) {
-                return $loadBalancer;
-            }
+        if (! $refresh && isset(static::$launchTemplate)) {
+            return static::$launchTemplate;
         }
 
-        throw new ResourceDoesNotExistException('Could not find load balancer');
-    }
-
-    public static function targetGroup(): array
-    {
-        $targetGroups = Aws::elasticLoadBalancingV2()->describeTargetGroups([
-            'LoadBalancerArn' => static::loadBalancer()['LoadBalancerArn'],
-        ])['TargetGroups'];
-
-        if (count($targetGroups) === 0) {
-            throw new ResourceDoesNotExistException(sprintf('Could not find target group for ALB %s', static::loadBalancer()['LoadBalancerName']));
-        }
-
-        return $targetGroups[0];
-    }
-
-    public static function loadBalancerListenerOnPort(int $port): array
-    {
-        $listeners = Aws::elasticLoadBalancingV2()->describeListeners([
-            'LoadBalancerArn' => static::loadBalancer()['LoadBalancerArn'],
-        ]);
-
-        foreach ($listeners['Listeners'] as $listener) {
-            if ($listener['Port'] === $port) {
-                return $listener;
-            }
-        }
-
-        throw new ResourceDoesNotExistException("Could not find listener on port $port");
-    }
-
-    public static function listenerCertificate(string $listenerArn, string $certificateArn): array
-    {
-        $listenerCertificates = Aws::elasticLoadBalancingV2()->describeListenerCertificates([
-            'ListenerArn' => $listenerArn,
-        ]);
-
-        foreach ($listenerCertificates['Certificates'] as $listenerCertificate) {
-            if ($listenerCertificate['CertificateArn'] === $certificateArn) {
-                return $listenerCertificate;
-            }
-        }
-
-        throw new ResourceDoesNotExistException("Could not find listener certificate on listener $listenerArn");
-    }
-
-    public static function launchTemplate(): array
-    {
         $launchTemplates = Aws::ec2()->describeLaunchTemplates([
             'Filters' => [
                 [
@@ -164,7 +184,9 @@ trait UsesEc2
                 ->suggest('compute:sync');
         }
 
-        return $launchTemplates[0];
+        static::$launchTemplate = $launchTemplates[0];
+
+        return static::$launchTemplate;
     }
 
     public static function launchTemplatePayload(): array
@@ -195,8 +217,25 @@ trait UsesEc2
         ];
     }
 
+    public static function loadBalancer(): array
+    {
+        $loadBalancers = Aws::elasticLoadBalancingV2()->describeLoadBalancers();
+
+        foreach ($loadBalancers['LoadBalancers'] as $loadBalancer) {
+            if ($loadBalancer['LoadBalancerName'] === Manifest::get('aws.alb')) {
+                return $loadBalancer;
+            }
+        }
+
+        throw new ResourceDoesNotExistException('Could not find load balancer');
+    }
+
     public static function vpc(): array
     {
+        if (isset(static::$vpc)) {
+            return static::$vpc;
+        }
+
         $name = Manifest::get('aws.vpc', Helpers::keyedResourceName(exclusive: false));
 
         $vpcs = Aws::ec2()->describeVpcs([
@@ -212,11 +251,69 @@ trait UsesEc2
             throw new ResourceDoesNotExistException(sprintf('Could not find VPC %s', $name));
         }
 
-        return $vpcs[0];
+        static::$vpc = $vpcs[0];
+
+        return static::$vpc;
+    }
+
+    public static function internetGateway(): array
+    {
+        if (isset(static::$internetGateway)) {
+            return static::$internetGateway;
+        }
+
+        $name = Helpers::keyedResourceName(exclusive: false);
+
+        $internetGateways = Aws::ec2()->describeInternetGateways([
+            'Filters' => [
+                [
+                    'Name' => 'tag:Name',
+                    'Values' => [$name],
+                ],
+            ],
+        ])['InternetGateways'];
+
+        if (count($internetGateways) === 0) {
+            throw new ResourceDoesNotExistException(sprintf('Could not find Internet Gateway %s', $name));
+        }
+
+        static::$internetGateway = $internetGateways[0];
+
+        return static::$internetGateway;
+    }
+
+    public static function routeTable(): array
+    {
+        if (isset(static::$routeTable)) {
+            return static::$routeTable;
+        }
+
+        $name = Helpers::keyedResourceName(exclusive: false);
+
+        $routeTables = Aws::ec2()->describeRouteTables([
+            'Filters' => [
+                [
+                    'Name' => 'tag:Name',
+                    'Values' => [$name],
+                ],
+            ],
+        ])['RouteTables'];
+
+        if (count($routeTables) === 0) {
+            throw new ResourceDoesNotExistException(sprintf('Could not find Route Table %s', $name));
+        }
+
+        static::$routeTable = $routeTables[0];
+
+        return static::$routeTable;
     }
 
     public static function subnets(): array
     {
+        if (isset(static::$subnets)) {
+            return static::$subnets;
+        }
+
         $subnets = Aws::ec2()->describeSubnets([
             'Filters' => [
                 [
@@ -233,12 +330,33 @@ trait UsesEc2
         return $subnets;
     }
 
+    public static function subnetByName(string $name): array
+    {
+        $fullSubnetName = Helpers::keyedResourceName($name, exclusive: false);
+
+        foreach (static::subnets() as $subnet) {
+            foreach ($subnet['Tags'] as $tag) {
+                if ($tag['Key'] === 'Name' && $tag['Value'] === $fullSubnetName) {
+                    return $subnet;
+                }
+            }
+        }
+
+        throw new ResourceDoesNotExistException("Could not find subnet matching name $fullSubnetName");
+    }
+
     public static function keyPair(): array
     {
+        if (isset(static::$keyPair)) {
+            return static::$keyPair;
+        }
+
         $name = Manifest::get('aws.ec2.key-pair', Helpers::keyedResourceName(exclusive: false));
 
         foreach (Aws::ec2()->describeKeyPairs()['KeyPairs'] as $keyPair) {
             if ($keyPair['KeyName'] === $name) {
+                static::$keyPair = $keyPair;
+
                 return $keyPair;
             }
         }
