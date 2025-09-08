@@ -4,7 +4,6 @@ namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Manifest;
-
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\text;
 use function Laravel\Prompts\intro;
@@ -72,7 +71,7 @@ class InitCommand extends Command
             ]);
         }
 
-        if ($s3Bucket = text('What is the name of the S3 bucket used for app storage?')) {
+        if ($s3Bucket = text('What is the name of the S3 bucket used for app storage?', placeholder: 'Leave blank to skip')) {
             Manifest::put('aws.bucket', $s3Bucket);
         }
     }
