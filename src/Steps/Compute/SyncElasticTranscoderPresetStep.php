@@ -21,6 +21,7 @@ class SyncElasticTranscoderPresetStep implements Step
 
         try {
             AwsResources::elasticTranscoderPreset();
+
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {
@@ -34,8 +35,8 @@ class SyncElasticTranscoderPresetStep implements Step
                         'BitRate' => '160',
                         'Channels' => '2',
                         'CodecOptions' => [
-                            'Profile' => 'AAC-LC'
-                        ]
+                            'Profile' => 'AAC-LC',
+                        ],
                     ],
                     'Video' => [
                         'Codec' => 'H.264',
@@ -66,14 +67,14 @@ class SyncElasticTranscoderPresetStep implements Step
                         'PaddingPolicy' => 'NoPad',
                     ],
                     // note: Elastic Transcoder does not appear to support tagging
-//                    'TagSpecifications' => [
-//                        [
-//                            'ResourceType' => 'preset',
-//                            ...Aws::tags([
-//                                'Name' => Helpers::keyedResourceName(),
-//                            ]),
-//                        ],
-//                    ],
+                    //                    'TagSpecifications' => [
+                    //                        [
+                    //                            'ResourceType' => 'preset',
+                    //                            ...Aws::tags([
+                    //                                'Name' => Helpers::keyedResourceName(),
+                    //                            ]),
+                    //                        ],
+                    //                    ],
                 ]);
 
                 return StepResult::CREATED;

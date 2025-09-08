@@ -46,7 +46,7 @@ class SyncSslCertificateStep extends TenantStep
     {
         do {
             $certificate = Aws::acm()->describeCertificate([
-                'CertificateArn' => $certificateArn
+                'CertificateArn' => $certificateArn,
             ])['Certificate'];
 
             // take a little snooze because the AWS result
@@ -68,7 +68,7 @@ class SyncSslCertificateStep extends TenantStep
                             'Type' => $option['ResourceRecord']['Type'],
                             'ResourceRecords' => [
                                 [
-                                    'Value' => $option['ResourceRecord']['Value']
+                                    'Value' => $option['ResourceRecord']['Value'],
                                 ],
                             ],
                             'TTL' => 300,

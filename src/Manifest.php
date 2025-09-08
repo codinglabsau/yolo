@@ -46,7 +46,7 @@ class Manifest
     {
         $manifest = static::current();
 
-        Arr::set($manifest, sprintf("environments.%s.%s", Helpers::environment(), $key), $value);
+        Arr::set($manifest, sprintf('environments.%s.%s', Helpers::environment(), $key), $value);
 
         return file_put_contents(
             Paths::manifest(),

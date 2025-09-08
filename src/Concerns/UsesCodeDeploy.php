@@ -26,7 +26,7 @@ trait UsesCodeDeploy
             }
         }
 
-        throw new ResourceDoesNotExistException(sprintf("Could not find CodeDeploy application %s", Helpers::keyedResourceName()));
+        throw new ResourceDoesNotExistException(sprintf('Could not find CodeDeploy application %s', Helpers::keyedResourceName()));
     }
 
     public static function OneThirdAtATimeDeploymentConfig(): array
@@ -77,7 +77,7 @@ trait UsesCodeDeploy
             }
         }
 
-        throw new ResourceDoesNotExistException(sprintf("Could not find deployment group %s", $name));
+        throw new ResourceDoesNotExistException(sprintf('Could not find deployment group %s', $name));
     }
 
     public static function deploymentGroupPayload(): array

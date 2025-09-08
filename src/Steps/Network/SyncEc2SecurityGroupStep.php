@@ -102,7 +102,7 @@ class SyncEc2SecurityGroupStep implements Step
                             'ResourceType' => 'security-group',
                             ...Aws::tags([
                                 'Name' => $name,
-                            ])
+                            ]),
                         ],
                     ],
                 ]);
@@ -155,7 +155,7 @@ class SyncEc2SecurityGroupStep implements Step
 
     protected static function sshIngressRule(array $securityGroup): array
     {
-        $publicIp = file_get_contents("https://api.ipify.org");
+        $publicIp = file_get_contents('https://api.ipify.org');
 
         return [
             'GroupId' => $securityGroup['GroupId'],
@@ -167,7 +167,7 @@ class SyncEc2SecurityGroupStep implements Step
                     'IpRanges' => [
                         [
                             'CidrIp' => "$publicIp/32",
-                            'Description' => 'YOLO-determined public IP during sync. Delete if unused.'
+                            'Description' => 'YOLO-determined public IP during sync. Delete if unused.',
                         ],
                     ],
                 ],

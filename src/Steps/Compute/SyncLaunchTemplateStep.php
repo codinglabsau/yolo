@@ -17,6 +17,7 @@ class SyncLaunchTemplateStep implements Step
             // ensure the launch template exists; refer to "yolo image:create"
             // to create new launch template versions with synced attributes.
             AwsResources::launchTemplate();
+
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {

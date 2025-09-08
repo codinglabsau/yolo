@@ -15,7 +15,7 @@ class SyncMysqlBackupStep implements RunsOnAwsScheduler
             return StepResult::SKIPPED;
         }
 
-        $file = "/home/ubuntu/mysqlbackup.sh";
+        $file = '/home/ubuntu/mysqlbackup.sh';
 
         file_put_contents(
             $file,

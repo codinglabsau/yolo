@@ -56,83 +56,83 @@ trait UsesIam
     public static function policyDocument(): array
     {
         return [
-            "Version" => "2012-10-17",
-            "Statement" => [
+            'Version' => '2012-10-17',
+            'Statement' => [
                 [
-                    "Effect" => "Allow",
-                    "Resource" => "*",
-                    "Action" => [
-                        "autoscaling:AttachTrafficSources",
-                        "autoscaling:DescribeAutoScalingGroups",
-                        "autoscaling:DescribeLoadBalancerTargetGroups",
-                        "autoscaling:UpdateAutoScalingGroup",
-                        "elasticloadbalancing:DescribeTargetGroups",
-                        "ec2:DescribeTags",
-                        "elasticloadbalancing:DescribeLoadBalancers",
-                        "elastictranscoder:ListPipelines",
-                        "sqs:DeleteMessage",
-                        "sqs:GetQueueUrl",
-                        "sqs:ChangeMessageVisibility",
-                        "sqs:ReceiveMessage",
-                        "sqs:SendMessage",
-                        "sqs:GetQueueAttributes",
-                        "sqs:PurgeQueue",
-                        "sqs:ListQueues",
+                    'Effect' => 'Allow',
+                    'Resource' => '*',
+                    'Action' => [
+                        'autoscaling:AttachTrafficSources',
+                        'autoscaling:DescribeAutoScalingGroups',
+                        'autoscaling:DescribeLoadBalancerTargetGroups',
+                        'autoscaling:UpdateAutoScalingGroup',
+                        'elasticloadbalancing:DescribeTargetGroups',
+                        'ec2:DescribeTags',
+                        'elasticloadbalancing:DescribeLoadBalancers',
+                        'elastictranscoder:ListPipelines',
+                        'sqs:DeleteMessage',
+                        'sqs:GetQueueUrl',
+                        'sqs:ChangeMessageVisibility',
+                        'sqs:ReceiveMessage',
+                        'sqs:SendMessage',
+                        'sqs:GetQueueAttributes',
+                        'sqs:PurgeQueue',
+                        'sqs:ListQueues',
                     ],
                 ],
                 [
-                    "Effect" => "Allow",
-                    "Resource" => [
-                        "arn:aws:iam::*:role/Elastic_Transcoder_Default_Role",
+                    'Effect' => 'Allow',
+                    'Resource' => [
+                        'arn:aws:iam::*:role/Elastic_Transcoder_Default_Role',
                     ],
-                    "Action" => [
-                        "iam:PassRole",
+                    'Action' => [
+                        'iam:PassRole',
                     ],
                 ],
                 [
-                    "Effect" => "Allow",
-                    "Resource" => "*",
-                    "Action" => [
-                        "s3:PutObject",
-                        "s3:GetObject",
-                        "s3:ListBucket",
-                        "s3:DeleteObject",
-                        "s3:GetObjectAcl",
-                        "s3:PutObjectAcl",
-                        "s3:GetObjectAttributes",
+                    'Effect' => 'Allow',
+                    'Resource' => '*',
+                    'Action' => [
+                        's3:PutObject',
+                        's3:GetObject',
+                        's3:ListBucket',
+                        's3:DeleteObject',
+                        's3:GetObjectAcl',
+                        's3:PutObjectAcl',
+                        's3:GetObjectAttributes',
                     ],
                 ],
                 // todo: the following policies follow least priviledge principle to limit access to only necessary buckets, however we are
                 // todo: limited by the fact that multiple apps can share the same EC2 instance, and require access to a range of buckets.
-//                              [
-//                                  "Effect" => "Allow",
-//                                    "Resource" => [
-//                                        sprintf('arn:aws:s3:::%s', Paths::s3ArtefactsBucket()),
-//                                        sprintf('arn:aws:s3:::%s/*', Paths::s3ArtefactsBucket()),
-//                                    ],
-//                                    "Action" => [
-//                                        "s3:ListBucket",
-//                                        "s3:GetObject",
-//                                        "s3:PutObject",
-//                                    ],
-//                                ],
+                //                              [
+                //                                  "Effect" => "Allow",
+                //                                    "Resource" => [
+                //                                        sprintf('arn:aws:s3:::%s', Paths::s3ArtefactsBucket()),
+                //                                        sprintf('arn:aws:s3:::%s/*', Paths::s3ArtefactsBucket()),
+                //                                    ],
+                //                                    "Action" => [
+                //                                        "s3:ListBucket",
+                //                                        "s3:GetObject",
+                //                                        "s3:PutObject",
+                //                                    ],
+                //                                ],
                 // todo: as above, this policy provides access to the current app bucket only
-//                              [
-//                                  "Effect" => "Allow",
-//                                      "Resource" => [
-//                                          sprintf('arn:aws:s3:::%s', Paths::s3AppBucket()),
-//                                          sprintf('arn:aws:s3:::%s/*', Paths::s3AppBucket()),
-//                                      ],
-//                                  "Action" => [
-//                                      "s3:PutObject",
-//                                      "s3:GetObject",
-//                                      "s3:ListBucket",
-//                                      "s3:DeleteObject",
-//                                      "s3:GetObjectAcl",
-//                                      "s3:PutObjectAcl",
-//                                      "s3:GetObjectAttributes",
-//                                   ],
-//                               ],
+                //                              [
+                //                                  "Effect" => "Allow",
+                //                                      "Resource" => [
+                //                                          sprintf('arn:aws:s3:::%s', Paths::s3AppBucket()),
+                //                                          sprintf('arn:aws:s3:::%s/*', Paths::s3AppBucket()),
+                //                                      ],
+                //                                  "Action" => [
+                //                                      "s3:PutObject",
+                //                                      "s3:GetObject",
+                //                                      "s3:ListBucket",
+                //                                      "s3:DeleteObject",
+                //                                      "s3:GetObjectAcl",
+                //                                      "s3:PutObjectAcl",
+                //                                      "s3:GetObjectAttributes",
+                //                                   ],
+                //                               ],
             ],
         ];
     }
@@ -140,16 +140,16 @@ trait UsesIam
     public static function rolePolicyDocument(): array
     {
         return [
-            "Version" => "2012-10-17",
-            "Statement" => [
+            'Version' => '2012-10-17',
+            'Statement' => [
                 [
-                    "Effect" => "Allow",
-                    "Principal" => [
-                        "Service" => "ec2.amazonaws.com"
+                    'Effect' => 'Allow',
+                    'Principal' => [
+                        'Service' => 'ec2.amazonaws.com',
                     ],
-                    "Action" => "sts:AssumeRole"
+                    'Action' => 'sts:AssumeRole',
                 ],
-            ]
+            ],
         ];
     }
 }

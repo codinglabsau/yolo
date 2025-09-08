@@ -69,7 +69,7 @@ class SyncNginxConfigurationStep implements RunsOnAwsWeb
             return collect(Manifest::tenants())
                 ->map(function (array $tenant) {
                     if (! $this->domainHasWwwSubdomain($tenant['apex'], $tenant['domain'])) {
-                        return sprintf("# %s is a subdomain, skipping redirects", $tenant['domain']);
+                        return sprintf('# %s is a subdomain, skipping redirects', $tenant['domain']);
                     }
 
                     $redirectTemplate = file_get_contents(Paths::stubs('nginx/redirect'));
@@ -94,7 +94,7 @@ class SyncNginxConfigurationStep implements RunsOnAwsWeb
         }
 
         if (! $this->domainHasWwwSubdomain(Manifest::get('apex'), Manifest::get('domain'))) {
-            return sprintf("# %s is a subdomain, skipping redirects", Manifest::get('domain'));
+            return sprintf('# %s is a subdomain, skipping redirects', Manifest::get('domain'));
         }
 
         $redirectTemplate = file_get_contents(Paths::stubs('nginx/redirect'));

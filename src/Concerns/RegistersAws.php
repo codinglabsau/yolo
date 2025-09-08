@@ -84,7 +84,7 @@ trait RegistersAws
         return env('CI', false) === true;
     }
 
-    protected static function detectAwsEnvironment(ServerGroup $serverGroup = null): bool
+    protected static function detectAwsEnvironment(?ServerGroup $serverGroup = null): bool
     {
         if (static::detectLocalEnvironment() || static::detectCiEnvironment()) {
             // skip if we are local or in continuous integration
@@ -107,7 +107,7 @@ trait RegistersAws
                             'Name' => 'key',
                             'Values' => ['Name'],
                         ],
-                    ]
+                    ],
                 ]);
 
                 $allowedMatch = Manifest::get('aws.autoscaling.combine', false)

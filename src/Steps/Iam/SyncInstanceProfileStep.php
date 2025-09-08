@@ -23,7 +23,7 @@ class SyncInstanceProfileStep implements Step
             if (! Arr::get($options, 'dry-run')) {
                 Aws::iam()->tagInstanceProfile([
                     'InstanceProfileName' => $name,
-                    ...Aws::tags()
+                    ...Aws::tags(),
                 ]);
 
                 return StepResult::SYNCED;

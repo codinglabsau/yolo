@@ -14,8 +14,8 @@ use Codinglabs\Yolo\Concerns\ParsesOnlyOption;
 
 class CreateCodeDeployDeploymentsStep implements Step
 {
-    use UsesCodeDeploy;
     use ParsesOnlyOption;
+    use UsesCodeDeploy;
 
     public function __construct(protected string $environment, protected $filesystem = new Filesystem()) {}
 

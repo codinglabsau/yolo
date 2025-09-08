@@ -19,8 +19,8 @@ class AwsResources
 {
     use UsesAutoscaling;
     use UsesCertificateManager;
-    use UsesCodeDeploy;
     use UsesCloudWatch;
+    use UsesCodeDeploy;
     use UsesEc2;
     use UsesElasticTranscoder;
     use UsesIam;

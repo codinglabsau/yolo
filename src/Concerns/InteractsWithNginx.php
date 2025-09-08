@@ -9,7 +9,7 @@ trait InteractsWithNginx
     public function stopNginx(): void
     {
         Process::fromShellCommandline(
-            command: "systemctl stop nginx"
+            command: 'systemctl stop nginx'
         )->mustRun();
     }
 }

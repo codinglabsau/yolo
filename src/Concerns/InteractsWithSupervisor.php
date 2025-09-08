@@ -9,7 +9,7 @@ trait InteractsWithSupervisor
     public function stopSupervisorWorkers(): void
     {
         Process::fromShellCommandline(
-            command: "supervisorctl stop all"
+            command: 'supervisorctl stop all'
         )->mustRun();
     }
 }

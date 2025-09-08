@@ -18,6 +18,7 @@ class SyncS3BucketStep implements Step
 
         try {
             AwsResources::bucket($bucketName);
+
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException $e) {
             if (! Arr::get($options, 'dry-run')) {

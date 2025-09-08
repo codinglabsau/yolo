@@ -16,6 +16,7 @@ class SyncCodeDeployDeploymentConfigStep implements Step
     {
         try {
             AwsResources::OneThirdAtATimeDeploymentConfig();
+
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {

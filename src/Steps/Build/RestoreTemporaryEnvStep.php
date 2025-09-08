@@ -19,7 +19,7 @@ class RestoreTemporaryEnvStep implements Step
         // final place to be added to the build artefact for deploy.
         $this->filesystem->move(
             Paths::build(".env.$this->environment.tmp"),
-            Paths::build(".env"),
+            Paths::build('.env'),
         );
     }
 }

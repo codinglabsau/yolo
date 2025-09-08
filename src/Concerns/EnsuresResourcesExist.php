@@ -6,6 +6,7 @@ use Closure;
 use Illuminate\Support\Str;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Exceptions\YoloException;
+
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\alert;
 

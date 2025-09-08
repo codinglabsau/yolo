@@ -32,7 +32,7 @@ class SyncRoleStep implements Step
 
                 Aws::iam()->tagRole([
                     'RoleName' => $name,
-                    ...Aws::tags()
+                    ...Aws::tags(),
                 ]);
 
                 return StepResult::SYNCED;

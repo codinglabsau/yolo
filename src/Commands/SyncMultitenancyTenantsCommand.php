@@ -8,10 +8,10 @@ use Symfony\Component\Console\Input\InputArgument;
 class SyncMultitenancyTenantsCommand extends SteppedCommand
 {
     protected array $steps = [
-//        Steps\Tenant\SyncHostedZoneStep::class,
-//        Steps\Deploy\SyncMultitenancyRecordSetStep::class,
-//        Steps\Tenant\SyncSslCertificateStep::class,
-//        Steps\Tenant\AttachSslCertificateToLoadBalancerListenerStep::class,
+        //        Steps\Tenant\SyncHostedZoneStep::class,
+        //        Steps\Deploy\SyncMultitenancyRecordSetStep::class,
+        //        Steps\Tenant\SyncSslCertificateStep::class,
+        //        Steps\Tenant\AttachSslCertificateToLoadBalancerListenerStep::class,
         Steps\Tenant\SyncQueueStep::class,
         Steps\Tenant\SyncQueueAlarmStep::class,
     ];

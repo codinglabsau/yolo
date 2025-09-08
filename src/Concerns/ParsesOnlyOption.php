@@ -17,7 +17,7 @@ trait ParsesOnlyOption
             return [
                 ServerGroup::WEB,
                 ServerGroup::QUEUE,
-                ServerGroup::SCHEDULER
+                ServerGroup::SCHEDULER,
             ];
         }
 

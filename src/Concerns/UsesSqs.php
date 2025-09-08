@@ -21,7 +21,7 @@ trait UsesSqs
                     ...Aws::sqs()->getQueueAttributes([
                         'QueueUrl' => $queueUrl,
                         'AttributeNames' => ['All'],
-                    ])->toArray()
+                    ])->toArray(),
                 ];
             }
         }

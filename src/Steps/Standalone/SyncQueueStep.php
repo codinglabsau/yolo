@@ -11,7 +11,7 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\ExecutesStandaloneStep;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncQueueStep implements Step, ExecutesStandaloneStep
+class SyncQueueStep implements ExecutesStandaloneStep, Step
 {
     public function __invoke(array $options): StepResult
     {
@@ -19,6 +19,7 @@ class SyncQueueStep implements Step, ExecutesStandaloneStep
 
         try {
             AwsResources::queue($name);
+
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {

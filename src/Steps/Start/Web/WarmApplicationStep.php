@@ -8,7 +8,7 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\RunsOnAwsWeb;
 use Codinglabs\Yolo\Contracts\ExecutesStandaloneStep;
 
-class WarmApplicationStep implements RunsOnAwsWeb, ExecutesStandaloneStep
+class WarmApplicationStep implements ExecutesStandaloneStep, RunsOnAwsWeb
 {
     public function __invoke(array $options): StepResult
     {

@@ -13,8 +13,8 @@ use Codinglabs\Yolo\Concerns\ParsesOnlyOption;
 
 class UpdateCodeDeployDeploymentGroupStep implements Step
 {
-    use UsesCodeDeploy;
     use ParsesOnlyOption;
+    use UsesCodeDeploy;
 
     public function __invoke(array $options): StepResult
     {

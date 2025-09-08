@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Helpers;
 
 trait FormatsSshCommands
 {
-    public static function formatSshCommand(string $ipAddress, string $sshKey = null, string $command = null): string
+    public static function formatSshCommand(string $ipAddress, ?string $sshKey = null, ?string $command = null): string
     {
         $sshKey = match (true) {
             ! is_null($sshKey) => $sshKey,

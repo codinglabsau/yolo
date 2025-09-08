@@ -102,7 +102,7 @@ trait UsesEc2
             }
         }
 
-        throw new ResourceDoesNotExistException("Could not find load balancer");
+        throw new ResourceDoesNotExistException('Could not find load balancer');
     }
 
     public static function targetGroup(): array
@@ -112,7 +112,7 @@ trait UsesEc2
         ])['TargetGroups'];
 
         if (count($targetGroups) === 0) {
-            throw new ResourceDoesNotExistException(sprintf("Could not find target group for ALB %s", static::loadBalancer()['LoadBalancerName']));
+            throw new ResourceDoesNotExistException(sprintf('Could not find target group for ALB %s', static::loadBalancer()['LoadBalancerName']));
         }
 
         return $targetGroups[0];
@@ -136,7 +136,7 @@ trait UsesEc2
     public static function listenerCertificate(string $listenerArn, string $certificateArn): array
     {
         $listenerCertificates = Aws::elasticLoadBalancingV2()->describeListenerCertificates([
-            'ListenerArn' => $listenerArn
+            'ListenerArn' => $listenerArn,
         ]);
 
         foreach ($listenerCertificates['Certificates'] as $listenerCertificate) {
@@ -160,7 +160,7 @@ trait UsesEc2
         ])['LaunchTemplates'];
 
         if (count($launchTemplates) === 0) {
-            throw ResourceDoesNotExistException::make(sprintf("Could not find launch template %s", Helpers::keyedResourceName()))
+            throw ResourceDoesNotExistException::make(sprintf('Could not find launch template %s', Helpers::keyedResourceName()))
                 ->suggest('compute:sync');
         }
 
@@ -205,12 +205,11 @@ trait UsesEc2
                     'Name' => 'tag:Name',
                     'Values' => [$name],
                 ],
-            ]
-        ])
-        ['Vpcs'];
+            ],
+        ])['Vpcs'];
 
         if (count($vpcs) === 0) {
-            throw new ResourceDoesNotExistException(sprintf("Could not find VPC %s", $name));
+            throw new ResourceDoesNotExistException(sprintf('Could not find VPC %s', $name));
         }
 
         return $vpcs[0];
@@ -228,7 +227,7 @@ trait UsesEc2
         ])['Subnets'];
 
         if (count($subnets) === 0) {
-            throw new ResourceDoesNotExistException(sprintf("Could not find subnets for VPC %s", AwsResources::vpc()['VpcId']));
+            throw new ResourceDoesNotExistException(sprintf('Could not find subnets for VPC %s', AwsResources::vpc()['VpcId']));
         }
 
         return $subnets;

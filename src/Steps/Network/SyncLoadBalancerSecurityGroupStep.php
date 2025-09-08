@@ -81,7 +81,7 @@ class SyncLoadBalancerSecurityGroupStep implements Step
                             'ResourceType' => 'security-group',
                             ...Aws::tags([
                                 'Name' => $name,
-                            ])
+                            ]),
                         ],
                     ],
                 ]);

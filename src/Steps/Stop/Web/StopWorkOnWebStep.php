@@ -9,8 +9,8 @@ use Codinglabs\Yolo\Concerns\InteractsWithSupervisor;
 
 class StopWorkOnWebStep implements RunsOnAwsWeb
 {
-    use InteractsWithSupervisor;
     use InteractsWithNginx;
+    use InteractsWithSupervisor;
 
     public function __invoke(): StepResult
     {

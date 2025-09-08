@@ -63,7 +63,7 @@ trait UsesAutoscaling
         )['ScalingPolicies'];
 
         if (count($autoScalingGroupScalingPolicies) === 0) {
-            throw new ResourceDoesNotExistException(sprintf("Could not find asg scaling policies %s", $asgName));
+            throw new ResourceDoesNotExistException(sprintf('Could not find asg scaling policies %s', $asgName));
         }
 
         return $autoScalingGroupScalingPolicies;
