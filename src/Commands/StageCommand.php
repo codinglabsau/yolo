@@ -8,36 +8,15 @@ use Illuminate\Support\Carbon;
 use Codinglabs\Yolo\Concerns\UsesEc2;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Input\InputArgument;
-<<<<<<<< HEAD:src/Commands/ImagePrepareCommand.php
-
-use function Laravel\Prompts\select;
-
-class ImagePrepareCommand extends SteppedCommand
-========
-
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\confirm;
 
 class StageCommand extends SteppedCommand
->>>>>>>> main:src/Commands/StageCommand.php
 {
     use UsesEc2;
 
     protected array $steps = [
         // create new launch template version
-<<<<<<<< HEAD:src/Commands/ImagePrepareCommand.php
-        Steps\Image\CreateLaunchTemplateVersionStep::class,
-
-        // scheduler group
-        Steps\Image\CreateAutoScalingSchedulerGroupStep::class,
-
-        // queue group
-        Steps\Image\CreateAutoScalingQueueGroupStep::class,
-
-        // web group
-        Steps\Image\CreateAutoScalingWebGroupStep::class,
-        Steps\Image\CreateWebGroupCpuAlarmsStep::class,
-========
         Steps\Stage\CreateLaunchTemplateVersionStep::class,
 
         // web group
@@ -49,17 +28,12 @@ class StageCommand extends SteppedCommand
 
         // scheduler group
         Steps\Stage\ConfigureAutoScalingSchedulerGroupStep::class,
->>>>>>>> main:src/Commands/StageCommand.php
     ];
 
     protected function configure(): void
     {
         $this
-<<<<<<<< HEAD:src/Commands/ImagePrepareCommand.php
-            ->setName('image:prepare')
-========
             ->setName('stage')
->>>>>>>> main:src/Commands/StageCommand.php
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('dry-run', null, null, 'Run the command without making changes')
             ->addOption('no-progress', null, null, 'Hide the progress output')
