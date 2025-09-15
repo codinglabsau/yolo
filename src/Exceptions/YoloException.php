@@ -24,4 +24,12 @@ class YoloException extends Exception
     {
         return $this->suggestion;
     }
+
+    /**
+     * @throws self
+     */
+    public function throw(): void
+    {
+        throw $this;
+    }
 }
