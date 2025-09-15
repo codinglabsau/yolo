@@ -23,8 +23,8 @@ class SyncNetworkCommand extends SteppedCommand
 
         // route table
         Steps\Network\SyncRouteTableStep::class,
-        //        Steps\Network\SyncDefaultRouteStep::class,
-        //        Steps\Network\SyncPublicSubnetsAssociationToRouteTableStep::class,
+        Steps\Network\SyncDefaultRouteStep::class,
+        Steps\Network\SyncPublicSubnetsAssociationToRouteTableStep::class,
 
         //        // security groups
         Steps\Network\SyncLoadBalancerSecurityGroupStep::class,
