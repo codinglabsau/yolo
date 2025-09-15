@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Steps\Network;
 
 use Illuminate\Support\Arr;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -16,15 +17,17 @@ class SyncPublicSubnetBStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        $publicSubnetName = PublicSubnets::PUBLIC_SUBNET_B->value;
+        $publicSubnetName = Manifest::has('aws.public-subnets')
+            ? Manifest::get('aws.public-subnets')[1]
+            : PublicSubnets::PUBLIC_SUBNET_B->value;
 
         try {
-            AwsResources::subnetByName($publicSubnetName);
+            AwsResources::subnetByName($publicSubnetName, relative: Manifest::doesntHave('aws.public-subnets'));
 
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException $e) {
             if (! Arr::get($options, 'dry-run')) {
-                $this->createSubnet($publicSubnetName, index: 1);
+                $this->createSubnet(PublicSubnets::PUBLIC_SUBNET_B->value, index: 1);
 
                 return StepResult::CREATED;
             }

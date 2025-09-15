@@ -37,9 +37,23 @@ class Manifest
         return Arr::get(static::current(), 'name');
     }
 
+    public static function has(string $key): bool
+    {
+        return Arr::has(static::current()['environments'][Helpers::environment()], $key);
+    }
+
+    public static function doesntHave(string $key): bool
+    {
+        return ! static::has($key);
+    }
+
     public static function get(string $key, $default = null): mixed
     {
-        return Arr::get(static::current()['environments'][Helpers::environment()], $key) ?? $default;
+        if (! static::has($key)) {
+            return $default;
+        }
+
+        return Arr::get(static::current()['environments'][Helpers::environment()], $key);
     }
 
     public static function put(string $key, mixed $value): false|int

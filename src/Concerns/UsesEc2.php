@@ -317,9 +317,11 @@ trait UsesEc2
         return $subnets;
     }
 
-    public static function subnetByName(string $name): array
+    public static function subnetByName(string $name, $relative = true): array
     {
-        $fullSubnetName = Helpers::keyedResourceName($name, exclusive: false);
+        $fullSubnetName = $relative
+            ? Helpers::keyedResourceName($name, exclusive: false)
+            : $name;
 
         foreach (static::subnets() as $subnet) {
             foreach ($subnet['Tags'] as $tag) {
