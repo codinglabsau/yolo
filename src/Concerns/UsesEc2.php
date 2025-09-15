@@ -249,7 +249,7 @@ trait UsesEc2
             return static::$internetGateway;
         }
 
-        $name = Helpers::keyedResourceName(exclusive: false);
+        $name = Manifest::get('aws.internet-gateway', Helpers::keyedResourceName(exclusive: false));
 
         $internetGateways = Aws::ec2()->describeInternetGateways([
             'Filters' => [

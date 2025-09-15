@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Steps\Network;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -14,7 +15,7 @@ class SyncInternetGatewayStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        $internetGatewayName = Helpers::keyedResourceName(exclusive: false);
+        $internetGatewayName = Manifest::get('aws.internet-gateway', Helpers::keyedResourceName(exclusive: false));
 
         try {
             AwsResources::internetGateway();
