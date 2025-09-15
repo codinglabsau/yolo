@@ -13,6 +13,10 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 trait UsesEc2
 {
+    protected static array $vpc;
+
+    protected static array $internetGateway;
+
     public static function ec2ByName(string $name, array $states = ['running'], bool $firstOnly = true, $throws = true): ?array
     {
         $instances = collect(Aws::ec2()->describeInstances([
@@ -197,6 +201,10 @@ trait UsesEc2
 
     public static function vpc(): array
     {
+        if (isset(static::$vpc)) {
+            return static::$vpc;
+        }
+
         $name = Manifest::get('aws.vpc', Helpers::keyedResourceName(exclusive: false));
 
         $vpcs = Aws::ec2()->describeVpcs([
@@ -212,7 +220,35 @@ trait UsesEc2
             throw new ResourceDoesNotExistException(sprintf('Could not find VPC %s', $name));
         }
 
-        return $vpcs[0];
+        static::$vpc = $vpcs[0];
+
+        return static::$vpc;
+    }
+
+    public static function internetGateway(): array
+    {
+        if (isset(static::$internetGateway)) {
+            return static::$internetGateway;
+        }
+
+        $name = Helpers::keyedResourceName(exclusive: false);
+
+        $internetGateways = Aws::ec2()->describeInternetGateways([
+            'Filters' => [
+                [
+                    'Name' => 'tag:Name',
+                    'Values' => [$name],
+                ],
+            ],
+        ])['InternetGateways'];
+
+        if (count($internetGateways) === 0) {
+            throw new ResourceDoesNotExistException(sprintf('Could not find Internet Gateway %s', $name));
+        }
+
+        static::$internetGateway = $internetGateways[0];
+
+        return static::$internetGateway;
     }
 
     public static function subnets(): array
