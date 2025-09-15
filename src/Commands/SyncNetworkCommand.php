@@ -26,11 +26,11 @@ class SyncNetworkCommand extends SteppedCommand
         Steps\Network\SyncDefaultRouteStep::class,
         Steps\Network\SyncPublicSubnetsAssociationToRouteTableStep::class,
 
-        //        // security groups
+        // security groups
         Steps\Network\SyncLoadBalancerSecurityGroupStep::class,
         Steps\Network\SyncEc2SecurityGroupStep::class,
-        //        Steps\Network\SyncRdsSecurityGroupStep::class,
-        //
+        Steps\Network\SyncRdsSecurityGroupStep::class,
+
         // sns
         Steps\Network\SyncSnsTopicStep::class,
 
