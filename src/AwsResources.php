@@ -22,7 +22,6 @@ class AwsResources
     use UsesAutoscaling;
     use UsesCertificateManager;
     use UsesCloudWatch;
-    use UsesCloudWatch;
     use UsesCodeDeploy;
     use UsesEc2;
     use UsesElasticLoadBalancingV2;
