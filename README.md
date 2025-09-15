@@ -1,5 +1,8 @@
 # YOLO
 
+> [!IMPORTANT]
+> This package is in active development - contributions are welcome!
+
 YOLO helps you deploy high-availability PHP applications on AWS.
 
 The CLI tool takes care of provisioning and configuring all required resources on AWS, coupled with build and deployment
