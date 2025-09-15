@@ -67,7 +67,7 @@ trait RunsSteppedCommands
                     // green
                     StepResult::CREATED => '<fg=green>CREATED</>',
                     StepResult::SUCCESS => '<fg=green>SUCCESS</>',
-                    StepResult::SYNCED => '<fg=cyan>SYNCED</>',
+                    StepResult::SYNCED => '<fg=green>SYNCED</>',
 
                     // yellow
                     StepResult::SKIPPED => '<fg=yellow>SKIPPED</>',
