@@ -20,12 +20,12 @@ class SyncNetworkCommand extends SteppedCommand
         Steps\Network\SyncPublicSubnetBStep::class,
         Steps\Network\SyncPublicSubnetCStep::class,
         Steps\Network\SyncRdsSubnetStep::class,
-        //
-        //        // route table
-        //        Steps\Network\SyncRouteTableStep::class,
+
+        // route table
+        Steps\Network\SyncRouteTableStep::class,
         //        Steps\Network\SyncDefaultRouteStep::class,
         //        Steps\Network\SyncPublicSubnetsAssociationToRouteTableStep::class,
-        //
+
         //        // security groups
         Steps\Network\SyncLoadBalancerSecurityGroupStep::class,
         Steps\Network\SyncEc2SecurityGroupStep::class,
