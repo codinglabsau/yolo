@@ -1,7 +1,7 @@
 # YOLO
 
 > [!IMPORTANT]
-> This package is active development - contributions are welcome!
+> This package is in active development - contributions are welcome!
 
 YOLO helps you deploy high-availability PHP applications on AWS.
 

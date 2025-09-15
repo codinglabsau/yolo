@@ -33,6 +33,24 @@ trait UsesEc2
 
     protected static array $keyPair;
 
+    public static function availabilityZones(string $region): array
+    {
+        $availabilityZones = Aws::ec2()->describeAvailabilityZones([
+            'Filters' => [
+                [
+                    'Name' => 'region-name',
+                    'Values' => [$region],
+                ],
+            ],
+        ])['AvailabilityZones'];
+
+        if (count($availabilityZones) === 0) {
+            throw new ResourceDoesNotExistException("Could not find availability zones for region $region");
+        }
+
+        return $availabilityZones;
+    }
+
     public static function ec2ByName(string $name, array $states = ['running'], bool $firstOnly = true, $throws = true): ?array
     {
         $instances = collect(Aws::ec2()->describeInstances([
