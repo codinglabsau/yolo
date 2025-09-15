@@ -29,6 +29,8 @@ trait UsesEc2
 
     protected static array $ec2SecurityGroup;
 
+    protected static array $rdsSecurityGroup;
+
     protected static array $keyPair;
 
     public static function ec2ByName(string $name, array $states = ['running'], bool $firstOnly = true, $throws = true): ?array
@@ -113,6 +115,20 @@ trait UsesEc2
         static::$ec2SecurityGroup = static::securityGroupByName(Manifest::get('aws.ec2.security-group', SecurityGroup::EC2_SECURITY_GROUP));
 
         return static::$ec2SecurityGroup;
+    }
+
+    /**
+     * @throws ResourceDoesNotExistException
+     */
+    public static function rdsSecurityGroup(): array
+    {
+        if (isset(static::$rdsSecurityGroup)) {
+            return static::$rdsSecurityGroup;
+        }
+
+        static::$rdsSecurityGroup = static::securityGroupByName(SecurityGroup::RDS_SECURITY_GROUP);
+
+        return static::$rdsSecurityGroup;
     }
 
     public static function securityGroupByName(string|BackedEnum $name): array
