@@ -164,62 +164,6 @@ trait UsesEc2
         throw new ResourceDoesNotExistException("Could not find Security Group matching name $name");
     }
 
-    public static function loadBalancer(): array
-    {
-        $loadBalancers = Aws::elasticLoadBalancingV2()->describeLoadBalancers();
-
-        foreach ($loadBalancers['LoadBalancers'] as $loadBalancer) {
-            if ($loadBalancer['LoadBalancerName'] === Manifest::get('aws.alb')) {
-                return $loadBalancer;
-            }
-        }
-
-        throw new ResourceDoesNotExistException('Could not find load balancer');
-    }
-
-    public static function targetGroup(): array
-    {
-        $targetGroups = Aws::elasticLoadBalancingV2()->describeTargetGroups([
-            'LoadBalancerArn' => static::loadBalancer()['LoadBalancerArn'],
-        ])['TargetGroups'];
-
-        if (count($targetGroups) === 0) {
-            throw new ResourceDoesNotExistException(sprintf('Could not find target group for ALB %s', static::loadBalancer()['LoadBalancerName']));
-        }
-
-        return $targetGroups[0];
-    }
-
-    public static function loadBalancerListenerOnPort(int $port): array
-    {
-        $listeners = Aws::elasticLoadBalancingV2()->describeListeners([
-            'LoadBalancerArn' => static::loadBalancer()['LoadBalancerArn'],
-        ]);
-
-        foreach ($listeners['Listeners'] as $listener) {
-            if ($listener['Port'] === $port) {
-                return $listener;
-            }
-        }
-
-        throw new ResourceDoesNotExistException("Could not find listener on port $port");
-    }
-
-    public static function listenerCertificate(string $listenerArn, string $certificateArn): array
-    {
-        $listenerCertificates = Aws::elasticLoadBalancingV2()->describeListenerCertificates([
-            'ListenerArn' => $listenerArn,
-        ]);
-
-        foreach ($listenerCertificates['Certificates'] as $listenerCertificate) {
-            if ($listenerCertificate['CertificateArn'] === $certificateArn) {
-                return $listenerCertificate;
-            }
-        }
-
-        throw new ResourceDoesNotExistException("Could not find listener certificate on listener $listenerArn");
-    }
-
     public static function launchTemplate($refresh = false): array
     {
         if (! $refresh && isset(static::$launchTemplate)) {
