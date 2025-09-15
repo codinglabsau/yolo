@@ -217,19 +217,6 @@ trait UsesEc2
         ];
     }
 
-    public static function loadBalancer(): array
-    {
-        $loadBalancers = Aws::elasticLoadBalancingV2()->describeLoadBalancers();
-
-        foreach ($loadBalancers['LoadBalancers'] as $loadBalancer) {
-            if ($loadBalancer['LoadBalancerName'] === Manifest::get('aws.alb')) {
-                return $loadBalancer;
-            }
-        }
-
-        throw new ResourceDoesNotExistException('Could not find load balancer');
-    }
-
     public static function vpc(): array
     {
         if (isset(static::$vpc)) {
