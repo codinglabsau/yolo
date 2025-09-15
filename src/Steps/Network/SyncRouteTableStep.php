@@ -14,8 +14,6 @@ class SyncRouteTableStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        $routeTableName = Helpers::keyedResourceName(exclusive: false);
-
         try {
             AwsResources::routeTable();
 
@@ -28,7 +26,7 @@ class SyncRouteTableStep implements Step
                         [
                             'ResourceType' => 'route-table',
                             ...Aws::tags([
-                                'Name' => $routeTableName,
+                                'Name' => Helpers::keyedResourceName(exclusive: false),
                             ]),
                         ],
                     ],

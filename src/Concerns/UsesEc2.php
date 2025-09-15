@@ -275,7 +275,9 @@ trait UsesEc2
             return static::$routeTable;
         }
 
-        $name = Helpers::keyedResourceName(exclusive: false);
+        $name = Manifest::has('aws.route-table')
+            ? Manifest::get('aws.route-table')
+            : Helpers::keyedResourceName(exclusive: false);
 
         $routeTables = Aws::ec2()->describeRouteTables([
             'Filters' => [
