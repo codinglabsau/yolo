@@ -14,8 +14,6 @@ class SyncVpcStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        $vpcName = Helpers::keyedResourceName(exclusive: false);
-
         try {
             AwsResources::vpc();
 
@@ -28,7 +26,7 @@ class SyncVpcStep implements Step
                         [
                             'ResourceType' => 'vpc',
                             ...Aws::tags([
-                                'Name' => $vpcName,
+                                'Name' => Helpers::keyedResourceName(exclusive: false),
                             ]),
                         ],
                     ],
