@@ -20,6 +20,7 @@ class SyncPublicSubnetCStep implements Step
         $publicSubnetName = Manifest::has('aws.public-subnets')
             ? Manifest::get('aws.public-subnets')[2]
             : PublicSubnets::PUBLIC_SUBNET_C->value;
+
         try {
             AwsResources::subnetByName($publicSubnetName, relative: Manifest::doesntHave('aws.public-subnets'));
 
