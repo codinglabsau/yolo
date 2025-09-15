@@ -13,6 +13,7 @@ enum StepResult
     case OUT_OF_SYNC;
     case WOULD_SYNC;
 
+    case CONDITIONAL;
     case CUSTOM_MANAGED;
     case TIMEOUT;
     case SKIPPED;

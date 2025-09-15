@@ -17,6 +17,16 @@ trait UsesEc2
 
     protected static array $internetGateway;
 
+    protected static array $launchTemplate;
+
+    protected static array $securityGroups;
+
+    protected static array $loadBalancerSecurityGroup;
+
+    protected static array $ec2SecurityGroup;
+
+    protected static array $keyPair;
+
     public static function ec2ByName(string $name, array $states = ['running'], bool $firstOnly = true, $throws = true): ?array
     {
         $instances = collect(Aws::ec2()->describeInstances([
@@ -60,9 +70,17 @@ trait UsesEc2
             ->toArray();
     }
 
-    public static function securityGroups(): array
+    public static function securityGroups($refresh = false): array
     {
-        return Aws::ec2()->describeSecurityGroups()['SecurityGroups'];
+        if (! $refresh && isset(static::$securityGroups)) {
+            return static::$securityGroups;
+        }
+
+        $securityGroups = Aws::ec2()->describeSecurityGroups()['SecurityGroups'];
+
+        static::$securityGroups = $securityGroups;
+
+        return static::$securityGroups;
     }
 
     /**
@@ -70,7 +88,13 @@ trait UsesEc2
      */
     public static function loadBalancerSecurityGroup(): array
     {
-        return static::securityGroupByName(SecurityGroup::LOAD_BALANCER_SECURITY_GROUP);
+        if (isset(static::$loadBalancerSecurityGroup)) {
+            return static::$loadBalancerSecurityGroup;
+        }
+
+        static::$loadBalancerSecurityGroup = static::securityGroupByName(SecurityGroup::LOAD_BALANCER_SECURITY_GROUP);
+
+        return static::$loadBalancerSecurityGroup;
     }
 
     /**
@@ -78,7 +102,13 @@ trait UsesEc2
      */
     public static function ec2SecurityGroup(): array
     {
-        return static::securityGroupByName(Manifest::get('aws.ec2.security-group', SecurityGroup::EC2_SECURITY_GROUP));
+        if (isset(static::$ec2SecurityGroup)) {
+            return static::$ec2SecurityGroup;
+        }
+
+        static::$ec2SecurityGroup = static::securityGroupByName(Manifest::get('aws.ec2.security-group', SecurityGroup::EC2_SECURITY_GROUP));
+
+        return static::$ec2SecurityGroup;
     }
 
     public static function securityGroupByName(string|BackedEnum $name): array
@@ -152,8 +182,12 @@ trait UsesEc2
         throw new ResourceDoesNotExistException("Could not find listener certificate on listener $listenerArn");
     }
 
-    public static function launchTemplate(): array
+    public static function launchTemplate($refresh = false): array
     {
+        if (! $refresh && isset(static::$launchTemplate)) {
+            return static::$launchTemplate;
+        }
+
         $launchTemplates = Aws::ec2()->describeLaunchTemplates([
             'Filters' => [
                 [
@@ -168,7 +202,9 @@ trait UsesEc2
                 ->suggest('compute:sync');
         }
 
-        return $launchTemplates[0];
+        static::$launchTemplate = $launchTemplates[0];
+
+        return static::$launchTemplate;
     }
 
     public static function launchTemplatePayload(): array
@@ -269,12 +305,33 @@ trait UsesEc2
         return $subnets;
     }
 
+    public static function subnetByName(string $name): array
+    {
+        $fullSubnetName = Helpers::keyedResourceName($name, exclusive: false);
+
+        foreach (static::subnets() as $subnet) {
+            foreach ($subnet['Tags'] as $tag) {
+                if ($tag['Key'] === 'Name' && $tag['Value'] === $fullSubnetName) {
+                    return $subnet;
+                }
+            }
+        }
+
+        throw new ResourceDoesNotExistException("Could not find subnet matching name $fullSubnetName");
+    }
+
     public static function keyPair(): array
     {
+        if (isset(static::$keyPair)) {
+            return static::$keyPair;
+        }
+
         $name = Manifest::get('aws.ec2.key-pair', Helpers::keyedResourceName(exclusive: false));
 
         foreach (Aws::ec2()->describeKeyPairs()['KeyPairs'] as $keyPair) {
             if ($keyPair['KeyName'] === $name) {
+                static::$keyPair = $keyPair;
+
                 return $keyPair;
             }
         }

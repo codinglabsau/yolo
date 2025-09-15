@@ -14,11 +14,11 @@ class SyncNetworkCommand extends SteppedCommand
         // internet gateway
         Steps\Network\SyncInternetGatewayStep::class,
         Steps\Network\SyncInternetGatewayAttachmentStep::class,
-        //
-        //        // subnets
-        //        Steps\Network\SyncPublicSubnetAStep::class,
-        //        Steps\Network\SyncPublicSubnetBStep::class,
-        //        Steps\Network\SyncPublicSubnetCStep::class,
+
+        // subnets
+        Steps\Network\SyncPublicSubnetAStep::class,
+        Steps\Network\SyncPublicSubnetBStep::class,
+        Steps\Network\SyncPublicSubnetCStep::class,
         //        Steps\Network\SyncRdsSubnetStep::class,
         //
         //        // route table
