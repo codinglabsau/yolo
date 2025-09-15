@@ -9,16 +9,16 @@ class SyncNetworkCommand extends SteppedCommand
 {
     protected array $steps = [
         // vpc
-        //        Steps\Network\SyncVpcStep::class,
-        //
-        //        // internet gateway
-        //        Steps\Network\SyncInternetGatewayStep::class,
-        //        Steps\Network\SyncInternetGatewayAttachmentStep::class,
-        //
-        //        // subnets
-        //        Steps\Network\SyncPublicSubnetAStep::class,
-        //        Steps\Network\SyncPublicSubnetBStep::class,
-        //        Steps\Network\SyncPublicSubnetCStep::class,
+        Steps\Network\SyncVpcStep::class,
+
+        // internet gateway
+        Steps\Network\SyncInternetGatewayStep::class,
+        Steps\Network\SyncInternetGatewayAttachmentStep::class,
+
+        // subnets
+        Steps\Network\SyncPublicSubnetAStep::class,
+        Steps\Network\SyncPublicSubnetBStep::class,
+        Steps\Network\SyncPublicSubnetCStep::class,
         //        Steps\Network\SyncRdsSubnetStep::class,
         //
         //        // route table

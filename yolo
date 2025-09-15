@@ -9,7 +9,7 @@ file_exists(__DIR__ . '/../../autoload.php')
     : require __DIR__ . '/vendor/autoload.php';
 
 // path to the app root
-define("BASE_PATH", $_ENV['YOLO_BASE_PATH'] ?? __DIR__ . '/../../../');
+define('BASE_PATH', $_ENV['YOLO_BASE_PATH'] ?? __DIR__ . '/../../../');
 
 Dotenv::createImmutable(BASE_PATH)->load();
 
