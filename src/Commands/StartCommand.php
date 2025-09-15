@@ -10,7 +10,9 @@ class StartCommand extends SteppedCommand implements RunsOnAws
 {
     protected array $steps = [
         Steps\Start\All\SyncBashProfileStep::class,
-        Steps\Start\Scheduler\ExecuteDeployStepsStep::class, // note: migrations run here
+        Steps\Start\Scheduler\ExecuteSchedulerDeployStepsStep::class,
+        Steps\Start\Queue\ExecuteQueueDeployStepsStep::class,
+        Steps\Start\Web\ExecuteWebDeployStepsStep::class,
         Steps\Start\All\ExecuteAllGroupsDeployStepsStep::class,
         Steps\Start\All\SetOwnershipAndPermissionsStep::class,
         Steps\Start\All\SyncLogrotateStep::class,
