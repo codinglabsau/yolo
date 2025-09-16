@@ -166,6 +166,9 @@ environments:
       account-id:
       region: ap-southeast-2
       vpc:
+      internet-gateway:
+      public-subnets:
+      route-table:
       bucket:
       artefacts-bucket:
       cloudfront:
@@ -182,6 +185,9 @@ environments:
         scheduler-instance-type:
         octane: false
         key-pair:
+        security-group:
+      rds:
+        subnet:
         security-group:
       codedeploy:
         strategy: without-load-balancing|with-load-balancing
