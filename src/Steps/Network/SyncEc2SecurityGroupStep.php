@@ -26,7 +26,7 @@ class SyncEc2SecurityGroupStep implements Step
         try {
             $securityGroup = AwsResources::ec2SecurityGroup();
 
-            if (Manifest::get('aws.ec2.security-group')) {
+            if (Manifest::has('aws.ec2.security-group')) {
                 return StepResult::CUSTOM_MANAGED;
             }
 

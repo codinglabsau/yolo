@@ -12,8 +12,8 @@ trait UsesRds
 {
     public static function dbSubnetGroup(): array
     {
-        $name = Manifest::has('aws.database-subnet')
-            ? Manifest::get('aws.database-subnet')
+        $name = Manifest::has('aws.rds.subnet')
+            ? Manifest::get('aws.rds.subnet')
             : Helpers::keyedResourceName(Rds::PUBLIC_SUBNET_GROUP);
 
         $dbSubnetGroups = Aws::rds()->describeDBSubnetGroups();

@@ -9,11 +9,9 @@ enum StepResult
     case WOULD_CREATE;
 
     case SYNCED;
-    case IN_SYNC;
     case OUT_OF_SYNC;
     case WOULD_SYNC;
 
-    case CONDITIONAL;
     case CUSTOM_MANAGED;
     case TIMEOUT;
     case SKIPPED;

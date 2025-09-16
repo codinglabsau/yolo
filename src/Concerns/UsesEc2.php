@@ -144,7 +144,7 @@ trait UsesEc2
             return static::$rdsSecurityGroup;
         }
 
-        static::$rdsSecurityGroup = static::securityGroupByName(SecurityGroup::RDS_SECURITY_GROUP);
+        static::$rdsSecurityGroup = static::securityGroupByName(Manifest::get('aws.rds.security-group', SecurityGroup::RDS_SECURITY_GROUP));
 
         return static::$rdsSecurityGroup;
     }

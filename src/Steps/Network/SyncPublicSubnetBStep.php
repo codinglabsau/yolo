@@ -24,6 +24,10 @@ class SyncPublicSubnetBStep implements Step
         try {
             AwsResources::subnetByName($publicSubnetName, relative: Manifest::doesntHave('aws.public-subnets'));
 
+            if (Manifest::has('aws.public-subnets')) {
+                return StepResult::CUSTOM_MANAGED;
+            }
+
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException $e) {
             if (! Arr::get($options, 'dry-run')) {
