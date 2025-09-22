@@ -18,7 +18,8 @@ rather than CloudFormation / Terraform / K8s / Elastic Beanstalk / <some-other-f
 > [!IMPORTANT]
 > While YOLO has been battle-tested on apps serving millions of requests per day, it is not supposed to be a
 > set-and-forget solution for busy apps, but rather allows you to proactively manage, grow and adapt your infrastructure
-> as requirements change over time.
+> as requirements
+> change over time.
 
 It goes without saying, but use YOLO at your own risk.
 
@@ -86,7 +87,6 @@ The full list of available sync commands are:
 - `yolo sync:tenant <environment>` prepares tenant resources (multitenancy apps only)
 - `yolo sync:compute <environment>` prepares the compute resources
 - `yolo sync:ci <environment>` prepares the continuous integration pipeline
-- `yolo sync:iam <environment>` prepares necessary permissions
 
 > [!TIP]
 > All sync commands support a `--dry-run` argument; this is a great starting point to see what resources will be created
@@ -107,22 +107,13 @@ Run `yolo image:create <environment>` to generate a new AMI.
 
 ### b) Prepare the image for traffic
 
-To prepare a new stage, run `yolo stage <environment>`.
+To prepare the new image for traffic, run `yolo image:prepare <environment>`.
 
-This interactive command walks you through updating or replacing the current stage configuration.
+You will be prompted to select the AMI (the newest image will be at the top of the list).
 
-New stages have the benefit of allowing testing before migrating production workloads over, however simply updating the
-existing stage is recommended for minor changes.
+After selecting which image to use, servers will be spun up, ready to receive app deployments.
 
-| Situation                   | Recommended strategy |
-|-----------------------------|----------------------|
-| Update EC2 security group   | update               |
-| Update EC2 type             | update               |
-| Update EC2 instance profile | update               |
-| Update AMI                  | create               |
-
-When creating a new stage, the yolo.yml manifest will also be updated to point to the new autoscaling groups on the next
-deployment.
+The yolo.yml manifest will also be configured to point to the new autoscaling groups.
 
 > [!NOTE]
 > Rotating in a new image does not have any impact on existing traffic until the updated manifest is deployed - the
@@ -173,12 +164,12 @@ environments:
       artefacts-bucket:
       cloudfront:
       alb:
+      security-group-id:
       transcoder: false
       autoscaling:
         web:
         queue:
         scheduler:
-        combine: false
       ec2:
         instance-type: t3.small
         queue-instance-type:
@@ -192,9 +183,11 @@ environments:
       codedeploy:
         strategy: without-load-balancing|with-load-balancing
 
-    asset-url: # defaults to aws.cloudfront
-    pulse-worker: false
-    mysqldump: false
+    build:
+      - composer install --no-cache --no-interaction --optimize-autoloader --no-progress --classmap-authoritative --no-dev
+      - npm ci
+      - npm run build
+      - rm -rf package-lock.json resources/js resources/css node_modules database/seeders database/factories resources/seeding
 
     domain: example.com # standalone apps only
     apex: # standalone apps only
@@ -206,22 +199,13 @@ environments:
       fishing: # unique key for the tenant
         domain: fishing-with-yolo.com
 
-    build:
-      - composer install --no-cache --no-interaction --optimize-autoloader --no-progress --classmap-authoritative --no-dev
-      - npm ci
-      - npm run build
-      - rm -rf package-lock.json resources/js resources/css node_modules database/seeders database/factories resources/seeding
+    pulse-worker: false
+    mysqldump: false
 
-    deploy: #runs on scheduler
+    deploy:
       - php artisan migrate --force
 
-    deploy-queue: # runs on queue
-      -
-
-    deploy-web: # runs on web
-      -
-
-    deploy-all: # runs on all instances
+    deploy-all:
       - php artisan optimize
 ```
 

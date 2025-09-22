@@ -26,8 +26,8 @@ class DeployCommand extends SteppedCommand
         Steps\Deploy\PushAssetsToS3Step::class,
         Steps\Deploy\UpdateCodeDeployDeploymentGroupStep::class,
         Steps\Deploy\CreateCodeDeployDeploymentsStep::class,
-        //        Steps\Deploy\SyncStandaloneRecordSetStep::class, // todo: temp
-        //        Steps\Deploy\SyncMultitenancyRecordSetStep::class, // todo: temp
+        Steps\Deploy\SyncStandaloneRecordSetStep::class,
+        Steps\Deploy\SyncMultitenancyRecordSetStep::class,
         Steps\Build\PurgeBuildStep::class,
     ];
 
