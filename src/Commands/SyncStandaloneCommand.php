@@ -8,8 +8,8 @@ use Symfony\Component\Console\Input\InputArgument;
 class SyncStandaloneCommand extends SteppedCommand
 {
     protected array $steps = [
-        //        Steps\Standalone\SyncHostedZoneStep::class,
-        //        Steps\Standalone\SyncSslCertificateStep::class,
+        Steps\Standalone\SyncHostedZoneStep::class,
+        Steps\Standalone\SyncSslCertificateStep::class,
         Steps\Standalone\SyncQueueStep::class,
         Steps\Standalone\SyncQueueAlarmStep::class,
     ];

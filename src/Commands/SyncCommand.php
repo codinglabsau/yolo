@@ -35,7 +35,7 @@ class SyncCommand extends SteppedCommand
                     Commands\SyncMultitenancyTenantsCommand::class,
                 ]
                 : [
-                    //            Commands\SyncStandaloneCommand::class,
+                    Commands\SyncStandaloneCommand::class,
                 ],
             Commands\SyncComputeCommand::class,
             Commands\SyncCiCommand::class,
