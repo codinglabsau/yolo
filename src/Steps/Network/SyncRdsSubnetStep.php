@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Steps\Network;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Rds;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
@@ -17,6 +18,10 @@ class SyncRdsSubnetStep implements Step
     {
         try {
             AwsResources::dbSubnetGroup();
+
+            if (Manifest::has('aws.rds.subnet')) {
+                return StepResult::CUSTOM_MANAGED;
+            }
 
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException $e) {

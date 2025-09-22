@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Steps\Network;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -17,6 +18,10 @@ class SyncRdsSecurityGroupStep implements Step
     {
         try {
             AwsResources::rdsSecurityGroup();
+
+            if (Manifest::has('aws.rds.security-group')) {
+                return StepResult::CUSTOM_MANAGED;
+            }
 
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {

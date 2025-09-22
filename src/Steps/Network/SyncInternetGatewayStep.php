@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Steps\Network;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -14,10 +15,12 @@ class SyncInternetGatewayStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        $internetGatewayName = Helpers::keyedResourceName(exclusive: false);
-
         try {
             AwsResources::internetGateway();
+
+            if (Manifest::has('aws.internet-gateway')) {
+                return StepResult::CUSTOM_MANAGED;
+            }
 
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException $e) {
@@ -27,7 +30,7 @@ class SyncInternetGatewayStep implements Step
                         [
                             'ResourceType' => 'internet-gateway',
                             ...Aws::tags([
-                                'Name' => $internetGatewayName,
+                                'Name' => Helpers::keyedResourceName(exclusive: false),
                             ]),
                         ],
                     ],

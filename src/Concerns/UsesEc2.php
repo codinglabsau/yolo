@@ -144,7 +144,7 @@ trait UsesEc2
             return static::$rdsSecurityGroup;
         }
 
-        static::$rdsSecurityGroup = static::securityGroupByName(SecurityGroup::RDS_SECURITY_GROUP);
+        static::$rdsSecurityGroup = static::securityGroupByName(Manifest::get('aws.rds.security-group', SecurityGroup::RDS_SECURITY_GROUP));
 
         return static::$rdsSecurityGroup;
     }
@@ -249,7 +249,7 @@ trait UsesEc2
             return static::$internetGateway;
         }
 
-        $name = Helpers::keyedResourceName(exclusive: false);
+        $name = Manifest::get('aws.internet-gateway', Helpers::keyedResourceName(exclusive: false));
 
         $internetGateways = Aws::ec2()->describeInternetGateways([
             'Filters' => [
@@ -275,7 +275,9 @@ trait UsesEc2
             return static::$routeTable;
         }
 
-        $name = Helpers::keyedResourceName(exclusive: false);
+        $name = Manifest::has('aws.route-table')
+            ? Manifest::get('aws.route-table')
+            : Helpers::keyedResourceName(exclusive: false);
 
         $routeTables = Aws::ec2()->describeRouteTables([
             'Filters' => [
@@ -317,9 +319,11 @@ trait UsesEc2
         return $subnets;
     }
 
-    public static function subnetByName(string $name): array
+    public static function subnetByName(string $name, $relative = true): array
     {
-        $fullSubnetName = Helpers::keyedResourceName($name, exclusive: false);
+        $fullSubnetName = $relative
+            ? Helpers::keyedResourceName($name, exclusive: false)
+            : $name;
 
         foreach (static::subnets() as $subnet) {
             foreach ($subnet['Tags'] as $tag) {
