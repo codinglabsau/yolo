@@ -155,8 +155,8 @@ environments:
   production:
     aws:
       account-id:
-      vpc:
       region: ap-southeast-2
+      vpc:
       internet-gateway:
       public-subnets:
       route-table:
@@ -172,8 +172,9 @@ environments:
         scheduler:
       ec2:
         instance-type: t3.small
-        instance-profile:
-        octane: true
+        queue-instance-type:
+        scheduler-instance-type:
+        octane: false
         key-pair:
         security-group:
       rds:
