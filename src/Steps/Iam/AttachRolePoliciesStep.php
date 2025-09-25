@@ -12,6 +12,7 @@ class AttachRolePoliciesStep implements Step
 {
     protected array $managedPolicies = [
         'arn:aws:iam::aws:policy/AmazonElasticTranscoder_JobsSubmitter',
+        'arn:aws:iam::aws:policy/AWSElementalMediaConvertFullAccess',
         'arn:aws:iam::aws:policy/AmazonRekognitionReadOnlyAccess',
         'arn:aws:iam::aws:policy/IVSFullAccess',
     ];
