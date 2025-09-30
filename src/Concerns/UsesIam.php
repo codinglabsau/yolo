@@ -4,7 +4,6 @@ namespace Codinglabs\Yolo\Concerns;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -154,40 +153,33 @@ trait UsesIam
         ];
     }
 
-    //    public static function mediaConvertRole(): array
-    //    {
-    //        $name = Helpers::keyedResourceName(Iam::MEDIA_CONVERT_ROLE);
-    //        $roles = Aws::iam()->listRoles();
-    //
-    //        foreach ($roles['Roles'] as $role) {
-    //            if ($role['RoleName'] === $name) {
-    //                return $role;
-    //            }
-    //        }
-    //
-    //        throw new ResourceDoesNotExistException("Could not find IAM role with name $name");
-    //    }
-    //
-    //    public function mediaConvertS3PolicyDocument(): array
-    //    {
-    //        $bucket = Manifest::get('aws.bucket');
-    //
-    //        return [
-    //            'Version' => '2012-10-17',
-    //            'Statement' => [
-    //                [
-    //                    'Effect' => 'Allow',
-    //                    'Action' => [
-    //                        's3:Get*',
-    //                        's3:List*',
-    //                        's3:Put*',
-    //                    ],
-    //                    'Resource' => [
-    //                        sprintf('arn:aws:s3:::%s', $bucket),
-    //                        sprintf('arn:aws:s3:::%s/*', $bucket),
-    //                    ],
-    //                ],
-    //            ],
-    //        ];
-    //    }
+    public static function mediaConvertRole(): array
+    {
+        $name = Helpers::keyedResourceName(Iam::MEDIA_CONVERT_ROLE);
+        $roles = Aws::iam()->listRoles();
+
+        foreach ($roles['Roles'] as $role) {
+            if ($role['RoleName'] === $name) {
+                return $role;
+            }
+        }
+
+        throw new ResourceDoesNotExistException("Could not find IAM role with name $name");
+    }
+
+    public static function mediaConvertS3PolicyDocument(): array
+    {
+        return [
+            'Version' => '2012-10-17',
+            'Statement' => [
+                [
+                    'Effect' => 'Allow',
+                    'Principal' => [
+                        'Service' => 'mediaconvert.amazonaws.com',
+                    ],
+                    'Action' => 'sts:AssumeRole',
+                ],
+            ],
+        ];
+    }
 }
