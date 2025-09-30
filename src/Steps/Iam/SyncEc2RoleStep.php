@@ -10,7 +10,7 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncRoleStep implements Step
+class SyncEc2RoleStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
@@ -27,7 +27,7 @@ class SyncRoleStep implements Step
 
                 Aws::iam()->updateAssumeRolePolicy([
                     'RoleName' => $name,
-                    'PolicyDocument' => json_encode(AwsResources::rolePolicyDocument()),
+                    'PolicyDocument' => json_encode(AwsResources::ec2RolePolicyDocument()),
                 ]);
 
                 Aws::iam()->tagRole([
@@ -44,7 +44,7 @@ class SyncRoleStep implements Step
                 Aws::iam()->createRole([
                     'RoleName' => Helpers::keyedResourceName(exclusive: false),
                     'Description' => 'YOLO managed EC2 role',
-                    'AssumeRolePolicyDocument' => json_encode(AwsResources::rolePolicyDocument()),
+                    'AssumeRolePolicyDocument' => json_encode(AwsResources::ec2RolePolicyDocument()),
                     ...Aws::tags(),
                 ]);
 

@@ -11,14 +11,14 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncInstanceProfileStep implements Step
+class SyncEc2InstanceProfileStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
         $name = Helpers::keyedResourceName(Iam::INSTANCE_PROFILE, exclusive: false);
 
         try {
-            AwsResources::instanceProfile();
+            AwsResources::ec2InstanceProfile();
 
             if (! Arr::get($options, 'dry-run')) {
                 Aws::iam()->tagInstanceProfile([

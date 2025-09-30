@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Concerns;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -39,7 +40,7 @@ trait UsesIam
         throw new ResourceDoesNotExistException("Could not find IAM role with name $name");
     }
 
-    public static function instanceProfile(): array
+    public static function ec2InstanceProfile(): array
     {
         $name = Helpers::keyedResourceName(Iam::INSTANCE_PROFILE, exclusive: false);
         $instanceProfiles = Aws::iam()->listInstanceProfiles();
@@ -53,7 +54,7 @@ trait UsesIam
         throw new ResourceDoesNotExistException("Could not find IAM instance profile with name $name");
     }
 
-    public static function policyDocument(): array
+    public static function ec2PolicyDocument(): array
     {
         return [
             'Version' => '2012-10-17',
@@ -137,7 +138,7 @@ trait UsesIam
         ];
     }
 
-    public static function rolePolicyDocument(): array
+    public static function ec2RolePolicyDocument(): array
     {
         return [
             'Version' => '2012-10-17',
@@ -152,4 +153,41 @@ trait UsesIam
             ],
         ];
     }
+
+    //    public static function mediaConvertRole(): array
+    //    {
+    //        $name = Helpers::keyedResourceName(Iam::MEDIA_CONVERT_ROLE);
+    //        $roles = Aws::iam()->listRoles();
+    //
+    //        foreach ($roles['Roles'] as $role) {
+    //            if ($role['RoleName'] === $name) {
+    //                return $role;
+    //            }
+    //        }
+    //
+    //        throw new ResourceDoesNotExistException("Could not find IAM role with name $name");
+    //    }
+    //
+    //    public function mediaConvertS3PolicyDocument(): array
+    //    {
+    //        $bucket = Manifest::get('aws.bucket');
+    //
+    //        return [
+    //            'Version' => '2012-10-17',
+    //            'Statement' => [
+    //                [
+    //                    'Effect' => 'Allow',
+    //                    'Action' => [
+    //                        's3:Get*',
+    //                        's3:List*',
+    //                        's3:Put*',
+    //                    ],
+    //                    'Resource' => [
+    //                        sprintf('arn:aws:s3:::%s', $bucket),
+    //                        sprintf('arn:aws:s3:::%s/*', $bucket),
+    //                    ],
+    //                ],
+    //            ],
+    //        ];
+    //    }
 }

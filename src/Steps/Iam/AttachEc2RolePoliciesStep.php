@@ -8,7 +8,7 @@ use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 
-class AttachRolePoliciesStep implements Step
+class AttachEc2RolePoliciesStep implements Step
 {
     protected array $managedPolicies = [
         'arn:aws:iam::aws:policy/AmazonElasticTranscoder_JobsSubmitter',

@@ -10,7 +10,7 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncRolePolicyStep implements Step
+class SyncEc2RolePoliciesStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
@@ -27,13 +27,13 @@ class SyncRolePolicyStep implements Step
                 associative: true
             );
 
-            $hasDifferences = Helpers::payloadHasDifferences($currentPolicyDocument, AwsResources::policyDocument());
+            $hasDifferences = Helpers::payloadHasDifferences($currentPolicyDocument, AwsResources::ec2PolicyDocument());
 
             if (! Arr::get($options, 'dry-run')) {
                 if ($hasDifferences) {
                     Aws::iam()->createPolicyVersion([
                         'PolicyArn' => $policy['Arn'],
-                        'PolicyDocument' => json_encode(AwsResources::policyDocument()),
+                        'PolicyDocument' => json_encode(AwsResources::ec2PolicyDocument()),
                         'SetAsDefault' => true,
                     ]);
 
@@ -51,7 +51,7 @@ class SyncRolePolicyStep implements Step
                 Aws::iam()->createPolicy([
                     'PolicyName' => Helpers::keyedResourceName(exclusive: false),
                     'Description' => 'YOLO managed EC2 policy',
-                    'PolicyDocument' => json_encode(AwsResources::policyDocument()),
+                    'PolicyDocument' => json_encode(AwsResources::ec2PolicyDocument()),
                     ...Aws::tags(),
                 ]);
 
