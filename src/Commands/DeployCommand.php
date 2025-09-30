@@ -14,7 +14,7 @@ use function Laravel\Prompts\warning;
 class DeployCommand extends SteppedCommand
 {
     protected array $steps = [
-        Steps\Ensures\EnsureTranscoderExistsStep::class,
+        Steps\Ensures\EnsureIamRolesExistStep::class,
         Steps\Ensures\EnsureHostedZonesExistStep::class,
         Steps\Ensures\EnsureMultitenancyHostedZonesExistStep::class,
         Steps\Ensures\EnsureEnvIsConfiguredCorrectlyStep::class,

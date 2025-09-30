@@ -8,18 +8,17 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\EnsuresResourcesExist;
 
-class EnsureTranscoderExistsStep implements Step
+class EnsureIamRolesExistStep implements Step
 {
     use EnsuresResourcesExist;
 
     public function __invoke(): StepResult
     {
-        if (Manifest::get('aws.transcoder') === null) {
-            return StepResult::SKIPPED;
-        }
+        $this->ensure(fn () => AwsResources::ec2Role());
 
-        $this->ensure(fn () => AwsResources::elasticTranscoderPipeline());
-        $this->ensure(fn () => AwsResources::elasticTranscoderPreset());
+        if (Manifest::get('aws.mediaconvert')) {
+            $this->ensure(fn () => AwsResources::mediaConvertRole());
+        }
 
         return StepResult::SUCCESS;
     }

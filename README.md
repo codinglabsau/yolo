@@ -173,7 +173,7 @@ environments:
       artefacts-bucket:
       cloudfront:
       alb:
-      transcoder: false
+      mediaconvert: false
       autoscaling:
         web:
         queue:

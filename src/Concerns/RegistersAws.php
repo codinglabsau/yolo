@@ -22,7 +22,6 @@ use Aws\AutoScaling\AutoScalingClient;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Aws\Credentials\CredentialProvider;
 use GuzzleHttp\Exception\ConnectException;
-use Aws\ElasticTranscoder\ElasticTranscoderClient;
 use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
 
 trait RegistersAws
@@ -43,7 +42,6 @@ trait RegistersAws
         Helpers::app()->singleton('cloudWatch', fn () => new CloudWatchClient($arguments));
         Helpers::app()->singleton('ec2', fn () => new Ec2Client($arguments));
         Helpers::app()->singleton('elasticLoadBalancingV2', fn () => new ElasticLoadBalancingV2Client($arguments));
-        Helpers::app()->singleton('elasticTranscoder', fn () => new ElasticTranscoderClient($arguments));
         Helpers::app()->singleton('iam', fn () => new IamClient($arguments));
         Helpers::app()->singleton('rds', fn () => new RdsClient($arguments));
         Helpers::app()->singleton('route53', fn () => new Route53Client($arguments));

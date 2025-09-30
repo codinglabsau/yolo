@@ -69,7 +69,6 @@ trait UsesIam
                         'elasticloadbalancing:DescribeTargetGroups',
                         'ec2:DescribeTags',
                         'elasticloadbalancing:DescribeLoadBalancers',
-                        'elastictranscoder:ListPipelines',
                         'sqs:DeleteMessage',
                         'sqs:GetQueueUrl',
                         'sqs:ChangeMessageVisibility',
@@ -78,15 +77,6 @@ trait UsesIam
                         'sqs:GetQueueAttributes',
                         'sqs:PurgeQueue',
                         'sqs:ListQueues',
-                    ],
-                ],
-                [
-                    'Effect' => 'Allow',
-                    'Resource' => [
-                        'arn:aws:iam::*:role/Elastic_Transcoder_Default_Role',
-                    ],
-                    'Action' => [
-                        'iam:PassRole',
                     ],
                 ],
                 [
