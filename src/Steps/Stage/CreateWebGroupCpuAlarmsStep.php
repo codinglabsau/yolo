@@ -61,7 +61,7 @@ class CreateWebGroupCpuAlarmsStep implements Step
                 sprintf('web-cpu-critical-alarm-%s', Str::random(8)),
                 exclusive: false
             );
-            $snsTopic = AwsResources::topic();
+            $snsTopic = AwsResources::alarmTopic();
 
             Aws::cloudWatch()->putMetricAlarm([
                 'ActionsEnabled' => true,

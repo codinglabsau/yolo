@@ -23,7 +23,7 @@ class SyncQueueAlarmStep implements Step
             // always sync the alarm with the desired state.
         }
 
-        $snsTopic = AwsResources::topic();
+        $snsTopic = AwsResources::alarmTopic();
 
         if (Arr::get($options, 'dry-run')) {
             return StepResult::WOULD_SYNC;

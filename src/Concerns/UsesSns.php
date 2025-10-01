@@ -9,7 +9,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 trait UsesSns
 {
-    public static function topic(): array
+    public static function alarmTopic(): array
     {
         $topicName = Helpers::keyedResourceName(exclusive: false);
         $topics = Aws::sns()->listTopics();

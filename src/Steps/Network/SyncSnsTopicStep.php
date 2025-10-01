@@ -15,7 +15,7 @@ class SyncSnsTopicStep implements Step
     public function __invoke(array $options): StepResult
     {
         try {
-            AwsResources::topic();
+            AwsResources::alarmTopic();
 
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException $e) {
