@@ -19,7 +19,6 @@ use Aws\Route53\Route53Client;
 use Aws\CloudWatch\CloudWatchClient;
 use Aws\CodeDeploy\CodeDeployClient;
 use Aws\AutoScaling\AutoScalingClient;
-use Aws\EventBridge\EventBridgeClient;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Aws\Credentials\CredentialProvider;
 use GuzzleHttp\Exception\ConnectException;
@@ -44,7 +43,6 @@ trait RegistersAws
         Helpers::app()->singleton('cloudWatch', fn () => new CloudWatchClient($arguments));
         Helpers::app()->singleton('ec2', fn () => new Ec2Client($arguments));
         Helpers::app()->singleton('elasticLoadBalancingV2', fn () => new ElasticLoadBalancingV2Client($arguments));
-        Helpers::app()->singleton('eventBridge', fn () => new EventBridgeClient($arguments));
         Helpers::app()->singleton('iam', fn () => new IamClient($arguments));
         Helpers::app()->singleton('rds', fn () => new RdsClient($arguments));
         Helpers::app()->singleton('route53', fn () => new Route53Client($arguments));

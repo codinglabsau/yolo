@@ -46,7 +46,7 @@ YOLO supports Laravel Octane for turbocharged PHP applications.
 
 ### Video Transcoding
 
-YOLO can be provision resources on AWS to simplify video transcoding on AWS using AWS Elemental MediaConvert.
+YOLO can provision resources on AWS to simplify video transcoding on AWS using AWS Elemental MediaConvert.
 
 ### And Much More...
 
@@ -221,7 +221,7 @@ environments:
       artefacts-bucket:
       cloudfront:
       alb:
-      mediaconvert:
+      mediaconvert: false
       autoscaling:
         web:
         queue:
