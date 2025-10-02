@@ -36,6 +36,10 @@ class SyncNetworkCommand extends SteppedCommand
         Steps\Network\SyncSnsMediaConvertTopicStep::class,
         Steps\Network\SyncSnsMediaConvertSubscriptionStep::class,
 
+        // event bridge
+        Steps\Network\SyncEventBridgeMediaConvertRuleStep::class,
+        Steps\Network\SyncEventBridgeMediaConvertRuleTargetStep::class,
+
         // ssh
         Steps\Network\SyncKeyPairStep::class,
     ];
