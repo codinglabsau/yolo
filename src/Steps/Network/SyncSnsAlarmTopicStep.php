@@ -10,7 +10,7 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncSnsTopicStep implements Step
+class SyncSnsAlarmTopicStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
