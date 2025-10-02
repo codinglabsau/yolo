@@ -157,7 +157,7 @@ trait UsesIam
         throw new ResourceDoesNotExistException("Could not find IAM role with name $name");
     }
 
-    public static function mediaConvertS3PolicyDocument(): array
+    public static function mediaConvertPolicyDocument(): array
     {
         return [
             'Version' => '2012-10-17',

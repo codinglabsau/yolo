@@ -33,7 +33,7 @@ class SyncMediaConvertRoleStep implements Step
 
                 Aws::iam()->updateAssumeRolePolicy([
                     'RoleName' => $name,
-                    'PolicyDocument' => json_encode(AwsResources::mediaConvertS3PolicyDocument()),
+                    'PolicyDocument' => json_encode(AwsResources::mediaConvertPolicyDocument()),
                 ]);
 
                 Aws::iam()->tagRole([
@@ -50,7 +50,7 @@ class SyncMediaConvertRoleStep implements Step
                 Aws::iam()->createRole([
                     'RoleName' => Helpers::keyedResourceName(Iam::MEDIA_CONVERT_ROLE),
                     'Description' => 'YOLO managed MediaConvert role',
-                    'AssumeRolePolicyDocument' => json_encode(AwsResources::mediaConvertS3PolicyDocument()),
+                    'AssumeRolePolicyDocument' => json_encode(AwsResources::mediaConvertPolicyDocument()),
                     ...Aws::tags(),
                 ]);
 
