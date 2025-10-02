@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Steps\Network;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Sns;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
@@ -15,6 +16,10 @@ class SyncSnsMediaConvertTopicStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
+        if (! Manifest::get('aws.mediaconvert')) {
+            return StepResult::SKIPPED;
+        }
+
         try {
             AwsResources::mediaConvertTopic();
 
