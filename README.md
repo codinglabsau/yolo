@@ -3,22 +3,70 @@
 > [!IMPORTANT]
 > This package is in active development - contributions are welcome!
 
-YOLO helps you deploy high-availability PHP applications on AWS.
+YOLO helps you deploy high-availability PHP applications to AWS.
 
-The CLI tool takes care of provisioning and configuring all required resources on AWS, coupled with build and deployment
+The CLI tool lives inside your Laravel app in `vendor/bin/yolo`, and takes care of provisioning and configuring all
+required resources on
+AWS, coupled with build and deployment
 commands to deploy applications to production from your local machine or CI pipeline.
+
+YOLO has been battle-tested on apps that serve 2 million requests per day.
+
+## Features
+
+### Autoscaling Worker Groups
+
+YOLO provisions an Application Load Balancer and autoscaling groups (web, queue, scheduler) for each environment.
+
+Each group is self-healing should an instance become unresponsive, and the web group automatically scales up to handle
+traffic bursts.
+
+In addition, worker groups can be combined (coming soon) to a single EC2 instance to consolidate small workloads.
+
+### Resource Sharing
+
+YOLO shares various resources between applications to reduce costs.
+
+### Zero-downtime Deployments
+
+YOLO leverages AWS CodeDeploy to perform zero-downtime deployments, which can be triggered from the CLI or via a CI
+pipeline.
+
+### Multi-tenancy
+
+Specify tenants in the manifest and YOLO will take care of provisioning resources for each tenant.
+
+### S3
+
+Leverage S3 for storing build artefacts and user data files.
+
+### Octane (experimental)
+
+YOLO supports Laravel Octane for turbocharged PHP applications.
+
+### Video Transcoding
+
+YOLO can be provision resources on AWS to simplify video transcoding on AWS using AWS Elemental MediaConvert.
+
+### And Much More...
+
+- Seperate commands that run on deployment across worker groups
+- Scheduled MySQL backups using `mysqldump`
+- Control of build and deploy commands
+- Re-use existing VPCs, subnets, internet gateways and more
 
 ___
 
 ## Disclaimer
 
-YOLO is designed for PHP developers who want to manage AWS using an infrastructure-as-code approach, using plain-old PHP
-rather than CloudFormation / Terraform / K8s / Elastic Beanstalk / <some-other-fancy-alternative>.
+YOLO is designed for PHP developers who are comfortable managing AWS using an infrastructure-as-code approach.
 
-> [!IMPORTANT]
-> While YOLO has been battle-tested on apps serving millions of requests per day, it is not supposed to be a
-> set-and-forget solution for busy apps, but rather allows you to proactively manage, grow and adapt your infrastructure
-> as requirements change over time.
+It is, at it's core, a Symfony CLI app that leverages the AWS SDK, rather than CloudFormation / Terraform / K8s /
+Elastic
+Beanstalk / <some-other-fancy-alternative>.
+
+While YOLO has underpinned very large, mission-critical production applications, it is not intended to be a set and
+forget solution; rather it acts as a control plane that allows you to manage and expand your AWS footprint over time.
 
 It goes without saying, but use YOLO at your own risk.
 
@@ -173,7 +221,7 @@ environments:
       artefacts-bucket:
       cloudfront:
       alb:
-      mediaconvert: false
+      mediaconvert:
       autoscaling:
         web:
         queue:
