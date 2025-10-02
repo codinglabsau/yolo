@@ -344,4 +344,4 @@ YOLO_BASE_PATH=$(pwd) yolo
 
 ## License
 
-Proprietary.
+MIT
