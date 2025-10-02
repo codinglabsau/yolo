@@ -2,8 +2,11 @@
 
 namespace Codinglabs\Yolo\Steps\Build;
 
+use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
 use Illuminate\Support\Arr;
+use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Contracts\Step;
 use Illuminate\Filesystem\Filesystem;
 
@@ -25,9 +28,26 @@ class ConfigureEnvAndVersionStep implements Step
 
         $this->filesystem->append(
             Paths::build(".env.$this->environment"),
-            PHP_EOL .
-            'APP_VERSION=' . $appVersion . PHP_EOL .
-            'ASSET_URL=' . Paths::assetUrl($appVersion) . PHP_EOL
+            $this->generateValues([
+                'APP_VERSION' => $appVersion,
+                'ASSET_URL' => Paths::assetUrl($appVersion),
+                'AWS_MEDIACONVERT_ROLE_ID' => sprintf(
+                    'arn:aws:iam::%s:role/service-role/%s',
+                    Aws::accountId(),
+                    Helpers::keyedResourceName(Iam::MEDIA_CONVERT_ROLE),
+                ),
+            ])
         );
+    }
+
+    protected function generateValues(array $values): string
+    {
+        $result = PHP_EOL . '# YOLO generated values' . PHP_EOL;
+
+        foreach ($values as $key => $value) {
+            $result .= "$key=$value" . PHP_EOL;
+        }
+
+        return $result;
     }
 }

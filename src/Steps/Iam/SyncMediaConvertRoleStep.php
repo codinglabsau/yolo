@@ -5,29 +5,35 @@ namespace Codinglabs\Yolo\Steps\Iam;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncRoleStep implements Step
+class SyncMediaConvertRoleStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
+        if (! Manifest::get('aws.mediaconvert')) {
+            return StepResult::SKIPPED;
+        }
+
         try {
-            AwsResources::ec2Role();
+            AwsResources::mediaConvertRole();
 
             if (! Arr::get($options, 'dry-run')) {
-                $name = Helpers::keyedResourceName(exclusive: false);
+                $name = Helpers::keyedResourceName(Iam::MEDIA_CONVERT_ROLE);
 
                 Aws::iam()->updateRole([
                     'RoleName' => $name,
-                    'Description' => 'YOLO managed EC2 role',
+                    'Description' => 'YOLO managed MediaConvert role',
                 ]);
 
                 Aws::iam()->updateAssumeRolePolicy([
                     'RoleName' => $name,
-                    'PolicyDocument' => json_encode(AwsResources::rolePolicyDocument()),
+                    'PolicyDocument' => json_encode(AwsResources::mediaConvertPolicyDocument()),
                 ]);
 
                 Aws::iam()->tagRole([
@@ -42,9 +48,9 @@ class SyncRoleStep implements Step
         } catch (ResourceDoesNotExistException $e) {
             if (! Arr::get($options, 'dry-run')) {
                 Aws::iam()->createRole([
-                    'RoleName' => Helpers::keyedResourceName(exclusive: false),
-                    'Description' => 'YOLO managed EC2 role',
-                    'AssumeRolePolicyDocument' => json_encode(AwsResources::rolePolicyDocument()),
+                    'RoleName' => Helpers::keyedResourceName(Iam::MEDIA_CONVERT_ROLE),
+                    'Description' => 'YOLO managed MediaConvert role',
+                    'AssumeRolePolicyDocument' => json_encode(AwsResources::mediaConvertPolicyDocument()),
                     ...Aws::tags(),
                 ]);
 

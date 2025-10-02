@@ -39,7 +39,7 @@ trait UsesIam
         throw new ResourceDoesNotExistException("Could not find IAM role with name $name");
     }
 
-    public static function instanceProfile(): array
+    public static function ec2InstanceProfile(): array
     {
         $name = Helpers::keyedResourceName(Iam::INSTANCE_PROFILE, exclusive: false);
         $instanceProfiles = Aws::iam()->listInstanceProfiles();
@@ -53,7 +53,7 @@ trait UsesIam
         throw new ResourceDoesNotExistException("Could not find IAM instance profile with name $name");
     }
 
-    public static function policyDocument(): array
+    public static function ec2PolicyDocument(): array
     {
         return [
             'Version' => '2012-10-17',
@@ -69,7 +69,6 @@ trait UsesIam
                         'elasticloadbalancing:DescribeTargetGroups',
                         'ec2:DescribeTags',
                         'elasticloadbalancing:DescribeLoadBalancers',
-                        'elastictranscoder:ListPipelines',
                         'sqs:DeleteMessage',
                         'sqs:GetQueueUrl',
                         'sqs:ChangeMessageVisibility',
@@ -78,15 +77,6 @@ trait UsesIam
                         'sqs:GetQueueAttributes',
                         'sqs:PurgeQueue',
                         'sqs:ListQueues',
-                    ],
-                ],
-                [
-                    'Effect' => 'Allow',
-                    'Resource' => [
-                        'arn:aws:iam::*:role/Elastic_Transcoder_Default_Role',
-                    ],
-                    'Action' => [
-                        'iam:PassRole',
                     ],
                 ],
                 [
@@ -137,7 +127,7 @@ trait UsesIam
         ];
     }
 
-    public static function rolePolicyDocument(): array
+    public static function ec2RolePolicyDocument(): array
     {
         return [
             'Version' => '2012-10-17',
@@ -146,6 +136,36 @@ trait UsesIam
                     'Effect' => 'Allow',
                     'Principal' => [
                         'Service' => 'ec2.amazonaws.com',
+                    ],
+                    'Action' => 'sts:AssumeRole',
+                ],
+            ],
+        ];
+    }
+
+    public static function mediaConvertRole(): array
+    {
+        $name = Helpers::keyedResourceName(Iam::MEDIA_CONVERT_ROLE);
+        $roles = Aws::iam()->listRoles();
+
+        foreach ($roles['Roles'] as $role) {
+            if ($role['RoleName'] === $name) {
+                return $role;
+            }
+        }
+
+        throw new ResourceDoesNotExistException("Could not find IAM role with name $name");
+    }
+
+    public static function mediaConvertPolicyDocument(): array
+    {
+        return [
+            'Version' => '2012-10-17',
+            'Statement' => [
+                [
+                    'Effect' => 'Allow',
+                    'Principal' => [
+                        'Service' => 'mediaconvert.amazonaws.com',
                     ],
                     'Action' => 'sts:AssumeRole',
                 ],

@@ -15,7 +15,6 @@ use Aws\Route53\Route53Client;
 use Aws\CloudWatch\CloudWatchClient;
 use Aws\CodeDeploy\CodeDeployClient;
 use Aws\AutoScaling\AutoScalingClient;
-use Aws\ElasticTranscoder\ElasticTranscoderClient;
 use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
 
 class Aws
@@ -95,11 +94,6 @@ class Aws
     public static function elasticLoadBalancingV2(): ElasticLoadBalancingV2Client
     {
         return Helpers::app('elasticLoadBalancingV2');
-    }
-
-    public static function elasticTranscoder(): ElasticTranscoderClient
-    {
-        return Helpers::app('elasticTranscoder');
     }
 
     public static function iam(): IamClient

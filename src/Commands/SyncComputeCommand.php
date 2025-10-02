@@ -20,10 +20,6 @@ class SyncComputeCommand extends SteppedCommand
         //        // multitenancy
         //        Steps\Compute\SyncMultitenancyListenerOnPort443Step::class,
         //        Steps\Compute\AttachMultitenancySslCertificateToLoadBalancerListenerStep::class,
-
-        // transcoder
-        Steps\Compute\SyncElasticTranscoderPipelineStep::class,
-        Steps\Compute\SyncElasticTranscoderPresetStep::class,
     ];
 
     protected function configure(): void

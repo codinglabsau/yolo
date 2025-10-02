@@ -10,12 +10,12 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class AttachRoleToInstanceProfileStep implements Step
+class AttachEc2RoleToInstanceProfileStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
         try {
-            $instanceProfile = AwsResources::instanceProfile();
+            $instanceProfile = AwsResources::ec2InstanceProfile();
             $attached = ! empty($instanceProfile['Roles']) && $instanceProfile['Roles'][0]['RoleName'] === Helpers::keyedResourceName(exclusive: false);
 
             if (! Arr::get($options, 'dry-run')) {

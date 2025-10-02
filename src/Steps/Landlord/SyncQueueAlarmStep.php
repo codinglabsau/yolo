@@ -27,7 +27,7 @@ class SyncQueueAlarmStep implements ExecutesMultitenancyStep
             return StepResult::WOULD_SYNC;
         }
 
-        $snsTopic = AwsResources::topic();
+        $snsTopic = AwsResources::alarmTopic();
 
         Aws::cloudWatch()->putMetricAlarm([
             'ActionsEnabled' => true,

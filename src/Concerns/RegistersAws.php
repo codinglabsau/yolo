@@ -22,7 +22,7 @@ use Aws\AutoScaling\AutoScalingClient;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Aws\Credentials\CredentialProvider;
 use GuzzleHttp\Exception\ConnectException;
-use Aws\ElasticTranscoder\ElasticTranscoderClient;
+use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
 
 trait RegistersAws
@@ -43,7 +43,6 @@ trait RegistersAws
         Helpers::app()->singleton('cloudWatch', fn () => new CloudWatchClient($arguments));
         Helpers::app()->singleton('ec2', fn () => new Ec2Client($arguments));
         Helpers::app()->singleton('elasticLoadBalancingV2', fn () => new ElasticLoadBalancingV2Client($arguments));
-        Helpers::app()->singleton('elasticTranscoder', fn () => new ElasticTranscoderClient($arguments));
         Helpers::app()->singleton('iam', fn () => new IamClient($arguments));
         Helpers::app()->singleton('rds', fn () => new RdsClient($arguments));
         Helpers::app()->singleton('route53', fn () => new Route53Client($arguments));
@@ -66,14 +65,20 @@ trait RegistersAws
             return null;
         }
 
-        // in CI (GitHub Actions) we use environment variables, otherwise we
-        // are using a local env value to point to the correct AWS profile.
-        return static::detectCiEnvironment()
-            ? [
+        // in CI (GitHub Actions) we use environment variables
+        if (static::detectCiEnvironment()) {
+            return [
                 'key' => env('AWS_ACCESS_KEY_ID'),
                 'secret' => env('AWS_SECRET_ACCESS_KEY'),
-            ]
-            : CredentialProvider::ini(Helpers::keyedEnv('AWS_PROFILE'));
+            ];
+        }
+
+        // otherwise we are using a local env value to point to the correct AWS profile.
+        if (in_array(Helpers::keyedEnv('AWS_PROFILE'), ['', null, 'default'])) {
+            throw new IntegrityCheckException(sprintf('Using the default AWS profile in your credentials file is risky. Name your profile to something specific and update %s in your .env file before proceeding.', Helpers::keyedEnvName('AWS_PROFILE')));
+        }
+
+        return CredentialProvider::ini(Helpers::keyedEnv('AWS_PROFILE'));
     }
 
     protected static function detectLocalEnvironment(): bool

@@ -9,17 +9,21 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 trait UsesSns
 {
-    public static function topic(): array
+    public static function alarmTopic(): array
     {
-        $topicName = Helpers::keyedResourceName(exclusive: false);
+        return static::topicByName(Helpers::keyedResourceName(exclusive: false));
+    }
+
+    public static function topicByName(string $name): array
+    {
         $topics = Aws::sns()->listTopics();
 
         foreach ($topics['Topics'] as $topic) {
-            if (Str::afterLast($topic['TopicArn'], ':') === $topicName) {
+            if (Str::afterLast($topic['TopicArn'], ':') === $name) {
                 return $topic;
             }
         }
 
-        throw new ResourceDoesNotExistException("Could not find SNS topic with name $topicName");
+        throw new ResourceDoesNotExistException("Could not find SNS topic with name $name");
     }
 }

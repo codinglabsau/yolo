@@ -3,14 +3,15 @@
 namespace Codinglabs\Yolo\Steps\Ensures;
 
 use Dotenv\Dotenv;
+use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
-use Illuminate\Contracts\Filesystem\FileNotFoundException;
 
 class EnsureEnvIsConfiguredCorrectlyStep implements Step
 {
@@ -18,30 +19,56 @@ class EnsureEnvIsConfiguredCorrectlyStep implements Step
 
     public function __invoke(): StepResult
     {
-        if (Manifest::get('aws.transcoder')) {
-            $this->checkTranscoderConfiguration();
+        $dotenv = Dotenv::parse($this->filesystem->get(Paths::build('.env')));
+
+        $this->checkAppVersion($dotenv);
+        $this->checkAssetUrl($dotenv);
+
+        if (Manifest::get('aws.mediaconvert')) {
+            $this->checkMediaConvertConfiguration($dotenv);
         }
 
         return StepResult::SYNCED;
     }
 
+    protected function checkAppVersion(array $dotenv): void
+    {
+        if (empty($dotenv['APP_VERSION'])) {
+            $this->throwException($dotenv, 'APP_VERSION');
+        }
+    }
+
+    protected function checkAssetUrl(array $dotenv): void
+    {
+        $expected = Paths::assetUrl($dotenv['APP_VERSION']);
+
+        if ($dotenv['ASSET_URL'] !== $expected) {
+            $this->throwException($dotenv, 'ASSET_URL', $expected);
+        }
+    }
+
+    protected function checkMediaConvertConfiguration(array $dotenv): void
+    {
+        $expected = sprintf(
+            'arn:aws:iam::%s:role/service-role/%s',
+            Aws::accountId(),
+            Helpers::keyedResourceName(Iam::MEDIA_CONVERT_ROLE),
+        );
+
+        if ($dotenv['AWS_MEDIACONVERT_ROLE_ID'] !== $expected) {
+            $this->throwException($dotenv, 'AWS_MEDIACONVERT_ROLE_ID', $expected);
+        }
+    }
+
     /**
      * @throws IntegrityCheckException
-     * @throws FileNotFoundException
      */
-    protected function checkTranscoderConfiguration(): void
+    protected function throwException(array $dotenv, string $key, ?string $expected = null): never
     {
-        $elasticTranscoderPipeline = AwsResources::elasticTranscoderPipeline();
-        $elasticTranscoderPreset = AwsResources::elasticTranscoderPreset();
-
-        $dotenv = Dotenv::parse($this->filesystem->get(Paths::build('.env')));
-
-        if ($dotenv['AWS_TRANSCODER_PIPELINE'] !== $elasticTranscoderPipeline['Id']) {
-            throw new IntegrityCheckException("Transcoder pipeline ID {$dotenv['AWS_TRANSCODER_PIPELINE']} does not match {$elasticTranscoderPipeline['Id']}");
+        if ($expected === null) {
+            throw new IntegrityCheckException("$key {$dotenv[$key]} is not set");
         }
 
-        if ($dotenv['AWS_TRANSCODER_PRESET'] != $elasticTranscoderPreset['Id']) {
-            throw new IntegrityCheckException("Transcoder preset ID {$dotenv['AWS_TRANSCODER_PRESET']} does not match {$elasticTranscoderPreset['Id']}");
-        }
+        throw new IntegrityCheckException("$key {$dotenv[$key]} does not match $expected");
     }
 }
