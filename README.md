@@ -50,6 +50,7 @@ YOLO can provision resources on AWS to simplify video transcoding on AWS using A
 
 ### And Much More...
 
+- Least priviledge permissions with strong segregation across environments and apps
 - Seperate commands that run on deployment across worker groups
 - Scheduled MySQL backups using `mysqldump`
 - Control of build and deploy commands
