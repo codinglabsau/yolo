@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Concerns;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Str;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Sns;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -18,6 +19,23 @@ trait UsesSns
     public static function mediaConvertTopic(): array
     {
         return static::topicByName(Helpers::keyedResourceName(Sns::MEDIA_CONVERT_TOPIC));
+    }
+
+    public static function mediaConvertSubscription(): array
+    {
+        $topic = static::mediaConvertTopic();
+        $subscriptions = Aws::sns()->listSubscriptions();
+
+        foreach ($subscriptions['Subscriptions'] as $subscription) {
+            if ($subscription['TopicArn'] === $topic['TopicArn']
+            && $subscription['Protocol'] === 'https'
+            && $subscription['Endpoint'] === Manifest::get('aws.mediaconvert')
+            ) {
+                return $subscription;
+            }
+        }
+
+        throw new ResourceDoesNotExistException('Could not find SNS subscription for MediaConvert');
     }
 
     public static function topicByName(string $name): array

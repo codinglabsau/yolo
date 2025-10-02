@@ -34,6 +34,7 @@ class SyncNetworkCommand extends SteppedCommand
         // sns
         Steps\Network\SyncSnsAlarmTopicStep::class,
         Steps\Network\SyncSnsMediaConvertTopicStep::class,
+        Steps\Network\SyncSnsMediaConvertSubscriptionStep::class,
 
         // ssh
         Steps\Network\SyncKeyPairStep::class,
