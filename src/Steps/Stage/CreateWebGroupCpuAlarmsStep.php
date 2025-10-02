@@ -94,7 +94,7 @@ class CreateWebGroupCpuAlarmsStep implements Step
         }
 
         return Arr::get($options, 'update')
-            ? StepResult::WOULD_SKIP
+            ? StepResult::SKIPPED
             : StepResult::WOULD_CREATE;
     }
 }
