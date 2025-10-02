@@ -25,10 +25,10 @@ class SyncSnsMediaConvertSubscriptionStep implements Step
 
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException $e) {
-            $name = Helpers::keyedResourceName(Sns::MEDIA_CONVERT_TOPIC);
-            $topic = AwsResources::mediaConvertTopic();
-
             if (! Arr::get($options, 'dry-run')) {
+                $name = Helpers::keyedResourceName(Sns::MEDIA_CONVERT_TOPIC);
+                $topic = AwsResources::mediaConvertTopic();
+
                 Aws::sns()->subscribe([
                     'Protocol' => 'https',
                     'Endpoint' => Manifest::get('aws.mediaconvert'),

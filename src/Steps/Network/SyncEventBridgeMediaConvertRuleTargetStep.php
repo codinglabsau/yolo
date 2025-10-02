@@ -21,15 +21,17 @@ class SyncEventBridgeMediaConvertRuleTargetStep implements Step
         }
 
         try {
+            // check for the existence of the rule first to prevent an exception on an unknown rule
+            AwsResources::eventBridgeMediaConvertRule();
             AwsResources::eventBridgeMediaConvertRuleTarget();
 
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException $e) {
-            $topic = AwsResources::mediaConvertTopic();
-            $ruleName = Helpers::keyedResourceName(EventBridge::MEDIA_CONVERT_RULE);
-            $ruleTargetId = Helpers::keyedResourceName(EventBridge::MEDIA_CONVERT_RULE_TARGET);
-
             if (! Arr::get($options, 'dry-run')) {
+                $topic = AwsResources::mediaConvertTopic();
+                $ruleName = Helpers::keyedResourceName(EventBridge::MEDIA_CONVERT_RULE);
+                $ruleTargetId = Helpers::keyedResourceName(EventBridge::MEDIA_CONVERT_RULE_TARGET);
+
                 Aws::eventBridge()->putTargets([
                     'Rule' => $ruleName,
                     'Targets' => [

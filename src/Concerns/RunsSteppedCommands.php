@@ -152,7 +152,7 @@ trait RunsSteppedCommands
                 ->when($bold && ! $step instanceof ExecutesTenantStep, fn (Stringable $string) => $string->wrap(before: '<options=bold>', after: '</>'))
         };
 
-        return $name->limit(50)
-            ->when($pad, fn (Stringable $string) => $string->padRight(50));
+        return $name->limit(70)
+            ->when($pad, fn (Stringable $string) => $string->padRight(70));
     }
 }
