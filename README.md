@@ -36,6 +36,10 @@ pipeline.
 
 Specify tenants in the manifest and YOLO will take care of provisioning resources for each tenant.
 
+### .env Management
+
+Manage .env files locally with push and pull commands. Preview changes before deploying.
+
 ### S3
 
 Leverage S3 for storing build artefacts and user data files.
@@ -46,7 +50,7 @@ YOLO supports Laravel Octane for turbocharged PHP applications.
 
 ### Video Transcoding
 
-YOLO can provision resources on AWS to simplify video transcoding on AWS using AWS Elemental MediaConvert.
+YOLO can configure your app environment to utilise video transcoding using AWS Elemental MediaConvert.
 
 ### And Much More...
 
