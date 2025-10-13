@@ -32,7 +32,7 @@ class ConfigureEnvAndVersionStep implements Step
                 'APP_VERSION' => $appVersion,
                 'ASSET_URL' => Paths::assetUrl($appVersion),
                 'AWS_MEDIACONVERT_ROLE_ID' => sprintf(
-                    'arn:aws:iam::%s:role/service-role/%s',
+                    'arn:aws:iam::%s:role/%s',
                     Aws::accountId(),
                     Helpers::keyedResourceName(Iam::MEDIA_CONVERT_ROLE),
                 ),

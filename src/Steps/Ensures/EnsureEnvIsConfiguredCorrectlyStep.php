@@ -50,7 +50,7 @@ class EnsureEnvIsConfiguredCorrectlyStep implements Step
     protected function checkMediaConvertConfiguration(array $dotenv): void
     {
         $expected = sprintf(
-            'arn:aws:iam::%s:role/service-role/%s',
+            'arn:aws:iam::%s:role/%s',
             Aws::accountId(),
             Helpers::keyedResourceName(Iam::MEDIA_CONVERT_ROLE),
         );
