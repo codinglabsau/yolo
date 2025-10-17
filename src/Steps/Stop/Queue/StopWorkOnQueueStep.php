@@ -12,7 +12,6 @@ class StopWorkOnQueueStep implements RunsOnAwsQueue
 
     public function __invoke(): StepResult
     {
-        // stop pulse, queue workers
         $this->stopSupervisorWorkers();
 
         return StepResult::SUCCESS;

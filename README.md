@@ -246,7 +246,6 @@ environments:
         strategy: without-load-balancing|with-load-balancing
 
     asset-url: # defaults to aws.cloudfront
-    pulse-worker: false
     mysqldump: false
 
     domain: example.com # standalone apps only

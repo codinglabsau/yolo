@@ -18,7 +18,6 @@ class StartCommand extends SteppedCommand implements RunsOnAws
         Steps\Start\All\SyncLogrotateStep::class,
         Steps\Start\All\SyncHousekeepingCronStep::class,
         Steps\Start\Scheduler\SyncSchedulerCronStep::class,
-        Steps\Start\All\SyncPulseWorkerStep::class,
         Steps\Start\Queue\SyncQueueWorkerStep::class,
         Steps\Start\Queue\SyncQueueLandlordWorkerStep::class,
         Steps\Start\Queue\SyncQueueTenantWorkerStep::class,

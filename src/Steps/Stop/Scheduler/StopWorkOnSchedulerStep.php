@@ -18,7 +18,6 @@ class StopWorkOnSchedulerStep implements RunsOnAwsScheduler
     {
         $name = Manifest::name();
 
-        // stop pulse
         $this->stopSupervisorWorkers();
 
         // disable scheduling
