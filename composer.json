@@ -18,6 +18,7 @@
     "illuminate/filesystem": "^10|^11|^12",
     "illuminate/support": "^10|^11|^12",
     "joetannenbaum/chewie": "^0.1.8",
+    "nesbot/carbon": "^3.10",
     "symfony/console": "^7.1",
     "symfony/yaml": "^7.1",
     "vlucas/phpdotenv": "^5.6"

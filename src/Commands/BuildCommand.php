@@ -2,7 +2,9 @@
 
 namespace Codinglabs\Yolo\Commands;
 
+use Carbon\Carbon;
 use Codinglabs\Yolo\Steps;
+use Codinglabs\Yolo\Manifest;
 use Symfony\Component\Console\Input\InputArgument;
 
 use function Laravel\Prompts\error;
@@ -32,10 +34,11 @@ class BuildCommand extends SteppedCommand
 
     public function handle(): void
     {
-        $appVersion = $this->option('app-version') ?? date('y.W.N.Hi');
+        $appVersion = $this->option('app-version') ?? Carbon::now(Manifest::timezone())->format('y.W.N.Hi');
+        $expectedAppVersionPrefix = Carbon::now(Manifest::timezone())->format('y.W');
 
-        if (! str_starts_with($appVersion, date('y.W'))) {
-            error(sprintf('App version must start with %s', date('y.W')));
+        if (! str_starts_with($appVersion, $expectedAppVersionPrefix)) {
+            error(sprintf('App version must start with %s', $expectedAppVersionPrefix));
 
             return;
         }

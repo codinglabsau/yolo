@@ -68,6 +68,11 @@ class Manifest
         );
     }
 
+    public static function timezone(): string
+    {
+        return Arr::get(static::current(), 'timezone', 'UTC');
+    }
+
     public static function apex(): string
     {
         if (static::isMultitenanted()) {
