@@ -246,9 +246,9 @@ environments:
       codedeploy:
         strategy: without-load-balancing|with-load-balancing
       queue:
-        period: 300
-        evaluation-periods: 3
-        threshold: 100
+        depth-alarm-evaluation-periods: 3
+        depth-alarm-period: 300
+        depth-alarm-threshold: 100
 
     asset-url: # defaults to aws.cloudfront
     mysqldump: false
