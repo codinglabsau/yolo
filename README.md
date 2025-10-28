@@ -245,6 +245,10 @@ environments:
         security-group:
       codedeploy:
         strategy: without-load-balancing|with-load-balancing
+      queue:
+        period: 300
+        evaluation-periods: 3
+        threshold: 100
 
     asset-url: # defaults to aws.cloudfront
     mysqldump: false
