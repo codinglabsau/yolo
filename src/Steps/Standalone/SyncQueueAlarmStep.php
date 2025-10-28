@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Steps\Standalone;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -40,12 +41,12 @@ class SyncQueueAlarmStep implements Step
                     'Value' => Helpers::keyedResourceName(),
                 ],
             ],
-            'EvaluationPeriods' => 3, // number of breached of Period before alarm
+            'EvaluationPeriods' => Manifest::get('aws.queue.depth-alarm-evaluation-periods', 3), // number of breaches of the Period before alarm
             'MetricName' => 'ApproximateNumberOfMessagesVisible',
             'Namespace' => 'AWS/SQS',
-            'Period' => 300, // time to evaluate the metric
-            'Statistic' => 'Sum',
-            'Threshold' => 100,
+            'Period' => Manifest::get('aws.queue.depth-alarm-period', 300), // time to evaluate the metric
+            'Statistic' => 'Average',
+            'Threshold' => Manifest::get('aws.queue.depth-alarm-threshold', 100),
             'TreatMissingData' => 'notBreaching',
             'AlarmActions' => [$snsTopic['TopicArn']],
             'OKActions' => [$snsTopic['TopicArn']],
