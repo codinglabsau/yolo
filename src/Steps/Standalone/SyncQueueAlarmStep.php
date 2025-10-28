@@ -44,7 +44,7 @@ class SyncQueueAlarmStep implements Step
             'EvaluationPeriods' => Manifest::get('aws.queue.evaluation-periods', 3), // number of breaches of the Period before alarm
             'MetricName' => 'ApproximateNumberOfMessagesVisible',
             'Namespace' => 'AWS/SQS',
-            'Period' => Manifest::get('aws.queue.threshold', 300), // time to evaluate the metric
+            'Period' => Manifest::get('aws.queue.period', 300), // time to evaluate the metric
             'Statistic' => 'Average',
             'Threshold' => Manifest::get('aws.queue.threshold', 100),
             'TreatMissingData' => 'notBreaching',
