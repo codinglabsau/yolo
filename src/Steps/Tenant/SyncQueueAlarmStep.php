@@ -41,12 +41,12 @@ class SyncQueueAlarmStep extends TenantStep
                     'Value' => Helpers::keyedResourceName($this->tenantId()),
                 ],
             ],
-            'EvaluationPeriods' => Manifest::get('aws.queue.depth-alarm-evaluation-periods', 3), // number of breaches of the Period before alarm
+            'EvaluationPeriods' => Manifest::get('aws.sqs.depth-alarm-evaluation-periods', 3), // number of breaches of the Period before alarm
             'MetricName' => 'ApproximateNumberOfMessagesVisible',
             'Namespace' => 'AWS/SQS',
-            'Period' => Manifest::get('aws.queue.depth-alarm-period', 300), // time to evaluate the metric
+            'Period' => Manifest::get('aws.sqs.depth-alarm-period', 300), // time to evaluate the metric
             'Statistic' => 'Average',
-            'Threshold' => Manifest::get('aws.queue.depth-alarm-threshold', 100),
+            'Threshold' => Manifest::get('aws.sqs.depth-alarm-threshold', 100),
             'TreatMissingData' => 'notBreaching',
             'AlarmActions' => [$snsTopic['TopicArn']],
             'OKActions' => [$snsTopic['TopicArn']],
