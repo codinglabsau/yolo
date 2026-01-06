@@ -35,10 +35,12 @@ class BuildCommand extends SteppedCommand
     public function handle(): void
     {
         $appVersion = $this->option('app-version') ?? Carbon::now(Manifest::timezone())->format('y.W.N.Hi');
-        $expectedAppVersionPrefix = Carbon::now(Manifest::timezone())->format('y.W');
+        $now = Carbon::now(Manifest::timezone());
+        $expectedAppVersionPrefix = $now->format('y.W');
+        $expectedAppVersionPrefixAlt = $now->format('y') . '.' . (int) $now->format('W');
 
-        if (! str_starts_with($appVersion, $expectedAppVersionPrefix)) {
-            error(sprintf('App version must start with %s', $expectedAppVersionPrefix));
+        if (! str_starts_with($appVersion, $expectedAppVersionPrefix) && ! str_starts_with($appVersion, $expectedAppVersionPrefixAlt)) {
+            error(sprintf('App version must start with %s or %s', $expectedAppVersionPrefix, $expectedAppVersionPrefixAlt));
 
             return;
         }
