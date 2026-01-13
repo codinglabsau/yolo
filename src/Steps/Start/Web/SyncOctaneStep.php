@@ -8,7 +8,7 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\RunsOnAwsWeb;
 
-class SyncOctaneWorkerStep implements RunsOnAwsWeb
+class SyncOctaneStep implements RunsOnAwsWeb
 {
     public function __invoke(array $options): StepResult
     {

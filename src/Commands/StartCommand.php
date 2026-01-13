@@ -22,7 +22,7 @@ class StartCommand extends SteppedCommand implements RunsOnAws
         Steps\Start\Queue\SyncQueueWorkerStep::class,
         Steps\Start\Queue\SyncQueueLandlordWorkerStep::class,
         Steps\Start\Queue\SyncQueueTenantWorkerStep::class,
-        Steps\Start\Web\SyncOctaneWorkerStep::class,
+        Steps\Start\Web\SyncOctaneStep::class,
         Steps\Start\Scheduler\SyncMysqlBackupStep::class,
         Steps\Start\All\SyncPhpConfigurationStep::class,
         Steps\Start\Web\SyncNginxConfigurationStep::class,
