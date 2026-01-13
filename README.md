@@ -238,6 +238,7 @@ environments:
         queue-instance-type:
         scheduler-instance-type:
         octane: false
+        nightwatch: false
         key-pair:
         security-group:
       rds:
