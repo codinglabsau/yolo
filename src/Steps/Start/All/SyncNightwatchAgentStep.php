@@ -1,20 +1,20 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Start\Web;
+namespace Codinglabs\Yolo\Steps\Start\All;
 
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Contracts\RunsOnAwsWeb;
+use Codinglabs\Yolo\Contracts\RunsOnAws;
 
-class SyncOctaneWorkerStep implements RunsOnAwsWeb
+class SyncNightwatchAgentStep implements RunsOnAws
 {
     public function __invoke(array $options): StepResult
     {
-        $file = sprintf('/etc/supervisor/conf.d/%s', Helpers::keyedResourceName('octane-worker.conf'));
+        $file = sprintf('/etc/supervisor/conf.d/%s', Helpers::keyedResourceName('nightwatch.conf'));
 
-        if (! Manifest::get('aws.ec2.octane')) {
+        if (! Manifest::get('aws.ec2.nightwatch')) {
             if (file_exists($file)) {
                 unlink($file);
             }
@@ -31,7 +31,7 @@ class SyncOctaneWorkerStep implements RunsOnAwsWeb
                 replace: [
                     Manifest::name(),
                 ],
-                subject: file_get_contents(Paths::stubs('supervisor/octane-worker.conf.stub'))
+                subject: file_get_contents(Paths::stubs('supervisor/nightwatch.conf.stub'))
             )
         );
 
