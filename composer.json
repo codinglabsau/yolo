@@ -3,13 +3,6 @@
   "description": "YOLO infrastructure cli tool for deploying Laravel apps",
   "homepage": "https://github.com/codinglabsau/yolo",
   "license": "proprietary",
-  "authors": [
-    {
-      "name": "Steve Thomas",
-      "email": "steve@codinglabs.com.au",
-      "role": "Developer"
-    }
-  ],
   "require": {
     "php": "^8.3",
     "aws/aws-sdk-php": "^3.324",
