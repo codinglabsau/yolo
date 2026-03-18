@@ -40,6 +40,9 @@ class SyncCommand extends SteppedCommand
             Commands\SyncComputeCommand::class,
             Commands\SyncCiCommand::class,
             Commands\SyncIamCommand::class,
+            ...Manifest::get('aws.ivs')
+                ? [Commands\SyncIvsCommand::class]
+                : [],
         ])->each(fn ($command) => (new $command())->execute(Helpers::app('input'), Helpers::app('output')));
 
         info('Sync command executed successfully.');
