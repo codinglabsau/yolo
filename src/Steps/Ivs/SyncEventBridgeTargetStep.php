@@ -20,19 +20,19 @@ class SyncEventBridgeTargetStep implements Step
         $ruleName = SyncEventBridgeRuleStep::ruleName();
         $logGroupName = SyncCloudWatchLogGroupStep::logGroupName();
 
+        $targetExists = false;
+
         try {
             $targets = Aws::eventBridge()->listTargetsByRule([
                 'Rule' => $ruleName,
             ]);
-        } catch (EventBridgeException $e) {
-            return Arr::get($options, 'dry-run')
-                ? StepResult::WOULD_CREATE
-                : StepResult::CREATED;
-        }
 
-        $targetExists = collect($targets['Targets'])->contains(
-            fn ($target) => $target['Id'] === 'ivs-cloudwatch-logs'
-        );
+            $targetExists = collect($targets['Targets'])->contains(
+                fn ($target) => $target['Id'] === 'ivs-cloudwatch-logs'
+            );
+        } catch (EventBridgeException) {
+            // Rule doesn't exist yet — target needs to be created
+        }
 
         if ($targetExists) {
             return StepResult::SYNCED;
