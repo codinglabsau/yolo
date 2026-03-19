@@ -21,8 +21,23 @@ class SyncCloudWatchLogGroupStep implements Step
 
         $name = self::logGroupName();
 
+        $retentionDays = Manifest::get('aws.ivs.log-retention-days', 14);
+
         try {
-            AwsResources::logGroup($name);
+            $logGroup = AwsResources::logGroup($name);
+
+            if (($logGroup['retentionInDays'] ?? null) !== $retentionDays) {
+                if (! Arr::get($options, 'dry-run')) {
+                    Aws::cloudWatchLogs()->putRetentionPolicy([
+                        'logGroupName' => $name,
+                        'retentionInDays' => $retentionDays,
+                    ]);
+
+                    return StepResult::SYNCED;
+                }
+
+                return StepResult::WOULD_SYNC;
+            }
 
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException $e) {
@@ -36,7 +51,7 @@ class SyncCloudWatchLogGroupStep implements Step
 
                 Aws::cloudWatchLogs()->putRetentionPolicy([
                     'logGroupName' => $name,
-                    'retentionInDays' => Manifest::get('aws.ivs.log-retention-days', 14),
+                    'retentionInDays' => $retentionDays,
                 ]);
 
                 return StepResult::CREATED;

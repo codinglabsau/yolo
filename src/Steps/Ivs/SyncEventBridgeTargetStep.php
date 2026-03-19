@@ -7,6 +7,7 @@ use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Aws\EventBridge\Exception\EventBridgeException;
 
 class SyncEventBridgeTargetStep implements Step
 {
@@ -19,9 +20,15 @@ class SyncEventBridgeTargetStep implements Step
         $ruleName = SyncEventBridgeRuleStep::ruleName();
         $logGroupName = SyncCloudWatchLogGroupStep::logGroupName();
 
-        $targets = Aws::eventBridge()->listTargetsByRule([
-            'Rule' => $ruleName,
-        ]);
+        try {
+            $targets = Aws::eventBridge()->listTargetsByRule([
+                'Rule' => $ruleName,
+            ]);
+        } catch (EventBridgeException $e) {
+            return Arr::get($options, 'dry-run')
+                ? StepResult::WOULD_CREATE
+                : StepResult::CREATED;
+        }
 
         $targetExists = collect($targets['Targets'])->contains(
             fn ($target) => $target['Id'] === 'ivs-cloudwatch-logs'

@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Concerns;
 
 use Codinglabs\Yolo\Aws;
+use Aws\EventBridge\Exception\EventBridgeException;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 trait UsesEventBridge
@@ -15,11 +16,11 @@ trait UsesEventBridge
             return static::$eventBridgeRules[$name];
         }
 
-        $result = Aws::eventBridge()->describeRule([
-            'Name' => $name,
-        ]);
-
-        if (empty($result['Name'])) {
+        try {
+            $result = Aws::eventBridge()->describeRule([
+                'Name' => $name,
+            ]);
+        } catch (EventBridgeException $e) {
             throw new ResourceDoesNotExistException("Could not find EventBridge rule with name $name");
         }
 
