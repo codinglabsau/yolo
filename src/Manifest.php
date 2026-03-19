@@ -96,7 +96,7 @@ class Manifest
 
     public static function isIvsSupported(): bool
     {
-        return ! empty(static::get('aws.ivs'));
+        return (bool) static::get('aws.ivs');
     }
 
     /**
