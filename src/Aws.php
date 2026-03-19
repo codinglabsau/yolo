@@ -14,8 +14,8 @@ use Aws\Sts\StsClient;
 use Aws\Route53\Route53Client;
 use Aws\CloudWatch\CloudWatchClient;
 use Aws\CodeDeploy\CodeDeployClient;
-use Aws\EventBridge\EventBridgeClient;
 use Aws\AutoScaling\AutoScalingClient;
+use Aws\EventBridge\EventBridgeClient;
 use Aws\CloudWatchLogs\CloudWatchLogsClient;
 use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
 

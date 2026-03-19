@@ -11,10 +11,10 @@ use Codinglabs\Yolo\Concerns\UsesSqs;
 use Codinglabs\Yolo\Concerns\UsesSsm;
 use Codinglabs\Yolo\Concerns\UsesRoute53;
 use Codinglabs\Yolo\Concerns\UsesCloudWatch;
-use Codinglabs\Yolo\Concerns\UsesCloudWatchLogs;
-use Codinglabs\Yolo\Concerns\UsesEventBridge;
 use Codinglabs\Yolo\Concerns\UsesCodeDeploy;
 use Codinglabs\Yolo\Concerns\UsesAutoscaling;
+use Codinglabs\Yolo\Concerns\UsesEventBridge;
+use Codinglabs\Yolo\Concerns\UsesCloudWatchLogs;
 use Codinglabs\Yolo\Concerns\UsesCertificateManager;
 use Codinglabs\Yolo\Concerns\UsesElasticLoadBalancingV2;
 
@@ -25,9 +25,9 @@ class AwsResources
     use UsesCloudWatch;
     use UsesCloudWatchLogs;
     use UsesCodeDeploy;
-    use UsesEventBridge;
     use UsesEc2;
     use UsesElasticLoadBalancingV2;
+    use UsesEventBridge;
     use UsesIam;
     use UsesRds;
     use UsesRoute53;

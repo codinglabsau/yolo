@@ -19,12 +19,12 @@ use Aws\Route53\Route53Client;
 use Aws\CloudWatch\CloudWatchClient;
 use Aws\CodeDeploy\CodeDeployClient;
 use Aws\AutoScaling\AutoScalingClient;
+use Aws\EventBridge\EventBridgeClient;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Aws\Credentials\CredentialProvider;
 use GuzzleHttp\Exception\ConnectException;
-use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Aws\CloudWatchLogs\CloudWatchLogsClient;
-use Aws\EventBridge\EventBridgeClient;
+use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
 
 trait RegistersAws
