@@ -44,7 +44,6 @@ class Yolo
         Commands\SyncComputeCommand::class,
         Commands\SyncCiCommand::class,
         Commands\SyncIamCommand::class,
-        Commands\SyncIvsCommand::class,
     ];
 
     public function __construct()

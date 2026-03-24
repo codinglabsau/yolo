@@ -98,14 +98,14 @@ class Aws
         return Helpers::app('ec2');
     }
 
-    public static function eventBridge(): EventBridgeClient
-    {
-        return Helpers::app('eventBridge');
-    }
-
     public static function elasticLoadBalancingV2(): ElasticLoadBalancingV2Client
     {
         return Helpers::app('elasticLoadBalancingV2');
+    }
+
+    public static function eventBridge(): EventBridgeClient
+    {
+        return Helpers::app('eventBridge');
     }
 
     public static function iam(): IamClient

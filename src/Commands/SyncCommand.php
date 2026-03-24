@@ -39,9 +39,6 @@ class SyncCommand extends SteppedCommand
             SyncComputeCommand::class,
             SyncCiCommand::class,
             SyncIamCommand::class,
-            ...Manifest::isIvsSupported()
-                ? [SyncIvsCommand::class]
-                : [],
         ])->each(fn ($command) => (new $command())->execute(Helpers::app('input'), Helpers::app('output')));
 
         info('Sync command executed successfully.');

@@ -15,13 +15,17 @@ class SyncCloudWatchLogGroupStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::isIvsSupported()) {
+        if (! Manifest::has('aws.ivs')) {
             return StepResult::SKIPPED;
         }
 
         $name = self::logGroupName();
 
         $retentionDays = Manifest::get('aws.ivs.log-retention-days', 14);
+
+        $region = Manifest::get('aws.region');
+        $accountId = Aws::accountId();
+        $logGroupArn = "arn:aws:logs:{$region}:{$accountId}:log-group:{$name}";
 
         try {
             $logGroup = AwsResources::logGroup($name);
@@ -33,10 +37,16 @@ class SyncCloudWatchLogGroupStep implements Step
                         'retentionInDays' => $retentionDays,
                     ]);
 
+                    self::putResourcePolicy($name, $logGroupArn);
+
                     return StepResult::SYNCED;
                 }
 
                 return StepResult::WOULD_SYNC;
+            }
+
+            if (! Arr::get($options, 'dry-run')) {
+                self::putResourcePolicy($name, $logGroupArn);
             }
 
             return StepResult::SYNCED;
@@ -54,6 +64,8 @@ class SyncCloudWatchLogGroupStep implements Step
                     'retentionInDays' => $retentionDays,
                 ]);
 
+                self::putResourcePolicy($name, $logGroupArn);
+
                 return StepResult::CREATED;
             }
 
@@ -64,5 +76,22 @@ class SyncCloudWatchLogGroupStep implements Step
     public static function logGroupName(): string
     {
         return '/aws/ivs/' . Helpers::keyedResourceName('live-events');
+    }
+
+    private static function putResourcePolicy(string $logGroupName, string $logGroupArn): void
+    {
+        Aws::cloudWatchLogs()->putResourcePolicy([
+            'policyName' => Helpers::keyedResourceName('ivs-eventbridge-policy'),
+            'policyDocument' => json_encode([
+                'Version' => '2012-10-17',
+                'Statement' => [[
+                    'Sid' => 'EventBridgeToCloudWatchLogs',
+                    'Effect' => 'Allow',
+                    'Principal' => ['Service' => 'events.amazonaws.com'],
+                    'Action' => ['logs:CreateLogStream', 'logs:PutLogEvents'],
+                    'Resource' => $logGroupArn . ':*',
+                ]],
+            ]),
+        ]);
     }
 }

@@ -15,6 +15,11 @@ class SyncIamCommand extends SteppedCommand
         Steps\Iam\AttachEc2RoleToInstanceProfileStep::class,
         Steps\Iam\SyncMediaConvertRoleStep::class,
         Steps\Iam\AttachMediaConvertRolePoliciesStep::class,
+
+        // IVS logging pipeline
+        Steps\Ivs\SyncCloudWatchLogGroupStep::class,
+        Steps\Ivs\SyncEventBridgeRuleStep::class,
+        Steps\Ivs\SyncEventBridgeTargetStep::class,
     ];
 
     protected function configure(): void

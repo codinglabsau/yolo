@@ -13,42 +13,40 @@ class SyncEventBridgeTargetStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::isIvsSupported()) {
+        if (! Manifest::has('aws.ivs')) {
             return StepResult::SKIPPED;
         }
 
         $ruleName = SyncEventBridgeRuleStep::ruleName();
         $logGroupName = SyncCloudWatchLogGroupStep::logGroupName();
 
-        $targetExists = false;
+        $region = Manifest::get('aws.region');
+        $accountId = Aws::accountId();
+        $expectedArn = "arn:aws:logs:{$region}:{$accountId}:log-group:{$logGroupName}";
 
         try {
             $targets = Aws::eventBridge()->listTargetsByRule([
                 'Rule' => $ruleName,
             ]);
 
-            $targetExists = collect($targets['Targets'])->contains(
+            $existing = collect($targets['Targets'])->first(
                 fn ($target) => $target['Id'] === 'ivs-cloudwatch-logs'
             );
+
+            if ($existing && $existing['Arn'] === $expectedArn) {
+                return StepResult::SYNCED;
+            }
         } catch (EventBridgeException) {
             // Rule doesn't exist yet — target needs to be created
         }
 
-        if ($targetExists) {
-            return StepResult::SYNCED;
-        }
-
         if (! Arr::get($options, 'dry-run')) {
-            $region = Manifest::get('aws.region');
-            $accountId = Aws::accountId();
-            $logGroupArn = "arn:aws:logs:{$region}:{$accountId}:log-group:{$logGroupName}";
-
             Aws::eventBridge()->putTargets([
                 'Rule' => $ruleName,
                 'Targets' => [
                     [
                         'Id' => 'ivs-cloudwatch-logs',
-                        'Arn' => $logGroupArn,
+                        'Arn' => $expectedArn,
                     ],
                 ],
             ]);

@@ -94,11 +94,6 @@ class Manifest
         return ! empty(static::get('tenants'));
     }
 
-    public static function isIvsSupported(): bool
-    {
-        return (bool) static::get('aws.ivs');
-    }
-
     /**
      * @return array<int, array{
      *     domain: string,

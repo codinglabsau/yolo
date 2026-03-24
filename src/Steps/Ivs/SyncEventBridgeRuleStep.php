@@ -15,7 +15,7 @@ class SyncEventBridgeRuleStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::isIvsSupported()) {
+        if (! Manifest::has('aws.ivs')) {
             return StepResult::SKIPPED;
         }
 
