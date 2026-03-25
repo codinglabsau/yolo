@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Ivs;
+namespace Codinglabs\Yolo\Steps\Logging;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
@@ -11,7 +11,7 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncEventBridgeRuleStep implements Step
+class SyncIvsEventBridgeRuleStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
@@ -30,9 +30,9 @@ class SyncEventBridgeRuleStep implements Step
                     'Description' => 'YOLO managed IVS state change events',
                     'EventPattern' => json_encode(self::eventPattern()),
                     'State' => 'ENABLED',
-                    'Tags' => Aws::tags([
+                    ...Aws::tags([
                         'Name' => $name,
-                    ])['Tags'],
+                    ]),
                 ]);
 
                 return StepResult::SYNCED;
@@ -46,9 +46,9 @@ class SyncEventBridgeRuleStep implements Step
                     'Description' => 'YOLO managed IVS state change events',
                     'EventPattern' => json_encode(self::eventPattern()),
                     'State' => 'ENABLED',
-                    'Tags' => Aws::tags([
+                    ...Aws::tags([
                         'Name' => $name,
-                    ])['Tags'],
+                    ]),
                 ]);
 
                 return StepResult::CREATED;
@@ -67,7 +67,6 @@ class SyncEventBridgeRuleStep implements Step
     {
         return [
             'source' => ['aws.ivs'],
-            'detail-type' => ['IVS Stream State Change'],
         ];
     }
 }

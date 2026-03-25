@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Ivs;
+namespace Codinglabs\Yolo\Steps\Logging;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
@@ -11,7 +11,7 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncCloudWatchLogGroupStep implements Step
+class SyncIvsCloudWatchLogGroupStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
@@ -54,9 +54,7 @@ class SyncCloudWatchLogGroupStep implements Step
             if (! Arr::get($options, 'dry-run')) {
                 Aws::cloudWatchLogs()->createLogGroup([
                     'logGroupName' => $name,
-                    'tags' => Aws::tags([
-                        'Name' => $name,
-                    ], associative: true)['Tags'],
+                    ...Aws::tags(['Name' => $name], wrap: 'tags', associative: true),
                 ]);
 
                 Aws::cloudWatchLogs()->putRetentionPolicy([

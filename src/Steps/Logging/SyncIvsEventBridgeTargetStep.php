@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Ivs;
+namespace Codinglabs\Yolo\Steps\Logging;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
@@ -9,7 +9,7 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Aws\EventBridge\Exception\EventBridgeException;
 
-class SyncEventBridgeTargetStep implements Step
+class SyncIvsEventBridgeTargetStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
@@ -17,8 +17,8 @@ class SyncEventBridgeTargetStep implements Step
             return StepResult::SKIPPED;
         }
 
-        $ruleName = SyncEventBridgeRuleStep::ruleName();
-        $logGroupName = SyncCloudWatchLogGroupStep::logGroupName();
+        $ruleName = SyncIvsEventBridgeRuleStep::ruleName();
+        $logGroupName = SyncIvsCloudWatchLogGroupStep::logGroupName();
 
         $region = Manifest::get('aws.region');
         $accountId = Aws::accountId();
