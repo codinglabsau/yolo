@@ -24,16 +24,18 @@ class SyncIvsEventBridgeTargetStep implements Step
         $accountId = Aws::accountId();
         $expectedArn = "arn:aws:logs:{$region}:{$accountId}:log-group:{$logGroupName}";
 
+        $existingTarget = null;
+
         try {
             $targets = Aws::eventBridge()->listTargetsByRule([
                 'Rule' => $ruleName,
             ]);
 
-            $existing = collect($targets['Targets'])->first(
+            $existingTarget = collect($targets['Targets'])->first(
                 fn ($target) => $target['Id'] === 'ivs-cloudwatch-logs'
             );
 
-            if ($existing && $existing['Arn'] === $expectedArn) {
+            if ($existingTarget && $existingTarget['Arn'] === $expectedArn) {
                 return StepResult::SYNCED;
             }
         } catch (EventBridgeException) {
@@ -51,9 +53,13 @@ class SyncIvsEventBridgeTargetStep implements Step
                 ],
             ]);
 
-            return StepResult::CREATED;
+            return $existingTarget
+                ? StepResult::SYNCED
+                : StepResult::CREATED;
         }
 
-        return StepResult::WOULD_CREATE;
+        return $existingTarget
+            ? StepResult::WOULD_SYNC
+            : StepResult::WOULD_CREATE;
     }
 }
