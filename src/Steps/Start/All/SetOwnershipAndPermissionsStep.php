@@ -13,8 +13,9 @@ class SetOwnershipAndPermissionsStep implements HasSubSteps, RunsOnAws
         $name = Manifest::name();
 
         return [
+            'mkdir -p /var/log/yolo',
             'chown -R ubuntu:ubuntu /home/ubuntu',
-            'test -d /var/log/yolo && chown -R ubuntu:ubuntu /var/log/yolo || true',
+            'chown -R ubuntu:ubuntu /var/log/yolo',
             'chown -R ubuntu:ubuntu /var/www',
             "chmod -R 757 /var/www/$name/storage",
         ];
