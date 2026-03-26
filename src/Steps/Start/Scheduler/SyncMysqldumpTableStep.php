@@ -15,6 +15,10 @@ class SyncMysqldumpTableStep implements RunsOnAwsScheduler
             return StepResult::SKIPPED;
         }
 
+        $databases = Manifest::isMultitenanted()
+            ? implode(' ', array_keys(Manifest::tenants()))
+            : env('DB_DATABASE');
+
         $file = '/home/ubuntu/mysqldump-table.sh';
 
         file_put_contents(
@@ -32,7 +36,7 @@ class SyncMysqldumpTableStep implements RunsOnAwsScheduler
                     env('DB_USERNAME'),
                     env('DB_PASSWORD'),
                     Paths::s3ArtefactsBucket(),
-                    implode(' ', array_keys(Manifest::tenants())),
+                    $databases,
                 ],
                 subject: file_get_contents(Paths::stubs('mysqldump-table.sh.stub'))
             )
