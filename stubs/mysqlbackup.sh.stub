@@ -36,6 +36,12 @@ do
 	  ${DATABASE} \
 	  | nice -10 pbzip2 > ${TMP_FILE}
 
+	if [[ $? -ne 0 ]]; then
+		echo "Failed to dump ${DATABASE}"
+		rm -f ${TMP_FILE}
+		continue
+	fi
+
 	# rename the tmp file to the final dump file
 	mv ${TMP_FILE} ${DUMP_FILE}
 

@@ -27,10 +27,15 @@ for db in {DATABASES}; do
     "$db" "$TABLE" \
     | nice gzip > ${DUMP_DIR}/"${db}_${TABLE}.sql.gz"
 
-  echo "Dumped $db.$TABLE"
+  if [[ $? -ne 0 ]]; then
+    echo "Failed to dump $db.$TABLE"
+    rm -f ${DUMP_DIR}/"${db}_${TABLE}.sql.gz"
+    continue
+  fi
 
   aws s3 cp ${DUMP_DIR}/"${db}_${TABLE}.sql.gz" s3://{AWS_BUCKET}/dumps/manual/
   rm ${DUMP_DIR}/"${db}_${TABLE}.sql.gz"
+  echo "Dumped $db.$TABLE"
 done
 
 echo "Done"
