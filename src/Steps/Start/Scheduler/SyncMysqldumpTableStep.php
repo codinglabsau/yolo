@@ -19,12 +19,16 @@ class SyncMysqldumpTableStep implements RunsOnAwsScheduler
         $file = $dir . '/mysqldump-table.sh';
 
         if (! Manifest::get('mysqldump')) {
-            @unlink($file);
+            if (file_exists($file)) {
+                unlink($file);
+            }
 
             return StepResult::SKIPPED;
         }
 
-        @mkdir($dir, 0755, true);
+        if (! is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
 
         file_put_contents(
             $file,

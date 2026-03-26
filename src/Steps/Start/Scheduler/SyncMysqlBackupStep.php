@@ -20,13 +20,20 @@ class SyncMysqlBackupStep implements RunsOnAwsScheduler
         $cron = sprintf('/etc/cron.d/%s', Helpers::keyedResourceName('mysqlbackup'));
 
         if (! Manifest::get('mysqldump')) {
-            @unlink($file);
-            @unlink($cron);
+            if (file_exists($file)) {
+                unlink($file);
+            }
+
+            if (file_exists($cron)) {
+                unlink($cron);
+            }
 
             return StepResult::SKIPPED;
         }
 
-        @mkdir($dir, 0755, true);
+        if (! is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
 
         file_put_contents(
             $file,
