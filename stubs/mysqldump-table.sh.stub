@@ -1,4 +1,5 @@
 #!/bin/bash
+set -o pipefail
 
 #
 # dump a single table from all tenant databases
