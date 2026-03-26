@@ -44,7 +44,7 @@ class SyncMysqlBackupStep implements RunsOnAwsScheduler
             $file,
             str_replace(
                 search: [
-                    '{APP_DIR}',
+                    '{YOLO_DIR}',
                     '{DB_HOST}',
                     '{DB_USERNAME}',
                     '{DB_PASSWORD}',
