@@ -15,15 +15,18 @@ class SyncMysqlBackupStep implements RunsOnAwsScheduler
 
     public function __invoke(array $options): StepResult
     {
+        $dir = '/home/ubuntu/' . Helpers::keyedResourceName();
+        $file = $dir . '/mysqlbackup.sh';
+        $cron = sprintf('/etc/cron.d/%s', Helpers::keyedResourceName('mysqlbackup'));
+
         if (! Manifest::get('mysqldump')) {
+            @unlink($file);
+            @unlink($cron);
+
             return StepResult::SKIPPED;
         }
 
-        $dir = '/home/ubuntu/' . Helpers::keyedResourceName();
-
         @mkdir($dir, 0755, true);
-
-        $file = $dir . '/mysqlbackup.sh';
 
         file_put_contents(
             $file,
@@ -50,7 +53,7 @@ class SyncMysqlBackupStep implements RunsOnAwsScheduler
 
         // own cron entry for the backup script
         file_put_contents(
-            sprintf('/etc/cron.d/%s', Helpers::keyedResourceName('mysqlbackup')),
+            $cron,
             str_replace('{SCRIPT_PATH}', $file, file_get_contents(Paths::stubs('cron/mysqlbackup.stub')))
         );
 
