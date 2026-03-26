@@ -2,6 +2,7 @@
 
 namespace Codinglabs\Yolo\Steps\Start\All;
 
+use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\RunsOnAws;
 use Codinglabs\Yolo\Contracts\HasSubSteps;
@@ -13,7 +14,8 @@ class SetOwnershipAndPermissionsStep implements HasSubSteps, RunsOnAws
         $name = Manifest::name();
 
         return [
-            'mkdir -p /var/log/yolo',
+            sprintf('mkdir -p %s', Paths::yoloDir()),
+            sprintf('mkdir -p %s', Paths::logDir()),
             'chown -R ubuntu:ubuntu /home/ubuntu',
             'chown -R ubuntu:ubuntu /var/log/yolo',
             'chown -R ubuntu:ubuntu /var/www',

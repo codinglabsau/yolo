@@ -16,10 +16,6 @@ class SyncMysqldumpTableStep implements RunsOnAwsScheduler
         $dir = Paths::yoloDir();
         $file = sprintf('%s/mysqldump-table.sh', $dir);
 
-        if (! is_dir($dir)) {
-            mkdir($dir, 0755, true);
-        }
-
         file_put_contents(
             $file,
             str_replace(

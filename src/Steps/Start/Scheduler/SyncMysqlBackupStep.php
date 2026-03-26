@@ -20,14 +20,6 @@ class SyncMysqlBackupStep implements RunsOnAwsScheduler
         $file = sprintf('%s/mysqlbackup.sh', $dir);
         $cron = sprintf('/etc/cron.d/%s', Helpers::keyedResourceName('mysqlbackup'));
 
-        if (! is_dir($dir)) {
-            mkdir($dir, 0755, true);
-        }
-
-        if (! is_dir($logDir)) {
-            mkdir($logDir, 0755, true);
-        }
-
         file_put_contents(
             $file,
             str_replace(
