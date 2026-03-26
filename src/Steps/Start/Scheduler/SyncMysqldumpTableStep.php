@@ -5,24 +5,18 @@ namespace Codinglabs\Yolo\Steps\Start\Scheduler;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Concerns\ResolvesDatabases;
 use Codinglabs\Yolo\Contracts\RunsOnAwsScheduler;
 
 class SyncMysqldumpTableStep implements RunsOnAwsScheduler
 {
+    use ResolvesDatabases;
+
     public function __invoke(array $options): StepResult
     {
         if (! Manifest::get('mysqldump')) {
             return StepResult::SKIPPED;
         }
-
-        $databases = Manifest::isMultitenanted()
-            ? [
-                env('DB_DATABASE'), // landlord
-                ...array_keys(Manifest::tenants()),
-            ]
-            : [env('DB_DATABASE')];
-
-        $databases = implode(' ', $databases);
 
         $file = '/home/ubuntu/mysqldump-table.sh';
 
@@ -41,7 +35,7 @@ class SyncMysqldumpTableStep implements RunsOnAwsScheduler
                     env('DB_USERNAME'),
                     env('DB_PASSWORD'),
                     Paths::s3ArtefactsBucket(),
-                    $databases,
+                    implode(' ', $this->databases()),
                 ],
                 subject: file_get_contents(Paths::stubs('mysqldump-table.sh.stub'))
             )
