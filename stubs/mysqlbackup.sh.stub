@@ -16,11 +16,8 @@ mkdir -p ${DUMP_DIR}
 find ${DUMP_DIR} -name *.tmp -delete
 find ${DUMP_DIR} -name *.xz -delete
 
-# get the list of dbs to backup, excluding some system ones
-DATABASES=$(mysql -u {DB_USERNAME} -p{DB_PASSWORD} -h {DB_HOST} -rssBe 'show databases' | sed -r '/(tmp|awsdms_control|mysql|information_schema|performance_schema|sys)/d')
-
 # loop databases and backup
-for DATABASE in ${DATABASES}
+for DATABASE in {DATABASES}
 do
     # file to write
 	TMP_FILE=`mktemp ${DUMP_DIR}/${DATABASE}-XXXX.sql.xz.tmp`
