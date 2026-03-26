@@ -8,7 +8,7 @@ set -o pipefail
 # paths & dates
 START_TIME=$(date +%s)
 DATE=`date +%Y-%m-%d`
-DUMP_DIR=/home/ubuntu/dumps
+DUMP_DIR=/home/ubuntu/yolo/dumps
 
 # make sure dumps dir exists
 mkdir -p ${DUMP_DIR}

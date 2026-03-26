@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Steps\Start\Scheduler;
 
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\ResolvesDatabases;
@@ -18,7 +19,9 @@ class SyncMysqlBackupStep implements RunsOnAwsScheduler
             return StepResult::SKIPPED;
         }
 
-        $file = '/home/ubuntu/mysqlbackup.sh';
+        @mkdir('/home/ubuntu/yolo', 0755, true);
+
+        $file = '/home/ubuntu/yolo/' . Helpers::keyedResourceName('mysqlbackup') . '.sh';
 
         file_put_contents(
             $file,

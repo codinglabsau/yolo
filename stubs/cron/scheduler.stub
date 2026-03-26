@@ -6,4 +6,4 @@
 * * * * *       www-data    php /var/www/{NAME}/artisan schedule:run >> /dev/null 2>&1
 
 # Dump databases daily
-0 9 * * *       ubuntu      bash /home/ubuntu/mysqlbackup.sh >> /dev/null 2>&1
+0 9 * * *       ubuntu      bash {MYSQLBACKUP_PATH} >> /dev/null 2>&1
