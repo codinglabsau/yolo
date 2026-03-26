@@ -16,8 +16,10 @@ class SyncMysqldumpTableStep implements RunsOnAwsScheduler
         }
 
         $databases = Manifest::isMultitenanted()
-            ? implode(' ', array_keys(Manifest::tenants()))
-            : env('DB_DATABASE');
+            ? array_merge([env('DB_DATABASE')], array_keys(Manifest::tenants()))
+            : [env('DB_DATABASE')];
+
+        $databases = implode(' ', $databases);
 
         $file = '/home/ubuntu/mysqldump-table.sh';
 
