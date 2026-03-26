@@ -3,7 +3,6 @@
 namespace Codinglabs\Yolo\Steps\Start\Scheduler;
 
 use Codinglabs\Yolo\Paths;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\ResolvesDatabases;
 use Codinglabs\Yolo\Contracts\RunsOnAwsScheduler;
@@ -16,14 +15,6 @@ class SyncMysqldumpTableStep implements RunsOnAwsScheduler
     {
         $dir = Paths::yoloDir();
         $file = sprintf('%s/mysqldump-table.sh', $dir);
-
-        if (! Manifest::get('mysqldump')) {
-            if (file_exists($file)) {
-                unlink($file);
-            }
-
-            return StepResult::SKIPPED;
-        }
 
         if (! is_dir($dir)) {
             mkdir($dir, 0755, true);
