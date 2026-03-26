@@ -19,14 +19,17 @@ class SyncMysqlBackupStep implements RunsOnAwsScheduler
             return StepResult::SKIPPED;
         }
 
-        @mkdir('/home/ubuntu/yolo', 0755, true);
+        $dir = '/home/ubuntu/' . Helpers::keyedResourceName();
 
-        $file = '/home/ubuntu/yolo/' . Helpers::keyedResourceName('mysqlbackup') . '.sh';
+        @mkdir($dir, 0755, true);
+
+        $file = $dir . '/mysqlbackup.sh';
 
         file_put_contents(
             $file,
             str_replace(
                 search: [
+                    '{APP_DIR}',
                     '{DB_HOST}',
                     '{DB_USERNAME}',
                     '{DB_PASSWORD}',
@@ -34,6 +37,7 @@ class SyncMysqlBackupStep implements RunsOnAwsScheduler
                     '{DATABASES}',
                 ],
                 replace: [
+                    $dir,
                     env('DB_REPLICA_HOST', env('DB_HOST')),
                     env('DB_USERNAME'),
                     env('DB_PASSWORD'),
