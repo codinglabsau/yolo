@@ -22,7 +22,6 @@ class SyncMysqldumpTableStep implements RunsOnAwsScheduler
         $dir = '/home/ubuntu/' . Helpers::keyedResourceName();
 
         @mkdir($dir, 0755, true);
-        chown($dir, 'ubuntu');
 
         $file = $dir . '/mysqldump-table.sh';
 
@@ -49,7 +48,6 @@ class SyncMysqldumpTableStep implements RunsOnAwsScheduler
             )
         );
 
-        chown($file, 'ubuntu');
         chmod($file, 0755);
 
         return StepResult::SYNCED;
