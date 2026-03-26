@@ -15,8 +15,8 @@ class SyncMysqlBackupStep implements RunsOnAwsScheduler
 
     public function __invoke(array $options): StepResult
     {
-        $dir = sprintf('/home/ubuntu/yolo/%s', Helpers::keyedResourceName());
-        $logDir = sprintf('/var/log/yolo/%s', Helpers::keyedResourceName());
+        $dir = Paths::yoloDir();
+        $logDir = Paths::logDir();
         $file = sprintf('%s/mysqlbackup.sh', $dir);
         $cron = sprintf('/etc/cron.d/%s', Helpers::keyedResourceName('mysqlbackup'));
 
