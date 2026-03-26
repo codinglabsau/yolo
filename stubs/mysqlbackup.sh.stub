@@ -27,7 +27,7 @@ do
 	DUMP_FILE=${DUMP_DIR}/${DATABASE}.sql.xz
 
 	# dump to tmp file ${DUMP_FILE}
-	mysqldump \
+	nice mysqldump \
 	  -u {DB_USERNAME} \
 	  -p{DB_PASSWORD} \
 	  -h {DB_HOST} \
