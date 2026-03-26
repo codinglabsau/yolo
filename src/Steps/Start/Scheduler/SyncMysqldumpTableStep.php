@@ -15,7 +15,7 @@ class SyncMysqldumpTableStep implements RunsOnAwsScheduler
 
     public function __invoke(array $options): StepResult
     {
-        $dir = '/home/ubuntu/' . Helpers::keyedResourceName();
+        $dir = '/home/ubuntu/yolo/' . Helpers::keyedResourceName();
         $file = $dir . '/mysqldump-table.sh';
 
         if (! Manifest::get('mysqldump')) {
