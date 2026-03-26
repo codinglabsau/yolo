@@ -18,11 +18,9 @@ class SyncSchedulerCronStep implements RunsOnAwsScheduler
             str_replace(
                 search: [
                     '{NAME}',
-                    '{MYSQLBACKUP_PATH}',
                 ],
                 replace: [
                     Manifest::name(),
-                    '/home/ubuntu/yolo/' . Helpers::keyedResourceName('mysqlbackup') . '.sh',
                 ],
                 subject: file_get_contents(Paths::stubs('cron/scheduler.stub'))
             )

@@ -4,6 +4,3 @@
 
 #  Run scheduled app commands. Loops tenants app-side.
 * * * * *       www-data    php /var/www/{NAME}/artisan schedule:run >> /dev/null 2>&1
-
-# Dump databases daily
-0 9 * * *       ubuntu      bash {MYSQLBACKUP_PATH} >> /dev/null 2>&1
