@@ -59,6 +59,16 @@ class Paths
         return 's3://' . static::s3AppBucket() . '/' . static::versionedBuildAssets($appVersion) . '/assets';
     }
 
+    public static function yoloDir(): string
+    {
+        return sprintf('/home/ubuntu/yolo/%s', Helpers::keyedResourceName());
+    }
+
+    public static function logDir(): string
+    {
+        return sprintf('/var/log/yolo/%s', Helpers::keyedResourceName());
+    }
+
     public static function s3ArtefactsBucket(): ?string
     {
         return Manifest::get('aws.artefacts-bucket', Helpers::keyedResourceName('artefacts'));

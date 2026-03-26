@@ -12,7 +12,7 @@ if [[ -z "$TABLE" ]]; then
     exit 1
 fi
 
-DUMP_DIR=/home/ubuntu/dumps
+DUMP_DIR={YOLO_DIR}/dumps
 
 mkdir -p ${DUMP_DIR}
 

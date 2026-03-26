@@ -15,8 +15,6 @@ class SyncBashProfileStep implements RunsOnAws
             file_get_contents(Paths::stubs('.bash_profile.stub'))
         );
 
-        chown('/home/ubuntu/.bash_profile', 'ubuntu');
-
         return StepResult::SYNCED;
     }
 }

@@ -3,7 +3,6 @@
 namespace Codinglabs\Yolo\Steps\Start\Scheduler;
 
 use Codinglabs\Yolo\Paths;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\ResolvesDatabases;
 use Codinglabs\Yolo\Contracts\RunsOnAwsScheduler;
@@ -14,16 +13,14 @@ class SyncMysqldumpTableStep implements RunsOnAwsScheduler
 
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::get('mysqldump')) {
-            return StepResult::SKIPPED;
-        }
-
-        $file = '/home/ubuntu/mysqldump-table.sh';
+        $dir = Paths::yoloDir();
+        $file = sprintf('%s/mysqldump-table.sh', $dir);
 
         file_put_contents(
             $file,
             str_replace(
                 search: [
+                    '{YOLO_DIR}',
                     '{DB_HOST}',
                     '{DB_USERNAME}',
                     '{DB_PASSWORD}',
@@ -31,6 +28,7 @@ class SyncMysqldumpTableStep implements RunsOnAwsScheduler
                     '{DATABASES}',
                 ],
                 replace: [
+                    $dir,
                     env('DB_REPLICA_HOST', env('DB_HOST')),
                     env('DB_USERNAME'),
                     env('DB_PASSWORD'),
@@ -40,9 +38,6 @@ class SyncMysqldumpTableStep implements RunsOnAwsScheduler
                 subject: file_get_contents(Paths::stubs('mysqldump-table.sh.stub'))
             )
         );
-
-        chown($file, 'ubuntu');
-        chmod($file, 0755);
 
         return StepResult::SYNCED;
     }

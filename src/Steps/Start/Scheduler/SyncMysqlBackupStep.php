@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Steps\Start\Scheduler;
 
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\ResolvesDatabases;
@@ -14,16 +15,16 @@ class SyncMysqlBackupStep implements RunsOnAwsScheduler
 
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::get('mysqldump')) {
-            return StepResult::SKIPPED;
-        }
-
-        $file = '/home/ubuntu/mysqlbackup.sh';
+        $dir = Paths::yoloDir();
+        $logDir = Paths::logDir();
+        $file = sprintf('%s/mysqlbackup.sh', $dir);
+        $cron = sprintf('/etc/cron.d/%s', Helpers::keyedResourceName('mysqlbackup'));
 
         file_put_contents(
             $file,
             str_replace(
                 search: [
+                    '{YOLO_DIR}',
                     '{DB_HOST}',
                     '{DB_USERNAME}',
                     '{DB_PASSWORD}',
@@ -31,6 +32,7 @@ class SyncMysqlBackupStep implements RunsOnAwsScheduler
                     '{DATABASES}',
                 ],
                 replace: [
+                    $dir,
                     env('DB_REPLICA_HOST', env('DB_HOST')),
                     env('DB_USERNAME'),
                     env('DB_PASSWORD'),
@@ -41,7 +43,28 @@ class SyncMysqlBackupStep implements RunsOnAwsScheduler
             )
         );
 
-        chown($file, 'ubuntu');
+        if (! Manifest::get('mysqldump')) {
+            if (file_exists($cron)) {
+                unlink($cron);
+            }
+
+            return StepResult::SYNCED;
+        }
+
+        file_put_contents(
+            $cron,
+            str_replace(
+                search: [
+                    '{SCRIPT_PATH}',
+                    '{LOG_PATH}',
+                ],
+                replace: [
+                    $file,
+                    sprintf('%s/mysqlbackup.log', $logDir),
+                ],
+                subject: file_get_contents(Paths::stubs('cron/mysqlbackup.stub'))
+            )
+        );
 
         return StepResult::SYNCED;
     }
