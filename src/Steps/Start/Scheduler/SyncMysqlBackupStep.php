@@ -17,7 +17,7 @@ class SyncMysqlBackupStep implements RunsOnAwsScheduler
 
         $databases = Manifest::isMultitenanted()
             ? [
-                env('DB_DATABASE'),
+                env('DB_DATABASE'), // landlord
                 ...array_keys(Manifest::tenants()),
             ]
             : [env('DB_DATABASE')];
