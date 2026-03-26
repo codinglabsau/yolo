@@ -39,8 +39,6 @@ class SyncMysqldumpTableStep implements RunsOnAwsScheduler
             )
         );
 
-        chmod($file, 0755);
-
         return StepResult::SYNCED;
     }
 }

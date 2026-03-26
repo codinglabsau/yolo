@@ -43,8 +43,6 @@ class SyncMysqlBackupStep implements RunsOnAwsScheduler
             )
         );
 
-        chmod($file, 0755);
-
         if (! Manifest::get('mysqldump')) {
             if (file_exists($cron)) {
                 unlink($cron);
