@@ -22,6 +22,7 @@ class SyncMysqlBackupStep implements RunsOnAwsScheduler
         $dir = '/home/ubuntu/' . Helpers::keyedResourceName();
 
         @mkdir($dir, 0755, true);
+        chown($dir, 'ubuntu');
 
         $file = $dir . '/mysqlbackup.sh';
 
