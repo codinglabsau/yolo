@@ -8,7 +8,7 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\ResolvesDatabases;
 use Codinglabs\Yolo\Contracts\RunsOnAwsScheduler;
 
-class SyncMysqlBackupStep implements RunsOnAwsScheduler
+class SyncMysqldumpTableStep implements RunsOnAwsScheduler
 {
     use ResolvesDatabases;
 
@@ -18,7 +18,7 @@ class SyncMysqlBackupStep implements RunsOnAwsScheduler
             return StepResult::SKIPPED;
         }
 
-        $file = '/home/ubuntu/mysqlbackup.sh';
+        $file = '/home/ubuntu/mysqldump-table.sh';
 
         file_put_contents(
             $file,
@@ -37,11 +37,12 @@ class SyncMysqlBackupStep implements RunsOnAwsScheduler
                     Paths::s3ArtefactsBucket(),
                     implode(' ', $this->databases()),
                 ],
-                subject: file_get_contents(Paths::stubs('mysqlbackup.sh.stub'))
+                subject: file_get_contents(Paths::stubs('mysqldump-table.sh.stub'))
             )
         );
 
         chown($file, 'ubuntu');
+        chmod($file, 0755);
 
         return StepResult::SYNCED;
     }
