@@ -9,6 +9,7 @@ use Symfony\Component\Console\Input\InputArgument;
 class StartCommand extends SteppedCommand implements RunsOnAws
 {
     protected array $steps = [
+        Steps\Start\All\ProvisionDirectoriesStep::class,
         Steps\Start\All\SyncBashProfileStep::class,
         Steps\Start\Scheduler\ExecuteSchedulerDeployStepsStep::class,
         Steps\Start\Queue\ExecuteQueueDeployStepsStep::class,
