@@ -54,9 +54,15 @@ class SyncMysqlBackupStep implements RunsOnAwsScheduler
         file_put_contents(
             $cron,
             str_replace(
-                ['{SCRIPT_PATH}', '{LOG_PATH}'],
-                [$file, sprintf('%s/mysqlbackup.log', $logDir)],
-                file_get_contents(Paths::stubs('cron/mysqlbackup.stub'))
+                search: [
+                    '{SCRIPT_PATH}',
+                    '{LOG_PATH}',
+                ],
+                replace: [
+                    $file,
+                    sprintf('%s/mysqlbackup.log', $logDir),
+                ],
+                subject: file_get_contents(Paths::stubs('cron/mysqlbackup.stub'))
             )
         );
 
