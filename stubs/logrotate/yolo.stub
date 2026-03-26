@@ -1,4 +1,4 @@
-/var/log/yolo/{KEYED_RESOURCE_NAME}/*.log {
+/var/log/yolo/*/*.log {
     su ubuntu ubuntu
     weekly
     missingok

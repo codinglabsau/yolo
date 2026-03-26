@@ -26,16 +26,8 @@ class SyncLogrotateStep implements RunsOnAws
         );
 
         file_put_contents(
-            sprintf('/etc/logrotate.d/%s-yolo', Helpers::keyedResourceName()),
-            str_replace(
-                search: [
-                    '{KEYED_RESOURCE_NAME}',
-                ],
-                replace: [
-                    Helpers::keyedResourceName(),
-                ],
-                subject: file_get_contents(Paths::stubs('logrotate/yolo.stub'))
-            )
+            '/etc/logrotate.d/yolo',
+            file_get_contents(Paths::stubs('logrotate/yolo.stub'))
         );
 
         return StepResult::SYNCED;
