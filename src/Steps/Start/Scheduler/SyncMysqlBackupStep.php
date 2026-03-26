@@ -49,7 +49,7 @@ class SyncMysqlBackupStep implements RunsOnAwsScheduler
         // own cron entry for the backup script
         file_put_contents(
             sprintf('/etc/cron.d/%s', Helpers::keyedResourceName('mysqlbackup')),
-            sprintf("0 9 * * *       ubuntu      bash %s >> /dev/null 2>&1\n", $file)
+            str_replace('{SCRIPT_PATH}', $file, file_get_contents(Paths::stubs('cron/mysqlbackup.stub')))
         );
 
         return StepResult::SYNCED;
