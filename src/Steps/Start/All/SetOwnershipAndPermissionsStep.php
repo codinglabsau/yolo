@@ -14,6 +14,7 @@ class SetOwnershipAndPermissionsStep implements HasSubSteps, RunsOnAws
 
         return [
             'chown -R ubuntu:ubuntu /home/ubuntu',
+            'test -d /var/log/yolo && chown -R ubuntu:ubuntu /var/log/yolo || true',
             'chown -R ubuntu:ubuntu /var/www',
             "chmod -R 757 /var/www/$name/storage",
         ];
