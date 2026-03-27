@@ -21,6 +21,7 @@ class Yolo
         Commands\BuildCommand::class,
         Commands\StopCommand::class,
         Commands\DeployCommand::class,
+        Commands\DeployStatusCommand::class,
         Commands\StartCommand::class,
 
         // Environments
