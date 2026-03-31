@@ -9,12 +9,12 @@ use Symfony\Component\Console\Input\InputArgument;
 class StartCommand extends SteppedCommand implements RunsOnAws
 {
     protected array $steps = [
+        Steps\Start\All\ProvisionDirectoriesStep::class,
         Steps\Start\All\SyncBashProfileStep::class,
         Steps\Start\Scheduler\ExecuteSchedulerDeployStepsStep::class,
         Steps\Start\Queue\ExecuteQueueDeployStepsStep::class,
         Steps\Start\Web\ExecuteWebDeployStepsStep::class,
         Steps\Start\All\ExecuteAllGroupsDeployStepsStep::class,
-        Steps\Start\All\SetOwnershipAndPermissionsStep::class,
         Steps\Start\All\SyncLogrotateStep::class,
         Steps\Start\All\SyncHousekeepingCronStep::class,
         Steps\Start\All\SyncNightwatchAgentStep::class,
@@ -24,8 +24,10 @@ class StartCommand extends SteppedCommand implements RunsOnAws
         Steps\Start\Queue\SyncQueueTenantWorkerStep::class,
         Steps\Start\Web\SyncOctaneStep::class,
         Steps\Start\Scheduler\SyncMysqlBackupStep::class,
+        Steps\Start\Scheduler\SyncMysqldumpTableStep::class,
         Steps\Start\All\SyncPhpConfigurationStep::class,
         Steps\Start\Web\SyncNginxConfigurationStep::class,
+        Steps\Start\All\SetOwnershipAndPermissionsStep::class,
         Steps\Start\All\RestartServicesStep::class,
         Steps\Start\Web\WarmApplicationStep::class,
         Steps\Start\Web\WarmMultitenantedApplicationStep::class,

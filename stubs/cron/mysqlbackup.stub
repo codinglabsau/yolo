@@ -1,0 +1,5 @@
+#
+# cron job for mysql backups
+#
+
+0 9 * * *       ubuntu      bash {SCRIPT_PATH} >> {LOG_PATH} 2>&1

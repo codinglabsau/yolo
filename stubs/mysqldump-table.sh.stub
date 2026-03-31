@@ -1,0 +1,41 @@
+#!/bin/bash
+set -o pipefail
+
+#
+# dump a single table from all tenant databases
+#
+
+TABLE="${1:-}"
+
+if [[ -z "$TABLE" ]]; then
+    echo "Usage: $0 <table_name>"
+    exit 1
+fi
+
+DUMP_DIR={YOLO_DIR}/dumps
+
+mkdir -p ${DUMP_DIR}
+
+for db in {DATABASES}; do
+  nice mysqldump \
+    --single-transaction \
+    --skip-lock-tables \
+    --quick \
+    --host="{DB_HOST}" \
+    --user="{DB_USERNAME}" \
+    --password="{DB_PASSWORD}" \
+    "$db" "$TABLE" \
+    | nice gzip > ${DUMP_DIR}/"${db}_${TABLE}.sql.gz"
+
+  if [[ $? -ne 0 ]]; then
+    echo "Failed to dump $db.$TABLE"
+    rm -f ${DUMP_DIR}/"${db}_${TABLE}.sql.gz"
+    continue
+  fi
+
+  aws s3 cp ${DUMP_DIR}/"${db}_${TABLE}.sql.gz" s3://{AWS_BUCKET}/dumps/manual/
+  rm ${DUMP_DIR}/"${db}_${TABLE}.sql.gz"
+  echo "Dumped $db.$TABLE"
+done
+
+echo "Done"
