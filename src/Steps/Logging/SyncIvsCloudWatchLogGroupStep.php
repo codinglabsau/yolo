@@ -83,7 +83,7 @@ class SyncIvsCloudWatchLogGroupStep implements Step
         $accountId = Aws::accountId();
 
         Aws::cloudWatchLogs()->putResourcePolicy([
-            'policyName' => 'yolo-ivs-eventbridge-policy',
+            'policyName' => Helpers::keyedResourceName('ivs-eventbridge-policy', exclusive: false),
             'policyDocument' => json_encode([
                 'Version' => '2012-10-17',
                 'Statement' => [[
