@@ -60,7 +60,7 @@ class SyncIvsEventBridgeRuleStep implements Step
 
     public static function ruleName(): string
     {
-        return Helpers::keyedResourceName('ivs-state-change');
+        return Helpers::keyedResourceName('ivs-state-change', exclusive: false);
     }
 
     public static function eventPattern(): array

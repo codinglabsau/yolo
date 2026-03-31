@@ -74,7 +74,7 @@ class SyncIvsCloudWatchLogGroupStep implements Step
     public static function logGroupName(): string
     {
         // /aws/ivs/ prefix follows AWS convention for service-specific log groups
-        return '/aws/ivs/' . Helpers::keyedResourceName('live-events');
+        return '/aws/ivs/' . Helpers::keyedResourceName('ivs-logs', exclusive: false);
     }
 
     private static function putResourcePolicy(string $logGroupName, string $logGroupArn): void
