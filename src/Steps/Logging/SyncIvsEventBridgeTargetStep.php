@@ -13,7 +13,7 @@ class SyncIvsEventBridgeTargetStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::has('aws.logging.ivs')) {
+        if (! Manifest::get('aws.logging.ivs')) {
             return StepResult::SKIPPED;
         }
 
