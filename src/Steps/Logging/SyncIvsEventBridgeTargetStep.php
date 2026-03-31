@@ -5,9 +5,10 @@ namespace Codinglabs\Yolo\Steps\Logging;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Aws\EventBridge\Exception\EventBridgeException;
+use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class SyncIvsEventBridgeTargetStep implements Step
 {
@@ -27,18 +28,16 @@ class SyncIvsEventBridgeTargetStep implements Step
         $existingTarget = null;
 
         try {
-            $targets = Aws::eventBridge()->listTargetsByRule([
-                'Rule' => $ruleName,
-            ]);
+            $targets = AwsResources::eventBridgeRuleTargets($ruleName);
 
-            $existingTarget = collect($targets['Targets'])->first(
+            $existingTarget = collect($targets)->first(
                 fn ($target) => $target['Id'] === 'ivs-cloudwatch-logs'
             );
 
             if ($existingTarget && $existingTarget['Arn'] === $expectedArn) {
                 return StepResult::SYNCED;
             }
-        } catch (EventBridgeException) {
+        } catch (ResourceDoesNotExistException) {
             // Rule doesn't exist yet — target needs to be created
         }
 

@@ -28,4 +28,14 @@ trait UsesEventBridge
 
         return static::$eventBridgeRules[$name];
     }
+
+    public static function eventBridgeRuleTargets(string $ruleName): array
+    {
+        // Ensures the rule exists first, throws ResourceDoesNotExistException if not
+        static::eventBridgeRule($ruleName);
+
+        return Aws::eventBridge()->listTargetsByRule([
+            'Rule' => $ruleName,
+        ])['Targets'];
+    }
 }
