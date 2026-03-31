@@ -1,5 +1,10 @@
 # YOLO
 
+[![Test](https://github.com/codinglabsau/yolo/actions/workflows/test.yml/badge.svg)](https://github.com/codinglabsau/yolo/actions/workflows/test.yml)
+[![Analyse](https://github.com/codinglabsau/yolo/actions/workflows/analyse.yml/badge.svg)](https://github.com/codinglabsau/yolo/actions/workflows/analyse.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE.md)
+[![PHP 8.3+](https://img.shields.io/badge/PHP-8.3%2B-777BB4.svg)](https://php.net)
+
 > [!IMPORTANT]
 > This package is in active development - contributions are welcome!
 
