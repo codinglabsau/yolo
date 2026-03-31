@@ -1,33 +1,6 @@
 <?php
 
 use Codinglabs\Yolo\Helpers;
-use Symfony\Component\Yaml\Yaml;
-
-$tempDir = sys_get_temp_dir() . '/yolo-test-helpers';
-
-beforeAll(function () use ($tempDir) {
-    @mkdir($tempDir, 0755, true);
-
-    if (! defined('BASE_PATH')) {
-        define('BASE_PATH', $tempDir);
-    }
-
-    file_put_contents($tempDir . '/yolo.yml', Yaml::dump([
-        'name' => 'my-app',
-        'environments' => [
-            'production' => [],
-        ],
-    ], 10, 2));
-});
-
-beforeEach(function () {
-    Helpers::app()->instance('environment', 'production');
-});
-
-afterAll(function () use ($tempDir) {
-    @unlink($tempDir . '/yolo.yml');
-    @rmdir($tempDir);
-});
 
 describe('keyedResourceName', function () {
     it('generates exclusive name without suffix', function () {
@@ -53,17 +26,6 @@ describe('keyedResourceName', function () {
     it('supports custom separator', function () {
         expect(Helpers::keyedResourceName('queue', seperator: '/'))
             ->toBe('yolo/production/my-app/queue');
-    });
-
-    it('resolves backed enum values', function () {
-        $enum = new class('web')
-        {
-            public function __construct(public string $value) {}
-        };
-
-        // BackedEnum check uses instanceof, so test with a string directly
-        expect(Helpers::keyedResourceName('web'))
-            ->toBe('yolo-production-my-app-web');
     });
 });
 

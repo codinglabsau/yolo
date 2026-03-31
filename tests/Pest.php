@@ -1,5 +1,8 @@
 <?php
 
+use Codinglabs\Yolo\Helpers;
+use Symfony\Component\Yaml\Yaml;
+
 /*
 |--------------------------------------------------------------------------
 | Test Case
@@ -15,18 +18,32 @@
 
 /*
 |--------------------------------------------------------------------------
-| Expectations
+| Bootstrap
 |--------------------------------------------------------------------------
 |
-| When you're writing tests, you often need to check that values meet certain conditions. The
-| "expect()" function gives you access to a set of "expectations" methods that you can use
-| to assert different things. Of course, you may extend the Expectation API at any time.
+| Set up a temporary manifest and environment so tests can use Manifest,
+| Helpers::keyedResourceName(), and other static helpers without touching
+| a real yolo.yml or AWS.
 |
 */
 
-expect()->extend('toBeOne', function () {
-    return $this->toBe(1);
-});
+$tempDir = sys_get_temp_dir() . '/yolo-test';
+
+@mkdir($tempDir, 0755, true);
+
+if (! defined('BASE_PATH')) {
+    define('BASE_PATH', $tempDir);
+}
+
+file_put_contents($tempDir . '/yolo.yml', Yaml::dump([
+    'name' => 'my-app',
+    'environments' => [
+        'production' => [],
+        'testing' => [],
+    ],
+], 10, 2));
+
+Helpers::app()->instance('environment', 'production');
 
 /*
 |--------------------------------------------------------------------------
@@ -39,7 +56,14 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function something()
+function writeManifest(array $config, string $environment = 'production'): void
 {
-    // ..
+    file_put_contents(BASE_PATH . '/yolo.yml', Yaml::dump([
+        'name' => 'my-app',
+        'environments' => [
+            $environment => $config,
+        ],
+    ], 10, 2));
+
+    Helpers::app()->instance('environment', $environment);
 }
