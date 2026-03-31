@@ -5,27 +5,34 @@ use Codinglabs\Yolo\Helpers;
 describe('keyedResourceName', function () {
     it('generates exclusive name without suffix', function () {
         expect(Helpers::keyedResourceName())
-            ->toBe('yolo-production-my-app');
+            ->toBe('yolo-testing-my-app');
     });
 
     it('generates exclusive name with suffix', function () {
         expect(Helpers::keyedResourceName('web'))
-            ->toBe('yolo-production-my-app-web');
+            ->toBe('yolo-testing-my-app-web');
     });
 
     it('generates non-exclusive name without suffix', function () {
         expect(Helpers::keyedResourceName(exclusive: false))
-            ->toBe('yolo-production');
+            ->toBe('yolo-testing');
     });
 
     it('generates non-exclusive name with suffix', function () {
         expect(Helpers::keyedResourceName('ivs-eventbridge-policy', exclusive: false))
-            ->toBe('yolo-production-ivs-eventbridge-policy');
+            ->toBe('yolo-testing-ivs-eventbridge-policy');
     });
 
     it('supports custom separator', function () {
         expect(Helpers::keyedResourceName('queue', seperator: '/'))
-            ->toBe('yolo/production/my-app/queue');
+            ->toBe('yolo/testing/my-app/queue');
+    });
+});
+
+describe('keyedEnvName', function () {
+    it('formats environment variable name', function () {
+        expect(Helpers::keyedEnvName('DB_HOST'))
+            ->toBe('YOLO_TESTING_DB_HOST');
     });
 });
 

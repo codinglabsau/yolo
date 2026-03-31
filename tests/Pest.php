@@ -38,12 +38,11 @@ if (! defined('BASE_PATH')) {
 file_put_contents($tempDir . '/yolo.yml', Yaml::dump([
     'name' => 'my-app',
     'environments' => [
-        'production' => [],
         'testing' => [],
     ],
 ], 10, 2));
 
-Helpers::app()->instance('environment', 'production');
+Helpers::app()->instance('environment', 'testing');
 
 /*
 |--------------------------------------------------------------------------
@@ -56,7 +55,7 @@ Helpers::app()->instance('environment', 'production');
 |
 */
 
-function writeManifest(array $config, string $environment = 'production'): void
+function writeManifest(array $config, string $environment = 'testing'): void
 {
     file_put_contents(BASE_PATH . '/yolo.yml', Yaml::dump([
         'name' => 'my-app',
