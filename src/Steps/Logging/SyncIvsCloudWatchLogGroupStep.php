@@ -79,8 +79,11 @@ class SyncIvsCloudWatchLogGroupStep implements Step
 
     private static function putResourcePolicy(string $logGroupName, string $logGroupArn): void
     {
+        $region = Manifest::get('aws.region');
+        $accountId = Aws::accountId();
+
         Aws::cloudWatchLogs()->putResourcePolicy([
-            'policyName' => Helpers::keyedResourceName('ivs-eventbridge-policy'),
+            'policyName' => 'yolo-ivs-eventbridge-policy',
             'policyDocument' => json_encode([
                 'Version' => '2012-10-17',
                 'Statement' => [[
@@ -88,7 +91,7 @@ class SyncIvsCloudWatchLogGroupStep implements Step
                     'Effect' => 'Allow',
                     'Principal' => ['Service' => 'events.amazonaws.com'],
                     'Action' => ['logs:CreateLogStream', 'logs:PutLogEvents'],
-                    'Resource' => $logGroupArn . ':*',
+                    'Resource' => "arn:aws:logs:{$region}:{$accountId}:log-group:/aws/ivs/*",
                 ]],
             ]),
         ]);
