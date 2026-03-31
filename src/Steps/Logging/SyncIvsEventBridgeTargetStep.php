@@ -28,9 +28,11 @@ class SyncIvsEventBridgeTargetStep implements Step
         $existingTarget = null;
 
         try {
-            $targets = AwsResources::eventBridgeRuleTargets($ruleName);
+            AwsResources::eventBridgeRule($ruleName);
 
-            $existingTarget = collect($targets)->first(
+            $existingTarget = collect(Aws::eventBridge()->listTargetsByRule([
+                'Rule' => $ruleName,
+            ])['Targets'])->first(
                 fn ($target) => $target['Id'] === 'ivs-cloudwatch-logs'
             );
 
