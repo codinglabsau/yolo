@@ -15,23 +15,20 @@ class ConfigureAutoScalingQueueGroupStep implements Step
 
     public function __invoke(array $options): StepResult
     {
+        if (! Manifest::hasServerGroup(ServerGroup::QUEUE)) {
+            return StepResult::SKIPPED;
+        }
+
         if (! Arr::get($options, 'dry-run')) {
-            if (! Manifest::get('aws.autoscaling.combine', false)) {
-                if (Arr::get($options, 'update')) {
-                    static::updateAutoScalingGroup(ServerGroup::QUEUE);
+            if (Arr::get($options, 'update')) {
+                static::updateAutoScalingGroup(ServerGroup::QUEUE);
 
-                    return StepResult::SYNCED;
-                }
-
-                Manifest::put('aws.autoscaling.queue', static::createAutoScalingGroup(ServerGroup::QUEUE));
-
-                return StepResult::CREATED;
+                return StepResult::SYNCED;
             }
 
-            // use the web ASG for the queue
-            Manifest::put('aws.autoscaling.queue', Manifest::get('aws.autoscaling.web'));
+            Manifest::put('aws.autoscaling.queue', static::createAutoScalingGroup(ServerGroup::QUEUE));
 
-            return StepResult::SYNCED;
+            return StepResult::CREATED;
         }
 
         return Arr::get($options, 'update')
