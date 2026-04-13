@@ -23,9 +23,6 @@ environments:
       alb:
       mediaconvert: false
       autoscaling:
-        web:
-        queue:
-        scheduler:
         combine: false
       ec2:
         instance-type: t3.small
@@ -92,6 +89,10 @@ Timezone for app version validation. Defaults to `UTC`. Set this to your team's 
 
 - `without-load-balancing` — Faster deployments, brief downtime during restarts.
 - `with-load-balancing` — Zero-downtime deployments via ALB deregistration. Requires an ALB and target group to be provisioned via `sync:compute`.
+
+### `aws.autoscaling`
+
+The `web`, `queue`, and `scheduler` keys are auto-populated by `yolo stage` with the created autoscaling group names. You don't need to set them manually.
 
 ### `aws.autoscaling.combine`
 
