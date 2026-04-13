@@ -3,6 +3,7 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: 'YOLO',
   description: 'Deploy high-availability Laravel apps to AWS',
+  base: '/yolo/',
 
   head: [
     ['link', { rel: 'icon', href: '/logo.png' }],
