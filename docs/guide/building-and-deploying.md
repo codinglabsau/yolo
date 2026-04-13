@@ -42,6 +42,20 @@ The version must start with `year.week` (e.g. `25.3` for the third week of 2025)
 Because the app version uses UTC by default, you may want to set the `timezone` option in your manifest to your team's timezone to prevent validation errors at the start of the week.
 :::
 
+## Targeted Deploys
+
+Deploy to specific server groups with the `--only` option:
+
+```bash
+# Deploy a hotfix to web only, without restarting queue workers
+yolo deploy production --only web
+
+# Deploy to web and queue, skip scheduler
+yolo deploy production --only web,queue
+```
+
+Groups that are disabled (`false`) or combined will be skipped automatically, even if specified in `--only`.
+
 ## Deployment Status
 
 Track in-progress deployments:
