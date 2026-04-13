@@ -19,7 +19,7 @@ class SyncCodeDeployWebDeploymentGroupStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::get('aws.autoscaling.web')) {
+        if (! Manifest::hasServerGroup(ServerGroup::WEB) || ! Manifest::get('aws.autoscaling.web')) {
             return StepResult::SKIPPED;
         }
 
