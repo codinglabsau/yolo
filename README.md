@@ -1,9 +1,14 @@
-# YOLO
+<p align="center">
+  <img src="art/logo.png" alt="YOLO" height="80">
+</p>
 
-[![Test](https://github.com/codinglabsau/yolo/actions/workflows/test.yml/badge.svg)](https://github.com/codinglabsau/yolo/actions/workflows/test.yml)
-[![Analyse](https://github.com/codinglabsau/yolo/actions/workflows/analyse.yml/badge.svg)](https://github.com/codinglabsau/yolo/actions/workflows/analyse.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE.md)
-[![PHP 8.3+](https://img.shields.io/badge/PHP-8.3%2B-777BB4.svg)](https://php.net)
+<p align="center">
+  <a href="https://github.com/codinglabsau/yolo/actions/workflows/test.yml"><img src="https://github.com/codinglabsau/yolo/actions/workflows/test.yml/badge.svg" alt="Test"></a>
+  <a href="https://github.com/codinglabsau/yolo/actions/workflows/analyse.yml"><img src="https://github.com/codinglabsau/yolo/actions/workflows/analyse.yml/badge.svg" alt="Analyse"></a>
+  <a href="LICENSE.md"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://php.net"><img src="https://img.shields.io/badge/PHP-8.3%2B-777BB4.svg" alt="PHP 8.3+"></a>
+  <a href="https://codinglabsau.github.io/yolo/"><img src="https://img.shields.io/badge/Docs-VitePress-646cff.svg" alt="Docs"></a>
+</p>
 
 > [!IMPORTANT]
 > This package is in active development - contributions are welcome!
