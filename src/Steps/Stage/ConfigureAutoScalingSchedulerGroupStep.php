@@ -15,23 +15,20 @@ class ConfigureAutoScalingSchedulerGroupStep implements Step
 
     public function __invoke(array $options): StepResult
     {
+        if (! Manifest::hasServerGroup(ServerGroup::SCHEDULER)) {
+            return StepResult::SKIPPED;
+        }
+
         if (! Arr::get($options, 'dry-run')) {
-            if (! Manifest::get('aws.autoscaling.combine', false)) {
-                if (Arr::get($options, 'update')) {
-                    static::updateAutoScalingGroup(ServerGroup::SCHEDULER);
+            if (Arr::get($options, 'update')) {
+                static::updateAutoScalingGroup(ServerGroup::SCHEDULER);
 
-                    return StepResult::SYNCED;
-                }
-
-                Manifest::put('aws.autoscaling.scheduler', static::createAutoScalingGroup(ServerGroup::SCHEDULER));
-
-                return StepResult::CREATED;
+                return StepResult::SYNCED;
             }
 
-            // use the web ASG for the scheduler
-            Manifest::put('aws.autoscaling.scheduler', Manifest::get('aws.autoscaling.web'));
+            Manifest::put('aws.autoscaling.scheduler', static::createAutoScalingGroup(ServerGroup::SCHEDULER));
 
-            return StepResult::SYNCED;
+            return StepResult::CREATED;
         }
 
         return Arr::get($options, 'update')

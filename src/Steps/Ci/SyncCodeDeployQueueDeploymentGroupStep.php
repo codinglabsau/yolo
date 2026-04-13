@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Steps\Ci;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -18,6 +19,10 @@ class SyncCodeDeployQueueDeploymentGroupStep implements Step
 
     public function __invoke(array $options): StepResult
     {
+        if (! Manifest::hasServerGroup(ServerGroup::QUEUE)) {
+            return StepResult::SKIPPED;
+        }
+
         try {
             $deploymentGroup = AwsResources::queueDeploymentGroup();
 

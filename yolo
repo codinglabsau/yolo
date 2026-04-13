@@ -8,8 +8,8 @@ file_exists(__DIR__ . '/../../autoload.php')
     ? require __DIR__ . '/../../autoload.php'
     : require __DIR__ . '/vendor/autoload.php';
 
-// path to the app root
-define('BASE_PATH', $_ENV['YOLO_BASE_PATH'] ?? __DIR__ . '/../../../');
+// path to the app root (getcwd handles symlinked path repos where __DIR__ resolves to the package location)
+define('BASE_PATH', $_ENV['YOLO_BASE_PATH'] ?? getcwd());
 
 Dotenv::createImmutable(BASE_PATH)->load();
 
