@@ -9,6 +9,23 @@
 | `deploy <env>` | Build and deploy to AWS |
 | `deploy:status <env>` | Track in-progress deployments |
 
+### Deploy Options
+
+| Option | Description |
+|---|---|
+| `--only <groups>` | Deploy to specific server groups only (comma-separated: `web`, `queue`, `scheduler`) |
+| `--app-version` | Specify the release version |
+
+```bash
+# Deploy only to web instances
+yolo deploy production --only web
+
+# Deploy to web and queue, skip scheduler
+yolo deploy production --only web,queue
+```
+
+The `--only` option respects your manifest's server group configuration — if a group is disabled or combined, it will be skipped even if specified.
+
 ## Infrastructure
 
 | Command | Description |
