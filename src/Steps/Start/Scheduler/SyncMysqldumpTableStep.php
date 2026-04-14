@@ -3,22 +3,18 @@
 namespace Codinglabs\Yolo\Steps\Start\Scheduler;
 
 use Codinglabs\Yolo\Paths;
-use Codinglabs\Yolo\Helpers;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\ResolvesDatabases;
 use Codinglabs\Yolo\Contracts\RunsOnAwsScheduler;
 
-class SyncMysqlBackupStep implements RunsOnAwsScheduler
+class SyncMysqldumpTableStep implements RunsOnAwsScheduler
 {
     use ResolvesDatabases;
 
     public function __invoke(array $options): StepResult
     {
         $dir = Paths::yoloDir();
-        $logDir = Paths::logDir();
-        $file = sprintf('%s/mysqlbackup.sh', $dir);
-        $cron = sprintf('/etc/cron.d/%s', Helpers::keyedResourceName('mysqlbackup'));
+        $file = sprintf('%s/mysqldump-table.sh', $dir);
 
         file_put_contents(
             $file,
@@ -39,30 +35,7 @@ class SyncMysqlBackupStep implements RunsOnAwsScheduler
                     Paths::s3ArtefactsBucket(),
                     implode(' ', $this->databases()),
                 ],
-                subject: file_get_contents(Paths::stubs('mysqlbackup.sh.stub'))
-            )
-        );
-
-        if (! Manifest::get('mysqldump')) {
-            if (file_exists($cron)) {
-                unlink($cron);
-            }
-
-            return StepResult::SYNCED;
-        }
-
-        file_put_contents(
-            $cron,
-            str_replace(
-                search: [
-                    '{SCRIPT_PATH}',
-                    '{LOG_PATH}',
-                ],
-                replace: [
-                    $file,
-                    sprintf('%s/mysqlbackup.log', $logDir),
-                ],
-                subject: file_get_contents(Paths::stubs('cron/mysqlbackup.stub'))
+                subject: file_get_contents(Paths::stubs('mysqldump-table.sh.stub'))
             )
         );
 

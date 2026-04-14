@@ -25,6 +25,11 @@ class SyncLogrotateStep implements RunsOnAws
             )
         );
 
+        file_put_contents(
+            '/etc/logrotate.d/yolo',
+            file_get_contents(Paths::stubs('logrotate/yolo.stub'))
+        );
+
         return StepResult::SYNCED;
     }
 }

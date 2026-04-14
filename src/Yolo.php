@@ -21,6 +21,7 @@ class Yolo
         Commands\BuildCommand::class,
         Commands\StopCommand::class,
         Commands\DeployCommand::class,
+        Commands\DeployStatusCommand::class,
         Commands\StartCommand::class,
 
         // Environments
@@ -44,6 +45,7 @@ class Yolo
         Commands\SyncComputeCommand::class,
         Commands\SyncCiCommand::class,
         Commands\SyncIamCommand::class,
+        Commands\SyncLoggingCommand::class,
     ];
 
     public function __construct()

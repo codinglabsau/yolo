@@ -88,3 +88,20 @@ Traits for AWS service interactions: `UsesEc2`, `UsesIam`, `UsesAutoscaling`, `U
 2. `RunsSteppedCommands` trait handles step execution with progress UI
 3. AWS SDK clients are registered via `RegistersAws` trait based on environment
 4. Multi-tenancy is supported through tenant-aware steps that iterate over `Manifest::tenants()`
+
+### StartCommand Step Ordering
+
+The `start` command runs on AWS instances during CodeDeploy. Step order matters:
+
+1. `ProvisionDirectoriesStep` — creates `~/yolo/{app}/` and `/var/log/yolo/{app}/` (must run first)
+2. File-writing steps — write configs, scripts, cron entries (assume directories exist)
+3. `SetOwnershipAndPermissionsStep` — `chown -R` on `/home/ubuntu`, `/var/log/yolo`, `/var/www` (must run last, after all root-owned files are written)
+4. `RestartServicesStep` → warm → load balancing
+
+### File System Conventions
+
+- `~/yolo/{keyed-resource-name}/` — YOLO working directory per app (scripts, dumps)
+- `/var/log/yolo/{keyed-resource-name}/` — YOLO logs per app
+- `/var/www/{name}/` — Laravel application code
+- `/etc/cron.d/`, `/etc/supervisor/conf.d/`, `/etc/logrotate.d/` — system configs use `keyedResourceName()`
+- `Paths::yoloDir()` and `Paths::logDir()` centralise path construction
