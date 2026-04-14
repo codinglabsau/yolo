@@ -1,0 +1,6 @@
+#
+# cron job for disk health check (all servers)
+#
+
+# gracefully shut down instance if disk usage exceeds 95%
+0 * * * *       root        bash /home/ubuntu/disk-health-check.sh >> /dev/null 2>&1
