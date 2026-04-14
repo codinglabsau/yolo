@@ -45,10 +45,16 @@ class SyncDiskHealthCheckCronStep implements RunsOnAws
 
     private function hasAutoscalingGroup(): bool
     {
-        return (bool) Manifest::get('aws.autoscaling.' . $this->serverGroup()->value);
+        $serverGroup = $this->serverGroup();
+
+        if (! $serverGroup) {
+            return false;
+        }
+
+        return (bool) Manifest::get('aws.autoscaling.' . $serverGroup->value);
     }
 
-    private function serverGroup(): ServerGroup
+    private function serverGroup(): ?ServerGroup
     {
         if (Aws::runningInAwsWebEnvironment()) {
             return ServerGroup::WEB;
@@ -58,6 +64,10 @@ class SyncDiskHealthCheckCronStep implements RunsOnAws
             return ServerGroup::QUEUE;
         }
 
-        return ServerGroup::SCHEDULER;
+        if (Aws::runningInAwsSchedulerEnvironment()) {
+            return ServerGroup::SCHEDULER;
+        }
+
+        return null;
     }
 }
