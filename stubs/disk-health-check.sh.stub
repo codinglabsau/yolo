@@ -1,0 +1,18 @@
+#!/bin/bash
+
+USAGE=$(df / --output=pcent | tail -1 | tr -d ' %')
+
+if [ "$USAGE" -lt 95 ]; then
+    exit 0
+fi
+
+# Stop all yolo-managed apps gracefully before terminating
+for dir in /var/www/*/; do
+    if [ -f "${dir}vendor/bin/yolo" ]; then
+        php "${dir}vendor/bin/yolo" stop {ENVIRONMENT} 2>/dev/null
+    fi
+done
+
+sleep 10
+
+shutdown -h now
