@@ -6,22 +6,12 @@ if [ "$USAGE" -lt 95 ]; then
     exit 0
 fi
 
-# Graceful shutdown — mirrors the yolo stop command
-
-rm -f /etc/cron.d/yolo-*
-
-# Wait for any in-flight scheduled tasks to complete (max 3 minutes)
-ATTEMPTS=0
-while pgrep -f "artisan schedule:run" > /dev/null 2>&1; do
-    if [ "$ATTEMPTS" -ge 36 ]; then
-        break
+# Stop all yolo-managed apps gracefully before terminating
+for dir in /var/www/*/; do
+    if [ -f "${dir}vendor/bin/yolo" ]; then
+        php "${dir}vendor/bin/yolo" stop {ENVIRONMENT} 2>/dev/null
     fi
-    sleep 5
-    ATTEMPTS=$((ATTEMPTS + 1))
 done
-
-supervisorctl stop all 2>/dev/null
-systemctl stop nginx 2>/dev/null
 
 sleep 10
 

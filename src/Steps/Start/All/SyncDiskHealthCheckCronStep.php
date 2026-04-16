@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Steps\Start\All;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\ServerGroup;
@@ -30,7 +31,11 @@ class SyncDiskHealthCheckCronStep implements RunsOnAws
 
         file_put_contents(
             $scriptFile,
-            file_get_contents(Paths::stubs('disk-health-check.sh.stub'))
+            str_replace(
+                search: '{ENVIRONMENT}',
+                replace: Helpers::environment(),
+                subject: file_get_contents(Paths::stubs('disk-health-check.sh.stub'))
+            )
         );
 
         chmod($scriptFile, 0755);
