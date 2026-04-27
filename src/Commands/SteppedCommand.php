@@ -25,6 +25,6 @@ abstract class SteppedCommand extends Command
             info(sprintf('Completed successfully in %ss.', $totalTime));
         }
 
-        return 0;
+        return self::SUCCESS;
     }
 }

@@ -63,7 +63,7 @@ class DeployStatusCommand extends Command
                 || str_contains($row[2], 'Stopped')
         );
 
-        return $hasFailure ? 1 : 0;
+        return $hasFailure ? self::FAILURE : self::SUCCESS;
     }
 
     protected function getDeploymentRows(): array

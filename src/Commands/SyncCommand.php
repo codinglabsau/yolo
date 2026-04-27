@@ -44,6 +44,6 @@ class SyncCommand extends SteppedCommand
 
         info('Sync command executed successfully.');
 
-        return 0;
+        return self::SUCCESS;
     }
 }

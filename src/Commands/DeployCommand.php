@@ -63,6 +63,6 @@ class DeployCommand extends SteppedCommand
             return (new DeployStatusCommand())->execute(Helpers::app('input'), Helpers::app('output'));
         }
 
-        return 0;
+        return self::SUCCESS;
     }
 }

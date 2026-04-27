@@ -42,7 +42,7 @@ class BuildCommand extends SteppedCommand
         if (! str_starts_with($appVersion, $expectedAppVersionPrefix) && ! str_starts_with($appVersion, $expectedAppVersionPrefixAlt)) {
             error(sprintf('App version must start with %s or %s', $expectedAppVersionPrefix, $expectedAppVersionPrefixAlt));
 
-            return 1;
+            return self::FAILURE;
         }
 
         $this->input->setOption('app-version', $appVersion);
