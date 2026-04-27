@@ -43,7 +43,7 @@ class StageCommand extends SteppedCommand
             ->setDescription('Set the stage');
     }
 
-    public function handle(): void
+    public function handle(): int
     {
         $amis = collect(Aws::ec2()->describeImages(['Owners' => ['self']])['Images'])
             ->filter(fn (array $image) => $image['State'] === 'available')
@@ -69,6 +69,6 @@ class StageCommand extends SteppedCommand
             $this->input->setOption('update', ! confirm('The --update option was not provided. This will create new resources. Are you sure?'));
         }
 
-        parent::handle();
+        return parent::handle();
     }
 }
