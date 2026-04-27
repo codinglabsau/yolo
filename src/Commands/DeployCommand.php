@@ -39,10 +39,11 @@ class DeployCommand extends SteppedCommand
             ->addOption('app-version', null, InputOption::VALUE_REQUIRED, 'The app version to tag the build with')
             ->addOption('no-progress', null, InputOption::VALUE_NONE, 'Hide the progress output')
             ->addOption('only', null, InputOption::VALUE_REQUIRED, 'Deploy only to the specified server groups')
+            ->addOption('watch', 'w', InputOption::VALUE_NONE, 'Watch deployments until they complete')
             ->setDescription('Deploy a build of the application to AWS');
     }
 
-    public function handle(): void
+    public function handle(): int
     {
         $reuseBuild = false;
 
@@ -57,5 +58,11 @@ class DeployCommand extends SteppedCommand
         }
 
         parent::handle();
+
+        if ($this->option('watch')) {
+            return (new DeployStatusCommand())->execute(Helpers::app('input'), Helpers::app('output'));
+        }
+
+        return self::SUCCESS;
     }
 }

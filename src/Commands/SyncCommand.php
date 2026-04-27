@@ -21,7 +21,7 @@ class SyncCommand extends SteppedCommand
             ->setDescription('Sync all resources for the given environment');
     }
 
-    public function handle(): void
+    public function handle(): int
     {
         intro('Executing sync commands...');
 
@@ -43,5 +43,7 @@ class SyncCommand extends SteppedCommand
         ])->each(fn ($command) => (new $command())->execute(Helpers::app('input'), Helpers::app('output')));
 
         info('Sync command executed successfully.');
+
+        return self::SUCCESS;
     }
 }

@@ -13,7 +13,7 @@ abstract class SteppedCommand extends Command
 
     protected array $steps;
 
-    public function handle(): void
+    public function handle(): int
     {
         $environment = $this->argument('environment');
 
@@ -24,5 +24,7 @@ abstract class SteppedCommand extends Command
         if (! $this->option('no-progress')) {
             info(sprintf('Completed successfully in %ss.', $totalTime));
         }
+
+        return self::SUCCESS;
     }
 }

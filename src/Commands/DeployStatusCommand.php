@@ -26,8 +26,10 @@ class DeployStatusCommand extends Command
             ->setDescription('Show the status of in-progress and recent deployments');
     }
 
-    public function handle(): void
+    public function handle(): int
     {
+        $rows = [];
+
         do {
             $rows = $this->getDeploymentRows();
 
@@ -55,6 +57,13 @@ class DeployStatusCommand extends Command
             sleep(5);
             $this->output->write("\033[2J\033[H");
         } while (true);
+
+        $hasFailure = collect($rows)->contains(
+            fn ($row) => str_contains($row[2], 'Failed')
+                || str_contains($row[2], 'Stopped')
+        );
+
+        return $hasFailure ? self::FAILURE : self::SUCCESS;
     }
 
     protected function getDeploymentRows(): array
