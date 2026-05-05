@@ -15,7 +15,7 @@ class SyncIvsEventBridgeRuleStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::ivsLoggingEnabled()) {
+        if (! Manifest::ivsEnabled()) {
             return StepResult::SKIPPED;
         }
 
