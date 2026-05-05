@@ -25,10 +25,10 @@ describe('has and get', function () {
     });
 
     it('has returns true even for falsy values', function () {
-        writeManifest(['aws' => ['logging' => ['ivs' => false]]]);
+        writeManifest(['aws' => ['ivs' => false]]);
 
-        expect(Manifest::has('aws.logging.ivs'))->toBeTrue();
-        expect(Manifest::get('aws.logging.ivs'))->toBeFalse();
+        expect(Manifest::has('aws.ivs'))->toBeTrue();
+        expect(Manifest::get('aws.ivs'))->toBeFalse();
     });
 });
 

@@ -15,13 +15,13 @@ class SyncIvsCloudWatchLogGroupStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::get('aws.logging.ivs')) {
+        if (! Manifest::get('aws.ivs')) {
             return StepResult::SKIPPED;
         }
 
         $name = self::logGroupName();
 
-        $retentionDays = Manifest::get('aws.logging.ivs.log-retention-days', 14);
+        $retentionDays = Manifest::get('aws.ivs.log-retention-days', 14);
 
         $region = Manifest::get('aws.region');
         $accountId = Aws::accountId();
