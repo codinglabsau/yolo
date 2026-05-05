@@ -25,7 +25,7 @@ You can also provision resources individually:
 | `yolo sync:compute <env>` | EC2, autoscaling groups |
 | `yolo sync:ci <env>` | CI/CD pipeline |
 | `yolo sync:iam <env>` | IAM roles and policies |
-| `yolo sync:logging <env>` | IVS state-change logging (CloudWatch + EventBridge) |
+| `yolo sync:logging <env>` | Logging and observability infrastructure |
 
 ## Dry Run
 
