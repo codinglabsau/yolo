@@ -94,6 +94,12 @@ class Manifest
         return ! empty(static::get('tenants'));
     }
 
+    public static function ivsLoggingEnabled(): bool
+    {
+        return static::get('aws.ivs') === true
+            || static::get('aws.ivs.logging') === true;
+    }
+
     /**
      * @return array<int, array{
      *     domain: string,

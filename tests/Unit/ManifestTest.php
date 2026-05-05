@@ -95,6 +95,44 @@ describe('multitenancy', function () {
     });
 });
 
+describe('ivsLoggingEnabled', function () {
+    it('is false when aws.ivs is absent', function () {
+        writeManifest([]);
+
+        expect(Manifest::ivsLoggingEnabled())->toBeFalse();
+    });
+
+    it('is true for the boolean shorthand', function () {
+        writeManifest(['aws' => ['ivs' => true]]);
+
+        expect(Manifest::ivsLoggingEnabled())->toBeTrue();
+    });
+
+    it('is false when aws.ivs is explicitly false', function () {
+        writeManifest(['aws' => ['ivs' => false]]);
+
+        expect(Manifest::ivsLoggingEnabled())->toBeFalse();
+    });
+
+    it('is true for the expanded form with logging on', function () {
+        writeManifest(['aws' => ['ivs' => ['logging' => true, 'log-retention-days' => 30]]]);
+
+        expect(Manifest::ivsLoggingEnabled())->toBeTrue();
+    });
+
+    it('is false for the expanded form with logging off', function () {
+        writeManifest(['aws' => ['ivs' => ['logging' => false, 'log-retention-days' => 30]]]);
+
+        expect(Manifest::ivsLoggingEnabled())->toBeFalse();
+    });
+
+    it('is false for the expanded form without a logging key', function () {
+        writeManifest(['aws' => ['ivs' => ['log-retention-days' => 30]]]);
+
+        expect(Manifest::ivsLoggingEnabled())->toBeFalse();
+    });
+});
+
 describe('apex', function () {
     it('returns the apex domain', function () {
         writeManifest(['domain' => 'example.com']);

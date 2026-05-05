@@ -14,7 +14,7 @@ class SyncIvsEventBridgeTargetStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::get('aws.ivs')) {
+        if (! Manifest::ivsLoggingEnabled()) {
             return StepResult::SKIPPED;
         }
 
