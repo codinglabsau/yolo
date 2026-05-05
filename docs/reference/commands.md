@@ -21,7 +21,7 @@
 | `sync:tenant <env>` | Per-tenant resources |
 | `sync:ci <env>` | CI/CD pipeline |
 | `sync:iam <env>` | IAM roles and policies |
-| `sync:logging <env>` | Logging infrastructure |
+| `sync:logging <env>` | Logging and observability infrastructure |
 | `sync:storage <env>` | S3 bucket configuration |
 
 ## Environment

@@ -22,6 +22,7 @@ environments:
       cloudfront:
       alb:
       mediaconvert: false
+      ivs: false
       autoscaling:
         web:
         queue:
@@ -100,6 +101,21 @@ When `true`, consolidates web, queue, and scheduler onto a single EC2 instance. 
 ### `aws.ec2.octane`
 
 Enable experimental Laravel Octane support.
+
+### `aws.ivs`
+
+Set to `true` to provision a CloudWatch log group, EventBridge rule, and target that captures all `aws.ivs` source events for audit and debugging. Logs use a 14-day default retention.
+
+For finer control, expand into a map:
+
+```yaml
+aws:
+  ivs:
+    logging: true
+    log-retention-days: 30
+```
+
+`logging` toggles the EventBridge → CloudWatch pipeline; `log-retention-days` overrides the log retention.
 
 ### `mysqldump`
 

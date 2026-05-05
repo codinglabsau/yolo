@@ -62,6 +62,10 @@ YOLO supports Laravel Octane for turbocharged PHP applications.
 
 YOLO can configure your app environment to utilise video transcoding using AWS Elemental MediaConvert.
 
+### Interactive Video Service (IVS)
+
+AWS IVS is Amazon's managed low-latency live video streaming service. For apps that use IVS, YOLO captures all IVS state-change events to CloudWatch via EventBridge for audit and debugging.
+
 ### And Much More...
 
 - Least priviledge permissions with strong segregation across environments and apps
@@ -150,6 +154,7 @@ The full list of available sync commands are:
 - `yolo sync:compute <environment>` prepares the compute resources
 - `yolo sync:ci <environment>` prepares the continuous integration pipeline
 - `yolo sync:iam <environment>` prepares necessary permissions
+- `yolo sync:logging <environment>` prepares observability infrastructure (e.g. IVS state-change events)
 
 > [!TIP]
 > All sync commands support a `--dry-run` argument; this is a great starting point to see what resources will be created
@@ -238,6 +243,7 @@ environments:
       cloudfront:
       alb:
       mediaconvert: false
+      ivs: false
       autoscaling:
         web:
         queue:
