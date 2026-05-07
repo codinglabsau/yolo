@@ -19,7 +19,7 @@ class SyncIvsStorageConfigurationStep implements Step
             return StepResult::SKIPPED;
         }
 
-        $bucket = Manifest::get('aws.ivs.recording_bucket');
+        $bucket = Manifest::get('aws.ivs.realtime_recording_bucket');
 
         if (! $bucket) {
             return StepResult::SKIPPED;
