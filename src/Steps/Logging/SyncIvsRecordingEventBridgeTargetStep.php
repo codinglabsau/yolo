@@ -26,19 +26,22 @@ class SyncIvsRecordingEventBridgeTargetStep implements Step
             return StepResult::SKIPPED;
         }
 
+        $webhookSecret = Manifest::get('aws.ivs.recording_webhook_secret');
+
+        if (! $webhookSecret) {
+            return StepResult::SKIPPED;
+        }
+
         $ruleName = SyncIvsRecordingEventBridgeRuleStep::ruleName();
         $connectionName = Helpers::keyedResourceName('ivs-recording-webhook-connection');
         $destinationName = Helpers::keyedResourceName('ivs-recording-webhook-destination');
 
-        // Resolve or create the EventBridge Connection (OAUTH_CLIENT_CREDENTIALS with NONE auth
-        // is not supported — use API_KEY with a dummy value for unauthenticated public endpoints)
-        $connectionArn = $this->syncConnection($connectionName, $options);
+        $connectionArn = $this->syncConnection($connectionName, $webhookSecret, $options);
 
         if (! $connectionArn) {
             return StepResult::WOULD_CREATE;
         }
 
-        // Resolve or create the API Destination
         $destinationArn = $this->syncApiDestination($destinationName, $connectionArn, $webhookUrl, $options);
 
         if (! $destinationArn) {
@@ -88,10 +91,25 @@ class SyncIvsRecordingEventBridgeTargetStep implements Step
             : StepResult::WOULD_CREATE;
     }
 
-    private function syncConnection(string $name, array $options): ?string
+    private function syncConnection(string $name, string $secret, array $options): ?string
     {
+        $authParameters = [
+            'ApiKeyAuthParameters' => [
+                'ApiKeyName' => 'X-Webhook-Secret',
+                'ApiKeyValue' => $secret,
+            ],
+        ];
+
         try {
             $connection = Aws::eventBridge()->describeConnection(['Name' => $name]);
+
+            if (! Arr::get($options, 'dry-run')) {
+                Aws::eventBridge()->updateConnection([
+                    'Name' => $name,
+                    'AuthorizationType' => 'API_KEY',
+                    'AuthParameters' => $authParameters,
+                ]);
+            }
 
             return $connection['ConnectionArn'];
         } catch (EventBridgeException) {
@@ -102,18 +120,11 @@ class SyncIvsRecordingEventBridgeTargetStep implements Step
             return null;
         }
 
-        // EventBridge requires an auth type on connections; API_KEY with a placeholder
-        // is the lightest option for unauthenticated public webhook endpoints.
         $result = Aws::eventBridge()->createConnection([
             'Name' => $name,
             'Description' => 'YOLO managed connection for IVS recording webhook',
             'AuthorizationType' => 'API_KEY',
-            'AuthParameters' => [
-                'ApiKeyAuthParameters' => [
-                    'ApiKeyName' => 'X-Yolo-Managed',
-                    'ApiKeyValue' => 'placeholder',
-                ],
-            ],
+            'AuthParameters' => $authParameters,
         ]);
 
         return $result['ConnectionArn'];

@@ -23,6 +23,10 @@ class SyncIvsRecordingEventBridgeRuleStep implements Step
             return StepResult::SKIPPED;
         }
 
+        if (! Manifest::get('aws.ivs.recording_webhook_secret')) {
+            return StepResult::SKIPPED;
+        }
+
         $name = self::ruleName();
 
         try {
