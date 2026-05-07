@@ -12,6 +12,12 @@ class SyncLoggingCommand extends SteppedCommand
         Steps\Logging\SyncIvsCloudWatchLogGroupStep::class,
         Steps\Logging\SyncIvsEventBridgeRuleStep::class,
         Steps\Logging\SyncIvsEventBridgeTargetStep::class,
+
+        // ivs recording
+        Steps\Logging\SyncIvsRecordingConfigurationStep::class,
+        Steps\Logging\SyncIvsStorageConfigurationStep::class,
+        Steps\Logging\SyncIvsRecordingEventBridgeRuleStep::class,
+        Steps\Logging\SyncIvsRecordingEventBridgeTargetStep::class,
     ];
 
     protected function configure(): void
