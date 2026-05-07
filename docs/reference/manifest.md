@@ -117,6 +117,29 @@ aws:
 
 `logging` toggles the EventBridge → CloudWatch pipeline; `log-retention-days` overrides the log retention.
 
+#### IVS recording
+
+Two optional keys enable S3 recording and webhook delivery for both standard IVS channels and IVS Real-Time stages:
+
+```yaml
+aws:
+  ivs:
+    logging: true
+    recording_bucket: your-ivs-channel-recordings-bucket
+    realtime_recording_bucket: your-ivs-realtime-recordings-bucket
+    recording_webhook_url: https://your-api.example.com/webhooks/ivs/recording
+    recording_webhook_secret: your-secret-here
+```
+
+| Key | Description |
+|---|---|
+| `recording_bucket` | S3 bucket for standard IVS channel recordings. Provisions a `RecordingConfiguration` and outputs its ARN for `AWS_IVS_RECORDING_CONFIGURATION_ARN`. |
+| `realtime_recording_bucket` | S3 bucket for IVS Real-Time stage recordings. Provisions a `StorageConfiguration` and outputs its ARN for `AWS_IVS_STORAGE_CONFIGURATION_ARN`. Real-Time recordings are written to the bucket root rather than a structured prefix, so a dedicated bucket is recommended. |
+| `recording_webhook_url` | HTTPS endpoint to receive `IVS Recording State Change` and `IVS Participant Recording State Change` events via EventBridge. |
+| `recording_webhook_secret` | Shared secret sent as the `X-Webhook-Secret` header on every delivery. Generate with `openssl rand -hex 32` and set the same value as `IVS_WEBHOOK_SECRET` in the app's environment. |
+
+All keys are optional — omitting any of them skips the relevant steps without affecting existing resources.
+
 ### `mysqldump`
 
 Enable scheduled MySQL backups via `mysqldump`.
