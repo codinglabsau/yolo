@@ -15,15 +15,11 @@ class SyncIvsRealtimeRecordingEventBridgeRuleStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::ivsEnabled()) {
+        if (! Manifest::ivsRecordingWebhookUrl()) {
             return StepResult::SKIPPED;
         }
 
-        if (! Manifest::get('aws.ivs.recording_webhook_url')) {
-            return StepResult::SKIPPED;
-        }
-
-        if (! Manifest::get('aws.ivs.recording_webhook_secret')) {
+        if (! Manifest::ivsWebhookSecret()) {
             return StepResult::SKIPPED;
         }
 
@@ -76,9 +72,6 @@ class SyncIvsRealtimeRecordingEventBridgeRuleStep implements Step
         return [
             'source' => ['aws.ivs'],
             'detail-type' => ['IVS Participant Recording State Change'],
-            'detail' => [
-                'event_name' => ['Recording End'],
-            ],
         ];
     }
 }

@@ -2,6 +2,7 @@
 
 namespace Codinglabs\Yolo;
 
+use Dotenv\Dotenv;
 use Illuminate\Support\Arr;
 use Symfony\Component\Yaml\Yaml;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
@@ -94,17 +95,31 @@ class Manifest
         return ! empty(static::get('tenants'));
     }
 
-    /**
-     * Returns true when IVS is enabled for the current environment.
-     *
-     * Optional recording-related keys (both require `aws.ivs.logging: true`):
-     *   - `aws.ivs.recording_bucket`      — S3 bucket name for IVS recordings (standard + real-time)
-     *   - `aws.ivs.recording_webhook_url` — HTTPS URL to receive IVS Recording State Change events
-     */
     public static function ivsEnabled(): bool
     {
         return static::get('aws.ivs') === true
             || static::get('aws.ivs.logging') === true;
+    }
+
+    public static function ivsRecordingEnabled(): bool
+    {
+        return ! empty(static::get('aws.ivs.recording'));
+    }
+
+    public static function ivsRecordingWebhookUrl(): ?string
+    {
+        return static::get('aws.ivs.recording.webhook_url');
+    }
+
+    public static function ivsWebhookSecret(): ?string
+    {
+        $envFile = Paths::base('.env.' . Helpers::environment());
+
+        if (! file_exists($envFile)) {
+            return null;
+        }
+
+        return Dotenv::parse(file_get_contents($envFile))['IVS_WEBHOOK_SECRET'] ?? null;
     }
 
     /**

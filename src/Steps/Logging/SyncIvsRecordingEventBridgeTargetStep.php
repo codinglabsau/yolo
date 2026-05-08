@@ -16,17 +16,13 @@ class SyncIvsRecordingEventBridgeTargetStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::ivsEnabled()) {
-            return StepResult::SKIPPED;
-        }
-
-        $webhookUrl = Manifest::get('aws.ivs.recording_webhook_url');
+        $webhookUrl = Manifest::ivsRecordingWebhookUrl();
 
         if (! $webhookUrl) {
             return StepResult::SKIPPED;
         }
 
-        $webhookSecret = Manifest::get('aws.ivs.recording_webhook_secret');
+        $webhookSecret = Manifest::ivsWebhookSecret();
 
         if (! $webhookSecret) {
             return StepResult::SKIPPED;

@@ -15,16 +15,11 @@ class SyncIvsStorageConfigurationStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::ivsEnabled()) {
+        if (! Manifest::ivsRecordingEnabled()) {
             return StepResult::SKIPPED;
         }
 
-        $bucket = Manifest::get('aws.ivs.realtime_recording_bucket');
-
-        if (! $bucket) {
-            return StepResult::SKIPPED;
-        }
-
+        $bucket = SyncIvsRealtimeRecordingBucketStep::bucketName();
         $name = Helpers::keyedResourceName('ivs-storage');
 
         $existing = collect(Aws::ivsRealTime()->listStorageConfigurations()['storageConfigurations'])

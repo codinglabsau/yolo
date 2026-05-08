@@ -15,16 +15,11 @@ class SyncIvsRecordingConfigurationStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::ivsEnabled()) {
+        if (! Manifest::ivsRecordingEnabled()) {
             return StepResult::SKIPPED;
         }
 
-        $bucket = Manifest::get('aws.ivs.recording_bucket');
-
-        if (! $bucket) {
-            return StepResult::SKIPPED;
-        }
-
+        $bucket = SyncIvsRecordingBucketStep::bucketName();
         $name = Helpers::keyedResourceName('ivs-recording');
 
         $existing = collect(Aws::ivs()->listRecordingConfigurations()['recordingConfigurations'])
