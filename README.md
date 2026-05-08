@@ -155,6 +155,7 @@ The full list of available sync commands are:
 - `yolo sync:ci <environment>` prepares the continuous integration pipeline
 - `yolo sync:iam <environment>` prepares necessary permissions
 - `yolo sync:logging <environment>` prepares observability infrastructure (e.g. IVS state-change events)
+- `yolo sync:recording <environment>` prepares IVS recording infrastructure (S3 buckets, RecordingConfiguration, StorageConfiguration, EventBridge rules)
 
 > [!TIP]
 > All sync commands support a `--dry-run` argument; this is a great starting point to see what resources will be created

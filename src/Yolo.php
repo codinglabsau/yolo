@@ -46,6 +46,7 @@ class Yolo
         Commands\SyncCiCommand::class,
         Commands\SyncIamCommand::class,
         Commands\SyncLoggingCommand::class,
+        Commands\SyncRecordingCommand::class,
     ];
 
     public function __construct()

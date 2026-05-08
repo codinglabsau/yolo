@@ -6,4 +6,5 @@ enum Iam: string
 {
     case INSTANCE_PROFILE = 'instance-profile';
     case MEDIA_CONVERT_ROLE = 'mediaconvert-role';
+    case EVENT_BRIDGE_IVS_RECORDING_ROLE = 'eventbridge-ivs-recording-role';
 }

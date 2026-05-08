@@ -15,6 +15,8 @@ class SyncIamCommand extends SteppedCommand
         Steps\Iam\AttachEc2RoleToInstanceProfileStep::class,
         Steps\Iam\SyncMediaConvertRoleStep::class,
         Steps\Iam\AttachMediaConvertRolePoliciesStep::class,
+        Steps\Iam\SyncEventBridgeIvsRecordingRoleStep::class,
+        Steps\Iam\AttachEventBridgeIvsRecordingRolePoliciesStep::class,
     ];
 
     protected function configure(): void

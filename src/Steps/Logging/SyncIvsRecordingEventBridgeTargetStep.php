@@ -49,13 +49,14 @@ class SyncIvsRecordingEventBridgeTargetStep implements Step
         try {
             AwsResources::eventBridgeRule($ruleName);
 
-            $existingTarget = collect(Aws::eventBridge()->listTargetsByRule([
+            $targets = collect(Aws::eventBridge()->listTargetsByRule([
                 'Rule' => $ruleName,
-            ])['Targets'])->first(
-                fn ($target) => $target['Id'] === 'ivs-recording-webhook'
-            );
+            ])['Targets']);
 
-            if ($existingTarget && $existingTarget['Arn'] === $destinationArn) {
+            $existingTarget = $targets->first(fn ($t) => $t['Id'] === 'ivs-recording-webhook');
+            $existingLogTarget = $targets->first(fn ($t) => $t['Id'] === 'ivs-recording-logs');
+
+            if ($existingTarget && $existingTarget['Arn'] === $destinationArn && $existingLogTarget) {
                 return StepResult::SYNCED;
             }
         } catch (ResourceDoesNotExistException) {
@@ -63,16 +64,27 @@ class SyncIvsRecordingEventBridgeTargetStep implements Step
         }
 
         if (! Arr::get($options, 'dry-run')) {
+            $roleArn = AwsResources::eventBridgeIvsRecordingRole()['Arn'];
+            $region = Manifest::get('aws.region');
+            $accountId = Aws::accountId();
+            $logGroupName = SyncIvsRecordingCloudWatchLogGroupStep::logGroupName();
+            $logGroupArn = "arn:aws:logs:{$region}:{$accountId}:log-group:{$logGroupName}";
+
             Aws::eventBridge()->putTargets([
                 'Rule' => $ruleName,
                 'Targets' => [
                     [
                         'Id' => 'ivs-recording-webhook',
                         'Arn' => $destinationArn,
+                        'RoleArn' => $roleArn,
                         'HttpParameters' => [
                             'HeaderParameters' => [],
                             'QueryStringParameters' => [],
                         ],
+                    ],
+                    [
+                        'Id' => 'ivs-recording-logs',
+                        'Arn' => $logGroupArn,
                     ],
                 ],
             ]);

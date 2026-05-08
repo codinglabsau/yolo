@@ -172,4 +172,34 @@ trait UsesIam
             ],
         ];
     }
+
+    public static function eventBridgeIvsRecordingRole(): array
+    {
+        $name = Helpers::keyedResourceName(Iam::EVENT_BRIDGE_IVS_RECORDING_ROLE);
+        $roles = Aws::iam()->listRoles();
+
+        foreach ($roles['Roles'] as $role) {
+            if ($role['RoleName'] === $name) {
+                return $role;
+            }
+        }
+
+        throw new ResourceDoesNotExistException("Could not find IAM role with name $name");
+    }
+
+    public static function eventBridgeIvsRecordingPolicyDocument(): array
+    {
+        return [
+            'Version' => '2012-10-17',
+            'Statement' => [
+                [
+                    'Effect' => 'Allow',
+                    'Principal' => [
+                        'Service' => 'events.amazonaws.com',
+                    ],
+                    'Action' => 'sts:AssumeRole',
+                ],
+            ],
+        ];
+    }
 }

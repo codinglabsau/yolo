@@ -64,7 +64,7 @@ class SyncIvsRealtimeRecordingEventBridgeRuleStep implements Step
 
     public static function ruleName(): string
     {
-        return Helpers::keyedResourceName('ivs-participant-recording-state-change');
+        return Helpers::keyedResourceName('ivs-rt-recording');
     }
 
     public static function eventPattern(): array
