@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Logging;
+namespace Codinglabs\Yolo\Steps\Recording;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
@@ -11,7 +11,7 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncIvsRealtimeRecordingEventBridgeRuleStep implements Step
+class SyncIvsRecordingEventBridgeRuleStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
@@ -31,7 +31,7 @@ class SyncIvsRealtimeRecordingEventBridgeRuleStep implements Step
             if (! Arr::get($options, 'dry-run')) {
                 Aws::eventBridge()->putRule([
                     'Name' => $name,
-                    'Description' => 'YOLO managed IVS Real-Time participant recording state change events',
+                    'Description' => 'YOLO managed IVS recording state change events',
                     'EventPattern' => json_encode(self::eventPattern()),
                     'State' => 'ENABLED',
                     ...Aws::tags([
@@ -43,11 +43,11 @@ class SyncIvsRealtimeRecordingEventBridgeRuleStep implements Step
             }
 
             return StepResult::WOULD_SYNC;
-        } catch (ResourceDoesNotExistException) {
+        } catch (ResourceDoesNotExistException $e) {
             if (! Arr::get($options, 'dry-run')) {
                 Aws::eventBridge()->putRule([
                     'Name' => $name,
-                    'Description' => 'YOLO managed IVS Real-Time participant recording state change events',
+                    'Description' => 'YOLO managed IVS recording state change events',
                     'EventPattern' => json_encode(self::eventPattern()),
                     'State' => 'ENABLED',
                     ...Aws::tags([
@@ -64,14 +64,14 @@ class SyncIvsRealtimeRecordingEventBridgeRuleStep implements Step
 
     public static function ruleName(): string
     {
-        return Helpers::keyedResourceName('ivs-rt-recording');
+        return Helpers::keyedResourceName('ivs-recording-state-change');
     }
 
     public static function eventPattern(): array
     {
         return [
             'source' => ['aws.ivs'],
-            'detail-type' => ['IVS Participant Recording State Change'],
+            'detail-type' => ['IVS Recording State Change'],
         ];
     }
 }

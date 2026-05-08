@@ -8,15 +8,15 @@ use Symfony\Component\Console\Input\InputArgument;
 class SyncRecordingCommand extends SteppedCommand
 {
     protected array $steps = [
-        Steps\Logging\SyncIvsRecordingCloudWatchLogGroupStep::class,
-        Steps\Logging\SyncIvsRecordingBucketStep::class,
-        Steps\Logging\SyncIvsRealtimeRecordingBucketStep::class,
-        Steps\Logging\SyncIvsRecordingConfigurationStep::class,
-        Steps\Logging\SyncIvsStorageConfigurationStep::class,
-        Steps\Logging\SyncIvsRecordingEventBridgeRuleStep::class,
-        Steps\Logging\SyncIvsRecordingEventBridgeTargetStep::class,
-        Steps\Logging\SyncIvsRealtimeRecordingEventBridgeRuleStep::class,
-        Steps\Logging\SyncIvsRealtimeRecordingEventBridgeTargetStep::class,
+        Steps\Recording\SyncIvsRecordingCloudWatchLogGroupStep::class,
+        Steps\Recording\SyncIvsRecordingBucketStep::class,
+        Steps\Recording\SyncIvsRealtimeRecordingBucketStep::class,
+        Steps\Recording\SyncIvsRecordingConfigurationStep::class,
+        Steps\Recording\SyncIvsStorageConfigurationStep::class,
+        Steps\Recording\SyncIvsRecordingEventBridgeRuleStep::class,
+        Steps\Recording\SyncIvsRecordingEventBridgeTargetStep::class,
+        Steps\Recording\SyncIvsRealtimeRecordingEventBridgeRuleStep::class,
+        Steps\Recording\SyncIvsRealtimeRecordingEventBridgeTargetStep::class,
     ];
 
     protected function configure(): void

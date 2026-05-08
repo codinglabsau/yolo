@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Logging;
+namespace Codinglabs\Yolo\Steps\Recording;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;

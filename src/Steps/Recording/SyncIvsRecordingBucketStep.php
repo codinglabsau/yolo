@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Logging;
+namespace Codinglabs\Yolo\Steps\Recording;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
@@ -11,7 +11,7 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncIvsRealtimeRecordingBucketStep implements Step
+class SyncIvsRecordingBucketStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
@@ -43,6 +43,6 @@ class SyncIvsRealtimeRecordingBucketStep implements Step
 
     public static function bucketName(): string
     {
-        return Helpers::keyedResourceName('ivs-realtime-recordings');
+        return Helpers::keyedResourceName('ivs-recordings');
     }
 }
