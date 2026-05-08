@@ -11,10 +11,6 @@ use Codinglabs\Yolo\Enums\StepResult;
 
 class AttachEventBridgeIvsRecordingRolePoliciesStep implements Step
 {
-    protected array $managedPolicies = [
-        'arn:aws:iam::aws:policy/AmazonEventBridgeFullAccess',
-    ];
-
     public function __invoke(array $options): StepResult
     {
         if (! Manifest::ivsRecordingEnabled()) {
@@ -24,12 +20,18 @@ class AttachEventBridgeIvsRecordingRolePoliciesStep implements Step
         if (! Arr::get($options, 'dry-run')) {
             $role = AwsResources::eventBridgeIvsRecordingRole();
 
-            foreach ($this->managedPolicies as $policyArn) {
-                Aws::iam()->attachRolePolicy([
-                    'RoleName' => $role['RoleName'],
-                    'PolicyArn' => $policyArn,
-                ]);
-            }
+            Aws::iam()->putRolePolicy([
+                'RoleName' => $role['RoleName'],
+                'PolicyName' => 'InvokeApiDestination',
+                'PolicyDocument' => json_encode([
+                    'Version' => '2012-10-17',
+                    'Statement' => [[
+                        'Effect' => 'Allow',
+                        'Action' => ['events:InvokeApiDestination'],
+                        'Resource' => '*',
+                    ]],
+                ]),
+            ]);
 
             return StepResult::SYNCED;
         }

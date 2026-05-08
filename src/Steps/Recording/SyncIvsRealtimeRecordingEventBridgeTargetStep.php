@@ -30,8 +30,12 @@ class SyncIvsRealtimeRecordingEventBridgeTargetStep implements Step
         try {
             $destination = Aws::eventBridge()->describeApiDestination(['Name' => $destinationName]);
             $destinationArn = $destination['ApiDestinationArn'];
-        } catch (EventBridgeException) {
-            return StepResult::WOULD_CREATE;
+        } catch (EventBridgeException $e) {
+            if (Arr::get($options, 'dry-run')) {
+                return StepResult::WOULD_CREATE;
+            }
+
+            throw $e;
         }
 
         $existingTarget = null;

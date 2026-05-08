@@ -22,8 +22,13 @@ class SyncIvsRecordingConfigurationStep implements Step
         $bucket = SyncIvsRecordingBucketStep::bucketName();
         $name = Helpers::keyedResourceName('ivs-recording');
 
-        $existing = collect(Aws::ivs()->listRecordingConfigurations()['recordingConfigurations'])
-            ->first(fn ($config) => Arr::get($config, 'destinationConfiguration.s3.bucketName') === $bucket);
+        $response = Aws::ivs()->listRecordingConfigurations();
+        $all = $response['recordingConfigurations'];
+        while ($nextToken = $response['nextToken'] ?? null) {
+            $response = Aws::ivs()->listRecordingConfigurations(['nextToken' => $nextToken]);
+            $all = array_merge($all, $response['recordingConfigurations']);
+        }
+        $existing = collect($all)->first(fn ($config) => Arr::get($config, 'destinationConfiguration.s3.bucketName') === $bucket);
 
         if ($existing) {
             note(sprintf('IVS RecordingConfiguration ARN: %s', $existing['arn']));
@@ -64,6 +69,10 @@ class SyncIvsRecordingConfigurationStep implements Step
 
                     $attempts++;
                 }
+            }
+
+            if ($state !== 'ACTIVE') {
+                note(sprintf('Warning: IVS RecordingConfiguration did not reach ACTIVE state (current: %s) — verify in AWS Console before setting the ARN', $state ?? 'unknown'));
             }
 
             note(sprintf('IVS RecordingConfiguration ARN: %s', $arn));

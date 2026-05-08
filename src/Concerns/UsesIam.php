@@ -178,11 +178,19 @@ trait UsesIam
         $name = Helpers::keyedResourceName(Iam::EVENT_BRIDGE_IVS_RECORDING_ROLE);
         $roles = Aws::iam()->listRoles();
 
-        foreach ($roles['Roles'] as $role) {
-            if ($role['RoleName'] === $name) {
-                return $role;
+        do {
+            foreach ($roles['Roles'] as $role) {
+                if ($role['RoleName'] === $name) {
+                    return $role;
+                }
             }
-        }
+
+            if (! $roles['IsTruncated']) {
+                break;
+            }
+
+            $roles = Aws::iam()->listRoles(['Marker' => $roles['Marker']]);
+        } while (true);
 
         throw new ResourceDoesNotExistException("Could not find IAM role with name $name");
     }
@@ -198,6 +206,11 @@ trait UsesIam
                         'Service' => 'events.amazonaws.com',
                     ],
                     'Action' => 'sts:AssumeRole',
+                    'Condition' => [
+                        'StringEquals' => [
+                            'aws:SourceAccount' => Aws::accountId(),
+                        ],
+                    ],
                 ],
             ],
         ];

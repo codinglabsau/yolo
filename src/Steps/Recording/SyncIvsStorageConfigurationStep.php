@@ -22,8 +22,13 @@ class SyncIvsStorageConfigurationStep implements Step
         $bucket = SyncIvsRealtimeRecordingBucketStep::bucketName();
         $name = Helpers::keyedResourceName('ivs-storage');
 
-        $existing = collect(Aws::ivsRealTime()->listStorageConfigurations()['storageConfigurations'])
-            ->first(fn ($config) => Arr::get($config, 's3.bucketName') === $bucket);
+        $response = Aws::ivsRealTime()->listStorageConfigurations();
+        $all = $response['storageConfigurations'];
+        while ($nextToken = $response['nextToken'] ?? null) {
+            $response = Aws::ivsRealTime()->listStorageConfigurations(['nextToken' => $nextToken]);
+            $all = array_merge($all, $response['storageConfigurations']);
+        }
+        $existing = collect($all)->first(fn ($config) => Arr::get($config, 's3.bucketName') === $bucket);
 
         if ($existing) {
             note(sprintf('IVS StorageConfiguration ARN: %s', $existing['arn']));

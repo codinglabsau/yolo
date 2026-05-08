@@ -133,6 +133,68 @@ describe('ivsEnabled', function () {
     });
 });
 
+describe('ivsRecordingEnabled', function () {
+    it('is false when aws.ivs.recording is absent', function () {
+        writeManifest([]);
+
+        expect(Manifest::ivsRecordingEnabled())->toBeFalse();
+    });
+
+    it('is true for the boolean shorthand', function () {
+        writeManifest(['aws' => ['ivs' => ['recording' => true]]]);
+
+        expect(Manifest::ivsRecordingEnabled())->toBeTrue();
+    });
+
+    it('is false when aws.ivs.recording is explicitly false', function () {
+        writeManifest(['aws' => ['ivs' => ['recording' => false]]]);
+
+        expect(Manifest::ivsRecordingEnabled())->toBeFalse();
+    });
+
+    it('is true for the expanded form with a webhook_url', function () {
+        writeManifest(['aws' => ['ivs' => ['recording' => ['webhook_url' => 'https://example.com/webhook']]]]);
+
+        expect(Manifest::ivsRecordingEnabled())->toBeTrue();
+    });
+
+    it('is false when aws.ivs.recording is null', function () {
+        writeManifest(['aws' => ['ivs' => ['recording' => null]]]);
+
+        expect(Manifest::ivsRecordingEnabled())->toBeFalse();
+    });
+});
+
+describe('ivsWebhookSecret', function () {
+    beforeEach(function () {
+        if (file_exists(BASE_PATH . '/.env.testing')) {
+            unlink(BASE_PATH . '/.env.testing');
+        }
+    });
+
+    afterEach(function () {
+        if (file_exists(BASE_PATH . '/.env.testing')) {
+            unlink(BASE_PATH . '/.env.testing');
+        }
+    });
+
+    it('returns null when the env file does not exist', function () {
+        expect(Manifest::ivsWebhookSecret())->toBeNull();
+    });
+
+    it('returns null when the env file exists but the key is absent', function () {
+        file_put_contents(BASE_PATH . '/.env.testing', "OTHER_KEY=somevalue\n");
+
+        expect(Manifest::ivsWebhookSecret())->toBeNull();
+    });
+
+    it('returns the secret when the env file exists with the key set', function () {
+        file_put_contents(BASE_PATH . '/.env.testing', "IVS_WEBHOOK_SECRET=abc123secret\n");
+
+        expect(Manifest::ivsWebhookSecret())->toBe('abc123secret');
+    });
+});
+
 describe('apex', function () {
     it('returns the apex domain', function () {
         writeManifest(['domain' => 'example.com']);
