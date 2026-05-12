@@ -111,6 +111,27 @@ class Manifest
         return static::get('aws.ivs.recording.webhook_url');
     }
 
+    public static function ivsRealtimeRemuxWebhookUrl(): ?string
+    {
+        return static::get('aws.ivs.recording.realtime_webhook_url');
+    }
+
+    public static function ivsRemuxFfmpegLayerArn(): ?string
+    {
+        return static::get('aws.ivs.recording.ffmpeg_layer_arn');
+    }
+
+    public static function ivsRealtimeMainBucket(): ?string
+    {
+        $envFile = Paths::base('.env.' . Helpers::environment());
+
+        if (! file_exists($envFile)) {
+            return null;
+        }
+
+        return Dotenv::parse(file_get_contents($envFile))['AWS_BUCKET'] ?? null;
+    }
+
     public static function ivsWebhookSecret(): ?string
     {
         $envFile = Paths::base('.env.' . Helpers::environment());

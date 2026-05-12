@@ -15,11 +15,15 @@ class SyncIvsRealtimeRecordingEventBridgeRuleStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::ivsRecordingWebhookUrl()) {
+        if (! Manifest::ivsRealtimeRemuxWebhookUrl()) {
             return StepResult::SKIPPED;
         }
 
         if (! Manifest::ivsWebhookSecret()) {
+            return StepResult::SKIPPED;
+        }
+
+        if (! Manifest::ivsRealtimeMainBucket()) {
             return StepResult::SKIPPED;
         }
 

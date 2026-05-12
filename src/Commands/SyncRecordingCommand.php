@@ -15,6 +15,8 @@ class SyncRecordingCommand extends SteppedCommand
         Steps\Recording\SyncIvsStorageConfigurationStep::class,
         Steps\Recording\SyncIvsRecordingEventBridgeRuleStep::class,
         Steps\Recording\SyncIvsRecordingEventBridgeTargetStep::class,
+        Steps\Recording\SyncIvsRemuxFfmpegLayerStep::class,
+        Steps\Recording\SyncIvsRemuxLambdaStep::class,
         Steps\Recording\SyncIvsRealtimeRecordingEventBridgeRuleStep::class,
         Steps\Recording\SyncIvsRealtimeRecordingEventBridgeTargetStep::class,
     ];

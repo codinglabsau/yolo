@@ -195,6 +195,42 @@ trait UsesIam
         throw new ResourceDoesNotExistException("Could not find IAM role with name $name");
     }
 
+    public static function lambdaIvsRemuxRole(): array
+    {
+        $name = Helpers::keyedResourceName(Iam::LAMBDA_IVS_REMUX_ROLE);
+        $roles = Aws::iam()->listRoles();
+
+        do {
+            foreach ($roles['Roles'] as $role) {
+                if ($role['RoleName'] === $name) {
+                    return $role;
+                }
+            }
+
+            if (! $roles['IsTruncated']) {
+                break;
+            }
+
+            $roles = Aws::iam()->listRoles(['Marker' => $roles['Marker']]);
+        } while (true);
+
+        throw new ResourceDoesNotExistException("Could not find IAM role with name $name");
+    }
+
+    public static function lambdaIvsRemuxPolicyDocument(): array
+    {
+        return [
+            'Version' => '2012-10-17',
+            'Statement' => [
+                [
+                    'Effect' => 'Allow',
+                    'Principal' => ['Service' => 'lambda.amazonaws.com'],
+                    'Action' => 'sts:AssumeRole',
+                ],
+            ],
+        ];
+    }
+
     public static function eventBridgeIvsRecordingPolicyDocument(): array
     {
         return [

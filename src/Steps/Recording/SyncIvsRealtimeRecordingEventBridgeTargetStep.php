@@ -4,19 +4,17 @@ namespace Codinglabs\Yolo\Steps\Recording;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Aws\EventBridge\Exception\EventBridgeException;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class SyncIvsRealtimeRecordingEventBridgeTargetStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::ivsRecordingWebhookUrl()) {
+        if (! Manifest::ivsRealtimeRemuxWebhookUrl()) {
             return StepResult::SKIPPED;
         }
 
@@ -24,21 +22,20 @@ class SyncIvsRealtimeRecordingEventBridgeTargetStep implements Step
             return StepResult::SKIPPED;
         }
 
-        $ruleName = SyncIvsRealtimeRecordingEventBridgeRuleStep::ruleName();
-        $destinationName = Helpers::keyedResourceName('ivs-recording-webhook-destination');
-
-        try {
-            $destination = Aws::eventBridge()->describeApiDestination(['Name' => $destinationName]);
-            $destinationArn = $destination['ApiDestinationArn'];
-        } catch (EventBridgeException $e) {
-            if (Arr::get($options, 'dry-run')) {
-                return StepResult::WOULD_CREATE;
-            }
-
-            throw $e;
+        if (! Manifest::ivsRealtimeMainBucket()) {
+            return StepResult::SKIPPED;
         }
 
+        $ruleName = SyncIvsRealtimeRecordingEventBridgeRuleStep::ruleName();
+        $region = Manifest::get('aws.region');
+        $accountId = Aws::accountId();
+        $functionName = SyncIvsRemuxLambdaStep::functionName();
+        $lambdaArn = "arn:aws:lambda:{$region}:{$accountId}:function:{$functionName}";
+        $logGroupName = SyncIvsRecordingCloudWatchLogGroupStep::logGroupName();
+        $logGroupArn = "arn:aws:logs:{$region}:{$accountId}:log-group:{$logGroupName}";
+
         $existingTarget = null;
+        $hasOldWebhookTarget = false;
 
         try {
             AwsResources::eventBridgeRule($ruleName);
@@ -47,10 +44,18 @@ class SyncIvsRealtimeRecordingEventBridgeTargetStep implements Step
                 'Rule' => $ruleName,
             ])['Targets']);
 
-            $existingTarget = $targets->first(fn ($t) => $t['Id'] === 'ivs-recording-webhook');
+            $existingTarget = $targets->first(fn ($t) => $t['Id'] === 'ivs-realtime-remux');
             $existingLogTarget = $targets->first(fn ($t) => $t['Id'] === 'ivs-recording-logs');
+            $hasOldWebhookTarget = $targets->contains(fn ($t) => $t['Id'] === 'ivs-recording-webhook');
 
-            if ($existingTarget && $existingTarget['Arn'] === $destinationArn && $existingLogTarget) {
+            if ($existingTarget && $existingTarget['Arn'] === $lambdaArn && $existingLogTarget) {
+                if ($hasOldWebhookTarget && ! Arr::get($options, 'dry-run')) {
+                    Aws::eventBridge()->removeTargets([
+                        'Rule' => $ruleName,
+                        'Ids' => ['ivs-recording-webhook'],
+                    ]);
+                }
+
                 return StepResult::SYNCED;
             }
         } catch (ResourceDoesNotExistException) {
@@ -58,23 +63,19 @@ class SyncIvsRealtimeRecordingEventBridgeTargetStep implements Step
         }
 
         if (! Arr::get($options, 'dry-run')) {
-            $roleArn = AwsResources::eventBridgeIvsRecordingRole()['Arn'];
-            $region = Manifest::get('aws.region');
-            $accountId = Aws::accountId();
-            $logGroupName = SyncIvsRecordingCloudWatchLogGroupStep::logGroupName();
-            $logGroupArn = "arn:aws:logs:{$region}:{$accountId}:log-group:{$logGroupName}";
+            if ($hasOldWebhookTarget) {
+                Aws::eventBridge()->removeTargets([
+                    'Rule' => $ruleName,
+                    'Ids' => ['ivs-recording-webhook'],
+                ]);
+            }
 
             Aws::eventBridge()->putTargets([
                 'Rule' => $ruleName,
                 'Targets' => [
                     [
-                        'Id' => 'ivs-recording-webhook',
-                        'Arn' => $destinationArn,
-                        'RoleArn' => $roleArn,
-                        'HttpParameters' => [
-                            'HeaderParameters' => [],
-                            'QueryStringParameters' => [],
-                        ],
+                        'Id' => 'ivs-realtime-remux',
+                        'Arn' => $lambdaArn,
                     ],
                     [
                         'Id' => 'ivs-recording-logs',
