@@ -101,16 +101,6 @@ class Manifest
             || static::get('aws.ivs.logging') === true;
     }
 
-    public static function ivsRecordingEnabled(): bool
-    {
-        return ! empty(static::get('aws.ivs.recording'));
-    }
-
-    public static function ivsRecordingWebhookUrl(): ?string
-    {
-        return static::get('aws.ivs.recording.low_latency.webhook_url');
-    }
-
     public static function ivsRealtimeWebhookUrl(): ?string
     {
         return static::get('aws.ivs.recording.real_time.webhook_url');

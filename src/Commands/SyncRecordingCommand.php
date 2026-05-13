@@ -8,13 +8,8 @@ use Symfony\Component\Console\Input\InputArgument;
 class SyncRecordingCommand extends SteppedCommand
 {
     protected array $steps = [
-        Steps\Recording\SyncIvsRecordingCloudWatchLogGroupStep::class,
-        Steps\Recording\SyncIvsRecordingBucketStep::class,
         Steps\Recording\SyncIvsRealtimeRecordingBucketStep::class,
-        Steps\Recording\SyncIvsRecordingConfigurationStep::class,
         Steps\Recording\SyncIvsStorageConfigurationStep::class,
-        Steps\Recording\SyncIvsRecordingEventBridgeRuleStep::class,
-        Steps\Recording\SyncIvsRecordingEventBridgeTargetStep::class,
         Steps\Recording\SyncIvsRemuxFfmpegLayerStep::class,
         Steps\Recording\SyncIvsRemuxLambdaStep::class,
         Steps\Recording\SyncIvsRealtimeRecordingEventBridgeRuleStep::class,

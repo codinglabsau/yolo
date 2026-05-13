@@ -133,38 +133,6 @@ describe('ivsEnabled', function () {
     });
 });
 
-describe('ivsRecordingEnabled', function () {
-    it('is false when aws.ivs.recording is absent', function () {
-        writeManifest([]);
-
-        expect(Manifest::ivsRecordingEnabled())->toBeFalse();
-    });
-
-    it('is true for the boolean shorthand', function () {
-        writeManifest(['aws' => ['ivs' => ['recording' => true]]]);
-
-        expect(Manifest::ivsRecordingEnabled())->toBeTrue();
-    });
-
-    it('is false when aws.ivs.recording is explicitly false', function () {
-        writeManifest(['aws' => ['ivs' => ['recording' => false]]]);
-
-        expect(Manifest::ivsRecordingEnabled())->toBeFalse();
-    });
-
-    it('is true for the expanded form with a webhook_url', function () {
-        writeManifest(['aws' => ['ivs' => ['recording' => ['webhook_url' => 'https://example.com/webhook']]]]);
-
-        expect(Manifest::ivsRecordingEnabled())->toBeTrue();
-    });
-
-    it('is false when aws.ivs.recording is null', function () {
-        writeManifest(['aws' => ['ivs' => ['recording' => null]]]);
-
-        expect(Manifest::ivsRecordingEnabled())->toBeFalse();
-    });
-});
-
 describe('ivsWebhookSecret', function () {
     beforeEach(function () {
         if (file_exists(BASE_PATH . '/.env.testing')) {

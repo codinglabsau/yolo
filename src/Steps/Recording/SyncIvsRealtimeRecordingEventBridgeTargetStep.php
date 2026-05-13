@@ -3,7 +3,6 @@
 namespace Codinglabs\Yolo\Steps\Recording;
 
 use Codinglabs\Yolo\Aws;
-use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
@@ -27,7 +26,6 @@ class SyncIvsRealtimeRecordingEventBridgeTargetStep implements Step
         $logGroupArn = "arn:aws:logs:{$region}:{$accountId}:log-group:{$logGroupName}";
 
         $existingTarget = null;
-        $hasOldWebhookTarget = false;
 
         try {
             AwsResources::eventBridgeRule($ruleName);
@@ -38,16 +36,8 @@ class SyncIvsRealtimeRecordingEventBridgeTargetStep implements Step
 
             $existingTarget = $targets->first(fn ($t) => $t['Id'] === 'ivs-realtime-remux');
             $existingLogTarget = $targets->first(fn ($t) => $t['Id'] === 'ivs-recording-logs');
-            $hasOldWebhookTarget = $targets->contains(fn ($t) => $t['Id'] === 'ivs-recording-webhook');
 
             if ($existingTarget && $existingTarget['Arn'] === $lambdaArn && $existingLogTarget) {
-                if ($hasOldWebhookTarget && ! Arr::get($options, 'dry-run')) {
-                    Aws::eventBridge()->removeTargets([
-                        'Rule' => $ruleName,
-                        'Ids' => ['ivs-recording-webhook'],
-                    ]);
-                }
-
                 return StepResult::SYNCED;
             }
         } catch (ResourceDoesNotExistException) {
@@ -55,13 +45,6 @@ class SyncIvsRealtimeRecordingEventBridgeTargetStep implements Step
         }
 
         if (! Arr::get($options, 'dry-run')) {
-            if ($hasOldWebhookTarget) {
-                Aws::eventBridge()->removeTargets([
-                    'Rule' => $ruleName,
-                    'Ids' => ['ivs-recording-webhook'],
-                ]);
-            }
-
             Aws::eventBridge()->putTargets([
                 'Rule' => $ruleName,
                 'Targets' => [
