@@ -116,11 +116,6 @@ class Manifest
         return static::get('aws.ivs.recording.real_time.webhook_url');
     }
 
-    public static function ivsRemuxFfmpegLayerArn(): ?string
-    {
-        return static::get('aws.ivs.recording.real_time.ffmpeg_layer_arn');
-    }
-
     public static function ivsRealtimeMainBucket(): ?string
     {
         $envFile = Paths::base('.env.' . Helpers::environment());

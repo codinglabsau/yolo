@@ -10,6 +10,7 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Aws\Lambda\Exception\LambdaException;
 
 use function Laravel\Prompts\note;
 
@@ -24,7 +25,7 @@ class SyncIvsRemuxFfmpegLayerStep implements Step
             return StepResult::SKIPPED;
         }
 
-        if (Manifest::ivsRemuxFfmpegLayerArn()) {
+        if (self::latestLayerArn()) {
             return StepResult::SYNCED;
         }
 
@@ -78,13 +79,26 @@ class SyncIvsRemuxFfmpegLayerStep implements Step
             Aws::s3()->deleteObject(['Bucket' => $bucket, 'Key' => $s3Key]);
         }
 
-        $layerVersionArn = $result['LayerVersionArn'];
-
-        Manifest::put('aws.ivs.recording.real_time.ffmpeg_layer_arn', $layerVersionArn);
-
-        note(sprintf('FFmpeg layer ARN saved to yolo.yml: %s', $layerVersionArn));
+        note(sprintf('FFmpeg layer published: %s', $result['LayerVersionArn']));
 
         return StepResult::CREATED;
+    }
+
+    public static function latestLayerArn(): ?string
+    {
+        $layerName = Helpers::keyedResourceName('ffmpeg-layer');
+
+        try {
+            $versions = Aws::lambda()->listLayerVersions(['LayerName' => $layerName])['LayerVersions'];
+        } catch (LambdaException $e) {
+            if ($e->getAwsErrorCode() === 'ResourceNotFoundException') {
+                return null;
+            }
+
+            throw $e;
+        }
+
+        return $versions[0]['LayerVersionArn'] ?? null;
     }
 
     private function buildLayerZip(string $ffmpegBin): string

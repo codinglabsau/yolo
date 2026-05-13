@@ -22,10 +22,6 @@ class SyncIvsRemuxLambdaStep implements Step
             return StepResult::SKIPPED;
         }
 
-        if (! Manifest::ivsRealtimeWebhookUrl()) {
-            return StepResult::SKIPPED;
-        }
-
         if (! Manifest::ivsWebhookSecret()) {
             return StepResult::SKIPPED;
         }
@@ -34,8 +30,8 @@ class SyncIvsRemuxLambdaStep implements Step
             return StepResult::SKIPPED;
         }
 
-        if (! Manifest::ivsRemuxFfmpegLayerArn()) {
-            note('Warning: aws.ivs.recording.ffmpeg_layer_arn is not set — Lambda will be deployed without the FFmpeg layer and will fail at runtime.');
+        if (! SyncIvsRemuxFfmpegLayerStep::latestLayerArn()) {
+            note('Warning: FFmpeg layer not found — deploy sync:recording first. Lambda will be deployed without the FFmpeg layer and will fail at runtime.');
         }
 
         $functionName = self::functionName();
@@ -112,7 +108,7 @@ class SyncIvsRemuxLambdaStep implements Step
 
     private function layers(): array
     {
-        $layerArn = Manifest::ivsRemuxFfmpegLayerArn();
+        $layerArn = SyncIvsRemuxFfmpegLayerStep::latestLayerArn();
 
         return $layerArn ? [$layerArn] : [];
     }
