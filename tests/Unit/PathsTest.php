@@ -35,11 +35,15 @@ describe('path building', function () {
     });
 
     it('builds yolo dir for aws instances', function () {
+        writeManifest([]);
+
         expect(Paths::yoloDir())
             ->toBe('/home/ubuntu/yolo/yolo-testing-my-app');
     });
 
     it('builds log dir for aws instances', function () {
+        writeManifest([]);
+
         expect(Paths::logDir())
             ->toBe('/var/log/yolo/yolo-testing-my-app');
     });
