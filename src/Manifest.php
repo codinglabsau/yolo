@@ -2,7 +2,6 @@
 
 namespace Codinglabs\Yolo;
 
-use Dotenv\Dotenv;
 use Illuminate\Support\Arr;
 use Symfony\Component\Yaml\Yaml;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
@@ -104,28 +103,6 @@ class Manifest
     public static function ivsRealtimeWebhookUrl(): ?string
     {
         return static::get('aws.ivs.recording.real_time.webhook_url');
-    }
-
-    public static function ivsRealtimeMainBucket(): ?string
-    {
-        $envFile = Paths::base('.env.' . Helpers::environment());
-
-        if (! file_exists($envFile)) {
-            return null;
-        }
-
-        return Dotenv::parse(file_get_contents($envFile))['AWS_BUCKET'] ?? null;
-    }
-
-    public static function ivsWebhookSecret(): ?string
-    {
-        $envFile = Paths::base('.env.' . Helpers::environment());
-
-        if (! file_exists($envFile)) {
-            return null;
-        }
-
-        return Dotenv::parse(file_get_contents($envFile))['IVS_WEBHOOK_SECRET'] ?? null;
     }
 
     /**

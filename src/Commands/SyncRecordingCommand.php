@@ -10,10 +10,7 @@ class SyncRecordingCommand extends SteppedCommand
     protected array $steps = [
         Steps\Recording\SyncIvsRealtimeRecordingBucketStep::class,
         Steps\Recording\SyncIvsStorageConfigurationStep::class,
-        Steps\Recording\SyncIvsRemuxFfmpegLayerStep::class,
-        Steps\Recording\SyncIvsRemuxLambdaStep::class,
-        Steps\Recording\SyncIvsRealtimeRecordingEventBridgeRuleStep::class,
-        Steps\Recording\SyncIvsRealtimeRecordingEventBridgeTargetStep::class,
+        Steps\Recording\SyncIvsEncoderConfigurationStep::class,
     ];
 
     protected function configure(): void

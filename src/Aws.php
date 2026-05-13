@@ -12,7 +12,6 @@ use Aws\Sns\SnsClient;
 use Aws\Sqs\SqsClient;
 use Aws\Ssm\SsmClient;
 use Aws\Sts\StsClient;
-use Aws\Lambda\LambdaClient;
 use Aws\Route53\Route53Client;
 use Aws\CloudWatch\CloudWatchClient;
 use Aws\CodeDeploy\CodeDeployClient;
@@ -114,11 +113,6 @@ class Aws
     public static function iam(): IamClient
     {
         return Helpers::app('iam');
-    }
-
-    public static function lambda(): LambdaClient
-    {
-        return Helpers::app('lambda');
     }
 
     public static function ivs(): IVSClient

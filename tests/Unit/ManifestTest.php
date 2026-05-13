@@ -133,36 +133,6 @@ describe('ivsEnabled', function () {
     });
 });
 
-describe('ivsWebhookSecret', function () {
-    beforeEach(function () {
-        if (file_exists(BASE_PATH . '/.env.testing')) {
-            unlink(BASE_PATH . '/.env.testing');
-        }
-    });
-
-    afterEach(function () {
-        if (file_exists(BASE_PATH . '/.env.testing')) {
-            unlink(BASE_PATH . '/.env.testing');
-        }
-    });
-
-    it('returns null when the env file does not exist', function () {
-        expect(Manifest::ivsWebhookSecret())->toBeNull();
-    });
-
-    it('returns null when the env file exists but the key is absent', function () {
-        file_put_contents(BASE_PATH . '/.env.testing', "OTHER_KEY=somevalue\n");
-
-        expect(Manifest::ivsWebhookSecret())->toBeNull();
-    });
-
-    it('returns the secret when the env file exists with the key set', function () {
-        file_put_contents(BASE_PATH . '/.env.testing', "IVS_WEBHOOK_SECRET=abc123secret\n");
-
-        expect(Manifest::ivsWebhookSecret())->toBe('abc123secret');
-    });
-});
-
 describe('apex', function () {
     it('returns the apex domain', function () {
         writeManifest(['domain' => 'example.com']);

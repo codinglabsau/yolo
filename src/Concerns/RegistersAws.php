@@ -14,7 +14,6 @@ use Aws\Ssm\SsmClient;
 use Aws\Sts\StsClient;
 use GuzzleHttp\Client;
 use Codinglabs\Yolo\Aws;
-use Aws\Lambda\LambdaClient;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Aws\Route53\Route53Client;
@@ -52,7 +51,6 @@ trait RegistersAws
         Helpers::app()->singleton('elasticLoadBalancingV2', fn () => new ElasticLoadBalancingV2Client($arguments));
         Helpers::app()->singleton('iam', fn () => new IamClient($arguments));
         Helpers::app()->singleton('ivs', fn () => new IVSClient($arguments));
-        Helpers::app()->singleton('lambda', fn () => new LambdaClient($arguments));
         Helpers::app()->singleton('ivsRealTime', fn () => new IVSRealTimeClient($arguments));
         Helpers::app()->singleton('rds', fn () => new RdsClient($arguments));
         Helpers::app()->singleton('route53', fn () => new Route53Client($arguments));
