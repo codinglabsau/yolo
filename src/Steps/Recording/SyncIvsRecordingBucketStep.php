@@ -15,7 +15,7 @@ class SyncIvsRecordingBucketStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::ivsRecordingEnabled()) {
+        if (! Manifest::ivsRecordingWebhookUrl()) {
             return StepResult::SKIPPED;
         }
 

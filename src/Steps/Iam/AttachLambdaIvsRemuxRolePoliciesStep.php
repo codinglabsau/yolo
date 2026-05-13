@@ -14,15 +14,7 @@ class AttachLambdaIvsRemuxRolePoliciesStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::ivsRecordingEnabled()) {
-            return StepResult::SKIPPED;
-        }
-
-        if (! Manifest::ivsRealtimeRemuxWebhookUrl()) {
-            return StepResult::SKIPPED;
-        }
-
-        if (! Manifest::ivsRealtimeMainBucket()) {
+        if (! Manifest::ivsRealtimeWebhookUrl()) {
             return StepResult::SKIPPED;
         }
 

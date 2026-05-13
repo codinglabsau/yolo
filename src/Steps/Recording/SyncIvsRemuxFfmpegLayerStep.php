@@ -20,19 +20,7 @@ class SyncIvsRemuxFfmpegLayerStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::ivsRecordingEnabled()) {
-            return StepResult::SKIPPED;
-        }
-
-        if (! Manifest::ivsRealtimeRemuxWebhookUrl()) {
-            return StepResult::SKIPPED;
-        }
-
-        if (! Manifest::ivsWebhookSecret()) {
-            return StepResult::SKIPPED;
-        }
-
-        if (! Manifest::ivsRealtimeMainBucket()) {
+        if (! Manifest::ivsRealtimeWebhookUrl()) {
             return StepResult::SKIPPED;
         }
 
@@ -92,7 +80,7 @@ class SyncIvsRemuxFfmpegLayerStep implements Step
 
         $layerVersionArn = $result['LayerVersionArn'];
 
-        Manifest::put('aws.ivs.recording.ffmpeg_layer_arn', $layerVersionArn);
+        Manifest::put('aws.ivs.recording.real_time.ffmpeg_layer_arn', $layerVersionArn);
 
         note(sprintf('FFmpeg layer ARN saved to yolo.yml: %s', $layerVersionArn));
 

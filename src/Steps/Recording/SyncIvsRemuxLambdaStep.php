@@ -18,11 +18,11 @@ class SyncIvsRemuxLambdaStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::ivsRecordingEnabled()) {
+        if (! Manifest::ivsRealtimeWebhookUrl()) {
             return StepResult::SKIPPED;
         }
 
-        if (! Manifest::ivsRealtimeRemuxWebhookUrl()) {
+        if (! Manifest::ivsRealtimeWebhookUrl()) {
             return StepResult::SKIPPED;
         }
 
@@ -104,7 +104,7 @@ class SyncIvsRemuxLambdaStep implements Step
     {
         return [
             'MAIN_S3_BUCKET' => Manifest::ivsRealtimeMainBucket(),
-            'WEBHOOK_URL' => Manifest::ivsRealtimeRemuxWebhookUrl(),
+            'WEBHOOK_URL' => Manifest::ivsRealtimeWebhookUrl(),
             'WEBHOOK_SECRET' => Manifest::ivsWebhookSecret(),
             'IVS_REGION' => Manifest::get('aws.region'),
         ];

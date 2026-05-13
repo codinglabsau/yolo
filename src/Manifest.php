@@ -108,17 +108,17 @@ class Manifest
 
     public static function ivsRecordingWebhookUrl(): ?string
     {
-        return static::get('aws.ivs.recording.webhook_url');
+        return static::get('aws.ivs.recording.low_latency.webhook_url');
     }
 
-    public static function ivsRealtimeRemuxWebhookUrl(): ?string
+    public static function ivsRealtimeWebhookUrl(): ?string
     {
-        return static::get('aws.ivs.recording.realtime_webhook_url');
+        return static::get('aws.ivs.recording.real_time.webhook_url');
     }
 
     public static function ivsRemuxFfmpegLayerArn(): ?string
     {
-        return static::get('aws.ivs.recording.ffmpeg_layer_arn');
+        return static::get('aws.ivs.recording.real_time.ffmpeg_layer_arn');
     }
 
     public static function ivsRealtimeMainBucket(): ?string

@@ -14,15 +14,7 @@ class SyncIvsRealtimeRecordingEventBridgeTargetStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::ivsRealtimeRemuxWebhookUrl()) {
-            return StepResult::SKIPPED;
-        }
-
-        if (! Manifest::ivsWebhookSecret()) {
-            return StepResult::SKIPPED;
-        }
-
-        if (! Manifest::ivsRealtimeMainBucket()) {
+        if (! Manifest::ivsRealtimeWebhookUrl()) {
             return StepResult::SKIPPED;
         }
 

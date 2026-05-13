@@ -15,7 +15,7 @@ class SyncIvsStorageConfigurationStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::ivsRecordingEnabled()) {
+        if (! Manifest::ivsRealtimeWebhookUrl()) {
             return StepResult::SKIPPED;
         }
 
