@@ -117,26 +117,31 @@ aws:
 
 `logging` toggles the EventBridge → CloudWatch pipeline; `log-retention-days` overrides the log retention.
 
-#### IVS recording
+#### IVS Real-Time recording
 
-Two optional keys enable S3 recording and webhook delivery for both standard IVS channels and IVS Real-Time stages:
+Enable S3 composite recording for IVS Real-Time stages:
 
 ```yaml
 aws:
   ivs:
     logging: true
     recording:
-      webhook_url: https://your-api.example.com/webhooks/ivs/recording
+      real_time: true
 ```
 
-Setting `recording` provisions S3 buckets, IVS `RecordingConfiguration` and `StorageConfiguration`, and EventBridge rules targeting the webhook URL for both standard channel and Real-Time stage recordings.
+Setting `recording.real_time` to `true` provisions the S3 bucket, IVS `StorageConfiguration`, and `EncoderConfiguration` required for composite recording.
 
 | Key | Description |
 |---|---|
-| `recording` | Set to `true` or expand with sub-keys to enable IVS recording provisioning. Provisions auto-named S3 buckets (`yolo-{env}-{app}-ivs-recordings` and `yolo-{env}-{app}-ivs-realtime-recordings`) and their corresponding IVS configurations. ARNs are printed after creation for `AWS_IVS_RECORDING_CONFIGURATION_ARN` and `AWS_IVS_STORAGE_CONFIGURATION_ARN`. |
-| `recording.webhook_url` | HTTPS endpoint to receive `IVS Recording State Change` and `IVS Participant Recording State Change` events via EventBridge. Required for the EventBridge steps. |
+| `recording.real_time` | Set to `true` to enable IVS Real-Time composite recording provisioning. Provisions an auto-named S3 bucket (`yolo-{env}-{app}-ivs-realtime-recordings`), a `StorageConfiguration` pointing to that bucket, and an `EncoderConfiguration` (720p30). |
 
-The EventBridge steps also require `IVS_WEBHOOK_SECRET` to be present in the local `.env.{environment}` file. This secret is sent as the `X-Webhook-Secret` header on every delivery — generate it with `openssl rand -hex 32` and set the same value in the app's environment. Manage it alongside other app secrets via `yolo env:push` / `yolo env:pull`.
+After running `sync:recording`, three values are printed for the app's `.env`:
+
+| Env var | Description |
+|---|---|
+| `AWS_IVS_REALTIME_RECORDINGS_BUCKET` | Name of the S3 bucket IVS writes recordings to |
+| `AWS_IVS_STORAGE_CONFIGURATION_ARN` | ARN passed to `createStage` for automatic participant recording |
+| `AWS_IVS_ENCODER_CONFIGURATION_ARN` | ARN passed to `startComposition` to define video resolution and bitrate |
 
 Omitting `recording` entirely skips all recording steps without affecting existing resources.
 
