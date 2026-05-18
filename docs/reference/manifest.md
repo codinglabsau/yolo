@@ -97,7 +97,7 @@ YOLO manages three server groups: **web**, **queue**, and **scheduler**. After `
 
 ### `aws.autoscaling.combine`
 
-When `true`, consolidates web, queue, and scheduler onto a single autoscaling group. Queue workers and scheduler cron run alongside the web server on the same instances. Useful for small workloads where running three separate instance groups is overkill.
+When `true`, consolidates web, queue, and scheduler onto a single autoscaling group. Queue workers and scheduler cron run alongside the web server on the same instance. Useful for small workloads where running three separate instance groups is overkill.
 
 ```yaml
 aws:
@@ -105,7 +105,11 @@ aws:
     combine: true
 ```
 
-**This is the default in the stub** — new apps start combined to keep costs and complexity low. When you outgrow a single instance group, remove `combine: true` and re-stage; YOLO provisions the queue and scheduler autoscaling groups separately.
+**This is the default in the stub** — new apps start combined to keep costs and complexity low.
+
+Combined mode runs a single instance with `MinSize=MaxSize=1` on the autoscaling group. The ASG is there for **self-healing, not scaling** — if the instance dies (hardware fault, OOM, agent crash), the ASG automatically launches a replacement and CodeDeploy pushes the latest revision to it. Expect a few minutes of downtime during replacement, but no manual intervention.
+
+If you need to scale beyond a single instance — for HA, throughput, or independent worker scaling — remove `combine: true` and re-stage. YOLO provisions the queue and scheduler autoscaling groups separately, and the web ASG becomes free to grow.
 
 ```yaml
 # Day 1: one autoscaling group, cheap.

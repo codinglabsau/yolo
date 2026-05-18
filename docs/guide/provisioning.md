@@ -51,7 +51,9 @@ aws:
     combine: true
 ```
 
-YOLO provisions one web autoscaling group; queue workers and scheduler cron run alongside the web server on the same instances. This is the cheapest, simplest starting point — one instance, one ASG, one CodeDeploy group.
+YOLO provisions one web autoscaling group at `MinSize=MaxSize=1`; queue workers and scheduler cron run alongside the web server on that single instance. This is the cheapest, simplest starting point — one instance, one ASG, one CodeDeploy group.
+
+The ASG is configured for **self-healing**, not scaling. If the instance fails, the ASG launches a replacement and CodeDeploy auto-deploys the latest revision — no human in the loop. Brief downtime during replacement is the trade-off for avoiding the multi-instance gymnastics (scheduler isolation, distributed cache locks) that combined mode would otherwise require.
 
 ### Growing into Separated Mode
 
