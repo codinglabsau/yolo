@@ -12,6 +12,8 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
+use function Laravel\Prompts\note;
+
 class SyncIvsRealtimeRecordingBucketStep implements Step
 {
     public function __invoke(array $options): StepResult
@@ -29,6 +31,9 @@ class SyncIvsRealtimeRecordingBucketStep implements Step
                 $this->putBucketPolicy($bucket);
             }
 
+            note(sprintf('IVS recordings bucket: %s', $bucket));
+            note(sprintf('Set AWS_IVS_REALTIME_RECORDINGS_BUCKET=%s', $bucket));
+
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
             if (! Arr::get($options, 'dry-run')) {
@@ -39,6 +44,9 @@ class SyncIvsRealtimeRecordingBucketStep implements Step
                     'Tagging' => [...Aws::tags(['Name' => $bucket], wrap: 'TagSet')],
                 ]);
                 $this->putBucketPolicy($bucket);
+
+                note(sprintf('IVS recordings bucket: %s', $bucket));
+                note(sprintf('Set AWS_IVS_REALTIME_RECORDINGS_BUCKET=%s', $bucket));
 
                 return StepResult::CREATED;
             }
