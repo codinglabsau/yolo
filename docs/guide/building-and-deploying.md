@@ -58,7 +58,7 @@ deploy-all:   # runs on every instance after deploy hooks
 
 `deploy-all` is for **per-instance** work that needs to touch every box.
 
-`deploy-queue` and `deploy-web` exist as escape hatches for the rare case where one server group needs setup the platform can't anticipate. There's no canonical use — reach for them only when nothing else fits.
+`deploy-queue` and `deploy-web` target only the queue or web server groups respectively, for setup that needs to run on one group but not the others.
 
 ### Patterns to avoid
 
