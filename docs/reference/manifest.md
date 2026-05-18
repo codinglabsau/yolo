@@ -124,7 +124,6 @@ Enable S3 composite recording for IVS Real-Time stages:
 ```yaml
 aws:
   ivs:
-    logging: true
     recording:
       real_time: true
 ```
