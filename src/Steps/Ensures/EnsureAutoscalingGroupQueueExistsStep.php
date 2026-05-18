@@ -2,14 +2,20 @@
 
 namespace Codinglabs\Yolo\Steps\Ensures;
 
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Enums\ServerGroup;
 
 class EnsureAutoscalingGroupQueueExistsStep implements Step
 {
     public function __invoke(): StepResult
     {
+        if (! Manifest::hasServerGroup(ServerGroup::QUEUE)) {
+            return StepResult::SKIPPED;
+        }
+
         AwsResources::autoScalingGroupQueue();
 
         return StepResult::SUCCESS;

@@ -36,3 +36,31 @@ yolo sync production --dry-run
 ```
 
 This is a great way to see what resources will be created or modified before committing to any changes.
+
+## Server Groups
+
+YOLO manages three server groups: **web**, **queue**, and **scheduler**. By default, each gets its own autoscaling group and CodeDeploy deployment group.
+
+### Combined Mode
+
+For smaller workloads, set `combine: true` in your manifest to run all three on a single autoscaling group:
+
+```yaml
+aws:
+  autoscaling:
+    combine: true
+```
+
+YOLO will skip creating separate resources for queue and scheduler — workers and cron run on the web instances instead.
+
+### Disabling Groups
+
+Set a group to `false` to disable it entirely:
+
+```yaml
+aws:
+  autoscaling:
+    queue: false  # no queue workers
+```
+
+No resources will be provisioned and no deployments will target the disabled group.

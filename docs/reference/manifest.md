@@ -24,9 +24,6 @@ environments:
       mediaconvert: false
       ivs: false
       autoscaling:
-        web:
-        queue:
-        scheduler:
         combine: false
       ec2:
         instance-type: t3.small
@@ -94,9 +91,42 @@ Timezone for app version validation. Defaults to `UTC`. Set this to your team's 
 - `without-load-balancing` — Faster deployments, brief downtime during restarts.
 - `with-load-balancing` — Zero-downtime deployments via ALB deregistration.
 
+### `aws.autoscaling`
+
+The `web`, `queue`, and `scheduler` keys are auto-populated by `yolo stage` with the created autoscaling group names. You don't need to set them manually.
+
 ### `aws.autoscaling.combine`
 
-When `true`, consolidates web, queue, and scheduler onto a single EC2 instance. Useful for small workloads.
+When `true`, consolidates web, queue, and scheduler onto a single EC2 instance. Only a single autoscaling group is created, and queue workers and scheduler cron run alongside the web server. Useful for small workloads where running three separate instance groups is unnecessary.
+
+```yaml
+aws:
+  autoscaling:
+    combine: true
+```
+
+When combined, YOLO skips creating separate autoscaling groups, CodeDeploy deployment groups, and deployments for queue and scheduler — everything runs on the web group.
+
+### Disabling Server Groups
+
+Set a server group to `false` to disable it entirely. No resources will be provisioned, no deployments will target it, and no workers will run for that group.
+
+```yaml
+aws:
+  autoscaling:
+    queue: false
+```
+
+This can be combined with `combine`:
+
+```yaml
+aws:
+  autoscaling:
+    combine: true
+    queue: false  # web + scheduler only
+```
+
+Setting `web: false` is valid for appliance-style apps that only need background workers.
 
 ### `aws.ec2.octane`
 

@@ -1,6 +1,7 @@
 <?php
 
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 describe('has and get', function () {
@@ -130,6 +131,71 @@ describe('ivsEnabled', function () {
         writeManifest(['aws' => ['ivs' => ['log-retention-days' => 30]]]);
 
         expect(Manifest::ivsEnabled())->toBeFalse();
+    });
+});
+
+describe('hasServerGroup', function () {
+    it('is true for all groups on an empty manifest', function () {
+        writeManifest([]);
+
+        expect(Manifest::hasServerGroup(ServerGroup::WEB))->toBeTrue();
+        expect(Manifest::hasServerGroup(ServerGroup::QUEUE))->toBeTrue();
+        expect(Manifest::hasServerGroup(ServerGroup::SCHEDULER))->toBeTrue();
+    });
+
+    it('is false when aws.autoscaling.{group} is explicitly false', function () {
+        writeManifest(['aws' => ['autoscaling' => ['queue' => false]]]);
+
+        expect(Manifest::hasServerGroup(ServerGroup::QUEUE))->toBeFalse();
+        expect(Manifest::hasServerGroup(ServerGroup::WEB))->toBeTrue();
+        expect(Manifest::hasServerGroup(ServerGroup::SCHEDULER))->toBeTrue();
+    });
+
+    it('is true for WEB but false for QUEUE and SCHEDULER when combine is true', function () {
+        writeManifest(['aws' => ['autoscaling' => ['combine' => true]]]);
+
+        expect(Manifest::hasServerGroup(ServerGroup::WEB))->toBeTrue();
+        expect(Manifest::hasServerGroup(ServerGroup::QUEUE))->toBeFalse();
+        expect(Manifest::hasServerGroup(ServerGroup::SCHEDULER))->toBeFalse();
+    });
+
+    it('is false for WEB when combine is true and web is explicitly false', function () {
+        writeManifest(['aws' => ['autoscaling' => ['combine' => true, 'web' => false]]]);
+
+        expect(Manifest::hasServerGroup(ServerGroup::WEB))->toBeFalse();
+    });
+
+    it('is true when aws.autoscaling.{group} is a populated ASG name', function () {
+        writeManifest(['aws' => ['autoscaling' => ['queue' => 'my-app-production-queue']]]);
+
+        expect(Manifest::hasServerGroup(ServerGroup::QUEUE))->toBeTrue();
+    });
+});
+
+describe('serverGroups', function () {
+    it('returns all three groups on an empty manifest', function () {
+        writeManifest([]);
+
+        expect(Manifest::serverGroups())->toBe([
+            ServerGroup::WEB,
+            ServerGroup::QUEUE,
+            ServerGroup::SCHEDULER,
+        ]);
+    });
+
+    it('returns only WEB when combine is true', function () {
+        writeManifest(['aws' => ['autoscaling' => ['combine' => true]]]);
+
+        expect(Manifest::serverGroups())->toBe([ServerGroup::WEB]);
+    });
+
+    it('excludes explicitly disabled groups', function () {
+        writeManifest(['aws' => ['autoscaling' => ['queue' => false]]]);
+
+        expect(Manifest::serverGroups())->toBe([
+            ServerGroup::WEB,
+            ServerGroup::SCHEDULER,
+        ]);
     });
 });
 

@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo;
 
 use Illuminate\Support\Arr;
 use Symfony\Component\Yaml\Yaml;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 class Manifest
@@ -87,6 +88,30 @@ class Manifest
         }
 
         return $apex;
+    }
+
+    /**
+     * @return array<int, ServerGroup>
+     */
+    public static function serverGroups(): array
+    {
+        return array_values(array_filter(
+            ServerGroup::cases(),
+            fn (ServerGroup $group) => static::hasServerGroup($group),
+        ));
+    }
+
+    public static function hasServerGroup(ServerGroup $group): bool
+    {
+        if (static::get("aws.autoscaling.{$group->value}") === false) {
+            return false;
+        }
+
+        if (static::get('aws.autoscaling.combine', false) && $group !== ServerGroup::WEB) {
+            return false;
+        }
+
+        return true;
     }
 
     public static function isMultitenanted(): bool
