@@ -6,7 +6,6 @@ use Aws\S3\S3Client;
 use Aws\Acm\AcmClient;
 use Aws\Ec2\Ec2Client;
 use Aws\Iam\IamClient;
-use Aws\IVS\IVSClient;
 use Aws\Rds\RdsClient;
 use Aws\Sns\SnsClient;
 use Aws\Sqs\SqsClient;
@@ -50,7 +49,6 @@ trait RegistersAws
         Helpers::app()->singleton('eventBridge', fn () => new EventBridgeClient($arguments));
         Helpers::app()->singleton('elasticLoadBalancingV2', fn () => new ElasticLoadBalancingV2Client($arguments));
         Helpers::app()->singleton('iam', fn () => new IamClient($arguments));
-        Helpers::app()->singleton('ivs', fn () => new IVSClient($arguments));
         Helpers::app()->singleton('ivsRealTime', fn () => new IVSRealTimeClient($arguments));
         Helpers::app()->singleton('rds', fn () => new RdsClient($arguments));
         Helpers::app()->singleton('route53', fn () => new Route53Client($arguments));
