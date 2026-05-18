@@ -93,11 +93,11 @@ Timezone for app version validation. Defaults to `UTC`. Set this to your team's 
 
 ### `aws.autoscaling`
 
-The `web`, `queue`, and `scheduler` keys are auto-populated by `yolo stage` with the created autoscaling group names. You don't need to set them manually.
+YOLO manages three server groups: **web**, **queue**, and **scheduler**. After `yolo stage` runs, the `web`, `queue`, and `scheduler` keys under `aws.autoscaling` are auto-populated with the created autoscaling group names — you never set those manually.
 
 ### `aws.autoscaling.combine`
 
-When `true`, consolidates web, queue, and scheduler onto a single EC2 instance. Only a single autoscaling group is created, and queue workers and scheduler cron run alongside the web server. Useful for small workloads where running three separate instance groups is unnecessary.
+When `true`, consolidates web, queue, and scheduler onto a single autoscaling group. Queue workers and scheduler cron run alongside the web server on the same instances. Useful for small workloads where running three separate instance groups is overkill.
 
 ```yaml
 aws:
@@ -105,7 +105,21 @@ aws:
     combine: true
 ```
 
-When combined, YOLO skips creating separate autoscaling groups, CodeDeploy deployment groups, and deployments for queue and scheduler — everything runs on the web group.
+**This is the default in the stub** — new apps start combined to keep costs and complexity low. When you outgrow a single instance group, remove `combine: true` and re-stage; YOLO provisions the queue and scheduler autoscaling groups separately.
+
+```yaml
+# Day 1: one autoscaling group, cheap.
+aws:
+  autoscaling:
+    combine: true
+
+# Day 200: workloads have grown. Remove `combine: true`, re-stage.
+aws:
+  autoscaling:
+    web: my-app-production-web-...
+    queue: my-app-production-queue-...
+    scheduler: my-app-production-scheduler-...
+```
 
 ### Disabling Server Groups
 

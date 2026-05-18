@@ -8,6 +8,7 @@ environments:
       bucket:
       cloudfront: // todo use magic [account level]
       autoscaling:
+        combine: true
       ec2:
         instance-type: t3.small
         octane: true

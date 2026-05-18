@@ -39,11 +39,11 @@ This is a great way to see what resources will be created or modified before com
 
 ## Server Groups
 
-YOLO manages three server groups: **web**, **queue**, and **scheduler**. By default, each gets its own autoscaling group and CodeDeploy deployment group.
+YOLO manages three server groups: **web**, **queue**, and **scheduler**. Each can have its own autoscaling group and CodeDeploy deployment group, or they can be combined onto a single autoscaling group.
 
-### Combined Mode
+### Combined Mode (default for new apps)
 
-For smaller workloads, set `combine: true` in your manifest to run all three on a single autoscaling group:
+The stub manifest ships with `combine: true`, which runs all three workloads on a single autoscaling group:
 
 ```yaml
 aws:
@@ -51,7 +51,11 @@ aws:
     combine: true
 ```
 
-YOLO will skip creating separate resources for queue and scheduler — workers and cron run on the web instances instead.
+YOLO provisions one web autoscaling group; queue workers and scheduler cron run alongside the web server on the same instances. This is the cheapest, simplest starting point — one instance, one ASG, one CodeDeploy group.
+
+### Growing into Separated Mode
+
+When your workloads outgrow a single instance group, remove `combine: true` from the manifest and re-stage. YOLO provisions separate autoscaling groups for queue and scheduler and wires them up automatically — no manual intervention beyond the manifest edit.
 
 ### Disabling Groups
 
@@ -63,4 +67,4 @@ aws:
     queue: false  # no queue workers
 ```
 
-No resources will be provisioned and no deployments will target the disabled group.
+No resources will be provisioned and no deployments will target the disabled group. Combine with `combine: true` to colocate only the groups you want.
