@@ -55,7 +55,32 @@ YOLO provisions one web autoscaling group; queue workers and scheduler cron run 
 
 ### Growing into Separated Mode
 
-When your workloads outgrow a single instance group, remove `combine: true` from the manifest and re-stage. YOLO provisions separate autoscaling groups for queue and scheduler and wires them up automatically — no manual intervention beyond the manifest edit.
+When your workloads outgrow a single instance group, the transition is a manifest edit plus one AWS-side step:
+
+```bash
+# 1. Remove `combine: true` from your manifest, then:
+yolo stage production
+yolo sync:ci production
+yolo deploy production
+```
+
+`stage` provisions new queue and scheduler autoscaling groups. `sync:ci` wires them into CodeDeploy. `deploy` pushes the current build to all three groups. The new queue and scheduler instances launch with the correct (dedicated-group) supervisor configs and immediately start processing.
+
+::: warning Rotate the web ASG after the deploy
+Until you rotate the existing web instances, they keep running the supervisor configs they were launched with — including the queue workers and scheduler cron from combined mode. That means **the same queue jobs and scheduled tasks will process on both the old web ASG and the new dedicated ASGs** until the web instances are replaced.
+
+Trigger an AWS instance refresh on the web ASG to replace each instance with one launched from the now-web-only launch template:
+
+```bash
+aws autoscaling start-instance-refresh \
+  --auto-scaling-group-name <web-asg-name> \
+  --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 60}'
+```
+
+Or trigger it from the AWS console under the ASG's **Instance refresh** tab. Either way, the ALB drains connections from old instances before termination, and new instances come up serving the same code but without the queue/scheduler supervisor configs.
+
+**Do not use `yolo stop` against the web ASG to drain workers** — `yolo stop` also stops nginx, which would take the site down.
+:::
 
 ### Disabling Groups
 
