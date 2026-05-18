@@ -1,8 +1,0 @@
-/var/log/yolo/*/*.log {
-    su ubuntu ubuntu
-    weekly
-    missingok
-    rotate 12
-    compress
-    notifempty
-}

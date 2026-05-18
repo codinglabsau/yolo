@@ -1,6 +1,0 @@
-#
-# cron job for scheduler server
-#
-
-#  Run scheduled app commands. Loops tenants app-side.
-* * * * *       www-data    php /var/www/{NAME}/artisan schedule:run >> /dev/null 2>&1

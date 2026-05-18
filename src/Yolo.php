@@ -9,50 +9,21 @@ class Yolo
 {
     protected Application $app;
 
+    /**
+     * Commands registered with the YOLO CLI.
+     *
+     * v2 is in active development — commands will be added as MVP issues land.
+     * See https://linear.app/codinglabsau/project/yolo-v2-f26af789f353 for the roadmap.
+     */
     protected array $commands = [
-        Commands\InitCommand::class,
-        Commands\OpenCommand::class,
-
-        // General purpose
-        Commands\CommandCommand::class,
-        Commands\Ec2ListCommand::class,
-
-        // Build & deploy
-        Commands\BuildCommand::class,
-        Commands\StopCommand::class,
-        Commands\DeployCommand::class,
-        Commands\DeployStatusCommand::class,
-        Commands\StartCommand::class,
-
-        // Environments
-        Commands\EnvPullCommand::class,
-        Commands\EnvPushCommand::class,
-
-        // Images
-        Commands\ImageCreateCommand::class,
-        Commands\ImageListCommand::class,
-
-        // Stage
-        Commands\StageCommand::class,
-
-        // Sync
-        Commands\SyncCommand::class,
-        Commands\SyncNetworkCommand::class,
-        Commands\SyncStorageCommand::class,
-        Commands\SyncStandaloneCommand::class,
-        Commands\SyncMultitenancyTenantsCommand::class,
-        Commands\SyncMultitenancyLandlordCommand::class,
-        Commands\SyncComputeCommand::class,
-        Commands\SyncCiCommand::class,
-        Commands\SyncIamCommand::class,
-        Commands\SyncLoggingCommand::class,
+        // Empty for now — v2 commands land via the MVP milestone.
     ];
 
     public function __construct()
     {
         Container::setInstance(new Container());
 
-        $this->app = new Application('YOLO, so deploy today 🚀', '1.0.0');
+        $this->app = new Application('YOLO v2 — Fargate-first deploys for Laravel 🚀', '2.0.0-alpha');
 
         $this->registerCommands();
     }

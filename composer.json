@@ -1,6 +1,6 @@
 {
   "name": "codinglabsau/yolo",
-  "description": "YOLO infrastructure cli tool for deploying Laravel apps",
+  "description": "YOLO deploys Laravel applications to AWS Fargate (v2). v1 (EC2/ASG) maintained on the 1.x branch.",
   "homepage": "https://github.com/codinglabsau/yolo",
   "license": "MIT",
   "require": {
@@ -10,17 +10,13 @@
     "illuminate/container": "^12|^13",
     "illuminate/filesystem": "^12|^13",
     "illuminate/support": "^12|^13",
-    "joetannenbaum/chewie": "^0.1.8",
     "nesbot/carbon": "^3.10",
     "symfony/console": "^7.1",
     "symfony/yaml": "^7.1",
     "vlucas/phpdotenv": "^5.6"
   },
   "require-dev": {
-    "laravel/pint": "^1.24",
-    "pestphp/pest": "^3.7",
-    "phpstan/phpstan": "^1.12",
-    "spatie/ray": "^1.41"
+    "laravel/pint": "^1.24"
   },
   "autoload": {
     "psr-4": {
@@ -30,14 +26,8 @@
   "bin": [
     "yolo"
   ],
-  "scripts": {
-    "fix": "vendor/bin/php-cs-fixer fix"
-  },
   "config": {
-    "sort-packages": true,
-    "allow-plugins": {
-      "pestphp/pest-plugin": true
-    }
+    "sort-packages": true
   },
   "minimum-stability": "dev",
   "prefer-stable": true

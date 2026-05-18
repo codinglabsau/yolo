@@ -1,3 +1,0 @@
-; Environment configuration for CLI
-mysqli.reconnect = On
-date.timezone = UTC

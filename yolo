@@ -8,10 +8,18 @@ file_exists(__DIR__ . '/../../autoload.php')
     ? require __DIR__ . '/../../autoload.php'
     : require __DIR__ . '/vendor/autoload.php';
 
-// path to the app root
-define('BASE_PATH', $_ENV['YOLO_BASE_PATH'] ?? __DIR__ . '/../../../');
+// Resolve the consuming app's root.
+// - vendor install: __DIR__ is vendor/codinglabsau/yolo, app root is __DIR__/../../../
+// - path repo / symlink install: fall back to getcwd() so the user's working directory drives it
+// - explicit override always wins via YOLO_BASE_PATH
+define('BASE_PATH', $_ENV['YOLO_BASE_PATH']
+    ?? (file_exists(__DIR__ . '/../../autoload.php')
+        ? __DIR__ . '/../../../'
+        : getcwd()));
 
-Dotenv::createImmutable(BASE_PATH)->load();
+if (file_exists(BASE_PATH . '/.env')) {
+    Dotenv::createImmutable(BASE_PATH)->load();
+}
 
 $yolo = new Yolo();
 $yolo->run();
