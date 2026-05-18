@@ -16,6 +16,7 @@ use Aws\CloudWatch\CloudWatchClient;
 use Aws\CodeDeploy\CodeDeployClient;
 use Aws\AutoScaling\AutoScalingClient;
 use Aws\EventBridge\EventBridgeClient;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Aws\CloudWatchLogs\CloudWatchLogsClient;
 use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
 
@@ -39,6 +40,16 @@ class Aws
     public static function runningInAwsSchedulerEnvironment(): bool
     {
         return Helpers::app('runningInAwsSchedulerEnvironment');
+    }
+
+    public static function serverGroup(): ?ServerGroup
+    {
+        return match (true) {
+            static::runningInAwsWebEnvironment() => ServerGroup::WEB,
+            static::runningInAwsQueueEnvironment() => ServerGroup::QUEUE,
+            static::runningInAwsSchedulerEnvironment() => ServerGroup::SCHEDULER,
+            default => null,
+        };
     }
 
     public static function tags(array $tags = [], string $wrap = 'Tags', bool $associative = false): array
