@@ -19,7 +19,7 @@ class SyncCodeDeployQueueDeploymentGroupStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::hasServerGroup(ServerGroup::QUEUE) || ! Manifest::get('aws.autoscaling.queue')) {
+        if (! Manifest::hasServerGroup(ServerGroup::QUEUE)) {
             return StepResult::SKIPPED;
         }
 

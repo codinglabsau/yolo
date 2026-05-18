@@ -15,7 +15,7 @@ class ConfigureAutoScalingQueueGroupStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::hasServerGroup(ServerGroup::QUEUE)) {
+        if (! Manifest::declaresServerGroup(ServerGroup::QUEUE)) {
             return StepResult::SKIPPED;
         }
 

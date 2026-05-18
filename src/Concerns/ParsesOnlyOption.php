@@ -19,26 +19,12 @@ trait ParsesOnlyOption
     public function parseOnlyOption(?string $only): array
     {
         if (! $only) {
-            return [
-                ServerGroup::WEB,
-                ServerGroup::QUEUE,
-                ServerGroup::SCHEDULER,
-            ];
+            return ServerGroup::cases();
         }
 
-        $servers = [];
-
-        $values = array_map('trim', explode(',', $only));
-
-        foreach ($values as $server) {
-            $servers[] = ServerGroup::tryFrom($server)
-                ?? throw new \InvalidArgumentException(sprintf(
-                    'Unknown server group "%s". Valid values: %s.',
-                    $server,
-                    implode(', ', array_column(ServerGroup::cases(), 'value')),
-                ));
-        }
-
-        return $servers;
+        return array_map(
+            fn (string $server) => ServerGroup::from(trim($server)),
+            explode(',', $only),
+        );
     }
 }

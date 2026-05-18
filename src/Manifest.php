@@ -101,7 +101,15 @@ class Manifest
         ));
     }
 
-    public static function hasServerGroup(ServerGroup $group): bool
+    /**
+     * Whether the manifest declares this server group as active —
+     * i.e. it is not explicitly disabled and not excluded by `combine: true`.
+     *
+     * This is the intent-only check. Use it from steps that provision the
+     * group itself (e.g. Stage configure steps); use {@see hasServerGroup}
+     * everywhere else.
+     */
+    public static function declaresServerGroup(ServerGroup $group): bool
     {
         if (static::get("aws.autoscaling.{$group->value}") === false) {
             return false;
@@ -112,6 +120,24 @@ class Manifest
         }
 
         return true;
+    }
+
+    /**
+     * Whether this server group is declared AND has been provisioned
+     * (i.e. `yolo stage` has populated its autoscaling group name).
+     *
+     * Single entry point for deploy-time and CI-time checks — callers
+     * never need to read `aws.autoscaling.{group}` themselves.
+     */
+    public static function hasServerGroup(ServerGroup $group): bool
+    {
+        if (! static::declaresServerGroup($group)) {
+            return false;
+        }
+
+        $asgName = static::get("aws.autoscaling.{$group->value}");
+
+        return is_string($asgName) && $asgName !== '';
     }
 
     public static function isMultitenanted(): bool

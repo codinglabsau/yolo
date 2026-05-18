@@ -15,7 +15,7 @@ class ConfigureAutoScalingSchedulerGroupStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::hasServerGroup(ServerGroup::SCHEDULER)) {
+        if (! Manifest::declaresServerGroup(ServerGroup::SCHEDULER)) {
             return StepResult::SKIPPED;
         }
 

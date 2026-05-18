@@ -24,7 +24,7 @@ environments:
       mediaconvert: false
       ivs: false
       autoscaling:
-        combine: false
+        combine: true
       ec2:
         instance-type: t3.small
         queue-instance-type:

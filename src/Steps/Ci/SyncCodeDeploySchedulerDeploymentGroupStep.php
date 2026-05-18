@@ -19,7 +19,7 @@ class SyncCodeDeploySchedulerDeploymentGroupStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::hasServerGroup(ServerGroup::SCHEDULER) || ! Manifest::get('aws.autoscaling.scheduler')) {
+        if (! Manifest::hasServerGroup(ServerGroup::SCHEDULER)) {
             return StepResult::SKIPPED;
         }
 
