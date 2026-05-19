@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Concerns;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Aws\Exception\AwsException;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 trait UsesElasticLoadBalancingV2
@@ -38,17 +39,27 @@ trait UsesElasticLoadBalancingV2
             return static::$targetGroup;
         }
 
-        $targetGroups = Aws::elasticLoadBalancingV2()->describeTargetGroups();
+        $name = Helpers::keyedResourceName(exclusive: true);
 
-        foreach ($targetGroups['TargetGroups'] as $targetGroup) {
-            if ($targetGroup['TargetGroupName'] === Helpers::keyedResourceName(exclusive: false)) {
-                static::$targetGroup = $targetGroup;
-
-                return $targetGroup;
+        try {
+            $targetGroups = Aws::elasticLoadBalancingV2()->describeTargetGroups([
+                'Names' => [$name],
+            ])['TargetGroups'];
+        } catch (AwsException $e) {
+            if ($e->getAwsErrorCode() === 'TargetGroupNotFound') {
+                throw new ResourceDoesNotExistException(sprintf('Could not find target group matching name %s', $name));
             }
+
+            throw $e;
         }
 
-        throw new ResourceDoesNotExistException(sprintf('Could not find target group matching name %s', Helpers::keyedResourceName(exclusive: false)));
+        if (count($targetGroups) === 0) {
+            throw new ResourceDoesNotExistException(sprintf('Could not find target group matching name %s', $name));
+        }
+
+        static::$targetGroup = $targetGroups[0];
+
+        return static::$targetGroup;
     }
 
     public static function loadBalancerListenerOnPort(int $port): array

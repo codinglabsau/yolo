@@ -5,6 +5,8 @@ namespace Codinglabs\Yolo;
 use Aws\S3\S3Client;
 use Aws\Acm\AcmClient;
 use Aws\Ec2\Ec2Client;
+use Aws\Ecr\EcrClient;
+use Aws\Ecs\EcsClient;
 use Aws\Iam\IamClient;
 use Aws\Rds\RdsClient;
 use Aws\Sns\SnsClient;
@@ -63,6 +65,21 @@ class Aws
         ];
     }
 
+    /**
+     * ECS uses lower-case `key`/`value` tag pairs instead of the standard
+     * upper-case `Key`/`Value` shape returned by tags().
+     */
+    public static function ecsTags(array $tags = []): array
+    {
+        return collect([
+            'yolo:environment' => Helpers::app('environment'),
+            ...$tags,
+        ])
+            ->map(fn ($value, $key) => ['key' => $key, 'value' => $value])
+            ->values()
+            ->all();
+    }
+
     public static function accountId(): string
     {
         return Manifest::get('aws.account-id');
@@ -96,6 +113,16 @@ class Aws
     public static function ec2(): Ec2Client
     {
         return Helpers::app('ec2');
+    }
+
+    public static function ecr(): EcrClient
+    {
+        return Helpers::app('ecr');
+    }
+
+    public static function ecs(): EcsClient
+    {
+        return Helpers::app('ecs');
     }
 
     public static function elasticLoadBalancingV2(): ElasticLoadBalancingV2Client

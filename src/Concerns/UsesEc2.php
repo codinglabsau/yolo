@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\Enums\PublicSubnets;
 use Codinglabs\Yolo\Enums\SecurityGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -28,6 +29,8 @@ trait UsesEc2
     protected static array $loadBalancerSecurityGroup;
 
     protected static array $ec2SecurityGroup;
+
+    protected static array $ecsTaskSecurityGroup;
 
     protected static array $rdsSecurityGroup;
 
@@ -147,6 +150,25 @@ trait UsesEc2
         static::$rdsSecurityGroup = static::securityGroupByName(Manifest::get('aws.rds.security-group', SecurityGroup::RDS_SECURITY_GROUP));
 
         return static::$rdsSecurityGroup;
+    }
+
+    /**
+     * @throws ResourceDoesNotExistException
+     */
+    public static function ecsTaskSecurityGroup(): array
+    {
+        if (isset(static::$ecsTaskSecurityGroup)) {
+            return static::$ecsTaskSecurityGroup;
+        }
+
+        $name = Manifest::get(
+            'aws.ecs.security-group',
+            Helpers::keyedResourceName(SecurityGroup::ECS_TASK_SECURITY_GROUP, exclusive: true)
+        );
+
+        static::$ecsTaskSecurityGroup = static::securityGroupByName($name);
+
+        return static::$ecsTaskSecurityGroup;
     }
 
     public static function securityGroupByName(string|BackedEnum $name): array
@@ -317,6 +339,13 @@ trait UsesEc2
         }
 
         return $subnets;
+    }
+
+    public static function publicSubnetIds(): array
+    {
+        return collect(PublicSubnets::cases())
+            ->map(fn (PublicSubnets $subnet) => static::subnetByName($subnet->value)['SubnetId'])
+            ->all();
     }
 
     public static function subnetByName(string $name, $relative = true): array
