@@ -19,6 +19,9 @@ class Yolo
         // Build
         Commands\BuildCommand::class,
 
+        // Deploy
+        Commands\DeployCommand::class,
+
         // Sync
         Commands\SyncCommand::class,
         Commands\SyncNetworkCommand::class,

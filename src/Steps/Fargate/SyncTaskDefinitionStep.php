@@ -22,11 +22,15 @@ class SyncTaskDefinitionStep implements Step
         return StepResult::SYNCED;
     }
 
-    public static function payload(): array
+    public static function payload(?string $imageTag = null): array
     {
         $port = (int) Manifest::get('tasks.web.port', 8000);
         $cpu = (string) Manifest::get('tasks.web.cpu', '512');
         $memory = (string) Manifest::get('tasks.web.memory', '1024');
+
+        $image = $imageTag
+            ? AwsResources::ecrRepositoryUri() . ':' . $imageTag
+            : Manifest::get('tasks.web.image', AwsResources::ecrRepositoryUri() . ':latest');
 
         return [
             'family' => AwsResources::ecsTaskFamily(),
@@ -39,7 +43,7 @@ class SyncTaskDefinitionStep implements Step
             'containerDefinitions' => [
                 [
                     'name' => 'web',
-                    'image' => Manifest::get('tasks.web.image', AwsResources::ecrRepositoryUri() . ':latest'),
+                    'image' => $image,
                     'essential' => true,
                     'portMappings' => [
                         [

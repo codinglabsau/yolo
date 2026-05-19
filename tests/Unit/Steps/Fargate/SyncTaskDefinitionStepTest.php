@@ -48,6 +48,25 @@ it('defaults image to the app ECR repository when not overridden', function () {
         ->toBe('111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/my-app:latest');
 });
 
+it('pins image to the supplied tag when one is passed', function () {
+    $payload = SyncTaskDefinitionStep::payload('26.21.2.1500');
+
+    expect($payload['containerDefinitions'][0]['image'])
+        ->toBe('111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/my-app:26.21.2.1500');
+});
+
+it('prefers the supplied tag over the manifest image override', function () {
+    writeManifest([
+        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'tasks' => ['web' => ['image' => 'public.ecr.aws/nginx:stable']],
+    ]);
+
+    $payload = SyncTaskDefinitionStep::payload('26.21.2.1500');
+
+    expect($payload['containerDefinitions'][0]['image'])
+        ->toBe('111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/my-app:26.21.2.1500');
+});
+
 it('honours explicit task image override', function () {
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
