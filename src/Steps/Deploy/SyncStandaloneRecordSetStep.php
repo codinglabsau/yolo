@@ -14,6 +14,10 @@ class SyncStandaloneRecordSetStep implements ExecutesStandaloneStep
 
     public function __invoke(array $options): StepResult
     {
+        if (! Manifest::has('apex') && ! Manifest::has('domain')) {
+            return StepResult::SKIPPED;
+        }
+
         if (! Arr::get($options, 'dry-run')) {
             $this->syncRecordSet(
                 apex: Manifest::apex(),
