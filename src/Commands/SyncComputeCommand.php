@@ -8,6 +8,7 @@ use Symfony\Component\Console\Input\InputArgument;
 class SyncComputeCommand extends SteppedCommand
 {
     protected array $steps = [
+        Steps\Ensures\EnsureResourceNameLengthsStep::class,
         Steps\Fargate\SyncEcrRepositoryStep::class,
         Steps\Fargate\SyncEcsClusterStep::class,
         Steps\Fargate\SyncTaskSecurityGroupStep::class,
@@ -16,6 +17,7 @@ class SyncComputeCommand extends SteppedCommand
         Steps\Fargate\SyncHttpListenerStep::class,
         Steps\Fargate\SyncHttpsListenerStep::class,
         Steps\Fargate\SyncListenerRuleStep::class,
+        Steps\Fargate\SyncTaskLogGroupStep::class,
         Steps\Fargate\SyncTaskDefinitionStep::class,
         Steps\Fargate\SyncEcsServiceStep::class,
     ];

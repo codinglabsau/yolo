@@ -49,7 +49,7 @@ class SyncTaskSecurityGroupStep implements Step
 
             $name = Helpers::keyedResourceName(SecurityGroup::ECS_TASK_SECURITY_GROUP, exclusive: true);
 
-            Aws::ec2()->createSecurityGroup([
+            $created = Aws::ec2()->createSecurityGroup([
                 'Description' => 'Enable load balancer traffic to Fargate task ENI',
                 'GroupName' => $name,
                 'VpcId' => AwsResources::vpc()['VpcId'],
@@ -61,9 +61,9 @@ class SyncTaskSecurityGroupStep implements Step
                 ],
             ]);
 
-            $securityGroup = AwsResources::ecsTaskSecurityGroup();
-
-            Aws::ec2()->authorizeSecurityGroupIngress(static::loadBalancerIngressRule($securityGroup, $containerPort));
+            Aws::ec2()->authorizeSecurityGroupIngress(
+                static::loadBalancerIngressRule(['GroupId' => $created['GroupId']], $containerPort)
+            );
 
             return StepResult::CREATED;
         }

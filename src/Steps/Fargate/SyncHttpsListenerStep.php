@@ -14,6 +14,10 @@ class SyncHttpsListenerStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
+        if (! Manifest::has('apex') && ! Manifest::has('domain')) {
+            return StepResult::SKIPPED;
+        }
+
         try {
             $certificate = AwsResources::certificate(Manifest::apex());
         } catch (ResourceDoesNotExistException) {

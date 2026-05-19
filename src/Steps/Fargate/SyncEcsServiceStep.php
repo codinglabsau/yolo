@@ -20,8 +20,10 @@ class SyncEcsServiceStep implements Step
         try {
             $service = AwsResources::ecsService();
 
+            // Task definition revision adoption is owned by `yolo deploy`, not sync —
+            // sync reconciles only the slow-moving service-level knobs.
             $needsUpdate = $service['desiredCount'] !== $desiredCount
-                || ($service['healthCheckGracePeriodSeconds'] ?? 0) !== $gracePeriod;
+                || ($service['healthCheckGracePeriodSeconds'] ?? $gracePeriod) !== $gracePeriod;
 
             if (! $needsUpdate) {
                 return StepResult::SYNCED;

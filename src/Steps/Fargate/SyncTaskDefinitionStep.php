@@ -4,7 +4,6 @@ namespace Codinglabs\Yolo\Steps\Fargate;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
@@ -52,10 +51,9 @@ class SyncTaskDefinitionStep implements Step
                     'logConfiguration' => [
                         'logDriver' => 'awslogs',
                         'options' => [
-                            'awslogs-group' => Manifest::get('tasks.web.log-group', sprintf('/yolo/%s', Helpers::keyedResourceName(exclusive: true))),
+                            'awslogs-group' => SyncTaskLogGroupStep::logGroupName(),
                             'awslogs-region' => Manifest::get('aws.region'),
                             'awslogs-stream-prefix' => 'web',
-                            'awslogs-create-group' => 'true',
                         ],
                     ],
                 ],

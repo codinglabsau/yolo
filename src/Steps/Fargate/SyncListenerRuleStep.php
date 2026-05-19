@@ -9,12 +9,17 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class SyncListenerRuleStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
+        if (! Manifest::has('apex') && ! Manifest::has('domain')) {
+            return StepResult::SKIPPED;
+        }
+
         $apex = Manifest::apex();
         $hosts = collect([$apex, "www.$apex"])->unique()->values()->all();
 
@@ -88,10 +93,23 @@ class SyncListenerRuleStep implements Step
             ->map(fn (array $rule) => (int) $rule['Priority'])
             ->all();
 
-        $base = (abs(crc32(Helpers::keyedResourceName(exclusive: true))) % 49000) + 1000;
+        return static::nextAvailablePriority(Helpers::keyedResourceName(exclusive: true), $usedPriorities);
+    }
 
-        while (in_array($base, $usedPriorities, true)) {
-            $base = ($base % 50000) + 1;
+    public static function nextAvailablePriority(string $name, array $usedPriorities): int
+    {
+        $floor = 1000;
+        $ceiling = 49999;
+        $range = $ceiling - $floor + 1;
+
+        $base = (abs(crc32($name)) % $range) + $floor;
+
+        for ($attempts = 0; in_array($base, $usedPriorities, true); $attempts++) {
+            if ($attempts >= $range) {
+                throw new IntegrityCheckException('ALB listener rule priority space (1000-49999) exhausted');
+            }
+
+            $base = $base >= $ceiling ? $floor : $base + 1;
         }
 
         return $base;
