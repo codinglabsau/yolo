@@ -20,13 +20,10 @@ trait ChecksIfCommandsShouldBeRunning
     public function shouldBeRunning(Command|Step $instance): bool
     {
         if (
-            $instance instanceof ExecutesSoloStep && Manifest::isMultitenanted()
-            || $instance instanceof ExecutesMultitenancyStep && ! Manifest::isMultitenanted()) {
-            return false;
-        }
-
-        if (Manifest::isHeadless()
-            && ($instance instanceof ExecutesDomainStep || $instance instanceof ExecutesWebStep)) {
+            ($instance instanceof ExecutesSoloStep && Manifest::isMultitenanted())
+            || ($instance instanceof ExecutesMultitenancyStep && ! Manifest::isMultitenanted())
+            || (($instance instanceof ExecutesDomainStep || $instance instanceof ExecutesWebStep) && Manifest::isHeadless())
+        ) {
             return false;
         }
 
