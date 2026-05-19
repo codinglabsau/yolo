@@ -88,9 +88,20 @@ abstract class Command extends SymfonyCommand
 
     protected function ensureManifestIntegrity(): bool
     {
-        return $this->ensureManifestKeyDeclared('name')
+        return $this->ensureNameDeclared()
             && $this->ensureManifestKeyDeclared('aws.region')
             && $this->ensureManifestKeyDeclared('aws.account-id');
+    }
+
+    protected function ensureNameDeclared(): bool
+    {
+        if (! empty(Manifest::current()['name'])) {
+            return true;
+        }
+
+        error('yolo.yml must declare `name`.');
+
+        return false;
     }
 
     protected function ensureManifestKeyDeclared(string $key): bool

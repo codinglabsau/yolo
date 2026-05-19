@@ -39,9 +39,7 @@ class Manifest
 
     public static function has(string $key): bool
     {
-        $env = static::current()['environments'][Helpers::environment()] ?? [];
-
-        return Arr::has($env, $key) || Arr::has(static::current(), $key);
+        return Arr::has(static::current()['environments'][Helpers::environment()], $key);
     }
 
     public static function doesntHave(string $key): bool
