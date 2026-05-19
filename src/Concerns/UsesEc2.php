@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\Enums\PublicSubnets;
 use Codinglabs\Yolo\Enums\SecurityGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -23,11 +24,11 @@ trait UsesEc2
 
     protected static array $routeTable;
 
-    protected static array $securityGroups;
-
     protected static array $loadBalancerSecurityGroup;
 
     protected static array $ec2SecurityGroup;
+
+    protected static array $ecsTaskSecurityGroup;
 
     protected static array $rdsSecurityGroup;
 
@@ -94,17 +95,12 @@ trait UsesEc2
             ->toArray();
     }
 
-    public static function securityGroups($refresh = false): array
+    public static function securityGroups(): array
     {
-        if (! $refresh && isset(static::$securityGroups)) {
-            return static::$securityGroups;
-        }
-
-        $securityGroups = Aws::ec2()->describeSecurityGroups()['SecurityGroups'];
-
-        static::$securityGroups = $securityGroups;
-
-        return static::$securityGroups;
+        // Intentionally un-memoised: steps frequently describe → catch-not-found → create → re-describe
+        // within a single sync, and a stale cache silently breaks the re-read. The extra describe
+        // cost is negligible and the bug class disappears. LPX-596 tracks the rest of the cache strip.
+        return Aws::ec2()->describeSecurityGroups()['SecurityGroups'];
     }
 
     /**
@@ -147,6 +143,25 @@ trait UsesEc2
         static::$rdsSecurityGroup = static::securityGroupByName(Manifest::get('aws.rds.security-group', SecurityGroup::RDS_SECURITY_GROUP));
 
         return static::$rdsSecurityGroup;
+    }
+
+    /**
+     * @throws ResourceDoesNotExistException
+     */
+    public static function ecsTaskSecurityGroup(): array
+    {
+        if (isset(static::$ecsTaskSecurityGroup)) {
+            return static::$ecsTaskSecurityGroup;
+        }
+
+        $name = Manifest::get(
+            'aws.ecs.security-group',
+            Helpers::keyedResourceName(SecurityGroup::ECS_TASK_SECURITY_GROUP, exclusive: true)
+        );
+
+        static::$ecsTaskSecurityGroup = static::securityGroupByName($name);
+
+        return static::$ecsTaskSecurityGroup;
     }
 
     public static function securityGroupByName(string|BackedEnum $name): array
@@ -317,6 +332,13 @@ trait UsesEc2
         }
 
         return $subnets;
+    }
+
+    public static function publicSubnetIds(): array
+    {
+        return collect(PublicSubnets::cases())
+            ->map(fn (PublicSubnets $subnet) => static::subnetByName($subnet->value)['SubnetId'])
+            ->all();
     }
 
     public static function subnetByName(string $name, $relative = true): array

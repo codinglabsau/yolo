@@ -5,6 +5,8 @@ namespace Codinglabs\Yolo\Concerns;
 use Aws\S3\S3Client;
 use Aws\Acm\AcmClient;
 use Aws\Ec2\Ec2Client;
+use Aws\Ecr\EcrClient;
+use Aws\Ecs\EcsClient;
 use Aws\Iam\IamClient;
 use Aws\Rds\RdsClient;
 use Aws\Sns\SnsClient;
@@ -45,6 +47,8 @@ trait RegistersAws
         Helpers::app()->singleton('cloudWatch', fn () => new CloudWatchClient($arguments));
         Helpers::app()->singleton('cloudWatchLogs', fn () => new CloudWatchLogsClient($arguments));
         Helpers::app()->singleton('ec2', fn () => new Ec2Client($arguments));
+        Helpers::app()->singleton('ecr', fn () => new EcrClient($arguments));
+        Helpers::app()->singleton('ecs', fn () => new EcsClient($arguments));
         Helpers::app()->singleton('eventBridge', fn () => new EventBridgeClient($arguments));
         Helpers::app()->singleton('elasticLoadBalancingV2', fn () => new ElasticLoadBalancingV2Client($arguments));
         Helpers::app()->singleton('iam', fn () => new IamClient($arguments));

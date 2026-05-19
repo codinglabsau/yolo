@@ -26,6 +26,7 @@ class Yolo
         Commands\SyncStandaloneCommand::class,
         Commands\SyncMultitenancyTenantsCommand::class,
         Commands\SyncMultitenancyLandlordCommand::class,
+        Commands\SyncComputeCommand::class,
         Commands\SyncIamCommand::class,
         Commands\SyncLoggingCommand::class,
     ];

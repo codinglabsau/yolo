@@ -36,6 +36,9 @@ class SyncCommand extends SteppedCommand
                 : [
                     SyncStandaloneCommand::class,
                 ],
+            ...Manifest::has('tasks.web')
+                ? [SyncComputeCommand::class]
+                : [],
             SyncIamCommand::class,
             SyncLoggingCommand::class,
         ])->each(fn ($command) => (new $command())->execute(Helpers::app('input'), Helpers::app('output')));
