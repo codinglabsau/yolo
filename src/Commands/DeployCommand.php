@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Steps;
+use Codinglabs\Yolo\Manifest;
 use Symfony\Component\Console\Input\InputArgument;
 
 use function Laravel\Prompts\error;
@@ -33,6 +34,12 @@ class DeployCommand extends SteppedCommand
 
     public function handle(): int
     {
+        if (! Manifest::has('tasks.web')) {
+            error('`yolo deploy` requires a `tasks.web` block in yolo.yml — this is the Fargate deploy path.');
+
+            return self::FAILURE;
+        }
+
         $appVersion = $this->option('app-version') ?? $this->lastBuiltVersion();
 
         if (! $appVersion) {
