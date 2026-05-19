@@ -79,7 +79,6 @@ class Manifest
             return throw new IntegrityCheckException('Cannot determine apex domain for multitenanted environments.');
         }
 
-        // prefer the apex key when specified
         $apex = static::get('apex', static::get('domain'));
 
         if (str_starts_with($apex, 'www.')) {
@@ -100,9 +99,7 @@ class Manifest
             return false;
         }
 
-        // Multitenant: headless when no tenant declares a public face.
-        // Read tenants raw rather than via tenants() — the normaliser there
-        // pre-supposes a public face and would TypeError on a headless tenant.
+        // Read raw — tenants() normaliser TypeErrors on a headless tenant.
         return collect(static::get('tenants', []))
             ->every(fn (array $config) => ! isset($config['apex']) && ! isset($config['domain']));
     }
@@ -124,7 +121,6 @@ class Manifest
     {
         return collect(static::get('tenants'))
             ->mapWithKeys(function (array $config, string $tenantId) {
-                // apex resolves to null for headless tenants (no domain, no apex).
                 $config['apex'] = $config['apex'] ?? ($config['domain'] ?? null);
 
                 if ($config['apex'] !== null && str_starts_with($config['apex'], 'www.')) {
