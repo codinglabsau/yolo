@@ -31,7 +31,7 @@ For existing EC2/ASG consumers (frozen, maintenance-only):
 }
 ```
 
-Consumers migrating from `yolo-alpha` to `yolo` 1.0 require both side-by-side during the cutover window. See [docs/migrating-from-alpha.md](docs/migrating-from-alpha.md).
+Consumers migrating from `yolo-alpha` to `yolo` 1.0 install both packages side-by-side during the cutover window, then drop `yolo-alpha` once on Fargate.
 
 ## YOLO 1.0 in one line
 
