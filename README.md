@@ -7,7 +7,7 @@
 YOLO deploys Laravel applications to AWS Fargate.
 
 > [!IMPORTANT]
-> **YOLO 1.0 is in active development.** `main` is currently an empty skeleton — commands land via the [Linear project MVP milestone](https://linear.app/codinglabsau/project/yolo-v2-f26af789f353). The pre-1.0 EC2/ASG codebase has been extracted to [`codinglabsau/yolo-alpha`](https://github.com/codinglabsau/yolo-alpha) (frozen, maintenance-only). See [STATUS.md](STATUS.md) for details.
+> This package is in active development - contributions are welcome!
 
 ## Composer pinning
 
@@ -39,7 +39,7 @@ Consumers migrating from `yolo-alpha` to `yolo` 1.0 require both side-by-side du
 yolo init && yolo build && yolo sync production && yolo deploy production
 ```
 
-That's the goal. Today the `Yolo` class registers zero commands — it's a placeholder while 1.0 is being built. Track progress in the [Linear project](https://linear.app/codinglabsau/project/yolo-v2-f26af789f353).
+That's the goal. Today the `Yolo` class registers zero commands — it's a placeholder while 1.0 is being built.
 
 ## Pre-1.0 alpha documentation
 
@@ -49,7 +49,7 @@ The EC2/ASG `yolo-alpha` documentation lives in its own repo: [`codinglabsau/yol
 
 `yolo-alpha`: bug fixes only. Pull requests against [`codinglabsau/yolo-alpha`](https://github.com/codinglabsau/yolo-alpha) are welcome for production-safe patches. No new features.
 
-`yolo` (this repo, `main`): in active development. Open issues against the [Linear project](https://linear.app/codinglabsau/project/yolo-v2-f26af789f353) or coordinate with @stevethomas before submitting PRs.
+`yolo` (this repo, `main`): in active development. Open an issue on this repo or coordinate with @stevethomas before submitting PRs.
 
 ## License
 

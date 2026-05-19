@@ -178,6 +178,5 @@ The `migrate:*` namespace is intentionally minimal. YOLO 1.0 ships one diagnosti
 
 ## References
 
-- [Linear project](https://linear.app/codinglabsau/project/yolo-v2-f26af789f353) — milestones, MVP scope, LP migration phases
 - [`STATUS.md`](../STATUS.md) — composer pinning at a glance
 - [`codinglabsau/yolo-alpha`](https://github.com/codinglabsau/yolo-alpha) — for anyone still operating EC2/ASG resources

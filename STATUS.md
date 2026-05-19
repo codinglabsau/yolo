@@ -4,7 +4,7 @@ YOLO 1.0 (Fargate/ECS) is in active development on `main`. The pre-1.0 EC2/ASG c
 
 ## Repos
 
-- **[`codinglabsau/yolo`](https://github.com/codinglabsau/yolo)** — YOLO 1.0 Fargate development. **Empty skeleton as of 2026-05-18.** Commands land via the [YOLO 1.0 Linear project](https://linear.app/codinglabsau/project/yolo-v2-f26af789f353) MVP milestone.
+- **[`codinglabsau/yolo`](https://github.com/codinglabsau/yolo)** — YOLO 1.0 Fargate development. **Empty skeleton as of 2026-05-18.** Commands land incrementally toward the MVP milestone.
 - **[`codinglabsau/yolo-alpha`](https://github.com/codinglabsau/yolo-alpha)** — EC2/ASG codebase, extracted from the original `1.x` branch. Bug fixes only for LP and other pre-1.0 consumers. **No new features.** Initial tag is `v1.0.0-alpha.34` (matching the original release identity). Patches land as `v1.0.0-alpha.35`, `.36`, etc.
 
 ## Composer pinning
@@ -42,4 +42,4 @@ yolo run <env> <cmd>  # one-off command via ECS Exec (replaces the alpha's `yolo
 yolo audit:legacy     # detect yolo-alpha resources by tag during LP migration
 ```
 
-Schema, command details, and progress in the [Linear project](https://linear.app/codinglabsau/project/yolo-v2-f26af789f353).
+Schema and command details will firm up as the MVP lands.
