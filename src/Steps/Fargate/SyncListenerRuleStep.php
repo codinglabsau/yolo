@@ -20,8 +20,7 @@ class SyncListenerRuleStep implements Step
             return StepResult::SKIPPED;
         }
 
-        $apex = Manifest::apex();
-        $hosts = collect([$apex, "www.$apex"])->unique()->values()->all();
+        $hosts = static::routedHosts();
 
         try {
             $listener = AwsResources::loadBalancerListenerOnPort(443);
@@ -94,6 +93,18 @@ class SyncListenerRuleStep implements Step
             ->all();
 
         return static::nextAvailablePriority(Helpers::keyedResourceName(exclusive: true), $usedPriorities);
+    }
+
+    public static function routedHosts(): array
+    {
+        $apex = Manifest::apex();
+        $domain = Manifest::get('domain', $apex);
+
+        // Apex deploy: route apex + www.apex (both are reasonable inbound hostnames).
+        // Subdomain deploy (apex != domain): route only the literal domain.
+        return $domain === $apex
+            ? [$apex, "www.$apex"]
+            : [$domain];
     }
 
     public static function nextAvailablePriority(string $name, array $usedPriorities): int

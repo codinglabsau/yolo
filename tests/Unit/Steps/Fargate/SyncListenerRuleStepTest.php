@@ -3,6 +3,50 @@
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Codinglabs\Yolo\Steps\Fargate\SyncListenerRuleStep;
 
+describe('routedHosts', function () {
+    it('routes apex + www.apex when domain matches apex', function () {
+        writeManifest([
+            'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+            'domain' => 'codinglabs.com.au',
+        ]);
+
+        expect(SyncListenerRuleStep::routedHosts())
+            ->toBe(['codinglabs.com.au', 'www.codinglabs.com.au']);
+    });
+
+    it('routes apex + www.apex when only apex is set', function () {
+        writeManifest([
+            'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+            'apex' => 'codinglabs.com.au',
+        ]);
+
+        expect(SyncListenerRuleStep::routedHosts())
+            ->toBe(['codinglabs.com.au', 'www.codinglabs.com.au']);
+    });
+
+    it('routes only the literal domain when apex and domain differ', function () {
+        writeManifest([
+            'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+            'apex' => 'codinglabs.com.au',
+            'domain' => 'fargate.codinglabs.com.au',
+        ]);
+
+        expect(SyncListenerRuleStep::routedHosts())
+            ->toBe(['fargate.codinglabs.com.au']);
+    });
+
+    it('routes only the literal domain for tenant-style subdomains (apex ≠ domain)', function () {
+        writeManifest([
+            'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+            'apex' => 'liveplatforms.net',
+            'domain' => 'brushly.liveplatforms.net',
+        ]);
+
+        expect(SyncListenerRuleStep::routedHosts())
+            ->toBe(['brushly.liveplatforms.net']);
+    });
+});
+
 it('returns a priority within the 1000-49999 range', function () {
     $priority = SyncListenerRuleStep::nextAvailablePriority('my-app', []);
 
