@@ -9,8 +9,8 @@ use Codinglabs\Yolo\Commands\Command;
 use Codinglabs\Yolo\Contracts\RunsOnAws;
 use Codinglabs\Yolo\Contracts\RunsOnAwsWeb;
 use Codinglabs\Yolo\Contracts\RunsOnAwsQueue;
+use Codinglabs\Yolo\Contracts\ExecutesSoloStep;
 use Codinglabs\Yolo\Contracts\RunsOnAwsScheduler;
-use Codinglabs\Yolo\Contracts\ExecutesStandaloneStep;
 use Codinglabs\Yolo\Contracts\ExecutesMultitenancyStep;
 
 trait ChecksIfCommandsShouldBeRunning
@@ -18,7 +18,7 @@ trait ChecksIfCommandsShouldBeRunning
     public function shouldBeRunning(Command|Step $instance): bool
     {
         if (
-            $instance instanceof ExecutesStandaloneStep && Manifest::isMultitenanted()
+            $instance instanceof ExecutesSoloStep && Manifest::isMultitenanted()
             || $instance instanceof ExecutesMultitenancyStep && ! Manifest::isMultitenanted()) {
             return false;
         }

@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Standalone;
+namespace Codinglabs\Yolo\Steps\Solo;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;

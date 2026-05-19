@@ -5,10 +5,10 @@ namespace Codinglabs\Yolo\Steps\Ensures;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Contracts\ExecutesSoloStep;
 use Codinglabs\Yolo\Concerns\EnsuresResourcesExist;
-use Codinglabs\Yolo\Contracts\ExecutesStandaloneStep;
 
-class EnsureHostedZonesExistStep implements ExecutesStandaloneStep
+class EnsureHostedZonesExistStep implements ExecutesSoloStep
 {
     use EnsuresResourcesExist;
 

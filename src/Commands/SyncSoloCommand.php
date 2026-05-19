@@ -5,22 +5,22 @@ namespace Codinglabs\Yolo\Commands;
 use Codinglabs\Yolo\Steps;
 use Symfony\Component\Console\Input\InputArgument;
 
-class SyncStandaloneCommand extends SteppedCommand
+class SyncSoloCommand extends SteppedCommand
 {
     protected array $steps = [
-        Steps\Standalone\SyncHostedZoneStep::class,
-        Steps\Standalone\SyncSslCertificateStep::class,
-        Steps\Standalone\SyncQueueStep::class,
-        Steps\Standalone\SyncQueueAlarmStep::class,
+        Steps\Solo\SyncHostedZoneStep::class,
+        Steps\Solo\SyncSslCertificateStep::class,
+        Steps\Solo\SyncQueueStep::class,
+        Steps\Solo\SyncQueueAlarmStep::class,
     ];
 
     protected function configure(): void
     {
         $this
-            ->setName('sync:standalone')
+            ->setName('sync:solo')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('dry-run', null, null, 'Run the command without making changes')
             ->addOption('no-progress', null, null, 'Hide the progress output')
-            ->setDescription('Sync AWS resources for standalone app');
+            ->setDescription('Sync AWS resources for solo (single-tenant) app');
     }
 }

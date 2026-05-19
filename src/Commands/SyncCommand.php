@@ -34,7 +34,7 @@ class SyncCommand extends SteppedCommand
                     SyncMultitenancyTenantsCommand::class,
                 ]
                 : [
-                    SyncStandaloneCommand::class,
+                    SyncSoloCommand::class,
                 ],
             ...Manifest::has('tasks.web')
                 ? [SyncComputeCommand::class]
