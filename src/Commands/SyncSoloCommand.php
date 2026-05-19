@@ -21,6 +21,6 @@ class SyncSoloCommand extends SteppedCommand
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('dry-run', null, null, 'Run the command without making changes')
             ->addOption('no-progress', null, null, 'Hide the progress output')
-            ->setDescription('Sync AWS resources for solo (single-tenant) app');
+            ->setDescription('Sync AWS resources for a solo app');
     }
 }
