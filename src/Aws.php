@@ -85,6 +85,11 @@ class Aws
         return Manifest::get('aws.account-id');
     }
 
+    public static function profileAccountId(): string
+    {
+        return static::sts()->getCallerIdentity()['Account'];
+    }
+
     public static function acm(): AcmClient
     {
         return Helpers::app('acm');

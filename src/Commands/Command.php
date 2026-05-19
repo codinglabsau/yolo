@@ -9,7 +9,6 @@ use Codinglabs\Yolo\Concerns\RegistersAws;
 use Codinglabs\Yolo\Concerns\HasAfterCallbacks;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
-use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Codinglabs\Yolo\Concerns\ChecksIfCommandsShouldBeRunning;
 use Symfony\Component\Console\Command\Command as SymfonyCommand;
 
@@ -67,7 +66,9 @@ abstract class Command extends SymfonyCommand
 
         $this->registerAwsServices();
 
-        $this->ensureManifestAccountMatchesProfile();
+        if (! $this->ensureManifestAccountMatchesProfile()) {
+            return 1;
+        }
 
         // todo: remove once mvp is finished
         $this->output->setVerbosity(OutputInterface::VERBOSITY_DEBUG);
@@ -81,31 +82,32 @@ abstract class Command extends SymfonyCommand
         return $exitCode;
     }
 
-    protected function ensureManifestAccountMatchesProfile(): void
+    protected function ensureManifestAccountMatchesProfile(): bool
     {
-        $expected = Manifest::get('aws.account-id');
-
-        if (! $expected) {
-            return;
+        if (! Manifest::has('aws.account-id')) {
+            return true;
         }
 
         try {
-            $actual = Aws::sts()->getCallerIdentity()['Account'];
+            $actual = Aws::profileAccountId();
         } catch (\Throwable $e) {
-            throw new IntegrityCheckException(
-                sprintf('Failed to verify AWS account via STS: %s', $e->getMessage()),
-                previous: $e,
-            );
+            error(sprintf('Failed to verify AWS account via STS: %s', $e->getMessage()));
+
+            return false;
         }
 
-        if ($expected !== $actual) {
-            throw new IntegrityCheckException(sprintf(
+        if (Aws::accountId() !== $actual) {
+            error(sprintf(
                 'AWS account mismatch: manifest declares %s, YOLO_%s_AWS_PROFILE resolves to %s. Check .env.',
-                $expected,
+                Aws::accountId(),
                 strtoupper(Helpers::environment()),
                 $actual,
             ));
+
+            return false;
         }
+
+        return true;
     }
 
     protected function argument($key)
