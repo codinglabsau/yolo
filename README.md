@@ -4,24 +4,14 @@
 
 # YOLO
 
-YOLO deploys Laravel applications to AWS.
+YOLO deploys Laravel applications to AWS Fargate.
 
 > [!IMPORTANT]
-> **YOLO is mid-pivot from v1 (EC2/ASG) to v2 (Fargate/ECS).** v1 lives on the [`1.x`](https://github.com/codinglabsau/yolo/tree/1.x) branch in maintenance mode. v2 development is happening on `main` — currently an empty skeleton, commands land via the [Linear project MVP milestone](https://linear.app/codinglabsau/project/yolo-v2-f26af789f353). See [STATUS.md](STATUS.md) for details.
+> **YOLO 1.0 is in active development.** `main` is currently an empty skeleton — commands land via the [Linear project MVP milestone](https://linear.app/codinglabsau/project/yolo-v2-f26af789f353). The pre-1.0 EC2/ASG codebase has been extracted to [`codinglabsau/yolo-alpha`](https://github.com/codinglabsau/yolo-alpha) (frozen, maintenance-only). See [STATUS.md](STATUS.md) for details.
 
 ## Composer pinning
 
-For an existing v1 consumer (production):
-
-```json
-{
-  "require": {
-    "codinglabsau/yolo": "v1.0.0-alpha.34"
-  }
-}
-```
-
-For new apps or v2 canaries:
+For new apps and Fargate canaries:
 
 ```json
 {
@@ -31,23 +21,35 @@ For new apps or v2 canaries:
 }
 ```
 
-## v2 in one line
+For existing EC2/ASG consumers (frozen, maintenance-only):
+
+```json
+{
+  "require": {
+    "codinglabsau/yolo-alpha": "v1.0.0-alpha.34"
+  }
+}
+```
+
+Consumers migrating from `yolo-alpha` to `yolo` 1.0 require both side-by-side during the cutover window. See [docs/migrating-from-alpha.md](docs/migrating-from-alpha.md).
+
+## YOLO 1.0 in one line
 
 ```bash
 yolo init && yolo build && yolo sync production && yolo deploy production
 ```
 
-That's the goal. Today the `Yolo` class registers zero commands — it's a placeholder while v2 is being built. Track progress in the [Linear project](https://linear.app/codinglabsau/project/yolo-v2-f26af789f353).
+That's the goal. Today the `Yolo` class registers zero commands — it's a placeholder while 1.0 is being built. Track progress in the [Linear project](https://linear.app/codinglabsau/project/yolo-v2-f26af789f353).
 
-## v1 documentation
+## Pre-1.0 alpha documentation
 
-The v1 (EC2/ASG) documentation lives on the [`1.x` branch](https://github.com/codinglabsau/yolo/tree/1.x). LP and other v1 consumers should reference that branch.
+The EC2/ASG `yolo-alpha` documentation lives in its own repo: [`codinglabsau/yolo-alpha`](https://github.com/codinglabsau/yolo-alpha). Existing consumers should reference that repo.
 
 ## Contributing
 
-v1 (`1.x`): bug fixes only. Pull requests targeting `1.x` are welcome for production-safe patches. No new features.
+`yolo-alpha`: bug fixes only. Pull requests against [`codinglabsau/yolo-alpha`](https://github.com/codinglabsau/yolo-alpha) are welcome for production-safe patches. No new features.
 
-v2 (`main`): in active development. Open issues against the [Linear project](https://linear.app/codinglabsau/project/yolo-v2-f26af789f353) or coordinate with @stevethomas before submitting PRs.
+`yolo` (this repo, `main`): in active development. Open issues against the [Linear project](https://linear.app/codinglabsau/project/yolo-v2-f26af789f353) or coordinate with @stevethomas before submitting PRs.
 
 ## License
 
