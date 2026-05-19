@@ -34,7 +34,7 @@ class SyncTargetGroupStep implements Step
                 'TargetType' => 'ip',
                 'VpcId' => AwsResources::vpc()['VpcId'],
                 'HealthCheckProtocol' => 'HTTP',
-                'HealthCheckPath' => Manifest::get('tasks.web.health-check.path', '/healthy'),
+                'HealthCheckPath' => Manifest::get('tasks.web.health-check.path', '/health'),
                 'HealthCheckIntervalSeconds' => (int) Manifest::get('tasks.web.health-check.interval', 30),
                 'HealthCheckTimeoutSeconds' => (int) Manifest::get('tasks.web.health-check.timeout', 5),
                 'HealthyThresholdCount' => (int) Manifest::get('tasks.web.health-check.healthy-threshold', 2),
