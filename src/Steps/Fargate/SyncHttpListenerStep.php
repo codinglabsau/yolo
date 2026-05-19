@@ -5,11 +5,11 @@ namespace Codinglabs\Yolo\Steps\Fargate;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\AwsResources;
-use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncHttpListenerStep implements Step
+class SyncHttpListenerStep implements ExecutesWebStep
 {
     public function __invoke(array $options): StepResult
     {

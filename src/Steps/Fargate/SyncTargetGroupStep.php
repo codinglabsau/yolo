@@ -7,11 +7,11 @@ use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
-use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncTargetGroupStep implements Step
+class SyncTargetGroupStep implements ExecutesWebStep
 {
     public function __invoke(array $options): StepResult
     {

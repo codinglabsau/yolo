@@ -6,11 +6,11 @@ use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
-use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncHttpsListenerStep implements Step
+class SyncHttpsListenerStep implements ExecutesWebStep
 {
     public function __invoke(array $options): StepResult
     {

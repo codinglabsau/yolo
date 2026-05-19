@@ -94,6 +94,19 @@ class Manifest
         return ! empty(static::get('tenants'));
     }
 
+    public static function isHeadless(): bool
+    {
+        if (static::has('apex') || static::has('domain')) {
+            return false;
+        }
+
+        // Multitenant: headless when no tenant declares a public face.
+        // Read tenants raw rather than via tenants() — the normaliser there
+        // pre-supposes a public face and would TypeError on a headless tenant.
+        return collect(static::get('tenants', []))
+            ->every(fn (array $config) => ! isset($config['apex']) && ! isset($config['domain']));
+    }
+
     public static function ivsEnabled(): bool
     {
         return static::get('aws.ivs') === true
@@ -111,10 +124,12 @@ class Manifest
     {
         return collect(static::get('tenants'))
             ->mapWithKeys(function (array $config, string $tenantId) {
-                // normalise tenant config
-                $config['apex'] = $config['apex'] ?? $config['domain'];
+                // Normalise — apex defaults to domain when present, null when neither
+                // (headless tenant). The www-prefix guard only applies when there's
+                // actually an apex to inspect.
+                $config['apex'] = $config['apex'] ?? ($config['domain'] ?? null);
 
-                if (str_starts_with($config['apex'], 'www.')) {
+                if ($config['apex'] !== null && str_starts_with($config['apex'], 'www.')) {
                     return throw new IntegrityCheckException(sprintf("The apex record %s cannot start with 'www'.", $config['apex']));
                 }
 
