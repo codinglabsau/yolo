@@ -21,8 +21,11 @@ trait ChecksIfCommandsShouldBeRunning
         if (
             ($instance instanceof ExecutesSoloStep && Manifest::isMultitenanted())
             || ($instance instanceof ExecutesMultitenancyStep && ! Manifest::isMultitenanted())
-            || ($instance instanceof ExecutesWebStep && Manifest::isHeadless())
         ) {
+            return false;
+        }
+
+        if ($instance instanceof ExecutesWebStep && Manifest::isHeadless()) {
             return false;
         }
 
