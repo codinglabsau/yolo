@@ -18,6 +18,13 @@ jobs:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-22.04
 
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version: ['8.3', '8.4']
+
+    name: PHP ${{ matrix.php-version }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -25,7 +32,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3'
+          php-version: ${{ matrix.php-version }}
           extensions: zip, sqlite3
           coverage: none
 
