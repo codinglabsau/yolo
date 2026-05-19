@@ -13,6 +13,7 @@ class DeployCommand extends SteppedCommand
 {
     protected array $steps = [
         Steps\Deploy\RegisterTaskDefinitionRevisionStep::class,
+        Steps\Deploy\ExecuteDeployStepsStep::class,
         Steps\Deploy\UpdateEcsServiceStep::class,
         Steps\Deploy\WaitForServiceStableStep::class,
         Steps\Deploy\SyncStandaloneRecordSetStep::class,

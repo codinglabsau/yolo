@@ -23,6 +23,7 @@ class BuildCommand extends SteppedCommand
     ];
 
     protected array $fargateSteps = [
+        Steps\Build\Fargate\GenerateEntrypointScriptStep::class,
         Steps\Build\Fargate\LoginToEcrStep::class,
         Steps\Build\Fargate\BuildDockerImageStep::class,
         Steps\Build\Fargate\PushDockerImageStep::class,
