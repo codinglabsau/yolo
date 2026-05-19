@@ -85,7 +85,12 @@ abstract class Command extends SymfonyCommand
     protected function ensureManifestAccountMatchesProfile(): bool
     {
         if (! Manifest::has('aws.account-id')) {
-            return true;
+            error(sprintf(
+                'yolo.yml must declare aws.account-id under environments.%s — required to prevent deploying to the wrong AWS account.',
+                Helpers::environment(),
+            ));
+
+            return false;
         }
 
         try {

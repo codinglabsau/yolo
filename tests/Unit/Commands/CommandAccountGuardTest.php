@@ -61,11 +61,16 @@ it('returns false and surfaces both account IDs + env var name on mismatch', fun
         ->and($output)->toContain('YOLO_TESTING_AWS_PROFILE');
 });
 
-it('returns true (no STS call) when the manifest declares no account', function () {
+it('returns false with a clear error when aws.account-id is not declared', function () {
     writeManifest([
         'aws' => ['region' => 'ap-southeast-2'],
     ]);
 
-    // No mock bound — if the method tried to call STS it would fail with a credential error.
-    expect(invokeAccountGuard())->toBeTrue();
+    // No mock bound — the guard must bail before any STS call.
+    expect(invokeAccountGuard())->toBeFalse();
+
+    $output = test()->promptOutput->fetch();
+
+    expect($output)->toContain('aws.account-id')
+        ->and($output)->toContain('testing');
 });
