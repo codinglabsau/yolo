@@ -88,20 +88,9 @@ abstract class Command extends SymfonyCommand
 
     protected function ensureManifestIntegrity(): bool
     {
-        return $this->ensureNameDeclared()
+        return $this->ensureManifestKeyDeclared('name')
             && $this->ensureManifestKeyDeclared('aws.region')
             && $this->ensureManifestKeyDeclared('aws.account-id');
-    }
-
-    protected function ensureNameDeclared(): bool
-    {
-        if (! empty(Manifest::current()['name'])) {
-            return true;
-        }
-
-        error('yolo.yml must declare a top-level `name` key — it drives every AWS resource name yolo provisions.');
-
-        return false;
     }
 
     protected function ensureManifestKeyDeclared(string $key): bool
@@ -110,11 +99,7 @@ abstract class Command extends SymfonyCommand
             return true;
         }
 
-        error(sprintf(
-            'yolo.yml must declare %s under environments.%s.',
-            $key,
-            Helpers::environment(),
-        ));
+        error(sprintf('yolo.yml must declare `%s`.', $key));
 
         return false;
     }

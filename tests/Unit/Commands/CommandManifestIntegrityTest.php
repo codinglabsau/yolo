@@ -55,9 +55,7 @@ it('bails when aws.region is missing', function () {
 
     expect(invokeManifestIntegrity())->toBeFalse();
 
-    expect(test()->promptOutput->fetch())
-        ->toContain('aws.region')
-        ->toContain('testing');
+    expect(test()->promptOutput->fetch())->toContain('aws.region');
 });
 
 it('bails when aws.account-id is missing', function () {
@@ -67,7 +65,5 @@ it('bails when aws.account-id is missing', function () {
 
     expect(invokeManifestIntegrity())->toBeFalse();
 
-    expect(test()->promptOutput->fetch())
-        ->toContain('aws.account-id')
-        ->toContain('testing');
+    expect(test()->promptOutput->fetch())->toContain('aws.account-id');
 });
