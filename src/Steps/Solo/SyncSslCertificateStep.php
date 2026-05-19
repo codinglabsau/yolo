@@ -6,11 +6,11 @@ use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Contracts\ExecutesDomainStep;
+use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Concerns\SyncsSslCertificates;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncSslCertificateStep implements ExecutesDomainStep
+class SyncSslCertificateStep implements ExecutesWebStep
 {
     use SyncsSslCertificates;
 

@@ -11,7 +11,6 @@ use Codinglabs\Yolo\Contracts\RunsOnAwsWeb;
 use Codinglabs\Yolo\Contracts\RunsOnAwsQueue;
 use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Contracts\ExecutesSoloStep;
-use Codinglabs\Yolo\Contracts\ExecutesDomainStep;
 use Codinglabs\Yolo\Contracts\RunsOnAwsScheduler;
 use Codinglabs\Yolo\Contracts\ExecutesMultitenancyStep;
 
@@ -22,7 +21,7 @@ trait ChecksIfCommandsShouldBeRunning
         if (
             ($instance instanceof ExecutesSoloStep && Manifest::isMultitenanted())
             || ($instance instanceof ExecutesMultitenancyStep && ! Manifest::isMultitenanted())
-            || (($instance instanceof ExecutesDomainStep || $instance instanceof ExecutesWebStep) && Manifest::isHeadless())
+            || ($instance instanceof ExecutesWebStep && Manifest::isHeadless())
         ) {
             return false;
         }
