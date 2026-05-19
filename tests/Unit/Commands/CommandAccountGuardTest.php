@@ -24,7 +24,7 @@ function bindMockStsClient(string $account): void
 function invokeAccountGuard(): bool
 {
     $command = new SyncCommand();
-    $method = new ReflectionMethod($command, 'ensureManifestAccountMatchesProfile');
+    $method = new ReflectionMethod($command, 'ensureAccountMatchesProfile');
 
     return $method->invoke($command);
 }
@@ -59,18 +59,4 @@ it('returns false and surfaces both account IDs + env var name on mismatch', fun
     expect($output)->toContain('848509375702')
         ->and($output)->toContain('999999999999')
         ->and($output)->toContain('YOLO_TESTING_AWS_PROFILE');
-});
-
-it('returns false with a clear error when aws.account-id is not declared', function () {
-    writeManifest([
-        'aws' => ['region' => 'ap-southeast-2'],
-    ]);
-
-    // No mock bound — the guard must bail before any STS call.
-    expect(invokeAccountGuard())->toBeFalse();
-
-    $output = test()->promptOutput->fetch();
-
-    expect($output)->toContain('aws.account-id')
-        ->and($output)->toContain('testing');
 });

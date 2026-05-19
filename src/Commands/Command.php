@@ -64,9 +64,13 @@ abstract class Command extends SymfonyCommand
             return 1;
         }
 
+        if (! $this->ensureManifestIntegrity()) {
+            return 1;
+        }
+
         $this->registerAwsServices();
 
-        if (! $this->ensureManifestAccountMatchesProfile()) {
+        if (! $this->ensureAccountMatchesProfile()) {
             return 1;
         }
 
@@ -82,17 +86,33 @@ abstract class Command extends SymfonyCommand
         return $exitCode;
     }
 
-    protected function ensureManifestAccountMatchesProfile(): bool
+    protected function ensureManifestIntegrity(): bool
     {
-        if (! Manifest::has('aws.account-id')) {
-            error(sprintf(
-                'yolo.yml must declare aws.account-id under environments.%s — required to prevent deploying to the wrong AWS account.',
-                Helpers::environment(),
-            ));
+        $manifest = Manifest::current();
+
+        if (empty($manifest['name'])) {
+            error('yolo.yml must declare a top-level `name` key — it drives every AWS resource name yolo provisions.');
 
             return false;
         }
 
+        foreach (['aws.region', 'aws.account-id'] as $key) {
+            if (! Manifest::has($key)) {
+                error(sprintf(
+                    'yolo.yml must declare %s under environments.%s.',
+                    $key,
+                    Helpers::environment(),
+                ));
+
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    protected function ensureAccountMatchesProfile(): bool
+    {
         try {
             $actual = Aws::profileAccountId();
         } catch (\Throwable $e) {
