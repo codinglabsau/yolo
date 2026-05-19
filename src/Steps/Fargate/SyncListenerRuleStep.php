@@ -100,8 +100,6 @@ class SyncListenerRuleStep implements ExecutesWebStep
         $apex = Manifest::apex();
         $domain = Manifest::get('domain', $apex);
 
-        // Apex deploy: route apex + www.apex (both are reasonable inbound hostnames).
-        // Subdomain deploy (apex != domain): route only the literal domain.
         return $domain === $apex
             ? [$apex, "www.$apex"]
             : [$domain];

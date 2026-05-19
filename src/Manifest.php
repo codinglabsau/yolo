@@ -124,9 +124,7 @@ class Manifest
     {
         return collect(static::get('tenants'))
             ->mapWithKeys(function (array $config, string $tenantId) {
-                // Normalise — apex defaults to domain when present, null when neither
-                // (headless tenant). The www-prefix guard only applies when there's
-                // actually an apex to inspect.
+                // apex resolves to null for headless tenants (no domain, no apex).
                 $config['apex'] = $config['apex'] ?? ($config['domain'] ?? null);
 
                 if ($config['apex'] !== null && str_starts_with($config['apex'], 'www.')) {
