@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Commands;
 use Codinglabs\Yolo\Steps;
 use Symfony\Component\Console\Input\InputArgument;
 
-class SyncFargateCommand extends SteppedCommand
+class SyncComputeCommand extends SteppedCommand
 {
     protected array $steps = [
         Steps\Fargate\SyncEcrRepositoryStep::class,
@@ -23,10 +23,10 @@ class SyncFargateCommand extends SteppedCommand
     protected function configure(): void
     {
         $this
-            ->setName('sync:fargate')
+            ->setName('sync:compute')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('dry-run', null, null, 'Run the command without making changes')
             ->addOption('no-progress', null, null, 'Hide the progress output')
-            ->setDescription('Sync the Fargate compute resources for the given environment');
+            ->setDescription('Sync the compute resources for the given environment');
     }
 }

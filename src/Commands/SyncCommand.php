@@ -36,7 +36,7 @@ class SyncCommand extends SteppedCommand
                 : [
                     SyncStandaloneCommand::class,
                 ],
-            SyncFargateCommand::class,
+            SyncComputeCommand::class,
             SyncIamCommand::class,
             SyncLoggingCommand::class,
         ])->each(fn ($command) => (new $command())->execute(Helpers::app('input'), Helpers::app('output')));
