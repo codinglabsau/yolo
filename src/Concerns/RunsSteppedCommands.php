@@ -8,17 +8,11 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Stringable;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Contracts\RunsOnAws;
 use Codinglabs\Yolo\Contracts\HasSubSteps;
 use Codinglabs\Yolo\Contracts\RunsOnBuild;
-use Codinglabs\Yolo\Contracts\RunsOnAwsQueue;
 use Codinglabs\Yolo\Contracts\ExecutesTenantStep;
-use Codinglabs\Yolo\Contracts\RunsOnAwsScheduler;
 use Codinglabs\Yolo\Contracts\ExecutesCommandStep;
 use Codinglabs\Yolo\Steps\ExecuteBuildCommandStep;
-use Codinglabs\Yolo\Steps\ExecuteCommandOnAwsStep;
-use Codinglabs\Yolo\Steps\ExecuteCommandOnAwsQueueStep;
-use Codinglabs\Yolo\Steps\ExecuteCommandOnAwsSchedulerStep;
 
 use function Laravel\Prompts\table;
 use function Laravel\Prompts\warning;
@@ -112,9 +106,6 @@ trait RunsSteppedCommands
                     return collect($step->__invoke())
                         ->map(fn (string $subStepName) => match (true) {
                             $step instanceof RunsOnBuild => new ExecuteBuildCommandStep($environment, $subStepName),
-                            $step instanceof RunsOnAwsQueue => new ExecuteCommandOnAwsQueueStep($environment, $subStepName),
-                            $step instanceof RunsOnAwsScheduler => new ExecuteCommandOnAwsSchedulerStep($environment, $subStepName),
-                            $step instanceof RunsOnAws => new ExecuteCommandOnAwsStep($environment, $subStepName),
                         })
                         ->prepend($step);
                 }

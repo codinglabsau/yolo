@@ -9,20 +9,32 @@ class Yolo
 {
     protected Application $app;
 
-    /**
-     * Commands registered with the YOLO CLI.
-     *
-     * v1 is in active development — commands land incrementally as MVP work ships.
-     */
     protected array $commands = [
-        //
+        Commands\InitCommand::class,
+
+        // Environments
+        Commands\EnvPullCommand::class,
+        Commands\EnvPushCommand::class,
+
+        // Build
+        Commands\BuildCommand::class,
+
+        // Sync
+        Commands\SyncCommand::class,
+        Commands\SyncNetworkCommand::class,
+        Commands\SyncStorageCommand::class,
+        Commands\SyncStandaloneCommand::class,
+        Commands\SyncMultitenancyTenantsCommand::class,
+        Commands\SyncMultitenancyLandlordCommand::class,
+        Commands\SyncIamCommand::class,
+        Commands\SyncLoggingCommand::class,
     ];
 
     public function __construct()
     {
         Container::setInstance(new Container());
 
-        $this->app = new Application('YOLO — Fargate-first deploys for Laravel', '1.0.0-alpha');
+        $this->app = new Application('YOLO, so deploy today 🚀', '1.0.0-alpha');
 
         $this->registerCommands();
     }
