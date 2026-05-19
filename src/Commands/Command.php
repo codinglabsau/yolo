@@ -66,6 +66,10 @@ abstract class Command extends SymfonyCommand
 
         $this->registerAwsServices();
 
+        if (! $this->ensureManifestAccountMatchesProfile()) {
+            return 1;
+        }
+
         // todo: remove once mvp is finished
         $this->output->setVerbosity(OutputInterface::VERBOSITY_DEBUG);
 
@@ -76,6 +80,36 @@ abstract class Command extends SymfonyCommand
         }
 
         return $exitCode;
+    }
+
+    protected function ensureManifestAccountMatchesProfile(): bool
+    {
+        $expected = Manifest::get('aws.account-id');
+
+        if (! $expected) {
+            return true;
+        }
+
+        try {
+            $actual = Aws::sts()->getCallerIdentity()['Account'];
+        } catch (\Throwable $e) {
+            error(sprintf('Failed to verify AWS account via STS: %s', $e->getMessage()));
+
+            return false;
+        }
+
+        if ($expected !== $actual) {
+            error(sprintf(
+                'AWS account mismatch: manifest declares %s, YOLO_%s_AWS_PROFILE resolves to %s. Check .env.',
+                $expected,
+                strtoupper(Helpers::environment()),
+                $actual,
+            ));
+
+            return false;
+        }
+
+        return true;
     }
 
     protected function argument($key)
