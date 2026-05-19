@@ -6,9 +6,10 @@ use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\SyncsRecordSets;
+use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Contracts\ExecutesSoloStep;
 
-class SyncSoloRecordSetStep implements ExecutesSoloStep
+class SyncSoloRecordSetStep implements ExecutesSoloStep, ExecutesWebStep
 {
     use SyncsRecordSets;
 

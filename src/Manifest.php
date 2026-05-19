@@ -79,7 +79,6 @@ class Manifest
             return throw new IntegrityCheckException('Cannot determine apex domain for multitenanted environments.');
         }
 
-        // prefer the apex key when specified
         $apex = static::get('apex', static::get('domain'));
 
         if (str_starts_with($apex, 'www.')) {
@@ -92,6 +91,17 @@ class Manifest
     public static function isMultitenanted(): bool
     {
         return ! empty(static::get('tenants'));
+    }
+
+    public static function isHeadless(): bool
+    {
+        if (static::has('apex') || static::has('domain')) {
+            return false;
+        }
+
+        // Read raw — tenants() normaliser TypeErrors on a headless tenant.
+        return collect(static::get('tenants', []))
+            ->every(fn (array $config) => ! isset($config['apex']) && ! isset($config['domain']));
     }
 
     public static function ivsEnabled(): bool
@@ -111,10 +121,9 @@ class Manifest
     {
         return collect(static::get('tenants'))
             ->mapWithKeys(function (array $config, string $tenantId) {
-                // normalise tenant config
-                $config['apex'] = $config['apex'] ?? $config['domain'];
+                $config['apex'] = $config['apex'] ?? ($config['domain'] ?? null);
 
-                if (str_starts_with($config['apex'], 'www.')) {
+                if ($config['apex'] !== null && str_starts_with($config['apex'], 'www.')) {
                     return throw new IntegrityCheckException(sprintf("The apex record %s cannot start with 'www'.", $config['apex']));
                 }
 

@@ -8,10 +8,10 @@ use Illuminate\Support\Str;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Contracts\ExecutesDomainStep;
+use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncHostedZoneStep implements ExecutesDomainStep
+class SyncHostedZoneStep implements ExecutesWebStep
 {
     public function __invoke(array $options): StepResult
     {

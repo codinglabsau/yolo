@@ -7,12 +7,12 @@ use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
-use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncListenerRuleStep implements Step
+class SyncListenerRuleStep implements ExecutesWebStep
 {
     public function __invoke(array $options): StepResult
     {
@@ -100,8 +100,6 @@ class SyncListenerRuleStep implements Step
         $apex = Manifest::apex();
         $domain = Manifest::get('domain', $apex);
 
-        // Apex deploy: route apex + www.apex (both are reasonable inbound hostnames).
-        // Subdomain deploy (apex != domain): route only the literal domain.
         return $domain === $apex
             ? [$apex, "www.$apex"]
             : [$domain];

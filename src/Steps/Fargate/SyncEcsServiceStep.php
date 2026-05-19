@@ -23,10 +23,7 @@ class SyncEcsServiceStep implements Step
 
             // Task definition revision adoption is owned by `yolo deploy`, not sync —
             // sync reconciles only the slow-moving service-level knobs.
-            $needsUpdate = $service['desiredCount'] !== $desiredCount
-                || ($service['healthCheckGracePeriodSeconds'] ?? $gracePeriod) !== $gracePeriod;
-
-            if (! $needsUpdate) {
+            if (! static::needsUpdate($service, $desiredCount, $gracePeriod)) {
                 return StepResult::SYNCED;
             }
 
@@ -34,12 +31,7 @@ class SyncEcsServiceStep implements Step
                 return StepResult::WOULD_SYNC;
             }
 
-            Aws::ecs()->updateService([
-                'cluster' => AwsResources::ecsClusterName(),
-                'service' => AwsResources::ecsServiceName(),
-                'desiredCount' => $desiredCount,
-                'healthCheckGracePeriodSeconds' => $gracePeriod,
-            ]);
+            Aws::ecs()->updateService(static::updatePayload($desiredCount, $gracePeriod));
 
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
@@ -47,24 +39,47 @@ class SyncEcsServiceStep implements Step
                 return StepResult::WOULD_CREATE;
             }
 
-            Aws::ecs()->createService([
-                'cluster' => AwsResources::ecsClusterName(),
-                'serviceName' => AwsResources::ecsServiceName(),
-                'taskDefinition' => AwsResources::ecsTaskFamily(),
-                'desiredCount' => $desiredCount,
-                'launchType' => 'FARGATE',
-                'healthCheckGracePeriodSeconds' => $gracePeriod,
-                'deploymentConfiguration' => [
-                    'minimumHealthyPercent' => 100,
-                    'maximumPercent' => 200,
+            Aws::ecs()->createService(static::createPayload($desiredCount, $gracePeriod));
+
+            return StepResult::CREATED;
+        }
+    }
+
+    public static function needsUpdate(array $service, int $desiredCount, int $gracePeriod): bool
+    {
+        if ($service['desiredCount'] !== $desiredCount) {
+            return true;
+        }
+
+        // Headless services have no ALB association and therefore no grace period to reconcile.
+        if (Manifest::isHeadless()) {
+            return false;
+        }
+
+        return ($service['healthCheckGracePeriodSeconds'] ?? $gracePeriod) !== $gracePeriod;
+    }
+
+    public static function createPayload(int $desiredCount, int $gracePeriod): array
+    {
+        return [
+            'cluster' => AwsResources::ecsClusterName(),
+            'serviceName' => AwsResources::ecsServiceName(),
+            'taskDefinition' => AwsResources::ecsTaskFamily(),
+            'desiredCount' => $desiredCount,
+            'launchType' => 'FARGATE',
+            ...Manifest::isHeadless() ? [] : ['healthCheckGracePeriodSeconds' => $gracePeriod],
+            'deploymentConfiguration' => [
+                'minimumHealthyPercent' => 100,
+                'maximumPercent' => 200,
+            ],
+            'networkConfiguration' => [
+                'awsvpcConfiguration' => [
+                    'subnets' => AwsResources::publicSubnetIds(),
+                    'securityGroups' => [AwsResources::ecsTaskSecurityGroup()['GroupId']],
+                    'assignPublicIp' => 'ENABLED',
                 ],
-                'networkConfiguration' => [
-                    'awsvpcConfiguration' => [
-                        'subnets' => AwsResources::publicSubnetIds(),
-                        'securityGroups' => [AwsResources::ecsTaskSecurityGroup()['GroupId']],
-                        'assignPublicIp' => 'ENABLED',
-                    ],
-                ],
+            ],
+            ...Manifest::isHeadless() ? [] : [
                 'loadBalancers' => [
                     [
                         'targetGroupArn' => AwsResources::targetGroup()['TargetGroupArn'],
@@ -72,15 +87,23 @@ class SyncEcsServiceStep implements Step
                         'containerPort' => (int) Manifest::get('tasks.web.port', 8000),
                     ],
                 ],
-                'tags' => Aws::ecsTags(['Name' => AwsResources::ecsServiceName()]),
-                'propagateTags' => 'SERVICE',
-                'enableExecuteCommand' => Helpers::validateStrictBool(
-                    Manifest::get('tasks.web.enable-execute-command', false),
-                    'tasks.web.enable-execute-command',
-                ),
-            ]);
+            ],
+            'tags' => Aws::ecsTags(['Name' => AwsResources::ecsServiceName()]),
+            'propagateTags' => 'SERVICE',
+            'enableExecuteCommand' => Helpers::validateStrictBool(
+                Manifest::get('tasks.web.enable-execute-command', false),
+                'tasks.web.enable-execute-command',
+            ),
+        ];
+    }
 
-            return StepResult::CREATED;
-        }
+    public static function updatePayload(int $desiredCount, int $gracePeriod): array
+    {
+        return [
+            'cluster' => AwsResources::ecsClusterName(),
+            'service' => AwsResources::ecsServiceName(),
+            'desiredCount' => $desiredCount,
+            ...Manifest::isHeadless() ? [] : ['healthCheckGracePeriodSeconds' => $gracePeriod],
+        ];
     }
 }
