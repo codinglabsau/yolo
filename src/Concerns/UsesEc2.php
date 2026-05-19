@@ -24,8 +24,6 @@ trait UsesEc2
 
     protected static array $routeTable;
 
-    protected static array $securityGroups;
-
     protected static array $loadBalancerSecurityGroup;
 
     protected static array $ec2SecurityGroup;
@@ -97,17 +95,12 @@ trait UsesEc2
             ->toArray();
     }
 
-    public static function securityGroups($refresh = false): array
+    public static function securityGroups(): array
     {
-        if (! $refresh && isset(static::$securityGroups)) {
-            return static::$securityGroups;
-        }
-
-        $securityGroups = Aws::ec2()->describeSecurityGroups()['SecurityGroups'];
-
-        static::$securityGroups = $securityGroups;
-
-        return static::$securityGroups;
+        // Intentionally un-memoised: steps frequently describe → catch-not-found → create → re-describe
+        // within a single sync, and a stale cache silently breaks the re-read. The extra describe
+        // cost is negligible and the bug class disappears. LPX-596 tracks the rest of the cache strip.
+        return Aws::ec2()->describeSecurityGroups()['SecurityGroups'];
     }
 
     /**
