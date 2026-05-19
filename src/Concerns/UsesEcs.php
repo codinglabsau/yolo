@@ -58,10 +58,17 @@ trait UsesEcs
             return static::$ecsService;
         }
 
-        $services = Aws::ecs()->describeServices([
-            'cluster' => static::ecsClusterName(),
-            'services' => [static::ecsServiceName()],
-        ])['services'];
+        try {
+            $services = Aws::ecs()->describeServices([
+                'cluster' => static::ecsClusterName(),
+                'services' => [static::ecsServiceName()],
+            ])['services'];
+        } catch (AwsException) {
+            // Surfaces ClusterNotFoundException (cold account), ServiceNotFoundException,
+            // and any other SDK error as the project's standard not-found signal so the
+            // calling step's catch can decide dry-run vs create.
+            throw new ResourceDoesNotExistException(sprintf('Could not find ECS service %s', static::ecsServiceName()));
+        }
 
         foreach ($services as $service) {
             if ($service['status'] !== 'INACTIVE') {
