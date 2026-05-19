@@ -54,7 +54,7 @@ class BuildCommand extends SteppedCommand
 
         $this->input->setOption('app-version', $appVersion);
 
-        if (Manifest::has('tasks.web')) {
+        if (Manifest::has('tasks')) {
             $this->steps = [...$this->steps, ...$this->fargateSteps];
         }
 
