@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Steps\Fargate;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
@@ -73,7 +74,10 @@ class SyncEcsServiceStep implements Step
                 ],
                 'tags' => Aws::ecsTags(['Name' => AwsResources::ecsServiceName()]),
                 'propagateTags' => 'SERVICE',
-                'enableExecuteCommand' => (bool) Manifest::get('tasks.web.enable-execute-command', false),
+                'enableExecuteCommand' => Helpers::validateStrictBool(
+                    Manifest::get('tasks.web.enable-execute-command', false),
+                    'tasks.web.enable-execute-command',
+                ),
             ]);
 
             return StepResult::CREATED;

@@ -15,7 +15,10 @@ class SyncTaskLogGroupStep implements Step
     public function __invoke(array $options): StepResult
     {
         $name = static::logGroupName();
-        $retention = (int) Manifest::get('tasks.web.log-retention', 30);
+        $retention = Helpers::validateCloudWatchLogRetention(
+            Manifest::get('tasks.web.log-retention', 30),
+            'tasks.web.log-retention',
+        );
 
         $existing = static::findLogGroup($name);
 

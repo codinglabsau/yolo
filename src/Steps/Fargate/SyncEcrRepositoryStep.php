@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Steps\Fargate;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
@@ -39,10 +40,16 @@ class SyncEcrRepositoryStep implements Step
         }
     }
 
-    protected static function lifecyclePolicy(): string
+    public static function lifecyclePolicy(): string
     {
-        $keepCount = (int) Manifest::get('tasks.web.image-retention.keep-count', 30);
-        $untaggedDays = (int) Manifest::get('tasks.web.image-retention.untagged-days', 7);
+        $keepCount = Helpers::validatePositiveInt(
+            Manifest::get('tasks.web.image-retention.keep-count', 30),
+            'tasks.web.image-retention.keep-count',
+        );
+        $untaggedDays = Helpers::validatePositiveInt(
+            Manifest::get('tasks.web.image-retention.untagged-days', 7),
+            'tasks.web.image-retention.untagged-days',
+        );
 
         return json_encode([
             'rules' => [
