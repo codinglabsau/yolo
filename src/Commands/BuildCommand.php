@@ -22,6 +22,13 @@ class BuildCommand extends SteppedCommand
         Steps\Build\RestoreTemporaryEnvStep::class,
     ];
 
+    protected array $fargateSteps = [
+        Steps\Build\Fargate\GenerateEntrypointScriptStep::class,
+        Steps\Build\Fargate\LoginToEcrStep::class,
+        Steps\Build\Fargate\BuildDockerImageStep::class,
+        Steps\Build\Fargate\PushDockerImageStep::class,
+    ];
+
     protected function configure(): void
     {
         $this
@@ -46,6 +53,10 @@ class BuildCommand extends SteppedCommand
         }
 
         $this->input->setOption('app-version', $appVersion);
+
+        if (Manifest::has('tasks')) {
+            $this->steps = [...$this->steps, ...$this->fargateSteps];
+        }
 
         intro("Building app version: {$appVersion}");
 
