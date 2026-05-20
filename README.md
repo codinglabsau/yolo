@@ -36,10 +36,10 @@ Consumers migrating from `yolo-alpha` to `yolo` 1.0 install both packages side-b
 ## YOLO 1.0 in one line
 
 ```bash
-yolo init && yolo build && yolo sync production && yolo deploy production
+yolo init && yolo sync production && yolo deploy production
 ```
 
-That's the goal. Today the `Yolo` class registers zero commands — it's a placeholder while 1.0 is being built.
+`yolo deploy` builds and pushes the image, then ships it. Pass `--app-version=<tag>` (e.g. a GitHub release name) to stamp the build with a specific tag instead of an auto-generated timestamp.
 
 ## Pre-1.0 alpha documentation
 

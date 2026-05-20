@@ -2,12 +2,9 @@
 
 namespace Codinglabs\Yolo\Commands;
 
-use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Steps;
-use Codinglabs\Yolo\Manifest;
 use Symfony\Component\Console\Input\InputArgument;
 
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\intro;
 
 class DeployCommand extends SteppedCommand
@@ -26,41 +23,22 @@ class DeployCommand extends SteppedCommand
         $this
             ->setName('deploy')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
-            ->addOption('app-version', null, InputArgument::OPTIONAL, 'The app version to deploy (defaults to the last build)')
+            ->addOption('app-version', null, InputArgument::OPTIONAL, 'Tag to stamp on the build (defaults to a timestamp)')
             ->addOption('watch', null, null, 'Wait for the ECS service to reach a steady state')
             ->addOption('no-progress', null, null, 'Hide the progress output')
-            ->setDescription('Deploy the latest build to the given environment');
+            ->setDescription('Build, push, and deploy the application');
     }
 
     public function handle(): int
     {
-        if (! Manifest::has('tasks.web')) {
-            error('`yolo deploy` requires a `tasks.web` block in yolo.yml — this is the Fargate deploy path.');
+        $build = (new BuildCommand())->execute($this->input, $this->output);
 
-            return self::FAILURE;
+        if ($build !== self::SUCCESS) {
+            return $build;
         }
 
-        $appVersion = $this->option('app-version') ?? $this->lastBuiltVersion();
-
-        if (! $appVersion) {
-            error('No app version specified and no build artefact found. Run `yolo build` first.');
-
-            return self::FAILURE;
-        }
-
-        $this->input->setOption('app-version', $appVersion);
-
-        intro("Deploying app version: {$appVersion}");
+        intro("Deploying app version: {$this->option('app-version')}");
 
         return parent::handle();
-    }
-
-    protected function lastBuiltVersion(): ?string
-    {
-        if (! file_exists(Paths::version())) {
-            return null;
-        }
-
-        return trim(file_get_contents(Paths::version()));
     }
 }
