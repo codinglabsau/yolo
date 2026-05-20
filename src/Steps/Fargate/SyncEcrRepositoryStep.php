@@ -16,7 +16,9 @@ class SyncEcrRepositoryStep implements Step
     public function __invoke(array $options): StepResult
     {
         try {
-            AwsResources::ecrRepository();
+            $repository = AwsResources::ecrRepository();
+
+            $this->reconcileTags($repository['repositoryArn'], Arr::get($options, 'dry-run'));
 
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
@@ -28,7 +30,7 @@ class SyncEcrRepositoryStep implements Step
                 'repositoryName' => AwsResources::ecrRepositoryName(),
                 'imageScanningConfiguration' => ['scanOnPush' => true],
                 'imageTagMutability' => 'MUTABLE',
-                'tags' => Aws::tags([], wrap: 'tags')['tags'],
+                'tags' => Aws::tags(['Name' => AwsResources::ecrRepositoryName()], wrap: 'tags')['tags'],
             ]);
 
             Aws::ecr()->putLifecyclePolicy([
@@ -38,6 +40,30 @@ class SyncEcrRepositoryStep implements Step
 
             return StepResult::CREATED;
         }
+    }
+
+    protected function reconcileTags(string $arn, bool $dryRun): void
+    {
+        $current = Aws::flattenTags(Aws::ecr()->listTagsForResource([
+            'resourceArn' => $arn,
+        ])['tags']);
+
+        $missing = Aws::tagsRequiringSync(
+            Aws::expectedTags(['Name' => AwsResources::ecrRepositoryName()]),
+            $current,
+        );
+
+        if (empty($missing) || $dryRun) {
+            return;
+        }
+
+        Aws::ecr()->tagResource([
+            'resourceArn' => $arn,
+            'tags' => collect($missing)
+                ->map(fn ($value, $key) => ['Key' => $key, 'Value' => $value])
+                ->values()
+                ->all(),
+        ]);
     }
 
     public static function lifecyclePolicy(): string

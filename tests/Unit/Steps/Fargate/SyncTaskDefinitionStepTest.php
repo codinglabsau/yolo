@@ -58,7 +58,10 @@ it('pins image to the supplied tag when one is passed', function () {
 it('prefers the supplied tag over the manifest image override', function () {
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'tasks' => ['web' => ['image' => 'public.ecr.aws/nginx:stable']],
+        'tasks' => ['web' => [
+            'image' => 'public.ecr.aws/nginx:stable',
+            'task-role' => 'custom-task-role',
+        ]],
     ]);
 
     $payload = SyncTaskDefinitionStep::payload('26.21.2.1500');
@@ -70,7 +73,10 @@ it('prefers the supplied tag over the manifest image override', function () {
 it('honours explicit task image override', function () {
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'tasks' => ['web' => ['image' => 'public.ecr.aws/nginx:stable']],
+        'tasks' => ['web' => [
+            'image' => 'public.ecr.aws/nginx:stable',
+            'task-role' => 'custom-task-role',
+        ]],
     ]);
 
     $payload = SyncTaskDefinitionStep::payload();
@@ -83,13 +89,26 @@ it('falls back to defaults when manifest omits task config', function () {
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
     ]);
 
+    bindMockIamClient(
+        roleName: 'yolo-testing-ecs-task-role',
+        roleArn: 'arn:aws:iam::111111111111:role/yolo-testing-ecs-task-role',
+    );
+
     $payload = SyncTaskDefinitionStep::payload();
 
     expect($payload['cpu'])->toBe('512');
     expect($payload['memory'])->toBe('1024');
     expect($payload['containerDefinitions'][0]['portMappings'][0]['containerPort'])->toBe(8000);
     expect($payload['executionRoleArn'])->toBe('ecsTaskExecutionRole');
-    expect($payload)->not->toHaveKey('taskRoleArn');
+    expect($payload['taskRoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-ecs-task-role');
+});
+
+it('enables init process in the web container for proper PID 1 signal handling', function () {
+    $payload = SyncTaskDefinitionStep::payload();
+
+    expect($payload['containerDefinitions'][0]['linuxParameters'])->toBe([
+        'initProcessEnabled' => true,
+    ]);
 });
 
 it('tags the task definition with the environment', function () {

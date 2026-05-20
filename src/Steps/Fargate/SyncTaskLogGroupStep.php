@@ -23,18 +23,20 @@ class SyncTaskLogGroupStep implements Step
         $existing = static::findLogGroup($name);
 
         if ($existing !== null) {
-            if (($existing['retentionInDays'] ?? null) === $retention) {
-                return StepResult::SYNCED;
-            }
+            $retentionDrift = ($existing['retentionInDays'] ?? null) !== $retention;
 
-            if (Arr::get($options, 'dry-run')) {
+            if ($retentionDrift && Arr::get($options, 'dry-run')) {
                 return StepResult::WOULD_SYNC;
             }
 
-            Aws::cloudWatchLogs()->putRetentionPolicy([
-                'logGroupName' => $name,
-                'retentionInDays' => $retention,
-            ]);
+            if ($retentionDrift) {
+                Aws::cloudWatchLogs()->putRetentionPolicy([
+                    'logGroupName' => $name,
+                    'retentionInDays' => $retention,
+                ]);
+            }
+
+            $this->reconcileTags($existing['arn'], $name, Arr::get($options, 'dry-run'));
 
             return StepResult::SYNCED;
         }
@@ -62,6 +64,27 @@ class SyncTaskLogGroupStep implements Step
             'tasks.web.log-group',
             sprintf('/yolo/%s', Helpers::keyedResourceName(exclusive: true))
         );
+    }
+
+    protected function reconcileTags(string $arn, string $name, bool $dryRun): void
+    {
+        $current = Aws::flattenTags(
+            Aws::cloudWatchLogs()->listTagsForResource(['resourceArn' => $arn])['tags'] ?? []
+        );
+
+        $missing = Aws::tagsRequiringSync(
+            Aws::expectedTags(['Name' => $name]),
+            $current,
+        );
+
+        if (empty($missing) || $dryRun) {
+            return;
+        }
+
+        Aws::cloudWatchLogs()->tagResource([
+            'resourceArn' => $arn,
+            'tags' => $missing,
+        ]);
     }
 
     protected static function findLogGroup(string $name): ?array

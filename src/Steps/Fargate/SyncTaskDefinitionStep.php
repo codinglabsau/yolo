@@ -32,6 +32,10 @@ class SyncTaskDefinitionStep implements Step
             ? AwsResources::ecrRepositoryUri() . ':' . $imageTag
             : Manifest::get('tasks.web.image', AwsResources::ecrRepositoryUri() . ':latest');
 
+        $taskRoleArn = Manifest::has('tasks.web.task-role')
+            ? Manifest::get('tasks.web.task-role')
+            : AwsResources::ecsTaskRole()['Arn'];
+
         return [
             'family' => AwsResources::ecsTaskFamily(),
             'networkMode' => 'awsvpc',
@@ -39,12 +43,15 @@ class SyncTaskDefinitionStep implements Step
             'cpu' => $cpu,
             'memory' => $memory,
             'executionRoleArn' => Manifest::get('tasks.web.execution-role', 'ecsTaskExecutionRole'),
-            ...Manifest::has('tasks.web.task-role') ? ['taskRoleArn' => Manifest::get('tasks.web.task-role')] : [],
+            'taskRoleArn' => $taskRoleArn,
             'containerDefinitions' => [
                 [
                     'name' => 'web',
                     'image' => $image,
                     'essential' => true,
+                    'linuxParameters' => [
+                        'initProcessEnabled' => true,
+                    ],
                     'portMappings' => [
                         [
                             'containerPort' => $port,

@@ -1,5 +1,8 @@
 <?php
 
+use Aws\Result;
+use Aws\MockHandler;
+use Aws\Iam\IamClient;
 use Codinglabs\Yolo\Helpers;
 use Symfony\Component\Yaml\Yaml;
 
@@ -65,4 +68,27 @@ function writeManifest(array $config, string $environment = 'testing'): void
     ], 10, 2));
 
     Helpers::app()->instance('environment', $environment);
+}
+
+/**
+ * Bind a mock IAM client returning a single role matching the supplied name + ARN.
+ * Used by tests that exercise paths defaulting to AwsResources::ecsTaskRole().
+ */
+function bindMockIamClient(string $roleName, string $roleArn): void
+{
+    $mock = new MockHandler();
+
+    $mock->append(new Result([
+        'Roles' => [
+            ['RoleName' => $roleName, 'Arn' => $roleArn],
+        ],
+        'IsTruncated' => false,
+    ]));
+
+    Helpers::app()->instance('iam', new IamClient([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
 }

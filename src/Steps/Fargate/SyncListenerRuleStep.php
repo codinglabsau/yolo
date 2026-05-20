@@ -32,6 +32,8 @@ class SyncListenerRuleStep implements ExecutesWebStep
         $existing = static::findRuleForHosts($listener['ListenerArn'], $hosts);
 
         if ($existing !== null) {
+            $this->reconcileTags($existing['RuleArn'], Arr::get($options, 'dry-run'));
+
             return StepResult::SYNCED;
         }
 
@@ -93,6 +95,30 @@ class SyncListenerRuleStep implements ExecutesWebStep
             ->all();
 
         return static::nextAvailablePriority(Helpers::keyedResourceName(exclusive: true), $usedPriorities);
+    }
+
+    protected function reconcileTags(string $arn, bool $dryRun): void
+    {
+        $current = Aws::flattenTags(
+            Aws::elasticLoadBalancingV2()->describeTags(['ResourceArns' => [$arn]])['TagDescriptions'][0]['Tags'] ?? []
+        );
+
+        $missing = Aws::tagsRequiringSync(
+            Aws::expectedTags(['Name' => Helpers::keyedResourceName(exclusive: true)]),
+            $current,
+        );
+
+        if (empty($missing) || $dryRun) {
+            return;
+        }
+
+        Aws::elasticLoadBalancingV2()->addTags([
+            'ResourceArns' => [$arn],
+            'Tags' => collect($missing)
+                ->map(fn ($value, $key) => ['Key' => $key, 'Value' => $value])
+                ->values()
+                ->all(),
+        ]);
     }
 
     public static function routedHosts(): array

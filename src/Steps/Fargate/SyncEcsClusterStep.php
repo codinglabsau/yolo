@@ -14,7 +14,9 @@ class SyncEcsClusterStep implements Step
     public function __invoke(array $options): StepResult
     {
         try {
-            AwsResources::ecsCluster();
+            $cluster = AwsResources::ecsCluster();
+
+            $this->reconcileTags($cluster['clusterArn'], Arr::get($options, 'dry-run'));
 
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
@@ -36,5 +38,29 @@ class SyncEcsClusterStep implements Step
 
             return StepResult::CREATED;
         }
+    }
+
+    protected function reconcileTags(string $arn, bool $dryRun): void
+    {
+        $current = Aws::flattenTags(Aws::ecs()->listTagsForResource([
+            'resourceArn' => $arn,
+        ])['tags']);
+
+        $missing = Aws::tagsRequiringSync(
+            Aws::expectedTags(['Name' => AwsResources::ecsClusterName()]),
+            $current,
+        );
+
+        if (empty($missing) || $dryRun) {
+            return;
+        }
+
+        Aws::ecs()->tagResource([
+            'resourceArn' => $arn,
+            'tags' => collect($missing)
+                ->map(fn ($value, $key) => ['key' => $key, 'value' => $value])
+                ->values()
+                ->all(),
+        ]);
     }
 }

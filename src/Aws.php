@@ -80,6 +80,44 @@ class Aws
             ->all();
     }
 
+    /**
+     * Returns the subset of expected tags that are missing or stale on the
+     * resource. Reconciliation is additive — tags YOLO does not manage are
+     * left alone so manually-applied tags survive sync.
+     */
+    public static function tagsRequiringSync(array $expected, array $current): array
+    {
+        return collect($expected)
+            ->filter(fn ($value, $key) => ($current[$key] ?? null) !== $value)
+            ->all();
+    }
+
+    /**
+     * Normalises a tag list returned by any AWS service ([{Key, Value}],
+     * [{key, value}] or associative {key: value}) into an associative
+     * array suitable for diffing.
+     */
+    public static function flattenTags(array $tags): array
+    {
+        if (array_is_list($tags)) {
+            return collect($tags)
+                ->mapWithKeys(fn (array $tag) => [
+                    ($tag['Key'] ?? $tag['key']) => ($tag['Value'] ?? $tag['value']),
+                ])
+                ->all();
+        }
+
+        return $tags;
+    }
+
+    public static function expectedTags(array $tags = []): array
+    {
+        return [
+            'yolo:environment' => Helpers::app('environment'),
+            ...$tags,
+        ];
+    }
+
     public static function accountId(): string
     {
         return Manifest::get('aws.account-id');

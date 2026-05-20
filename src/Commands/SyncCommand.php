@@ -28,6 +28,7 @@ class SyncCommand extends SteppedCommand
         collect([
             SyncNetworkCommand::class,
             SyncStorageCommand::class,
+            SyncIamCommand::class,
             ...Manifest::isMultitenanted()
                 ? [
                     SyncMultitenancyLandlordCommand::class,
@@ -39,7 +40,6 @@ class SyncCommand extends SteppedCommand
             ...Manifest::has('tasks.web')
                 ? [SyncComputeCommand::class]
                 : [],
-            SyncIamCommand::class,
             SyncLoggingCommand::class,
         ])->each(fn ($command) => (new $command())->execute(Helpers::app('input'), Helpers::app('output')));
 

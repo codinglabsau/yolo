@@ -41,6 +41,8 @@ class SyncTaskSecurityGroupStep implements Step
                 Aws::ec2()->authorizeSecurityGroupIngress(static::loadBalancerIngressRule($securityGroup, $containerPort));
             }
 
+            $this->reconcileTags($securityGroup, Arr::get($options, 'dry-run'));
+
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
             if (Arr::get($options, 'dry-run')) {
@@ -67,6 +69,30 @@ class SyncTaskSecurityGroupStep implements Step
 
             return StepResult::CREATED;
         }
+    }
+
+    protected function reconcileTags(array $securityGroup, bool $dryRun): void
+    {
+        $current = Aws::flattenTags($securityGroup['Tags'] ?? []);
+
+        $name = Helpers::keyedResourceName(SecurityGroup::ECS_TASK_SECURITY_GROUP, exclusive: true);
+
+        $missing = Aws::tagsRequiringSync(
+            Aws::expectedTags(['Name' => $name]),
+            $current,
+        );
+
+        if (empty($missing) || $dryRun) {
+            return;
+        }
+
+        Aws::ec2()->createTags([
+            'Resources' => [$securityGroup['GroupId']],
+            'Tags' => collect($missing)
+                ->map(fn ($value, $key) => ['Key' => $key, 'Value' => $value])
+                ->values()
+                ->all(),
+        ]);
     }
 
     protected static function loadBalancerIngressRule(array $securityGroup, int $port): array
