@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\ElbV2;
-use Codinglabs\Yolo\AwsLookups;
+use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -45,8 +45,8 @@ class TargetGroup implements Resource
             'Protocol' => 'HTTP',
             'Port' => (int) Manifest::get('tasks.web.port', 8000),
             'TargetType' => 'ip',
-            // VPC lookup is still on the legacy AwsLookups facade — covered by LPX-612.
-            'VpcId' => AwsLookups::vpc()['VpcId'],
+            // VPC lookup is still on the legacy AwsResources facade — covered by LPX-612.
+            'VpcId' => AwsResources::vpc()['VpcId'],
             'HealthCheckProtocol' => 'HTTP',
             'HealthCheckPath' => Manifest::get('tasks.web.health-check.path', '/health'),
             'HealthCheckIntervalSeconds' => (int) Manifest::get('tasks.web.health-check.interval', 30),

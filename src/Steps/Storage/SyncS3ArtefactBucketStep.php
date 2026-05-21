@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Steps\Storage;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
 use Illuminate\Support\Arr;
-use Codinglabs\Yolo\AwsLookups;
+use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -17,7 +17,7 @@ class SyncS3ArtefactBucketStep implements Step
         $bucketName = Paths::s3ArtefactsBucket();
 
         try {
-            AwsLookups::bucket($bucketName);
+            AwsResources::bucket($bucketName);
 
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException $e) {

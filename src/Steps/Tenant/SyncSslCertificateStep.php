@@ -4,7 +4,7 @@ namespace Codinglabs\Yolo\Steps\Tenant;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
-use Codinglabs\Yolo\AwsLookups;
+use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Steps\TenantStep;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -14,7 +14,7 @@ class SyncSslCertificateStep extends TenantStep
     public function __invoke(array $options): StepResult
     {
         try {
-            $certificate = AwsLookups::certificate($this->config['apex']);
+            $certificate = AwsResources::certificate($this->config['apex']);
 
             if ($certificate['Status'] === 'PENDING_VALIDATION') {
                 if (! Arr::get($options, 'dry-run')) {
@@ -77,7 +77,7 @@ class SyncSslCertificateStep extends TenantStep
                 })->toArray(),
                 'Comment' => 'Created by yolo CLI',
             ],
-            'HostedZoneId' => AwsLookups::hostedZone($this->config['apex'])['Id'],
+            'HostedZoneId' => AwsResources::hostedZone($this->config['apex'])['Id'],
         ]);
     }
 }

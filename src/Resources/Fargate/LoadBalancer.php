@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\ElbV2;
-use Codinglabs\Yolo\AwsLookups;
+use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -45,12 +45,12 @@ class LoadBalancer implements Resource
             'Type' => 'application',
             'Scheme' => 'internet-facing',
             'IpAddressType' => 'ipv4',
-            // VPC subnets + LB security group still come from the legacy AwsLookups facade —
+            // VPC subnets + LB security group still come from the legacy AwsResources facade —
             // those resources haven't been migrated yet. Covered by LPX-612.
             'SecurityGroups' => [
-                AwsLookups::loadBalancerSecurityGroup()['GroupId'],
+                AwsResources::loadBalancerSecurityGroup()['GroupId'],
             ],
-            'Subnets' => AwsLookups::publicSubnetIds(),
+            'Subnets' => AwsResources::publicSubnetIds(),
             ...Aws::tags($this->tags()),
         ]);
     }

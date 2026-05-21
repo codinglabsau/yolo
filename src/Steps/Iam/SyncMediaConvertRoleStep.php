@@ -7,7 +7,7 @@ use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
-use Codinglabs\Yolo\AwsLookups;
+use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -21,7 +21,7 @@ class SyncMediaConvertRoleStep implements Step
         }
 
         try {
-            AwsLookups::mediaConvertRole();
+            AwsResources::mediaConvertRole();
 
             if (! Arr::get($options, 'dry-run')) {
                 $name = Helpers::keyedResourceName(Iam::MEDIA_CONVERT_ROLE);
@@ -33,7 +33,7 @@ class SyncMediaConvertRoleStep implements Step
 
                 Aws::iam()->updateAssumeRolePolicy([
                     'RoleName' => $name,
-                    'PolicyDocument' => json_encode(AwsLookups::mediaConvertPolicyDocument()),
+                    'PolicyDocument' => json_encode(AwsResources::mediaConvertPolicyDocument()),
                 ]);
 
                 Aws::iam()->tagRole([
@@ -50,7 +50,7 @@ class SyncMediaConvertRoleStep implements Step
                 Aws::iam()->createRole([
                     'RoleName' => Helpers::keyedResourceName(Iam::MEDIA_CONVERT_ROLE),
                     'Description' => 'YOLO managed MediaConvert role',
-                    'AssumeRolePolicyDocument' => json_encode(AwsLookups::mediaConvertPolicyDocument()),
+                    'AssumeRolePolicyDocument' => json_encode(AwsResources::mediaConvertPolicyDocument()),
                     ...Aws::tags(),
                 ]);
 

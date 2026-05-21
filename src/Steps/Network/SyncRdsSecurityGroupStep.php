@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsLookups;
+use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\SecurityGroup;
@@ -17,7 +17,7 @@ class SyncRdsSecurityGroupStep implements Step
     public function __invoke(array $options): StepResult
     {
         try {
-            AwsLookups::rdsSecurityGroup();
+            AwsResources::rdsSecurityGroup();
 
             if (Manifest::has('aws.rds.security-group')) {
                 return StepResult::CUSTOM_MANAGED;
@@ -31,7 +31,7 @@ class SyncRdsSecurityGroupStep implements Step
                 Aws::ec2()->createSecurityGroup([
                     'Description' => 'Enable EC2 to connect to RDS',
                     'GroupName' => $name,
-                    'VpcId' => AwsLookups::vpc()['VpcId'],
+                    'VpcId' => AwsResources::vpc()['VpcId'],
                     'TagSpecifications' => [
                         [
                             'ResourceType' => 'security-group',
@@ -42,7 +42,7 @@ class SyncRdsSecurityGroupStep implements Step
                     ],
                 ]);
 
-                $securityGroup = AwsLookups::rdsSecurityGroup();
+                $securityGroup = AwsResources::rdsSecurityGroup();
 
                 Aws::ec2()->authorizeSecurityGroupIngress([
                     'GroupId' => $securityGroup['GroupId'],
@@ -54,7 +54,7 @@ class SyncRdsSecurityGroupStep implements Step
                             'ToPort' => 3306,
                             'UserIdGroupPairs' => [
                                 [
-                                    'GroupId' => AwsLookups::ec2SecurityGroup()['GroupId'],
+                                    'GroupId' => AwsResources::ec2SecurityGroup()['GroupId'],
                                     'Description' => 'Enable EC2 to connect to RDS',
                                 ],
                             ],

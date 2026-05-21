@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Steps\Iam;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsLookups;
+use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 
@@ -23,7 +23,7 @@ class AttachMediaConvertRolePoliciesStep implements Step
         }
 
         if (! Arr::get($options, 'dry-run')) {
-            $role = AwsLookups::mediaConvertRole();
+            $role = AwsResources::mediaConvertRole();
 
             foreach ($this->managedPolicies as $policyArn) {
                 Aws::iam()->attachRolePolicy([

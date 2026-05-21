@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Steps\Network;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsLookups;
+use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\PublicSubnets;
@@ -20,8 +20,8 @@ class SyncPublicSubnetsAssociationToRouteTableStep implements Step
         if (! Arr::get($options, 'dry-run')) {
             foreach (static::cases() as $publicSubnetName) {
                 Aws::ec2()->associateRouteTable([
-                    'RouteTableId' => AwsLookups::routeTable()['RouteTableId'],
-                    'SubnetId' => AwsLookups::subnetByName($publicSubnetName, relative: Manifest::doesntHave('aws.public-subnets'))['SubnetId'],
+                    'RouteTableId' => AwsResources::routeTable()['RouteTableId'],
+                    'SubnetId' => AwsResources::subnetByName($publicSubnetName, relative: Manifest::doesntHave('aws.public-subnets'))['SubnetId'],
                 ]);
             }
 

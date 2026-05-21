@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Steps\Solo;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
-use Codinglabs\Yolo\AwsLookups;
+use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\ExecutesSoloStep;
@@ -18,7 +18,7 @@ class SyncQueueStep implements ExecutesSoloStep, Step
         $name = Helpers::keyedResourceName();
 
         try {
-            AwsLookups::queue($name);
+            AwsResources::queue($name);
 
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {

@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsLookups;
+use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -22,7 +22,7 @@ class SyncIvsEventBridgeRuleStep implements Step
         $name = self::ruleName();
 
         try {
-            AwsLookups::eventBridgeRule($name);
+            AwsResources::eventBridgeRule($name);
 
             if (! Arr::get($options, 'dry-run')) {
                 Aws::eventBridge()->putRule([

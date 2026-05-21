@@ -7,7 +7,7 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
-use Codinglabs\Yolo\AwsLookups;
+use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Enums\PublicSubnets;
 use Codinglabs\Yolo\Enums\SecurityGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -215,7 +215,7 @@ trait UsesEc2
                 'InstanceType' => Manifest::get('aws.ec2.instance-type'),
                 'KeyName' => Manifest::get('aws.ec2.key-pair', Helpers::keyedResourceName(exclusive: false)),
                 'SecurityGroupIds' => [
-                    AwsLookups::ec2SecurityGroup()['GroupId'],
+                    AwsResources::ec2SecurityGroup()['GroupId'],
                 ],
                 'Monitoring' => [
                     'Enabled' => true,
@@ -322,13 +322,13 @@ trait UsesEc2
             'Filters' => [
                 [
                     'Name' => 'vpc-id',
-                    'Values' => [AwsLookups::vpc()['VpcId']],
+                    'Values' => [AwsResources::vpc()['VpcId']],
                 ],
             ],
         ])['Subnets'];
 
         if (count($subnets) === 0) {
-            throw new ResourceDoesNotExistException(sprintf('Could not find subnets for VPC %s', AwsLookups::vpc()['VpcId']));
+            throw new ResourceDoesNotExistException(sprintf('Could not find subnets for VPC %s', AwsResources::vpc()['VpcId']));
         }
 
         return $subnets;

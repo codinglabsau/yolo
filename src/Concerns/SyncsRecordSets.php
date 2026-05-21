@@ -3,7 +3,7 @@
 namespace Codinglabs\Yolo\Concerns;
 
 use Codinglabs\Yolo\Aws;
-use Codinglabs\Yolo\AwsLookups;
+use Codinglabs\Yolo\AwsResources;
 
 trait SyncsRecordSets
 {
@@ -16,13 +16,13 @@ trait SyncsRecordSets
                 'Changes' => $this->generateChanges($apex, $domain),
                 'Comment' => 'Created by yolo CLI',
             ],
-            'HostedZoneId' => AwsLookups::hostedZone($apex)['Id'],
+            'HostedZoneId' => AwsResources::hostedZone($apex)['Id'],
         ]);
     }
 
     protected function generateChanges(string $apex, string $domain): array
     {
-        $ALB = AwsLookups::loadBalancer();
+        $ALB = AwsResources::loadBalancer();
 
         // handle apex and www. subdomains
         if ($this->domainHasWwwSubdomain($apex, $domain)) {

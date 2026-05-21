@@ -5,14 +5,14 @@ namespace Codinglabs\Yolo\Concerns;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsLookups;
+use Codinglabs\Yolo\AwsResources;
 
 trait CreatesSubnets
 {
     public function createSubnet(string $name, int $index): void
     {
-        $vpc = AwsLookups::vpc();
-        $availabilityZones = AwsLookups::availabilityZones(Manifest::get('aws.region'));
+        $vpc = AwsResources::vpc();
+        $availabilityZones = AwsResources::availabilityZones(Manifest::get('aws.region'));
 
         Aws::ec2()->createSubnet([
             'AvailabilityZone' => $availabilityZones[$index]['ZoneName'],

@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsLookups;
+use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -28,7 +28,7 @@ class SyncIvsCloudWatchLogGroupStep implements Step
         $logGroupArn = "arn:aws:logs:{$region}:{$accountId}:log-group:{$name}";
 
         try {
-            $logGroup = AwsLookups::logGroup($name);
+            $logGroup = AwsResources::logGroup($name);
 
             if (($logGroup['retentionInDays'] ?? null) !== $retentionDays) {
                 if (! Arr::get($options, 'dry-run')) {

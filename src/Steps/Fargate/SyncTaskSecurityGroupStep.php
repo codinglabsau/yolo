@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsLookups;
+use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\SecurityGroupRule;
@@ -53,8 +53,8 @@ class SyncTaskSecurityGroupStep implements Step
                     'ToPort' => $port,
                     'UserIdGroupPairs' => [
                         [
-                            // LB security group still on the legacy AwsLookups facade — LPX-612.
-                            'GroupId' => AwsLookups::loadBalancerSecurityGroup()['GroupId'],
+                            // LB security group still on the legacy AwsResources facade — LPX-612.
+                            'GroupId' => AwsResources::loadBalancerSecurityGroup()['GroupId'],
                             'Description' => 'Container port ingress from the load balancer',
                         ],
                     ],

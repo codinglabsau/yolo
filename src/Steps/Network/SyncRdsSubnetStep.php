@@ -7,7 +7,7 @@ use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Rds;
-use Codinglabs\Yolo\AwsLookups;
+use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -17,7 +17,7 @@ class SyncRdsSubnetStep implements Step
     public function __invoke(array $options): StepResult
     {
         try {
-            AwsLookups::dbSubnetGroup();
+            AwsResources::dbSubnetGroup();
 
             if (Manifest::has('aws.rds.subnet')) {
                 return StepResult::CUSTOM_MANAGED;
@@ -29,7 +29,7 @@ class SyncRdsSubnetStep implements Step
                 Aws::rds()->createDBSubnetGroup([
                     'DBSubnetGroupName' => Helpers::keyedResourceName(Rds::PUBLIC_SUBNET_GROUP),
                     'DBSubnetGroupDescription' => 'YOLO private subnet group',
-                    'SubnetIds' => collect(AwsLookups::subnets())
+                    'SubnetIds' => collect(AwsResources::subnets())
                         ->pluck('SubnetId')
                         ->toArray(),
                     ...Aws::tags([

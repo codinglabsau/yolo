@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsLookups;
+use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\SecurityGroup;
@@ -24,7 +24,7 @@ class SyncEc2SecurityGroupStep implements Step
         ];
 
         try {
-            $securityGroup = AwsLookups::ec2SecurityGroup();
+            $securityGroup = AwsResources::ec2SecurityGroup();
 
             if (Manifest::has('aws.ec2.security-group')) {
                 return StepResult::CUSTOM_MANAGED;
@@ -96,7 +96,7 @@ class SyncEc2SecurityGroupStep implements Step
                 Aws::ec2()->createSecurityGroup([
                     'Description' => 'Enable load balancer and SSH traffic',
                     'GroupName' => $name,
-                    'VpcId' => AwsLookups::vpc()['VpcId'],
+                    'VpcId' => AwsResources::vpc()['VpcId'],
                     'TagSpecifications' => [
                         [
                             'ResourceType' => 'security-group',
@@ -107,7 +107,7 @@ class SyncEc2SecurityGroupStep implements Step
                     ],
                 ]);
 
-                $securityGroup = AwsLookups::ec2SecurityGroup();
+                $securityGroup = AwsResources::ec2SecurityGroup();
 
                 foreach ($expectedRules as $expectedRule) {
                     Aws::ec2()->authorizeSecurityGroupIngress($expectedRule($securityGroup));
@@ -133,7 +133,7 @@ class SyncEc2SecurityGroupStep implements Step
                     'ToPort' => 80,
                     'UserIdGroupPairs' => [
                         [
-                            'GroupId' => AwsLookups::loadBalancerSecurityGroup()['GroupId'],
+                            'GroupId' => AwsResources::loadBalancerSecurityGroup()['GroupId'],
                             'Description' => 'HTTP ingress from the load balancer',
                         ],
                     ],

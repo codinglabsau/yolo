@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsLookups;
+use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -16,7 +16,7 @@ class SyncVpcStep implements Step
     public function __invoke(array $options): StepResult
     {
         try {
-            AwsLookups::vpc();
+            AwsResources::vpc();
 
             if (Manifest::has('aws.vpc')) {
                 return StepResult::CUSTOM_MANAGED;

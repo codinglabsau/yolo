@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Steps\Tenant;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
-use Codinglabs\Yolo\AwsLookups;
+use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Steps\TenantStep;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -17,7 +17,7 @@ class SyncQueueStep extends TenantStep
         $name = Helpers::keyedResourceName($this->tenantId());
 
         try {
-            AwsLookups::queue($name);
+            AwsResources::queue($name);
 
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {

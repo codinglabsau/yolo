@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ecs;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsLookups;
+use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -103,8 +103,8 @@ class EcsService implements Resource
             ],
             'networkConfiguration' => [
                 'awsvpcConfiguration' => [
-                    // Public subnet IDs still come from the legacy AwsLookups facade — LPX-612.
-                    'subnets' => AwsLookups::publicSubnetIds(),
+                    // Public subnet IDs still come from the legacy AwsResources facade — LPX-612.
+                    'subnets' => AwsResources::publicSubnetIds(),
                     'securityGroups' => [(new EcsTaskSecurityGroup())->arn()],
                     'assignPublicIp' => 'ENABLED',
                 ],

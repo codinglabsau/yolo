@@ -5,7 +5,7 @@ use Aws\MockHandler;
 use Aws\Ecs\EcsClient;
 use Codinglabs\Yolo\Helpers;
 use Aws\Exception\AwsException;
-use Codinglabs\Yolo\AwsLookups;
+use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 function bindMockEcsClient(MockHandler $mock): void
@@ -28,7 +28,7 @@ it('translates ClusterNotFoundException to ResourceDoesNotExistException for ecs
 
     bindMockEcsClient($mock);
 
-    AwsLookups::ecsService(refresh: true);
+    AwsResources::ecsService(refresh: true);
 })->throws(ResourceDoesNotExistException::class, 'Could not find ECS service');
 
 it('translates ClusterNotFoundException to ResourceDoesNotExistException for ecsTaskDefinition', function () {
@@ -41,5 +41,5 @@ it('translates ClusterNotFoundException to ResourceDoesNotExistException for ecs
 
     bindMockEcsClient($mock);
 
-    AwsLookups::ecsTaskDefinition(refresh: true);
+    AwsResources::ecsTaskDefinition(refresh: true);
 })->throws(ResourceDoesNotExistException::class, 'Could not find ECS task definition');
