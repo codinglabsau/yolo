@@ -12,6 +12,7 @@ class SyncIamCommand extends SteppedCommand
         Steps\Iam\AttachMediaConvertRolePoliciesStep::class,
         Steps\Iam\SyncEcsTaskPolicyStep::class,
         Steps\Iam\SyncEcsTaskRoleStep::class,
+        Steps\Iam\AttachEcsTaskRolePoliciesStep::class,
     ];
 
     protected function configure(): void
