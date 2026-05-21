@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Steps\Landlord;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\ExecutesMultitenancyStep;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -17,7 +17,7 @@ class SyncQueueStep implements ExecutesMultitenancyStep
         $name = Helpers::keyedResourceName('landlord');
 
         try {
-            AwsResources::queue($name);
+            AwsLookups::queue($name);
 
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {

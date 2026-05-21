@@ -1,6 +1,6 @@
 <?php
 
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\AwsLookups;
 
 beforeEach(function () {
     writeManifest([
@@ -9,10 +9,10 @@ beforeEach(function () {
 });
 
 it('derives the ECR repository name from the manifest app name', function () {
-    expect(AwsResources::ecrRepositoryName())->toBe('my-app');
+    expect(AwsLookups::ecrRepositoryName())->toBe('my-app');
 });
 
 it('builds the ECR repository URI from account and region', function () {
-    expect(AwsResources::ecrRepositoryUri())
+    expect(AwsLookups::ecrRepositoryUri())
         ->toBe('111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/my-app');
 });

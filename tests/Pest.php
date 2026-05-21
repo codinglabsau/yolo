@@ -72,7 +72,7 @@ function writeManifest(array $config, string $environment = 'testing'): void
 
 /**
  * Bind a mock IAM client returning a single role matching the supplied name + ARN.
- * Used by tests that exercise paths defaulting to AwsResources::ecsTaskRole().
+ * Used by tests that exercise paths defaulting to AwsLookups::ecsTaskRole().
  */
 function bindMockIamClient(string $roleName, string $roleArn): void
 {

@@ -4,7 +4,7 @@ namespace Codinglabs\Yolo\Resources\Fargate;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -25,7 +25,7 @@ class HttpsListener implements Resource
     public function exists(): bool
     {
         try {
-            AwsResources::loadBalancerListenerOnPort(443);
+            AwsLookups::loadBalancerListenerOnPort(443);
 
             return true;
         } catch (ResourceDoesNotExistException) {
@@ -35,13 +35,13 @@ class HttpsListener implements Resource
 
     public function arn(): string
     {
-        return AwsResources::loadBalancerListenerOnPort(443)['ListenerArn'];
+        return AwsLookups::loadBalancerListenerOnPort(443)['ListenerArn'];
     }
 
     public function create(): void
     {
         Aws::elasticLoadBalancingV2()->createListener([
-            'LoadBalancerArn' => AwsResources::loadBalancer()['LoadBalancerArn'],
+            'LoadBalancerArn' => AwsLookups::loadBalancer()['LoadBalancerArn'],
             'Protocol' => 'HTTPS',
             'Port' => 443,
             'SslPolicy' => 'ELBSecurityPolicy-TLS13-1-2-2021-06',

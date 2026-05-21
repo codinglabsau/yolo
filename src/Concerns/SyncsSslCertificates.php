@@ -3,7 +3,7 @@
 namespace Codinglabs\Yolo\Concerns;
 
 use Codinglabs\Yolo\Aws;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\AwsLookups;
 
 trait SyncsSslCertificates
 {
@@ -56,15 +56,15 @@ trait SyncsSslCertificates
                     })->toArray(),
                 'Comment' => 'Created by yolo CLI',
             ],
-            'HostedZoneId' => AwsResources::hostedZone($apex)['Id'],
+            'HostedZoneId' => AwsLookups::hostedZone($apex)['Id'],
         ]);
 
         // wait for the certificate to be issued
-        $certificate = AwsResources::certificate($apex);
+        $certificate = AwsLookups::certificate($apex);
 
         if ($certificate['Status'] !== 'ISSUED') {
             do {
-                $certificate = AwsResources::certificate($apex);
+                $certificate = AwsLookups::certificate($apex);
 
                 // take a little snooze until the certificate is issued
                 sleep(2);

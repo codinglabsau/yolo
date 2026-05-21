@@ -3,7 +3,7 @@
 namespace Codinglabs\Yolo\Resources\Fargate;
 
 use Codinglabs\Yolo\Aws;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -11,7 +11,7 @@ class EcsCluster implements Resource
 {
     public function name(): string
     {
-        return AwsResources::ecsClusterName();
+        return AwsLookups::ecsClusterName();
     }
 
     public function tags(): array
@@ -22,7 +22,7 @@ class EcsCluster implements Resource
     public function exists(): bool
     {
         try {
-            AwsResources::ecsCluster();
+            AwsLookups::ecsCluster();
 
             return true;
         } catch (ResourceDoesNotExistException) {
@@ -32,7 +32,7 @@ class EcsCluster implements Resource
 
     public function arn(): string
     {
-        return AwsResources::ecsCluster()['clusterArn'];
+        return AwsLookups::ecsCluster()['clusterArn'];
     }
 
     public function create(): void

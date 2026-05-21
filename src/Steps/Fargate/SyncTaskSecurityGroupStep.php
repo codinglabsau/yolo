@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Steps\Fargate;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\SecurityGroupRule;
@@ -57,7 +57,7 @@ class SyncTaskSecurityGroupStep implements Step
                     'ToPort' => $port,
                     'UserIdGroupPairs' => [
                         [
-                            'GroupId' => AwsResources::loadBalancerSecurityGroup()['GroupId'],
+                            'GroupId' => AwsLookups::loadBalancerSecurityGroup()['GroupId'],
                             'Description' => 'Container port ingress from the load balancer',
                         ],
                     ],

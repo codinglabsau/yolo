@@ -4,7 +4,7 @@ namespace Codinglabs\Yolo\Steps\Solo;
 
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Concerns\SyncsSslCertificates;
@@ -17,7 +17,7 @@ class SyncSslCertificateStep implements ExecutesWebStep
     public function __invoke(array $options): StepResult
     {
         try {
-            $certificate = AwsResources::certificate(Manifest::apex());
+            $certificate = AwsLookups::certificate(Manifest::apex());
 
             if ($certificate['Status'] === 'PENDING_VALIDATION') {
                 if (! Arr::get($options, 'dry-run')) {

@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Resources\Fargate;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
@@ -55,7 +55,7 @@ class ListenerRule implements Resource
             'Actions' => [
                 [
                     'Type' => 'forward',
-                    'TargetGroupArn' => AwsResources::targetGroup()['TargetGroupArn'],
+                    'TargetGroupArn' => AwsLookups::targetGroup()['TargetGroupArn'],
                 ],
             ],
             ...Aws::tags($this->tags()),

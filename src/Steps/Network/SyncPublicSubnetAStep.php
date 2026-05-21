@@ -4,7 +4,7 @@ namespace Codinglabs\Yolo\Steps\Network;
 
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\PublicSubnets;
@@ -22,7 +22,7 @@ class SyncPublicSubnetAStep implements Step
             : PublicSubnets::PUBLIC_SUBNET_A->value;
 
         try {
-            AwsResources::subnetByName($publicSubnetName, relative: Manifest::doesntHave('aws.public-subnets'));
+            AwsLookups::subnetByName($publicSubnetName, relative: Manifest::doesntHave('aws.public-subnets'));
 
             if (Manifest::has('aws.public-subnets')) {
                 return StepResult::CUSTOM_MANAGED;

@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Resources\Iam;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Enums\Iam;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -33,7 +33,7 @@ class EcsTaskPolicy implements Resource
     public function exists(): bool
     {
         try {
-            AwsResources::ecsTaskPolicy();
+            AwsLookups::ecsTaskPolicy();
 
             return true;
         } catch (ResourceDoesNotExistException) {
@@ -43,7 +43,7 @@ class EcsTaskPolicy implements Resource
 
     public function arn(): string
     {
-        return AwsResources::ecsTaskPolicy()['Arn'];
+        return AwsLookups::ecsTaskPolicy()['Arn'];
     }
 
     public function create(): void
@@ -70,7 +70,7 @@ class EcsTaskPolicy implements Resource
      */
     public function synchroniseDocument(): void
     {
-        $policy = AwsResources::ecsTaskPolicy();
+        $policy = AwsLookups::ecsTaskPolicy();
         $document = json_encode($this->document());
 
         $currentVersion = Aws::iam()->getPolicyVersion([
@@ -91,6 +91,6 @@ class EcsTaskPolicy implements Resource
 
     public function document(): array
     {
-        return AwsResources::ecsTaskPolicyDocument();
+        return AwsLookups::ecsTaskPolicyDocument();
     }
 }

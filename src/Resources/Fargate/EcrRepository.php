@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Resources\Fargate;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -13,7 +13,7 @@ class EcrRepository implements Resource
 {
     public function name(): string
     {
-        return AwsResources::ecrRepositoryName();
+        return AwsLookups::ecrRepositoryName();
     }
 
     public function tags(): array
@@ -24,7 +24,7 @@ class EcrRepository implements Resource
     public function exists(): bool
     {
         try {
-            AwsResources::ecrRepository();
+            AwsLookups::ecrRepository();
 
             return true;
         } catch (ResourceDoesNotExistException) {
@@ -34,7 +34,7 @@ class EcrRepository implements Resource
 
     public function arn(): string
     {
-        return AwsResources::ecrRepository()['repositoryArn'];
+        return AwsLookups::ecrRepository()['repositoryArn'];
     }
 
     public function create(): void

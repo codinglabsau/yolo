@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Resources\Fargate;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -24,7 +24,7 @@ class TargetGroup implements Resource
     public function exists(): bool
     {
         try {
-            AwsResources::targetGroup();
+            AwsLookups::targetGroup();
 
             return true;
         } catch (ResourceDoesNotExistException) {
@@ -34,7 +34,7 @@ class TargetGroup implements Resource
 
     public function arn(): string
     {
-        return AwsResources::targetGroup()['TargetGroupArn'];
+        return AwsLookups::targetGroup()['TargetGroupArn'];
     }
 
     public function create(): void
@@ -44,7 +44,7 @@ class TargetGroup implements Resource
             'Protocol' => 'HTTP',
             'Port' => (int) Manifest::get('tasks.web.port', 8000),
             'TargetType' => 'ip',
-            'VpcId' => AwsResources::vpc()['VpcId'],
+            'VpcId' => AwsLookups::vpc()['VpcId'],
             'HealthCheckProtocol' => 'HTTP',
             'HealthCheckPath' => Manifest::get('tasks.web.health-check.path', '/health'),
             'HealthCheckIntervalSeconds' => (int) Manifest::get('tasks.web.health-check.interval', 30),

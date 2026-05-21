@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Resources\Fargate;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -24,7 +24,7 @@ class LoadBalancer implements Resource
     public function exists(): bool
     {
         try {
-            AwsResources::loadBalancer();
+            AwsLookups::loadBalancer();
 
             return true;
         } catch (ResourceDoesNotExistException) {
@@ -34,7 +34,7 @@ class LoadBalancer implements Resource
 
     public function arn(): string
     {
-        return AwsResources::loadBalancer()['LoadBalancerArn'];
+        return AwsLookups::loadBalancer()['LoadBalancerArn'];
     }
 
     public function create(): void
@@ -45,9 +45,9 @@ class LoadBalancer implements Resource
             'Scheme' => 'internet-facing',
             'IpAddressType' => 'ipv4',
             'SecurityGroups' => [
-                AwsResources::loadBalancerSecurityGroup()['GroupId'],
+                AwsLookups::loadBalancerSecurityGroup()['GroupId'],
             ],
-            'Subnets' => AwsResources::publicSubnetIds(),
+            'Subnets' => AwsLookups::publicSubnetIds(),
             ...Aws::tags($this->tags()),
         ]);
     }

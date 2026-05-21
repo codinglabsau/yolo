@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Steps\Fargate;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\Fargate\TaskLogGroup;
@@ -30,15 +30,15 @@ class SyncTaskDefinitionStep implements Step
         $memory = (string) Manifest::get('tasks.web.memory', '1024');
 
         $image = $imageTag
-            ? AwsResources::ecrRepositoryUri() . ':' . $imageTag
-            : Manifest::get('tasks.web.image', AwsResources::ecrRepositoryUri() . ':latest');
+            ? AwsLookups::ecrRepositoryUri() . ':' . $imageTag
+            : Manifest::get('tasks.web.image', AwsLookups::ecrRepositoryUri() . ':latest');
 
         $taskRoleArn = Manifest::has('tasks.web.task-role')
             ? Manifest::get('tasks.web.task-role')
-            : AwsResources::ecsTaskRole()['Arn'];
+            : AwsLookups::ecsTaskRole()['Arn'];
 
         return [
-            'family' => AwsResources::ecsTaskFamily(),
+            'family' => AwsLookups::ecsTaskFamily(),
             'networkMode' => 'awsvpc',
             'requiresCompatibilities' => ['FARGATE'],
             'cpu' => $cpu,
@@ -70,7 +70,7 @@ class SyncTaskDefinitionStep implements Step
                     ],
                 ],
             ],
-            'tags' => Aws::ecsTags(['Name' => AwsResources::ecsTaskFamily()]),
+            'tags' => Aws::ecsTags(['Name' => AwsLookups::ecsTaskFamily()]),
         ];
     }
 }

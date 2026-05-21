@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Steps\Build\Fargate;
 use Codinglabs\Yolo\Paths;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Symfony\Component\Process\Process;
@@ -17,7 +17,7 @@ class BuildDockerImageStep implements Step
     public function __invoke(array $options): StepResult
     {
         $appVersion = Arr::get($options, 'app-version');
-        $repository = AwsResources::ecrRepositoryUri();
+        $repository = AwsLookups::ecrRepositoryUri();
         $dockerfile = Manifest::get('tasks.web.dockerfile', 'Dockerfile');
 
         $process = new Process(

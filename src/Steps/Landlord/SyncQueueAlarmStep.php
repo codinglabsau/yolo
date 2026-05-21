@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Steps\Landlord;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\ExecutesMultitenancyStep;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -17,7 +17,7 @@ class SyncQueueAlarmStep implements ExecutesMultitenancyStep
         $alarmName = Helpers::keyedResourceName('landlord-queue-depth-alarm');
 
         try {
-            AwsResources::alarm($alarmName);
+            AwsLookups::alarm($alarmName);
         } catch (ResourceDoesNotExistException) {
             // CloudWatch accepts an upsert operation, so we'll
             // always sync the alarm with the desired state.
@@ -27,7 +27,7 @@ class SyncQueueAlarmStep implements ExecutesMultitenancyStep
             return StepResult::WOULD_SYNC;
         }
 
-        $snsTopic = AwsResources::alarmTopic();
+        $snsTopic = AwsLookups::alarmTopic();
 
         Aws::cloudWatch()->putMetricAlarm([
             'ActionsEnabled' => true,

@@ -18,7 +18,7 @@ use Codinglabs\Yolo\Concerns\UsesCloudWatchLogs;
 use Codinglabs\Yolo\Concerns\UsesCertificateManager;
 use Codinglabs\Yolo\Concerns\UsesElasticLoadBalancingV2;
 
-class AwsResources
+class AwsLookups
 {
     use UsesCertificateManager;
     use UsesCloudWatch;

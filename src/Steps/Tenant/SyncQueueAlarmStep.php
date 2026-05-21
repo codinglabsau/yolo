@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Steps\TenantStep;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -18,13 +18,13 @@ class SyncQueueAlarmStep extends TenantStep
         $alarmName = Helpers::keyedResourceName(sprintf('%s-queue-depth-alarm', $this->tenantId()));
 
         try {
-            AwsResources::alarm($alarmName);
+            AwsLookups::alarm($alarmName);
         } catch (ResourceDoesNotExistException) {
             // CloudWatch accepts an upsert operation, so we'll
             // always sync the alarm with the desired state.
         }
 
-        $snsTopic = AwsResources::alarmTopic();
+        $snsTopic = AwsLookups::alarmTopic();
 
         if (Arr::get($options, 'dry-run')) {
             return StepResult::WOULD_SYNC;

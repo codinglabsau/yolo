@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Steps\Network;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\SecurityGroup;
@@ -22,7 +22,7 @@ class SyncLoadBalancerSecurityGroupStep implements Step
         ];
 
         try {
-            $securityGroup = AwsResources::loadBalancerSecurityGroup();
+            $securityGroup = AwsLookups::loadBalancerSecurityGroup();
 
             foreach ($expectedRules as $tag => $expectedRule) {
                 $securityGroupRules = Aws::ec2()->describeSecurityGroupRules([
@@ -75,7 +75,7 @@ class SyncLoadBalancerSecurityGroupStep implements Step
                 Aws::ec2()->createSecurityGroup([
                     'Description' => 'Enable HTTP and HTTPS from anywhere',
                     'GroupName' => $name,
-                    'VpcId' => AwsResources::vpc()['VpcId'],
+                    'VpcId' => AwsLookups::vpc()['VpcId'],
                     'TagSpecifications' => [
                         [
                             'ResourceType' => 'security-group',
@@ -86,7 +86,7 @@ class SyncLoadBalancerSecurityGroupStep implements Step
                     ],
                 ]);
 
-                $securityGroup = AwsResources::loadBalancerSecurityGroup();
+                $securityGroup = AwsLookups::loadBalancerSecurityGroup();
 
                 foreach ($expectedRules as $expectedRule) {
                     Aws::ec2()->authorizeSecurityGroupIngress($expectedRule($securityGroup));

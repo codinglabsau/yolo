@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Resources\Iam;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Enums\Iam;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -30,7 +30,7 @@ class EcsTaskRole implements Resource
     public function exists(): bool
     {
         try {
-            AwsResources::ecsTaskRole();
+            AwsLookups::ecsTaskRole();
 
             return true;
         } catch (ResourceDoesNotExistException) {
@@ -40,7 +40,7 @@ class EcsTaskRole implements Resource
 
     public function arn(): string
     {
-        return AwsResources::ecsTaskRole()['Arn'];
+        return AwsLookups::ecsTaskRole()['Arn'];
     }
 
     public function create(): void
@@ -74,6 +74,6 @@ class EcsTaskRole implements Resource
 
     public function assumeRolePolicyDocument(): array
     {
-        return AwsResources::ecsTaskAssumeRolePolicyDocument();
+        return AwsLookups::ecsTaskAssumeRolePolicyDocument();
     }
 }

@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -16,7 +16,7 @@ class SyncRouteTableStep implements Step
     public function __invoke(array $options): StepResult
     {
         try {
-            AwsResources::routeTable();
+            AwsLookups::routeTable();
 
             if (Manifest::has('aws.route-table')) {
                 return StepResult::CUSTOM_MANAGED;
@@ -26,7 +26,7 @@ class SyncRouteTableStep implements Step
         } catch (ResourceDoesNotExistException $e) {
             if (! Arr::get($options, 'dry-run')) {
                 Aws::ec2()->createRouteTable([
-                    'VpcId' => AwsResources::vpc()['VpcId'],
+                    'VpcId' => AwsLookups::vpc()['VpcId'],
                     'TagSpecifications' => [
                         [
                             'ResourceType' => 'route-table',

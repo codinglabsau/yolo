@@ -4,7 +4,7 @@ namespace Codinglabs\Yolo\Steps\Deploy;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
@@ -24,8 +24,8 @@ class ExecuteDeployStepsStep implements Step
         $script = "set -e\n" . implode("\n", $commands);
 
         $run = Aws::ecs()->runTask([
-            'cluster' => AwsResources::ecsClusterName(),
-            'taskDefinition' => AwsResources::ecsTaskFamily(),
+            'cluster' => AwsLookups::ecsClusterName(),
+            'taskDefinition' => AwsLookups::ecsTaskFamily(),
             'launchType' => 'FARGATE',
             'count' => 1,
             'startedBy' => 'yolo-deploy',
@@ -39,8 +39,8 @@ class ExecuteDeployStepsStep implements Step
             ],
             'networkConfiguration' => [
                 'awsvpcConfiguration' => [
-                    'subnets' => AwsResources::publicSubnetIds(),
-                    'securityGroups' => [AwsResources::ecsTaskSecurityGroup()['GroupId']],
+                    'subnets' => AwsLookups::publicSubnetIds(),
+                    'securityGroups' => [AwsLookups::ecsTaskSecurityGroup()['GroupId']],
                     'assignPublicIp' => 'ENABLED',
                 ],
             ],
@@ -56,13 +56,13 @@ class ExecuteDeployStepsStep implements Step
         $taskArn = $run['tasks'][0]['taskArn'];
 
         Aws::ecs()->waitUntil('TasksStopped', [
-            'cluster' => AwsResources::ecsClusterName(),
+            'cluster' => AwsLookups::ecsClusterName(),
             'tasks' => [$taskArn],
             '@waiter' => ['maxAttempts' => 120, 'delay' => 10],
         ]);
 
         $stopped = Aws::ecs()->describeTasks([
-            'cluster' => AwsResources::ecsClusterName(),
+            'cluster' => AwsLookups::ecsClusterName(),
             'tasks' => [$taskArn],
         ])['tasks'][0];
 

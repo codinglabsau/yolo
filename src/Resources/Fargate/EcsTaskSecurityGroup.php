@@ -4,7 +4,7 @@ namespace Codinglabs\Yolo\Resources\Fargate;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Enums\SecurityGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -29,7 +29,7 @@ class EcsTaskSecurityGroup implements Resource
     public function exists(): bool
     {
         try {
-            AwsResources::ecsTaskSecurityGroup();
+            AwsLookups::ecsTaskSecurityGroup();
 
             return true;
         } catch (ResourceDoesNotExistException) {
@@ -39,7 +39,7 @@ class EcsTaskSecurityGroup implements Resource
 
     public function arn(): string
     {
-        return AwsResources::ecsTaskSecurityGroup()['GroupId'];
+        return AwsLookups::ecsTaskSecurityGroup()['GroupId'];
     }
 
     public function create(): void
@@ -47,7 +47,7 @@ class EcsTaskSecurityGroup implements Resource
         Aws::ec2()->createSecurityGroup([
             'Description' => 'Enable load balancer traffic to Fargate task ENI',
             'GroupName' => $this->name(),
-            'VpcId' => AwsResources::vpc()['VpcId'],
+            'VpcId' => AwsLookups::vpc()['VpcId'],
             'TagSpecifications' => [
                 [
                     'ResourceType' => 'security-group',

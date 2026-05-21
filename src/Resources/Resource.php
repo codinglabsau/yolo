@@ -11,7 +11,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * decide WHEN to create / sync; the resource decides WHAT a created or synced
  * version of itself looks like.
  *
- * Distinct from `AwsResources` (state-lookup facade for the live AWS environment).
+ * Distinct from `AwsLookups` (state-lookup facade for the live AWS environment).
  */
 interface Resource
 {

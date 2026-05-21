@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Steps\Fargate;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
@@ -23,7 +23,7 @@ class SyncHttpsListenerStep implements ExecutesWebStep
         }
 
         try {
-            $certificate = AwsResources::certificate(Manifest::apex());
+            $certificate = AwsLookups::certificate(Manifest::apex());
         } catch (ResourceDoesNotExistException) {
             return StepResult::SKIPPED;
         }
@@ -53,7 +53,7 @@ class SyncHttpsListenerStep implements ExecutesWebStep
 
     protected static function hasCertificate(string $listenerArn, array $certificate): bool
     {
-        $listener = AwsResources::loadBalancerListenerOnPort(443);
+        $listener = AwsLookups::loadBalancerListenerOnPort(443);
 
         return collect($listener['Certificates'] ?? [])
             ->contains(fn (array $cert) => $cert['CertificateArn'] === $certificate['CertificateArn']);

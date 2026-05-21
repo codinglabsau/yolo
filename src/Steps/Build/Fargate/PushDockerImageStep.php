@@ -3,7 +3,7 @@
 namespace Codinglabs\Yolo\Steps\Build\Fargate;
 
 use Illuminate\Support\Arr;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Symfony\Component\Process\Process;
@@ -15,7 +15,7 @@ class PushDockerImageStep implements Step
     public function __invoke(array $options): StepResult
     {
         $appVersion = Arr::get($options, 'app-version');
-        $repository = AwsResources::ecrRepositoryUri();
+        $repository = AwsLookups::ecrRepositoryUri();
 
         foreach (["$repository:$appVersion", "$repository:latest"] as $tag) {
             (new Process(['docker', 'push', $tag], timeout: null))->mustRun();

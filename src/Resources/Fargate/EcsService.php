@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Resources\Fargate;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -13,7 +13,7 @@ class EcsService implements Resource
 {
     public function name(): string
     {
-        return AwsResources::ecsServiceName();
+        return AwsLookups::ecsServiceName();
     }
 
     public function tags(): array
@@ -24,7 +24,7 @@ class EcsService implements Resource
     public function exists(): bool
     {
         try {
-            AwsResources::ecsService();
+            AwsLookups::ecsService();
 
             return true;
         } catch (ResourceDoesNotExistException) {
@@ -34,7 +34,7 @@ class EcsService implements Resource
 
     public function arn(): string
     {
-        return AwsResources::ecsService()['serviceArn'];
+        return AwsLookups::ecsService()['serviceArn'];
     }
 
     public function create(): void
@@ -55,7 +55,7 @@ class EcsService implements Resource
     public function needsUpdate(): bool
     {
         return static::serviceNeedsUpdate(
-            AwsResources::ecsService(),
+            AwsLookups::ecsService(),
             $this->desiredCount(),
             $this->gracePeriod(),
         );
@@ -87,9 +87,9 @@ class EcsService implements Resource
     public function createPayload(): array
     {
         return [
-            'cluster' => AwsResources::ecsClusterName(),
+            'cluster' => AwsLookups::ecsClusterName(),
             'serviceName' => $this->name(),
-            'taskDefinition' => AwsResources::ecsTaskFamily(),
+            'taskDefinition' => AwsLookups::ecsTaskFamily(),
             'desiredCount' => $this->desiredCount(),
             'launchType' => 'FARGATE',
             ...Manifest::isHeadless() ? [] : ['healthCheckGracePeriodSeconds' => $this->gracePeriod()],
@@ -99,15 +99,15 @@ class EcsService implements Resource
             ],
             'networkConfiguration' => [
                 'awsvpcConfiguration' => [
-                    'subnets' => AwsResources::publicSubnetIds(),
-                    'securityGroups' => [AwsResources::ecsTaskSecurityGroup()['GroupId']],
+                    'subnets' => AwsLookups::publicSubnetIds(),
+                    'securityGroups' => [AwsLookups::ecsTaskSecurityGroup()['GroupId']],
                     'assignPublicIp' => 'ENABLED',
                 ],
             ],
             ...Manifest::isHeadless() ? [] : [
                 'loadBalancers' => [
                     [
-                        'targetGroupArn' => AwsResources::targetGroup()['TargetGroupArn'],
+                        'targetGroupArn' => AwsLookups::targetGroup()['TargetGroupArn'],
                         'containerName' => 'web',
                         'containerPort' => (int) Manifest::get('tasks.web.port', 8000),
                     ],
@@ -125,7 +125,7 @@ class EcsService implements Resource
     public function updatePayload(): array
     {
         return [
-            'cluster' => AwsResources::ecsClusterName(),
+            'cluster' => AwsLookups::ecsClusterName(),
             'service' => $this->name(),
             'desiredCount' => $this->desiredCount(),
             ...Manifest::isHeadless() ? [] : ['healthCheckGracePeriodSeconds' => $this->gracePeriod()],
