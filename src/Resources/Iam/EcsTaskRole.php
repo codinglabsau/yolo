@@ -47,10 +47,21 @@ class EcsTaskRole implements Resource
     {
         Aws::iam()->createRole([
             'RoleName' => $this->name(),
-            'Description' => 'YOLO managed ECS task role — shared default across all apps in this environment',
+            'Description' => $this->description(),
             'AssumeRolePolicyDocument' => json_encode($this->assumeRolePolicyDocument()),
             ...Aws::tags($this->tags()),
         ]);
+    }
+
+    /**
+     * IAM Description fields enforce a restricted character set
+     * (tab/LF/CR + printable ASCII + Latin-1 Supplement) — no em dashes,
+     * smart quotes, or U+007F – U+00A0 control range. Validated by
+     * IamDescriptionsAreSafeTest.
+     */
+    public function description(): string
+    {
+        return 'YOLO managed ECS task role - shared default across all apps in this environment';
     }
 
     public function synchroniseTags(): void

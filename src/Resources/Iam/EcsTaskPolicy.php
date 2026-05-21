@@ -50,10 +50,21 @@ class EcsTaskPolicy implements Resource
     {
         Aws::iam()->createPolicy([
             'PolicyName' => $this->name(),
-            'Description' => 'YOLO managed policy granting ECS Exec session channel permissions to the shared task role',
+            'Description' => $this->description(),
             'PolicyDocument' => json_encode($this->document()),
             ...Aws::tags($this->tags()),
         ]);
+    }
+
+    /**
+     * IAM Description fields enforce a restricted character set
+     * (tab/LF/CR + printable ASCII + Latin-1 Supplement) — no em dashes,
+     * smart quotes, or U+007F – U+00A0 control range. Validated by
+     * IamDescriptionsAreSafeTest.
+     */
+    public function description(): string
+    {
+        return 'YOLO managed policy granting ECS Exec session channel permissions to the shared task role';
     }
 
     public function synchroniseTags(): void
