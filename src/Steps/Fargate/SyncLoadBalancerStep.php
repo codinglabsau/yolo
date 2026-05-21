@@ -18,7 +18,10 @@ class SyncLoadBalancerStep implements ExecutesWebStep
         try {
             $loadBalancer = AwsResources::loadBalancer();
 
-            $this->reconcileTags($loadBalancer['LoadBalancerArn'], Arr::get($options, 'dry-run'));
+            if (! Arr::get($options, 'dry-run')) {
+                $name = Manifest::get('aws.alb', Helpers::keyedResourceName(exclusive: false));
+                Aws::reconcileElbV2Tags($loadBalancer['LoadBalancerArn'], ['Name' => $name]);
+            }
 
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
@@ -42,31 +45,5 @@ class SyncLoadBalancerStep implements ExecutesWebStep
 
             return StepResult::CREATED;
         }
-    }
-
-    protected function reconcileTags(string $arn, bool $dryRun): void
-    {
-        $name = Manifest::get('aws.alb', Helpers::keyedResourceName(exclusive: false));
-
-        $current = Aws::flattenTags(
-            Aws::elasticLoadBalancingV2()->describeTags(['ResourceArns' => [$arn]])['TagDescriptions'][0]['Tags'] ?? []
-        );
-
-        $missing = Aws::tagsRequiringSync(
-            Aws::expectedTags(['Name' => $name]),
-            $current,
-        );
-
-        if (empty($missing) || $dryRun) {
-            return;
-        }
-
-        Aws::elasticLoadBalancingV2()->addTags([
-            'ResourceArns' => [$arn],
-            'Tags' => collect($missing)
-                ->map(fn ($value, $key) => ['Key' => $key, 'Value' => $value])
-                ->values()
-                ->all(),
-        ]);
     }
 }

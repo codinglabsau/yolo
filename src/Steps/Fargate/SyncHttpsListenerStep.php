@@ -48,7 +48,9 @@ class SyncHttpsListenerStep implements ExecutesWebStep
                 ]);
             }
 
-            $this->reconcileTags($listener['ListenerArn'], Arr::get($options, 'dry-run'));
+            if (! Arr::get($options, 'dry-run')) {
+                Aws::reconcileElbV2Tags($listener['ListenerArn'], ['Name' => static::name()]);
+            }
 
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
@@ -84,29 +86,5 @@ class SyncHttpsListenerStep implements ExecutesWebStep
     protected static function name(): string
     {
         return Helpers::keyedResourceName('https', exclusive: false);
-    }
-
-    protected function reconcileTags(string $arn, bool $dryRun): void
-    {
-        $current = Aws::flattenTags(
-            Aws::elasticLoadBalancingV2()->describeTags(['ResourceArns' => [$arn]])['TagDescriptions'][0]['Tags'] ?? []
-        );
-
-        $missing = Aws::tagsRequiringSync(
-            Aws::expectedTags(['Name' => static::name()]),
-            $current,
-        );
-
-        if (empty($missing) || $dryRun) {
-            return;
-        }
-
-        Aws::elasticLoadBalancingV2()->addTags([
-            'ResourceArns' => [$arn],
-            'Tags' => collect($missing)
-                ->map(fn ($value, $key) => ['Key' => $key, 'Value' => $value])
-                ->values()
-                ->all(),
-        ]);
     }
 }

@@ -18,7 +18,9 @@ class SyncTargetGroupStep implements ExecutesWebStep
         try {
             $targetGroup = AwsResources::targetGroup();
 
-            $this->reconcileTags($targetGroup['TargetGroupArn'], Arr::get($options, 'dry-run'));
+            if (! Arr::get($options, 'dry-run')) {
+                Aws::reconcileElbV2Tags($targetGroup['TargetGroupArn'], ['Name' => Helpers::keyedResourceName(exclusive: true)]);
+            }
 
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
@@ -47,31 +49,5 @@ class SyncTargetGroupStep implements ExecutesWebStep
 
             return StepResult::CREATED;
         }
-    }
-
-    protected function reconcileTags(string $arn, bool $dryRun): void
-    {
-        $name = Helpers::keyedResourceName(exclusive: true);
-
-        $current = Aws::flattenTags(
-            Aws::elasticLoadBalancingV2()->describeTags(['ResourceArns' => [$arn]])['TagDescriptions'][0]['Tags'] ?? []
-        );
-
-        $missing = Aws::tagsRequiringSync(
-            Aws::expectedTags(['Name' => $name]),
-            $current,
-        );
-
-        if (empty($missing) || $dryRun) {
-            return;
-        }
-
-        Aws::elasticLoadBalancingV2()->addTags([
-            'ResourceArns' => [$arn],
-            'Tags' => collect($missing)
-                ->map(fn ($value, $key) => ['Key' => $key, 'Value' => $value])
-                ->values()
-                ->all(),
-        ]);
     }
 }

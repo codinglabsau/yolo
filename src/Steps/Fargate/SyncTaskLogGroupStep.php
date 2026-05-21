@@ -37,13 +37,7 @@ class SyncTaskLogGroupStep implements Step
             }
 
             if (! Arr::get($options, 'dry-run')) {
-                // DescribeLogGroups returns the log group's `arn` with a trailing `:*` —
-                // that suffix is the stream wildcard used in IAM policies, not the resource
-                // identifier. The tag APIs reject it as Invalid resourceArn, so strip it.
-                $this->reconcileTags(
-                    (string) preg_replace('/:\*$/', '', $existing['arn']),
-                    $name,
-                );
+                Aws::reconcileCloudWatchLogsTags($existing['arn'], ['Name' => $name]);
             }
 
             return StepResult::SYNCED;
@@ -72,27 +66,6 @@ class SyncTaskLogGroupStep implements Step
             'tasks.web.log-group',
             sprintf('/yolo/%s', Helpers::keyedResourceName(exclusive: true))
         );
-    }
-
-    protected function reconcileTags(string $arn, string $name): void
-    {
-        $current = Aws::flattenTags(
-            Aws::cloudWatchLogs()->listTagsForResource(['resourceArn' => $arn])['tags'] ?? []
-        );
-
-        $missing = Aws::tagsRequiringSync(
-            Aws::expectedTags(['Name' => $name]),
-            $current,
-        );
-
-        if (empty($missing)) {
-            return;
-        }
-
-        Aws::cloudWatchLogs()->tagResource([
-            'resourceArn' => $arn,
-            'tags' => $missing,
-        ]);
     }
 
     protected static function findLogGroup(string $name): ?array

@@ -1,6 +1,11 @@
 <?php
 
+use Aws\Result;
+use Aws\MockHandler;
 use Codinglabs\Yolo\Aws;
+use Aws\CommandInterface;
+use Codinglabs\Yolo\Helpers;
+use Aws\CloudWatchLogs\CloudWatchLogsClient;
 
 describe('tags', function () {
     it('generates key-value tag format by default', function () {
@@ -76,6 +81,41 @@ describe('flattenTags', function () {
 
     it('returns an empty list as an empty array', function () {
         expect(Aws::flattenTags([]))->toBe([]);
+    });
+});
+
+describe('reconcileCloudWatchLogsTags', function () {
+    it('strips the stream wildcard `:*` suffix before calling the CloudWatch Logs tag APIs', function () {
+        $captured = [];
+
+        Helpers::app()->instance('cloudWatchLogs', new CloudWatchLogsClient([
+            'region' => 'ap-southeast-2',
+            'version' => 'latest',
+            'credentials' => false,
+            'handler' => tap(new MockHandler(), function (MockHandler $mock) use (&$captured) {
+                $mock->append(function (CommandInterface $cmd) use (&$captured) {
+                    $captured[] = ['name' => $cmd->getName(), 'args' => $cmd->toArray()];
+
+                    return new Result(['tags' => []]);
+                });
+                $mock->append(function (CommandInterface $cmd) use (&$captured) {
+                    $captured[] = ['name' => $cmd->getName(), 'args' => $cmd->toArray()];
+
+                    return new Result([]);
+                });
+            }),
+        ]));
+
+        Aws::reconcileCloudWatchLogsTags(
+            'arn:aws:logs:ap-southeast-2:111111111111:log-group:/yolo/my-app:*',
+            ['Name' => '/yolo/my-app'],
+        );
+
+        foreach ($captured as $call) {
+            expect($call['args']['resourceArn'])
+                ->toBe('arn:aws:logs:ap-southeast-2:111111111111:log-group:/yolo/my-app')
+                ->not->toEndWith(':*');
+        }
     });
 });
 

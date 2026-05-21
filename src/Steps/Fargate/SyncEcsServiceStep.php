@@ -33,7 +33,9 @@ class SyncEcsServiceStep implements Step
                 Aws::ecs()->updateService(static::updatePayload($desiredCount, $gracePeriod));
             }
 
-            $this->reconcileTags($service['serviceArn'], Arr::get($options, 'dry-run'));
+            if (! Arr::get($options, 'dry-run')) {
+                Aws::reconcileEcsTags($service['serviceArn'], ['Name' => AwsResources::ecsServiceName()]);
+            }
 
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
@@ -45,30 +47,6 @@ class SyncEcsServiceStep implements Step
 
             return StepResult::CREATED;
         }
-    }
-
-    protected function reconcileTags(string $arn, bool $dryRun): void
-    {
-        $current = Aws::flattenTags(
-            Aws::ecs()->listTagsForResource(['resourceArn' => $arn])['tags'] ?? []
-        );
-
-        $missing = Aws::tagsRequiringSync(
-            Aws::expectedTags(['Name' => AwsResources::ecsServiceName()]),
-            $current,
-        );
-
-        if (empty($missing) || $dryRun) {
-            return;
-        }
-
-        Aws::ecs()->tagResource([
-            'resourceArn' => $arn,
-            'tags' => collect($missing)
-                ->map(fn ($value, $key) => ['key' => $key, 'value' => $value])
-                ->values()
-                ->all(),
-        ]);
     }
 
     public static function needsUpdate(array $service, int $desiredCount, int $gracePeriod): bool
