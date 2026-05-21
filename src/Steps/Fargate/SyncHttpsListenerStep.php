@@ -49,7 +49,7 @@ class SyncHttpsListenerStep implements ExecutesWebStep
             }
 
             if (! Arr::get($options, 'dry-run')) {
-                Aws::reconcileElbV2Tags($listener['ListenerArn'], ['Name' => static::name()]);
+                Aws::synchroniseElbV2Tags($listener['ListenerArn'], ['Name' => static::name()]);
             }
 
             return StepResult::SYNCED;

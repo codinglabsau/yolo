@@ -19,7 +19,7 @@ class SyncEcrRepositoryStep implements Step
             $repository = AwsResources::ecrRepository();
 
             if (! Arr::get($options, 'dry-run')) {
-                Aws::reconcileEcrTags($repository['repositoryArn'], ['Name' => AwsResources::ecrRepositoryName()]);
+                Aws::synchroniseEcrTags($repository['repositoryArn'], ['Name' => AwsResources::ecrRepositoryName()]);
             }
 
             return StepResult::SYNCED;

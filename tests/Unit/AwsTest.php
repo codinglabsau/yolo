@@ -84,7 +84,7 @@ describe('flattenTags', function () {
     });
 });
 
-describe('reconcileCloudWatchLogsTags', function () {
+describe('synchroniseCloudWatchLogsTags', function () {
     it('strips the stream wildcard `:*` suffix before calling the CloudWatch Logs tag APIs', function () {
         $captured = [];
 
@@ -106,7 +106,7 @@ describe('reconcileCloudWatchLogsTags', function () {
             }),
         ]));
 
-        Aws::reconcileCloudWatchLogsTags(
+        Aws::synchroniseCloudWatchLogsTags(
             'arn:aws:logs:ap-southeast-2:111111111111:log-group:/yolo/my-app:*',
             ['Name' => '/yolo/my-app'],
         );

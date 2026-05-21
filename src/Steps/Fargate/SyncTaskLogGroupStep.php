@@ -37,7 +37,7 @@ class SyncTaskLogGroupStep implements Step
             }
 
             if (! Arr::get($options, 'dry-run')) {
-                Aws::reconcileCloudWatchLogsTags($existing['arn'], ['Name' => $name]);
+                Aws::synchroniseCloudWatchLogsTags($existing['arn'], ['Name' => $name]);
             }
 
             return StepResult::SYNCED;

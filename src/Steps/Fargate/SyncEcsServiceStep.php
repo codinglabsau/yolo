@@ -34,7 +34,7 @@ class SyncEcsServiceStep implements Step
             }
 
             if (! Arr::get($options, 'dry-run')) {
-                Aws::reconcileEcsTags($service['serviceArn'], ['Name' => AwsResources::ecsServiceName()]);
+                Aws::synchroniseEcsTags($service['serviceArn'], ['Name' => AwsResources::ecsServiceName()]);
             }
 
             return StepResult::SYNCED;

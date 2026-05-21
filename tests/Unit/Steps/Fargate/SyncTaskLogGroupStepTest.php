@@ -54,9 +54,9 @@ it('strips the stream wildcard `:*` suffix before calling the CloudWatch Logs ta
                 'retentionInDays' => 30,
             ]],
         ]),
-        // listTagsForResource — return empty so reconcileTags decides no writes needed.
+        // listTagsForResource — return empty so synchroniseTags decides no writes needed.
         new Result(['tags' => []]),
-        // tagResource — return so reconcileTags can apply the Name tag.
+        // tagResource — return so synchroniseTags can apply the Name tag.
         new Result([]),
     ], $captured);
 

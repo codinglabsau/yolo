@@ -82,7 +82,7 @@ class Aws
 
     /**
      * Returns the subset of expected tags that are missing or stale on the
-     * resource. Reconciliation is additive — tags YOLO does not manage are
+     * resource. Synchronisation is additive — tags YOLO does not manage are
      * left alone so manually-applied tags survive sync.
      */
     public static function tagsRequiringSync(array $expected, array $current): array
@@ -119,9 +119,9 @@ class Aws
     }
 
     /**
-     * Reconcile tags on an ELBv2 resource (load balancer, target group, listener, listener rule).
+     * Synchronise tags on an ELBv2 resource (load balancer, target group, listener, listener rule).
      */
-    public static function reconcileElbV2Tags(string $arn, array $tags = []): void
+    public static function synchroniseElbV2Tags(string $arn, array $tags = []): void
     {
         $current = static::flattenTags(
             static::elasticLoadBalancingV2()->describeTags(['ResourceArns' => [$arn]])['TagDescriptions'][0]['Tags'] ?? []
@@ -143,10 +143,10 @@ class Aws
     }
 
     /**
-     * Reconcile tags on an ECS resource (cluster, service, task definition).
+     * Synchronise tags on an ECS resource (cluster, service, task definition).
      * ECS uses lower-case key/value pairs.
      */
-    public static function reconcileEcsTags(string $arn, array $tags = []): void
+    public static function synchroniseEcsTags(string $arn, array $tags = []): void
     {
         $current = static::flattenTags(
             static::ecs()->listTagsForResource(['resourceArn' => $arn])['tags'] ?? []
@@ -168,10 +168,10 @@ class Aws
     }
 
     /**
-     * Reconcile tags on an ECR resource. ECR uses upper-case Key/Value inside
+     * Synchronise tags on an ECR resource. ECR uses upper-case Key/Value inside
      * a `tags` (lower-case) wrap.
      */
-    public static function reconcileEcrTags(string $arn, array $tags = []): void
+    public static function synchroniseEcrTags(string $arn, array $tags = []): void
     {
         $current = static::flattenTags(
             static::ecr()->listTagsForResource(['resourceArn' => $arn])['tags'] ?? []
@@ -193,11 +193,11 @@ class Aws
     }
 
     /**
-     * Reconcile tags on a CloudWatch Logs resource. DescribeLogGroups returns
+     * Synchronise tags on a CloudWatch Logs resource. DescribeLogGroups returns
      * the ARN with a trailing `:*` (stream wildcard) — strip before calling.
      * `tags` is associative on both read and write.
      */
-    public static function reconcileCloudWatchLogsTags(string $arn, array $tags = []): void
+    public static function synchroniseCloudWatchLogsTags(string $arn, array $tags = []): void
     {
         $arn = (string) preg_replace('/:\*$/', '', $arn);
 
@@ -218,9 +218,9 @@ class Aws
     }
 
     /**
-     * Reconcile tags on an EC2 resource (security group, subnet, VPC, etc.) by ID.
+     * Synchronise tags on an EC2 resource (security group, subnet, VPC, etc.) by ID.
      */
-    public static function reconcileEc2Tags(string $resourceId, array $tags = []): void
+    public static function synchroniseEc2Tags(string $resourceId, array $tags = []): void
     {
         $current = static::flattenTags(
             static::ec2()->describeTags([

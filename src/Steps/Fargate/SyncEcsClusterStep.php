@@ -17,7 +17,7 @@ class SyncEcsClusterStep implements Step
             $cluster = AwsResources::ecsCluster();
 
             if (! Arr::get($options, 'dry-run')) {
-                Aws::reconcileEcsTags($cluster['clusterArn'], ['Name' => AwsResources::ecsClusterName()]);
+                Aws::synchroniseEcsTags($cluster['clusterArn'], ['Name' => AwsResources::ecsClusterName()]);
             }
 
             return StepResult::SYNCED;

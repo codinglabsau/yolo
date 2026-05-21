@@ -18,7 +18,7 @@ class SyncHttpListenerStep implements ExecutesWebStep
             $listener = AwsResources::loadBalancerListenerOnPort(80);
 
             if (! Arr::get($options, 'dry-run')) {
-                Aws::reconcileElbV2Tags($listener['ListenerArn'], ['Name' => static::name()]);
+                Aws::synchroniseElbV2Tags($listener['ListenerArn'], ['Name' => static::name()]);
             }
 
             return StepResult::SYNCED;

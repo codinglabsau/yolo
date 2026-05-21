@@ -42,7 +42,7 @@ class SyncTaskSecurityGroupStep implements Step
             }
 
             if (! Arr::get($options, 'dry-run')) {
-                Aws::reconcileEc2Tags(
+                Aws::synchroniseEc2Tags(
                     $securityGroup['GroupId'],
                     ['Name' => Helpers::keyedResourceName(SecurityGroup::ECS_TASK_SECURITY_GROUP, exclusive: true)],
                 );

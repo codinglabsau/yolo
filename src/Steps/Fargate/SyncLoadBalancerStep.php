@@ -20,7 +20,7 @@ class SyncLoadBalancerStep implements ExecutesWebStep
 
             if (! Arr::get($options, 'dry-run')) {
                 $name = Manifest::get('aws.alb', Helpers::keyedResourceName(exclusive: false));
-                Aws::reconcileElbV2Tags($loadBalancer['LoadBalancerArn'], ['Name' => $name]);
+                Aws::synchroniseElbV2Tags($loadBalancer['LoadBalancerArn'], ['Name' => $name]);
             }
 
             return StepResult::SYNCED;

@@ -19,7 +19,7 @@ class SyncTargetGroupStep implements ExecutesWebStep
             $targetGroup = AwsResources::targetGroup();
 
             if (! Arr::get($options, 'dry-run')) {
-                Aws::reconcileElbV2Tags($targetGroup['TargetGroupArn'], ['Name' => Helpers::keyedResourceName(exclusive: true)]);
+                Aws::synchroniseElbV2Tags($targetGroup['TargetGroupArn'], ['Name' => Helpers::keyedResourceName(exclusive: true)]);
             }
 
             return StepResult::SYNCED;

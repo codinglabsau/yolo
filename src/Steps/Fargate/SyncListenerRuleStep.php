@@ -33,7 +33,7 @@ class SyncListenerRuleStep implements ExecutesWebStep
 
         if ($existing !== null) {
             if (! Arr::get($options, 'dry-run')) {
-                Aws::reconcileElbV2Tags($existing['RuleArn'], ['Name' => Helpers::keyedResourceName(exclusive: true)]);
+                Aws::synchroniseElbV2Tags($existing['RuleArn'], ['Name' => Helpers::keyedResourceName(exclusive: true)]);
             }
 
             return StepResult::SYNCED;
