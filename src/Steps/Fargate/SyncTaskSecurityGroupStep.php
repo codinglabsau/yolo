@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Steps\Fargate;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
+use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Contracts\Step;
@@ -35,12 +36,7 @@ class SyncTaskSecurityGroupStep implements Step
 
     protected function ensureLoadBalancerIngressRule(string $groupId, bool $dryRun): void
     {
-        $rules = Aws::ec2()->describeSecurityGroupRules([
-            'Filters' => [
-                ['Name' => 'group-id', 'Values' => [$groupId]],
-                ['Name' => 'tag:yolo:rule-type', 'Values' => [SecurityGroupRule::ECS_TASK_LB_INGRESS_RULE->value]],
-            ],
-        ])['SecurityGroupRules'];
+        $rules = Ec2::securityGroupRules($groupId, SecurityGroupRule::ECS_TASK_LB_INGRESS_RULE->value);
 
         if (! empty($rules) || $dryRun) {
             return;
@@ -57,6 +53,7 @@ class SyncTaskSecurityGroupStep implements Step
                     'ToPort' => $port,
                     'UserIdGroupPairs' => [
                         [
+                            // LB security group still on the legacy AwsLookups facade — LPX-612.
                             'GroupId' => AwsLookups::loadBalancerSecurityGroup()['GroupId'],
                             'Description' => 'Container port ingress from the load balancer',
                         ],

@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Resources\Fargate;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Aws\ElbV2;
 use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -24,7 +25,7 @@ class LoadBalancer implements Resource
     public function exists(): bool
     {
         try {
-            AwsLookups::loadBalancer();
+            ElbV2::loadBalancer($this->name());
 
             return true;
         } catch (ResourceDoesNotExistException) {
@@ -34,7 +35,7 @@ class LoadBalancer implements Resource
 
     public function arn(): string
     {
-        return AwsLookups::loadBalancer()['LoadBalancerArn'];
+        return ElbV2::loadBalancer($this->name())['LoadBalancerArn'];
     }
 
     public function create(): void
@@ -44,6 +45,8 @@ class LoadBalancer implements Resource
             'Type' => 'application',
             'Scheme' => 'internet-facing',
             'IpAddressType' => 'ipv4',
+            // VPC subnets + LB security group still come from the legacy AwsLookups facade —
+            // those resources haven't been migrated yet. Covered by LPX-612.
             'SecurityGroups' => [
                 AwsLookups::loadBalancerSecurityGroup()['GroupId'],
             ],

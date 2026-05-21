@@ -4,9 +4,10 @@ namespace Codinglabs\Yolo\Steps\Iam;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
-use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Resources\Iam\EcsTaskRole;
+use Codinglabs\Yolo\Resources\Iam\EcsTaskPolicy;
 
 class AttachEcsTaskRolePoliciesStep implements Step
 {
@@ -17,8 +18,8 @@ class AttachEcsTaskRolePoliciesStep implements Step
         }
 
         Aws::iam()->attachRolePolicy([
-            'RoleName' => AwsLookups::ecsTaskRole()['RoleName'],
-            'PolicyArn' => AwsLookups::ecsTaskPolicy()['Arn'],
+            'RoleName' => (new EcsTaskRole())->name(),
+            'PolicyArn' => (new EcsTaskPolicy())->arn(),
         ]);
 
         return StepResult::SYNCED;

@@ -5,8 +5,8 @@ namespace Codinglabs\Yolo\Resources\Iam;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Enums\Iam;
-use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
@@ -33,7 +33,7 @@ class EcsTaskPolicy implements Resource
     public function exists(): bool
     {
         try {
-            AwsLookups::ecsTaskPolicy();
+            IamClient::policy($this->name());
 
             return true;
         } catch (ResourceDoesNotExistException) {
@@ -43,7 +43,7 @@ class EcsTaskPolicy implements Resource
 
     public function arn(): string
     {
-        return AwsLookups::ecsTaskPolicy()['Arn'];
+        return IamClient::policy($this->name())['Arn'];
     }
 
     public function create(): void
@@ -70,13 +70,10 @@ class EcsTaskPolicy implements Resource
      */
     public function synchroniseDocument(): void
     {
-        $policy = AwsLookups::ecsTaskPolicy();
+        $policy = IamClient::policy($this->name());
         $document = json_encode($this->document());
 
-        $currentVersion = Aws::iam()->getPolicyVersion([
-            'PolicyArn' => $policy['Arn'],
-            'VersionId' => $policy['DefaultVersionId'],
-        ])['PolicyVersion'];
+        $currentVersion = IamClient::policyVersion($policy['Arn'], $policy['DefaultVersionId']);
 
         if (urldecode($currentVersion['Document']) === $document) {
             return;
@@ -91,6 +88,20 @@ class EcsTaskPolicy implements Resource
 
     public function document(): array
     {
-        return AwsLookups::ecsTaskPolicyDocument();
+        return [
+            'Version' => '2012-10-17',
+            'Statement' => [
+                [
+                    'Effect' => 'Allow',
+                    'Resource' => '*',
+                    'Action' => [
+                        'ssmmessages:CreateControlChannel',
+                        'ssmmessages:CreateDataChannel',
+                        'ssmmessages:OpenControlChannel',
+                        'ssmmessages:OpenDataChannel',
+                    ],
+                ],
+            ],
+        ];
     }
 }

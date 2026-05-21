@@ -5,8 +5,8 @@ namespace Codinglabs\Yolo\Resources\Iam;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Enums\Iam;
-use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
@@ -30,7 +30,7 @@ class EcsTaskRole implements Resource
     public function exists(): bool
     {
         try {
-            AwsLookups::ecsTaskRole();
+            IamClient::role($this->name());
 
             return true;
         } catch (ResourceDoesNotExistException) {
@@ -40,7 +40,7 @@ class EcsTaskRole implements Resource
 
     public function arn(): string
     {
-        return AwsLookups::ecsTaskRole()['Arn'];
+        return IamClient::role($this->name())['Arn'];
     }
 
     public function create(): void
@@ -74,6 +74,15 @@ class EcsTaskRole implements Resource
 
     public function assumeRolePolicyDocument(): array
     {
-        return AwsLookups::ecsTaskAssumeRolePolicyDocument();
+        return [
+            'Version' => '2012-10-17',
+            'Statement' => [
+                [
+                    'Effect' => 'Allow',
+                    'Principal' => ['Service' => 'ecs-tasks.amazonaws.com'],
+                    'Action' => 'sts:AssumeRole',
+                ],
+            ],
+        ];
     }
 }

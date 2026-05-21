@@ -5,10 +5,12 @@ namespace Codinglabs\Yolo\Steps\Fargate;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Aws\ElbV2;
 use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
+use Codinglabs\Yolo\Resources\Fargate\LoadBalancer;
 use Codinglabs\Yolo\Resources\Fargate\HttpsListener;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -23,6 +25,7 @@ class SyncHttpsListenerStep implements ExecutesWebStep
         }
 
         try {
+            // ACM certificate lookup is still on the legacy AwsLookups facade — LPX-612.
             $certificate = AwsLookups::certificate(Manifest::apex());
         } catch (ResourceDoesNotExistException) {
             return StepResult::SKIPPED;
@@ -53,7 +56,7 @@ class SyncHttpsListenerStep implements ExecutesWebStep
 
     protected static function hasCertificate(string $listenerArn, array $certificate): bool
     {
-        $listener = AwsLookups::loadBalancerListenerOnPort(443);
+        $listener = ElbV2::listenerOnPort((new LoadBalancer())->arn(), 443);
 
         return collect($listener['Certificates'] ?? [])
             ->contains(fn (array $cert) => $cert['CertificateArn'] === $certificate['CertificateArn']);

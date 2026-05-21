@@ -3,11 +3,12 @@
 namespace Codinglabs\Yolo\Steps\Fargate;
 
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsLookups;
+use Codinglabs\Yolo\Aws\ElbV2;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Resources\Fargate\ListenerRule;
+use Codinglabs\Yolo\Resources\Fargate\LoadBalancer;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class SyncListenerRuleStep implements ExecutesWebStep
@@ -21,7 +22,7 @@ class SyncListenerRuleStep implements ExecutesWebStep
         }
 
         try {
-            $listener = AwsLookups::loadBalancerListenerOnPort(443);
+            $listener = ElbV2::listenerOnPort((new LoadBalancer())->arn(), 443);
         } catch (ResourceDoesNotExistException) {
             // no HTTPS listener yet (cert not issued) — defer
             return StepResult::SKIPPED;

@@ -1,9 +1,10 @@
 <?php
 
-use Codinglabs\Yolo\AwsLookups;
+use Codinglabs\Yolo\Resources\Iam\EcsTaskRole;
+use Codinglabs\Yolo\Resources\Iam\EcsTaskPolicy;
 
 it('describes the ECS task policy with the four ssmmessages exec permissions', function () {
-    $document = AwsLookups::ecsTaskPolicyDocument();
+    $document = (new EcsTaskPolicy())->document();
 
     expect($document['Version'])->toBe('2012-10-17');
     expect($document['Statement'])->toHaveCount(1);
@@ -21,7 +22,7 @@ it('describes the ECS task policy with the four ssmmessages exec permissions', f
 });
 
 it('trusts the ecs-tasks service in the ECS task assume role policy', function () {
-    expect(AwsLookups::ecsTaskAssumeRolePolicyDocument())->toBe([
+    expect((new EcsTaskRole())->assumeRolePolicyDocument())->toBe([
         'Version' => '2012-10-17',
         'Statement' => [
             [

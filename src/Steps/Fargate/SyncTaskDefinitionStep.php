@@ -4,11 +4,13 @@ namespace Codinglabs\Yolo\Steps\Fargate;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Resources\Iam\EcsTaskRole;
 use Codinglabs\Yolo\Resources\Fargate\TaskLogGroup;
+use Codinglabs\Yolo\Resources\Fargate\EcrRepository;
 
 class SyncTaskDefinitionStep implements Step
 {
@@ -29,16 +31,22 @@ class SyncTaskDefinitionStep implements Step
         $cpu = (string) Manifest::get('tasks.web.cpu', '512');
         $memory = (string) Manifest::get('tasks.web.memory', '1024');
 
+        $ecrUri = (new EcrRepository())->uri();
         $image = $imageTag
-            ? AwsLookups::ecrRepositoryUri() . ':' . $imageTag
-            : Manifest::get('tasks.web.image', AwsLookups::ecrRepositoryUri() . ':latest');
+            ? "$ecrUri:$imageTag"
+            : Manifest::get('tasks.web.image', "$ecrUri:latest");
 
         $taskRoleArn = Manifest::has('tasks.web.task-role')
             ? Manifest::get('tasks.web.task-role')
-            : AwsLookups::ecsTaskRole()['Arn'];
+            : (new EcsTaskRole())->arn();
+
+        // Task definition family matches the keyed resource name (exclusive); same
+        // value as EcsService::name(). Inlined rather than introducing a Resource
+        // for the task definition (it's re-registered every sync — no exists/create).
+        $family = Helpers::keyedResourceName(exclusive: true);
 
         return [
-            'family' => AwsLookups::ecsTaskFamily(),
+            'family' => $family,
             'networkMode' => 'awsvpc',
             'requiresCompatibilities' => ['FARGATE'],
             'cpu' => $cpu,
@@ -70,7 +78,7 @@ class SyncTaskDefinitionStep implements Step
                     ],
                 ],
             ],
-            'tags' => Aws::ecsTags(['Name' => AwsLookups::ecsTaskFamily()]),
+            'tags' => Aws::ecsTags(['Name' => $family]),
         ];
     }
 }

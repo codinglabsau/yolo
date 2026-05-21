@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Resources\Fargate;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Aws\ElbV2;
 use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -24,7 +25,7 @@ class TargetGroup implements Resource
     public function exists(): bool
     {
         try {
-            AwsLookups::targetGroup();
+            ElbV2::targetGroup($this->name());
 
             return true;
         } catch (ResourceDoesNotExistException) {
@@ -34,7 +35,7 @@ class TargetGroup implements Resource
 
     public function arn(): string
     {
-        return AwsLookups::targetGroup()['TargetGroupArn'];
+        return ElbV2::targetGroup($this->name())['TargetGroupArn'];
     }
 
     public function create(): void
@@ -44,6 +45,7 @@ class TargetGroup implements Resource
             'Protocol' => 'HTTP',
             'Port' => (int) Manifest::get('tasks.web.port', 8000),
             'TargetType' => 'ip',
+            // VPC lookup is still on the legacy AwsLookups facade — covered by LPX-612.
             'VpcId' => AwsLookups::vpc()['VpcId'],
             'HealthCheckProtocol' => 'HTTP',
             'HealthCheckPath' => Manifest::get('tasks.web.health-check.path', '/health'),

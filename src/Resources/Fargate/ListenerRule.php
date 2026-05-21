@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Resources\Fargate;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsLookups;
+use Codinglabs\Yolo\Aws\ElbV2;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
@@ -55,7 +55,7 @@ class ListenerRule implements Resource
             'Actions' => [
                 [
                     'Type' => 'forward',
-                    'TargetGroupArn' => AwsLookups::targetGroup()['TargetGroupArn'],
+                    'TargetGroupArn' => (new TargetGroup())->arn(),
                 ],
             ],
             ...Aws::tags($this->tags()),
@@ -77,11 +77,7 @@ class ListenerRule implements Resource
 
         $hosts = static::routedHosts();
 
-        $rules = Aws::elasticLoadBalancingV2()->describeRules([
-            'ListenerArn' => $this->httpsListenerArn,
-        ])['Rules'];
-
-        foreach ($rules as $rule) {
+        foreach (ElbV2::rules($this->httpsListenerArn) as $rule) {
             foreach ($rule['Conditions'] ?? [] as $condition) {
                 if ($condition['Field'] !== 'host-header') {
                     continue;
@@ -100,9 +96,7 @@ class ListenerRule implements Resource
 
     protected function priority(): int
     {
-        $usedPriorities = collect(Aws::elasticLoadBalancingV2()->describeRules([
-            'ListenerArn' => $this->httpsListenerArn,
-        ])['Rules'])
+        $usedPriorities = collect(ElbV2::rules($this->httpsListenerArn))
             ->filter(fn (array $rule) => $rule['Priority'] !== 'default')
             ->map(fn (array $rule) => (int) $rule['Priority'])
             ->all();

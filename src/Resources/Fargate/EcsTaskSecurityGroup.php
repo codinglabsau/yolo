@@ -3,7 +3,9 @@
 namespace Codinglabs\Yolo\Resources\Fargate;
 
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsLookups;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Enums\SecurityGroup;
@@ -18,7 +20,10 @@ class EcsTaskSecurityGroup implements Resource
 {
     public function name(): string
     {
-        return Helpers::keyedResourceName(SecurityGroup::ECS_TASK_SECURITY_GROUP, exclusive: true);
+        return Manifest::get(
+            'aws.ecs.security-group',
+            Helpers::keyedResourceName(SecurityGroup::ECS_TASK_SECURITY_GROUP, exclusive: true),
+        );
     }
 
     public function tags(): array
@@ -29,7 +34,7 @@ class EcsTaskSecurityGroup implements Resource
     public function exists(): bool
     {
         try {
-            AwsLookups::ecsTaskSecurityGroup();
+            Ec2::securityGroup($this->name());
 
             return true;
         } catch (ResourceDoesNotExistException) {
@@ -39,7 +44,7 @@ class EcsTaskSecurityGroup implements Resource
 
     public function arn(): string
     {
-        return AwsLookups::ecsTaskSecurityGroup()['GroupId'];
+        return Ec2::securityGroup($this->name())['GroupId'];
     }
 
     public function create(): void
@@ -47,6 +52,7 @@ class EcsTaskSecurityGroup implements Resource
         Aws::ec2()->createSecurityGroup([
             'Description' => 'Enable load balancer traffic to Fargate task ENI',
             'GroupName' => $this->name(),
+            // VPC lookup is still on the legacy AwsLookups facade — covered by LPX-612.
             'VpcId' => AwsLookups::vpc()['VpcId'],
             'TagSpecifications' => [
                 [

@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Resources\Fargate;
 
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Aws\Ecs;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsLookups;
@@ -13,7 +14,7 @@ class EcsService implements Resource
 {
     public function name(): string
     {
-        return AwsLookups::ecsServiceName();
+        return Helpers::keyedResourceName(exclusive: true);
     }
 
     public function tags(): array
@@ -24,7 +25,7 @@ class EcsService implements Resource
     public function exists(): bool
     {
         try {
-            AwsLookups::ecsService();
+            Ecs::service((new EcsCluster())->name(), $this->name());
 
             return true;
         } catch (ResourceDoesNotExistException) {
@@ -34,7 +35,7 @@ class EcsService implements Resource
 
     public function arn(): string
     {
-        return AwsLookups::ecsService()['serviceArn'];
+        return Ecs::service((new EcsCluster())->name(), $this->name())['serviceArn'];
     }
 
     public function create(): void
@@ -55,7 +56,7 @@ class EcsService implements Resource
     public function needsUpdate(): bool
     {
         return static::serviceNeedsUpdate(
-            AwsLookups::ecsService(),
+            Ecs::service((new EcsCluster())->name(), $this->name()),
             $this->desiredCount(),
             $this->gracePeriod(),
         );
@@ -87,9 +88,12 @@ class EcsService implements Resource
     public function createPayload(): array
     {
         return [
-            'cluster' => AwsLookups::ecsClusterName(),
+            'cluster' => (new EcsCluster())->name(),
             'serviceName' => $this->name(),
-            'taskDefinition' => AwsLookups::ecsTaskFamily(),
+            // Task definition family matches the service name (keyedResourceName, exclusive).
+            // TaskDef doesn't fit the Resource shape (re-registered every sync, no exists/create
+            // distinction), so we inline the family name rather than introduce a Resource for it.
+            'taskDefinition' => $this->name(),
             'desiredCount' => $this->desiredCount(),
             'launchType' => 'FARGATE',
             ...Manifest::isHeadless() ? [] : ['healthCheckGracePeriodSeconds' => $this->gracePeriod()],
@@ -99,15 +103,16 @@ class EcsService implements Resource
             ],
             'networkConfiguration' => [
                 'awsvpcConfiguration' => [
+                    // Public subnet IDs still come from the legacy AwsLookups facade — LPX-612.
                     'subnets' => AwsLookups::publicSubnetIds(),
-                    'securityGroups' => [AwsLookups::ecsTaskSecurityGroup()['GroupId']],
+                    'securityGroups' => [(new EcsTaskSecurityGroup())->arn()],
                     'assignPublicIp' => 'ENABLED',
                 ],
             ],
             ...Manifest::isHeadless() ? [] : [
                 'loadBalancers' => [
                     [
-                        'targetGroupArn' => AwsLookups::targetGroup()['TargetGroupArn'],
+                        'targetGroupArn' => (new TargetGroup())->arn(),
                         'containerName' => 'web',
                         'containerPort' => (int) Manifest::get('tasks.web.port', 8000),
                     ],
@@ -125,7 +130,7 @@ class EcsService implements Resource
     public function updatePayload(): array
     {
         return [
-            'cluster' => AwsLookups::ecsClusterName(),
+            'cluster' => (new EcsCluster())->name(),
             'service' => $this->name(),
             'desiredCount' => $this->desiredCount(),
             ...Manifest::isHeadless() ? [] : ['healthCheckGracePeriodSeconds' => $this->gracePeriod()],

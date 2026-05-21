@@ -5,12 +5,13 @@ namespace Codinglabs\Yolo\Resources\Fargate;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Aws\Exception\AwsException;
+use Codinglabs\Yolo\Aws\CloudWatchLogs;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class TaskLogGroup implements Resource
 {
-    protected ?array $cachedGroup = null;
+    protected ?array $cached = null;
 
     public function name(): string
     {
@@ -27,12 +28,29 @@ class TaskLogGroup implements Resource
 
     public function exists(): bool
     {
-        return $this->find() !== null;
+        return $this->live() !== null;
     }
 
     public function arn(): string
     {
-        return $this->find()['arn'];
+        return $this->live()['arn'];
+    }
+
+    /**
+     * Memoised describe — Resource methods (exists, arn, currentRetentionInDays)
+     * each call into this; one SDK round-trip per Resource instance lifetime.
+     */
+    protected function live(): ?array
+    {
+        if ($this->cached !== null) {
+            return $this->cached;
+        }
+
+        try {
+            return $this->cached = CloudWatchLogs::logGroup($this->name());
+        } catch (ResourceDoesNotExistException) {
+            return null;
+        }
     }
 
     public function create(): void
@@ -47,7 +65,7 @@ class TaskLogGroup implements Resource
             'retentionInDays' => $this->retentionInDays(),
         ]);
 
-        $this->cachedGroup = null;
+        $this->cached = null;
     }
 
     public function synchroniseTags(): void
@@ -78,29 +96,6 @@ class TaskLogGroup implements Resource
 
     public function currentRetentionInDays(): ?int
     {
-        return $this->find()['retentionInDays'] ?? null;
-    }
-
-    protected function find(): ?array
-    {
-        if ($this->cachedGroup !== null) {
-            return $this->cachedGroup;
-        }
-
-        try {
-            $groups = Aws::cloudWatchLogs()->describeLogGroups([
-                'logGroupNamePrefix' => $this->name(),
-            ])['logGroups'];
-        } catch (AwsException) {
-            return null;
-        }
-
-        foreach ($groups as $group) {
-            if ($group['logGroupName'] === $this->name()) {
-                return $this->cachedGroup = $group;
-            }
-        }
-
-        return null;
+        return $this->live()['retentionInDays'] ?? null;
     }
 }
