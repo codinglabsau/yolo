@@ -4,27 +4,32 @@ use Aws\Result;
 use Aws\MockHandler;
 use Aws\CommandInterface;
 use Codinglabs\Yolo\Helpers;
+use GuzzleHttp\Promise\Create;
 use Aws\CloudWatchLogs\CloudWatchLogsClient;
 use Codinglabs\Yolo\Steps\Fargate\SyncTaskLogGroupStep;
 
 /**
- * Bind a mock CloudWatch Logs client. Captured calls are written into $captured
- * so the test can inspect arg shapes.
+ * Bind a mock CloudWatch Logs client with command-routed responses. Captured calls
+ * are written into $captured so tests can inspect arg shapes.
  *
- * @param  array<int, Result>  $results  responses to return in order
+ * @param  array<string, Result>  $byCommand  command-name => Result (used for any number of calls to that command)
  * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured  filled by reference
  */
-function bindMockCloudWatchLogsClient(array $results, array &$captured): void
+function bindMockCloudWatchLogsClient(array $byCommand, array &$captured): void
 {
-    $mock = new MockHandler();
+    $mock = new class($byCommand, $captured) extends MockHandler
+    {
+        public function __construct(protected array $byCommand, protected array &$captured) {}
 
-    foreach ($results as $result) {
-        $mock->append(function (CommandInterface $cmd) use ($result, &$captured) {
-            $captured[] = ['name' => $cmd->getName(), 'args' => $cmd->toArray()];
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            $this->captured[] = ['name' => $cmd->getName(), 'args' => $cmd->toArray()];
 
-            return $result;
-        });
-    }
+            $result = $this->byCommand[$cmd->getName()] ?? new Result();
+
+            return Create::promiseFor($result);
+        }
+    };
 
     Helpers::app()->instance('cloudWatchLogs', new CloudWatchLogsClient([
         'region' => 'ap-southeast-2',
@@ -45,19 +50,18 @@ it('strips the stream wildcard `:*` suffix before calling the CloudWatch Logs ta
     $captured = [];
 
     bindMockCloudWatchLogsClient([
-        // describeLogGroups — returns the log group with the wildcard-suffixed `arn`
-        // that AWS actually returns for log groups.
-        new Result([
+        // DescribeLogGroups — returns the log group with the wildcard-suffixed `arn`
+        // that AWS actually returns for log groups. Called multiple times (exists,
+        // currentRetentionInDays, arn) — same response each time, no memoisation.
+        'DescribeLogGroups' => new Result([
             'logGroups' => [[
                 'logGroupName' => '/yolo/my-app',
                 'arn' => 'arn:aws:logs:ap-southeast-2:111111111111:log-group:/yolo/my-app:*',
                 'retentionInDays' => 30,
             ]],
         ]),
-        // listTagsForResource — return empty so synchroniseTags decides no writes needed.
-        new Result(['tags' => []]),
-        // tagResource — return so synchroniseTags can apply the Name tag.
-        new Result([]),
+        'ListTagsForResource' => new Result(['tags' => []]),
+        'TagResource' => new Result(),
     ], $captured);
 
     (new SyncTaskLogGroupStep())([]);
@@ -80,7 +84,7 @@ it('does not call the CloudWatch Logs tag APIs during a dry-run', function () {
     $captured = [];
 
     bindMockCloudWatchLogsClient([
-        new Result([
+        'DescribeLogGroups' => new Result([
             'logGroups' => [[
                 'logGroupName' => '/yolo/my-app',
                 'arn' => 'arn:aws:logs:ap-southeast-2:111111111111:log-group:/yolo/my-app:*',

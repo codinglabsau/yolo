@@ -7,20 +7,13 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class Ec2
 {
-    /** @var array<string, array<string, mixed>> */
-    protected static array $securityGroups = [];
-
-    public static function securityGroup(string $name, bool $refresh = false): array
+    public static function securityGroup(string $name): array
     {
-        if (! $refresh && isset(static::$securityGroups[$name])) {
-            return static::$securityGroups[$name];
-        }
-
         $securityGroups = Aws::ec2()->describeSecurityGroups()['SecurityGroups'];
 
         foreach ($securityGroups as $securityGroup) {
             if ($securityGroup['GroupName'] === $name) {
-                return static::$securityGroups[$name] = $securityGroup;
+                return $securityGroup;
             }
         }
 

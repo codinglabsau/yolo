@@ -11,8 +11,6 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class TaskLogGroup implements Resource
 {
-    protected ?array $cached = null;
-
     public function name(): string
     {
         return Manifest::get(
@@ -28,29 +26,18 @@ class TaskLogGroup implements Resource
 
     public function exists(): bool
     {
-        return $this->live() !== null;
+        try {
+            CloudWatchLogs::logGroup($this->name());
+
+            return true;
+        } catch (ResourceDoesNotExistException) {
+            return false;
+        }
     }
 
     public function arn(): string
     {
-        return $this->live()['arn'];
-    }
-
-    /**
-     * Memoised describe — Resource methods (exists, arn, currentRetentionInDays)
-     * each call into this; one SDK round-trip per Resource instance lifetime.
-     */
-    protected function live(): ?array
-    {
-        if ($this->cached !== null) {
-            return $this->cached;
-        }
-
-        try {
-            return $this->cached = CloudWatchLogs::logGroup($this->name());
-        } catch (ResourceDoesNotExistException) {
-            return null;
-        }
+        return CloudWatchLogs::logGroup($this->name())['arn'];
     }
 
     public function create(): void
@@ -64,8 +51,6 @@ class TaskLogGroup implements Resource
             'logGroupName' => $this->name(),
             'retentionInDays' => $this->retentionInDays(),
         ]);
-
-        $this->cached = null;
     }
 
     public function synchroniseTags(): void
@@ -96,6 +81,10 @@ class TaskLogGroup implements Resource
 
     public function currentRetentionInDays(): ?int
     {
-        return $this->live()['retentionInDays'] ?? null;
+        try {
+            return CloudWatchLogs::logGroup($this->name())['retentionInDays'] ?? null;
+        } catch (ResourceDoesNotExistException) {
+            return null;
+        }
     }
 }

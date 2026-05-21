@@ -7,42 +7,28 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class Iam
 {
-    /** @var array<string, array<string, mixed>> */
-    protected static array $roles = [];
-
-    /** @var array<string, array<string, mixed>> */
-    protected static array $policies = [];
-
-    public static function role(string $name, bool $refresh = false): array
+    public static function role(string $name): array
     {
-        if (! $refresh && isset(static::$roles[$name])) {
-            return static::$roles[$name];
-        }
-
         $roles = Aws::iam()->listRoles();
 
         foreach ($roles['Roles'] as $role) {
             if ($role['RoleName'] === $name) {
-                return static::$roles[$name] = $role;
+                return $role;
             }
         }
 
         throw new ResourceDoesNotExistException("Could not find IAM role $name");
     }
 
-    public static function policy(string $name, bool $refresh = false): array
+    public static function policy(string $name): array
     {
-        if (! $refresh && isset(static::$policies[$name])) {
-            return static::$policies[$name];
-        }
-
         $policies = Aws::iam()->listPolicies([
             'Scope' => 'Local',
         ]);
 
         foreach ($policies['Policies'] as $policy) {
             if ($policy['PolicyName'] === $name) {
-                return static::$policies[$name] = $policy;
+                return $policy;
             }
         }
 

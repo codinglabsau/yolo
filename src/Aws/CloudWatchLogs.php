@@ -8,15 +8,8 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class CloudWatchLogs
 {
-    /** @var array<string, array<string, mixed>> */
-    protected static array $logGroups = [];
-
-    public static function logGroup(string $name, bool $refresh = false): array
+    public static function logGroup(string $name): array
     {
-        if (! $refresh && isset(static::$logGroups[$name])) {
-            return static::$logGroups[$name];
-        }
-
         try {
             $groups = Aws::cloudWatchLogs()->describeLogGroups([
                 'logGroupNamePrefix' => $name,
@@ -27,7 +20,7 @@ class CloudWatchLogs
 
         foreach ($groups as $group) {
             if ($group['logGroupName'] === $name) {
-                return static::$logGroups[$name] = $group;
+                return $group;
             }
         }
 
