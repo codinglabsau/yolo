@@ -4,82 +4,52 @@ namespace Codinglabs\Yolo\Steps\Fargate;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Enums\SecurityGroup;
 use Codinglabs\Yolo\Enums\SecurityGroupRule;
-use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
+use Codinglabs\Yolo\Concerns\SynchronisesResource;
+use Codinglabs\Yolo\Resources\Fargate\EcsTaskSecurityGroup;
 
 class SyncTaskSecurityGroupStep implements Step
 {
+    use SynchronisesResource;
+
     public function __invoke(array $options): StepResult
     {
-        $containerPort = (int) Manifest::get('tasks.web.port', 8000);
+        $securityGroup = new EcsTaskSecurityGroup();
 
-        try {
-            $securityGroup = AwsResources::ecsTaskSecurityGroup();
-
-            if (Manifest::has('aws.ecs.security-group')) {
-                return StepResult::CUSTOM_MANAGED;
-            }
-
-            $rules = Aws::ec2()->describeSecurityGroupRules([
-                'Filters' => [
-                    ['Name' => 'group-id', 'Values' => [$securityGroup['GroupId']]],
-                    ['Name' => 'tag:yolo:rule-type', 'Values' => [SecurityGroupRule::ECS_TASK_LB_INGRESS_RULE->value]],
-                ],
-            ])['SecurityGroupRules'];
-
-            if (empty($rules)) {
-                if (Arr::get($options, 'dry-run')) {
-                    return StepResult::OUT_OF_SYNC;
-                }
-
-                Aws::ec2()->authorizeSecurityGroupIngress(static::loadBalancerIngressRule($securityGroup, $containerPort));
-            }
-
-            if (! Arr::get($options, 'dry-run')) {
-                Aws::synchroniseEc2Tags(
-                    $securityGroup['GroupId'],
-                    ['Name' => Helpers::keyedResourceName(SecurityGroup::ECS_TASK_SECURITY_GROUP, exclusive: true)],
-                );
-            }
-
-            return StepResult::SYNCED;
-        } catch (ResourceDoesNotExistException) {
-            if (Arr::get($options, 'dry-run')) {
-                return StepResult::WOULD_CREATE;
-            }
-
-            $name = Helpers::keyedResourceName(SecurityGroup::ECS_TASK_SECURITY_GROUP, exclusive: true);
-
-            $created = Aws::ec2()->createSecurityGroup([
-                'Description' => 'Enable load balancer traffic to Fargate task ENI',
-                'GroupName' => $name,
-                'VpcId' => AwsResources::vpc()['VpcId'],
-                'TagSpecifications' => [
-                    [
-                        'ResourceType' => 'security-group',
-                        ...Aws::tags(['Name' => $name]),
-                    ],
-                ],
-            ]);
-
-            Aws::ec2()->authorizeSecurityGroupIngress(
-                static::loadBalancerIngressRule(['GroupId' => $created['GroupId']], $containerPort)
-            );
-
-            return StepResult::CREATED;
+        if ($securityGroup->exists() && Manifest::has('aws.ecs.security-group')) {
+            return StepResult::CUSTOM_MANAGED;
         }
+
+        $result = $this->syncResource($securityGroup, $options);
+
+        if ($securityGroup->exists()) {
+            $this->ensureLoadBalancerIngressRule($securityGroup->arn(), Arr::get($options, 'dry-run'));
+        }
+
+        return $result;
     }
 
-    protected static function loadBalancerIngressRule(array $securityGroup, int $port): array
+    protected function ensureLoadBalancerIngressRule(string $groupId, bool $dryRun): void
     {
-        return [
-            'GroupId' => $securityGroup['GroupId'],
+        $rules = Aws::ec2()->describeSecurityGroupRules([
+            'Filters' => [
+                ['Name' => 'group-id', 'Values' => [$groupId]],
+                ['Name' => 'tag:yolo:rule-type', 'Values' => [SecurityGroupRule::ECS_TASK_LB_INGRESS_RULE->value]],
+            ],
+        ])['SecurityGroupRules'];
+
+        if (! empty($rules) || $dryRun) {
+            return;
+        }
+
+        $port = (int) Manifest::get('tasks.web.port', 8000);
+
+        Aws::ec2()->authorizeSecurityGroupIngress([
+            'GroupId' => $groupId,
             'IpPermissions' => [
                 [
                     'IpProtocol' => 'tcp',
@@ -101,6 +71,6 @@ class SyncTaskSecurityGroupStep implements Step
                     ],
                 ],
             ],
-        ];
+        ]);
     }
 }

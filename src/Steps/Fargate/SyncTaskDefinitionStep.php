@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Resources\Fargate\TaskLogGroup;
 
 class SyncTaskDefinitionStep implements Step
 {
@@ -62,7 +63,7 @@ class SyncTaskDefinitionStep implements Step
                     'logConfiguration' => [
                         'logDriver' => 'awslogs',
                         'options' => [
-                            'awslogs-group' => SyncTaskLogGroupStep::logGroupName(),
+                            'awslogs-group' => (new TaskLogGroup())->name(),
                             'awslogs-region' => Manifest::get('aws.region'),
                             'awslogs-stream-prefix' => 'web',
                         ],
