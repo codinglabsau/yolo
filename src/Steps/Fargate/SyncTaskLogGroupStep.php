@@ -36,7 +36,15 @@ class SyncTaskLogGroupStep implements Step
                 ]);
             }
 
-            $this->reconcileTags($existing['arn'], $name, Arr::get($options, 'dry-run'));
+            if (! Arr::get($options, 'dry-run')) {
+                // DescribeLogGroups returns the log group's `arn` with a trailing `:*` —
+                // that suffix is the stream wildcard used in IAM policies, not the resource
+                // identifier. The tag APIs reject it as Invalid resourceArn, so strip it.
+                $this->reconcileTags(
+                    (string) preg_replace('/:\*$/', '', $existing['arn']),
+                    $name,
+                );
+            }
 
             return StepResult::SYNCED;
         }
@@ -66,7 +74,7 @@ class SyncTaskLogGroupStep implements Step
         );
     }
 
-    protected function reconcileTags(string $arn, string $name, bool $dryRun): void
+    protected function reconcileTags(string $arn, string $name): void
     {
         $current = Aws::flattenTags(
             Aws::cloudWatchLogs()->listTagsForResource(['resourceArn' => $arn])['tags'] ?? []
@@ -77,7 +85,7 @@ class SyncTaskLogGroupStep implements Step
             $current,
         );
 
-        if (empty($missing) || $dryRun) {
+        if (empty($missing)) {
             return;
         }
 
