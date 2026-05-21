@@ -2,8 +2,8 @@
 
 use Codinglabs\Yolo\AwsResources;
 
-it('describes the ECS task base policy with the four ssmmessages exec permissions', function () {
-    $document = AwsResources::ecsTaskBasePolicyDocument();
+it('describes the ECS task policy with the four ssmmessages exec permissions', function () {
+    $document = AwsResources::ecsTaskPolicyDocument();
 
     expect($document['Version'])->toBe('2012-10-17');
     expect($document['Statement'])->toHaveCount(1);

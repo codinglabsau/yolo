@@ -173,9 +173,9 @@ trait UsesIam
         ];
     }
 
-    public static function ecsTaskBasePolicy(): array
+    public static function ecsTaskPolicy(): array
     {
-        $name = Helpers::keyedResourceName(Iam::ECS_TASK_BASE_POLICY, exclusive: false);
+        $name = Helpers::keyedResourceName(Iam::ECS_TASK_POLICY, exclusive: false);
         $policies = Aws::iam()->listPolicies([
             'Scope' => 'Local',
         ]);
@@ -203,7 +203,7 @@ trait UsesIam
         throw new ResourceDoesNotExistException("Could not find IAM role with name $name");
     }
 
-    public static function ecsTaskBasePolicyDocument(): array
+    public static function ecsTaskPolicyDocument(): array
     {
         return [
             'Version' => '2012-10-17',

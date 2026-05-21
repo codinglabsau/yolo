@@ -34,7 +34,7 @@ class SyncEcsTaskRoleStep implements Step
                 ...Aws::tags(),
             ]);
 
-            $this->ensureBasePolicyAttached($role['RoleName']);
+            $this->ensurePolicyAttached($role['RoleName']);
 
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
@@ -51,24 +51,24 @@ class SyncEcsTaskRoleStep implements Step
                 ...Aws::tags(),
             ]);
 
-            $this->ensureBasePolicyAttached($name);
+            $this->ensurePolicyAttached($name);
 
             return StepResult::CREATED;
         }
     }
 
-    protected function ensureBasePolicyAttached(string $roleName): void
+    protected function ensurePolicyAttached(string $roleName): void
     {
-        $basePolicyArn = AwsResources::ecsTaskBasePolicy()['Arn'];
+        $policyArn = AwsResources::ecsTaskPolicy()['Arn'];
 
         $attached = collect(Aws::iam()->listAttachedRolePolicies([
             'RoleName' => $roleName,
-        ])['AttachedPolicies'])->contains(fn (array $policy) => $policy['PolicyArn'] === $basePolicyArn);
+        ])['AttachedPolicies'])->contains(fn (array $policy) => $policy['PolicyArn'] === $policyArn);
 
         if (! $attached) {
             Aws::iam()->attachRolePolicy([
                 'RoleName' => $roleName,
-                'PolicyArn' => $basePolicyArn,
+                'PolicyArn' => $policyArn,
             ]);
         }
     }

@@ -10,7 +10,7 @@ class SyncIamCommand extends SteppedCommand
     protected array $steps = [
         Steps\Iam\SyncMediaConvertRoleStep::class,
         Steps\Iam\AttachMediaConvertRolePoliciesStep::class,
-        Steps\Iam\SyncEcsTaskBasePolicyStep::class,
+        Steps\Iam\SyncEcsTaskPolicyStep::class,
         Steps\Iam\SyncEcsTaskRoleStep::class,
     ];
 

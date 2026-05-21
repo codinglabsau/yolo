@@ -11,14 +11,14 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncEcsTaskBasePolicyStep implements Step
+class SyncEcsTaskPolicyStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        $document = json_encode(AwsResources::ecsTaskBasePolicyDocument());
+        $document = json_encode(AwsResources::ecsTaskPolicyDocument());
 
         try {
-            $policy = AwsResources::ecsTaskBasePolicy();
+            $policy = AwsResources::ecsTaskPolicy();
 
             $currentVersion = Aws::iam()->getPolicyVersion([
                 'PolicyArn' => $policy['Arn'],
@@ -46,8 +46,8 @@ class SyncEcsTaskBasePolicyStep implements Step
             }
 
             Aws::iam()->createPolicy([
-                'PolicyName' => Helpers::keyedResourceName(Iam::ECS_TASK_BASE_POLICY, exclusive: false),
-                'Description' => 'YOLO managed base policy granting ECS Exec session channel permissions',
+                'PolicyName' => Helpers::keyedResourceName(Iam::ECS_TASK_POLICY, exclusive: false),
+                'Description' => 'YOLO managed policy granting ECS Exec session channel permissions to the shared task role',
                 'PolicyDocument' => $document,
                 ...Aws::tags(),
             ]);
