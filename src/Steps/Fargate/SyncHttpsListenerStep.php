@@ -5,13 +5,19 @@ namespace Codinglabs\Yolo\Steps\Fargate;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Aws\ElbV2;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\ExecutesWebStep;
+use Codinglabs\Yolo\Concerns\SynchronisesResource;
+use Codinglabs\Yolo\Resources\Fargate\LoadBalancer;
+use Codinglabs\Yolo\Resources\Fargate\HttpsListener;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class SyncHttpsListenerStep implements ExecutesWebStep
 {
+    use SynchronisesResource;
+
     public function __invoke(array $options): StepResult
     {
         if (! Manifest::has('apex') && ! Manifest::has('domain')) {
@@ -19,6 +25,7 @@ class SyncHttpsListenerStep implements ExecutesWebStep
         }
 
         try {
+            // ACM certificate lookup is still on the legacy AwsResources facade — LPX-612.
             $certificate = AwsResources::certificate(Manifest::apex());
         } catch (ResourceDoesNotExistException) {
             return StepResult::SKIPPED;
@@ -28,52 +35,30 @@ class SyncHttpsListenerStep implements ExecutesWebStep
             return StepResult::SKIPPED;
         }
 
-        try {
-            $listener = AwsResources::loadBalancerListenerOnPort(443);
+        $listener = new HttpsListener($certificate);
 
-            $hasCertificate = collect($listener['Certificates'] ?? [])
-                ->contains(fn (array $cert) => $cert['CertificateArn'] === $certificate['CertificateArn']);
-
-            if (! $hasCertificate) {
-                if (Arr::get($options, 'dry-run')) {
-                    return StepResult::WOULD_SYNC;
-                }
-
-                Aws::elasticLoadBalancingV2()->addListenerCertificates([
-                    'ListenerArn' => $listener['ListenerArn'],
-                    'Certificates' => [
-                        ['CertificateArn' => $certificate['CertificateArn']],
-                    ],
-                ]);
-            }
-
-            return StepResult::SYNCED;
-        } catch (ResourceDoesNotExistException) {
+        // Cert-attachment is orchestration, not part of the resource's identity.
+        if ($listener->exists() && ! static::hasCertificate($listener->arn(), $certificate)) {
             if (Arr::get($options, 'dry-run')) {
-                return StepResult::WOULD_CREATE;
+                return StepResult::WOULD_SYNC;
             }
 
-            Aws::elasticLoadBalancingV2()->createListener([
-                'LoadBalancerArn' => AwsResources::loadBalancer()['LoadBalancerArn'],
-                'Protocol' => 'HTTPS',
-                'Port' => 443,
-                'SslPolicy' => 'ELBSecurityPolicy-TLS13-1-2-2021-06',
+            Aws::elasticLoadBalancingV2()->addListenerCertificates([
+                'ListenerArn' => $listener->arn(),
                 'Certificates' => [
                     ['CertificateArn' => $certificate['CertificateArn']],
                 ],
-                'DefaultActions' => [
-                    [
-                        'Type' => 'fixed-response',
-                        'FixedResponseConfig' => [
-                            'StatusCode' => '503',
-                            'ContentType' => 'text/plain',
-                            'MessageBody' => 'No application matched the host header.',
-                        ],
-                    ],
-                ],
             ]);
-
-            return StepResult::CREATED;
         }
+
+        return $this->syncResource($listener, $options);
+    }
+
+    protected static function hasCertificate(string $listenerArn, array $certificate): bool
+    {
+        $listener = ElbV2::listenerOnPort((new LoadBalancer())->arn(), 443);
+
+        return collect($listener['Certificates'] ?? [])
+            ->contains(fn (array $cert) => $cert['CertificateArn'] === $certificate['CertificateArn']);
     }
 }

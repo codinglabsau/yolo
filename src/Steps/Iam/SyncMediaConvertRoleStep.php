@@ -14,6 +14,12 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class SyncMediaConvertRoleStep implements Step
 {
+    /**
+     * IAM Description character set — see EcsTaskRole::description() comment.
+     * Validated by IamDescriptionsAreSafeTest.
+     */
+    public const DESCRIPTION = 'YOLO managed MediaConvert role';
+
     public function __invoke(array $options): StepResult
     {
         if (! Manifest::get('aws.mediaconvert')) {
@@ -28,7 +34,7 @@ class SyncMediaConvertRoleStep implements Step
 
                 Aws::iam()->updateRole([
                     'RoleName' => $name,
-                    'Description' => 'YOLO managed MediaConvert role',
+                    'Description' => static::DESCRIPTION,
                 ]);
 
                 Aws::iam()->updateAssumeRolePolicy([
@@ -49,7 +55,7 @@ class SyncMediaConvertRoleStep implements Step
             if (! Arr::get($options, 'dry-run')) {
                 Aws::iam()->createRole([
                     'RoleName' => Helpers::keyedResourceName(Iam::MEDIA_CONVERT_ROLE),
-                    'Description' => 'YOLO managed MediaConvert role',
+                    'Description' => static::DESCRIPTION,
                     'AssumeRolePolicyDocument' => json_encode(AwsResources::mediaConvertPolicyDocument()),
                     ...Aws::tags(),
                 ]);

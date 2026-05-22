@@ -4,10 +4,14 @@ namespace Codinglabs\Yolo\Steps\Fargate;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Resources\Iam\EcsTaskRole;
+use Codinglabs\Yolo\Resources\Fargate\TaskLogGroup;
+use Codinglabs\Yolo\Resources\Iam\EcsExecutionRole;
+use Codinglabs\Yolo\Resources\Fargate\EcrRepository;
 
 class SyncTaskDefinitionStep implements Step
 {
@@ -28,23 +32,40 @@ class SyncTaskDefinitionStep implements Step
         $cpu = (string) Manifest::get('tasks.web.cpu', '512');
         $memory = (string) Manifest::get('tasks.web.memory', '1024');
 
+        $ecrUri = (new EcrRepository())->uri();
         $image = $imageTag
-            ? AwsResources::ecrRepositoryUri() . ':' . $imageTag
-            : Manifest::get('tasks.web.image', AwsResources::ecrRepositoryUri() . ':latest');
+            ? "$ecrUri:$imageTag"
+            : Manifest::get('tasks.web.image', "$ecrUri:latest");
+
+        $taskRoleArn = Manifest::has('tasks.web.task-role')
+            ? Manifest::get('tasks.web.task-role')
+            : (new EcsTaskRole())->arn();
+
+        $executionRoleArn = Manifest::has('tasks.web.execution-role')
+            ? Manifest::get('tasks.web.execution-role')
+            : (new EcsExecutionRole())->arn();
+
+        // Task definition family matches the keyed resource name (exclusive); same
+        // value as EcsService::name(). Inlined rather than introducing a Resource
+        // for the task definition (it's re-registered every sync — no exists/create).
+        $family = Helpers::keyedResourceName(exclusive: true);
 
         return [
-            'family' => AwsResources::ecsTaskFamily(),
+            'family' => $family,
             'networkMode' => 'awsvpc',
             'requiresCompatibilities' => ['FARGATE'],
             'cpu' => $cpu,
             'memory' => $memory,
-            'executionRoleArn' => Manifest::get('tasks.web.execution-role', 'ecsTaskExecutionRole'),
-            ...Manifest::has('tasks.web.task-role') ? ['taskRoleArn' => Manifest::get('tasks.web.task-role')] : [],
+            'executionRoleArn' => $executionRoleArn,
+            'taskRoleArn' => $taskRoleArn,
             'containerDefinitions' => [
                 [
                     'name' => 'web',
                     'image' => $image,
                     'essential' => true,
+                    'linuxParameters' => [
+                        'initProcessEnabled' => true,
+                    ],
                     'portMappings' => [
                         [
                             'containerPort' => $port,
@@ -55,14 +76,14 @@ class SyncTaskDefinitionStep implements Step
                     'logConfiguration' => [
                         'logDriver' => 'awslogs',
                         'options' => [
-                            'awslogs-group' => SyncTaskLogGroupStep::logGroupName(),
+                            'awslogs-group' => (new TaskLogGroup())->name(),
                             'awslogs-region' => Manifest::get('aws.region'),
                             'awslogs-stream-prefix' => 'web',
                         ],
                     ],
                 ],
             ],
-            'tags' => Aws::ecsTags(['Name' => AwsResources::ecsTaskFamily()]),
+            'tags' => Aws::ecsTags(['Name' => $family]),
         ];
     }
 }

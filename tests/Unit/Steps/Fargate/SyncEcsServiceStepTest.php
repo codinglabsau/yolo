@@ -1,8 +1,8 @@
 <?php
 
-use Codinglabs\Yolo\Steps\Fargate\SyncEcsServiceStep;
+use Codinglabs\Yolo\Resources\Fargate\EcsService;
 
-describe('needsUpdate', function () {
+describe('serviceNeedsUpdate', function () {
     beforeEach(function () {
         writeManifest([
             'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
@@ -12,7 +12,7 @@ describe('needsUpdate', function () {
     });
 
     it('is false when desiredCount and grace period match', function () {
-        expect(SyncEcsServiceStep::needsUpdate(
+        expect(EcsService::serviceNeedsUpdate(
             service: ['desiredCount' => 1, 'healthCheckGracePeriodSeconds' => 60],
             desiredCount: 1,
             gracePeriod: 60,
@@ -20,7 +20,7 @@ describe('needsUpdate', function () {
     });
 
     it('is true when desiredCount diverges', function () {
-        expect(SyncEcsServiceStep::needsUpdate(
+        expect(EcsService::serviceNeedsUpdate(
             service: ['desiredCount' => 1, 'healthCheckGracePeriodSeconds' => 60],
             desiredCount: 2,
             gracePeriod: 60,
@@ -28,7 +28,7 @@ describe('needsUpdate', function () {
     });
 
     it('is true when grace period diverges', function () {
-        expect(SyncEcsServiceStep::needsUpdate(
+        expect(EcsService::serviceNeedsUpdate(
             service: ['desiredCount' => 1, 'healthCheckGracePeriodSeconds' => 120],
             desiredCount: 1,
             gracePeriod: 60,
@@ -36,7 +36,7 @@ describe('needsUpdate', function () {
     });
 
     it('treats missing healthCheckGracePeriodSeconds as the manifest default (no churn against older services)', function () {
-        expect(SyncEcsServiceStep::needsUpdate(
+        expect(EcsService::serviceNeedsUpdate(
             service: ['desiredCount' => 1],
             desiredCount: 1,
             gracePeriod: 60,
@@ -44,7 +44,7 @@ describe('needsUpdate', function () {
     });
 });
 
-describe('needsUpdate when headless', function () {
+describe('serviceNeedsUpdate when headless', function () {
     beforeEach(function () {
         writeManifest([
             'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
@@ -53,7 +53,7 @@ describe('needsUpdate when headless', function () {
     });
 
     it('ignores grace period drift for headless services (no ALB to reconcile against)', function () {
-        expect(SyncEcsServiceStep::needsUpdate(
+        expect(EcsService::serviceNeedsUpdate(
             service: ['desiredCount' => 1, 'healthCheckGracePeriodSeconds' => 9999],
             desiredCount: 1,
             gracePeriod: 60,
@@ -61,7 +61,7 @@ describe('needsUpdate when headless', function () {
     });
 
     it('still detects desiredCount drift for headless services', function () {
-        expect(SyncEcsServiceStep::needsUpdate(
+        expect(EcsService::serviceNeedsUpdate(
             service: ['desiredCount' => 1],
             desiredCount: 3,
             gracePeriod: 60,
@@ -69,31 +69,37 @@ describe('needsUpdate when headless', function () {
     });
 });
 
-describe('createPayload', function () {
-    it('omits loadBalancers and healthCheckGracePeriodSeconds when headless', function () {
+describe('updatePayload', function () {
+    it('omits healthCheckGracePeriodSeconds when headless', function () {
         writeManifest([
             'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
             'tasks' => ['web' => []],
         ]);
 
         // createPayload references AwsResources::publicSubnetIds() / ecsTaskSecurityGroup() etc.
-        // which require live AWS lookups, so we can't fully invoke it here. Instead pin the
-        // headless-conditional shape decisions via a partial extraction: invoke updatePayload
-        // (purely-manifest-driven, no AWS calls) — same headless conditional, same proof.
-        $payload = SyncEcsServiceStep::updatePayload(desiredCount: 1, gracePeriod: 60);
+        // which require live AWS lookups, so we can't fully invoke it here. updatePayload is
+        // purely manifest-driven (no AWS lookups), so it pins the headless conditional shape.
+        $payload = (new EcsService())->updatePayload();
 
         expect($payload)->not->toHaveKey('healthCheckGracePeriodSeconds');
     });
 
-    it('includes healthCheckGracePeriodSeconds in updatePayload when not headless', function () {
+    it('includes healthCheckGracePeriodSeconds when not headless', function () {
         writeManifest([
             'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
             'domain' => 'codinglabs.com.au',
-            'tasks' => ['web' => []],
+            'tasks' => ['web' => ['health-check' => ['grace-period' => 60]]],
         ]);
 
-        $payload = SyncEcsServiceStep::updatePayload(desiredCount: 1, gracePeriod: 60);
+        expect((new EcsService())->updatePayload()['healthCheckGracePeriodSeconds'])->toBe(60);
+    });
 
-        expect($payload['healthCheckGracePeriodSeconds'])->toBe(60);
+    it('reads desiredCount from the manifest', function () {
+        writeManifest([
+            'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+            'tasks' => ['web' => ['desired-count' => 3]],
+        ]);
+
+        expect((new EcsService())->updatePayload()['desiredCount'])->toBe(3);
     });
 });
