@@ -13,6 +13,14 @@ abstract class SteppedCommand extends Command
 
     protected array $steps;
 
+    /**
+     * @return array<int, class-string>
+     */
+    public function steps(): array
+    {
+        return $this->steps;
+    }
+
     public function handle(): int
     {
         $environment = $this->argument('environment');

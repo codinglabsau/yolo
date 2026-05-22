@@ -7,18 +7,14 @@ use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
-use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Contracts\ExecutesIvsStep;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncIvsCloudWatchLogGroupStep implements Step
+class SyncIvsCloudWatchLogGroupStep implements ExecutesIvsStep
 {
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::ivsEnabled()) {
-            return StepResult::SKIPPED;
-        }
-
         $name = self::logGroupName();
 
         $retentionDays = Manifest::get('aws.ivs.log-retention-days', 14);

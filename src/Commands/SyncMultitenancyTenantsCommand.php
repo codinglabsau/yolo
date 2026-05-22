@@ -3,9 +3,8 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Steps;
-use Symfony\Component\Console\Input\InputArgument;
 
-class SyncMultitenancyTenantsCommand extends SteppedCommand
+class SyncMultitenancyTenantsCommand extends SyncSteppedCommand
 {
     protected array $steps = [
         //        Steps\Tenant\SyncHostedZoneStep::class,
@@ -18,11 +17,8 @@ class SyncMultitenancyTenantsCommand extends SteppedCommand
 
     protected function configure(): void
     {
-        $this
+        $this->addSyncOptions()
             ->setName('sync:multitenancy-tenants')
-            ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
-            ->addOption('dry-run', null, null, 'Run the command without making changes')
-            ->addOption('no-progress', null, null, 'Hide the progress output')
             ->setDescription('Sync configured tenant AWS resources');
     }
 }

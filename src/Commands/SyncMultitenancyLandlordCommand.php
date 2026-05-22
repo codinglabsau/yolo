@@ -3,9 +3,8 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Steps;
-use Symfony\Component\Console\Input\InputArgument;
 
-class SyncMultitenancyLandlordCommand extends SteppedCommand
+class SyncMultitenancyLandlordCommand extends SyncSteppedCommand
 {
     protected array $steps = [
         Steps\Landlord\SyncQueueStep::class,
@@ -14,11 +13,8 @@ class SyncMultitenancyLandlordCommand extends SteppedCommand
 
     protected function configure(): void
     {
-        $this
+        $this->addSyncOptions()
             ->setName('sync:multitenancy-landlord')
-            ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
-            ->addOption('dry-run', null, null, 'Run the command without making changes')
-            ->addOption('no-progress', null, null, 'Hide the progress output')
             ->setDescription('Sync configured landlord AWS resources');
     }
 }

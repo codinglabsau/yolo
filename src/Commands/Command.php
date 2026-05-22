@@ -74,9 +74,6 @@ abstract class Command extends SymfonyCommand
             return 1;
         }
 
-        // todo: remove once mvp is finished
-        $this->output->setVerbosity(OutputInterface::VERBOSITY_DEBUG);
-
         $exitCode = (int) (Helpers::app()->call([$this, 'handle']) ?: 0);
 
         foreach ($this->after as $closure) {

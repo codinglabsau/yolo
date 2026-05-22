@@ -3,9 +3,8 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Steps;
-use Symfony\Component\Console\Input\InputArgument;
 
-class SyncStorageCommand extends SteppedCommand
+class SyncStorageCommand extends SyncSteppedCommand
 {
     protected array $steps = [
         Steps\Storage\SyncS3ArtefactBucketStep::class,
@@ -15,11 +14,8 @@ class SyncStorageCommand extends SteppedCommand
 
     protected function configure(): void
     {
-        $this
+        $this->addSyncOptions()
             ->setName('sync:storage')
-            ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
-            ->addOption('dry-run', null, null, 'Run the command without making changes')
-            ->addOption('no-progress', null, null, 'Hide the progress output')
             ->setDescription('Sync the storage resources for the given environment');
     }
 }

@@ -3,9 +3,8 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Steps;
-use Symfony\Component\Console\Input\InputArgument;
 
-class SyncIamCommand extends SteppedCommand
+class SyncIamCommand extends SyncSteppedCommand
 {
     protected array $steps = [
         Steps\Iam\SyncMediaConvertRoleStep::class,
@@ -19,11 +18,8 @@ class SyncIamCommand extends SteppedCommand
 
     protected function configure(): void
     {
-        $this
+        $this->addSyncOptions()
             ->setName('sync:iam')
-            ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
-            ->addOption('dry-run', null, null, 'Run the command without making changes')
-            ->addOption('no-progress', null, null, 'Hide the progress output')
             ->setDescription('Sync the IAM permissions for the given environment');
     }
 }
