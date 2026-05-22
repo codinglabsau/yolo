@@ -41,7 +41,7 @@ class TargetGroup implements Resource, SynchronisesConfiguration
 
     public function create(): void
     {
-        Aws::elasticLoadBalancingV2()->createTargetGroup([
+        $arn = Aws::elasticLoadBalancingV2()->createTargetGroup([
             'Name' => $this->name(),
             'Protocol' => 'HTTP',
             'Port' => (int) Manifest::get('tasks.web.port', 8000),
@@ -51,7 +51,10 @@ class TargetGroup implements Resource, SynchronisesConfiguration
             'HealthCheckProtocol' => 'HTTP',
             ...static::reconcilableHealthCheck(),
             ...Aws::tags($this->tags()),
-        ]);
+        ])['TargetGroups'][0]['TargetGroupArn'];
+
+        // A fresh target group defaults to 300s deregistration; bring it to ours.
+        $this->reconcileDeregistrationDelay($arn);
     }
 
     public function synchroniseTags(): void
@@ -60,16 +63,26 @@ class TargetGroup implements Resource, SynchronisesConfiguration
     }
 
     /**
-     * Push managed health-check config onto an existing target group. Create
-     * sets these once; without this, a changed default or manifest override
-     * (`tasks.web.health-check.*`) would never reach an already-deployed app —
-     * tag sync alone doesn't cover them. Diffs first so a clean sync makes no
-     * needless ModifyTargetGroup call. (The service grace period is a separate,
-     * service-level setting reconciled by EcsService.)
+     * Push managed config onto an existing target group — health-check fields
+     * and the deregistration delay. Create sets these once; without this a
+     * changed default or manifest override would never reach an already-deployed
+     * app, since tag sync doesn't cover them. Each reconcile diffs first so a
+     * clean sync makes no needless write. (The service grace period is a
+     * separate, service-level setting reconciled by EcsService.)
      */
     public function synchroniseConfiguration(): void
     {
         $live = ElbV2::targetGroup($this->name());
+
+        $this->reconcileHealthCheck($live);
+        $this->reconcileDeregistrationDelay($live['TargetGroupArn']);
+    }
+
+    /**
+     * @param  array<string, mixed>  $live
+     */
+    protected function reconcileHealthCheck(array $live): void
+    {
         $desired = static::reconcilableHealthCheck();
 
         $current = [
@@ -89,6 +102,40 @@ class TargetGroup implements Resource, SynchronisesConfiguration
             'TargetGroupArn' => $live['TargetGroupArn'],
             ...$desired,
         ]);
+    }
+
+    /**
+     * Cap connection draining at a sane window (default 10s) rather than the AWS
+     * default 300s, so a deploy isn't held draining the old task far longer than
+     * any real request needs. Bump tasks.web.deregistration-delay for apps with
+     * genuinely long in-flight requests (uploads, exports, SSE) — anything still
+     * in flight when the timer elapses has its connection closed.
+     */
+    protected function reconcileDeregistrationDelay(string $arn): void
+    {
+        $desired = (string) $this->deregistrationDelay();
+
+        $current = data_get(
+            collect(Aws::elasticLoadBalancingV2()->describeTargetGroupAttributes(['TargetGroupArn' => $arn])['Attributes'])
+                ->firstWhere('Key', 'deregistration_delay.timeout_seconds'),
+            'Value',
+        );
+
+        if ($current === $desired) {
+            return;
+        }
+
+        Aws::elasticLoadBalancingV2()->modifyTargetGroupAttributes([
+            'TargetGroupArn' => $arn,
+            'Attributes' => [
+                ['Key' => 'deregistration_delay.timeout_seconds', 'Value' => $desired],
+            ],
+        ]);
+    }
+
+    public function deregistrationDelay(): int
+    {
+        return (int) Manifest::get('tasks.web.deregistration-delay', 10);
     }
 
     /**
