@@ -52,6 +52,26 @@ class Ecs
         throw new ResourceDoesNotExistException("Could not find ECS service $name");
     }
 
+    /**
+     * Running task ARNs for a service. A missing service (e.g. a group that
+     * isn't its own service yet) yields an empty list rather than throwing —
+     * the caller decides what "no tasks here" means.
+     *
+     * @return array<int, string>
+     */
+    public static function runningTasks(string $cluster, string $service): array
+    {
+        try {
+            return Aws::ecs()->listTasks([
+                'cluster' => $cluster,
+                'serviceName' => $service,
+                'desiredStatus' => 'RUNNING',
+            ])['taskArns'];
+        } catch (AwsException) {
+            return [];
+        }
+    }
+
     public static function taskDefinition(string $family): array
     {
         try {
