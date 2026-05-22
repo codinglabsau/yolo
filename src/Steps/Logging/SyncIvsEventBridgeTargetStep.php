@@ -6,18 +6,14 @@ use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
-use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Contracts\ExecutesIvsStep;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncIvsEventBridgeTargetStep implements Step
+class SyncIvsEventBridgeTargetStep implements ExecutesIvsStep
 {
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::ivsEnabled()) {
-            return StepResult::SKIPPED;
-        }
-
         $ruleName = SyncIvsEventBridgeRuleStep::ruleName();
         $logGroupName = SyncIvsCloudWatchLogGroupStep::logGroupName();
 

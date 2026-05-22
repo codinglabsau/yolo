@@ -2,49 +2,45 @@
 
 namespace Codinglabs\Yolo\Commands;
 
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Symfony\Component\Console\Input\InputArgument;
 
-use function Laravel\Prompts\info;
-use function Laravel\Prompts\intro;
-
-class SyncCommand extends SteppedCommand
+class SyncCommand extends SyncSteppedCommand
 {
     protected function configure(): void
     {
-        $this
+        $this->addSyncOptions()
             ->setName('sync')
-            ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
-            ->addOption('dry-run', null, null, 'Run the command without making changes')
-            ->addOption('no-progress', null, null, 'Hide the progress output')
             ->setDescription('Sync all resources for the given environment');
     }
 
     public function handle(): int
     {
-        intro('Executing sync commands...');
+        return $this->runDomains($this->argument('environment'), $this->domains());
+    }
 
-        collect([
-            SyncNetworkCommand::class,
-            SyncStorageCommand::class,
-            SyncIamCommand::class,
+    /**
+     * The ordered, domain-labelled steps this environment will sync.
+     *
+     * @return array<string, array<int, class-string>>
+     */
+    protected function domains(): array
+    {
+        return [
+            'Network' => (new SyncNetworkCommand())->steps(),
+            'Storage' => (new SyncStorageCommand())->steps(),
+            'IAM' => (new SyncIamCommand())->steps(),
             ...Manifest::isMultitenanted()
                 ? [
-                    SyncMultitenancyLandlordCommand::class,
-                    SyncMultitenancyTenantsCommand::class,
+                    'Landlord' => (new SyncMultitenancyLandlordCommand())->steps(),
+                    'Tenants' => (new SyncMultitenancyTenantsCommand())->steps(),
                 ]
                 : [
-                    SyncSoloCommand::class,
+                    'Solo' => (new SyncSoloCommand())->steps(),
                 ],
             ...Manifest::has('tasks.web')
-                ? [SyncComputeCommand::class]
+                ? ['Compute' => (new SyncComputeCommand())->steps()]
                 : [],
-            SyncLoggingCommand::class,
-        ])->each(fn ($command) => (new $command())->execute(Helpers::app('input'), Helpers::app('output')));
-
-        info('Sync command executed successfully.');
-
-        return self::SUCCESS;
+            'Logging' => (new SyncLoggingCommand())->steps(),
+        ];
     }
 }
