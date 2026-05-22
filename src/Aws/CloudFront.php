@@ -33,6 +33,28 @@ class CloudFront
         throw new ResourceDoesNotExistException("Could not find CloudFront distribution with comment $comment");
     }
 
+    public static function cachePolicyByName(string $name): array
+    {
+        $marker = null;
+
+        do {
+            $list = Aws::cloudFront()->listCachePolicies([
+                'Type' => 'custom',
+                ...$marker ? ['Marker' => $marker] : [],
+            ])['CachePolicyList'];
+
+            foreach ($list['Items'] ?? [] as $item) {
+                if (($item['CachePolicy']['CachePolicyConfig']['Name'] ?? null) === $name) {
+                    return $item['CachePolicy'];
+                }
+            }
+
+            $marker = ($list['IsTruncated'] ?? false) ? $list['NextMarker'] : null;
+        } while ($marker);
+
+        throw new ResourceDoesNotExistException("Could not find cache policy with name $name");
+    }
+
     public static function originAccessControlByName(string $name): array
     {
         $marker = null;

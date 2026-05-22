@@ -37,13 +37,14 @@ it('reports not-exists when no distribution matches its comment', function () {
 });
 
 it('reconciles the managed cache-behaviour policy fields', function () {
-    $behaviour = AssetDistribution::reconcilableBehaviour();
+    $behaviour = AssetDistribution::reconcilableBehaviour('cp-resolved-id');
 
     // CORS is served by the S3 origin (CORS-S3Origin origin-request policy
     // forwards Origin); no response-headers policy, so ACAO can't double up.
     expect($behaviour['OriginRequestPolicyId'])->toBe('88a5eaf4-2fd4-4709-b370-b4c650ea3fcf');
     expect($behaviour['ResponseHeadersPolicyId'])->toBe('');
-    expect($behaviour['CachePolicyId'])->toBe('658327ea-f89d-4fab-a63d-7e88639e58f6');
+    // The custom Origin-in-key cache policy, resolved at sync time.
+    expect($behaviour['CachePolicyId'])->toBe('cp-resolved-id');
     expect($behaviour['ViewerProtocolPolicy'])->toBe('redirect-to-https');
     expect($behaviour['Compress'])->toBeTrue();
 });
@@ -53,19 +54,19 @@ it('sees no drift when the live behaviour already carries the managed fields', f
         'TargetOriginId' => 'asset-bucket',
         'ViewerProtocolPolicy' => 'redirect-to-https',
         'Compress' => true,
-        'CachePolicyId' => '658327ea-f89d-4fab-a63d-7e88639e58f6',
+        'CachePolicyId' => 'cp-resolved-id',
         'OriginRequestPolicyId' => '88a5eaf4-2fd4-4709-b370-b4c650ea3fcf',
         'ResponseHeadersPolicyId' => '',
         'MinTTL' => 0,
     ];
 
     // No update should fire — merging the managed fields leaves the block unchanged.
-    expect(array_merge($live, AssetDistribution::reconcilableBehaviour()) == $live)->toBeTrue();
+    expect(array_merge($live, AssetDistribution::reconcilableBehaviour('cp-resolved-id')) == $live)->toBeTrue();
 });
 
 it('sees drift on a distribution still using the response-headers CORS policy', function () {
     // Shape of the live CL distribution before the fix: SimpleCORS policy, no
-    // origin-request policy. Reconciling must flip both.
+    // origin-request policy, managed CachingOptimized. Reconciling must flip all.
     $preFix = [
         'TargetOriginId' => 'asset-bucket',
         'ViewerProtocolPolicy' => 'redirect-to-https',
@@ -75,5 +76,5 @@ it('sees drift on a distribution still using the response-headers CORS policy', 
         'MinTTL' => 0,
     ];
 
-    expect(array_merge($preFix, AssetDistribution::reconcilableBehaviour()) == $preFix)->toBeFalse();
+    expect(array_merge($preFix, AssetDistribution::reconcilableBehaviour('cp-resolved-id')) == $preFix)->toBeFalse();
 });

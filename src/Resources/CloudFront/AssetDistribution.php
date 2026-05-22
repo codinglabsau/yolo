@@ -28,8 +28,14 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
 {
     protected const ORIGIN_ID = 'asset-bucket';
 
-    // AWS managed "CachingOptimized" cache policy.
-    protected const CACHE_POLICY_ID = '658327ea-f89d-4fab-a63d-7e88639e58f6';
+    // Custom cache policy: like CachingOptimized but with `Origin` in the cache
+    // key. S3 only returns Access-Control-Allow-Origin when a request carries
+    // Origin, so a no-Origin request (CloudFront's own compression fetch, a
+    // preload, a bot) would otherwise cache a header-less copy that Origin-
+    // bearing browser requests then hit. Keying on Origin caches the with-CORS
+    // and without-CORS variants separately, so browsers can't be served a
+    // poisoned entry. No managed cache policy includes Origin, hence a custom.
+    protected const CACHE_POLICY_NAME = 'yolo-asset-cors';
 
     // AWS managed "CORS-S3Origin" origin-request policy. Forwards the viewer
     // Origin header (+ Access-Control-Request-*) to S3 so the bucket's own CORS
@@ -124,7 +130,7 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
         $config = (array) $response['DistributionConfig'];
         $behaviour = (array) $config['DefaultCacheBehavior'];
 
-        $reconciled = array_merge($behaviour, static::reconcilableBehaviour());
+        $reconciled = array_merge($behaviour, static::reconcilableBehaviour($this->ensureCachePolicy()));
 
         if ($reconciled == $behaviour) {
             return;
@@ -147,15 +153,47 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
      *
      * @return array<string, mixed>
      */
-    public static function reconcilableBehaviour(): array
+    public static function reconcilableBehaviour(string $cachePolicyId): array
     {
         return [
             'ViewerProtocolPolicy' => 'redirect-to-https',
             'Compress' => true,
-            'CachePolicyId' => static::CACHE_POLICY_ID,
+            'CachePolicyId' => $cachePolicyId,
             'OriginRequestPolicyId' => static::ORIGIN_REQUEST_POLICY_ID,
             'ResponseHeadersPolicyId' => static::RESPONSE_HEADERS_POLICY_ID,
         ];
+    }
+
+    /**
+     * Resolve the custom cache policy (Origin in the cache key), creating it
+     * once if absent. Account-scoped and generic, so every YOLO asset
+     * distribution shares the one policy — looked up by name like the OAC.
+     */
+    protected function ensureCachePolicy(): string
+    {
+        try {
+            return CloudFront::cachePolicyByName(static::CACHE_POLICY_NAME)['Id'];
+        } catch (ResourceDoesNotExistException) {
+            return Aws::cloudFront()->createCachePolicy([
+                'CachePolicyConfig' => [
+                    'Name' => static::CACHE_POLICY_NAME,
+                    'Comment' => 'YOLO build assets — Origin in cache key for CORS',
+                    'MinTTL' => 1,
+                    'DefaultTTL' => 86400,
+                    'MaxTTL' => 31536000,
+                    'ParametersInCacheKeyAndForwardedToOrigin' => [
+                        'EnableAcceptEncodingGzip' => true,
+                        'EnableAcceptEncodingBrotli' => true,
+                        'HeadersConfig' => [
+                            'HeaderBehavior' => 'whitelist',
+                            'Headers' => ['Quantity' => 1, 'Items' => ['Origin']],
+                        ],
+                        'CookiesConfig' => ['CookieBehavior' => 'none'],
+                        'QueryStringsConfig' => ['QueryStringBehavior' => 'none'],
+                    ],
+                ],
+            ])['CachePolicy']['Id'];
+        }
     }
 
     protected function ensureOriginAccessControl(): string
@@ -195,7 +233,7 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
             ],
             'DefaultCacheBehavior' => [
                 'TargetOriginId' => static::ORIGIN_ID,
-                ...static::reconcilableBehaviour(),
+                ...static::reconcilableBehaviour($this->ensureCachePolicy()),
                 'AllowedMethods' => [
                     'Quantity' => 2,
                     'Items' => ['GET', 'HEAD'],
