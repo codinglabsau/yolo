@@ -14,7 +14,7 @@ class DeployCommand extends SteppedCommand
         Steps\Deploy\RegisterTaskDefinitionRevisionStep::class,
         Steps\Deploy\ExecuteDeployStepsStep::class,
         Steps\Deploy\UpdateEcsServiceStep::class,
-        Steps\Deploy\WaitForServiceStableStep::class,
+        Steps\Deploy\WaitForDeploymentHealthyStep::class,
         Steps\Deploy\SyncSoloRecordSetStep::class,
         Steps\Deploy\SyncMultitenancyRecordSetStep::class,
     ];
