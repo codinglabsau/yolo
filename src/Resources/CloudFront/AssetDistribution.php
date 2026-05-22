@@ -133,6 +133,12 @@ class AssetDistribution implements Resource
                 'Compress' => true,
                 // AWS managed "CachingOptimized" policy.
                 'CachePolicyId' => '658327ea-f89d-4fab-a63d-7e88639e58f6',
+                // AWS managed "SimpleCORS" response-headers policy. Adds a static
+                // `Access-Control-Allow-Origin: *` so Vite's crossorigin module +
+                // modulepreload fetches resolve when assets come from this domain
+                // rather than the app's own origin. Static `*` keeps the cache key
+                // origin-agnostic (no Vary: Origin), so it's safe to cache.
+                'ResponseHeadersPolicyId' => '60669652-455b-4ae9-85a4-c4c02393f86c',
                 'AllowedMethods' => [
                     'Quantity' => 2,
                     'Items' => ['GET', 'HEAD'],
