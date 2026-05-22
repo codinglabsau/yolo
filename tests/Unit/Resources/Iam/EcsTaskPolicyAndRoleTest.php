@@ -13,7 +13,7 @@ it('describes the ECS task policy with the four ssmmessages exec permissions', f
     $document = (new EcsTaskPolicy())->document();
 
     expect($document['Version'])->toBe('2012-10-17');
-    expect($document['Statement'])->toHaveCount(2);
+    expect($document['Statement'])->toHaveCount(3);
     expect($document['Statement'][0])->toMatchArray([
         'Effect' => 'Allow',
         'Resource' => '*',
@@ -33,6 +33,17 @@ it('grants SQS access scoped to this environment\'s YOLO queues', function () {
     expect($statement['Effect'])->toBe('Allow');
     expect($statement['Resource'])->toBe('arn:aws:sqs:ap-southeast-2:111111111111:yolo-testing-*');
     expect($statement['Action'])->toContain('sqs:ReceiveMessage', 'sqs:DeleteMessage', 'sqs:SendMessage', 'sqs:ChangeMessageVisibility');
+});
+
+it('grants SES send scoped to this region\'s verified identities', function () {
+    $statement = (new EcsTaskPolicy())->document()['Statement'][2];
+
+    expect($statement['Effect'])->toBe('Allow');
+    expect($statement['Resource'])->toBe('arn:aws:ses:ap-southeast-2:111111111111:identity/*');
+    expect($statement['Action'])->toEqualCanonicalizing([
+        'ses:SendRawEmail',
+        'ses:SendEmail',
+    ]);
 });
 
 it('trusts the ecs-tasks service in the ECS task assume role policy', function () {

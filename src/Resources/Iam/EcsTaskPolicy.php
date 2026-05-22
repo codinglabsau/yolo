@@ -65,7 +65,7 @@ class EcsTaskPolicy implements Resource
      */
     public function description(): string
     {
-        return 'YOLO managed baseline policy granting ECS Exec session channels and SQS queue access to the shared task role';
+        return 'YOLO managed baseline policy granting ECS Exec session channels, SQS queue access, and SES send to the shared task role';
     }
 
     public function synchroniseTags(): void
@@ -131,8 +131,29 @@ class EcsTaskPolicy implements Resource
                         'sqs:GetQueueUrl',
                     ],
                 ],
+                [
+                    // Lets the container send mail via SES through the task role
+                    // (no static AWS keys). Send-only, scoped to this region's
+                    // verified identities — covers the v1 (SendRawEmail) and v2
+                    // (SendEmail) Laravel SES transports.
+                    'Effect' => 'Allow',
+                    'Resource' => $this->sesIdentityArnPattern(),
+                    'Action' => [
+                        'ses:SendRawEmail',
+                        'ses:SendEmail',
+                    ],
+                ],
             ],
         ];
+    }
+
+    protected function sesIdentityArnPattern(): string
+    {
+        return sprintf(
+            'arn:aws:ses:%s:%s:identity/*',
+            Manifest::get('aws.region'),
+            Aws::accountId(),
+        );
     }
 
     protected function queueArnPattern(): string
