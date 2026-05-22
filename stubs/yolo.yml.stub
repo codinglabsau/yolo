@@ -2,24 +2,44 @@ name: {NAME}
 
 environments:
   production:
+    # Public domain. Omit both for a headless app (no ALB / DNS).
+    # apex: example.com
+    # domain: app.example.com   # defaults to apex; set for a subdomain
+
     aws:
       account-id: {AWS_ACCOUNT_ID}
       region: {AWS_REGION}
-      bucket:
-      cloudfront: // todo use magic [account level]
-      autoscaling:
-        web:
-        queue:
-        scheduler:
-      ec2:
-        instance-type: t3.small
-        octane: true
+      # bucket: my-app-bucket   # optional app S3 bucket, injected as AWS_BUCKET
+
+    tasks:
+      web:
+        cpu: '512'
+        memory: '1024'
+        port: 8000
+        desired-count: 1
+        enable-execute-command: true
+        queue: true        # run queue:work in the web container
+        scheduler: true    # run schedule:work in the web container
+
+      # Independent task groups — not yet implemented. Today the web task runs
+      # octane + queue:work + schedule:work together (toggle the flags above).
+      # When you need to scale the web tier without duplicating the scheduler,
+      # these become their own ECS services:
+      # queue:
+      #   cpu: '256'
+      #   memory: '512'
+      # scheduler:
+      #   cpu: '256'
+      #   memory: '512'
 
     build:
       - composer install --no-cache --no-interaction --optimize-autoloader --no-progress --classmap-authoritative --no-dev
       - npm ci
       - npm run build
-      - rm -rf package-lock.json resources/js resources/css node_modules database/seeders database/factories resources/seeding
+      - rm -rf package-lock.json node_modules database/seeders database/factories
+
+    deploy:
+      - php artisan migrate --force
 
     deploy-all:
       - php artisan optimize

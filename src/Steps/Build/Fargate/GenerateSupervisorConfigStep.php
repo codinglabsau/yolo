@@ -15,10 +15,12 @@ use Illuminate\Filesystem\Filesystem;
  * so the running processes can't drift from the manifest and the octane port
  * always matches tasks.web.port (the same value the target group health-checks).
  *
- * The web task does everything: octane (the web server) always runs; the
- * scheduler and queue worker run unless tasks.web.scheduler / tasks.web.queue
- * are turned off. Splitting these into independent queue/scheduler services is
- * a later concern — this step only models the single-container web task.
+ * Octane (the web server) always runs; the scheduler and queue worker run only
+ * when tasks.web.scheduler / tasks.web.queue are explicitly true. The code
+ * default is false (octane only) — `yolo init` ships a manifest that turns both
+ * on, so a fresh app gets the full web task while the absence of config stays
+ * conservative. Splitting these into independent queue/scheduler services is a
+ * later concern; this step only models the single-container web task.
  */
 class GenerateSupervisorConfigStep implements Step
 {
@@ -47,11 +49,11 @@ class GenerateSupervisorConfigStep implements Step
             )),
         ];
 
-        if (Helpers::validateStrictBool(Manifest::get('tasks.web.scheduler', true), 'tasks.web.scheduler')) {
+        if (Helpers::validateStrictBool(Manifest::get('tasks.web.scheduler', false), 'tasks.web.scheduler')) {
             $blocks[] = $this->program('scheduler', 'php artisan schedule:work');
         }
 
-        if (Helpers::validateStrictBool(Manifest::get('tasks.web.queue', true), 'tasks.web.queue')) {
+        if (Helpers::validateStrictBool(Manifest::get('tasks.web.queue', false), 'tasks.web.queue')) {
             // Longer stop wait so an in-flight job can finish on SIGTERM before
             // supervisor force-kills the worker.
             $blocks[] = $this->program('queue', 'php artisan queue:work --tries=3 --max-time=3600', stopwaitsecs: 70);
