@@ -39,8 +39,10 @@ it('reports not-exists when no distribution matches its comment', function () {
 it('reconciles the managed cache-behaviour policy fields', function () {
     $behaviour = AssetDistribution::reconcilableBehaviour();
 
-    // AWS managed "SimpleCORS" + "CachingOptimized" policy IDs.
-    expect($behaviour['ResponseHeadersPolicyId'])->toBe('60669652-455b-4ae9-85a4-c4c02393f86c');
+    // CORS is served by the S3 origin (CORS-S3Origin origin-request policy
+    // forwards Origin); no response-headers policy, so ACAO can't double up.
+    expect($behaviour['OriginRequestPolicyId'])->toBe('88a5eaf4-2fd4-4709-b370-b4c650ea3fcf');
+    expect($behaviour['ResponseHeadersPolicyId'])->toBe('');
     expect($behaviour['CachePolicyId'])->toBe('658327ea-f89d-4fab-a63d-7e88639e58f6');
     expect($behaviour['ViewerProtocolPolicy'])->toBe('redirect-to-https');
     expect($behaviour['Compress'])->toBeTrue();
@@ -52,7 +54,8 @@ it('sees no drift when the live behaviour already carries the managed fields', f
         'ViewerProtocolPolicy' => 'redirect-to-https',
         'Compress' => true,
         'CachePolicyId' => '658327ea-f89d-4fab-a63d-7e88639e58f6',
-        'ResponseHeadersPolicyId' => '60669652-455b-4ae9-85a4-c4c02393f86c',
+        'OriginRequestPolicyId' => '88a5eaf4-2fd4-4709-b370-b4c650ea3fcf',
+        'ResponseHeadersPolicyId' => '',
         'MinTTL' => 0,
     ];
 
@@ -60,14 +63,17 @@ it('sees no drift when the live behaviour already carries the managed fields', f
     expect(array_merge($live, AssetDistribution::reconcilableBehaviour()) == $live)->toBeTrue();
 });
 
-it('sees drift when a managed field is missing or wrong', function () {
-    $missingCors = [
+it('sees drift on a distribution still using the response-headers CORS policy', function () {
+    // Shape of the live CL distribution before the fix: SimpleCORS policy, no
+    // origin-request policy. Reconciling must flip both.
+    $preFix = [
         'TargetOriginId' => 'asset-bucket',
         'ViewerProtocolPolicy' => 'redirect-to-https',
         'Compress' => true,
         'CachePolicyId' => '658327ea-f89d-4fab-a63d-7e88639e58f6',
+        'ResponseHeadersPolicyId' => '60669652-455b-4ae9-85a4-c4c02393f86c',
         'MinTTL' => 0,
     ];
 
-    expect(array_merge($missingCors, AssetDistribution::reconcilableBehaviour()) == $missingCors)->toBeFalse();
+    expect(array_merge($preFix, AssetDistribution::reconcilableBehaviour()) == $preFix)->toBeFalse();
 });

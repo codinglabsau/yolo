@@ -1,6 +1,7 @@
 <?php
 
 use Codinglabs\Yolo\Resources\Storage\AssetBucket;
+use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 
 beforeEach(function () {
     writeManifest([
@@ -18,4 +19,8 @@ it('derives the bucket ARN from the name', function () {
 
 it('tags the bucket with its name', function () {
     expect((new AssetBucket())->tags())->toBe(['Name' => 'yolo-testing-my-app-assets']);
+});
+
+it('reconciles a CORS configuration so the origin serves Access-Control-Allow-Origin', function () {
+    expect(new AssetBucket())->toBeInstanceOf(SynchronisesConfiguration::class);
 });

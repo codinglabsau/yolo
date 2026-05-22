@@ -31,12 +31,17 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
     // AWS managed "CachingOptimized" cache policy.
     protected const CACHE_POLICY_ID = '658327ea-f89d-4fab-a63d-7e88639e58f6';
 
-    // AWS managed "SimpleCORS" response-headers policy. Adds a static
-    // `Access-Control-Allow-Origin: *` so Vite's crossorigin module +
-    // modulepreload fetches resolve when assets come from this domain rather
-    // than the app's own origin. Static `*` keeps the cache key origin-agnostic
-    // (no Vary: Origin), so it's safe to cache.
-    protected const RESPONSE_HEADERS_POLICY_ID = '60669652-455b-4ae9-85a4-c4c02393f86c';
+    // AWS managed "CORS-S3Origin" origin-request policy. Forwards the viewer
+    // Origin header (+ Access-Control-Request-*) to S3 so the bucket's own CORS
+    // config returns Access-Control-Allow-Origin. CloudFront then caches and
+    // serves that as a normal origin header on every path — unlike a
+    // response-headers-policy CORS header, which CloudFront silently omits on
+    // the revalidation it forces for `Cache-Control: no-cache` / `max-age=0`
+    // (reloads, DevTools "Disable cache"). Empty ResponseHeadersPolicyId: the
+    // origin now owns CORS, and a second source would emit a duplicate header.
+    protected const ORIGIN_REQUEST_POLICY_ID = '88a5eaf4-2fd4-4709-b370-b4c650ea3fcf';
+
+    protected const RESPONSE_HEADERS_POLICY_ID = '';
 
     public function name(): string
     {
@@ -105,10 +110,11 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
 
     /**
      * Push managed cache-behaviour config onto an existing distribution. Tags
-     * alone don't cover config changes (e.g. adding the SimpleCORS policy to a
-     * distribution created before it existed), so sync reconciles the behaviour
-     * fields we own. CloudFront updates trigger a full edge redeploy (~15 min),
-     * so we only call updateDistribution when a managed field has drifted.
+     * alone don't cover config changes (e.g. swapping a distribution to the
+     * CORS-S3Origin origin-request policy after it was created), so sync
+     * reconciles the behaviour fields we own. CloudFront updates trigger a full
+     * edge redeploy (~15 min), so we only call updateDistribution when a managed
+     * field has drifted.
      */
     public function synchroniseConfiguration(): void
     {
@@ -147,6 +153,7 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
             'ViewerProtocolPolicy' => 'redirect-to-https',
             'Compress' => true,
             'CachePolicyId' => static::CACHE_POLICY_ID,
+            'OriginRequestPolicyId' => static::ORIGIN_REQUEST_POLICY_ID,
             'ResponseHeadersPolicyId' => static::RESPONSE_HEADERS_POLICY_ID,
         ];
     }
