@@ -10,6 +10,9 @@ RUN apk add --no-cache git supervisor \
 WORKDIR /app
 
 COPY --chown=www-data:www-data . /app
+# Place the generated supervisor config at a default search path so both
+# `supervisord` and an interactive `supervisorctl` find it without -c.
+COPY docker/supervisord.conf /etc/supervisord.conf
 RUN chmod +x /app/.yolo-entrypoint.sh
 
 USER www-data
@@ -20,4 +23,4 @@ EXPOSE 8000
 # supervisord (PID 1 after the entrypoint exec) runs the supervised processes;
 # ECS sends SIGTERM to it, which stops the children gracefully.
 ENTRYPOINT ["/app/.yolo-entrypoint.sh"]
-CMD ["supervisord", "-c", "/app/docker/supervisord.conf", "-n"]
+CMD ["supervisord", "-n"]
