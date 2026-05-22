@@ -12,19 +12,21 @@ use Codinglabs\Yolo\Resources\Storage\AssetBucket;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * CloudFront distribution that serves the application's build assets from the
- * private asset bucket via Origin Access Control. The keyed resource name is
- * stamped into the distribution's Comment (and the OAC's Name) for lookup, and
- * surfaced as the `Name` tag.
+ * The application's CloudFront distribution. Today it serves build assets from
+ * the private asset bucket via Origin Access Control; the name is deliberately
+ * generic (`cdn`, not `assets`) because the same distribution is the natural
+ * front door for page caching later. The keyed resource name is stamped into
+ * the distribution's Comment (and the OAC's Name) for lookup, and surfaced as
+ * the `Name` tag.
  *
- * Assets-only: this distribution serves nothing but `/builds/*` from S3. The
- * site itself stays on the ALB; ASSET_URL points app-generated asset URLs here.
+ * For now the only origin is S3 (`/builds/*`); the site itself stays on the
+ * ALB and ASSET_URL points app-generated asset URLs here.
  */
-class AssetDistribution implements Resource
+class Distribution implements Resource
 {
     public function name(): string
     {
-        return Helpers::keyedResourceName('assets', exclusive: true);
+        return Helpers::keyedResourceName('cdn', exclusive: true);
     }
 
     public function tags(): array

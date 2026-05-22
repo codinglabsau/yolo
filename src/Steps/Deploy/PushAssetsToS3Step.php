@@ -5,7 +5,6 @@ namespace Codinglabs\Yolo\Steps\Deploy;
 use Aws\S3\Transfer;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
@@ -27,10 +26,6 @@ class PushAssetsToS3Step implements Step
 
     public function __invoke(): StepResult
     {
-        if (! Manifest::get('assets.cloudfront')) {
-            return StepResult::SKIPPED;
-        }
-
         $appVersion = $this->filesystem->get(Paths::version());
 
         (new Transfer(

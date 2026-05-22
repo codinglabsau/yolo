@@ -10,7 +10,7 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Contracts\Step;
 use Illuminate\Filesystem\Filesystem;
-use Codinglabs\Yolo\Resources\Cdn\AssetDistribution;
+use Codinglabs\Yolo\Resources\Cdn\Distribution;
 
 class ConfigureEnvAndVersionStep implements Step
 {
@@ -38,17 +38,11 @@ class ConfigureEnvAndVersionStep implements Step
             ),
         ];
 
-        // Asset serving:
-        //  - assets.cloudfront → assets live in S3 behind the YOLO-provisioned
-        //    CloudFront distribution; ASSET_URL points at it, versioned per build.
-        //  - asset-url         → an explicitly-configured CDN base (no version prefix).
-        //  - neither           → unset; Vite serves /build from the container,
-        //    cache-busted by content hashes.
-        if (Manifest::get('assets.cloudfront')) {
-            $values['ASSET_URL'] = sprintf('https://%s/builds/%s', (new AssetDistribution())->domain(), $appVersion);
-        } elseif (Manifest::has('asset-url')) {
-            $values['ASSET_URL'] = Manifest::get('asset-url');
-        }
+        // Assets always live in S3 behind the YOLO-provisioned CloudFront
+        // distribution. ASSET_URL points app-generated asset URLs at it,
+        // versioned per build so each deploy's hashed bundle sits under its
+        // own prefix and old builds keep resolving.
+        $values['ASSET_URL'] = sprintf('https://%s/builds/%s', (new Distribution())->domain(), $appVersion);
 
         // Inject the app's S3 bucket from the manifest when the consumer hasn't set
         // it explicitly — single source of truth, respects an explicit .env override.
