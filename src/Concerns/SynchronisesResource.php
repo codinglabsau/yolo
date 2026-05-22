@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Concerns;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 
 /**
  * Generic create-or-sync orchestration for steps backed by a Resource.
@@ -18,6 +19,13 @@ trait SynchronisesResource
         if ($resource->exists()) {
             if (! Arr::get($options, 'dry-run')) {
                 $resource->synchroniseTags();
+
+                // Resources whose live config can drift (currently just the
+                // CloudFront distribution) reconcile it here too; tag-only sync
+                // would never push a config change onto an existing resource.
+                if ($resource instanceof SynchronisesConfiguration) {
+                    $resource->synchroniseConfiguration();
+                }
             }
 
             return StepResult::SYNCED;

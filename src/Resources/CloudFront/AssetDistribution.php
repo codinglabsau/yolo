@@ -9,6 +9,7 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\CloudFront;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\Storage\AssetBucket;
+use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
@@ -23,8 +24,20 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * own `/builds` route. The keyed name is stamped into the distribution's
  * Comment (and the OAC's Name) for lookup, and surfaced as the `Name` tag.
  */
-class AssetDistribution implements Resource
+class AssetDistribution implements Resource, SynchronisesConfiguration
 {
+    protected const ORIGIN_ID = 'asset-bucket';
+
+    // AWS managed "CachingOptimized" cache policy.
+    protected const CACHE_POLICY_ID = '658327ea-f89d-4fab-a63d-7e88639e58f6';
+
+    // AWS managed "SimpleCORS" response-headers policy. Adds a static
+    // `Access-Control-Allow-Origin: *` so Vite's crossorigin module +
+    // modulepreload fetches resolve when assets come from this domain rather
+    // than the app's own origin. Static `*` keeps the cache key origin-agnostic
+    // (no Vary: Origin), so it's safe to cache.
+    protected const RESPONSE_HEADERS_POLICY_ID = '60669652-455b-4ae9-85a4-c4c02393f86c';
+
     public function name(): string
     {
         return Helpers::keyedResourceName('assets', exclusive: true);
@@ -90,6 +103,54 @@ class AssetDistribution implements Resource
         ]);
     }
 
+    /**
+     * Push managed cache-behaviour config onto an existing distribution. Tags
+     * alone don't cover config changes (e.g. adding the SimpleCORS policy to a
+     * distribution created before it existed), so sync reconciles the behaviour
+     * fields we own. CloudFront updates trigger a full edge redeploy (~15 min),
+     * so we only call updateDistribution when a managed field has drifted.
+     */
+    public function synchroniseConfiguration(): void
+    {
+        $id = CloudFront::distributionByComment($this->name())['Id'];
+
+        $response = Aws::cloudFront()->getDistributionConfig(['Id' => $id]);
+        $config = (array) $response['DistributionConfig'];
+        $behaviour = (array) $config['DefaultCacheBehavior'];
+
+        $reconciled = array_merge($behaviour, static::reconcilableBehaviour());
+
+        if ($reconciled == $behaviour) {
+            return;
+        }
+
+        $config['DefaultCacheBehavior'] = $reconciled;
+
+        Aws::cloudFront()->updateDistribution([
+            'Id' => $id,
+            'DistributionConfig' => $config,
+            'IfMatch' => (string) $response['ETag'],
+        ]);
+    }
+
+    /**
+     * The cache-behaviour fields sync keeps current on an existing distribution.
+     * Scalars only — the policy IDs are the realistic drift surface; nested
+     * blocks like AllowedMethods are set once at create and comparing them risks
+     * a false "drift" from key ordering, which would force a needless redeploy.
+     *
+     * @return array<string, mixed>
+     */
+    public static function reconcilableBehaviour(): array
+    {
+        return [
+            'ViewerProtocolPolicy' => 'redirect-to-https',
+            'Compress' => true,
+            'CachePolicyId' => static::CACHE_POLICY_ID,
+            'ResponseHeadersPolicyId' => static::RESPONSE_HEADERS_POLICY_ID,
+        ];
+    }
+
     protected function ensureOriginAccessControl(): string
     {
         try {
@@ -108,8 +169,6 @@ class AssetDistribution implements Resource
 
     protected function distributionConfig(AssetBucket $bucket, string $originAccessControlId): array
     {
-        $originId = 'asset-bucket';
-
         return [
             'CallerReference' => (string) Str::uuid(),
             'Comment' => $this->name(),
@@ -119,7 +178,7 @@ class AssetDistribution implements Resource
                 'Quantity' => 1,
                 'Items' => [
                     [
-                        'Id' => $originId,
+                        'Id' => static::ORIGIN_ID,
                         // Regional S3 endpoint is required for OAC outside us-east-1.
                         'DomainName' => sprintf('%s.s3.%s.amazonaws.com', $bucket->name(), Manifest::get('aws.region')),
                         'OriginAccessControlId' => $originAccessControlId,
@@ -128,17 +187,8 @@ class AssetDistribution implements Resource
                 ],
             ],
             'DefaultCacheBehavior' => [
-                'TargetOriginId' => $originId,
-                'ViewerProtocolPolicy' => 'redirect-to-https',
-                'Compress' => true,
-                // AWS managed "CachingOptimized" policy.
-                'CachePolicyId' => '658327ea-f89d-4fab-a63d-7e88639e58f6',
-                // AWS managed "SimpleCORS" response-headers policy. Adds a static
-                // `Access-Control-Allow-Origin: *` so Vite's crossorigin module +
-                // modulepreload fetches resolve when assets come from this domain
-                // rather than the app's own origin. Static `*` keeps the cache key
-                // origin-agnostic (no Vary: Origin), so it's safe to cache.
-                'ResponseHeadersPolicyId' => '60669652-455b-4ae9-85a4-c4c02393f86c',
+                'TargetOriginId' => static::ORIGIN_ID,
+                ...static::reconcilableBehaviour(),
                 'AllowedMethods' => [
                     'Quantity' => 2,
                     'Items' => ['GET', 'HEAD'],
