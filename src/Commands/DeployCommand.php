@@ -10,6 +10,7 @@ use function Laravel\Prompts\intro;
 class DeployCommand extends SteppedCommand
 {
     protected array $steps = [
+        Steps\Deploy\PushAssetsToS3Step::class,
         Steps\Deploy\RegisterTaskDefinitionRevisionStep::class,
         Steps\Deploy\ExecuteDeployStepsStep::class,
         Steps\Deploy\UpdateEcsServiceStep::class,

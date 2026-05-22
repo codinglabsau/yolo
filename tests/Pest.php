@@ -7,6 +7,7 @@ use Aws\CommandInterface;
 use Codinglabs\Yolo\Helpers;
 use GuzzleHttp\Promise\Create;
 use Symfony\Component\Yaml\Yaml;
+use Aws\CloudFront\CloudFrontClient;
 
 /*
 |--------------------------------------------------------------------------
@@ -101,6 +102,39 @@ function bindMockIamClient(array $roles): void
 
     Helpers::app()->instance('iam', new IamClient([
         'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+}
+
+/**
+ * Bind a mock CloudFront client whose ListDistributions returns the supplied
+ * distribution items. Repeating handler — every call resolves the same list.
+ *
+ * @param  array<int, array<string, mixed>>  $distributions
+ */
+function bindMockCloudFrontClient(array $distributions): void
+{
+    $result = new Result([
+        'DistributionList' => [
+            'Items' => $distributions,
+            'IsTruncated' => false,
+        ],
+    ]);
+
+    $mock = new class($result) extends MockHandler
+    {
+        public function __construct(protected Result $result) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            return Create::promiseFor($this->result);
+        }
+    };
+
+    Helpers::app()->instance('cloudFront', new CloudFrontClient([
+        'region' => 'us-east-1',
         'version' => 'latest',
         'credentials' => false,
         'handler' => $mock,

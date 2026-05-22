@@ -18,6 +18,7 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Aws\Route53\Route53Client;
+use Aws\CloudFront\CloudFrontClient;
 use Aws\CloudWatch\CloudWatchClient;
 use Aws\CodeDeploy\CodeDeployClient;
 use Aws\AutoScaling\AutoScalingClient;
@@ -46,6 +47,8 @@ trait RegistersAws
         Helpers::app()->singleton('codeDeploy', fn () => new CodeDeployClient($arguments));
         Helpers::app()->singleton('cloudWatch', fn () => new CloudWatchClient($arguments));
         Helpers::app()->singleton('cloudWatchLogs', fn () => new CloudWatchLogsClient($arguments));
+        // CloudFront is a global service — its control-plane API only lives in us-east-1.
+        Helpers::app()->singleton('cloudFront', fn () => new CloudFrontClient([...$arguments, 'region' => 'us-east-1']));
         Helpers::app()->singleton('ec2', fn () => new Ec2Client($arguments));
         Helpers::app()->singleton('ecr', fn () => new EcrClient($arguments));
         Helpers::app()->singleton('ecs', fn () => new EcsClient($arguments));
