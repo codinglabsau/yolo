@@ -49,6 +49,45 @@ it('does not inject AWS_BUCKET when the manifest does not define one', function 
     expect(file_get_contents(Paths::build('.env.testing')))->not->toContain('AWS_BUCKET=');
 });
 
+it('injects the SQS connection block for a solo app', function () {
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('QUEUE_CONNECTION=sqs');
+    expect($env)->toContain('AWS_DEFAULT_REGION=ap-southeast-2');
+    expect($env)->toContain('SQS_PREFIX=https://sqs.ap-southeast-2.amazonaws.com/111111111111');
+    expect($env)->toContain('SQS_QUEUE=yolo-testing-my-app');
+});
+
+it('respects a QUEUE_CONNECTION already set in the .env', function () {
+    file_put_contents(Paths::build('.env.testing'), "QUEUE_CONNECTION=redis\n");
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('QUEUE_CONNECTION=redis');
+    expect($env)->not->toContain('QUEUE_CONNECTION=sqs');
+});
+
+it('does not pin SQS_QUEUE for a multitenant app (worker resolves it per tenant)', function () {
+    writeManifest([
+        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'tenants' => ['acme' => ['domain' => 'acme.test']],
+    ]);
+
+    is_dir(Paths::build()) || mkdir(Paths::build(), 0755, true);
+    file_exists(Paths::build('.env.testing')) && unlink(Paths::build('.env.testing'));
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('QUEUE_CONNECTION=sqs');
+    expect($env)->not->toContain('SQS_QUEUE=');
+});
+
 it('respects an AWS_BUCKET already set in the .env', function () {
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket'],
