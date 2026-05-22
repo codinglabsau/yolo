@@ -29,15 +29,23 @@ class WaitForDeploymentHealthyStep implements Step
         $service = (new EcsService())->name();
         $targetGroupArn = (new TargetGroup())->arn();
 
+        // The revision THIS deploy just registered — the family's latest ACTIVE
+        // revision. Resolving it directly, rather than reading whatever's currently
+        // PRIMARY, sidesteps the eventual-consistency lag where describeServices keeps
+        // listing the OLD deployment as PRIMARY for a beat after updateService. Trusting
+        // PRIMARY there matched the old, already-healthy task and declared success before
+        // the new task even existed (the 0s "deploy" that masked a crash-looping image).
+        $revision = Ecs::taskDefinition($service)['taskDefinitionArn'];
+
         $deadline = time() + 600;
 
         while (time() < $deadline) {
-            $primary = collect(
-                Aws::ecs()->describeServices(['cluster' => $cluster, 'services' => [$service]])['services'][0]['deployments']
-            )->firstWhere('status', 'PRIMARY');
+            $primary = Aws::ecs()->describeServices(['cluster' => $cluster, 'services' => [$service]])['services'][0];
 
-            if (($primary['rolloutState'] ?? null) === 'FAILED') {
-                throw new RuntimeException('Deployment failed: ' . ($primary['rolloutStateReason'] ?? 'rollout failed'));
+            $deployment = collect($primary['deployments'])->firstWhere('taskDefinition', $revision);
+
+            if (($deployment['rolloutState'] ?? null) === 'FAILED') {
+                throw new RuntimeException('Deployment failed: ' . ($deployment['rolloutStateReason'] ?? 'rollout failed'));
             }
 
             $taskArns = Ecs::runningTasks($cluster, $service);
@@ -50,7 +58,7 @@ class WaitForDeploymentHealthyStep implements Step
                 'TargetGroupArn' => $targetGroupArn,
             ])['TargetHealthDescriptions'];
 
-            if (static::newTasksAreHealthy($tasks, $primary['taskDefinition'], (int) $primary['desiredCount'], $targetHealth)) {
+            if (static::newTasksAreHealthy($tasks, $revision, (int) $primary['desiredCount'], $targetHealth)) {
                 return StepResult::SUCCESS;
             }
 
