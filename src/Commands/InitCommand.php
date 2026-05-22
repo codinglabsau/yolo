@@ -31,6 +31,7 @@ class InitCommand extends Command
 
         $this->gitIgnoreFilesAndDirectories();
         $this->initialiseManifest();
+        $this->initialiseDockerfile();
         $this->initialiseEnv();
 
         info('Manifest generated successfully.');
@@ -75,6 +76,16 @@ class InitCommand extends Command
         if ($s3Bucket = text('What is the name of the S3 bucket used for app storage?', placeholder: 'Leave blank to skip')) {
             Manifest::put('aws.bucket', $s3Bucket);
         }
+    }
+
+    protected function initialiseDockerfile(): void
+    {
+        if (file_exists(Paths::base('Dockerfile'))
+            && ! confirm('A Dockerfile already exists. Overwrite it with the YOLO default?', default: false)) {
+            return;
+        }
+
+        copy(Paths::stubs('Dockerfile.stub'), Paths::base('Dockerfile'));
     }
 
     protected function gitIgnoreFilesAndDirectories(): void

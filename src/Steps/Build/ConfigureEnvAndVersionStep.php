@@ -45,20 +45,29 @@ class ConfigureEnvAndVersionStep implements Step
         $values['ASSET_URL'] = sprintf('https://%s/builds/%s', (new AssetDistribution())->domain(), $appVersion);
 
         // Fargate-sane defaults injected only when the consumer's .env doesn't
-        // already set them — so the app "just works" with zero queue config but
-        // can still override. YOLO owns the SQS queue it provisions, so it knows
-        // the exact name + URL; the app never has to (and can't accidentally point
-        // at the wrong queue). No static AWS keys — the task role carries SQS access.
+        // already set them — the app "just works" with zero config but can still
+        // override.
         $defaults = [
-            'QUEUE_CONNECTION' => 'sqs',
             'AWS_DEFAULT_REGION' => Manifest::get('aws.region'),
-            'SQS_PREFIX' => sprintf('https://sqs.%s.amazonaws.com/%s', Manifest::get('aws.region'), Aws::accountId()),
         ];
 
-        // Solo apps have one queue; in multitenancy the worker resolves the
-        // per-tenant queue at runtime, so a single SQS_QUEUE would be wrong.
-        if (! Manifest::isMultitenanted()) {
-            $defaults['SQS_QUEUE'] = Helpers::keyedResourceName();
+        // tasks.web.queue is the single switch for "this app uses the SQS queue".
+        // On: wire the connection to the queue YOLO provisions (it owns the name +
+        // URL, so the app can't point at the wrong one) — the queue:work supervisor
+        // program runs alongside. No static AWS keys; the task role carries access.
+        // Off: force `sync` so jobs run inline rather than routing to a queue with
+        // no worker consuming it (the framework default of `database` has the same
+        // no-worker pitfall). Solo has one queue; multitenancy resolves the
+        // per-tenant queue at runtime, so SQS_QUEUE is not pinned for it.
+        if (Helpers::validateStrictBool(Manifest::get('tasks.web.queue', false), 'tasks.web.queue')) {
+            $defaults['QUEUE_CONNECTION'] = 'sqs';
+            $defaults['SQS_PREFIX'] = sprintf('https://sqs.%s.amazonaws.com/%s', Manifest::get('aws.region'), Aws::accountId());
+
+            if (! Manifest::isMultitenanted()) {
+                $defaults['SQS_QUEUE'] = Helpers::keyedResourceName();
+            }
+        } else {
+            $defaults['QUEUE_CONNECTION'] = 'sync';
         }
 
         if (Manifest::has('aws.bucket')) {

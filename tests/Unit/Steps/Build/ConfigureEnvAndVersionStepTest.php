@@ -49,7 +49,15 @@ it('does not inject AWS_BUCKET when the manifest does not define one', function 
     expect(file_get_contents(Paths::build('.env.testing')))->not->toContain('AWS_BUCKET=');
 });
 
-it('injects the SQS connection block for a solo app', function () {
+it('injects the SQS connection block when tasks.web.queue is on', function () {
+    writeManifest([
+        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'tasks' => ['web' => ['queue' => true]],
+    ]);
+
+    is_dir(Paths::build()) || mkdir(Paths::build(), 0755, true);
+    file_exists(Paths::build('.env.testing')) && unlink(Paths::build('.env.testing'));
+
     (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
 
     $env = file_get_contents(Paths::build('.env.testing'));
@@ -58,6 +66,18 @@ it('injects the SQS connection block for a solo app', function () {
     expect($env)->toContain('AWS_DEFAULT_REGION=ap-southeast-2');
     expect($env)->toContain('SQS_PREFIX=https://sqs.ap-southeast-2.amazonaws.com/111111111111');
     expect($env)->toContain('SQS_QUEUE=yolo-testing-my-app');
+});
+
+it('forces QUEUE_CONNECTION=sync when the queue is off (no worker to consume)', function () {
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('QUEUE_CONNECTION=sync');
+    expect($env)->not->toContain('QUEUE_CONNECTION=sqs');
+    expect($env)->not->toContain('SQS_PREFIX=');
+    // region is still useful (S3 etc.), so it's injected regardless of the queue
+    expect($env)->toContain('AWS_DEFAULT_REGION=ap-southeast-2');
 });
 
 it('respects a QUEUE_CONNECTION already set in the .env', function () {
@@ -69,11 +89,13 @@ it('respects a QUEUE_CONNECTION already set in the .env', function () {
 
     expect($env)->toContain('QUEUE_CONNECTION=redis');
     expect($env)->not->toContain('QUEUE_CONNECTION=sqs');
+    expect($env)->not->toContain('QUEUE_CONNECTION=sync');
 });
 
 it('does not pin SQS_QUEUE for a multitenant app (worker resolves it per tenant)', function () {
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'tasks' => ['web' => ['queue' => true]],
         'tenants' => ['acme' => ['domain' => 'acme.test']],
     ]);
 
