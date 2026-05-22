@@ -1,0 +1,169 @@
+<?php
+
+use Aws\Result;
+use Aws\Command;
+use Aws\MockHandler;
+use Aws\S3\S3Client;
+use Aws\CommandInterface;
+use Codinglabs\Yolo\Helpers;
+use GuzzleHttp\Psr7\Response;
+use GuzzleHttp\Promise\Create;
+use Aws\S3\Exception\S3Exception;
+use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Steps\Storage\SyncS3BucketStep;
+use Codinglabs\Yolo\Steps\Storage\SyncS3ArtefactBucketStep;
+
+/**
+ * Bind a mock S3 client with command-routed responses. A command's value may be a
+ * single Result/Throwable (repeated) or an array used as a queue (last entry
+ * repeats). A Throwable entry is returned as a rejected promise — used to make
+ * HeadBucket 404 so doesBucketExistV2() reports the bucket missing. Calls are
+ * captured by reference.
+ *
+ * @param  array<string, Result|Throwable|array<int, Result|Throwable>>  $byCommand
+ * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+ */
+function bindMockS3Client(array $byCommand, array &$captured): void
+{
+    $mock = new class($byCommand, $captured) extends MockHandler
+    {
+        /** @var array<string, int> */
+        private array $cursors = [];
+
+        public function __construct(protected array $byCommand, protected array &$captured) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            $name = $cmd->getName();
+            $this->captured[] = ['name' => $name, 'args' => $cmd->toArray()];
+
+            $entry = $this->byCommand[$name] ?? new Result();
+
+            if (is_array($entry)) {
+                $index = min($this->cursors[$name] ?? 0, count($entry) - 1);
+                $this->cursors[$name] = $index + 1;
+                $entry = $entry[$index];
+            }
+
+            return $entry instanceof Throwable
+                ? Create::rejectionFor($entry)
+                : Create::promiseFor($entry);
+        }
+    };
+
+    Helpers::app()->instance('s3', new S3Client([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+}
+
+function s3NotFound(): S3Exception
+{
+    return new S3Exception('Not Found', new Command('HeadBucket'), [
+        'response' => new Response(404),
+    ]);
+}
+
+beforeEach(function () {
+    writeManifest([
+        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+    ]);
+});
+
+it('locks down and versions a newly created artefact bucket', function () {
+    $captured = [];
+
+    bindMockS3Client([
+        // missing on the first check, then present for the BucketExists waiter
+        // (which matches on a 200 status).
+        'HeadBucket' => [s3NotFound(), new Result(['@metadata' => ['statusCode' => 200]])],
+        'CreateBucket' => new Result(),
+        'PutBucketTagging' => new Result(),
+        'PutPublicAccessBlock' => new Result(),
+        'PutBucketVersioning' => new Result(),
+    ], $captured);
+
+    expect((new SyncS3ArtefactBucketStep())([]))->toBe(StepResult::CREATED);
+
+    $names = array_column($captured, 'name');
+    expect($names)->toContain('CreateBucket')
+        ->toContain('PutPublicAccessBlock')
+        ->toContain('PutBucketVersioning');
+
+    $blockPublicAccess = collect($captured)->firstWhere('name', 'PutPublicAccessBlock');
+    expect($blockPublicAccess['args']['PublicAccessBlockConfiguration'])->toBe([
+        'BlockPublicAcls' => true,
+        'IgnorePublicAcls' => true,
+        'BlockPublicPolicy' => true,
+        'RestrictPublicBuckets' => true,
+    ]);
+
+    $versioning = collect($captured)->firstWhere('name', 'PutBucketVersioning');
+    expect($versioning['args']['VersioningConfiguration']['Status'])->toBe('Enabled');
+});
+
+it('reconciles BPA and versioning onto an existing artefact bucket', function () {
+    $captured = [];
+
+    bindMockS3Client([
+        'HeadBucket' => new Result(),   // exists
+        'PutPublicAccessBlock' => new Result(),
+        'PutBucketVersioning' => new Result(),
+    ], $captured);
+
+    expect((new SyncS3ArtefactBucketStep())([]))->toBe(StepResult::SYNCED);
+
+    $names = array_column($captured, 'name');
+    expect($names)->toContain('PutPublicAccessBlock')
+        ->toContain('PutBucketVersioning')
+        ->not->toContain('CreateBucket');
+});
+
+it('does not mutate the artefact bucket during a dry-run', function () {
+    $captured = [];
+
+    bindMockS3Client([
+        'HeadBucket' => new Result(),   // exists
+    ], $captured);
+
+    expect((new SyncS3ArtefactBucketStep())(['dry-run' => true]))->toBe(StepResult::SYNCED);
+
+    $names = array_column($captured, 'name');
+    expect($names)->not->toContain('PutPublicAccessBlock')
+        ->not->toContain('PutBucketVersioning');
+});
+
+it('blocks public access on a newly created app bucket', function () {
+    writeManifest([
+        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket'],
+    ]);
+
+    $captured = [];
+
+    bindMockS3Client([
+        'HeadBucket' => [s3NotFound(), new Result(['@metadata' => ['statusCode' => 200]])],
+        'CreateBucket' => new Result(),
+        'PutBucketTagging' => new Result(),
+        'PutPublicAccessBlock' => new Result(),
+    ], $captured);
+
+    expect((new SyncS3BucketStep())([]))->toBe(StepResult::CREATED);
+    expect(array_column($captured, 'name'))->toContain('PutPublicAccessBlock');
+});
+
+it('does not flip public access on an existing app bucket', function () {
+    writeManifest([
+        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket'],
+    ]);
+
+    $captured = [];
+
+    bindMockS3Client([
+        'HeadBucket' => new Result(),   // exists
+    ], $captured);
+
+    expect((new SyncS3BucketStep())([]))->toBe(StepResult::SYNCED);
+    expect(array_column($captured, 'name'))->not->toContain('PutPublicAccessBlock');
+});
