@@ -25,10 +25,9 @@ class SyncNetworkCommand extends SyncSteppedCommand
         Steps\Network\SyncDefaultRouteStep::class,
         Steps\Network\SyncPublicSubnetsAssociationToRouteTableStep::class,
 
-        // security groups
+        // security groups (the RDS SG moved to sync:compute — its ingress source
+        // is the ECS task SG, which sync:compute provisions)
         Steps\Network\SyncLoadBalancerSecurityGroupStep::class,
-        Steps\Network\SyncEc2SecurityGroupStep::class,
-        Steps\Network\SyncRdsSecurityGroupStep::class,
 
         // sns
         Steps\Network\SyncSnsAlarmTopicStep::class,

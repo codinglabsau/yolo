@@ -10,6 +10,8 @@ class SyncComputeCommand extends SyncSteppedCommand
         Steps\Fargate\SyncEcrRepositoryStep::class,
         Steps\Fargate\SyncEcsClusterStep::class,
         Steps\Fargate\SyncTaskSecurityGroupStep::class,
+        // RDS SG authorises 3306 from the task SG above, so it must run after it.
+        Steps\Network\SyncRdsSecurityGroupStep::class,
         Steps\Fargate\SyncLoadBalancerStep::class,
         Steps\Fargate\SyncTargetGroupStep::class,
         Steps\Fargate\SyncHttpListenerStep::class,
