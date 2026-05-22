@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Resources\Iam;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
@@ -64,7 +65,7 @@ class EcsTaskPolicy implements Resource
      */
     public function description(): string
     {
-        return 'YOLO managed policy granting ECS Exec session channel permissions to the shared task role';
+        return 'YOLO managed baseline policy granting ECS Exec session channels and SQS queue access to the shared task role';
     }
 
     public function synchroniseTags(): void
@@ -112,7 +113,35 @@ class EcsTaskPolicy implements Resource
                         'ssmmessages:OpenDataChannel',
                     ],
                 ],
+                [
+                    // Lets the container dispatch to and work the YOLO-provisioned
+                    // SQS queues via the task role (no static AWS keys in the app).
+                    // Shared policy → scoped to every YOLO queue in this environment
+                    // (solo `yolo-{env}-{app}` + per-tenant variants).
+                    'Effect' => 'Allow',
+                    'Resource' => $this->queueArnPattern(),
+                    'Action' => [
+                        'sqs:SendMessage',
+                        'sqs:SendMessageBatch',
+                        'sqs:ReceiveMessage',
+                        'sqs:DeleteMessage',
+                        'sqs:DeleteMessageBatch',
+                        'sqs:ChangeMessageVisibility',
+                        'sqs:GetQueueAttributes',
+                        'sqs:GetQueueUrl',
+                    ],
+                ],
             ],
         ];
+    }
+
+    protected function queueArnPattern(): string
+    {
+        return sprintf(
+            'arn:aws:sqs:%s:%s:%s-*',
+            Manifest::get('aws.region'),
+            Aws::accountId(),
+            Helpers::keyedResourceName(exclusive: false),
+        );
     }
 }

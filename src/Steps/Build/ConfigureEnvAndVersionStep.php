@@ -44,10 +44,31 @@ class ConfigureEnvAndVersionStep implements Step
         // own prefix and old builds keep resolving.
         $values['ASSET_URL'] = sprintf('https://%s/builds/%s', (new AssetDistribution())->domain(), $appVersion);
 
-        // Inject the app's S3 bucket from the manifest when the consumer hasn't set
-        // it explicitly — single source of truth, respects an explicit .env override.
-        if (Manifest::has('aws.bucket') && ! $this->envDefines($envPath, 'AWS_BUCKET')) {
-            $values['AWS_BUCKET'] = Manifest::get('aws.bucket');
+        // Fargate-sane defaults injected only when the consumer's .env doesn't
+        // already set them — so the app "just works" with zero queue config but
+        // can still override. YOLO owns the SQS queue it provisions, so it knows
+        // the exact name + URL; the app never has to (and can't accidentally point
+        // at the wrong queue). No static AWS keys — the task role carries SQS access.
+        $defaults = [
+            'QUEUE_CONNECTION' => 'sqs',
+            'AWS_DEFAULT_REGION' => Manifest::get('aws.region'),
+            'SQS_PREFIX' => sprintf('https://sqs.%s.amazonaws.com/%s', Manifest::get('aws.region'), Aws::accountId()),
+        ];
+
+        // Solo apps have one queue; in multitenancy the worker resolves the
+        // per-tenant queue at runtime, so a single SQS_QUEUE would be wrong.
+        if (! Manifest::isMultitenanted()) {
+            $defaults['SQS_QUEUE'] = Helpers::keyedResourceName();
+        }
+
+        if (Manifest::has('aws.bucket')) {
+            $defaults['AWS_BUCKET'] = Manifest::get('aws.bucket');
+        }
+
+        foreach ($defaults as $key => $value) {
+            if (! $this->envDefines($envPath, $key)) {
+                $values[$key] = $value;
+            }
         }
 
         $this->filesystem->append($envPath, $this->generateValues($values));
