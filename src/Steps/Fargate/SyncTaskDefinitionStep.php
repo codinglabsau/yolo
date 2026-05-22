@@ -10,6 +10,7 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\Iam\EcsTaskRole;
 use Codinglabs\Yolo\Resources\Fargate\TaskLogGroup;
+use Codinglabs\Yolo\Resources\Iam\EcsExecutionRole;
 use Codinglabs\Yolo\Resources\Fargate\EcrRepository;
 
 class SyncTaskDefinitionStep implements Step
@@ -40,6 +41,10 @@ class SyncTaskDefinitionStep implements Step
             ? Manifest::get('tasks.web.task-role')
             : (new EcsTaskRole())->arn();
 
+        $executionRoleArn = Manifest::has('tasks.web.execution-role')
+            ? Manifest::get('tasks.web.execution-role')
+            : (new EcsExecutionRole())->arn();
+
         // Task definition family matches the keyed resource name (exclusive); same
         // value as EcsService::name(). Inlined rather than introducing a Resource
         // for the task definition (it's re-registered every sync — no exists/create).
@@ -51,7 +56,7 @@ class SyncTaskDefinitionStep implements Step
             'requiresCompatibilities' => ['FARGATE'],
             'cpu' => $cpu,
             'memory' => $memory,
-            'executionRoleArn' => Manifest::get('tasks.web.execution-role', 'ecsTaskExecutionRole'),
+            'executionRoleArn' => $executionRoleArn,
             'taskRoleArn' => $taskRoleArn,
             'containerDefinitions' => [
                 [

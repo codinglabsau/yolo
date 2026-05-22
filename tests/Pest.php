@@ -3,7 +3,9 @@
 use Aws\Result;
 use Aws\MockHandler;
 use Aws\Iam\IamClient;
+use Aws\CommandInterface;
 use Codinglabs\Yolo\Helpers;
+use GuzzleHttp\Promise\Create;
 use Symfony\Component\Yaml\Yaml;
 
 /*
@@ -71,19 +73,31 @@ function writeManifest(array $config, string $environment = 'testing'): void
 }
 
 /**
- * Bind a mock IAM client returning a single role matching the supplied name + ARN.
- * Used by tests that exercise paths defaulting to AwsResources::ecsTaskRole().
+ * Bind a mock IAM client whose ListRoles returns the supplied roles. The handler
+ * repeats (no MockHandler queue), so any number of lookups — task role, execution
+ * role, etc. — resolve without exhausting a queue.
+ *
+ * @param  array<string, string>  $roles  roleName => roleArn
  */
-function bindMockIamClient(string $roleName, string $roleArn): void
+function bindMockIamClient(array $roles): void
 {
-    $mock = new MockHandler();
-
-    $mock->append(new Result([
-        'Roles' => [
-            ['RoleName' => $roleName, 'Arn' => $roleArn],
-        ],
+    $result = new Result([
+        'Roles' => collect($roles)
+            ->map(fn (string $arn, string $name) => ['RoleName' => $name, 'Arn' => $arn])
+            ->values()
+            ->all(),
         'IsTruncated' => false,
-    ]));
+    ]);
+
+    $mock = new class($result) extends MockHandler
+    {
+        public function __construct(protected Result $result) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            return Create::promiseFor($this->result);
+        }
+    };
 
     Helpers::app()->instance('iam', new IamClient([
         'region' => 'ap-southeast-2',

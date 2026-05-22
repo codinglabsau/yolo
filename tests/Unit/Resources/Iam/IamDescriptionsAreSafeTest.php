@@ -2,6 +2,7 @@
 
 use Codinglabs\Yolo\Resources\Iam\EcsTaskRole;
 use Codinglabs\Yolo\Resources\Iam\EcsTaskPolicy;
+use Codinglabs\Yolo\Resources\Iam\EcsExecutionRole;
 use Codinglabs\Yolo\Steps\Iam\SyncMediaConvertRoleStep;
 
 /**
@@ -22,6 +23,10 @@ it('EcsTaskRole description is safe for the IAM API', function () {
 
 it('EcsTaskPolicy description is safe for the IAM API', function () {
     expect((new EcsTaskPolicy())->description())->toMatch(IAM_DESCRIPTION_PATTERN);
+});
+
+it('EcsExecutionRole description is safe for the IAM API', function () {
+    expect((new EcsExecutionRole())->description())->toMatch(IAM_DESCRIPTION_PATTERN);
 });
 
 it('SyncMediaConvertRoleStep description is safe for the IAM API', function () {

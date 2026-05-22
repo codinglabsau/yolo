@@ -8,4 +8,5 @@ enum Iam: string
     case MEDIA_CONVERT_ROLE = 'mediaconvert-role';
     case ECS_TASK_ROLE = 'ecs-task-role';
     case ECS_TASK_POLICY = 'ecs-task-policy';
+    case ECS_EXECUTION_ROLE = 'ecs-execution-role';
 }

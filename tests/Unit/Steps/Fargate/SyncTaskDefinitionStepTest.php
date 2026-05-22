@@ -61,6 +61,7 @@ it('prefers the supplied tag over the manifest image override', function () {
         'tasks' => ['web' => [
             'image' => 'public.ecr.aws/nginx:stable',
             'task-role' => 'custom-task-role',
+            'execution-role' => 'custom-execution-role',
         ]],
     ]);
 
@@ -76,6 +77,7 @@ it('honours explicit task image override', function () {
         'tasks' => ['web' => [
             'image' => 'public.ecr.aws/nginx:stable',
             'task-role' => 'custom-task-role',
+            'execution-role' => 'custom-execution-role',
         ]],
     ]);
 
@@ -89,18 +91,18 @@ it('falls back to defaults when manifest omits task config', function () {
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
     ]);
 
-    bindMockIamClient(
-        roleName: 'yolo-testing-ecs-task-role',
-        roleArn: 'arn:aws:iam::111111111111:role/yolo-testing-ecs-task-role',
-    );
+    bindMockIamClient([
+        'yolo-testing-ecs-task-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-task-role',
+        'yolo-testing-ecs-execution-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role',
+    ]);
 
     $payload = SyncTaskDefinitionStep::payload();
 
     expect($payload['cpu'])->toBe('512');
     expect($payload['memory'])->toBe('1024');
     expect($payload['containerDefinitions'][0]['portMappings'][0]['containerPort'])->toBe(8000);
-    expect($payload['executionRoleArn'])->toBe('ecsTaskExecutionRole');
     expect($payload['taskRoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-ecs-task-role');
+    expect($payload['executionRoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role');
 });
 
 it('enables init process in the web container for proper PID 1 signal handling', function () {
