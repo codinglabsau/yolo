@@ -25,7 +25,6 @@ class DeployCommand extends SteppedCommand
             ->setName('deploy')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('app-version', null, InputArgument::OPTIONAL, 'Tag to stamp on the build (defaults to a timestamp)')
-            ->addOption('watch', null, null, 'Wait for the ECS service to reach a steady state')
             ->addOption('no-progress', null, null, 'Hide the progress output')
             ->setDescription('Build, push, and deploy the application');
     }
