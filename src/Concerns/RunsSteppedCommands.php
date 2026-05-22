@@ -182,6 +182,14 @@ trait RunsSteppedCommands
 
         $status = $step->__invoke($this->input->getOptions(), $this);
 
+        // Build steps return void, and HasSubSteps steps return their sub-step
+        // array (load-bearing for expandStep) — neither is a StepResult. Steps
+        // signal failure by throwing, so a step that returned at all succeeded:
+        // render it as such rather than handing renderStatus a non-StepResult.
+        if (! $status instanceof StepResult && ! is_string($status)) {
+            $status = StepResult::SUCCESS;
+        }
+
         $progress?->advance();
 
         return ['status' => $status, 'elapsed' => time() - $started];
