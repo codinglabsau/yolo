@@ -23,12 +23,12 @@ trait UsesEcs
 
     public static function ecsServiceName(): string
     {
-        return Helpers::keyedResourceName(exclusive: true);
+        return Helpers::keyedResourceName('web', exclusive: true);
     }
 
     public static function ecsTaskFamily(): string
     {
-        return Helpers::keyedResourceName(exclusive: true);
+        return Helpers::keyedResourceName('web', exclusive: true);
     }
 
     public static function ecsCluster(bool $refresh = false): array

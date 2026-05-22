@@ -14,6 +14,7 @@ use Aws\Sqs\SqsClient;
 use Aws\Ssm\SsmClient;
 use Aws\Sts\StsClient;
 use Aws\Route53\Route53Client;
+use Aws\CloudFront\CloudFrontClient;
 use Aws\CloudWatch\CloudWatchClient;
 use Aws\CodeDeploy\CodeDeployClient;
 use Aws\AutoScaling\AutoScalingClient;
@@ -261,6 +262,11 @@ class Aws
     public static function autoscaling(): AutoScalingClient
     {
         return Helpers::app('autoscaling');
+    }
+
+    public static function cloudFront(): CloudFrontClient
+    {
+        return Helpers::app('cloudFront');
     }
 
     public static function cloudWatch(): CloudWatchClient

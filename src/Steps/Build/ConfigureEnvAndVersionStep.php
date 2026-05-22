@@ -10,6 +10,7 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Contracts\Step;
 use Illuminate\Filesystem\Filesystem;
+use Codinglabs\Yolo\Resources\CloudFront\AssetDistribution;
 
 class ConfigureEnvAndVersionStep implements Step
 {
@@ -21,6 +22,7 @@ class ConfigureEnvAndVersionStep implements Step
     public function __invoke(array $options): void
     {
         $appVersion = Arr::get($options, 'app-version');
+        $envPath = Paths::build(".env.$this->environment");
 
         $this->filesystem->put(
             Paths::version(),
@@ -36,19 +38,28 @@ class ConfigureEnvAndVersionStep implements Step
             ),
         ];
 
-        // Fargate serves Vite's content-hashed assets straight from public/build,
-        // so cache-busting is handled by the filename hashes — no ASSET_URL needed.
-        // Only set it when a CDN explicitly fronts the container (manifest `asset-url`),
-        // and without a version prefix (the alpha S3/CloudFront versioned-path scheme
-        // does not apply to container-served assets).
-        if (Manifest::has('asset-url')) {
-            $values['ASSET_URL'] = Manifest::get('asset-url');
+        // Assets always live in S3 behind the YOLO-provisioned CloudFront
+        // distribution. ASSET_URL points app-generated asset URLs at it,
+        // versioned per build so each deploy's hashed bundle sits under its
+        // own prefix and old builds keep resolving.
+        $values['ASSET_URL'] = sprintf('https://%s/builds/%s', (new AssetDistribution())->domain(), $appVersion);
+
+        // Inject the app's S3 bucket from the manifest when the consumer hasn't set
+        // it explicitly — single source of truth, respects an explicit .env override.
+        if (Manifest::has('aws.bucket') && ! $this->envDefines($envPath, 'AWS_BUCKET')) {
+            $values['AWS_BUCKET'] = Manifest::get('aws.bucket');
         }
 
-        $this->filesystem->append(
-            Paths::build(".env.$this->environment"),
-            $this->generateValues($values)
-        );
+        $this->filesystem->append($envPath, $this->generateValues($values));
+    }
+
+    protected function envDefines(string $path, string $key): bool
+    {
+        if (! $this->filesystem->exists($path)) {
+            return false;
+        }
+
+        return preg_match('/^' . preg_quote($key, '/') . '=/m', $this->filesystem->get($path)) === 1;
     }
 
     protected function generateValues(array $values): string
