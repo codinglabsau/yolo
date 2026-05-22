@@ -10,7 +10,7 @@ class SyncStorageCommand extends SteppedCommand
     protected array $steps = [
         Steps\Storage\SyncS3ArtefactBucketStep::class,
         Steps\Storage\SyncS3BucketStep::class,
-        Steps\Storage\SyncAssetBucketStep::class,
+        Steps\Storage\SyncS3AssetBucketStep::class,
     ];
 
     protected function configure(): void

@@ -13,7 +13,7 @@ beforeEach(function () {
 
     bindMockCloudFrontClient([
         [
-            'Comment' => 'yolo-testing-my-app-cdn',
+            'Comment' => 'yolo-testing-my-app-assets',
             'DomainName' => 'd123abc.cloudfront.net',
             'ARN' => 'arn:aws:cloudfront::111111111111:distribution/E123',
             'Id' => 'E123',

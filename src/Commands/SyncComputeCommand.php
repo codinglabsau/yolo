@@ -19,7 +19,7 @@ class SyncComputeCommand extends SteppedCommand
         Steps\Fargate\SyncTaskLogGroupStep::class,
         Steps\Fargate\SyncTaskDefinitionStep::class,
         Steps\Fargate\SyncEcsServiceStep::class,
-        Steps\Cdn\SyncDistributionStep::class,
+        Steps\CloudFront\SyncAssetDistributionStep::class,
     ];
 
     protected function configure(): void

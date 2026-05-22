@@ -10,7 +10,7 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Contracts\Step;
 use Illuminate\Filesystem\Filesystem;
-use Codinglabs\Yolo\Resources\Cdn\Distribution;
+use Codinglabs\Yolo\Resources\CloudFront\AssetDistribution;
 
 class ConfigureEnvAndVersionStep implements Step
 {
@@ -42,7 +42,7 @@ class ConfigureEnvAndVersionStep implements Step
         // distribution. ASSET_URL points app-generated asset URLs at it,
         // versioned per build so each deploy's hashed bundle sits under its
         // own prefix and old builds keep resolving.
-        $values['ASSET_URL'] = sprintf('https://%s/builds/%s', (new Distribution())->domain(), $appVersion);
+        $values['ASSET_URL'] = sprintf('https://%s/builds/%s', (new AssetDistribution())->domain(), $appVersion);
 
         // Inject the app's S3 bucket from the manifest when the consumer hasn't set
         // it explicitly — single source of truth, respects an explicit .env override.

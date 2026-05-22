@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Resources\Cdn;
+namespace Codinglabs\Yolo\Resources\CloudFront;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Str;
@@ -12,21 +12,22 @@ use Codinglabs\Yolo\Resources\Storage\AssetBucket;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * The application's CloudFront distribution. Today it serves build assets from
- * the private asset bucket via Origin Access Control; the name is deliberately
- * generic (`cdn`, not `assets`) because the same distribution is the natural
- * front door for page caching later. The keyed resource name is stamped into
- * the distribution's Comment (and the OAC's Name) for lookup, and surfaced as
- * the `Name` tag.
+ * CloudFront distribution dedicated to the application's build assets. It has a
+ * single S3 origin (the private asset bucket, via Origin Access Control) and
+ * default-routes everything to it; it's reached on its own `*.cloudfront.net`
+ * domain, which ASSET_URL points at. The app's own DNS stays on the ALB.
  *
- * For now the only origin is S3 (`/builds/*`); the site itself stays on the
- * ALB and ASSET_URL points app-generated asset URLs here.
+ * Assets-only by design. Page caching, if it ever lands, gets its OWN
+ * distribution fronting the app — a single distribution path-splitting
+ * `builds/*` -> S3 and everything-else -> ALB would hijack any app that has its
+ * own `/builds` route. The keyed name is stamped into the distribution's
+ * Comment (and the OAC's Name) for lookup, and surfaced as the `Name` tag.
  */
-class Distribution implements Resource
+class AssetDistribution implements Resource
 {
     public function name(): string
     {
-        return Helpers::keyedResourceName('cdn', exclusive: true);
+        return Helpers::keyedResourceName('assets', exclusive: true);
     }
 
     public function tags(): array
