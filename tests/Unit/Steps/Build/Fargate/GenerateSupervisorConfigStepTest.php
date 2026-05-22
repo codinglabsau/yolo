@@ -35,7 +35,20 @@ it('defaults the octane port to 8000', function () {
     expect(generatedSupervisorConfig())->toContain('--port=8000');
 });
 
-it('runs the scheduler and queue worker by default (the web task does everything)', function () {
+it('runs octane only by default — scheduler and queue are opt-in', function () {
+    $config = generatedSupervisorConfig();
+
+    expect($config)->toContain('[program:octane]');
+    expect($config)->not->toContain('[program:scheduler]');
+    expect($config)->not->toContain('[program:queue]');
+});
+
+it('runs the scheduler and queue worker when explicitly enabled', function () {
+    writeManifest([
+        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'tasks' => ['web' => ['queue' => true, 'scheduler' => true]],
+    ]);
+
     $config = generatedSupervisorConfig();
 
     expect($config)->toContain('[program:scheduler]');
@@ -44,28 +57,15 @@ it('runs the scheduler and queue worker by default (the web task does everything
     expect($config)->toContain('command=php artisan queue:work --tries=3 --max-time=3600');
 });
 
-it('omits the queue worker when tasks.web.queue is false', function () {
+it('runs the queue worker without the scheduler when only queue is enabled', function () {
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'tasks' => ['web' => ['queue' => false]],
+        'tasks' => ['web' => ['queue' => true]],
     ]);
 
     $config = generatedSupervisorConfig();
 
-    expect($config)->not->toContain('[program:queue]');
-    expect($config)->toContain('[program:octane]');
-    expect($config)->toContain('[program:scheduler]');
-});
-
-it('omits the scheduler when tasks.web.scheduler is false', function () {
-    writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'tasks' => ['web' => ['scheduler' => false]],
-    ]);
-
-    $config = generatedSupervisorConfig();
-
+    expect($config)->toContain('[program:queue]');
     expect($config)->not->toContain('[program:scheduler]');
     expect($config)->toContain('[program:octane]');
-    expect($config)->toContain('[program:queue]');
 });
