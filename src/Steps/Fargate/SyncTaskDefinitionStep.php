@@ -4,11 +4,11 @@ namespace Codinglabs\Yolo\Steps\Fargate;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\Iam\EcsTaskRole;
+use Codinglabs\Yolo\Resources\Fargate\EcsService;
 use Codinglabs\Yolo\Resources\Fargate\TaskLogGroup;
 use Codinglabs\Yolo\Resources\Iam\EcsExecutionRole;
 use Codinglabs\Yolo\Resources\Fargate\EcrRepository;
@@ -45,10 +45,10 @@ class SyncTaskDefinitionStep implements Step
             ? Manifest::get('tasks.web.execution-role')
             : (new EcsExecutionRole())->arn();
 
-        // Task definition family matches the keyed resource name (exclusive); same
-        // value as EcsService::name(). Inlined rather than introducing a Resource
-        // for the task definition (it's re-registered every sync — no exists/create).
-        $family = Helpers::keyedResourceName(exclusive: true);
+        // The family is the web service name — EcsService points its `taskDefinition`
+        // at the same value, so they stay in lockstep. The task definition isn't its
+        // own Resource (re-registered every sync — no exists/create distinction).
+        $family = (new EcsService())->name();
 
         return [
             'family' => $family,

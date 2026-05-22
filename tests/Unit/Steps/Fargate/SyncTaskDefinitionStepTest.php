@@ -20,7 +20,7 @@ beforeEach(function () {
 it('renders a Fargate-compatible task definition payload', function () {
     $payload = SyncTaskDefinitionStep::payload();
 
-    expect($payload['family'])->toBe('yolo-testing-my-app');
+    expect($payload['family'])->toBe('yolo-testing-my-app-web');
     expect($payload['networkMode'])->toBe('awsvpc');
     expect($payload['requiresCompatibilities'])->toBe(['FARGATE']);
     expect($payload['cpu'])->toBe('1024');

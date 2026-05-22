@@ -14,7 +14,7 @@ class EcsService implements Resource
 {
     public function name(): string
     {
-        return Helpers::keyedResourceName(exclusive: true);
+        return Helpers::keyedResourceName('web', exclusive: true);
     }
 
     public function tags(): array
@@ -90,9 +90,10 @@ class EcsService implements Resource
         return [
             'cluster' => (new EcsCluster())->name(),
             'serviceName' => $this->name(),
-            // Task definition family matches the service name (keyedResourceName, exclusive).
-            // TaskDef doesn't fit the Resource shape (re-registered every sync, no exists/create
-            // distinction), so we inline the family name rather than introduce a Resource for it.
+            // The task definition family is the web service name — SyncTaskDefinitionStep
+            // registers the family from this same value. TaskDef doesn't fit the Resource
+            // shape (re-registered every sync, no exists/create distinction), so the family
+            // is the service name rather than its own Resource.
             'taskDefinition' => $this->name(),
             'desiredCount' => $this->desiredCount(),
             'launchType' => 'FARGATE',
