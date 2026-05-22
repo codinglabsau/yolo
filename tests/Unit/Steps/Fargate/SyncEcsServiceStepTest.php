@@ -11,35 +11,44 @@ describe('serviceNeedsUpdate', function () {
         ]);
     });
 
-    it('is false when desiredCount and grace period match', function () {
+    it('is false when grace period and exec flag match', function () {
         expect(EcsService::serviceNeedsUpdate(
-            service: ['desiredCount' => 1, 'healthCheckGracePeriodSeconds' => 60],
-            desiredCount: 1,
+            service: ['enableExecuteCommand' => true, 'healthCheckGracePeriodSeconds' => 60],
             gracePeriod: 60,
+            enableExecuteCommand: true,
         ))->toBeFalse();
     });
 
-    it('is true when desiredCount diverges', function () {
+    it('is true when the grace period diverges', function () {
         expect(EcsService::serviceNeedsUpdate(
-            service: ['desiredCount' => 1, 'healthCheckGracePeriodSeconds' => 60],
-            desiredCount: 2,
+            service: ['enableExecuteCommand' => true, 'healthCheckGracePeriodSeconds' => 120],
             gracePeriod: 60,
+            enableExecuteCommand: true,
         ))->toBeTrue();
     });
 
-    it('is true when grace period diverges', function () {
+    it('is true when the exec-command flag diverges (so manifest toggles take effect on sync)', function () {
         expect(EcsService::serviceNeedsUpdate(
-            service: ['desiredCount' => 1, 'healthCheckGracePeriodSeconds' => 120],
-            desiredCount: 1,
+            service: ['enableExecuteCommand' => false, 'healthCheckGracePeriodSeconds' => 60],
             gracePeriod: 60,
+            enableExecuteCommand: true,
         ))->toBeTrue();
+    });
+
+    it('does NOT reconcile desiredCount — capacity is owned by ops, not the manifest', function () {
+        // A manual scale (or autoscaling) to 5 must not trip an update.
+        expect(EcsService::serviceNeedsUpdate(
+            service: ['desiredCount' => 5, 'enableExecuteCommand' => true, 'healthCheckGracePeriodSeconds' => 60],
+            gracePeriod: 60,
+            enableExecuteCommand: true,
+        ))->toBeFalse();
     });
 
     it('treats missing healthCheckGracePeriodSeconds as the manifest default (no churn against older services)', function () {
         expect(EcsService::serviceNeedsUpdate(
-            service: ['desiredCount' => 1],
-            desiredCount: 1,
+            service: ['enableExecuteCommand' => true],
             gracePeriod: 60,
+            enableExecuteCommand: true,
         ))->toBeFalse();
     });
 });
@@ -54,17 +63,17 @@ describe('serviceNeedsUpdate when headless', function () {
 
     it('ignores grace period drift for headless services (no ALB to reconcile against)', function () {
         expect(EcsService::serviceNeedsUpdate(
-            service: ['desiredCount' => 1, 'healthCheckGracePeriodSeconds' => 9999],
-            desiredCount: 1,
+            service: ['enableExecuteCommand' => true, 'healthCheckGracePeriodSeconds' => 9999],
             gracePeriod: 60,
+            enableExecuteCommand: true,
         ))->toBeFalse();
     });
 
-    it('still detects desiredCount drift for headless services', function () {
+    it('still reconciles the exec flag for headless services', function () {
         expect(EcsService::serviceNeedsUpdate(
-            service: ['desiredCount' => 1],
-            desiredCount: 3,
+            service: ['enableExecuteCommand' => false],
             gracePeriod: 60,
+            enableExecuteCommand: true,
         ))->toBeTrue();
     });
 });
@@ -94,12 +103,21 @@ describe('updatePayload', function () {
         expect((new EcsService())->updatePayload()['healthCheckGracePeriodSeconds'])->toBe(60);
     });
 
-    it('reads desiredCount from the manifest', function () {
+    it('reconciles the exec-command flag', function () {
         writeManifest([
             'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-            'tasks' => ['web' => ['desired-count' => 3]],
+            'tasks' => ['web' => ['enable-execute-command' => true]],
         ]);
 
-        expect((new EcsService())->updatePayload()['desiredCount'])->toBe(3);
+        expect((new EcsService())->updatePayload()['enableExecuteCommand'])->toBeTrue();
+    });
+
+    it('never includes desiredCount — capacity is set once at create, never reset on update', function () {
+        writeManifest([
+            'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+            'tasks' => ['web' => []],
+        ]);
+
+        expect((new EcsService())->updatePayload())->not->toHaveKey('desiredCount');
     });
 });

@@ -12,6 +12,8 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class EcsService implements Resource
 {
+    protected const INITIAL_DESIRED_COUNT = 1;
+
     public function name(): string
     {
         return Helpers::keyedResourceName('web', exclusive: true);
@@ -49,16 +51,19 @@ class EcsService implements Resource
     }
 
     /**
-     * Service-config drift (desired count + grace period) reconciled by
-     * updateService. Task definition revision adoption is owned by
-     * `yolo deploy`, not sync — sync reconciles only slow-moving knobs.
+     * Exec-command and grace-period drift are reconciled by updateService, so
+     * toggling tasks.web.enable-execute-command takes effect on the next sync.
+     * Desired count is NOT reconciled — capacity is set once at create then owned
+     * by ops (the console, a future `yolo scale`, or autoscaling), so a deploy/sync
+     * never resets it out from under a manual scale. Task definition revision
+     * adoption is owned by `yolo deploy`, not sync.
      */
     public function needsUpdate(): bool
     {
         return static::serviceNeedsUpdate(
             Ecs::service((new EcsCluster())->name(), $this->name()),
-            $this->desiredCount(),
             $this->gracePeriod(),
+            $this->enableExecuteCommand(),
         );
     }
 
@@ -66,9 +71,9 @@ class EcsService implements Resource
      * Pure comparison — extracted so tests can pin headless / missing-grace-period
      * behaviour without mocking the ECS client.
      */
-    public static function serviceNeedsUpdate(array $service, int $desiredCount, int $gracePeriod): bool
+    public static function serviceNeedsUpdate(array $service, int $gracePeriod, bool $enableExecuteCommand): bool
     {
-        if ($service['desiredCount'] !== $desiredCount) {
+        if (($service['enableExecuteCommand'] ?? false) !== $enableExecuteCommand) {
             return true;
         }
 
@@ -95,7 +100,9 @@ class EcsService implements Resource
             // shape (re-registered every sync, no exists/create distinction), so the family
             // is the service name rather than its own Resource.
             'taskDefinition' => $this->name(),
-            'desiredCount' => $this->desiredCount(),
+            // Capacity isn't a manifest concern — start at one task and let ops
+            // scale it (console / `yolo scale` / autoscaling); never reconciled.
+            'desiredCount' => self::INITIAL_DESIRED_COUNT,
             'launchType' => 'FARGATE',
             ...Manifest::isHeadless() ? [] : ['healthCheckGracePeriodSeconds' => $this->gracePeriod()],
             'deploymentConfiguration' => [
@@ -121,10 +128,7 @@ class EcsService implements Resource
             ],
             'tags' => Aws::ecsTags($this->tags()),
             'propagateTags' => 'SERVICE',
-            'enableExecuteCommand' => Helpers::validateStrictBool(
-                Manifest::get('tasks.web.enable-execute-command', false),
-                'tasks.web.enable-execute-command',
-            ),
+            'enableExecuteCommand' => $this->enableExecuteCommand(),
         ];
     }
 
@@ -133,14 +137,18 @@ class EcsService implements Resource
         return [
             'cluster' => (new EcsCluster())->name(),
             'service' => $this->name(),
-            'desiredCount' => $this->desiredCount(),
+            'enableExecuteCommand' => $this->enableExecuteCommand(),
+            // No desiredCount — capacity is create-only (see needsUpdate()).
             ...Manifest::isHeadless() ? [] : ['healthCheckGracePeriodSeconds' => $this->gracePeriod()],
         ];
     }
 
-    public function desiredCount(): int
+    public function enableExecuteCommand(): bool
     {
-        return (int) Manifest::get('tasks.web.desired-count', 1);
+        return Helpers::validateStrictBool(
+            Manifest::get('tasks.web.enable-execute-command', false),
+            'tasks.web.enable-execute-command',
+        );
     }
 
     public function gracePeriod(): int
