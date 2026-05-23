@@ -110,19 +110,27 @@ it('additively authorises 3306 from the task security group on an existing RDS S
     expect($permission['ToPort'])->toBe(3306);
     expect($permission['UserIdGroupPairs'][0]['GroupId'])->toBe('sg-task456');
     expect($authorise['args']['GroupId'])->toBe('sg-rds123');
-    expect($authorise['args']['TagSpecifications'][0]['Tags'][0]['Value'])->toBe('rds-task-ingress');
 
     // Purely additive — it must never revoke an existing rule.
     expect(array_column($captured, 'name'))->not->toContain('RevokeSecurityGroupIngress');
 });
 
-it('does not authorise again when the tagged task-SG rule already exists', function () {
+it('does not authorise again when a matching task-SG rule already exists', function () {
     $captured = [];
 
     bindMockEc2Client([
         'DescribeSecurityGroups' => describeRdsAndTaskGroups(),
+        // An existing 3306-from-task-SG rule — note it carries no marker tag, so
+        // matching by content (not a tag) is what lets us spot it.
         'DescribeSecurityGroupRules' => new Result(['SecurityGroupRules' => [
-            ['SecurityGroupRuleId' => 'sgr-existing'],
+            [
+                'SecurityGroupRuleId' => 'sgr-existing',
+                'IsEgress' => false,
+                'IpProtocol' => 'tcp',
+                'FromPort' => 3306,
+                'ToPort' => 3306,
+                'ReferencedGroupInfo' => ['GroupId' => 'sg-task456'],
+            ],
         ]]),
     ], $captured);
 

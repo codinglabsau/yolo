@@ -11,7 +11,6 @@ use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\SecurityGroup;
-use Codinglabs\Yolo\Enums\SecurityGroupRule;
 use Codinglabs\Yolo\Resources\Fargate\EcsTaskSecurityGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -21,10 +20,10 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * rather than sync:network, because the ingress source is the ECS task SG, which
  * sync:compute creates — the RDS subnet group stays in sync:network.
  *
- * The ingress rule is managed purely additively: we ensure a tagged
- * "3306 from the task SG" rule exists and never revoke anything. Any rule added
- * out of band (e.g. a legacy EC2 SG, a bastion, a hand-granted CIDR) is left
- * untouched, so this can't sever existing database access.
+ * The ingress rule is managed purely additively: we ensure a "3306 from the task
+ * SG" rule exists and never revoke anything. Any rule added out of band (e.g. a
+ * legacy EC2 SG, a bastion, a hand-granted CIDR) is left untouched, so this can't
+ * sever existing database access.
  */
 class SyncRdsSecurityGroupStep implements Step
 {
@@ -68,14 +67,28 @@ class SyncRdsSecurityGroupStep implements Step
     }
 
     /**
-     * Additively ensure a tagged 3306-from-task-SG ingress rule. Idempotent (keyed
-     * off the yolo:rule-type tag), never revokes, and a no-op under --dry-run.
+     * Additively ensure a 3306-from-task-SG ingress rule exists, identified by its
+     * content (AWS rejects duplicate permissions anyway, so no marker tag is
+     * needed). Never revokes, and a no-op under --dry-run.
      */
     protected function ensureTaskIngressRule(string $groupId, bool $dryRun): void
     {
-        $rules = Ec2::securityGroupRules($groupId, SecurityGroupRule::RDS_TASK_INGRESS_RULE->value);
+        if ($dryRun) {
+            return;
+        }
 
-        if (! empty($rules) || $dryRun) {
+        // Name lookup throws ResourceDoesNotExistException if the task SG is
+        // missing — sync:compute provisions it before this step runs.
+        $taskSecurityGroupId = (new EcsTaskSecurityGroup())->arn();
+
+        $alreadyAuthorised = collect(Ec2::securityGroupRules($groupId))->contains(
+            fn (array $rule) => ! ($rule['IsEgress'] ?? false)
+                && ($rule['IpProtocol'] ?? null) === 'tcp'
+                && ($rule['FromPort'] ?? null) === 3306
+                && ($rule['ReferencedGroupInfo']['GroupId'] ?? null) === $taskSecurityGroupId
+        );
+
+        if ($alreadyAuthorised) {
             return;
         }
 
@@ -88,19 +101,9 @@ class SyncRdsSecurityGroupStep implements Step
                     'ToPort' => 3306,
                     'UserIdGroupPairs' => [
                         [
-                            // Name lookup throws ResourceDoesNotExistException if the
-                            // task SG is missing — sync:compute provisions it first.
-                            'GroupId' => (new EcsTaskSecurityGroup())->arn(),
+                            'GroupId' => $taskSecurityGroupId,
                             'Description' => 'Enable Fargate tasks to connect to RDS',
                         ],
-                    ],
-                ],
-            ],
-            'TagSpecifications' => [
-                [
-                    'ResourceType' => 'security-group-rule',
-                    'Tags' => [
-                        ['Key' => 'yolo:rule-type', 'Value' => SecurityGroupRule::RDS_TASK_INGRESS_RULE->value],
                     ],
                 ],
             ],
