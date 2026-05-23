@@ -4,24 +4,39 @@ namespace Codinglabs\Yolo\Steps\Network;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
+use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\SecurityGroup;
+use Codinglabs\Yolo\Resources\Fargate\EcsTaskSecurityGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
+/**
+ * Provisions the RDS security group and authorises the Fargate tasks to reach
+ * the database on 3306. Runs in sync:compute (after SyncTaskSecurityGroupStep)
+ * rather than sync:network, because the ingress source is the ECS task SG, which
+ * sync:compute creates — the RDS subnet group stays in sync:network.
+ *
+ * The ingress rule is managed purely additively: we ensure a "3306 from the task
+ * SG" rule exists and never revoke anything. Any rule added out of band (e.g. a
+ * legacy EC2 SG, a bastion, a hand-granted CIDR) is left untouched, so this can't
+ * sever existing database access.
+ */
 class SyncRdsSecurityGroupStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
         try {
-            AwsResources::rdsSecurityGroup();
+            $securityGroup = AwsResources::rdsSecurityGroup();
 
             if (Manifest::has('aws.rds.security-group')) {
                 return StepResult::CUSTOM_MANAGED;
             }
+
+            $this->ensureTaskIngressRule($securityGroup['GroupId'], (bool) Arr::get($options, 'dry-run'));
 
             return StepResult::SYNCED;
         } catch (ResourceDoesNotExistException) {
@@ -29,7 +44,7 @@ class SyncRdsSecurityGroupStep implements Step
                 $name = Helpers::keyedResourceName(SecurityGroup::RDS_SECURITY_GROUP, exclusive: false);
 
                 Aws::ec2()->createSecurityGroup([
-                    'Description' => 'Enable EC2 to connect to RDS',
+                    'Description' => 'Enable Fargate tasks to connect to RDS',
                     'GroupName' => $name,
                     'VpcId' => AwsResources::vpc()['VpcId'],
                     'TagSpecifications' => [
@@ -42,30 +57,56 @@ class SyncRdsSecurityGroupStep implements Step
                     ],
                 ]);
 
-                $securityGroup = AwsResources::rdsSecurityGroup();
-
-                Aws::ec2()->authorizeSecurityGroupIngress([
-                    'GroupId' => $securityGroup['GroupId'],
-                    'IpPermissions' => [
-                        [
-                            // Enable EC2 to connect to RDS
-                            'IpProtocol' => 'tcp',
-                            'FromPort' => 3306,
-                            'ToPort' => 3306,
-                            'UserIdGroupPairs' => [
-                                [
-                                    'GroupId' => AwsResources::ec2SecurityGroup()['GroupId'],
-                                    'Description' => 'Enable EC2 to connect to RDS',
-                                ],
-                            ],
-                        ],
-                    ],
-                ]);
+                $this->ensureTaskIngressRule(AwsResources::rdsSecurityGroup()['GroupId'], false);
 
                 return StepResult::CREATED;
             }
 
             return StepResult::WOULD_CREATE;
         }
+    }
+
+    /**
+     * Additively ensure a 3306-from-task-SG ingress rule exists, identified by its
+     * content (AWS rejects duplicate permissions anyway, so no marker tag is
+     * needed). Never revokes, and a no-op under --dry-run.
+     */
+    protected function ensureTaskIngressRule(string $groupId, bool $dryRun): void
+    {
+        if ($dryRun) {
+            return;
+        }
+
+        // Name lookup throws ResourceDoesNotExistException if the task SG is
+        // missing — sync:compute provisions it before this step runs.
+        $taskSecurityGroupId = (new EcsTaskSecurityGroup())->arn();
+
+        $alreadyAuthorised = collect(Ec2::securityGroupRules($groupId))->contains(
+            fn (array $rule) => ! ($rule['IsEgress'] ?? false)
+                && ($rule['IpProtocol'] ?? null) === 'tcp'
+                && ($rule['FromPort'] ?? null) === 3306
+                && ($rule['ReferencedGroupInfo']['GroupId'] ?? null) === $taskSecurityGroupId
+        );
+
+        if ($alreadyAuthorised) {
+            return;
+        }
+
+        Aws::ec2()->authorizeSecurityGroupIngress([
+            'GroupId' => $groupId,
+            'IpPermissions' => [
+                [
+                    'IpProtocol' => 'tcp',
+                    'FromPort' => 3306,
+                    'ToPort' => 3306,
+                    'UserIdGroupPairs' => [
+                        [
+                            'GroupId' => $taskSecurityGroupId,
+                            'Description' => 'Enable Fargate tasks to connect to RDS',
+                        ],
+                    ],
+                ],
+            ],
+        ]);
     }
 }

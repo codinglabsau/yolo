@@ -27,8 +27,6 @@ class SyncNetworkCommand extends SyncSteppedCommand
 
         // security groups
         Steps\Network\SyncLoadBalancerSecurityGroupStep::class,
-        Steps\Network\SyncEc2SecurityGroupStep::class,
-        Steps\Network\SyncRdsSecurityGroupStep::class,
 
         // sns
         Steps\Network\SyncSnsAlarmTopicStep::class,

@@ -6,7 +6,6 @@ use BackedEnum;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Enums\PublicSubnets;
 use Codinglabs\Yolo\Enums\SecurityGroup;
@@ -18,21 +17,15 @@ trait UsesEc2
 
     protected static array $internetGateway;
 
-    protected static array $launchTemplate;
-
     protected static array $subnets;
 
     protected static array $routeTable;
 
     protected static array $loadBalancerSecurityGroup;
 
-    protected static array $ec2SecurityGroup;
-
     protected static array $ecsTaskSecurityGroup;
 
     protected static array $rdsSecurityGroup;
-
-    protected static array $keyPair;
 
     public static function availabilityZones(string $region): array
     {
@@ -120,20 +113,6 @@ trait UsesEc2
     /**
      * @throws ResourceDoesNotExistException
      */
-    public static function ec2SecurityGroup(): array
-    {
-        if (isset(static::$ec2SecurityGroup)) {
-            return static::$ec2SecurityGroup;
-        }
-
-        static::$ec2SecurityGroup = static::securityGroupByName(Manifest::get('aws.ec2.security-group', SecurityGroup::EC2_SECURITY_GROUP));
-
-        return static::$ec2SecurityGroup;
-    }
-
-    /**
-     * @throws ResourceDoesNotExistException
-     */
     public static function rdsSecurityGroup(): array
     {
         if (isset(static::$rdsSecurityGroup)) {
@@ -177,59 +156,6 @@ trait UsesEc2
         }
 
         throw new ResourceDoesNotExistException("Could not find Security Group matching name $name");
-    }
-
-    public static function launchTemplate($refresh = false): array
-    {
-        if (! $refresh && isset(static::$launchTemplate)) {
-            return static::$launchTemplate;
-        }
-
-        $launchTemplates = Aws::ec2()->describeLaunchTemplates([
-            'Filters' => [
-                [
-                    'Name' => 'launch-template-name',
-                    'Values' => [Helpers::keyedResourceName(exclusive: false)],
-                ],
-            ],
-        ])['LaunchTemplates'];
-
-        if (count($launchTemplates) === 0) {
-            throw ResourceDoesNotExistException::make(sprintf('Could not find launch template %s', Helpers::keyedResourceName()))
-                ->suggest('compute:sync');
-        }
-
-        static::$launchTemplate = $launchTemplates[0];
-
-        return static::$launchTemplate;
-    }
-
-    public static function launchTemplatePayload(): array
-    {
-        return [
-            'LaunchTemplateName' => Helpers::keyedResourceName(exclusive: false),
-            'LaunchTemplateData' => [
-                'IamInstanceProfile' => [
-                    'Name' => Helpers::keyedResourceName(Iam::INSTANCE_PROFILE, exclusive: false),
-                ],
-                'InstanceType' => Manifest::get('aws.ec2.instance-type'),
-                'KeyName' => Manifest::get('aws.ec2.key-pair', Helpers::keyedResourceName(exclusive: false)),
-                'SecurityGroupIds' => [
-                    AwsResources::ec2SecurityGroup()['GroupId'],
-                ],
-                'Monitoring' => [
-                    'Enabled' => true,
-                ],
-            ],
-            'TagSpecifications' => [
-                [
-                    'ResourceType' => 'launch-template',
-                    ...Aws::tags([
-                        'Name' => Helpers::keyedResourceName(),
-                    ]),
-                ],
-            ],
-        ];
     }
 
     public static function vpc(): array
@@ -356,25 +282,5 @@ trait UsesEc2
         }
 
         throw new ResourceDoesNotExistException("Could not find subnet matching name $fullSubnetName");
-    }
-
-    public static function keyPair(): array
-    {
-        if (isset(static::$keyPair)) {
-            return static::$keyPair;
-        }
-
-        $name = Manifest::get('aws.ec2.key-pair', Helpers::keyedResourceName(exclusive: false));
-
-        foreach (Aws::ec2()->describeKeyPairs()['KeyPairs'] as $keyPair) {
-            if ($keyPair['KeyName'] === $name) {
-                static::$keyPair = $keyPair;
-
-                return $keyPair;
-            }
-        }
-
-        throw ResourceDoesNotExistException::make("Could not find key pair with name $name")
-            ->suggest('sync:network');
     }
 }

@@ -10,6 +10,7 @@ class SyncComputeCommand extends SyncSteppedCommand
         Steps\Fargate\SyncEcrRepositoryStep::class,
         Steps\Fargate\SyncEcsClusterStep::class,
         Steps\Fargate\SyncTaskSecurityGroupStep::class,
+        Steps\Network\SyncRdsSecurityGroupStep::class,
         Steps\Fargate\SyncLoadBalancerStep::class,
         Steps\Fargate\SyncTargetGroupStep::class,
         Steps\Fargate\SyncHttpListenerStep::class,
