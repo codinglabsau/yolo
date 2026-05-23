@@ -79,14 +79,6 @@ class SyncRdsSecurityGroupStep implements Step
             return;
         }
 
-        $taskSecurityGroup = new EcsTaskSecurityGroup();
-
-        // sync:compute creates the task SG before this step runs; if it's somehow
-        // absent there's nothing to authorise against — leave it for a later sync.
-        if (! $taskSecurityGroup->exists()) {
-            return;
-        }
-
         Aws::ec2()->authorizeSecurityGroupIngress([
             'GroupId' => $groupId,
             'IpPermissions' => [
@@ -96,7 +88,9 @@ class SyncRdsSecurityGroupStep implements Step
                     'ToPort' => 3306,
                     'UserIdGroupPairs' => [
                         [
-                            'GroupId' => $taskSecurityGroup->arn(),
+                            // Name lookup throws ResourceDoesNotExistException if the
+                            // task SG is missing — sync:compute provisions it first.
+                            'GroupId' => (new EcsTaskSecurityGroup())->arn(),
                             'Description' => 'Enable Fargate tasks to connect to RDS',
                         ],
                     ],
