@@ -45,14 +45,14 @@ yolo init && yolo sync production && yolo deploy production
 
 Deploy from CI with short-lived, keyless credentials — no `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in repo secrets.
 
-Add a `deployer` block to the environment in `yolo.yml`:
+Add a `deployer` block to the environment in `yolo.yml`. Both keys are optional — `repository` is inferred from your git origin (or `GITHUB_REPOSITORY` in CI) and `branch` defaults to `main`, so `deployer: true` on its own is enough:
 
 ```yaml
 environments:
   production:
     deployer:
-      repository: my-org/my-repo   # scopes the OIDC sub claim
-      branch: main                 # defaults to main
+      repository: my-org/my-repo   # optional — inferred from the git origin
+      branch: main                 # optional — defaults to main
 ```
 
 `yolo sync:iam production` then provisions (and keeps in sync with the deploy steps):

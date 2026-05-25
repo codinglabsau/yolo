@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
+use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
@@ -91,7 +92,7 @@ class DeployerRole implements Resource
 
     public function assumeRolePolicyDocument(): array
     {
-        $repository = Manifest::get('deployer.repository');
+        $repository = $this->repository();
         $branch = Manifest::get('deployer.branch', 'main');
 
         return [
@@ -112,5 +113,18 @@ class DeployerRole implements Resource
                 ],
             ],
         ];
+    }
+
+    /**
+     * The org/repo scoping the trust. Explicit `deployer.repository` wins;
+     * otherwise it's inferred from GITHUB_REPOSITORY or the git origin remote so
+     * the manifest needs no repo config. Fails loudly when it can't be resolved —
+     * a trust policy with a missing repo would be a silent security hole.
+     */
+    protected function repository(): string
+    {
+        return Manifest::get('deployer.repository')
+            ?? Helpers::githubRepository()
+            ?? throw new IntegrityCheckException('Could not determine the deployer repository. Set `deployer.repository` in yolo.yml, or run from a GitHub clone (or GitHub Actions).');
     }
 }

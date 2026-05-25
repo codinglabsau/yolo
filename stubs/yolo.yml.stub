@@ -15,10 +15,12 @@ environments:
     # `yolo sync:iam` provisions the GitHub OIDC provider plus a deployer role
     # (yolo-{env}-deployer) whose trust policy is scoped to this repo + branch.
     # Assume it from the workflow with aws-actions/configure-aws-credentials.
-    # Omit the block entirely for apps that don't deploy from CI.
+    # Both keys are optional — repository is inferred from your git origin and
+    # branch defaults to main, so `deployer: true` on its own is enough. Omit
+    # the block if you don't deploy from CI.
     # deployer:
-    #   repository: my-org/my-repo
-    #   branch: main   # defaults to main
+    #   repository: my-org/my-repo   # optional — inferred from the git origin
+    #   branch: main                 # optional — defaults to main
 
     tasks:
       web:
