@@ -1,9 +1,9 @@
 <?php
 
-use Codinglabs\Yolo\Commands\CommandCommand;
+use Codinglabs\Yolo\Commands\RunCommand;
 
 it('builds the execute-command invocation with a profile', function () {
-    $args = CommandCommand::executeCommandArgs(
+    $args = RunCommand::executeCommandArgs(
         cluster: 'yolo-production-codinglabs',
         task: 'arn:aws:ecs:ap-southeast-2:111:task/abc',
         command: '/bin/sh',
@@ -24,7 +24,7 @@ it('builds the execute-command invocation with a profile', function () {
 });
 
 it('omits --profile when none is configured (e.g. running on AWS)', function () {
-    $args = CommandCommand::executeCommandArgs(
+    $args = RunCommand::executeCommandArgs(
         cluster: 'yolo-production-codinglabs',
         task: 'task-arn',
         command: 'php artisan migrate --force',

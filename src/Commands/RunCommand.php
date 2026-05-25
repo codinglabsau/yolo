@@ -15,7 +15,7 @@ use function Laravel\Prompts\note;
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\warning;
 
-class CommandCommand extends Command
+class RunCommand extends Command
 {
     // Today every process runs in the single web container; when queue/scheduler
     // become their own services this becomes per-group.
@@ -24,7 +24,7 @@ class CommandCommand extends Command
     protected function configure(): void
     {
         $this
-            ->setName('command')
+            ->setName('run')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('command', null, InputOption::VALUE_REQUIRED, 'Run a one-off command instead of opening an interactive shell')
             ->addOption('group', null, InputOption::VALUE_REQUIRED, 'Comma-separated task groups to fan the command out across (e.g. web,queue)')
@@ -34,7 +34,7 @@ class CommandCommand extends Command
     public function handle(): int
     {
         if (! (new ExecutableFinder())->find('session-manager-plugin')) {
-            error("session-manager-plugin isn't installed — run `yolo init` (or see the AWS docs) before using `yolo command`.");
+            error("session-manager-plugin isn't installed — run `yolo init` (or see the AWS docs) before using `yolo run`.");
 
             return self::FAILURE;
         }
@@ -43,10 +43,11 @@ class CommandCommand extends Command
         $command = $this->option('command');
 
         // An explicit --group fans out across every listed group; the default is
-        // an ordered fallback — the scheduler, dropping to web where it lives today.
+        // an ordered fallback — scheduler → queue → web. All three collapse into
+        // the web container today, so the first two lookups just fall through.
         $groups = ($group = $this->option('group'))
             ? array_map('trim', explode(',', $group))
-            : ['scheduler', 'web'];
+            : ['scheduler', 'queue', 'web'];
 
         $fanOut = (bool) $group;
 

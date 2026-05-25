@@ -23,7 +23,7 @@ class Yolo
         Commands\DeployCommand::class,
 
         // Exec
-        Commands\CommandCommand::class,
+        Commands\RunCommand::class,
 
         // Sync
         Commands\SyncCommand::class,

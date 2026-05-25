@@ -94,7 +94,7 @@ class InitCommand extends Command
     }
 
     /**
-     * `yolo command` opens a shell / runs one-off commands in a running container
+     * `yolo run` opens a shell / runs one-off commands in a running container
      * via ECS Exec, which needs AWS's Session Manager plugin on this machine.
      * Offer to install it at setup so it's there before it's needed. (A future
      * `yolo doctor` will report its status alongside Docker / the AWS CLI.)
@@ -107,7 +107,7 @@ class InitCommand extends Command
             return;
         }
 
-        note("The AWS Session Manager plugin isn't installed — `yolo command` needs it to open a shell or run one-off commands in a running container.");
+        note("The AWS Session Manager plugin isn't installed — `yolo run` needs it to open a shell or run one-off commands in a running container.");
 
         if (PHP_OS_FAMILY === 'Darwin' && $this->input->isInteractive() && (new ExecutableFinder())->find('brew')) {
             if (confirm('Install it now with Homebrew? (you may be prompted for your password)', default: true)) {
@@ -120,7 +120,7 @@ class InitCommand extends Command
             }
         }
 
-        warning('Install it before using `yolo command`: https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html');
+        warning('Install it before using `yolo run`: https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html');
     }
 
     protected function gitIgnoreFilesAndDirectories(): void
