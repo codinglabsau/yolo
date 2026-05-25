@@ -8,7 +8,9 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\AppScoped;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
+use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\Fargate\EcsCluster;
 use Codinglabs\Yolo\Resources\Fargate\EcsService;
 use Codinglabs\Yolo\Resources\Storage\AssetBucket;
@@ -28,16 +30,13 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  *
  * Document drift is reconciled via createPolicyVersion (see EcsTaskPolicy).
  */
-class DeployerPolicy implements Resource
+class DeployerPolicy implements AppScoped, Resource
 {
+    use ResolvesTags;
+
     public function name(): string
     {
         return Helpers::keyedResourceName(Iam::DEPLOYER_POLICY, exclusive: true);
-    }
-
-    public function tags(): array
-    {
-        return ['Name' => $this->name(), 'yolo:app' => Manifest::name()];
     }
 
     public function exists(): bool

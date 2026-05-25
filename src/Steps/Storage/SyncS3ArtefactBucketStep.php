@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Steps\Storage;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
 use Illuminate\Support\Arr;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -20,10 +21,13 @@ class SyncS3ArtefactBucketStep implements Step
         try {
             AwsResources::bucket($bucketName);
 
-            // Reconcile the hardening onto the existing bucket — safe to re-apply
-            // (it's never public and tiny), so older buckets pick it up on sync.
+            // Reconcile the hardening and tags onto the existing bucket — safe to
+            // re-apply, so older buckets pick up the hardening and the yolo:app
+            // owner tag on sync. (This step predates the create-or-sync Resource
+            // pattern, so the tag sync is explicit here.)
             if (! $dryRun) {
                 $this->harden($bucketName);
+                $this->tag($bucketName);
             }
 
             return StepResult::SYNCED;
@@ -37,15 +41,7 @@ class SyncS3ArtefactBucketStep implements Step
                     'Bucket' => $bucketName,
                 ]);
 
-                Aws::s3()->putBucketTagging([
-                    'Bucket' => $bucketName,
-                    'Tagging' => [
-                        ...Aws::tags([
-                            'Name' => $bucketName,
-                        ], wrap: 'TagSet'),
-                    ],
-                ]);
-
+                $this->tag($bucketName);
                 $this->harden($bucketName);
 
                 // todo: this requires the ELB account ID, which is not the same as the account ID.
@@ -79,6 +75,23 @@ class SyncS3ArtefactBucketStep implements Step
      * tamper-evidence for a clobbered or malicious `.env`). Both are declarative
      * puts — idempotent, safe to re-apply on every sync.
      */
+    /**
+     * Stamp the bucket with the YOLO baseline plus its yolo:app owner so `yolo
+     * audit` can attribute it. putBucketTagging is a full replace, idempotent on
+     * re-sync. The artefacts bucket is exclusive to one app, so yolo:app is the
+     * app name.
+     */
+    protected function tag(string $bucketName): void
+    {
+        Aws::s3()->putBucketTagging([
+            'Bucket' => $bucketName,
+            'Tagging' => Aws::tags([
+                'Name' => $bucketName,
+                'yolo:app' => Manifest::name(),
+            ], wrap: 'TagSet'),
+        ]);
+    }
+
     protected function harden(string $bucketName): void
     {
         Aws::s3()->putPublicAccessBlock([

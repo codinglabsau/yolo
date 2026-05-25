@@ -7,6 +7,8 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\ElbV2;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\AppScoped;
+use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 /**
@@ -15,8 +17,10 @@ use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
  * priority via a CRC32 hash of the rule's name so the same app lands on the same
  * priority across re-creates.
  */
-class ListenerRule implements Resource
+class ListenerRule implements AppScoped, Resource
 {
+    use ResolvesTags;
+
     protected ?array $cachedRule = null;
 
     public function __construct(protected string $httpsListenerArn) {}
@@ -24,11 +28,6 @@ class ListenerRule implements Resource
     public function name(): string
     {
         return Helpers::keyedResourceName(exclusive: true);
-    }
-
-    public function tags(): array
-    {
-        return ['Name' => $this->name(), 'yolo:app' => Manifest::name()];
     }
 
     public function exists(): bool
