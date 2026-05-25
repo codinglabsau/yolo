@@ -22,6 +22,11 @@ function credentialsProxy(): object
         {
             return self::usingLongLivedAccessKeys();
         }
+
+        public static function requiresProfile(): bool
+        {
+            return self::requiresAwsProfile();
+        }
     };
 }
 
@@ -89,4 +94,24 @@ it('does not flag the web-identity / SSO path where no static key is exported', 
     setEnv(['CI' => 'true']);
 
     expect(credentialsProxy()::longLivedKeys())->toBeFalse();
+});
+
+it('requires an AWS profile for a genuinely local run', function () {
+    // beforeEach binds runningInAws=false; ensure CI is unset so this is "local".
+    putenv('CI');
+    unset($_ENV['CI'], $_SERVER['CI']);
+
+    expect(credentialsProxy()::requiresProfile())->toBeTrue();
+});
+
+it('does not require an AWS profile in CI', function () {
+    setEnv(['CI' => 'true']);
+
+    expect(credentialsProxy()::requiresProfile())->toBeFalse();
+});
+
+it('does not require an AWS profile on AWS', function () {
+    Helpers::app()->instance('runningInAws', true);
+
+    expect(credentialsProxy()::requiresProfile())->toBeFalse();
 });

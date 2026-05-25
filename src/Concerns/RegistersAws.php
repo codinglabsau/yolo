@@ -112,6 +112,18 @@ trait RegistersAws
         return (bool) env('AWS_ACCESS_KEY_ID') && ! env('AWS_SESSION_TOKEN');
     }
 
+    /**
+     * A named AWS profile is required only for genuinely local runs (off AWS and
+     * outside CI). On AWS we use the instance role; in CI awsCredentials() defers
+     * to the SDK default chain (OIDC / static keys), so the profile is never
+     * consulted. The account guard still STS-verifies whatever creds resolve, so
+     * not requiring a profile here doesn't weaken the which-account safety net.
+     */
+    protected static function requiresAwsProfile(): bool
+    {
+        return ! Aws::runningInAws() && ! static::detectCiEnvironment();
+    }
+
     protected static function detectLocalEnvironment(): bool
     {
         return env('APP_ENV', false) === 'local';

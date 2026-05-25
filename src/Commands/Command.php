@@ -58,7 +58,7 @@ abstract class Command extends SymfonyCommand
 
         Helpers::app()->instance('environment', $this->argument('environment'));
 
-        if (! Aws::runningInAws() && ! Helpers::keyedEnv('AWS_PROFILE')) {
+        if (static::requiresAwsProfile() && ! Helpers::keyedEnv('AWS_PROFILE')) {
             error(sprintf('You need to specify YOLO_%s_AWS_PROFILE in your .env file before proceeding', strtoupper(Helpers::environment())));
 
             return 1;
