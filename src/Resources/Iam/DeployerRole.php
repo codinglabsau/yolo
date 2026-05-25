@@ -92,9 +92,6 @@ class DeployerRole implements Resource
 
     public function assumeRolePolicyDocument(): array
     {
-        $repository = $this->repository();
-        $branch = Manifest::get('deployer.branch', 'main');
-
         return [
             'Version' => '2012-10-17',
             'Statement' => [
@@ -107,12 +104,47 @@ class DeployerRole implements Resource
                             sprintf('%s:aud', GithubOidcProvider::URL) => GithubOidcProvider::AUDIENCE,
                         ],
                         'StringLike' => [
-                            sprintf('%s:sub', GithubOidcProvider::URL) => sprintf('repo:%s:ref:refs/heads/%s', $repository, $branch),
+                            sprintf('%s:sub', GithubOidcProvider::URL) => $this->subjectClaim(),
                         ],
                     ],
                 ],
             ],
         ];
+    }
+
+    /**
+     * The `sub` claim the OIDC token must match — which GitHub context may assume
+     * the role. Exactly one trigger may be set (a security boundary, so ambiguity
+     * fails loudly); defaults to the main branch:
+     *   - branch: main (default)   → ref:refs/heads/main      (push to branch, e.g. staging)
+     *   - tag: 'v*' (or true = *)  → ref:refs/tags/v*         (tag push, e.g. production)
+     *   - environment: production  → environment:production   (GitHub environment rules)
+     */
+    protected function subjectClaim(): string
+    {
+        $repository = $this->repository();
+
+        $triggers = array_keys(array_filter([
+            'branch' => Manifest::has('deployer.branch'),
+            'tag' => Manifest::has('deployer.tag'),
+            'environment' => Manifest::has('deployer.environment'),
+        ]));
+
+        if (count($triggers) > 1) {
+            throw new IntegrityCheckException(sprintf('Ambiguous deployer trust scope — set only one of branch, tag, or environment (got %s).', implode(', ', $triggers)));
+        }
+
+        if (Manifest::has('deployer.tag')) {
+            $tag = Manifest::get('deployer.tag');
+
+            return sprintf('repo:%s:ref:refs/tags/%s', $repository, $tag === true ? '*' : $tag);
+        }
+
+        if (Manifest::has('deployer.environment')) {
+            return sprintf('repo:%s:environment:%s', $repository, Manifest::get('deployer.environment'));
+        }
+
+        return sprintf('repo:%s:ref:refs/heads/%s', $repository, Manifest::get('deployer.branch', 'main'));
     }
 
     /**

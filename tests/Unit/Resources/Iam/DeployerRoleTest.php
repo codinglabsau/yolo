@@ -57,6 +57,41 @@ it('defaults the branch to main when the manifest omits it', function () {
         ->toBe('repo:my-org/my-repo:ref:refs/heads/main');
 });
 
+function subjectClaimFor(array $deployer): string
+{
+    writeManifest([
+        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'deployer' => ['repository' => 'my-org/my-repo', ...$deployer],
+    ]);
+
+    return (new DeployerRole())->assumeRolePolicyDocument()['Statement'][0]['Condition']['StringLike']['token.actions.githubusercontent.com:sub'];
+}
+
+it('scopes the trust to a tag pattern (production)', function () {
+    expect(subjectClaimFor(['tag' => 'v*']))
+        ->toBe('repo:my-org/my-repo:ref:refs/tags/v*');
+});
+
+it('treats tag: true as any tag', function () {
+    expect(subjectClaimFor(['tag' => true]))
+        ->toBe('repo:my-org/my-repo:ref:refs/tags/*');
+});
+
+it('scopes the trust to a GitHub environment', function () {
+    expect(subjectClaimFor(['environment' => 'production']))
+        ->toBe('repo:my-org/my-repo:environment:production');
+});
+
+it('scopes the trust to a branch (staging)', function () {
+    expect(subjectClaimFor(['branch' => 'main']))
+        ->toBe('repo:my-org/my-repo:ref:refs/heads/main');
+});
+
+it('throws when more than one trust trigger is set', function () {
+    expect(fn () => subjectClaimFor(['branch' => 'main', 'tag' => 'v*']))
+        ->toThrow(IntegrityCheckException::class);
+});
+
 it('infers the repository from GITHUB_REPOSITORY when the manifest omits it', function () {
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],

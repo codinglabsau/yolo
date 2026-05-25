@@ -45,15 +45,26 @@ yolo init && yolo sync production && yolo deploy production
 
 Deploy from CI with short-lived, keyless credentials — no `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in repo secrets.
 
-Add a `deployer` block to the environment in `yolo.yml`. Both keys are optional — `repository` is inferred from your git origin (or `GITHUB_REPOSITORY` in CI) and `branch` defaults to `main`, so `deployer: true` on its own is enough:
+Add a `deployer` block per environment in `yolo.yml`. `repository` is inferred from your git origin (or `GITHUB_REPOSITORY` in CI), and you set **exactly one trigger** to scope which GitHub context may assume the role (defaults to `branch: main`):
+
+| Trigger | OIDC `sub` scope | Typical use |
+|---|---|---|
+| `branch: main` (default) | `…:ref:refs/heads/main` | push to a branch — e.g. staging |
+| `tag: 'v*'` (`true` = any tag) | `…:ref:refs/tags/v*` | tag push — e.g. production |
+| `environment: production` | `…:environment:production` | gate on a GitHub environment's reviewer / tag rules |
+
+Staging-on-`main`, production-on-tag, out of the box:
 
 ```yaml
 environments:
+  staging:
+    deployer: true            # repository inferred, branch main
   production:
     deployer:
-      repository: my-org/my-repo   # optional — inferred from the git origin
-      branch: main                 # optional — defaults to main
+      tag: 'v*'               # only a v* tag can assume the prod role
 ```
+
+For the strongest production gate, combine `environment: production` here with that GitHub environment's required-reviewers + protected `v*` tag rules — the AWS trust and the GitHub environment rules then both have to pass.
 
 `yolo sync:iam production` then provisions (and keeps in sync with the deploy steps):
 
