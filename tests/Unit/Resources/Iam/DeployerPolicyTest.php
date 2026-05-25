@@ -37,6 +37,14 @@ it('grants RegisterTaskDefinition and the unscopeable describes on *', function 
     );
 });
 
+it('grants CloudFront ListDistributions on * so the build can resolve the asset distribution', function () {
+    $statement = statementFor((new DeployerPolicy())->document(), 'cloudfront:ListDistributions');
+
+    // CloudFront has no name-based lookup, so the build scans the account list
+    // (a collection op with no resource-level scoping) to bake ASSET_URL.
+    expect($statement['Resource'])->toBe('*');
+});
+
 it('scopes UpdateService and RunTask to this app\'s cluster resources', function () {
     $statement = statementFor((new DeployerPolicy())->document(), 'ecs:UpdateService');
 

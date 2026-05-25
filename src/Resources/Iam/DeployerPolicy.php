@@ -140,6 +140,10 @@ class DeployerPolicy implements Resource
                     'ec2:DescribeVpcs',
                     'ec2:DescribeSubnets',
                     'ec2:DescribeSecurityGroups',
+                    // Build resolves the asset distribution by scanning the
+                    // account list (CloudFront has no name-based lookup) to bake
+                    // ASSET_URL before `npm run build`.
+                    'cloudfront:ListDistributions',
                     'sts:GetCallerIdentity',
                 ],
             ],
