@@ -76,6 +76,8 @@ steps:
   - run: vendor/bin/yolo deploy production
 ```
 
+In CI, YOLO defers to the AWS SDK's default credential chain, so all three auth methods work out of the box with no extra config — OIDC (above), AWS IAM Identity Center (SSO), and legacy long-lived static access keys. Static keys still work but emit a warning nudging you towards OIDC.
+
 ## Pre-1.0 alpha documentation
 
 The EC2/ASG `yolo-alpha` documentation lives in its own repo: [`codinglabsau/yolo-alpha`](https://github.com/codinglabsau/yolo-alpha). Existing consumers should reference that repo.

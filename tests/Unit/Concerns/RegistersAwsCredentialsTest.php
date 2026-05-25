@@ -4,11 +4,12 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Concerns\RegistersAws;
 
 /**
- * awsCredentials() is protected static; reach it through a tiny trait-using proxy.
+ * awsCredentials() and usingLongLivedAccessKeys() are protected static; reach
+ * them through a tiny trait-using proxy.
  */
-function resolveAwsCredentials(): callable|array|null
+function credentialsProxy(): object
 {
-    $proxy = new class()
+    return new class()
     {
         use RegistersAws;
 
@@ -16,9 +17,12 @@ function resolveAwsCredentials(): callable|array|null
         {
             return self::awsCredentials();
         }
-    };
 
-    return $proxy::credentials();
+        public static function longLivedKeys(): bool
+        {
+            return self::usingLongLivedAccessKeys();
+        }
+    };
 }
 
 beforeEach(function () {
@@ -38,39 +42,51 @@ afterEach(function () {
     }
 });
 
-it('passes the session token in CI so OIDC assumed-role credentials are accepted', function () {
-    foreach ([
+function setEnv(array $values): void
+{
+    foreach ($values as $key => $value) {
+        putenv("$key=$value");
+        $_ENV[$key] = $value;
+        $_SERVER[$key] = $value;
+    }
+}
+
+it('defers to the SDK default credential chain in CI so every auth method works', function () {
+    // OIDC / assumed-role creds (session token present) — the SDK env provider
+    // reads key + secret + token itself, so YOLO returns null and stays out of it.
+    setEnv([
         'CI' => 'true',
         'AWS_ACCESS_KEY_ID' => 'ASIAEXAMPLE',
         'AWS_SECRET_ACCESS_KEY' => 'secret-access-key',
         'AWS_SESSION_TOKEN' => 'session-token-value',
-    ] as $key => $value) {
-        putenv("$key=$value");
-        $_ENV[$key] = $value;
-        $_SERVER[$key] = $value;
-    }
-
-    expect(resolveAwsCredentials())->toBe([
-        'key' => 'ASIAEXAMPLE',
-        'secret' => 'secret-access-key',
-        'token' => 'session-token-value',
     ]);
+
+    expect(credentialsProxy()::credentials())->toBeNull();
 });
 
-it('leaves the token null for the legacy static-key path (backwards compatible)', function () {
-    foreach ([
+it('flags long-lived static access keys (key present, no session token)', function () {
+    setEnv([
         'CI' => 'true',
         'AWS_ACCESS_KEY_ID' => 'AKIAEXAMPLE',
         'AWS_SECRET_ACCESS_KEY' => 'secret-access-key',
-    ] as $key => $value) {
-        putenv("$key=$value");
-        $_ENV[$key] = $value;
-        $_SERVER[$key] = $value;
-    }
-
-    expect(resolveAwsCredentials())->toBe([
-        'key' => 'AKIAEXAMPLE',
-        'secret' => 'secret-access-key',
-        'token' => null,
     ]);
+
+    expect(credentialsProxy()::longLivedKeys())->toBeTrue();
+});
+
+it('does not flag OIDC / assumed-role creds as long-lived', function () {
+    setEnv([
+        'CI' => 'true',
+        'AWS_ACCESS_KEY_ID' => 'ASIAEXAMPLE',
+        'AWS_SECRET_ACCESS_KEY' => 'secret-access-key',
+        'AWS_SESSION_TOKEN' => 'session-token-value',
+    ]);
+
+    expect(credentialsProxy()::longLivedKeys())->toBeFalse();
+});
+
+it('does not flag the web-identity / SSO path where no static key is exported', function () {
+    setEnv(['CI' => 'true']);
+
+    expect(credentialsProxy()::longLivedKeys())->toBeFalse();
 });
