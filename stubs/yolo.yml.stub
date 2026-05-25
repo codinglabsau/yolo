@@ -19,6 +19,7 @@ environments:
       account-id: {AWS_ACCOUNT_ID}
       region: {AWS_REGION}
       # bucket: my-app-bucket   # optional app S3 bucket, injected as AWS_BUCKET
+      # alb: my-shared-alb      # optional ALB name to adopt/create; defaults to a per-env shared yolo-{env} ALB
 
     tasks:
       web:
