@@ -11,6 +11,15 @@ environments:
       region: {AWS_REGION}
       # bucket: my-app-bucket   # optional app S3 bucket, injected as AWS_BUCKET
 
+    # Deploy from GitHub Actions via OIDC (no stored AWS keys). When present,
+    # `yolo sync:iam` provisions the GitHub OIDC provider plus a deployer role
+    # (yolo-{env}-deployer) whose trust policy is scoped to this repo + branch.
+    # Assume it from the workflow with aws-actions/configure-aws-credentials.
+    # Omit the block entirely for apps that don't deploy from CI.
+    # deployer:
+    #   repository: my-org/my-repo
+    #   branch: main   # defaults to main
+
     tasks:
       web:
         cpu: '512'

@@ -1,7 +1,9 @@
 <?php
 
 use Codinglabs\Yolo\Resources\Iam\EcsTaskRole;
+use Codinglabs\Yolo\Resources\Iam\DeployerRole;
 use Codinglabs\Yolo\Resources\Iam\EcsTaskPolicy;
+use Codinglabs\Yolo\Resources\Iam\DeployerPolicy;
 use Codinglabs\Yolo\Resources\Iam\EcsExecutionRole;
 use Codinglabs\Yolo\Steps\Iam\SyncMediaConvertRoleStep;
 
@@ -31,6 +33,14 @@ it('EcsExecutionRole description is safe for the IAM API', function () {
 
 it('SyncMediaConvertRoleStep description is safe for the IAM API', function () {
     expect(SyncMediaConvertRoleStep::DESCRIPTION)->toMatch(IAM_DESCRIPTION_PATTERN);
+});
+
+it('DeployerRole description is safe for the IAM API', function () {
+    expect((new DeployerRole())->description())->toMatch(IAM_DESCRIPTION_PATTERN);
+});
+
+it('DeployerPolicy description is safe for the IAM API', function () {
+    expect((new DeployerPolicy())->description())->toMatch(IAM_DESCRIPTION_PATTERN);
 });
 
 it('rejects an em dash so the regex actually catches the original bug', function () {

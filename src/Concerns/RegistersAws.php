@@ -76,11 +76,15 @@ trait RegistersAws
             return null;
         }
 
-        // in CI (GitHub Actions) we use environment variables
+        // in CI (GitHub Actions) we use environment variables. The session token
+        // is required for OIDC assumed-role credentials (the modern, keyless
+        // path) and is null-safe for legacy static access keys — a null token is
+        // ignored by the SDK — so this stays backwards compatible.
         if (static::detectCiEnvironment()) {
             return [
                 'key' => env('AWS_ACCESS_KEY_ID'),
                 'secret' => env('AWS_SECRET_ACCESS_KEY'),
+                'token' => env('AWS_SESSION_TOKEN'),
             ];
         }
 
