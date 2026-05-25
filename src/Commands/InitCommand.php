@@ -36,6 +36,7 @@ class InitCommand extends Command
         $this->gitIgnoreFilesAndDirectories();
         $this->initialiseManifest();
         $this->initialiseDockerfile();
+        $this->initialiseDockerignore();
         $this->initialiseEnv();
         $this->ensureSessionManagerPlugin();
 
@@ -91,6 +92,16 @@ class InitCommand extends Command
         }
 
         copy(Paths::stubs('Dockerfile.stub'), Paths::base('Dockerfile'));
+    }
+
+    protected function initialiseDockerignore(): void
+    {
+        if (file_exists(Paths::base('.dockerignore'))
+            && ! confirm('A .dockerignore already exists. Overwrite it with the YOLO default?', default: false)) {
+            return;
+        }
+
+        copy(Paths::stubs('.dockerignore.stub'), Paths::base('.dockerignore'));
     }
 
     /**
