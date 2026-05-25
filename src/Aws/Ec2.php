@@ -39,4 +39,24 @@ class Ec2
             'Filters' => $filters,
         ])['SecurityGroupRules'];
     }
+
+    /**
+     * Describe the given instances, flattened out of their reservations into a
+     * single list of instance descriptions.
+     *
+     * @param  array<int, string>  $instanceIds
+     * @return array<int, array<string, mixed>>
+     */
+    public static function instances(array $instanceIds): array
+    {
+        if (empty($instanceIds)) {
+            return [];
+        }
+
+        return collect(Aws::ec2()->describeInstances([
+            'InstanceIds' => array_values($instanceIds),
+        ])['Reservations'])
+            ->flatMap(fn (array $reservation) => $reservation['Instances'])
+            ->all();
+    }
 }

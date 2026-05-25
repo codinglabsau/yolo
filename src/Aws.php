@@ -21,6 +21,7 @@ use Aws\AutoScaling\AutoScalingClient;
 use Aws\EventBridge\EventBridgeClient;
 use Aws\CloudWatchLogs\CloudWatchLogsClient;
 use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
+use Aws\ResourceGroupsTaggingAPI\ResourceGroupsTaggingAPIClient;
 
 class Aws
 {
@@ -317,6 +318,11 @@ class Aws
     public static function rds(): RdsClient
     {
         return Helpers::app('rds');
+    }
+
+    public static function resourceGroupsTaggingApi(): ResourceGroupsTaggingAPIClient
+    {
+        return Helpers::app('resourceGroupsTaggingApi');
     }
 
     public static function route53(): Route53Client
