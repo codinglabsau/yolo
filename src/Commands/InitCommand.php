@@ -36,6 +36,7 @@ class InitCommand extends Command
         $this->gitIgnoreFilesAndDirectories();
         $this->initialiseManifest();
         $this->initialiseDockerfile();
+        $this->initialiseDockerignore();
         $this->initialiseEnv();
         $this->ensureSessionManagerPlugin();
 
@@ -70,6 +71,8 @@ class InitCommand extends Command
                 'php artisan migrate --path=database/migrations/landlord --force',
                 'php artisan tenants:artisan "migrate --path=database/migrations/tenant --database=tenant --force"',
             ]);
+
+            warning('Multi-tenant apps deploy as a single shared web service on v1 — dedicated per-tenant services are not available yet. Review the scaffolded tenants block before deploying.');
         } else {
             Manifest::put('domain', text('What is the domain?', placeholder: 'eg. codinglabs.com.au'));
 
@@ -91,6 +94,16 @@ class InitCommand extends Command
         }
 
         copy(Paths::stubs('Dockerfile.stub'), Paths::base('Dockerfile'));
+    }
+
+    protected function initialiseDockerignore(): void
+    {
+        if (file_exists(Paths::base('.dockerignore'))
+            && ! confirm('A .dockerignore already exists. Overwrite it with the YOLO default?', default: false)) {
+            return;
+        }
+
+        copy(Paths::stubs('.dockerignore.stub'), Paths::base('.dockerignore'));
     }
 
     /**

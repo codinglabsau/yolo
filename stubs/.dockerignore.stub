@@ -1,0 +1,46 @@
+# Scaffolded by `yolo init`. Trims the Docker build context for a direct
+# `docker build` and as belt-and-braces inside the yolo build pipeline.
+#
+# Do NOT ignore these — the image depends on them being in the context:
+#   .env                  the environment's .env, baked in at build time
+#   vendor                installed by the build hook, not by the Dockerfile
+#   public/build          compiled Vite assets
+#   docker/               generated supervisord.conf
+#   .yolo-entrypoint.sh   generated deploy-all entrypoint
+
+# VCS & CI
+.git
+.github
+.gitattributes
+.gitignore
+
+# YOLO working directory
+.yolo
+
+# Dependencies reinstalled during the build
+node_modules
+
+# Editor & OS cruft
+.idea
+.vscode
+**/.DS_Store
+
+# Tests & tooling caches
+tests
+.phpunit.cache
+.phpunit.result.cache
+.php-cs-fixer.cache
+.pest
+
+# Laravel runtime & dev artefacts (directories kept, contents dropped)
+public/hot
+storage/app/*
+storage/debugbar
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/testing/*
+storage/framework/views/*
+storage/logs/*.log
+
+# Per-environment env files — the canonical `.env` above is kept
+.env.*
