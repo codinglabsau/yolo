@@ -2,10 +2,30 @@
 
 use Aws\Result;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Resources\Iam\DeployerPolicy;
 use Codinglabs\Yolo\Steps\Iam\SyncDeployerRoleStep;
 use Codinglabs\Yolo\Steps\Iam\SyncDeployerPolicyStep;
 use Codinglabs\Yolo\Steps\Iam\SyncGithubOidcProviderStep;
 use Codinglabs\Yolo\Steps\Iam\AttachDeployerRolePoliciesStep;
+
+/** An existing deployer policy the mock can return from ListPolicies. */
+function existingDeployerPolicy(): array
+{
+    return [
+        'PolicyName' => 'yolo-testing-deployer-policy',
+        'Arn' => 'arn:aws:iam::111111111111:policy/yolo-testing-deployer-policy',
+        'DefaultVersionId' => 'v1',
+    ];
+}
+
+/** An existing deployer role the mock can return from ListRoles. */
+function existingDeployerRole(): array
+{
+    return [
+        'RoleName' => 'yolo-testing-deployer',
+        'Arn' => 'arn:aws:iam::111111111111:role/yolo-testing-deployer',
+    ];
+}
 
 function manifestWithDeployer(): void
 {
@@ -135,4 +155,75 @@ it('attaches the deployer policy to the deployer role', function () {
     $attach = collect($captured)->firstWhere('name', 'AttachRolePolicy');
     expect($attach['args']['RoleName'])->toBe('yolo-testing-deployer');
     expect($attach['args']['PolicyArn'])->toBe('arn:aws:iam::111111111111:policy/yolo-testing-deployer-policy');
+});
+
+it('does not create a new policy version when the deployer document is unchanged', function () {
+    manifestWithDeployer();
+
+    $document = json_encode((new DeployerPolicy())->document());
+
+    $captured = [];
+    bindRoutedIamClient([
+        'ListPolicies' => new Result(['Policies' => [existingDeployerPolicy()]]),
+        'GetPolicyVersion' => new Result(['PolicyVersion' => ['Document' => rawurlencode($document)]]),
+    ], $captured);
+
+    expect((new SyncDeployerPolicyStep())([]))->toBe(StepResult::SYNCED);
+    expect(array_column($captured, 'name'))->not->toContain('CreatePolicyVersion');
+});
+
+it('reconciles the deployer policy by creating a new default version when it drifts', function () {
+    manifestWithDeployer();
+
+    $captured = [];
+    bindRoutedIamClient([
+        'ListPolicies' => new Result(['Policies' => [existingDeployerPolicy()]]),
+        // A stale document that no longer matches the rendered one.
+        'GetPolicyVersion' => new Result(['PolicyVersion' => ['Document' => rawurlencode('{"Version":"2012-10-17","Statement":[]}')]]),
+    ], $captured);
+
+    expect((new SyncDeployerPolicyStep())([]))->toBe(StepResult::SYNCED);
+
+    $version = collect($captured)->firstWhere('name', 'CreatePolicyVersion');
+    expect($version)->not->toBeNull();
+    expect($version['args']['SetAsDefault'])->toBeTrue();
+});
+
+it('reconciles the deployer role trust policy when the manifest branch changes', function () {
+    writeManifest([
+        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'deployer' => ['repository' => 'my-org/my-repo', 'branch' => 'release'],
+    ]);
+
+    $captured = [];
+    bindRoutedIamClient([
+        'ListRoles' => new Result(['Roles' => [existingDeployerRole()]]),
+    ], $captured);
+
+    expect((new SyncDeployerRoleStep())([]))->toBe(StepResult::SYNCED);
+
+    $update = collect($captured)->firstWhere('name', 'UpdateAssumeRolePolicy');
+    expect($update)->not->toBeNull();
+
+    $sub = json_decode($update['args']['PolicyDocument'], true)['Statement'][0]['Condition']['StringLike']['token.actions.githubusercontent.com:sub'];
+    expect($sub)->toBe('repo:my-org/my-repo:ref:refs/heads/release');
+});
+
+it('never mutates IAM on a dry-run against existing deployer resources', function () {
+    manifestWithDeployer();
+
+    $captured = [];
+    bindRoutedIamClient([
+        'ListPolicies' => new Result(['Policies' => [existingDeployerPolicy()]]),
+        'ListRoles' => new Result(['Roles' => [existingDeployerRole()]]),
+    ], $captured);
+
+    expect((new SyncDeployerPolicyStep())(['dry-run' => true]))->toBe(StepResult::SYNCED);
+    expect((new SyncDeployerRoleStep())(['dry-run' => true]))->toBe(StepResult::SYNCED);
+
+    expect(array_column($captured, 'name'))
+        ->not->toContain('CreatePolicyVersion')
+        ->not->toContain('UpdateAssumeRolePolicy')
+        ->not->toContain('CreatePolicy')
+        ->not->toContain('CreateRole');
 });

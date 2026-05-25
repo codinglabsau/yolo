@@ -7,7 +7,6 @@ use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
-use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Resources\Fargate\EcsCluster;
@@ -23,10 +22,9 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * same place and CI never drifts into AccessDenied. Attached to the deployer
  * role by AttachDeployerRolePoliciesStep.
  *
- * Resource ARNs are constructed deterministically from the manifest (region,
- * account id, app name) so the document is pure — the one exception is the
- * Route 53 hosted-zone ARN, which has no derivable form and is resolved live
- * when a public domain is configured.
+ * All resource ARNs are constructed deterministically from the manifest
+ * (region, account id, app name), so the document is pure — no live AWS calls,
+ * and no coupling to resources later sync phases provision.
  *
  * Document drift is reconciled via createPolicyVersion (see EcsTaskPolicy).
  */
@@ -257,9 +255,6 @@ class DeployerPolicy implements Resource
      */
     protected function route53Statements(): array
     {
-        $hostedZone = AwsResources::hostedZone(Manifest::apex());
-        $hostedZoneArn = sprintf('arn:aws:route53:::hostedzone/%s', basename($hostedZone['Id']));
-
         return [
             [
                 // ListHostedZones is a collection operation — no resource-level scoping.
@@ -268,8 +263,15 @@ class DeployerPolicy implements Resource
                 'Action' => ['route53:ListHostedZones'],
             ],
             [
+                // Scoped to the hosted-zone resource type rather than one resolved
+                // zone id. The id isn't derivable from the domain, and resolving it
+                // live here would couple the IAM sync phase to the hosted zone that
+                // the later Solo phase creates — wedging the first `yolo sync` on a
+                // green-field account. The OIDC repo/branch trust boundary is the
+                // real fence; a single deploy role changing records in its own
+                // account is an acceptable scope.
                 'Effect' => 'Allow',
-                'Resource' => $hostedZoneArn,
+                'Resource' => 'arn:aws:route53:::hostedzone/*',
                 'Action' => ['route53:ChangeResourceRecordSets'],
             ],
             [

@@ -1,11 +1,5 @@
 <?php
 
-use Aws\Result;
-use Aws\MockHandler;
-use Aws\CommandInterface;
-use Codinglabs\Yolo\Helpers;
-use Aws\Route53\Route53Client;
-use GuzzleHttp\Promise\Create;
 use Codinglabs\Yolo\Resources\Iam\DeployerPolicy;
 
 /**
@@ -15,28 +9,6 @@ function statementFor(array $document, string $action): array
 {
     return collect($document['Statement'])
         ->first(fn (array $statement) => in_array($action, (array) $statement['Action'], true));
-}
-
-function bindMockRoute53Client(array $hostedZones): void
-{
-    $result = new Result(['HostedZones' => $hostedZones]);
-
-    $mock = new class($result) extends MockHandler
-    {
-        public function __construct(protected Result $result) {}
-
-        public function __invoke(CommandInterface $cmd, $request)
-        {
-            return Create::promiseFor($this->result);
-        }
-    };
-
-    Helpers::app()->instance('route53', new Route53Client([
-        'region' => 'ap-southeast-2',
-        'version' => 'latest',
-        'credentials' => false,
-        'handler' => $mock,
-    ]));
 }
 
 beforeEach(function () {
@@ -132,22 +104,32 @@ it('omits Route 53 permissions for a headless app with no domain', function () {
     expect($actions)->not->toContain('route53:ChangeResourceRecordSets');
 });
 
-it('scopes Route 53 record changes to the resolved hosted zone when a domain is set', function () {
+it('grants Route 53 record changes scoped to the hosted-zone resource type when a domain is set', function () {
     writeManifest([
         'apex' => 'example.com',
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
         'deployer' => ['repository' => 'my-org/my-repo'],
     ]);
 
-    bindMockRoute53Client([
-        ['Name' => 'example.com.', 'Id' => '/hostedzone/Z123ABC'],
+    $document = (new DeployerPolicy())->document();
+
+    // No live zone lookup — the document is pure, so it never couples the IAM
+    // sync phase to the zone the Solo phase creates.
+    expect(statementFor($document, 'route53:ListHostedZones')['Resource'])->toBe('*');
+    expect(statementFor($document, 'route53:ChangeResourceRecordSets')['Resource'])
+        ->toBe('arn:aws:route53:::hostedzone/*');
+    expect(statementFor($document, 'route53:GetChange')['Resource'])
+        ->toBe('arn:aws:route53:::change/*');
+});
+
+it('includes Route 53 statements for a subdomain canary (domain only, no apex)', function () {
+    writeManifest([
+        'domain' => 'fargate.example.com',
+        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'deployer' => ['repository' => 'my-org/my-repo'],
     ]);
 
     $document = (new DeployerPolicy())->document();
 
-    expect(statementFor($document, 'route53:ListHostedZones')['Resource'])->toBe('*');
-    expect(statementFor($document, 'route53:ChangeResourceRecordSets')['Resource'])
-        ->toBe('arn:aws:route53:::hostedzone/Z123ABC');
-    expect(statementFor($document, 'route53:GetChange')['Resource'])
-        ->toBe('arn:aws:route53:::change/*');
+    expect(statementFor($document, 'route53:ChangeResourceRecordSets'))->not->toBeNull();
 });
