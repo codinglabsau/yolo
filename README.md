@@ -45,32 +45,30 @@ yolo init && yolo sync production && yolo deploy production
 
 Deploy from CI with short-lived, keyless credentials — no `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in repo secrets.
 
-Add a `deployer` block per environment in `yolo.yml`. `repository` is inferred from your git origin (or `GITHUB_REPOSITORY` in CI), and you set **exactly one trigger** to scope which GitHub context may assume the role (defaults to `branch: main`):
+Each environment declares the **ref it deploys from**. That one setting drives the CI deployer role's OIDC trust (and, later, the local deploy guard). It defaults to the `main` branch, so the common case needs no config at all:
 
-| Trigger | OIDC `sub` scope | Typical use |
+| Ref | OIDC `sub` scope | Typical use |
 |---|---|---|
 | `branch: main` (default) | `…:ref:refs/heads/main` | push to a branch — e.g. staging |
 | `tag: 'v*'` (`true` = any tag) | `…:ref:refs/tags/v*` | tag push — e.g. production |
-| `environment: production` | `…:environment:production` | gate on a GitHub environment's reviewer / tag rules |
 
-Staging-on-`main`, production-on-tag, out of the box:
+Staging-on-`develop`, production-on-tag:
 
 ```yaml
 environments:
   staging:
-    deployer: true            # repository inferred, branch main
+    branch: develop           # deploys on push to develop
   production:
-    deployer:
-      tag: 'v*'               # only a v* tag can assume the prod role
+    tag: 'v*'                 # only a v* tag can assume the prod role
 ```
 
-For the strongest production gate, combine `environment: production` here with that GitHub environment's required-reviewers + protected `v*` tag rules — the AWS trust and the GitHub environment rules then both have to pass.
+`repository` is inferred from your git origin (or `GITHUB_REPOSITORY` in CI) — set `repository: org/repo` per environment only to override (monorepo / fork).
 
-`yolo sync:iam production` then provisions (and keeps in sync with the deploy steps):
+When a GitHub repository is detected, `yolo sync:iam` provisions (and keeps in sync with the deploy steps):
 
 - the account's GitHub Actions OIDC identity provider (`token.actions.githubusercontent.com`), an account-level singleton;
-- a deployer role `yolo-{env}-deployer` whose trust policy only lets `repo:{repository}:ref:refs/heads/{branch}` assume it; and
-- a tightly-scoped permission policy covering exactly what `yolo deploy` does (ECR push, ECS register/update, `iam:PassRole` on the task + execution roles, S3 env/asset access, Route 53 record changes on the app's hosted zone).
+- a deployer role `yolo-{env}-{app}-deployer` whose trust only lets the environment's repo + ref assume it; and
+- a tightly-scoped permission policy covering exactly what `yolo deploy` does (ECR push, ECS register/update, `iam:PassRole` on the task + execution roles, S3 env/asset access, Route 53 record changes).
 
 In the consumer workflow, request the OIDC token and assume the role — no stored secrets:
 
@@ -82,10 +80,12 @@ permissions:
 steps:
   - uses: aws-actions/configure-aws-credentials@v4
     with:
-      role-to-assume: arn:aws:iam::<account-id>:role/yolo-production-deployer
+      role-to-assume: arn:aws:iam::<account-id>:role/yolo-production-myapp-deployer
       aws-region: <region>
   - run: vendor/bin/yolo deploy production
 ```
+
+For the strongest production gate, pair `tag: 'v*'` with a GitHub protected-tag ruleset (only maintainers may cut `v*` tags) — the AWS trust then just confirms "a tag push from this repo", and GitHub enforces who can trigger it.
 
 In CI, YOLO defers to the AWS SDK's default credential chain, so all three auth methods work out of the box with no extra config — OIDC (above), AWS IAM Identity Center (SSO), and legacy long-lived static access keys. Static keys still work but emit a warning nudging you towards OIDC.
 

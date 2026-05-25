@@ -14,18 +14,19 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 /**
  * YOLO-managed IAM role a GitHub Actions workflow assumes (via OIDC) to deploy.
  * The trust policy federates to the account's GitHub OIDC provider and is scoped
- * to a single repository + branch, so only that workflow can assume it — no
- * stored AWS access keys. The deploy-time permission policy is provided by
- * DeployerPolicy and attached by AttachDeployerRolePoliciesStep.
+ * to a single repository + ref (the environment's branch or tag), so only that
+ * workflow can assume it — no stored AWS access keys. The deploy-time permission
+ * policy is provided by DeployerPolicy and attached by AttachDeployerRolePoliciesStep.
  *
- * Shared per environment (yolo-{env}-deployer) like the task and execution
- * roles — the realistic YOLO topology is one deploying app per account+env.
+ * App + environment specific (yolo-{env}-{app}-deployer): both its trust (one
+ * repo + ref) and its permissions (the app's ECR repo, buckets, cluster, service)
+ * are app-specific, so unlike the shared task/execution roles it can't be shared.
  */
 class DeployerRole implements Resource
 {
     public function name(): string
     {
-        return Helpers::keyedResourceName(Iam::DEPLOYER_ROLE, exclusive: false);
+        return Helpers::keyedResourceName(Iam::DEPLOYER_ROLE, exclusive: true);
     }
 
     public function tags(): array
@@ -113,50 +114,40 @@ class DeployerRole implements Resource
     }
 
     /**
-     * The `sub` claim the OIDC token must match — which GitHub context may assume
-     * the role. Exactly one trigger may be set (a security boundary, so ambiguity
-     * fails loudly); defaults to the main branch:
-     *   - branch: main (default)   → ref:refs/heads/main      (push to branch, e.g. staging)
-     *   - tag: 'v*' (or true = *)  → ref:refs/tags/v*         (tag push, e.g. production)
-     *   - environment: production  → environment:production   (GitHub environment rules)
+     * The `sub` claim the OIDC token must match — which GitHub ref may assume the
+     * role. Derived from the environment's source ref (a security boundary, so
+     * setting both branch and tag fails loudly); defaults to the main branch:
+     *   - branch: develop (default main)  → ref:refs/heads/develop  (push to branch, e.g. staging)
+     *   - tag: 'v*' (or true = *)         → ref:refs/tags/v*        (tag push, e.g. production)
      */
     protected function subjectClaim(): string
     {
         $repository = $this->repository();
 
-        $triggers = array_keys(array_filter([
-            'branch' => Manifest::has('deployer.branch'),
-            'tag' => Manifest::has('deployer.tag'),
-            'environment' => Manifest::has('deployer.environment'),
-        ]));
-
-        if (count($triggers) > 1) {
-            throw new IntegrityCheckException(sprintf('Ambiguous deployer trust scope — set only one of branch, tag, or environment (got %s).', implode(', ', $triggers)));
+        if (Manifest::has('branch') && Manifest::has('tag')) {
+            throw new IntegrityCheckException('An environment deploys from a branch or a tag, not both — set only one.');
         }
 
-        if (Manifest::has('deployer.tag')) {
-            $tag = Manifest::get('deployer.tag');
+        if (Manifest::has('tag')) {
+            $tag = Manifest::get('tag');
 
             return sprintf('repo:%s:ref:refs/tags/%s', $repository, $tag === true ? '*' : $tag);
         }
 
-        if (Manifest::has('deployer.environment')) {
-            return sprintf('repo:%s:environment:%s', $repository, Manifest::get('deployer.environment'));
-        }
-
-        return sprintf('repo:%s:ref:refs/heads/%s', $repository, Manifest::get('deployer.branch', 'main'));
+        return sprintf('repo:%s:ref:refs/heads/%s', $repository, Manifest::get('branch', 'main'));
     }
 
     /**
-     * The org/repo scoping the trust. Explicit `deployer.repository` wins;
-     * otherwise it's inferred from GITHUB_REPOSITORY or the git origin remote so
-     * the manifest needs no repo config. Fails loudly when it can't be resolved —
-     * a trust policy with a missing repo would be a silent security hole.
+     * The org/repo scoping the trust — inferred from the git origin (or an
+     * explicit manifest `repository`) via Helpers::githubRepository(). Fails
+     * loudly when it can't be resolved: a trust policy with a missing repo would
+     * be a silent security hole. (The Sync*Step gates skip provisioning entirely
+     * when no GitHub repo is resolvable, so in practice this only fires if called
+     * directly without a GitHub context.)
      */
     protected function repository(): string
     {
-        return Manifest::get('deployer.repository')
-            ?? Helpers::githubRepository()
-            ?? throw new IntegrityCheckException('Could not determine the deployer repository. Set `deployer.repository` in yolo.yml, or run from a GitHub clone (or GitHub Actions).');
+        return Helpers::githubRepository()
+            ?? throw new IntegrityCheckException('Could not determine the GitHub repository for the deployer trust. Set `repository` in yolo.yml, or run from a GitHub clone (or GitHub Actions).');
     }
 }

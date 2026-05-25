@@ -3,7 +3,7 @@
 namespace Codinglabs\Yolo\Steps\Iam;
 
 use Illuminate\Support\Arr;
-use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\Iam\GithubOidcProvider;
@@ -12,8 +12,8 @@ class SyncGithubOidcProviderStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        // Only apps that deploy from GitHub Actions need the OIDC provider.
-        if (! Manifest::has('deployer')) {
+        // Only provision GitHub OIDC infra when this app is actually on GitHub.
+        if (Helpers::githubRepository() === null) {
             return StepResult::SKIPPED;
         }
 

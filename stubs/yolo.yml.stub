@@ -6,23 +6,19 @@ environments:
     # apex: example.com
     # domain: app.example.com   # defaults to apex; set for a subdomain
 
+    # Source ref this environment deploys from — drives the local deploy guard
+    # and, when this repo is on GitHub, the CI deployer role's OIDC trust. The
+    # role (yolo-{env}-{app}-deployer) is provisioned automatically by
+    # `yolo sync:iam` and assumed from GitHub Actions with no stored AWS keys.
+    # Defaults to the main branch, so omitting these just deploys on push to main.
+    # branch: main          # push to this branch (e.g. develop for staging)
+    # tag: 'v*'             # or a tag push (true = any tag) — e.g. production
+    # repository: org/repo  # optional — inferred from the git origin
+
     aws:
       account-id: {AWS_ACCOUNT_ID}
       region: {AWS_REGION}
       # bucket: my-app-bucket   # optional app S3 bucket, injected as AWS_BUCKET
-
-    # Deploy from GitHub Actions via OIDC (no stored AWS keys). When present,
-    # `yolo sync:iam` provisions the GitHub OIDC provider plus a deployer role
-    # (yolo-{env}-deployer) whose trust policy is scoped to this repo + branch.
-    # Assume it from the workflow with aws-actions/configure-aws-credentials.
-    # repository is inferred from your git origin, so `deployer: true` is enough.
-    # Set exactly one trigger to scope which GitHub context may deploy (defaults
-    # to branch: main). Omit the block if you don't deploy from CI.
-    # deployer:
-    #   repository: my-org/my-repo   # optional — inferred from the git origin
-    #   branch: main                 # push to branch (e.g. staging) — the default
-    #   # tag: 'v*'                  # tag push (e.g. production); true = any tag
-    #   # environment: production    # a GitHub environment (use its reviewer/tag rules)
 
     tasks:
       web:

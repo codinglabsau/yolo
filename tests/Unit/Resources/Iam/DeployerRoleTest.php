@@ -3,27 +3,38 @@
 use Codinglabs\Yolo\Resources\Iam\DeployerRole;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
-// The suite itself runs inside GitHub Actions (GITHUB_REPOSITORY set), so clear
-// it after each test to keep the inference tests deterministic.
+// The suite runs inside GitHub Actions (GITHUB_REPOSITORY set). Most tests pin
+// the repo via an explicit env-level `repository` so inference is deterministic;
+// clear GITHUB_REPOSITORY after each test so the env / unresolvable cases are too.
 afterEach(function () {
     putenv('GITHUB_REPOSITORY');
     unset($_ENV['GITHUB_REPOSITORY'], $_SERVER['GITHUB_REPOSITORY']);
 });
 
-it('names the deployer role shared per environment', function () {
+function deployerManifest(array $environment = []): void
+{
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'deployer' => ['repository' => 'my-org/my-repo'],
+        'repository' => 'my-org/my-repo',
+        ...$environment,
     ]);
+}
 
-    expect((new DeployerRole())->name())->toBe('yolo-testing-deployer');
+function deployerSubjectFor(array $environment): string
+{
+    deployerManifest($environment);
+
+    return (new DeployerRole())->assumeRolePolicyDocument()['Statement'][0]['Condition']['StringLike']['token.actions.githubusercontent.com:sub'];
+}
+
+it('names the deployer role per app and environment', function () {
+    deployerManifest();
+
+    expect((new DeployerRole())->name())->toBe('yolo-testing-my-app-deployer');
 });
 
 it('federates to the GitHub OIDC provider scoped to the repo and branch', function () {
-    writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'deployer' => ['repository' => 'my-org/my-repo', 'branch' => 'release'],
-    ]);
+    deployerManifest(['branch' => 'release']);
 
     expect((new DeployerRole())->assumeRolePolicyDocument())->toBe([
         'Version' => '2012-10-17',
@@ -45,57 +56,30 @@ it('federates to the GitHub OIDC provider scoped to the repo and branch', functi
     ]);
 });
 
-it('defaults the branch to main when the manifest omits it', function () {
-    writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'deployer' => ['repository' => 'my-org/my-repo'],
-    ]);
-
-    $subject = (new DeployerRole())->assumeRolePolicyDocument()['Statement'][0]['Condition']['StringLike'];
-
-    expect($subject['token.actions.githubusercontent.com:sub'])
-        ->toBe('repo:my-org/my-repo:ref:refs/heads/main');
-});
-
-function subjectClaimFor(array $deployer): string
-{
-    writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'deployer' => ['repository' => 'my-org/my-repo', ...$deployer],
-    ]);
-
-    return (new DeployerRole())->assumeRolePolicyDocument()['Statement'][0]['Condition']['StringLike']['token.actions.githubusercontent.com:sub'];
-}
-
-it('scopes the trust to a tag pattern (production)', function () {
-    expect(subjectClaimFor(['tag' => 'v*']))
-        ->toBe('repo:my-org/my-repo:ref:refs/tags/v*');
-});
-
-it('treats tag: true as any tag', function () {
-    expect(subjectClaimFor(['tag' => true]))
-        ->toBe('repo:my-org/my-repo:ref:refs/tags/*');
-});
-
-it('scopes the trust to a GitHub environment', function () {
-    expect(subjectClaimFor(['environment' => 'production']))
-        ->toBe('repo:my-org/my-repo:environment:production');
+it('defaults to the main branch when no ref is set', function () {
+    expect(deployerSubjectFor([]))->toBe('repo:my-org/my-repo:ref:refs/heads/main');
 });
 
 it('scopes the trust to a branch (staging)', function () {
-    expect(subjectClaimFor(['branch' => 'main']))
-        ->toBe('repo:my-org/my-repo:ref:refs/heads/main');
+    expect(deployerSubjectFor(['branch' => 'develop']))->toBe('repo:my-org/my-repo:ref:refs/heads/develop');
 });
 
-it('throws when more than one trust trigger is set', function () {
-    expect(fn () => subjectClaimFor(['branch' => 'main', 'tag' => 'v*']))
+it('scopes the trust to a tag pattern (production)', function () {
+    expect(deployerSubjectFor(['tag' => 'v*']))->toBe('repo:my-org/my-repo:ref:refs/tags/v*');
+});
+
+it('treats tag: true as any tag', function () {
+    expect(deployerSubjectFor(['tag' => true]))->toBe('repo:my-org/my-repo:ref:refs/tags/*');
+});
+
+it('throws when both a branch and a tag are set', function () {
+    expect(fn () => deployerSubjectFor(['branch' => 'main', 'tag' => 'v*']))
         ->toThrow(IntegrityCheckException::class);
 });
 
 it('infers the repository from GITHUB_REPOSITORY when the manifest omits it', function () {
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'deployer' => true,
     ]);
 
     putenv('GITHUB_REPOSITORY=codinglabsau/codinglabs');
@@ -107,15 +91,13 @@ it('infers the repository from GITHUB_REPOSITORY when the manifest omits it', fu
         ->toBe('repo:codinglabsau/codinglabs:ref:refs/heads/main');
 });
 
-it('throws when the repository cannot be inferred and is not set', function () {
+it('throws when the repository cannot be resolved', function () {
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'deployer' => true,
     ]);
 
-    // No GITHUB_REPOSITORY and the temp manifest dir is not a git checkout, so
-    // there's no origin to parse — the trust policy must fail loudly, never
-    // silently build with a missing repo.
+    // No manifest repository, no GITHUB_REPOSITORY, and the temp manifest dir is
+    // not a git checkout — the trust must fail loudly, never build with a blank repo.
     putenv('GITHUB_REPOSITORY');
     unset($_ENV['GITHUB_REPOSITORY'], $_SERVER['GITHUB_REPOSITORY']);
 

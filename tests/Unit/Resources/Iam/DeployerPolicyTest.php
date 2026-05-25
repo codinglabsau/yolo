@@ -14,7 +14,6 @@ function statementFor(array $document, string $action): array
 beforeEach(function () {
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'deployer' => ['repository' => 'my-org/my-repo'],
     ]);
 });
 
@@ -65,7 +64,6 @@ it('scopes PassRole to the task and execution roles, passed only to ECS tasks', 
 it('honours manifest task-role and execution-role overrides for PassRole', function () {
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'deployer' => ['repository' => 'my-org/my-repo'],
         'tasks' => ['web' => [
             'task-role' => 'arn:aws:iam::111111111111:role/custom-task',
             'execution-role' => 'arn:aws:iam::111111111111:role/custom-exec',
@@ -108,7 +106,6 @@ it('grants Route 53 record changes scoped to the hosted-zone resource type when 
     writeManifest([
         'apex' => 'example.com',
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'deployer' => ['repository' => 'my-org/my-repo'],
     ]);
 
     $document = (new DeployerPolicy())->document();
@@ -126,7 +123,6 @@ it('includes Route 53 statements for a subdomain canary (domain only, no apex)',
     writeManifest([
         'domain' => 'fargate.example.com',
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'deployer' => ['repository' => 'my-org/my-repo'],
     ]);
 
     $document = (new DeployerPolicy())->document();

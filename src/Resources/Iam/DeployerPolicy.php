@@ -32,7 +32,7 @@ class DeployerPolicy implements Resource
 {
     public function name(): string
     {
-        return Helpers::keyedResourceName(Iam::DEPLOYER_POLICY, exclusive: false);
+        return Helpers::keyedResourceName(Iam::DEPLOYER_POLICY, exclusive: true);
     }
 
     public function tags(): array

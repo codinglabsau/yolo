@@ -3,7 +3,7 @@
 namespace Codinglabs\Yolo\Steps\Iam;
 
 use Illuminate\Support\Arr;
-use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\Iam\DeployerPolicy;
@@ -15,7 +15,7 @@ class SyncDeployerPolicyStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::has('deployer')) {
+        if (Helpers::githubRepository() === null) {
             return StepResult::SKIPPED;
         }
 

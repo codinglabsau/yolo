@@ -81,6 +81,12 @@ class Helpers
      */
     public static function githubRepository(): ?string
     {
+        // An explicit manifest `repository` wins (monorepos, forks); otherwise
+        // infer from CI's GITHUB_REPOSITORY or the GitHub origin remote.
+        if ($repository = Manifest::get('repository')) {
+            return $repository;
+        }
+
         if ($repository = env('GITHUB_REPOSITORY')) {
             return $repository;
         }
