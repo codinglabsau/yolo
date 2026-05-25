@@ -29,6 +29,7 @@ use GuzzleHttp\Exception\ConnectException;
 use Aws\CloudWatchLogs\CloudWatchLogsClient;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
+use Aws\ResourceGroupsTaggingAPI\ResourceGroupsTaggingAPIClient;
 
 use function Laravel\Prompts\warning;
 
@@ -58,6 +59,7 @@ trait RegistersAws
         Helpers::app()->singleton('elasticLoadBalancingV2', fn () => new ElasticLoadBalancingV2Client($arguments));
         Helpers::app()->singleton('iam', fn () => new IamClient($arguments));
         Helpers::app()->singleton('rds', fn () => new RdsClient($arguments));
+        Helpers::app()->singleton('resourceGroupsTaggingApi', fn () => new ResourceGroupsTaggingAPIClient($arguments));
         Helpers::app()->singleton('route53', fn () => new Route53Client($arguments));
         Helpers::app()->singleton('s3', fn () => new S3Client($arguments));
         Helpers::app()->singleton('sns', fn () => new SnsClient($arguments));

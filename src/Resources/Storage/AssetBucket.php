@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Resources\Storage;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\S3;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 
@@ -32,7 +33,7 @@ class AssetBucket implements Resource, SynchronisesConfiguration
 
     public function tags(): array
     {
-        return ['Name' => $this->name()];
+        return ['Name' => $this->name(), 'yolo:app' => Manifest::name()];
     }
 
     public function exists(): bool

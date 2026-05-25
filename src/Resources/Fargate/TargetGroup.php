@@ -20,7 +20,7 @@ class TargetGroup implements Resource, SynchronisesConfiguration
 
     public function tags(): array
     {
-        return ['Name' => $this->name()];
+        return ['Name' => $this->name(), 'yolo:app' => Manifest::name()];
     }
 
     public function exists(): bool

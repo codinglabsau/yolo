@@ -17,8 +17,8 @@ it('derives the bucket ARN from the name', function () {
     expect((new AssetBucket())->arn())->toBe('arn:aws:s3:::yolo-testing-my-app-assets');
 });
 
-it('tags the bucket with its name', function () {
-    expect((new AssetBucket())->tags())->toBe(['Name' => 'yolo-testing-my-app-assets']);
+it('tags the bucket with its name and app owner', function () {
+    expect((new AssetBucket())->tags())->toBe(['Name' => 'yolo-testing-my-app-assets', 'yolo:app' => 'my-app']);
 });
 
 it('reconciles a CORS configuration so the origin serves Access-Control-Allow-Origin', function () {
