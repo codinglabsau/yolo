@@ -72,6 +72,44 @@ class Ecs
         }
     }
 
+    /**
+     * Every ECS cluster ARN in the account, across all pages.
+     *
+     * @return array<int, string>
+     */
+    public static function clusterArns(): array
+    {
+        $arns = [];
+        $token = null;
+
+        do {
+            $result = Aws::ecs()->listClusters(array_filter(['nextToken' => $token]));
+            $arns = [...$arns, ...$result['clusterArns']];
+            $token = $result['nextToken'] ?? null;
+        } while ($token);
+
+        return $arns;
+    }
+
+    /**
+     * Running task ARNs across an entire cluster (any service). An unknown
+     * cluster yields an empty list rather than throwing — the caller treats
+     * "no running tasks" as "this app isn't live".
+     *
+     * @return array<int, string>
+     */
+    public static function clusterRunningTasks(string $cluster): array
+    {
+        try {
+            return Aws::ecs()->listTasks([
+                'cluster' => $cluster,
+                'desiredStatus' => 'RUNNING',
+            ])['taskArns'];
+        } catch (AwsException) {
+            return [];
+        }
+    }
+
     public static function taskDefinition(string $family): array
     {
         try {

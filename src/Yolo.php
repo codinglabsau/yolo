@@ -37,7 +37,7 @@ class Yolo
         Commands\SyncLoggingCommand::class,
 
         // Audit
-        Commands\AuditLegacyCommand::class,
+        Commands\AuditCommand::class,
     ];
 
     public function __construct()
