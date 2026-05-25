@@ -42,4 +42,21 @@ class Iam
             'VersionId' => $versionId,
         ])['PolicyVersion'];
     }
+
+    /**
+     * OIDC providers are account-level singletons keyed by their full ARN
+     * (no name field) — match the list entry by ARN.
+     */
+    public static function openIdConnectProvider(string $arn): array
+    {
+        $providers = Aws::iam()->listOpenIDConnectProviders();
+
+        foreach ($providers['OpenIDConnectProviderList'] as $provider) {
+            if ($provider['Arn'] === $arn) {
+                return $provider;
+            }
+        }
+
+        throw new ResourceDoesNotExistException("Could not find OIDC provider $arn");
+    }
 }

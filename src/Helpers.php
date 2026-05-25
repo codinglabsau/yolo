@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo;
 
 use BackedEnum;
 use Illuminate\Container\Container;
+use Symfony\Component\Process\Process;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 class Helpers
@@ -70,6 +71,52 @@ class Helpers
         }
 
         return static::app('environment');
+    }
+
+    /**
+     * The GitHub `owner/repo` for the deployer OIDC trust, inferred without
+     * manifest config: GITHUB_REPOSITORY when running inside Actions, otherwise
+     * the GitHub origin remote of the local checkout. Returns null when it can't
+     * be determined (no GitHub origin) — the caller decides whether that's fatal.
+     */
+    public static function githubRepository(): ?string
+    {
+        // An explicit manifest `repository` wins (monorepos, forks); otherwise
+        // infer from CI's GITHUB_REPOSITORY or the GitHub origin remote.
+        if ($repository = Manifest::get('repository')) {
+            return $repository;
+        }
+
+        if ($repository = env('GITHUB_REPOSITORY')) {
+            return $repository;
+        }
+
+        return static::parseGithubRepository(static::gitOriginUrl());
+    }
+
+    public static function gitOriginUrl(): ?string
+    {
+        $process = new Process(['git', '-C', Paths::base(), 'remote', 'get-url', 'origin']);
+        $process->run();
+
+        return $process->isSuccessful()
+            ? (trim($process->getOutput()) ?: null)
+            : null;
+    }
+
+    /**
+     * Extract the GitHub `owner/repo` from a remote URL (https or ssh form,
+     * with or without the trailing .git), or null if it isn't a github.com remote.
+     */
+    public static function parseGithubRepository(?string $url): ?string
+    {
+        if ($url === null) {
+            return null;
+        }
+
+        return preg_match('#github\.com[:/]([^/]+/[^/]+?)(?:\.git)?/?$#', $url, $matches)
+            ? $matches[1]
+            : null;
     }
 
     public static function validatePositiveInt(mixed $value, string $key): int

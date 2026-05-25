@@ -29,6 +29,37 @@ describe('keyedResourceName', function () {
     });
 });
 
+describe('parseGithubRepository', function () {
+    it('parses the ssh remote form', function () {
+        expect(Helpers::parseGithubRepository('git@github.com:codinglabsau/codinglabs.git'))
+            ->toBe('codinglabsau/codinglabs');
+    });
+
+    it('parses the https remote form', function () {
+        expect(Helpers::parseGithubRepository('https://github.com/codinglabsau/codinglabs.git'))
+            ->toBe('codinglabsau/codinglabs');
+    });
+
+    it('parses without the trailing .git', function () {
+        expect(Helpers::parseGithubRepository('https://github.com/codinglabsau/codinglabs'))
+            ->toBe('codinglabsau/codinglabs');
+    });
+
+    it('parses the ssh:// scheme form', function () {
+        expect(Helpers::parseGithubRepository('ssh://git@github.com/codinglabsau/codinglabs.git'))
+            ->toBe('codinglabsau/codinglabs');
+    });
+
+    it('returns null for a non-GitHub remote', function () {
+        expect(Helpers::parseGithubRepository('git@gitlab.com:codinglabsau/codinglabs.git'))
+            ->toBeNull();
+    });
+
+    it('returns null for a null url', function () {
+        expect(Helpers::parseGithubRepository(null))->toBeNull();
+    });
+});
+
 describe('keyedEnvName', function () {
     it('formats environment variable name', function () {
         expect(Helpers::keyedEnvName('DB_HOST'))

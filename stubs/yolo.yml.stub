@@ -6,6 +6,15 @@ environments:
     # apex: example.com
     # domain: app.example.com   # defaults to apex; set for a subdomain
 
+    # Source ref this environment deploys from — drives the local deploy guard
+    # and, when this repo is on GitHub, the CI deployer role's OIDC trust. The
+    # role (yolo-{env}-{app}-deployer) is provisioned automatically by
+    # `yolo sync:iam` and assumed from GitHub Actions with no stored AWS keys.
+    # Defaults to the main branch, so omitting these just deploys on push to main.
+    # branch: main          # push to this branch (e.g. develop for staging)
+    # tag: 'v*'             # or a tag push (true = any tag) — e.g. production
+    # repository: org/repo  # optional — inferred from the git origin
+
     aws:
       account-id: {AWS_ACCOUNT_ID}
       region: {AWS_REGION}

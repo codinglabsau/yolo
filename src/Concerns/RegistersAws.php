@@ -30,6 +30,8 @@ use Aws\CloudWatchLogs\CloudWatchLogsClient;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
 
+use function Laravel\Prompts\warning;
+
 trait RegistersAws
 {
     protected function registerAwsServices(): void
@@ -72,16 +74,24 @@ trait RegistersAws
     protected static function awsCredentials(): callable|array|null
     {
         if (Aws::runningInAws()) {
-            // On AWS we are using IAM roles, so we don't need to provide credentials
+            // On AWS we use the instance/task IAM role — defer to the SDK default
+            // credential chain (IMDS / container credentials).
             return null;
         }
 
-        // in CI (GitHub Actions) we use environment variables
+        // In CI we defer to the SDK default credential chain too, so every auth
+        // method works out of the box with no manifest changes — the chain
+        // resolves whatever the runner provides:
+        //   - GitHub OIDC via aws-actions/configure-aws-credentials (key + secret
+        //     + session token in the env) or the raw web-identity-token file;
+        //   - AWS IAM Identity Center (SSO);
+        //   - long-lived static access keys (legacy — warned against below).
         if (static::detectCiEnvironment()) {
-            return [
-                'key' => env('AWS_ACCESS_KEY_ID'),
-                'secret' => env('AWS_SECRET_ACCESS_KEY'),
-            ];
+            if (static::usingLongLivedAccessKeys()) {
+                warning('Using long-lived AWS access keys in CI. Prefer keyless GitHub OIDC: add a `deployer` block to yolo.yml, run `yolo sync:iam`, then assume the yolo-<env>-deployer role via aws-actions/configure-aws-credentials. See the YOLO README.');
+            }
+
+            return null;
         }
 
         // otherwise we are using a local env value to point to the correct AWS profile.
@@ -90,6 +100,28 @@ trait RegistersAws
         }
 
         return CredentialProvider::ini(Helpers::keyedEnv('AWS_PROFILE'));
+    }
+
+    /**
+     * A static IAM user access key with no session token — OIDC, assumed-role and
+     * SSO credentials always carry a session token, so a key without one is the
+     * tell that long-lived keys are in play.
+     */
+    protected static function usingLongLivedAccessKeys(): bool
+    {
+        return (bool) env('AWS_ACCESS_KEY_ID') && ! env('AWS_SESSION_TOKEN');
+    }
+
+    /**
+     * A named AWS profile is required only for genuinely local runs (off AWS and
+     * outside CI). On AWS we use the instance role; in CI awsCredentials() defers
+     * to the SDK default chain (OIDC / static keys), so the profile is never
+     * consulted. The account guard still STS-verifies whatever creds resolve, so
+     * not requiring a profile here doesn't weaken the which-account safety net.
+     */
+    protected static function requiresAwsProfile(): bool
+    {
+        return ! Aws::runningInAws() && ! static::detectCiEnvironment();
     }
 
     protected static function detectLocalEnvironment(): bool

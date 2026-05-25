@@ -14,6 +14,10 @@ class SyncIamCommand extends SyncSteppedCommand
         Steps\Iam\AttachEcsTaskRolePoliciesStep::class,
         Steps\Iam\SyncEcsExecutionRoleStep::class,
         Steps\Iam\AttachEcsExecutionRolePoliciesStep::class,
+        Steps\Iam\SyncGithubOidcProviderStep::class,
+        Steps\Iam\SyncDeployerPolicyStep::class,
+        Steps\Iam\SyncDeployerRoleStep::class,
+        Steps\Iam\AttachDeployerRolePoliciesStep::class,
     ];
 
     protected function configure(): void
