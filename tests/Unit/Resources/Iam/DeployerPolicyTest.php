@@ -45,6 +45,27 @@ it('grants CloudFront ListDistributions on * so the build can resolve the asset 
     expect($statement['Resource'])->toBe('*');
 });
 
+it('grants iam:ListRoles on * so the task definition can resolve the task and execution role ARNs', function () {
+    $statement = statementFor((new DeployerPolicy())->document(), 'iam:ListRoles');
+
+    // The task-definition payload resolves the task + execution role ARNs by
+    // scanning the account role list — an account-wide collection op with no
+    // resource-level scoping.
+    expect($statement['Resource'])->toBe('*');
+});
+
+it('grants ecs:TagResource gated to the RegisterTaskDefinition create action', function () {
+    $statement = statementFor((new DeployerPolicy())->document(), 'ecs:TagResource');
+
+    // The task-def payload registers with tags, which triggers a separate
+    // tag-on-create authorization check. The create-action condition keeps the
+    // grant to the register flow only — no retagging of arbitrary resources.
+    expect($statement['Resource'])->toBe('*');
+    expect($statement['Condition'])->toBe([
+        'StringEquals' => ['ecs:CreateAction' => 'RegisterTaskDefinition'],
+    ]);
+});
+
 it('scopes UpdateService and RunTask to this app\'s cluster resources', function () {
     $statement = statementFor((new DeployerPolicy())->document(), 'ecs:UpdateService');
 

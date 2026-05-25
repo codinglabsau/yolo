@@ -144,6 +144,9 @@ class DeployerPolicy implements Resource
                     // account list (CloudFront has no name-based lookup) to bake
                     // ASSET_URL before `npm run build`.
                     'cloudfront:ListDistributions',
+                    // The task-definition payload resolves the task + execution
+                    // role ARNs by scanning the account role list.
+                    'iam:ListRoles',
                     'sts:GetCallerIdentity',
                 ],
             ],
@@ -179,6 +182,23 @@ class DeployerPolicy implements Resource
                     'ecs:UpdateService',
                     'ecs:RunTask',
                     'ecs:DescribeTasks',
+                ],
+            ],
+            [
+                // ECS runs a separate ecs:TagResource authorization check when
+                // RegisterTaskDefinition is called with tags, and the task-def
+                // payload always stamps yolo:environment + Name. RegisterTaskDefinition
+                // itself is unscopeable (granted on * above), so the create-action
+                // condition — not a resource ARN — is the fence: the deployer can
+                // tag only as part of registering a task definition, never retag
+                // arbitrary ECS resources.
+                'Effect' => 'Allow',
+                'Resource' => '*',
+                'Action' => ['ecs:TagResource'],
+                'Condition' => [
+                    'StringEquals' => [
+                        'ecs:CreateAction' => 'RegisterTaskDefinition',
+                    ],
                 ],
             ],
             [
