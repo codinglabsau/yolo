@@ -8,19 +8,18 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\ElbV2;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\AppScoped;
+use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class TargetGroup implements Resource, SynchronisesConfiguration
+class TargetGroup implements AppScoped, Resource, SynchronisesConfiguration
 {
+    use ResolvesTags;
+
     public function name(): string
     {
         return Helpers::keyedResourceName(exclusive: true);
-    }
-
-    public function tags(): array
-    {
-        return ['Name' => $this->name(), 'yolo:app' => Manifest::name()];
     }
 
     public function exists(): bool

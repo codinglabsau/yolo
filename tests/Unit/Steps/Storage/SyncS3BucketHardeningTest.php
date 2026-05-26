@@ -104,13 +104,14 @@ it('locks down and versions a newly created artefact bucket', function () {
     expect($versioning['args']['VersioningConfiguration']['Status'])->toBe('Enabled');
 });
 
-it('reconciles BPA and versioning onto an existing artefact bucket', function () {
+it('reconciles BPA, versioning and the yolo:app tag onto an existing artefact bucket', function () {
     $captured = [];
 
     bindMockS3Client([
         'HeadBucket' => new Result(),   // exists
         'PutPublicAccessBlock' => new Result(),
         'PutBucketVersioning' => new Result(),
+        'PutBucketTagging' => new Result(),
     ], $captured);
 
     expect((new SyncS3ArtefactBucketStep())([]))->toBe(StepResult::SYNCED);
@@ -118,7 +119,16 @@ it('reconciles BPA and versioning onto an existing artefact bucket', function ()
     $names = array_column($captured, 'name');
     expect($names)->toContain('PutPublicAccessBlock')
         ->toContain('PutBucketVersioning')
+        ->toContain('PutBucketTagging')   // older buckets backfill yolo:app on sync
         ->not->toContain('CreateBucket');
+
+    // The step predates the create-or-sync Resource pattern, so this is the
+    // explicit tag sync that lets `yolo audit` attribute the bucket to its app.
+    $tagging = collect($captured)->firstWhere('name', 'PutBucketTagging');
+    $tags = collect($tagging['args']['Tagging']['TagSet'])
+        ->mapWithKeys(fn (array $tag) => [$tag['Key'] => $tag['Value']]);
+
+    expect($tags['yolo:app'])->toBe('my-app');
 });
 
 it('does not mutate the artefact bucket during a dry-run', function () {

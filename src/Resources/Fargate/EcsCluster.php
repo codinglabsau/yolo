@@ -7,18 +7,17 @@ use Codinglabs\Yolo\Aws\Ecs;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\AppScoped;
+use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class EcsCluster implements Resource
+class EcsCluster implements AppScoped, Resource
 {
+    use ResolvesTags;
+
     public function name(): string
     {
         return Manifest::get('ecs.cluster', Helpers::keyedResourceName(exclusive: true));
-    }
-
-    public function tags(): array
-    {
-        return ['Name' => $this->name(), 'yolo:app' => Manifest::name()];
     }
 
     public function exists(): bool

@@ -8,20 +8,19 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\AppScoped;
+use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class EcsService implements Resource
+class EcsService implements AppScoped, Resource
 {
+    use ResolvesTags;
+
     protected const INITIAL_DESIRED_COUNT = 1;
 
     public function name(): string
     {
         return Helpers::keyedResourceName('web', exclusive: true);
-    }
-
-    public function tags(): array
-    {
-        return ['Name' => $this->name(), 'yolo:app' => Manifest::name()];
     }
 
     public function exists(): bool

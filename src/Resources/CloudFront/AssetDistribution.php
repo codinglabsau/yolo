@@ -8,6 +8,8 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\CloudFront;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\AppScoped;
+use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\Storage\AssetBucket;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -24,8 +26,10 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * own `/builds` route. The keyed name is stamped into the distribution's
  * Comment (and the OAC's Name) for lookup, and surfaced as the `Name` tag.
  */
-class AssetDistribution implements Resource, SynchronisesConfiguration
+class AssetDistribution implements AppScoped, Resource, SynchronisesConfiguration
 {
+    use ResolvesTags;
+
     protected const ORIGIN_ID = 'asset-bucket';
 
     // Custom cache policy: like CachingOptimized but with `Origin` in the cache
@@ -52,11 +56,6 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
     public function name(): string
     {
         return Helpers::keyedResourceName('assets', exclusive: true);
-    }
-
-    public function tags(): array
-    {
-        return ['Name' => $this->name(), 'yolo:app' => Manifest::name()];
     }
 
     public function exists(): bool

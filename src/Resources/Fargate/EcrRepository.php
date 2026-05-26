@@ -7,18 +7,17 @@ use Codinglabs\Yolo\Aws\Ecr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\AppScoped;
+use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class EcrRepository implements Resource
+class EcrRepository implements AppScoped, Resource
 {
+    use ResolvesTags;
+
     public function name(): string
     {
         return Manifest::name();
-    }
-
-    public function tags(): array
-    {
-        return ['Name' => $this->name()];
     }
 
     public function exists(): bool

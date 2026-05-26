@@ -9,6 +9,8 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Enums\SecurityGroup;
+use Codinglabs\Yolo\Resources\AppScoped;
+use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
@@ -16,19 +18,16 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * (the load-balancer-to-task port-allow rule) lives in SyncTaskSecurityGroupStep
  * because it's a separate AWS concept with its own reconciliation surface.
  */
-class EcsTaskSecurityGroup implements Resource
+class EcsTaskSecurityGroup implements AppScoped, Resource
 {
+    use ResolvesTags;
+
     public function name(): string
     {
         return Manifest::get(
             'aws.ecs.security-group',
             Helpers::keyedResourceName(SecurityGroup::ECS_TASK_SECURITY_GROUP, exclusive: true),
         );
-    }
-
-    public function tags(): array
-    {
-        return ['Name' => $this->name(), 'yolo:app' => Manifest::name()];
     }
 
     public function exists(): bool

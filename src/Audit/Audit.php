@@ -26,6 +26,18 @@ class Audit
     public const STATUS_UNATTRIBUTED = 'unattributed';
 
     /**
+     * Deploy ephemera the audit ignores: ECS task definitions (immutable
+     * revisions pile up on every deploy and old ones can never be re-tagged) and
+     * tasks (ephemeral runtime). They're versioned/runtime artefacts, not standing
+     * infrastructure you'd leave behind, so auditing them is pure noise.
+     *
+     * @var array<string, array<int, string>>
+     */
+    private const IGNORED_TYPES = [
+        'ecs' => ['task-definition', 'task'],
+    ];
+
+    /**
      * App names that have a live ECS cluster for this environment, derived from
      * cluster ARNs by the yolo-{env}-{app} naming convention. The bare yolo-{env}
      * cluster (none exists, but defensively) and non-YOLO clusters are ignored.
@@ -61,6 +73,7 @@ class Audit
     public static function classify(array $taggedResources, array $liveApps): array
     {
         $resources = collect($taggedResources)
+            ->reject(fn (array $resource) => static::isIgnored(Arn::parse($resource['ResourceARN'])))
             ->map(function (array $resource) use ($liveApps) {
                 $tags = Aws::flattenTags($resource['Tags'] ?? []);
                 $app = $tags[self::APP_TAG] ?? null;
@@ -95,6 +108,11 @@ class Audit
      * segment when there is one (e.g. ecs/service, elasticloadbalancing/targetgroup,
      * s3). Display only; no behaviour keys off it.
      */
+    protected static function isIgnored(?Arn $arn): bool
+    {
+        return $arn !== null && in_array($arn->resourceType, self::IGNORED_TYPES[$arn->service] ?? [], true);
+    }
+
     protected static function type(?Arn $arn): string
     {
         if ($arn === null) {
