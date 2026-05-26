@@ -97,11 +97,28 @@ trait RegistersAws
         }
 
         // otherwise we are using a local env value to point to the correct AWS profile.
-        if (in_array(Helpers::keyedEnv('AWS_PROFILE'), ['', null, 'default'])) {
+        $profile = Helpers::keyedEnv('AWS_PROFILE');
+
+        if (in_array($profile, ['', null, 'default'])) {
             throw new IntegrityCheckException(sprintf('Using the default AWS profile in your credentials file is risky. Name your profile to something specific and update %s in your .env file before proceeding.', Helpers::keyedEnvName('AWS_PROFILE')));
         }
 
-        return CredentialProvider::ini(Helpers::keyedEnv('AWS_PROFILE'));
+        // Resolve the named profile through credential_process and static keys in
+        // both the credentials and config files, so a `credential_process` profile
+        // (e.g. 1Password-backed short-lived creds) resolves alongside plain static
+        // keys. Built explicitly rather than via defaultProvider() — which only
+        // reads the profile from $AWS_PROFILE — so the profile stays scoped without
+        // mutating the environment. Memoised so credentials resolve once per run.
+        $configFile = CredentialProvider::getConfigFileName();
+
+        return CredentialProvider::memoize(
+            CredentialProvider::chain(
+                CredentialProvider::process($profile),
+                CredentialProvider::ini($profile),
+                CredentialProvider::process('profile ' . $profile, $configFile),
+                CredentialProvider::ini('profile ' . $profile, $configFile),
+            )
+        );
     }
 
     /**
