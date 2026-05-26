@@ -6,25 +6,16 @@ use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
+use Codinglabs\Yolo\ShutdownTimings;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\Iam\EcsTaskRole;
 use Codinglabs\Yolo\Resources\Fargate\EcsService;
-use Codinglabs\Yolo\Resources\Fargate\TargetGroup;
 use Codinglabs\Yolo\Resources\Fargate\TaskLogGroup;
 use Codinglabs\Yolo\Resources\Iam\EcsExecutionRole;
 use Codinglabs\Yolo\Resources\Fargate\EcrRepository;
 
 class SyncTaskDefinitionStep implements Step
 {
-    // Headroom on top of the drain so the server can finish in-flight requests
-    // after the lame-duck sleep before ECS escalates to SIGKILL. The default
-    // drain (10s) + this margin lands on AWS's own 30s default, so apps that
-    // don't tune the deregistration delay see no change.
-    protected const STOP_TIMEOUT_DRAIN_MARGIN = 20;
-
-    // Fargate caps the container stopTimeout at 120s.
-    protected const MAX_STOP_TIMEOUT = 120;
-
     public function __invoke(array $options): StepResult
     {
         if (Arr::get($options, 'dry-run')) {
@@ -60,13 +51,10 @@ class SyncTaskDefinitionStep implements Step
         // own Resource (re-registered every sync — no exists/create distinction).
         $family = (new EcsService())->name();
 
-        // Give ECS enough time between SIGTERM and SIGKILL to cover the entrypoint's
-        // lame-duck drain (the deregistration-delay window) plus in-flight request
-        // completion — otherwise a long drain would be cut short by SIGKILL.
-        $stopTimeout = min(
-            (new TargetGroup())->deregistrationDelay() + self::STOP_TIMEOUT_DRAIN_MARGIN,
-            self::MAX_STOP_TIMEOUT,
-        );
+        // ECS's SIGTERM-to-SIGKILL ceiling. Derived from the same source as the
+        // entrypoint drain and supervisord's stop waits so a long drain or queue
+        // job isn't cut short by SIGKILL mid-shutdown.
+        $stopTimeout = ShutdownTimings::stopTimeout();
 
         return [
             'family' => $family,

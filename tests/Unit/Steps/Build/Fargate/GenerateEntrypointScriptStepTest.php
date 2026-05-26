@@ -5,6 +5,7 @@ use Codinglabs\Yolo\Steps\Build\Fargate\GenerateEntrypointScriptStep;
 
 beforeEach(function () {
     writeManifest([
+        'apex' => 'example.com',
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
         'tasks' => ['web' => []],
     ]);
@@ -21,6 +22,7 @@ function generatedEntrypointScript(): string
 
 it('starts with a shebang and fails fast through the deploy-all hooks', function () {
     writeManifest([
+        'apex' => 'example.com',
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
         'tasks' => ['web' => []],
         'deploy-all' => ['php artisan migrate --force', 'php artisan config:cache'],
@@ -49,11 +51,26 @@ it('drains for the deregistration delay before forwarding the stop', function ()
 
 it('tracks the manifest deregistration delay for the drain duration', function () {
     writeManifest([
+        'apex' => 'example.com',
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
         'tasks' => ['web' => ['deregistration-delay' => 45]],
     ]);
 
     expect(generatedEntrypointScript())->toContain("sleep 45\n");
+});
+
+it('omits the drain sleep when headless — no ALB target to drain', function () {
+    writeManifest([
+        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'tasks' => ['web' => ['deregistration-delay' => 45]],
+    ]);
+
+    $script = generatedEntrypointScript();
+
+    // Still supervises + traps so the stop is forwarded cleanly, just no lame-duck sleep.
+    expect($script)->not->toContain('sleep');
+    expect($script)->toContain('trap drain TERM');
+    expect($script)->toContain('kill -TERM "$child"');
 });
 
 it('forwards SIGTERM to the child and waits for a clean shutdown', function () {

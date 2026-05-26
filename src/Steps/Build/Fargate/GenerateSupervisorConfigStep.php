@@ -3,9 +3,9 @@
 namespace Codinglabs\Yolo\Steps\Build\Fargate;
 
 use Codinglabs\Yolo\Paths;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
+use Codinglabs\Yolo\ShutdownTimings;
 use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
 
@@ -41,22 +41,26 @@ class GenerateSupervisorConfigStep implements Step
 
     protected function config(): string
     {
+        // Stop waits come from ShutdownTimings so a program's graceful-stop window
+        // matches the container stopTimeout derived from the same source.
+        $graces = ShutdownTimings::programGraces();
+
         $blocks = [
             $this->header(),
             $this->program('octane', sprintf(
                 'php artisan octane:frankenphp --host=0.0.0.0 --port=%d',
                 (int) Manifest::get('tasks.web.port', 8000),
-            )),
+            ), stopwaitsecs: $graces['octane']),
         ];
 
-        if (Helpers::validateStrictBool(Manifest::get('tasks.web.scheduler', false), 'tasks.web.scheduler')) {
-            $blocks[] = $this->program('scheduler', 'php artisan schedule:work');
+        if (isset($graces['scheduler'])) {
+            $blocks[] = $this->program('scheduler', 'php artisan schedule:work', stopwaitsecs: $graces['scheduler']);
         }
 
-        if (Helpers::validateStrictBool(Manifest::get('tasks.web.queue', false), 'tasks.web.queue')) {
+        if (isset($graces['queue'])) {
             // Longer stop wait so an in-flight job can finish on SIGTERM before
             // supervisor force-kills the worker.
-            $blocks[] = $this->program('queue', 'php artisan queue:work --tries=3 --max-time=3600', stopwaitsecs: 70);
+            $blocks[] = $this->program('queue', 'php artisan queue:work --tries=3 --max-time=3600', stopwaitsecs: $graces['queue']);
         }
 
         return implode("\n\n", $blocks) . "\n";
