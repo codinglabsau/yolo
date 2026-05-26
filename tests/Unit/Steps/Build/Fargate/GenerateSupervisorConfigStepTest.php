@@ -57,10 +57,10 @@ it('runs the scheduler and queue worker when explicitly enabled', function () {
     expect($config)->toContain('command=php artisan queue:work --tries=3 --max-time=3600');
 });
 
-it('inherits the deregistration delay for octanes stop wait', function () {
+it('uses the web stop-grace for octanes stop wait', function () {
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'tasks' => ['web' => ['deregistration-delay' => 25]],
+        'tasks' => ['web' => ['stop-grace' => 25]],
     ]);
 
     // Octane is the only program, so the only stopwaitsecs in the file is its own.

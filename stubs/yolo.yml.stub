@@ -26,17 +26,17 @@ environments:
         cpu: '512'
         memory: '1024'
         port: 8000
-        # deregistration-delay: 10     # seconds to keep serving after SIGTERM before stopping,
-                                        # so the ALB drains this task first (no deploy 502s). The
-                                        # octane + scheduler stop windows and the container stop
-                                        # timeout all derive from this — bump it for long in-flight
-                                        # requests (uploads, exports, SSE).
+        # stop-grace: 10               # seconds the web process gets to finish work on SIGTERM
+                                        # before it's stopped. It's behind the ALB, so this is also
+                                        # the drain window (no deploy 502s) and the container stop
+                                        # timeout derives from it — bump for long in-flight requests
+                                        # (uploads, exports, SSE). queue + scheduler take the same key.
         enable-execute-command: true   # ECS Exec shell access (gate with MFA on your IAM)
         queue: true                    # run queue:work in the web container. Expand to an object to
                                         # give a long-running job longer to finish before SIGKILL:
                                         #   queue:
                                         #     stop-grace: 90
-        scheduler: true                # run schedule:work in the web container
+        scheduler: true                # run schedule:work in the web container (same stop-grace override)
 
       # Independent task groups — not yet implemented. Today the web task runs
       # octane + queue:work + schedule:work together (toggle the flags above).

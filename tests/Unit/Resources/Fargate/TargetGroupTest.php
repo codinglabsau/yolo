@@ -108,10 +108,10 @@ it('defaults the deregistration delay to 10s', function () {
     expect((new TargetGroup())->deregistrationDelay())->toBe(10);
 });
 
-it('respects a manifest deregistration-delay override', function () {
+it('respects a manifest stop-grace override', function () {
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'tasks' => ['web' => ['deregistration-delay' => 30]],
+        'tasks' => ['web' => ['stop-grace' => 30]],
     ]);
 
     expect((new TargetGroup())->deregistrationDelay())->toBe(30);

@@ -33,8 +33,8 @@ class GenerateEntrypointScriptStep implements Step
         // Past startup. ECS sends SIGTERM at the same moment it deregisters the task,
         // but the ALB takes a few seconds to actually stop routing to a draining
         // target. Backgrounding the CMD lets us trap that SIGTERM and keep serving for
-        // the deregistration-delay window before forwarding the stop, so requests the
-        // ALB sends mid-drain still land on a live server instead of 502ing. A headless
+        // the web stop-grace window before forwarding the stop, so requests the ALB
+        // sends mid-drain still land on a live server instead of 502ing. A headless
         // app has no target group to drain, so the sleep is dropped and we stop at once.
         $sleepLine = $drain > 0 ? "    sleep $drain\n" : '';
 

@@ -15,11 +15,11 @@ it('defaults the drain to 10 seconds', function () {
     expect(ShutdownTimings::drain())->toBe(10);
 });
 
-it('drains for the manifest deregistration delay', function () {
+it('drains for the manifest web stop-grace', function () {
     writeManifest([
         'apex' => 'example.com',
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'tasks' => ['web' => ['deregistration-delay' => 45]],
+        'tasks' => ['web' => ['stop-grace' => 45]],
     ]);
 
     expect(ShutdownTimings::drain())->toBe(45);
@@ -28,7 +28,7 @@ it('drains for the manifest deregistration delay', function () {
 it('skips the drain entirely when headless (no ALB to drain)', function () {
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'tasks' => ['web' => ['deregistration-delay' => 45]],
+        'tasks' => ['web' => ['stop-grace' => 45]],
     ]);
 
     expect(ShutdownTimings::drain())->toBe(0);
@@ -38,11 +38,11 @@ it('runs only octane by default, inheriting the drain for its stop window', func
     expect(ShutdownTimings::programGraces())->toBe(['octane' => 10]);
 });
 
-it('octane and scheduler inherit the deregistration delay', function () {
+it('octane and scheduler inherit the web stop-grace', function () {
     writeManifest([
         'apex' => 'example.com',
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'tasks' => ['web' => ['deregistration-delay' => 20, 'scheduler' => true]],
+        'tasks' => ['web' => ['stop-grace' => 20, 'scheduler' => true]],
     ]);
 
     expect(ShutdownTimings::programGraces())->toBe(['octane' => 20, 'scheduler' => 20]);

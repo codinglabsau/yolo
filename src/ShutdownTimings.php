@@ -6,22 +6,28 @@ namespace Codinglabs\Yolo;
  * One source of truth for how the web container shuts down, so supervisord's
  * per-program stop waits and ECS's stopTimeout can't drift apart.
  *
- * Everything inherits the deregistration delay — the single knob you tune for a
- * given app — except the queue worker, whose in-flight job can outlast any ALB
- * drain and so gets its own longer default. Tune a process's window only when it
- * genuinely differs, by expanding its manifest flag to an object:
+ * Each process shares one key — `stop-grace`: how long it gets to finish work on
+ * SIGTERM before being killed. Octane sits behind the ALB, so its grace doubles
+ * as the target group's deregistration delay and the entrypoint drain. The queue
+ * worker defaults longer (its in-flight job can outlast an ALB drain); the
+ * scheduler inherits octane's. Override a process's window by setting stop-grace,
+ * expanding the opt-in flags to objects where needed:
  *
  *     tasks:
  *       web:
- *         deregistration-delay: 10     # ALB drain; octane + scheduler inherit it
+ *         stop-grace: 10               # web process; also the ALB drain window
  *         queue:
  *           stop-grace: 90             # let a long job finish before SIGKILL
+ *         scheduler: true
  */
 class ShutdownTimings
 {
     // Queue jobs routinely outlast an ALB drain, so the worker defaults to a
-    // longer window than the web tier to finish the in-flight job on shutdown.
+    // longer window than the web process to finish the in-flight job on shutdown.
     public const QUEUE_DEFAULT_GRACE = 70;
+
+    // The web process's graceful-stop window when not set in the manifest.
+    private const WEB_DEFAULT_GRACE = 10;
 
     // Headroom between the longest graceful stop and ECS's SIGKILL so a process
     // draining right up to its window isn't cut off at the wire.
@@ -30,9 +36,14 @@ class ShutdownTimings
     // Fargate hard-caps the container stopTimeout at 120s.
     private const MAX_STOP_TIMEOUT = 120;
 
-    public static function deregistrationDelay(): int
+    /**
+     * The web (octane) process's graceful-stop window. Octane is behind the ALB,
+     * so this is also the target group's deregistration delay and how long the
+     * entrypoint keeps serving on SIGTERM before forwarding the stop.
+     */
+    public static function webStopGrace(): int
     {
-        return (int) Manifest::get('tasks.web.deregistration-delay', 10);
+        return (int) Manifest::get('tasks.web.stop-grace', static::WEB_DEFAULT_GRACE);
     }
 
     /**
@@ -42,7 +53,7 @@ class ShutdownTimings
      */
     public static function drain(): int
     {
-        return Manifest::isHeadless() ? 0 : static::deregistrationDelay();
+        return Manifest::isHeadless() ? 0 : static::webStopGrace();
     }
 
     /**
@@ -53,14 +64,14 @@ class ShutdownTimings
      */
     public static function programGraces(): array
     {
-        $graces = ['octane' => static::deregistrationDelay()];
+        $graces = ['octane' => static::webStopGrace()];
 
         if (static::enabled('queue')) {
             $graces['queue'] = static::grace('queue', static::QUEUE_DEFAULT_GRACE);
         }
 
         if (static::enabled('scheduler')) {
-            $graces['scheduler'] = static::grace('scheduler', static::deregistrationDelay());
+            $graces['scheduler'] = static::grace('scheduler', static::webStopGrace());
         }
 
         return $graces;
