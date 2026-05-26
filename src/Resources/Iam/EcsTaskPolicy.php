@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
+use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
@@ -21,14 +22,11 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  */
 class EcsTaskPolicy implements Resource
 {
+    use ResolvesTags;
+
     public function name(): string
     {
         return Helpers::keyedResourceName(Iam::ECS_TASK_POLICY, exclusive: false);
-    }
-
-    public function tags(): array
-    {
-        return ['Name' => $this->name()];
     }
 
     public function exists(): bool

@@ -4,9 +4,10 @@ namespace Codinglabs\Yolo\Steps\Network;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
-use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Resources\Network\RouteTable;
+use Codinglabs\Yolo\Resources\Network\InternetGateway;
 
 class SyncDefaultRouteStep implements Step
 {
@@ -18,8 +19,8 @@ class SyncDefaultRouteStep implements Step
         if (! Arr::get($options, 'dry-run')) {
             Aws::ec2()->createRoute([
                 'DestinationCidrBlock' => '0.0.0.0/0',
-                'GatewayId' => AwsResources::internetGateway()['InternetGatewayId'],
-                'RouteTableId' => AwsResources::routeTable()['RouteTableId'],
+                'GatewayId' => (new InternetGateway())->arn(),
+                'RouteTableId' => (new RouteTable())->arn(),
             ]);
 
             return StepResult::SYNCED;

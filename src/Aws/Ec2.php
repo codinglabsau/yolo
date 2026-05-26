@@ -7,6 +7,63 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class Ec2
 {
+    public static function vpc(string $name): array
+    {
+        return static::firstByNameTag('describeVpcs', 'Vpcs', $name, "Could not find VPC $name");
+    }
+
+    public static function subnet(string $name): array
+    {
+        return static::firstByNameTag('describeSubnets', 'Subnets', $name, "Could not find subnet $name");
+    }
+
+    public static function internetGateway(string $name): array
+    {
+        return static::firstByNameTag('describeInternetGateways', 'InternetGateways', $name, "Could not find internet gateway $name");
+    }
+
+    public static function routeTable(string $name): array
+    {
+        return static::firstByNameTag('describeRouteTables', 'RouteTables', $name, "Could not find route table $name");
+    }
+
+    /**
+     * Availability zones for a region, in AWS's returned order. Subnets are
+     * placed one-per-zone by index.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function availabilityZones(string $region): array
+    {
+        $availabilityZones = Aws::ec2()->describeAvailabilityZones([
+            'Filters' => [['Name' => 'region-name', 'Values' => [$region]]],
+        ])['AvailabilityZones'];
+
+        if (count($availabilityZones) === 0) {
+            throw new ResourceDoesNotExistException("Could not find availability zones for region $region");
+        }
+
+        return $availabilityZones;
+    }
+
+    /**
+     * Every subnet in a VPC (used to build the RDS DB subnet group).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function vpcSubnets(string $vpcId): array
+    {
+        $subnets = Aws::ec2()->describeSubnets([
+            'Filters' => [['Name' => 'vpc-id', 'Values' => [$vpcId]]],
+        ])['Subnets'];
+
+        if (count($subnets) === 0) {
+            throw new ResourceDoesNotExistException("Could not find subnets for VPC $vpcId");
+        }
+
+        return $subnets;
+    }
+
     public static function securityGroup(string $name): array
     {
         $securityGroups = Aws::ec2()->describeSecurityGroups()['SecurityGroups'];
@@ -18,6 +75,26 @@ class Ec2
         }
 
         throw new ResourceDoesNotExistException("Could not find security group $name");
+    }
+
+    /**
+     * Describe a single EC2 resource by its `Name` tag. The describe* calls all
+     * share the `Filters` + `{ResourceType}` envelope shape, so one helper covers
+     * VPCs, subnets, internet gateways and route tables.
+     *
+     * @return array<string, mixed>
+     */
+    protected static function firstByNameTag(string $operation, string $key, string $name, string $message): array
+    {
+        $results = Aws::ec2()->{$operation}([
+            'Filters' => [['Name' => 'tag:Name', 'Values' => [$name]]],
+        ])[$key];
+
+        if (count($results) === 0) {
+            throw new ResourceDoesNotExistException($message);
+        }
+
+        return $results[0];
     }
 
     /**

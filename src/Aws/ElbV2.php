@@ -66,4 +66,19 @@ class ElbV2
             'ListenerArn' => $listenerArn,
         ])['Rules'];
     }
+
+    public static function listenerCertificate(string $listenerArn, string $certificateArn): array
+    {
+        $certificates = Aws::elasticLoadBalancingV2()->describeListenerCertificates([
+            'ListenerArn' => $listenerArn,
+        ])['Certificates'];
+
+        foreach ($certificates as $certificate) {
+            if ($certificate['CertificateArn'] === $certificateArn) {
+                return $certificate;
+            }
+        }
+
+        throw new ResourceDoesNotExistException("Could not find listener certificate on listener $listenerArn");
+    }
 }

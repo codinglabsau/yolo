@@ -7,6 +7,7 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
+use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
@@ -21,14 +22,11 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  */
 class EcsExecutionRole implements Resource
 {
+    use ResolvesTags;
+
     public function name(): string
     {
         return Helpers::keyedResourceName(Iam::ECS_EXECUTION_ROLE, exclusive: false);
-    }
-
-    public function tags(): array
-    {
-        return ['Name' => $this->name()];
     }
 
     public function exists(): bool

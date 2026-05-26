@@ -4,38 +4,35 @@ namespace Codinglabs\Yolo\Steps\Solo;
 
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\ExecutesWebStep;
-use Codinglabs\Yolo\Concerns\SyncsSslCertificates;
-use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
+use Codinglabs\Yolo\Resources\Acm\SslCertificate;
 
 class SyncSslCertificateStep implements ExecutesWebStep
 {
-    use SyncsSslCertificates;
-
     public function __invoke(array $options): StepResult
     {
-        try {
-            $certificate = AwsResources::certificate(Manifest::apex());
+        $certificate = new SslCertificate(Manifest::apex());
+        $summary = $certificate->find();
 
-            if ($certificate['Status'] === 'PENDING_VALIDATION') {
-                if (! Arr::get($options, 'dry-run')) {
-                    $this->validateCertificate($certificate['CertificateArn'], Manifest::apex());
-                } else {
-                    return StepResult::WOULD_SYNC;
-                }
+        if ($summary === null) {
+            if (Arr::get($options, 'dry-run')) {
+                return StepResult::WOULD_CREATE;
             }
 
-            return StepResult::SYNCED;
-        } catch (ResourceDoesNotExistException) {
-            if (! Arr::get($options, 'dry-run')) {
-                $this->requestCertificate(Manifest::apex());
+            $certificate->validate($certificate->request());
 
-                return StepResult::CREATED;
-            }
-
-            return StepResult::WOULD_CREATE;
+            return StepResult::CREATED;
         }
+
+        if ($summary['Status'] === 'PENDING_VALIDATION') {
+            if (Arr::get($options, 'dry-run')) {
+                return StepResult::WOULD_SYNC;
+            }
+
+            $certificate->validate($summary['CertificateArn']);
+        }
+
+        return StepResult::SYNCED;
     }
 }

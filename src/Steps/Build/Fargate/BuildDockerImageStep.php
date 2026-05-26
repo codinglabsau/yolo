@@ -5,10 +5,10 @@ namespace Codinglabs\Yolo\Steps\Build\Fargate;
 use Codinglabs\Yolo\Paths;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Symfony\Component\Process\Process;
+use Codinglabs\Yolo\Resources\Fargate\EcrRepository;
 
 class BuildDockerImageStep implements Step
 {
@@ -17,7 +17,7 @@ class BuildDockerImageStep implements Step
     public function __invoke(array $options): StepResult
     {
         $process = new Process(
-            command: static::command(Arr::get($options, 'app-version'), AwsResources::ecrRepositoryUri()),
+            command: static::command(Arr::get($options, 'app-version'), (new EcrRepository())->uri()),
             // BuildKit is required for --cache-to; it's the default on Docker 23+
             // but force it so older daemons don't choke on the flag.
             env: ['DOCKER_BUILDKIT' => '1'],

@@ -6,20 +6,18 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Aws\ElbV2;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class HttpsListener implements Resource
 {
+    use ResolvesTags;
+
     public function __construct(private array $certificate) {}
 
     public function name(): string
     {
         return Helpers::keyedResourceName('https', exclusive: false);
-    }
-
-    public function tags(): array
-    {
-        return ['Name' => $this->name()];
     }
 
     public function exists(): bool

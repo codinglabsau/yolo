@@ -4,10 +4,13 @@ namespace Codinglabs\Yolo\Steps\Deploy;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Resources\Fargate\EcsCluster;
+use Codinglabs\Yolo\Resources\Fargate\EcsService;
+use Codinglabs\Yolo\Resources\Network\PublicSubnet;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
+use Codinglabs\Yolo\Resources\Fargate\EcsTaskSecurityGroup;
 
 class ExecuteDeployStepsStep implements Step
 {
@@ -23,9 +26,12 @@ class ExecuteDeployStepsStep implements Step
 
         $script = "set -e\n" . implode("\n", $commands);
 
+        $cluster = (new EcsCluster())->name();
+
         $run = Aws::ecs()->runTask([
-            'cluster' => AwsResources::ecsClusterName(),
-            'taskDefinition' => AwsResources::ecsTaskFamily(),
+            'cluster' => $cluster,
+            // The task definition family is the web service name (see EcsService).
+            'taskDefinition' => (new EcsService())->name(),
             'launchType' => 'FARGATE',
             'count' => 1,
             'startedBy' => 'yolo-deploy',
@@ -39,8 +45,8 @@ class ExecuteDeployStepsStep implements Step
             ],
             'networkConfiguration' => [
                 'awsvpcConfiguration' => [
-                    'subnets' => AwsResources::publicSubnetIds(),
-                    'securityGroups' => [AwsResources::ecsTaskSecurityGroup()['GroupId']],
+                    'subnets' => PublicSubnet::ids(),
+                    'securityGroups' => [(new EcsTaskSecurityGroup())->arn()],
                     'assignPublicIp' => 'ENABLED',
                 ],
             ],
@@ -56,13 +62,13 @@ class ExecuteDeployStepsStep implements Step
         $taskArn = $run['tasks'][0]['taskArn'];
 
         Aws::ecs()->waitUntil('TasksStopped', [
-            'cluster' => AwsResources::ecsClusterName(),
+            'cluster' => $cluster,
             'tasks' => [$taskArn],
             '@waiter' => ['maxAttempts' => 120, 'delay' => 10],
         ]);
 
         $stopped = Aws::ecs()->describeTasks([
-            'cluster' => AwsResources::ecsClusterName(),
+            'cluster' => $cluster,
             'tasks' => [$taskArn],
         ])['tasks'][0];
 

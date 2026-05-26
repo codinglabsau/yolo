@@ -2,45 +2,24 @@
 
 namespace Codinglabs\Yolo\Steps\Network;
 
-use Codinglabs\Yolo\Aws;
-use Illuminate\Support\Arr;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
+use Codinglabs\Yolo\Resources\Network\RouteTable;
+use Codinglabs\Yolo\Concerns\SynchronisesResource;
 
 class SyncRouteTableStep implements Step
 {
+    use SynchronisesResource;
+
     public function __invoke(array $options): StepResult
     {
-        try {
-            AwsResources::routeTable();
+        $routeTable = new RouteTable();
 
-            if (Manifest::has('aws.route-table')) {
-                return StepResult::CUSTOM_MANAGED;
-            }
-
-            return StepResult::SYNCED;
-        } catch (ResourceDoesNotExistException $e) {
-            if (! Arr::get($options, 'dry-run')) {
-                Aws::ec2()->createRouteTable([
-                    'VpcId' => AwsResources::vpc()['VpcId'],
-                    'TagSpecifications' => [
-                        [
-                            'ResourceType' => 'route-table',
-                            ...Aws::tags([
-                                'Name' => Helpers::keyedResourceName(exclusive: false),
-                            ]),
-                        ],
-                    ],
-                ]);
-
-                return StepResult::CREATED;
-            }
-
-            return StepResult::WOULD_CREATE;
+        if (Manifest::has('aws.route-table') && $routeTable->exists()) {
+            return StepResult::CUSTOM_MANAGED;
         }
+
+        return $this->syncResource($routeTable, $options);
     }
 }

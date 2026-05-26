@@ -2,44 +2,24 @@
 
 namespace Codinglabs\Yolo\Steps\Network;
 
-use Codinglabs\Yolo\Aws;
-use Illuminate\Support\Arr;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
+use Codinglabs\Yolo\Concerns\SynchronisesResource;
+use Codinglabs\Yolo\Resources\Network\InternetGateway;
 
 class SyncInternetGatewayStep implements Step
 {
+    use SynchronisesResource;
+
     public function __invoke(array $options): StepResult
     {
-        try {
-            AwsResources::internetGateway();
+        $internetGateway = new InternetGateway();
 
-            if (Manifest::has('aws.internet-gateway')) {
-                return StepResult::CUSTOM_MANAGED;
-            }
-
-            return StepResult::SYNCED;
-        } catch (ResourceDoesNotExistException $e) {
-            if (! Arr::get($options, 'dry-run')) {
-                Aws::ec2()->createInternetGateway([
-                    'TagSpecifications' => [
-                        [
-                            'ResourceType' => 'internet-gateway',
-                            ...Aws::tags([
-                                'Name' => Helpers::keyedResourceName(exclusive: false),
-                            ]),
-                        ],
-                    ],
-                ]);
-
-                return StepResult::CREATED;
-            }
-
-            return StepResult::WOULD_CREATE;
+        if (Manifest::has('aws.internet-gateway') && $internetGateway->exists()) {
+            return StepResult::CUSTOM_MANAGED;
         }
+
+        return $this->syncResource($internetGateway, $options);
     }
 }

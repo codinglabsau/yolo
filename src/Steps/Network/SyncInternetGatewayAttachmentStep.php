@@ -4,40 +4,34 @@ namespace Codinglabs\Yolo\Steps\Network;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
+use Codinglabs\Yolo\Resources\Network\Vpc;
+use Codinglabs\Yolo\Resources\Network\InternetGateway;
 
 class SyncInternetGatewayAttachmentStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        try {
-            $vpc = AwsResources::vpc();
-            $internetGateway = AwsResources::internetGateway();
+        $vpcId = (new Vpc())->arn();
+        $internetGateway = Ec2::internetGateway((new InternetGateway())->name());
 
-            if (count($internetGateway['Attachments']) === 1
-                && $internetGateway['Attachments'][0]['VpcId'] === $vpc['VpcId']
-                && $internetGateway['Attachments'][0]['State'] === 'available') {
-                return StepResult::SYNCED;
-            }
+        if (count($internetGateway['Attachments']) === 1
+            && $internetGateway['Attachments'][0]['VpcId'] === $vpcId
+            && $internetGateway['Attachments'][0]['State'] === 'available') {
+            return StepResult::SYNCED;
+        }
 
-            throw new ResourceDoesNotExistException('Could not find Internet Gateway Attachment');
-        } catch (ResourceDoesNotExistException $e) {
-            if (! Arr::get($options, 'dry-run')) {
-                $vpc = AwsResources::vpc();
-                $internetGateway = AwsResources::internetGateway();
-
-                Aws::ec2()->attachInternetGateway([
-                    'InternetGatewayId' => $internetGateway['InternetGatewayId'],
-                    'VpcId' => $vpc['VpcId'],
-                ]);
-
-                return StepResult::CREATED;
-            }
-
+        if (Arr::get($options, 'dry-run')) {
             return StepResult::WOULD_CREATE;
         }
+
+        Aws::ec2()->attachInternetGateway([
+            'InternetGatewayId' => $internetGateway['InternetGatewayId'],
+            'VpcId' => $vpcId,
+        ]);
+
+        return StepResult::CREATED;
     }
 }

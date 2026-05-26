@@ -3,7 +3,9 @@
 namespace Codinglabs\Yolo\Concerns;
 
 use Codinglabs\Yolo\Aws;
-use Codinglabs\Yolo\AwsResources;
+use Codinglabs\Yolo\Aws\ElbV2;
+use Codinglabs\Yolo\Aws\Route53;
+use Codinglabs\Yolo\Resources\Fargate\LoadBalancer;
 
 trait SyncsRecordSets
 {
@@ -16,13 +18,13 @@ trait SyncsRecordSets
                 'Changes' => $this->generateChanges($apex, $domain),
                 'Comment' => 'Created by yolo CLI',
             ],
-            'HostedZoneId' => AwsResources::hostedZone($apex)['Id'],
+            'HostedZoneId' => Route53::hostedZone($apex)['Id'],
         ]);
     }
 
     protected function generateChanges(string $apex, string $domain): array
     {
-        $ALB = AwsResources::loadBalancer();
+        $ALB = ElbV2::loadBalancer((new LoadBalancer())->name());
 
         // handle apex and www. subdomains
         if ($this->domainHasWwwSubdomain($apex, $domain)) {

@@ -4,9 +4,9 @@ namespace Codinglabs\Yolo\Steps\Fargate;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
+use Codinglabs\Yolo\Aws\Acm;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\ElbV2;
-use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
@@ -25,8 +25,7 @@ class SyncHttpsListenerStep implements ExecutesWebStep
         }
 
         try {
-            // ACM certificate lookup is still on the legacy AwsResources facade — LPX-612.
-            $certificate = AwsResources::certificate(Manifest::apex());
+            $certificate = Acm::certificate(Manifest::apex());
         } catch (ResourceDoesNotExistException) {
             return StepResult::SKIPPED;
         }
