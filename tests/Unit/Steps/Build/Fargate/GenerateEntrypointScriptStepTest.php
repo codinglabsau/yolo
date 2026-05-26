@@ -73,6 +73,23 @@ it('omits the drain sleep when headless — no ALB target to drain', function ()
     expect($script)->toContain('kill -TERM "$child"');
 });
 
+it('does not mention the scheduler when it is disabled', function () {
+    expect(generatedEntrypointScript())->not->toContain('schedule:run');
+});
+
+it('halts cron and waits out an in-flight schedule:run when the scheduler is enabled', function () {
+    writeManifest([
+        'apex' => 'example.com',
+        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'tasks' => ['web' => ['scheduler' => true]],
+    ]);
+
+    $script = generatedEntrypointScript();
+
+    expect($script)->toContain('supervisorctl -c /etc/supervisord.conf stop scheduler');
+    expect($script)->toContain("pgrep -f 'artisan schedule:run'");
+});
+
 it('forwards SIGTERM to the child and waits for a clean shutdown', function () {
     $script = generatedEntrypointScript();
 

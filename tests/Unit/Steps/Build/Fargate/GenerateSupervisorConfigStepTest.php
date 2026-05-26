@@ -9,7 +9,8 @@ beforeEach(function () {
         'tasks' => ['web' => []],
     ]);
 
-    is_dir(Paths::build('docker')) && array_map('unlink', glob(Paths::build('docker/*')));
+    is_file(Paths::build('docker/supervisord.conf')) && unlink(Paths::build('docker/supervisord.conf'));
+    is_file(Paths::build('docker/crontabs/www-data')) && unlink(Paths::build('docker/crontabs/www-data'));
 });
 
 function generatedSupervisorConfig(): string
@@ -52,9 +53,31 @@ it('runs the scheduler and queue worker when explicitly enabled', function () {
     $config = generatedSupervisorConfig();
 
     expect($config)->toContain('[program:scheduler]');
-    expect($config)->toContain('command=php artisan schedule:work');
+    // The scheduler runs as cron, not a schedule:work daemon.
+    expect($config)->toContain('command=crond -f -d 8 -c /app/docker/crontabs');
+    expect($config)->not->toContain('schedule:work');
     expect($config)->toContain('[program:queue]');
     expect($config)->toContain('command=php artisan queue:work --tries=3 --max-time=3600');
+});
+
+it('writes a crontab firing schedule:run each minute when the scheduler is enabled', function () {
+    writeManifest([
+        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'tasks' => ['web' => ['scheduler' => true]],
+    ]);
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    $crontab = file_get_contents(Paths::build('docker/crontabs/www-data'));
+
+    expect($crontab)->toContain('* * * * * cd /app && ');
+    expect($crontab)->toContain('php artisan schedule:run');
+});
+
+it('writes no crontab when the scheduler is disabled', function () {
+    generatedSupervisorConfig();
+
+    expect(is_file(Paths::build('docker/crontabs/www-data')))->toBeFalse();
 });
 
 it('uses the web shutdown-grace-period for octanes stop wait', function () {
