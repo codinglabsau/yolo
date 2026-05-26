@@ -5,14 +5,12 @@ namespace Codinglabs\Yolo\Steps\Network;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Aws\Ec2;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Enums\SecurityGroup;
+use Codinglabs\Yolo\Concerns\SynchronisesResource;
+use Codinglabs\Yolo\Resources\Network\RdsSecurityGroup;
 use Codinglabs\Yolo\Resources\Fargate\EcsTaskSecurityGroup;
-use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * Provisions the RDS security group and authorises the Fargate tasks to reach
@@ -27,43 +25,23 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  */
 class SyncRdsSecurityGroupStep implements Step
 {
+    use SynchronisesResource;
+
     public function __invoke(array $options): StepResult
     {
-        try {
-            $securityGroup = AwsResources::rdsSecurityGroup();
+        $securityGroup = new RdsSecurityGroup();
 
-            if (Manifest::has('aws.rds.security-group')) {
-                return StepResult::CUSTOM_MANAGED;
-            }
-
-            $this->ensureTaskIngressRule($securityGroup['GroupId'], (bool) Arr::get($options, 'dry-run'));
-
-            return StepResult::SYNCED;
-        } catch (ResourceDoesNotExistException) {
-            if (! Arr::get($options, 'dry-run')) {
-                $name = Helpers::keyedResourceName(SecurityGroup::RDS_SECURITY_GROUP, exclusive: false);
-
-                Aws::ec2()->createSecurityGroup([
-                    'Description' => 'Enable Fargate tasks to connect to RDS',
-                    'GroupName' => $name,
-                    'VpcId' => AwsResources::vpc()['VpcId'],
-                    'TagSpecifications' => [
-                        [
-                            'ResourceType' => 'security-group',
-                            ...Aws::tags([
-                                'Name' => $name,
-                            ]),
-                        ],
-                    ],
-                ]);
-
-                $this->ensureTaskIngressRule(AwsResources::rdsSecurityGroup()['GroupId'], false);
-
-                return StepResult::CREATED;
-            }
-
-            return StepResult::WOULD_CREATE;
+        if (Manifest::has('aws.rds.security-group') && $securityGroup->exists()) {
+            return StepResult::CUSTOM_MANAGED;
         }
+
+        $result = $this->syncResource($securityGroup, $options);
+
+        if ($securityGroup->exists()) {
+            $this->ensureTaskIngressRule($securityGroup->arn(), (bool) Arr::get($options, 'dry-run'));
+        }
+
+        return $result;
     }
 
     /**

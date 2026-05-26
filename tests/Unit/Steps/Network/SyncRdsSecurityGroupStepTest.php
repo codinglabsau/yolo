@@ -67,8 +67,6 @@ beforeEach(function () {
     ]);
 });
 
-// This test must run first: it relies on AwsResources::rdsSecurityGroup() not yet
-// being memoised, so the absent-SG lookup throws and the create branch runs.
 it('creates the RDS security group and adds the task-SG ingress rule when absent', function () {
     $captured = [];
 

@@ -6,10 +6,10 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Enums\SecurityGroup;
 use Codinglabs\Yolo\Resources\AppScoped;
+use Codinglabs\Yolo\Resources\Network\Vpc;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -51,8 +51,7 @@ class EcsTaskSecurityGroup implements AppScoped, Resource
         Aws::ec2()->createSecurityGroup([
             'Description' => 'Enable load balancer traffic to Fargate task ENI',
             'GroupName' => $this->name(),
-            // VPC lookup is still on the legacy AwsResources facade — covered by LPX-612.
-            'VpcId' => AwsResources::vpc()['VpcId'],
+            'VpcId' => (new Vpc())->arn(),
             'TagSpecifications' => [
                 [
                     'ResourceType' => 'security-group',

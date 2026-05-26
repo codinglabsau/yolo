@@ -4,115 +4,118 @@ namespace Codinglabs\Yolo\Steps\Network;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
+use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Helpers;
-use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Enums\SecurityGroup;
 use Codinglabs\Yolo\Enums\SecurityGroupRule;
-use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
+use Codinglabs\Yolo\Concerns\SynchronisesResource;
+use Codinglabs\Yolo\Resources\Network\LoadBalancerSecurityGroup;
 
+/**
+ * Provisions the load balancer security group (identity + tags via the
+ * LoadBalancerSecurityGroup resource) and reconciles its public HTTP/HTTPS
+ * ingress rules. Rules are a separate AWS concept with their own diff surface,
+ * so they live here rather than on the resource.
+ */
 class SyncLoadBalancerSecurityGroupStep implements Step
 {
+    use SynchronisesResource;
+
     public function __invoke(array $options): StepResult
     {
-        $expectedRules = [
-            SecurityGroupRule::LOAD_BALANCER_HTTP_RULE->value => fn (array $securityGroup) => static::httpRule($securityGroup),
-            SecurityGroupRule::LOAD_BALANCER_HTTPS_RULE->value => fn (array $securityGroup) => static::httpsRule($securityGroup),
-        ];
+        $securityGroup = new LoadBalancerSecurityGroup();
+        $dryRun = (bool) Arr::get($options, 'dry-run');
 
-        try {
-            $securityGroup = AwsResources::loadBalancerSecurityGroup();
-
-            foreach ($expectedRules as $tag => $expectedRule) {
-                $securityGroupRules = Aws::ec2()->describeSecurityGroupRules([
-                    'Filters' => [
-                        [
-                            'Name' => 'group-id',
-                            'Values' => [$securityGroup['GroupId']],
-                        ],
-                        [
-                            'Name' => 'tag:yolo:rule-type',
-                            'Values' => [$tag],
-                        ],
-                    ],
-                ])['SecurityGroupRules'];
-
-                if (empty($securityGroupRules)) {
-                    // if a rule is missing, add it
-                    if (! Arr::get($options, 'dry-run')) {
-                        Aws::ec2()->authorizeSecurityGroupIngress($expectedRule($securityGroup));
-                    } else {
-                        return StepResult::OUT_OF_SYNC;
-                    }
-                } elseif (static::rulesAreDifferent(static::mapRule($expectedRule($securityGroup)['IpPermissions'][0]), $securityGroupRules[0])) {
-                    if (! Arr::get($options, 'dry-run')) {
-                        $payload = [
-                            ...static::mapRule($expectedRule($securityGroup)['IpPermissions'][0]),
-                            'Description' => $expectedRule($securityGroup)['IpPermissions'][0]['IpRanges'][0]['Description'],
-                        ];
-
-                        Aws::ec2()->modifySecurityGroupRules([
-                            'GroupId' => $securityGroup['GroupId'],
-                            'SecurityGroupRules' => [
-                                [
-                                    'SecurityGroupRule' => $payload,
-                                    'SecurityGroupRuleId' => $securityGroupRules[0]['SecurityGroupRuleId'],
-                                ],
-                            ],
-                        ]);
-                    } else {
-                        return StepResult::OUT_OF_SYNC;
-                    }
-                }
+        if (! $securityGroup->exists()) {
+            if ($dryRun) {
+                return StepResult::WOULD_CREATE;
             }
 
-            return StepResult::SYNCED;
-        } catch (ResourceDoesNotExistException) {
-            if (! Arr::get($options, 'dry-run')) {
-                $name = Helpers::keyedResourceName(SecurityGroup::LOAD_BALANCER_SECURITY_GROUP, exclusive: false);
+            $securityGroup->create();
 
-                Aws::ec2()->createSecurityGroup([
-                    'Description' => 'Enable HTTP and HTTPS from anywhere',
-                    'GroupName' => $name,
-                    'VpcId' => AwsResources::vpc()['VpcId'],
-                    'TagSpecifications' => [
+            foreach ($this->expectedRules() as $expectedRule) {
+                Aws::ec2()->authorizeSecurityGroupIngress($expectedRule($securityGroup->arn()));
+            }
+
+            return StepResult::CREATED;
+        }
+
+        if (! $dryRun) {
+            $securityGroup->synchroniseTags();
+        }
+
+        return $this->reconcileRules($securityGroup->arn(), $dryRun);
+    }
+
+    protected function reconcileRules(string $groupId, bool $dryRun): StepResult
+    {
+        foreach ($this->expectedRules() as $tag => $expectedRule) {
+            $liveRules = Ec2::securityGroupRules($groupId, $tag);
+
+            if (empty($liveRules)) {
+                if ($dryRun) {
+                    return StepResult::OUT_OF_SYNC;
+                }
+
+                Aws::ec2()->authorizeSecurityGroupIngress($expectedRule($groupId));
+
+                continue;
+            }
+
+            $desired = static::mapRule($expectedRule($groupId)['IpPermissions'][0]);
+
+            if (Helpers::payloadHasDifferences($desired, $liveRules[0])) {
+                if ($dryRun) {
+                    return StepResult::OUT_OF_SYNC;
+                }
+
+                Aws::ec2()->modifySecurityGroupRules([
+                    'GroupId' => $groupId,
+                    'SecurityGroupRules' => [
                         [
-                            'ResourceType' => 'security-group',
-                            ...Aws::tags([
-                                'Name' => $name,
-                            ]),
+                            'SecurityGroupRuleId' => $liveRules[0]['SecurityGroupRuleId'],
+                            'SecurityGroupRule' => [
+                                ...$desired,
+                                'Description' => $expectedRule($groupId)['IpPermissions'][0]['IpRanges'][0]['Description'],
+                            ],
                         ],
                     ],
                 ]);
-
-                $securityGroup = AwsResources::loadBalancerSecurityGroup();
-
-                foreach ($expectedRules as $expectedRule) {
-                    Aws::ec2()->authorizeSecurityGroupIngress($expectedRule($securityGroup));
-                }
-
-                return StepResult::CREATED;
             }
-
-            return StepResult::WOULD_CREATE;
         }
+
+        return StepResult::SYNCED;
     }
 
-    protected static function httpRule(array $securityGroup): array
+    /**
+     * The desired ingress rules, keyed by their `yolo:rule-type` marker so each
+     * can be looked up and diffed independently.
+     *
+     * @return array<string, callable(string): array<string, mixed>>
+     */
+    protected function expectedRules(): array
     {
         return [
-            'GroupId' => $securityGroup['GroupId'],
+            SecurityGroupRule::LOAD_BALANCER_HTTP_RULE->value => fn (string $groupId) => static::publicRule($groupId, 80, 'Allow HTTP from anywhere', SecurityGroupRule::LOAD_BALANCER_HTTP_RULE),
+            SecurityGroupRule::LOAD_BALANCER_HTTPS_RULE->value => fn (string $groupId) => static::publicRule($groupId, 443, 'Allow HTTPS from anywhere', SecurityGroupRule::LOAD_BALANCER_HTTPS_RULE),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected static function publicRule(string $groupId, int $port, string $description, SecurityGroupRule $ruleType): array
+    {
+        return [
+            'GroupId' => $groupId,
             'IpPermissions' => [
                 [
                     'IpProtocol' => 'tcp',
-                    'FromPort' => 80,
-                    'ToPort' => 80,
+                    'FromPort' => $port,
+                    'ToPort' => $port,
                     'IpRanges' => [
-                        [
-                            'CidrIp' => '0.0.0.0/0',
-                            'Description' => 'Allow HTTP from anywhere',
-                        ],
+                        ['CidrIp' => '0.0.0.0/0', 'Description' => $description],
                     ],
                 ],
             ],
@@ -120,57 +123,22 @@ class SyncLoadBalancerSecurityGroupStep implements Step
                 [
                     'ResourceType' => 'security-group-rule',
                     'Tags' => [
-                        [
-                            'Key' => 'yolo:rule-type',
-                            'Value' => SecurityGroupRule::LOAD_BALANCER_HTTP_RULE->value,
-                        ],
+                        ['Key' => 'yolo:rule-type', 'Value' => $ruleType->value],
                     ],
                 ],
             ],
         ];
     }
 
-    protected static function httpsRule(array $securityGroup): array
+    /**
+     * @param  array<string, mixed>  $permission
+     * @return array<string, mixed>
+     */
+    protected static function mapRule(array $permission): array
     {
-        return [
-            'GroupId' => $securityGroup['GroupId'],
-            'IpPermissions' => [
-                [
-                    'IpProtocol' => 'tcp',
-                    'FromPort' => 443,
-                    'ToPort' => 443,
-                    'IpRanges' => [
-                        [
-                            'CidrIp' => '0.0.0.0/0',
-                            'Description' => 'Allow HTTPS from anywhere',
-                        ],
-                    ],
-                ],
-            ],
-            'TagSpecifications' => [
-                [
-                    'ResourceType' => 'security-group-rule',
-                    'Tags' => [
-                        [
-                            'Key' => 'yolo:rule-type',
-                            'Value' => SecurityGroupRule::LOAD_BALANCER_HTTPS_RULE->value,
-                        ],
-                    ],
-                ],
-            ],
-        ];
-    }
+        $permission['CidrIpv4'] = $permission['IpRanges'][0]['CidrIp'];
+        unset($permission['IpRanges']);
 
-    protected static function rulesAreDifferent(array $expectedRule, array $rule): bool
-    {
-        return Helpers::payloadHasDifferences($expectedRule, $rule);
-    }
-
-    protected static function mapRule(array $rule): array
-    {
-        $rule['CidrIpv4'] = $rule['IpRanges'][0]['CidrIp'];
-        unset($rule['IpRanges']);
-
-        return $rule;
+        return $permission;
     }
 }

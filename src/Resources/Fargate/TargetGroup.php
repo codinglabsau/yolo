@@ -6,9 +6,9 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\ElbV2;
-use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\AppScoped;
+use Codinglabs\Yolo\Resources\Network\Vpc;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -45,8 +45,7 @@ class TargetGroup implements AppScoped, Resource, SynchronisesConfiguration
             'Protocol' => 'HTTP',
             'Port' => (int) Manifest::get('tasks.web.port', 8000),
             'TargetType' => 'ip',
-            // VPC lookup is still on the legacy AwsResources facade — covered by LPX-612.
-            'VpcId' => AwsResources::vpc()['VpcId'],
+            'VpcId' => (new Vpc())->arn(),
             'HealthCheckProtocol' => 'HTTP',
             ...static::reconcilableHealthCheck(),
             ...Aws::tags($this->tags()),

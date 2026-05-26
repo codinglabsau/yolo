@@ -6,10 +6,10 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ecs;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\AppScoped;
 use Codinglabs\Yolo\Resources\ResolvesTags;
+use Codinglabs\Yolo\Resources\Network\PublicSubnet;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class EcsService implements AppScoped, Resource
@@ -110,8 +110,7 @@ class EcsService implements AppScoped, Resource
             ],
             'networkConfiguration' => [
                 'awsvpcConfiguration' => [
-                    // Public subnet IDs still come from the legacy AwsResources facade — LPX-612.
-                    'subnets' => AwsResources::publicSubnetIds(),
+                    'subnets' => PublicSubnet::ids(),
                     'securityGroups' => [(new EcsTaskSecurityGroup())->arn()],
                     'assignPublicIp' => 'ENABLED',
                 ],

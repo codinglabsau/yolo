@@ -5,7 +5,7 @@ use Codinglabs\Yolo\Resources\Iam\DeployerRole;
 use Codinglabs\Yolo\Resources\Iam\EcsTaskPolicy;
 use Codinglabs\Yolo\Resources\Iam\DeployerPolicy;
 use Codinglabs\Yolo\Resources\Iam\EcsExecutionRole;
-use Codinglabs\Yolo\Steps\Iam\SyncMediaConvertRoleStep;
+use Codinglabs\Yolo\Resources\Iam\MediaConvertRole;
 
 /**
  * IAM `Description` fields (CreateRole, UpdateRole, CreatePolicy) accept only
@@ -31,8 +31,8 @@ it('EcsExecutionRole description is safe for the IAM API', function () {
     expect((new EcsExecutionRole())->description())->toMatch(IAM_DESCRIPTION_PATTERN);
 });
 
-it('SyncMediaConvertRoleStep description is safe for the IAM API', function () {
-    expect(SyncMediaConvertRoleStep::DESCRIPTION)->toMatch(IAM_DESCRIPTION_PATTERN);
+it('MediaConvertRole description is safe for the IAM API', function () {
+    expect((new MediaConvertRole())->description())->toMatch(IAM_DESCRIPTION_PATTERN);
 });
 
 it('DeployerRole description is safe for the IAM API', function () {

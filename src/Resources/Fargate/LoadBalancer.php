@@ -6,20 +6,19 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\ElbV2;
-use Codinglabs\Yolo\AwsResources;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\ResolvesTags;
+use Codinglabs\Yolo\Resources\Network\PublicSubnet;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
+use Codinglabs\Yolo\Resources\Network\LoadBalancerSecurityGroup;
 
 class LoadBalancer implements Resource
 {
+    use ResolvesTags;
+
     public function name(): string
     {
         return Manifest::get('aws.alb', Helpers::keyedResourceName(exclusive: false));
-    }
-
-    public function tags(): array
-    {
-        return ['Name' => $this->name()];
     }
 
     public function exists(): bool
@@ -45,12 +44,10 @@ class LoadBalancer implements Resource
             'Type' => 'application',
             'Scheme' => 'internet-facing',
             'IpAddressType' => 'ipv4',
-            // VPC subnets + LB security group still come from the legacy AwsResources facade —
-            // those resources haven't been migrated yet. Covered by LPX-612.
             'SecurityGroups' => [
-                AwsResources::loadBalancerSecurityGroup()['GroupId'],
+                (new LoadBalancerSecurityGroup())->arn(),
             ],
-            'Subnets' => AwsResources::publicSubnetIds(),
+            'Subnets' => PublicSubnet::ids(),
             ...Aws::tags($this->tags()),
         ]);
     }

@@ -13,6 +13,7 @@ use Aws\Sns\SnsClient;
 use Aws\Sqs\SqsClient;
 use Aws\Ssm\SsmClient;
 use Aws\Sts\StsClient;
+use Illuminate\Support\Str;
 use Aws\Route53\Route53Client;
 use Aws\CloudFront\CloudFrontClient;
 use Aws\CloudWatch\CloudWatchClient;
@@ -238,11 +239,178 @@ class Aws
 
         static::ec2()->createTags([
             'Resources' => [$resourceId],
-            'Tags' => collect($missing)
-                ->map(fn ($value, $key) => ['Key' => $key, 'Value' => $value])
-                ->values()
-                ->all(),
+            'Tags' => static::keyValueTags($missing),
         ]);
+    }
+
+    /**
+     * Synchronise tags on an SNS topic, addressed by its ARN.
+     */
+    public static function synchroniseSnsTags(string $arn, array $tags = []): void
+    {
+        $current = static::flattenTags(
+            static::sns()->listTagsForResource(['ResourceArn' => $arn])['Tags'] ?? []
+        );
+
+        $missing = static::tagsRequiringSync(static::expectedTags($tags), $current);
+
+        if (empty($missing)) {
+            return;
+        }
+
+        static::sns()->tagResource([
+            'ResourceArn' => $arn,
+            'Tags' => static::keyValueTags($missing),
+        ]);
+    }
+
+    /**
+     * Synchronise tags on an SQS queue, addressed by its URL (not ARN). SQS reads
+     * and writes tags as an associative map.
+     */
+    public static function synchroniseSqsTags(string $url, array $tags = []): void
+    {
+        $current = static::flattenTags(
+            static::sqs()->listQueueTags(['QueueUrl' => $url])['Tags'] ?? []
+        );
+
+        $missing = static::tagsRequiringSync(static::expectedTags($tags), $current);
+
+        if (empty($missing)) {
+            return;
+        }
+
+        static::sqs()->tagQueue([
+            'QueueUrl' => $url,
+            'Tags' => $missing,
+        ]);
+    }
+
+    /**
+     * Synchronise tags on an EventBridge rule, addressed by its ARN. EventBridge
+     * uses the `ResourceARN` key (capitalised ARN).
+     */
+    public static function synchroniseEventBridgeTags(string $arn, array $tags = []): void
+    {
+        $current = static::flattenTags(
+            static::eventBridge()->listTagsForResource(['ResourceARN' => $arn])['Tags'] ?? []
+        );
+
+        $missing = static::tagsRequiringSync(static::expectedTags($tags), $current);
+
+        if (empty($missing)) {
+            return;
+        }
+
+        static::eventBridge()->tagResource([
+            'ResourceARN' => $arn,
+            'Tags' => static::keyValueTags($missing),
+        ]);
+    }
+
+    /**
+     * Synchronise tags on an ACM certificate, addressed by its ARN.
+     */
+    public static function synchroniseAcmTags(string $arn, array $tags = []): void
+    {
+        $current = static::flattenTags(
+            static::acm()->listTagsForCertificate(['CertificateArn' => $arn])['Tags'] ?? []
+        );
+
+        $missing = static::tagsRequiringSync(static::expectedTags($tags), $current);
+
+        if (empty($missing)) {
+            return;
+        }
+
+        static::acm()->addTagsToCertificate([
+            'CertificateArn' => $arn,
+            'Tags' => static::keyValueTags($missing),
+        ]);
+    }
+
+    /**
+     * Synchronise tags on a Route 53 hosted zone. The zone Id comes back from
+     * listHostedZones prefixed (`/hostedzone/Z123`); the tagging API wants the
+     * bare id, and adds tags under `AddTags` rather than `Tags`.
+     */
+    public static function synchroniseRoute53Tags(string $id, array $tags = []): void
+    {
+        $id = Str::afterLast($id, '/');
+
+        $current = static::flattenTags(
+            static::route53()->listTagsForResource([
+                'ResourceType' => 'hostedzone',
+                'ResourceId' => $id,
+            ])['ResourceTagSet']['Tags'] ?? []
+        );
+
+        $missing = static::tagsRequiringSync(static::expectedTags($tags), $current);
+
+        if (empty($missing)) {
+            return;
+        }
+
+        static::route53()->changeTagsForResource([
+            'ResourceType' => 'hostedzone',
+            'ResourceId' => $id,
+            'AddTags' => static::keyValueTags($missing),
+        ]);
+    }
+
+    /**
+     * Synchronise tags on an RDS resource (e.g. a DB subnet group), addressed by
+     * its ARN. RDS reads via `TagList` and writes via `addTagsToResource`.
+     */
+    public static function synchroniseRdsTags(string $arn, array $tags = []): void
+    {
+        $current = static::flattenTags(
+            static::rds()->listTagsForResource(['ResourceName' => $arn])['TagList'] ?? []
+        );
+
+        $missing = static::tagsRequiringSync(static::expectedTags($tags), $current);
+
+        if (empty($missing)) {
+            return;
+        }
+
+        static::rds()->addTagsToResource([
+            'ResourceName' => $arn,
+            'Tags' => static::keyValueTags($missing),
+        ]);
+    }
+
+    /**
+     * Synchronise tags on a CloudWatch alarm, addressed by its ARN.
+     */
+    public static function synchroniseCloudWatchTags(string $arn, array $tags = []): void
+    {
+        $current = static::flattenTags(
+            static::cloudWatch()->listTagsForResource(['ResourceARN' => $arn])['Tags'] ?? []
+        );
+
+        $missing = static::tagsRequiringSync(static::expectedTags($tags), $current);
+
+        if (empty($missing)) {
+            return;
+        }
+
+        static::cloudWatch()->tagResource([
+            'ResourceARN' => $arn,
+            'Tags' => static::keyValueTags($missing),
+        ]);
+    }
+
+    /**
+     * The standard upper-case `[{Key, Value}]` tag-list shape most AWS tagging
+     * APIs accept on write, built from an associative {key => value} map.
+     */
+    protected static function keyValueTags(array $tags): array
+    {
+        return collect($tags)
+            ->map(fn ($value, $key) => ['Key' => $key, 'Value' => $value])
+            ->values()
+            ->all();
     }
 
     public static function accountId(): string
