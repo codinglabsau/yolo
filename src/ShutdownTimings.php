@@ -6,18 +6,18 @@ namespace Codinglabs\Yolo;
  * One source of truth for how the web container shuts down, so supervisord's
  * per-program stop waits and ECS's stopTimeout can't drift apart.
  *
- * Each process shares one key — `stop-grace`: how long it gets to finish work on
+ * Each process shares one key — `shutdown-grace-period`: how long it gets to finish work on
  * SIGTERM before being killed. Octane sits behind the ALB, so its grace doubles
  * as the target group's deregistration delay and the entrypoint drain. The queue
  * worker defaults longer (its in-flight job can outlast an ALB drain); the
- * scheduler inherits octane's. Override a process's window by setting stop-grace,
+ * scheduler inherits octane's. Override a process's window by setting shutdown-grace-period,
  * expanding the opt-in flags to objects where needed:
  *
  *     tasks:
  *       web:
- *         stop-grace: 10               # web process; also the ALB drain window
+ *         shutdown-grace-period: 10               # web process; also the ALB drain window
  *         queue:
- *           stop-grace: 90             # let a long job finish before SIGKILL
+ *           shutdown-grace-period: 90             # let a long job finish before SIGKILL
  *         scheduler: true
  */
 class ShutdownTimings
@@ -41,9 +41,9 @@ class ShutdownTimings
      * so this is also the target group's deregistration delay and how long the
      * entrypoint keeps serving on SIGTERM before forwarding the stop.
      */
-    public static function webStopGrace(): int
+    public static function webGrace(): int
     {
-        return (int) Manifest::get('tasks.web.stop-grace', static::WEB_DEFAULT_GRACE);
+        return (int) Manifest::get('tasks.web.shutdown-grace-period', static::WEB_DEFAULT_GRACE);
     }
 
     /**
@@ -53,7 +53,7 @@ class ShutdownTimings
      */
     public static function drain(): int
     {
-        return Manifest::isHeadless() ? 0 : static::webStopGrace();
+        return Manifest::isHeadless() ? 0 : static::webGrace();
     }
 
     /**
@@ -64,14 +64,14 @@ class ShutdownTimings
      */
     public static function programGraces(): array
     {
-        $graces = ['octane' => static::webStopGrace()];
+        $graces = ['octane' => static::webGrace()];
 
         if (static::enabled('queue')) {
             $graces['queue'] = static::grace('queue', static::QUEUE_DEFAULT_GRACE);
         }
 
         if (static::enabled('scheduler')) {
-            $graces['scheduler'] = static::grace('scheduler', static::webStopGrace());
+            $graces['scheduler'] = static::grace('scheduler', static::webGrace());
         }
 
         return $graces;
@@ -94,7 +94,7 @@ class ShutdownTimings
     {
         $value = Manifest::get("tasks.web.$program", false);
 
-        // The object form (with overrides like stop-grace) means enabled; a bare
+        // The object form (with overrides like shutdown-grace-period) means enabled; a bare
         // flag still goes through strict validation so a typo can't silently
         // disable a process.
         return is_array($value) || Helpers::validateStrictBool($value, "tasks.web.$program");
@@ -105,7 +105,7 @@ class ShutdownTimings
         $value = Manifest::get("tasks.web.$program");
 
         return is_array($value)
-            ? (int) ($value['stop-grace'] ?? $default)
+            ? (int) ($value['shutdown-grace-period'] ?? $default)
             : $default;
     }
 }

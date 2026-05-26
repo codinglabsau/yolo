@@ -106,7 +106,7 @@ class TargetGroup implements AppScoped, Resource, SynchronisesConfiguration
     /**
      * Cap connection draining at a sane window (default 10s) rather than the AWS
      * default 300s, so a deploy isn't held draining the old task far longer than
-     * any real request needs. Bump tasks.web.stop-grace for apps with genuinely
+     * any real request needs. Bump tasks.web.shutdown-grace-period for apps with genuinely
      * long in-flight requests (uploads, exports, SSE) — anything still in flight
      * when the timer elapses has its connection closed.
      */
@@ -135,8 +135,8 @@ class TargetGroup implements AppScoped, Resource, SynchronisesConfiguration
     public function deregistrationDelay(): int
     {
         // The ALB drains for exactly as long as the web process keeps serving on
-        // shutdown — one knob (tasks.web.stop-grace), no separate delay to tune.
-        return ShutdownTimings::webStopGrace();
+        // shutdown — one knob (tasks.web.shutdown-grace-period), no separate delay to tune.
+        return ShutdownTimings::webGrace();
     }
 
     /**

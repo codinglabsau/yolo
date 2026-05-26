@@ -57,20 +57,20 @@ it('runs the scheduler and queue worker when explicitly enabled', function () {
     expect($config)->toContain('command=php artisan queue:work --tries=3 --max-time=3600');
 });
 
-it('uses the web stop-grace for octanes stop wait', function () {
+it('uses the web shutdown-grace-period for octanes stop wait', function () {
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'tasks' => ['web' => ['stop-grace' => 25]],
+        'tasks' => ['web' => ['shutdown-grace-period' => 25]],
     ]);
 
     // Octane is the only program, so the only stopwaitsecs in the file is its own.
     expect(generatedSupervisorConfig())->toContain('stopwaitsecs=25');
 });
 
-it('honours a queue stop-grace override via the object form', function () {
+it('honours a queue shutdown-grace-period override via the object form', function () {
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'tasks' => ['web' => ['queue' => ['stop-grace' => 90]]],
+        'tasks' => ['web' => ['queue' => ['shutdown-grace-period' => 90]]],
     ]);
 
     $config = generatedSupervisorConfig();

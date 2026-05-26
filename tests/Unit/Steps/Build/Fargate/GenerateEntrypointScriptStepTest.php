@@ -45,15 +45,15 @@ it('supervises the CMD instead of exec-ing it so SIGTERM can be trapped', functi
     expect($script)->toContain('wait "$child"');
 });
 
-it('drains for the web stop-grace before forwarding the stop', function () {
+it('drains for the web shutdown-grace-period before forwarding the stop', function () {
     expect(generatedEntrypointScript())->toContain("sleep 10\n");
 });
 
-it('tracks the manifest web stop-grace for the drain duration', function () {
+it('tracks the manifest web shutdown-grace-period for the drain duration', function () {
     writeManifest([
         'apex' => 'example.com',
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'tasks' => ['web' => ['stop-grace' => 45]],
+        'tasks' => ['web' => ['shutdown-grace-period' => 45]],
     ]);
 
     expect(generatedEntrypointScript())->toContain("sleep 45\n");
@@ -62,7 +62,7 @@ it('tracks the manifest web stop-grace for the drain duration', function () {
 it('omits the drain sleep when headless — no ALB target to drain', function () {
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'tasks' => ['web' => ['stop-grace' => 45]],
+        'tasks' => ['web' => ['shutdown-grace-period' => 45]],
     ]);
 
     $script = generatedEntrypointScript();

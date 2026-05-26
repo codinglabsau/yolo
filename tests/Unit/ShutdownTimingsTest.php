@@ -15,11 +15,11 @@ it('defaults the drain to 10 seconds', function () {
     expect(ShutdownTimings::drain())->toBe(10);
 });
 
-it('drains for the manifest web stop-grace', function () {
+it('drains for the manifest web shutdown-grace-period', function () {
     writeManifest([
         'apex' => 'example.com',
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'tasks' => ['web' => ['stop-grace' => 45]],
+        'tasks' => ['web' => ['shutdown-grace-period' => 45]],
     ]);
 
     expect(ShutdownTimings::drain())->toBe(45);
@@ -28,7 +28,7 @@ it('drains for the manifest web stop-grace', function () {
 it('skips the drain entirely when headless (no ALB to drain)', function () {
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'tasks' => ['web' => ['stop-grace' => 45]],
+        'tasks' => ['web' => ['shutdown-grace-period' => 45]],
     ]);
 
     expect(ShutdownTimings::drain())->toBe(0);
@@ -38,11 +38,11 @@ it('runs only octane by default, inheriting the drain for its stop window', func
     expect(ShutdownTimings::programGraces())->toBe(['octane' => 10]);
 });
 
-it('octane and scheduler inherit the web stop-grace', function () {
+it('octane and scheduler inherit the web shutdown-grace-period', function () {
     writeManifest([
         'apex' => 'example.com',
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'tasks' => ['web' => ['stop-grace' => 20, 'scheduler' => true]],
+        'tasks' => ['web' => ['shutdown-grace-period' => 20, 'scheduler' => true]],
     ]);
 
     expect(ShutdownTimings::programGraces())->toBe(['octane' => 20, 'scheduler' => 20]);
@@ -58,11 +58,11 @@ it('gives the queue worker a longer default than the web tier', function () {
     expect(ShutdownTimings::programGraces())->toBe(['octane' => 10, 'queue' => 70]);
 });
 
-it('honours a queue stop-grace override via the object form', function () {
+it('honours a queue shutdown-grace-period override via the object form', function () {
     writeManifest([
         'apex' => 'example.com',
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'tasks' => ['web' => ['queue' => ['stop-grace' => 90]]],
+        'tasks' => ['web' => ['queue' => ['shutdown-grace-period' => 90]]],
     ]);
 
     expect(ShutdownTimings::programGraces())->toBe(['octane' => 10, 'queue' => 90]);
@@ -72,7 +72,7 @@ it('treats the queue object form as enabled even without an explicit flag', func
     writeManifest([
         'apex' => 'example.com',
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'tasks' => ['web' => ['queue' => ['stop-grace' => 30], 'scheduler' => false]],
+        'tasks' => ['web' => ['queue' => ['shutdown-grace-period' => 30], 'scheduler' => false]],
     ]);
 
     $graces = ShutdownTimings::programGraces();
@@ -111,7 +111,7 @@ it('caps the stop timeout at the Fargate maximum of 120s', function () {
     writeManifest([
         'apex' => 'example.com',
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'tasks' => ['web' => ['queue' => ['stop-grace' => 300]]],
+        'tasks' => ['web' => ['queue' => ['shutdown-grace-period' => 300]]],
     ]);
 
     expect(ShutdownTimings::stopTimeout())->toBe(120);
