@@ -5,8 +5,8 @@ namespace Codinglabs\Yolo\Resources\Storage;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Aws\S3;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
-use Codinglabs\Yolo\Resources\AppScoped;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 
@@ -17,13 +17,18 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
  * and versioning are reconciled onto it on every sync — both declarative,
  * idempotent puts. The yolo:app owner tag lets `yolo audit` attribute it.
  */
-class S3ArtefactBucket implements AppScoped, Resource, SynchronisesConfiguration
+class S3ArtefactBucket implements Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
 
     public function name(): string
     {
         return Paths::s3ArtefactsBucket();
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::App;
     }
 
     public function exists(): bool

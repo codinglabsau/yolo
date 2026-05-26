@@ -3,10 +3,9 @@
 namespace Codinglabs\Yolo\Resources\Iam;
 
 use Codinglabs\Yolo\Aws;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Enums\Iam;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
-use Codinglabs\Yolo\Resources\AppScoped;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -16,13 +15,18 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * EcsTaskRole, but app-exclusive (one per app) so it carries the yolo:app owner
  * tag. Permission policies are attached separately by AttachMediaConvertRolePoliciesStep.
  */
-class MediaConvertRole implements AppScoped, Resource
+class MediaConvertRole implements Resource
 {
     use ResolvesTags;
 
     public function name(): string
     {
-        return Helpers::keyedResourceName(Iam::MEDIA_CONVERT_ROLE);
+        return $this->keyedName(Iam::MEDIA_CONVERT_ROLE);
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::App;
     }
 
     public function exists(): bool

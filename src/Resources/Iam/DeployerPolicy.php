@@ -4,11 +4,10 @@ namespace Codinglabs\Yolo\Resources\Iam;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
-use Codinglabs\Yolo\Resources\AppScoped;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\Fargate\EcsCluster;
@@ -30,13 +29,18 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  *
  * Document drift is reconciled via createPolicyVersion (see EcsTaskPolicy).
  */
-class DeployerPolicy implements AppScoped, Resource
+class DeployerPolicy implements Resource
 {
     use ResolvesTags;
 
     public function name(): string
     {
-        return Helpers::keyedResourceName(Iam::DEPLOYER_POLICY, exclusive: true);
+        return $this->keyedName(Iam::DEPLOYER_POLICY);
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::App;
     }
 
     public function exists(): bool

@@ -4,8 +4,8 @@ namespace Codinglabs\Yolo\Resources\Sqs;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Sqs;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
-use Codinglabs\Yolo\Resources\AppScoped;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -14,7 +14,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * steps share one resource. Messages are retained for 14 days. App-scoped, so it
  * carries the yolo:app owner tag for `yolo audit`.
  */
-class Queue implements AppScoped, Resource
+class Queue implements Resource
 {
     use ResolvesTags;
 
@@ -23,6 +23,11 @@ class Queue implements AppScoped, Resource
     public function name(): string
     {
         return $this->queueName;
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::App;
     }
 
     public function exists(): bool

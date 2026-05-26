@@ -4,9 +4,8 @@ namespace Codinglabs\Yolo\Resources\Storage;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\S3;
-use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
-use Codinglabs\Yolo\Resources\AppScoped;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 
@@ -25,13 +24,18 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
  * (reloads, DevTools "Disable cache"), where a response-headers-policy CORS
  * header is silently dropped.
  */
-class AssetBucket implements AppScoped, Resource, SynchronisesConfiguration
+class AssetBucket implements Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
 
     public function name(): string
     {
-        return Helpers::keyedResourceName('assets', exclusive: true);
+        return $this->keyedName('assets');
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::App;
     }
 
     public function exists(): bool

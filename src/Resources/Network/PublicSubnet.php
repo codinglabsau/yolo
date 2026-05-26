@@ -4,8 +4,8 @@ namespace Codinglabs\Yolo\Resources\Network;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ec2;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Enums\PublicSubnets;
 use Codinglabs\Yolo\Resources\ResolvesTags;
@@ -42,7 +42,12 @@ class PublicSubnet implements Resource
             return Manifest::get('aws.public-subnets')[$this->index];
         }
 
-        return Helpers::keyedResourceName(PublicSubnets::cases()[$this->index]->value, exclusive: false);
+        return $this->keyedName(PublicSubnets::cases()[$this->index]->value);
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::Env;
     }
 
     public function exists(): bool

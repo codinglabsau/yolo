@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Resources\Route53;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Str;
 use Codinglabs\Yolo\Aws\Route53;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -22,6 +23,11 @@ class HostedZone implements Resource
     public function name(): string
     {
         return $this->apex;
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::App;
     }
 
     public function exists(): bool

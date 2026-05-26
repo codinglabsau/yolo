@@ -5,8 +5,8 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Commands\SyncCommand;
+use Codinglabs\Yolo\Commands\SyncAppCommand;
 use Symfony\Component\Console\Input\ArrayInput;
-use Codinglabs\Yolo\Commands\SyncLoggingCommand;
 use Symfony\Component\Console\Output\BufferedOutput;
 
 class RunDomainsFakeStep implements Step
@@ -52,7 +52,7 @@ it('prints determinations, runs the plan, and reports skips in one flow', functi
     $output = runDomainsCapture([
         'Network' => [RunDomainsFakeStep::class, RunDomainsFakeStep::class],
         'Storage' => [RunDomainsFakeStep::class],
-        'Logging' => (new SyncLoggingCommand())->steps(),
+        'Logging' => (new SyncAppCommand())->domains()['Logging'],
     ], ['--no-progress' => true]);
 
     // up-front determinations summary

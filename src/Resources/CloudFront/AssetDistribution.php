@@ -4,11 +4,10 @@ namespace Codinglabs\Yolo\Resources\CloudFront;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Str;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Aws\CloudFront;
 use Codinglabs\Yolo\Resources\Resource;
-use Codinglabs\Yolo\Resources\AppScoped;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\Storage\AssetBucket;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
@@ -26,7 +25,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * own `/builds` route. The keyed name is stamped into the distribution's
  * Comment (and the OAC's Name) for lookup, and surfaced as the `Name` tag.
  */
-class AssetDistribution implements AppScoped, Resource, SynchronisesConfiguration
+class AssetDistribution implements Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
 
@@ -55,7 +54,12 @@ class AssetDistribution implements AppScoped, Resource, SynchronisesConfiguratio
 
     public function name(): string
     {
-        return Helpers::keyedResourceName('assets', exclusive: true);
+        return $this->keyedName('assets');
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::App;
     }
 
     public function exists(): bool

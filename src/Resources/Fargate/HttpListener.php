@@ -3,8 +3,8 @@
 namespace Codinglabs\Yolo\Resources\Fargate;
 
 use Codinglabs\Yolo\Aws;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Aws\ElbV2;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -15,7 +15,12 @@ class HttpListener implements Resource
 
     public function name(): string
     {
-        return Helpers::keyedResourceName('http', exclusive: false);
+        return $this->keyedName('http');
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::Env;
     }
 
     public function exists(): bool

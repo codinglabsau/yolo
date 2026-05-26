@@ -4,8 +4,8 @@ namespace Codinglabs\Yolo\Resources\Network;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ec2;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Enums\SecurityGroup;
 use Codinglabs\Yolo\Resources\ResolvesTags;
@@ -23,7 +23,12 @@ class RdsSecurityGroup implements Resource
 
     public function name(): string
     {
-        return Manifest::get('aws.rds.security-group', Helpers::keyedResourceName(SecurityGroup::RDS_SECURITY_GROUP, exclusive: false));
+        return Manifest::get('aws.rds.security-group', $this->keyedName(SecurityGroup::RDS_SECURITY_GROUP));
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::Env;
     }
 
     public function exists(): bool

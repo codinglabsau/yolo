@@ -5,10 +5,9 @@ namespace Codinglabs\Yolo\Resources\Network;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Aws\Rds;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
-use Codinglabs\Yolo\Resources\AppScoped;
 use Codinglabs\Yolo\Enums\Rds as RdsEnum;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -18,13 +17,18 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * launched into the YOLO network. Point `aws.rds.subnet` at an existing group
  * name to adopt one instead.
  */
-class RdsSubnet implements AppScoped, Resource
+class RdsSubnet implements Resource
 {
     use ResolvesTags;
 
     public function name(): string
     {
-        return Manifest::get('aws.rds.subnet', Helpers::keyedResourceName(RdsEnum::PUBLIC_SUBNET_GROUP));
+        return Manifest::get('aws.rds.subnet', $this->keyedName(RdsEnum::PUBLIC_SUBNET_GROUP));
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::Env;
     }
 
     public function exists(): bool

@@ -6,13 +6,13 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ecs;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
-use Codinglabs\Yolo\Resources\AppScoped;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\Network\PublicSubnet;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class EcsService implements AppScoped, Resource
+class EcsService implements Resource
 {
     use ResolvesTags;
 
@@ -20,7 +20,12 @@ class EcsService implements AppScoped, Resource
 
     public function name(): string
     {
-        return Helpers::keyedResourceName('web', exclusive: true);
+        return $this->keyedName('web');
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::App;
     }
 
     public function exists(): bool

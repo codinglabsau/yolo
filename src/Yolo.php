@@ -25,16 +25,11 @@ class Yolo
         // Exec
         Commands\RunCommand::class,
 
-        // Sync
+        // Sync (scope-grouped: account → platform → app, orchestrated by `sync`)
         Commands\SyncCommand::class,
-        Commands\SyncNetworkCommand::class,
-        Commands\SyncStorageCommand::class,
-        Commands\SyncSoloCommand::class,
-        Commands\SyncMultitenancyTenantsCommand::class,
-        Commands\SyncMultitenancyLandlordCommand::class,
-        Commands\SyncComputeCommand::class,
-        Commands\SyncIamCommand::class,
-        Commands\SyncLoggingCommand::class,
+        Commands\SyncAccountCommand::class,
+        Commands\SyncPlatformCommand::class,
+        Commands\SyncAppCommand::class,
 
         // Audit
         Commands\AuditCommand::class,
@@ -44,7 +39,7 @@ class Yolo
     {
         Container::setInstance(new Container());
 
-        $this->app = new Application('YOLO, so deploy today 🚀', '1.0.0-alpha');
+        $this->app = new Application('YOLO, so deploy today 🚀', Helpers::version());
 
         $this->registerCommands();
     }

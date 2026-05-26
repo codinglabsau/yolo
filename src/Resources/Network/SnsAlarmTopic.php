@@ -4,7 +4,7 @@ namespace Codinglabs\Yolo\Resources\Network;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Sns;
-use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -18,7 +18,12 @@ class SnsAlarmTopic implements Resource
 
     public function name(): string
     {
-        return Helpers::keyedResourceName(exclusive: false);
+        return $this->keyedName();
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::Env;
     }
 
     public function exists(): bool

@@ -2,45 +2,28 @@
 
 namespace Codinglabs\Yolo\Commands;
 
-use Codinglabs\Yolo\Manifest;
-
 class SyncCommand extends SyncSteppedCommand
 {
     protected function configure(): void
     {
         $this->addSyncOptions()
             ->setName('sync')
-            ->setDescription('Sync all resources for the given environment');
-    }
-
-    public function handle(): int
-    {
-        return $this->runDomains($this->argument('environment'), $this->domains());
+            ->setDescription('Sync all resources for the given environment (account → platform → app)');
     }
 
     /**
-     * The ordered, domain-labelled steps this environment will sync.
+     * The full sync orchestrates the three tiers in dependency order — account,
+     * then env-shared platform, then this app. Each tier's labels are distinct,
+     * so composing them preserves every group (a colliding label would drop one).
      *
      * @return array<string, array<int, class-string>>
      */
-    protected function domains(): array
+    public function domains(): array
     {
         return [
-            'Network' => (new SyncNetworkCommand())->steps(),
-            'Storage' => (new SyncStorageCommand())->steps(),
-            'IAM' => (new SyncIamCommand())->steps(),
-            ...Manifest::isMultitenanted()
-                ? [
-                    'Landlord' => (new SyncMultitenancyLandlordCommand())->steps(),
-                    'Tenants' => (new SyncMultitenancyTenantsCommand())->steps(),
-                ]
-                : [
-                    'Solo' => (new SyncSoloCommand())->steps(),
-                ],
-            ...Manifest::has('tasks.web')
-                ? ['Compute' => (new SyncComputeCommand())->steps()]
-                : [],
-            'Logging' => (new SyncLoggingCommand())->steps(),
+            ...(new SyncAccountCommand())->domains(),
+            ...(new SyncPlatformCommand())->domains(),
+            ...(new SyncAppCommand())->domains(),
         ];
     }
 }

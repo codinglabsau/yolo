@@ -6,8 +6,8 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
-use Codinglabs\Yolo\Resources\AppScoped;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
@@ -24,13 +24,18 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * repo + ref) and its permissions (the app's ECR repo, buckets, cluster, service)
  * are app-specific, so unlike the shared task/execution roles it can't be shared.
  */
-class DeployerRole implements AppScoped, Resource
+class DeployerRole implements Resource
 {
     use ResolvesTags;
 
     public function name(): string
     {
-        return Helpers::keyedResourceName(Iam::DEPLOYER_ROLE, exclusive: true);
+        return $this->keyedName(Iam::DEPLOYER_ROLE);
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::App;
     }
 
     public function exists(): bool

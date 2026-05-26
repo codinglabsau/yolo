@@ -6,18 +6,23 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ecr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
-use Codinglabs\Yolo\Resources\AppScoped;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class EcrRepository implements AppScoped, Resource
+class EcrRepository implements Resource
 {
     use ResolvesTags;
 
     public function name(): string
     {
         return Manifest::name();
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::App;
     }
 
     public function exists(): bool
