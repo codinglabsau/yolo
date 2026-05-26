@@ -104,10 +104,7 @@ class EcsService implements AppScoped, Resource
             'desiredCount' => self::INITIAL_DESIRED_COUNT,
             'launchType' => 'FARGATE',
             ...Manifest::isHeadless() ? [] : ['healthCheckGracePeriodSeconds' => $this->gracePeriod()],
-            'deploymentConfiguration' => [
-                'minimumHealthyPercent' => 100,
-                'maximumPercent' => 200,
-            ],
+            'deploymentConfiguration' => static::deploymentConfiguration(),
             'networkConfiguration' => [
                 'awsvpcConfiguration' => [
                     'subnets' => PublicSubnet::ids(),
@@ -127,6 +124,29 @@ class EcsService implements AppScoped, Resource
             'tags' => Aws::ecsTags($this->tags()),
             'propagateTags' => 'SERVICE',
             'enableExecuteCommand' => $this->enableExecuteCommand(),
+        ];
+    }
+
+    /**
+     * Roll one task in at a time (minimumHealthyPercent 100 keeps the old version
+     * serving until the new one is healthy; maximumPercent 200 allows the extra
+     * task), with the deployment circuit breaker aborting and rolling back to the
+     * last healthy revision on a failed rollout. The breaker is also what makes
+     * ECS set the deployment's rolloutState to FAILED — the signal
+     * WaitForDeploymentHealthyStep fast-fails on — so without it a crash-looping
+     * deploy is never marked failed and the health-wait eats its full timeout.
+     *
+     * @return array<string, mixed>
+     */
+    public static function deploymentConfiguration(): array
+    {
+        return [
+            'deploymentCircuitBreaker' => [
+                'enable' => true,
+                'rollback' => true,
+            ],
+            'minimumHealthyPercent' => 100,
+            'maximumPercent' => 200,
         ];
     }
 
