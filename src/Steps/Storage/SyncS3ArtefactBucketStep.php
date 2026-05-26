@@ -69,13 +69,6 @@ class SyncS3ArtefactBucketStep implements Step
     }
 
     /**
-     * The artefact bucket holds the application's `.env` files, so it must never
-     * be publicly reachable and its objects should be recoverable. Lock down all
-     * four Block Public Access settings and enable versioning (recovery +
-     * tamper-evidence for a clobbered or malicious `.env`). Both are declarative
-     * puts — idempotent, safe to re-apply on every sync.
-     */
-    /**
      * Stamp the bucket with the YOLO baseline plus its yolo:app owner so `yolo
      * audit` can attribute it. putBucketTagging is a full replace, idempotent on
      * re-sync. The artefacts bucket is exclusive to one app, so yolo:app is the
@@ -92,6 +85,13 @@ class SyncS3ArtefactBucketStep implements Step
         ]);
     }
 
+    /**
+     * The artefact bucket holds the application's `.env` files, so it must never
+     * be publicly reachable and its objects should be recoverable. Lock down all
+     * four Block Public Access settings and enable versioning (recovery +
+     * tamper-evidence for a clobbered or malicious `.env`). Both are declarative
+     * puts — idempotent, safe to re-apply on every sync.
+     */
     protected function harden(string $bucketName): void
     {
         Aws::s3()->putPublicAccessBlock([
