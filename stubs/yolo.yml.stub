@@ -26,6 +26,9 @@ environments:
         cpu: '512'
         memory: '1024'
         port: 8000
+        # deregistration-delay: 10     # seconds to keep serving after SIGTERM before stopping,
+                                        # so the ALB drains this task first (no deploy 502s). Bump
+                                        # for long in-flight requests — uploads, exports, SSE.
         enable-execute-command: true   # ECS Exec shell access (gate with MFA on your IAM)
         queue: true                    # run queue:work in the web container
         scheduler: true                # run schedule:work in the web container
