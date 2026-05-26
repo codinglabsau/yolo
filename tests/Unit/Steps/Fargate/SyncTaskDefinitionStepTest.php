@@ -105,6 +105,39 @@ it('falls back to defaults when manifest omits task config', function () {
     expect($payload['executionRoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role');
 });
 
+it('sets a stop timeout covering the drain plus an in-flight margin', function () {
+    // Default deregistration delay (10) + 20s margin = AWS's own 30s default.
+    expect(SyncTaskDefinitionStep::payload()['containerDefinitions'][0]['stopTimeout'])->toBe(30);
+});
+
+it('scales the stop timeout with the manifest deregistration delay', function () {
+    writeManifest([
+        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'tasks' => ['web' => ['deregistration-delay' => 60]],
+    ]);
+
+    bindMockIamClient([
+        'yolo-testing-ecs-task-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-task-role',
+        'yolo-testing-ecs-execution-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role',
+    ]);
+
+    expect(SyncTaskDefinitionStep::payload()['containerDefinitions'][0]['stopTimeout'])->toBe(80);
+});
+
+it('caps the stop timeout at the Fargate maximum of 120s', function () {
+    writeManifest([
+        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'tasks' => ['web' => ['deregistration-delay' => 300]],
+    ]);
+
+    bindMockIamClient([
+        'yolo-testing-ecs-task-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-task-role',
+        'yolo-testing-ecs-execution-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role',
+    ]);
+
+    expect(SyncTaskDefinitionStep::payload()['containerDefinitions'][0]['stopTimeout'])->toBe(120);
+});
+
 it('enables init process in the web container for proper PID 1 signal handling', function () {
     $payload = SyncTaskDefinitionStep::payload();
 
