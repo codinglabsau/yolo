@@ -29,16 +29,16 @@ class SyncAppCommand extends SyncSteppedCommand
     {
         return [
             'Storage' => [
-                Steps\Storage\SyncS3ArtefactBucketStep::class,
-                Steps\Storage\SyncS3BucketStep::class,
-                Steps\Storage\SyncS3AssetBucketStep::class,
+                Steps\Sync\App\SyncS3ArtefactBucketStep::class,
+                Steps\Sync\App\SyncS3BucketStep::class,
+                Steps\Sync\App\SyncS3AssetBucketStep::class,
             ],
             'IAM (app)' => [
-                Steps\Iam\SyncMediaConvertRoleStep::class,
-                Steps\Iam\AttachMediaConvertRolePoliciesStep::class,
-                Steps\Iam\SyncDeployerPolicyStep::class,
-                Steps\Iam\SyncDeployerRoleStep::class,
-                Steps\Iam\AttachDeployerRolePoliciesStep::class,
+                Steps\Sync\App\SyncMediaConvertRoleStep::class,
+                Steps\Sync\App\AttachMediaConvertRolePoliciesStep::class,
+                Steps\Sync\App\SyncDeployerPolicyStep::class,
+                Steps\Sync\App\SyncDeployerRoleStep::class,
+                Steps\Sync\App\AttachDeployerRolePoliciesStep::class,
             ],
             // The cert/DNS group runs before Fargate so the SSL certificate exists
             // before the HTTPS listener that needs it (solo only — multi-tenant has
@@ -46,45 +46,45 @@ class SyncAppCommand extends SyncSteppedCommand
             ...Manifest::isMultitenanted()
                 ? [
                     'Landlord' => [
-                        Steps\Landlord\SyncQueueStep::class,
-                        Steps\Landlord\SyncQueueAlarmStep::class,
+                        Steps\Sync\App\Landlord\SyncQueueStep::class,
+                        Steps\Sync\App\Landlord\SyncQueueAlarmStep::class,
                     ],
                     'Tenants' => [
-                        Steps\Tenant\SyncQueueStep::class,
-                        Steps\Tenant\SyncQueueAlarmStep::class,
+                        Steps\Sync\App\Tenant\SyncQueueStep::class,
+                        Steps\Sync\App\Tenant\SyncQueueAlarmStep::class,
                     ],
                 ]
                 : [
                     'Solo' => [
-                        Steps\Solo\SyncHostedZoneStep::class,
-                        Steps\Solo\SyncSslCertificateStep::class,
-                        Steps\Solo\SyncQueueStep::class,
-                        Steps\Solo\SyncQueueAlarmStep::class,
+                        Steps\Sync\App\Solo\SyncHostedZoneStep::class,
+                        Steps\Sync\App\Solo\SyncSslCertificateStep::class,
+                        Steps\Sync\App\Solo\SyncQueueStep::class,
+                        Steps\Sync\App\Solo\SyncQueueAlarmStep::class,
                     ],
                 ],
             ...Manifest::has('tasks.web')
                 ? [
                     'Fargate' => [
-                        Steps\Fargate\SyncEcrRepositoryStep::class,
-                        Steps\Fargate\SyncEcsClusterStep::class,
-                        Steps\Fargate\SyncTaskSecurityGroupStep::class,
-                        Steps\Network\SyncRdsSecurityGroupStep::class,
-                        Steps\Fargate\SyncTargetGroupStep::class,
-                        Steps\Fargate\SyncHttpsListenerStep::class,
-                        Steps\Fargate\SyncListenerRuleStep::class,
-                        Steps\Fargate\SyncTaskLogGroupStep::class,
-                        Steps\Fargate\SyncTaskDefinitionStep::class,
-                        Steps\Fargate\SyncEcsServiceStep::class,
+                        Steps\Sync\App\SyncEcrRepositoryStep::class,
+                        Steps\Sync\App\SyncEcsClusterStep::class,
+                        Steps\Sync\App\SyncTaskSecurityGroupStep::class,
+                        Steps\Sync\App\SyncRdsSecurityGroupStep::class,
+                        Steps\Sync\App\SyncTargetGroupStep::class,
+                        Steps\Sync\App\SyncHttpsListenerStep::class,
+                        Steps\Sync\App\SyncListenerRuleStep::class,
+                        Steps\Sync\App\SyncTaskLogGroupStep::class,
+                        Steps\Sync\App\SyncTaskDefinitionStep::class,
+                        Steps\Sync\App\SyncEcsServiceStep::class,
                     ],
                     'CDN' => [
-                        Steps\CloudFront\SyncAssetDistributionStep::class,
+                        Steps\Sync\App\SyncAssetDistributionStep::class,
                     ],
                 ]
                 : [],
             'Logging' => [
-                Steps\Logging\SyncIvsCloudWatchLogGroupStep::class,
-                Steps\Logging\SyncIvsEventBridgeRuleStep::class,
-                Steps\Logging\SyncIvsEventBridgeTargetStep::class,
+                Steps\Sync\App\SyncIvsCloudWatchLogGroupStep::class,
+                Steps\Sync\App\SyncIvsEventBridgeRuleStep::class,
+                Steps\Sync\App\SyncIvsEventBridgeTargetStep::class,
             ],
         ];
     }

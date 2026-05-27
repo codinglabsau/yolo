@@ -11,8 +11,6 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * tags, ARN lookup), its create payload, and its tag-sync behaviour. Steps
  * decide WHEN to create / sync; the resource decides WHAT a created or synced
  * version of itself looks like.
- *
- * Distinct from `AwsResources` (state-lookup facade for the live AWS environment).
  */
 interface Resource
 {

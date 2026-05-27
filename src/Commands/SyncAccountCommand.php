@@ -21,7 +21,7 @@ class SyncAccountCommand extends SyncSteppedCommand
     {
         return [
             'IAM (account)' => [
-                Steps\Iam\SyncGithubOidcProviderStep::class,
+                Steps\Sync\Account\SyncGithubOidcProviderStep::class,
             ],
         ];
     }

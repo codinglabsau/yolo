@@ -1,7 +1,7 @@
 <?php
 
 use Codinglabs\Yolo\ShutdownTimings;
-use Codinglabs\Yolo\Steps\Fargate\SyncTaskDefinitionStep;
+use Codinglabs\Yolo\Steps\Sync\App\SyncTaskDefinitionStep;
 
 beforeEach(function () {
     writeManifest([

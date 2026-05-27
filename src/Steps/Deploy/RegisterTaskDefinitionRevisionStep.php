@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Steps\Fargate\SyncTaskDefinitionStep;
+use Codinglabs\Yolo\Steps\Sync\App\SyncTaskDefinitionStep;
 
 class RegisterTaskDefinitionRevisionStep implements Step
 {

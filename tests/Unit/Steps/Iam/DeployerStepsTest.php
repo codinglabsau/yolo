@@ -3,10 +3,10 @@
 use Aws\Result;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\Iam\DeployerPolicy;
-use Codinglabs\Yolo\Steps\Iam\SyncDeployerRoleStep;
-use Codinglabs\Yolo\Steps\Iam\SyncDeployerPolicyStep;
-use Codinglabs\Yolo\Steps\Iam\SyncGithubOidcProviderStep;
-use Codinglabs\Yolo\Steps\Iam\AttachDeployerRolePoliciesStep;
+use Codinglabs\Yolo\Steps\Sync\App\SyncDeployerRoleStep;
+use Codinglabs\Yolo\Steps\Sync\App\SyncDeployerPolicyStep;
+use Codinglabs\Yolo\Steps\Sync\Account\SyncGithubOidcProviderStep;
+use Codinglabs\Yolo\Steps\Sync\App\AttachDeployerRolePoliciesStep;
 
 // The suite runs in GitHub Actions (GITHUB_REPOSITORY set). Clear it after each
 // test; provisioning tests pin the repo via an explicit env-level `repository`.

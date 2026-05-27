@@ -6,7 +6,7 @@ use Aws\CommandInterface;
 use Codinglabs\Yolo\Helpers;
 use GuzzleHttp\Promise\Create;
 use Aws\CloudWatchLogs\CloudWatchLogsClient;
-use Codinglabs\Yolo\Steps\Fargate\SyncTaskLogGroupStep;
+use Codinglabs\Yolo\Steps\Sync\App\SyncTaskLogGroupStep;
 
 /**
  * Bind a mock CloudWatch Logs client with command-routed responses. Captured calls

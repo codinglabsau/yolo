@@ -10,8 +10,8 @@ use GuzzleHttp\Psr7\Response;
 use GuzzleHttp\Promise\Create;
 use Aws\S3\Exception\S3Exception;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Steps\Storage\SyncS3BucketStep;
-use Codinglabs\Yolo\Steps\Storage\SyncS3ArtefactBucketStep;
+use Codinglabs\Yolo\Steps\Sync\App\SyncS3BucketStep;
+use Codinglabs\Yolo\Steps\Sync\App\SyncS3ArtefactBucketStep;
 
 /**
  * Bind a mock S3 client with command-routed responses. A command's value may be a

@@ -78,15 +78,14 @@ by exception, because their creation has a per-app dependency; both are created-
 ### Steps (`src/Steps/`)
 
 Steps are the atomic units of work. Each implements `Step` (`__invoke(array $options): StepResult`) and returns a
-`StepResult` enum (`CREATED` / `SYNCED` / `WOULD_CREATE` / …). Organised by domain:
+`StepResult` enum (`CREATED` / `SYNCED` / `WOULD_CREATE` / …). Organised by **execution context** (not AWS service —
+that axis belongs to Resources):
 
-- `Build/`, `Deploy/` — build the image and run the deployment (see flow below)
-- `Network/` — VPC, subnets, security groups, route tables
-- `Fargate/` — ECR repository, ECS cluster/service/task definition, target group, listeners
-- `Iam/` — IAM roles and policies
-- `Storage/`, `CloudFront/`, `Logging/` — S3 buckets, the asset CDN distribution, IVS CloudWatch/EventBridge logging
-- `Solo/` / `Tenant/` / `Landlord/` — app-mode-specific steps (single-tenant vs multi-tenant)
-- `Ensures/` — preflight existence checks
+- `Build/`, `Deploy/` — lifecycle phase: build the image / run the deployment (see flow below)
+- `Sync/Account/`, `Sync/Environment/`, `Sync/App/` — the sync steps, grouped by the **scope** that writes them, so
+  each dir mirrors its `sync:account` / `sync:environment` / `sync:app` command's `domains()`. `Sync/App/{Solo,Tenant,
+  Landlord}/` holds the app-mode variants (single-tenant vs multi-tenant fan-out). The two by-exception env-named
+  resources provisioned from `sync:app` (the `:443` listener, the RDS security group) live under `Sync/App/`.
 
 A sync step is typically thin: it `use`s the `SynchronisesResource` trait and delegates to a `Resource`
 (e.g. `return $this->syncResource(new TargetGroup(), $options);`). Steps decide *when* to create/sync; Resources
@@ -95,8 +94,9 @@ decide *what* the resource is.
 ### Resources (`src/Resources/`)
 
 A `Resource` is the desired-state definition of one AWS thing, independent of the step that drives it. It owns its
-`name()`, `scope()`, `tags()`, `exists()`, `arn()`, `create()`, and `synchroniseTags()`. Organised by service
-(`Fargate/`, `Network/`, `Iam/`, `Storage/`, `Acm/`, `Route53/`, `Sqs/`, `CloudWatch/`, `EventBridge/`, `Logging/`,
+`name()`, `scope()`, `tags()`, `exists()`, `arn()`, `create()`, and `synchroniseTags()`. Organised strictly by AWS
+service — every `Resources/{Service}/` dir maps 1:1 to an `Aws/{Service}` wrapper (`Ec2/`, `Ecs/`, `ElbV2/`, `Ecr/`,
+`S3/`, `Rds/`, `Sns/`, `Sqs/`, `Iam/`, `Acm/`, `Route53/`, `CloudWatch/`, `CloudWatchLogs/`, `EventBridge/`,
 `CloudFront/`).
 
 - **`ResolvesTags`** (trait) — derives the resource `Name`, the `yolo:app` owner tag (App scope only), and the
@@ -106,7 +106,7 @@ A `Resource` is the desired-state definition of one AWS thing, independent of th
   `synchroniseConfiguration()` on an *existing* resource in addition to tag sync, so a changed default reaches an
   already-provisioned resource.
 
-(Distinct from `AwsResources` and `src/Audit/` — those look up *live* AWS state rather than declaring desired state.)
+(Distinct from `src/Audit/` — that looks up *live* AWS state rather than declaring desired state.)
 
 ### AWS clients (`src/Aws/` + `Aws.php`)
 
@@ -131,7 +131,7 @@ Interfaces a step implements to declare its execution context:
 Orchestration traits (per-service AWS interaction now lives in `src/Aws/*`, not here): `RunsSteppedCommands` (step
 execution + progress UI), `SynchronisesResource` (create-or-sync), `RegistersAws` (env-aware client registration),
 `SyncsRecordSets`, `ResolvesDatabases`, `DetectsSubdomains`, `ChecksIfCommandsShouldBeRunning`, `HasAfterCallbacks`,
-`ParsesOnlyOption`, `EnsuresResourcesExist`, `UsesIam`.
+`ParsesOnlyOption`.
 
 ### Configuration & helpers
 

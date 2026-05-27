@@ -7,7 +7,7 @@ use Aws\CommandInterface;
 use Codinglabs\Yolo\Helpers;
 use GuzzleHttp\Promise\Create;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Steps\Network\SyncRdsSecurityGroupStep;
+use Codinglabs\Yolo\Steps\Sync\App\SyncRdsSecurityGroupStep;
 
 /**
  * Bind a mock EC2 client with command-routed responses. A command's value may be

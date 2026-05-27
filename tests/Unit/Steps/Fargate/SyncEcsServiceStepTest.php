@@ -85,7 +85,6 @@ describe('updatePayload', function () {
             'tasks' => ['web' => []],
         ]);
 
-        // createPayload references AwsResources::publicSubnetIds() / ecsTaskSecurityGroup() etc.
         // which require live AWS lookups, so we can't fully invoke it here. updatePayload is
         // purely manifest-driven (no AWS lookups), so it pins the headless conditional shape.
         $payload = (new EcsService())->updatePayload();
