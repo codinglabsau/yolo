@@ -17,13 +17,21 @@ class Audit
 {
     public const APP_TAG = 'yolo:app';
 
+    public const SCOPE_TAG = 'yolo:scope';
+
     private const NAME_TAG = 'Name';
 
-    public const STATUS_LIVE = 'live';
+    public const STATUS_OK = 'ok';
 
     public const STATUS_DRIFT = 'drift';
 
     public const STATUS_UNATTRIBUTED = 'unattributed';
+
+    public const TIER_ACCOUNT = 'account';
+
+    public const TIER_ENV = 'env';
+
+    public const TIER_APP = 'app';
 
     /**
      * Deploy ephemera the audit ignores: ECS task definitions (immutable
@@ -68,7 +76,7 @@ class Audit
      *
      * @param  array<int, array{ResourceARN: string, Tags?: array<int, array{Key: string, Value: string}>}>  $taggedResources
      * @param  array<int, string>  $liveApps
-     * @return array{resources: array<int, array<string, mixed>>, liveApps: array<int, string>, liveCount: int, driftCount: int, unattributedCount: int}
+     * @return array{resources: array<int, array<string, mixed>>, liveApps: array<int, string>, okCount: int, driftCount: int, unattributedCount: int}
      */
     public static function classify(array $taggedResources, array $liveApps): array
     {
@@ -81,12 +89,13 @@ class Audit
 
                 $status = match (true) {
                     $app === null => self::STATUS_UNATTRIBUTED,
-                    in_array($app, $liveApps, true) => self::STATUS_LIVE,
+                    in_array($app, $liveApps, true) => self::STATUS_OK,
                     default => self::STATUS_DRIFT,
                 };
 
                 return [
                     'arn' => $resource['ResourceARN'],
+                    'tier' => static::tier($parsed, $tags),
                     'type' => static::type($parsed),
                     'name' => $tags[self::NAME_TAG] ?? $parsed?->resourceId ?? $resource['ResourceARN'],
                     'app' => $app,
@@ -97,10 +106,42 @@ class Audit
         return [
             'resources' => $resources->values()->all(),
             'liveApps' => $liveApps,
-            'liveCount' => $resources->where('status', self::STATUS_LIVE)->count(),
+            'okCount' => $resources->where('status', self::STATUS_OK)->count(),
             'driftCount' => $resources->where('status', self::STATUS_DRIFT)->count(),
             'unattributedCount' => $resources->where('status', self::STATUS_UNATTRIBUTED)->count(),
         ];
+    }
+
+    /**
+     * Ownership tier of a resource — account / env / app — mirroring the
+     * `Enums\Scope` a resource declares in code. Prefers an explicit `yolo:scope`
+     * tag if one is present (forward-compatible for when sync starts stamping it),
+     * otherwise derives it: a `yolo:app` tag means app-tier; the account-global
+     * resources (the GitHub OIDC provider) are account-tier; everything else
+     * yolo-tagged is env-shared infrastructure.
+     *
+     * @param  array<string, string>  $tags
+     */
+    public static function tier(?Arn $arn, array $tags): string
+    {
+        $scope = $tags[self::SCOPE_TAG] ?? null;
+
+        return match (true) {
+            in_array($scope, [self::TIER_ACCOUNT, self::TIER_ENV, self::TIER_APP], true) => $scope,
+            isset($tags[self::APP_TAG]) => self::TIER_APP,
+            static::isAccountGlobal($arn) => self::TIER_ACCOUNT,
+            default => self::TIER_ENV,
+        };
+    }
+
+    /**
+     * Account-global resources carry no env/app scoping. Today the only one YOLO
+     * provisions is the GitHub OIDC identity provider (one per account, shared by
+     * every environment).
+     */
+    protected static function isAccountGlobal(?Arn $arn): bool
+    {
+        return $arn !== null && $arn->service === 'iam' && $arn->resourceType === 'oidc-provider';
     }
 
     /**

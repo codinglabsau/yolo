@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Aws\Ecs;
 use Codinglabs\Yolo\Audit\Arn;
 use Codinglabs\Yolo\Audit\Audit;
 use Illuminate\Support\Collection;
+use Codinglabs\Yolo\Audit\ConsoleUrl;
 use Symfony\Component\Console\Input\InputOption;
 use Codinglabs\Yolo\Aws\ResourceGroupsTaggingApi;
 use Symfony\Component\Console\Input\InputArgument;
@@ -18,8 +19,9 @@ use function Laravel\Prompts\warning;
 /**
  * Read-only audit of the YOLO-tagged resources in an environment. Surfaces
  * "drift" — resources tagged for an app that no longer has a live Fargate
- * cluster — alongside the live and unattributed (shared / not-yet-stamped)
- * resources, so a cutover can confirm nothing's been left behind.
+ * cluster — alongside the ok (owned by a live app) and unattributed (shared /
+ * not-yet-stamped) resources, grouped by ownership tier (account → env → app),
+ * so a cutover can confirm nothing's been left behind.
  */
 class AuditCommand extends Command
 {
@@ -66,7 +68,7 @@ class AuditCommand extends Command
     }
 
     /**
-     * @param  array{resources: array<int, array<string, mixed>>, liveApps: array<int, string>, liveCount: int, driftCount: int, unattributedCount: int}  $report
+     * @param  array{resources: array<int, array<string, mixed>>, liveApps: array<int, string>, okCount: int, driftCount: int, unattributedCount: int}  $report
      */
     protected function render(array $report, string $environment): int
     {
@@ -91,43 +93,48 @@ class AuditCommand extends Command
         }
 
         table(
-            ['Status', 'Type', 'Name', 'App'],
+            ['Tier', 'Status', 'Type', 'Name', 'App'],
             $rows->map(fn (array $resource) => [
+                static::tierLabel($resource['tier']),
                 static::statusLabel($resource['status']),
                 $resource['type'],
-                $resource['name'],
+                static::nameCell($resource),
                 $resource['app'] ?? '—',
             ])->all(),
         );
 
         note(sprintf(
-            "%d tagged for '%s' · %d drift · %d unattributed · %d live",
+            "%d tagged for '%s' · %d drift · %d unattributed · %d ok",
             count($report['resources']),
             $environment,
             $report['driftCount'],
             $report['unattributedCount'],
-            $report['liveCount'],
+            $report['okCount'],
         ));
 
         return self::SUCCESS;
     }
 
     /**
-     * Apply the --app and --drift filters, then sort drift first so the thing
-     * you most likely ran this for is at the top.
+     * Apply the --app and --drift filters, then order by tier (account → env →
+     * app, top to bottom), drift first within a tier, then app and name. Drift is
+     * still surfaced regardless of position — via the warning line, the red label
+     * and --drift.
      *
      * @param  array<int, array<string, mixed>>  $resources
      * @return Collection<int, array<string, mixed>>
      */
     protected function filtered(array $resources)
     {
-        $order = [Audit::STATUS_DRIFT => 0, Audit::STATUS_UNATTRIBUTED => 1, Audit::STATUS_LIVE => 2];
+        $tierOrder = [Audit::TIER_ACCOUNT => 0, Audit::TIER_ENV => 1, Audit::TIER_APP => 2];
+        $statusOrder = [Audit::STATUS_DRIFT => 0, Audit::STATUS_UNATTRIBUTED => 1, Audit::STATUS_OK => 2];
 
         return collect($resources)
             ->when($this->option('app'), fn ($rows, $app) => $rows->where('app', $app))
             ->when($this->option('drift'), fn ($rows) => $rows->where('status', Audit::STATUS_DRIFT))
             ->sortBy([
-                fn (array $resource) => $order[$resource['status']],
+                fn (array $resource) => $tierOrder[$resource['tier']] ?? 9,
+                fn (array $resource) => $statusOrder[$resource['status']] ?? 9,
                 fn (array $resource) => $resource['app'] ?? '',
                 fn (array $resource) => $resource['name'],
             ])
@@ -145,6 +152,35 @@ class AuditCommand extends Command
 
     protected static function statusLabel(string $status): string
     {
-        return $status === Audit::STATUS_DRIFT ? 'DRIFT' : $status;
+        return match ($status) {
+            Audit::STATUS_DRIFT => '<fg=red;options=bold>DRIFT</>',
+            Audit::STATUS_OK => '<fg=green>ok</>',
+            default => '<fg=yellow>unattributed</>',
+        };
+    }
+
+    protected static function tierLabel(string $tier): string
+    {
+        return match ($tier) {
+            Audit::TIER_ACCOUNT => '<fg=magenta>account</>',
+            Audit::TIER_ENV => '<fg=cyan>env</>',
+            default => '<fg=blue>app</>',
+        };
+    }
+
+    /**
+     * The resource name, wrapped in an OSC 8 hyperlink to its AWS Console page
+     * when we can build one. Terminals that support hyperlinks (Ghostty, Warp,
+     * iTerm2) make the name clickable; the rest just show the text.
+     *
+     * @param  array<string, mixed>  $resource
+     */
+    protected static function nameCell(array $resource): string
+    {
+        $url = ConsoleUrl::for(Arn::parse($resource['arn']));
+
+        return $url === null
+            ? $resource['name']
+            : sprintf('<href=%s>%s</>', $url, $resource['name']);
     }
 }
