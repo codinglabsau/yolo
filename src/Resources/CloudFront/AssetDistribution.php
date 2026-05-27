@@ -9,7 +9,7 @@ use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Aws\CloudFront;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\ResolvesTags;
-use Codinglabs\Yolo\Resources\Storage\AssetBucket;
+use Codinglabs\Yolo\Resources\S3\AssetBucket;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 

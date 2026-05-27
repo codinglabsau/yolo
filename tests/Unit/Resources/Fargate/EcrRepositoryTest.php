@@ -1,6 +1,6 @@
 <?php
 
-use Codinglabs\Yolo\Resources\Fargate\EcrRepository;
+use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
 
 beforeEach(function () {
     writeManifest([

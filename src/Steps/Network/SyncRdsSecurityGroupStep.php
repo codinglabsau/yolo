@@ -9,8 +9,8 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
-use Codinglabs\Yolo\Resources\Network\RdsSecurityGroup;
-use Codinglabs\Yolo\Resources\Fargate\EcsTaskSecurityGroup;
+use Codinglabs\Yolo\Resources\Ec2\RdsSecurityGroup;
+use Codinglabs\Yolo\Resources\Ec2\EcsTaskSecurityGroup;
 
 /**
  * Provisions the RDS security group and authorises the Fargate tasks to reach

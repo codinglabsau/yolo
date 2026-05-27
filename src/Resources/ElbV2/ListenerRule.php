@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Resources\Fargate;
+namespace Codinglabs\Yolo\Resources\ElbV2;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Manifest;

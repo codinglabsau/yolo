@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Steps\Network;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Resources\Network\Vpc;
+use Codinglabs\Yolo\Resources\Ec2\Vpc;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
 
 class SyncVpcStep implements Step

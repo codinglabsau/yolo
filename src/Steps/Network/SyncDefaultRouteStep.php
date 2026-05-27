@@ -6,8 +6,8 @@ use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Resources\Network\RouteTable;
-use Codinglabs\Yolo\Resources\Network\InternetGateway;
+use Codinglabs\Yolo\Resources\Ec2\RouteTable;
+use Codinglabs\Yolo\Resources\Ec2\InternetGateway;
 
 class SyncDefaultRouteStep implements Step
 {

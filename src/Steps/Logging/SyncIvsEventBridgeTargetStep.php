@@ -7,7 +7,7 @@ use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Aws\EventBridge;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\ExecutesIvsStep;
-use Codinglabs\Yolo\Resources\Logging\IvsLogGroup;
+use Codinglabs\Yolo\Resources\CloudWatchLogs\IvsLogGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 use Codinglabs\Yolo\Resources\EventBridge\IvsEventBridgeRule;
 

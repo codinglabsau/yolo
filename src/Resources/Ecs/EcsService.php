@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Resources\Fargate;
+namespace Codinglabs\Yolo\Resources\Ecs;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ecs;
@@ -9,7 +9,9 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\ResolvesTags;
-use Codinglabs\Yolo\Resources\Network\PublicSubnet;
+use Codinglabs\Yolo\Resources\Ec2\PublicSubnet;
+use Codinglabs\Yolo\Resources\ElbV2\TargetGroup;
+use Codinglabs\Yolo\Resources\Ec2\EcsTaskSecurityGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class EcsService implements Resource

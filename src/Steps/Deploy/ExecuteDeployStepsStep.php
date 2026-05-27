@@ -6,11 +6,11 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Resources\Fargate\EcsCluster;
-use Codinglabs\Yolo\Resources\Fargate\EcsService;
-use Codinglabs\Yolo\Resources\Network\PublicSubnet;
+use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
+use Codinglabs\Yolo\Resources\Ecs\EcsService;
+use Codinglabs\Yolo\Resources\Ec2\PublicSubnet;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
-use Codinglabs\Yolo\Resources\Fargate\EcsTaskSecurityGroup;
+use Codinglabs\Yolo\Resources\Ec2\EcsTaskSecurityGroup;
 
 class ExecuteDeployStepsStep implements Step
 {

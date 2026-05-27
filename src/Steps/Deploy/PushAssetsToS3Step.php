@@ -8,7 +8,7 @@ use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
-use Codinglabs\Yolo\Resources\Storage\AssetBucket;
+use Codinglabs\Yolo\Resources\S3\AssetBucket;
 
 /**
  * Uploads the `public/` tree (minus dotfiles and source maps — see

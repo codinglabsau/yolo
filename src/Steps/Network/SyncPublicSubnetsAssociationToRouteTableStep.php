@@ -7,8 +7,8 @@ use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\PublicSubnets;
-use Codinglabs\Yolo\Resources\Network\RouteTable;
-use Codinglabs\Yolo\Resources\Network\PublicSubnet;
+use Codinglabs\Yolo\Resources\Ec2\RouteTable;
+use Codinglabs\Yolo\Resources\Ec2\PublicSubnet;
 
 class SyncPublicSubnetsAssociationToRouteTableStep implements Step
 {

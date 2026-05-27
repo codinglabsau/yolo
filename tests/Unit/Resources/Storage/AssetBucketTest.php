@@ -1,6 +1,6 @@
 <?php
 
-use Codinglabs\Yolo\Resources\Storage\AssetBucket;
+use Codinglabs\Yolo\Resources\S3\AssetBucket;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 
 beforeEach(function () {

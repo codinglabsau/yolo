@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Resources\Storage;
+namespace Codinglabs\Yolo\Resources\S3;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\S3;

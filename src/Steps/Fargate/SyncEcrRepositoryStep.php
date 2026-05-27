@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Steps\Fargate;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
-use Codinglabs\Yolo\Resources\Fargate\EcrRepository;
+use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
 
 class SyncEcrRepositoryStep implements Step
 {

@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Steps\Logging;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\ExecutesIvsStep;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
-use Codinglabs\Yolo\Resources\Logging\IvsLogGroup;
+use Codinglabs\Yolo\Resources\CloudWatchLogs\IvsLogGroup;
 
 class SyncIvsCloudWatchLogGroupStep implements ExecutesIvsStep
 {

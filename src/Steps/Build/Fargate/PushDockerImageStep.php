@@ -6,7 +6,7 @@ use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Symfony\Component\Process\Process;
-use Codinglabs\Yolo\Resources\Fargate\EcrRepository;
+use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
 
 class PushDockerImageStep implements Step
 {

@@ -10,7 +10,7 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\SecurityGroupRule;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
-use Codinglabs\Yolo\Resources\Network\LoadBalancerSecurityGroup;
+use Codinglabs\Yolo\Resources\Ec2\LoadBalancerSecurityGroup;
 
 /**
  * Provisions the load balancer security group (identity + tags via the

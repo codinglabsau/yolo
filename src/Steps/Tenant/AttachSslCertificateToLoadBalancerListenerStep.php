@@ -8,7 +8,7 @@ use Codinglabs\Yolo\Aws\Acm;
 use Codinglabs\Yolo\Aws\ElbV2;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Steps\TenantStep;
-use Codinglabs\Yolo\Resources\Fargate\LoadBalancer;
+use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class AttachSslCertificateToLoadBalancerListenerStep extends TenantStep

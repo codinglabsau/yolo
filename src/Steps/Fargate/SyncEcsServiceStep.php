@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Steps\Fargate;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Resources\Fargate\EcsService;
+use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
 
 class SyncEcsServiceStep implements Step

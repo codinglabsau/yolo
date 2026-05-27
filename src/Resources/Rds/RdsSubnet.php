@@ -1,12 +1,13 @@
 <?php
 
-namespace Codinglabs\Yolo\Resources\Network;
+namespace Codinglabs\Yolo\Resources\Rds;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Aws\Rds;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
+use Codinglabs\Yolo\Resources\Ec2\Vpc;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Enums\Rds as RdsEnum;
 use Codinglabs\Yolo\Resources\ResolvesTags;

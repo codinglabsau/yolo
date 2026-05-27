@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Concerns;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\ElbV2;
 use Codinglabs\Yolo\Aws\Route53;
-use Codinglabs\Yolo\Resources\Fargate\LoadBalancer;
+use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
 
 trait SyncsRecordSets
 {

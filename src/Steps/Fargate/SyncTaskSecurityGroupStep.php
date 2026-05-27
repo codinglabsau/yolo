@@ -10,8 +10,8 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\SecurityGroupRule;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
-use Codinglabs\Yolo\Resources\Fargate\EcsTaskSecurityGroup;
-use Codinglabs\Yolo\Resources\Network\LoadBalancerSecurityGroup;
+use Codinglabs\Yolo\Resources\Ec2\EcsTaskSecurityGroup;
+use Codinglabs\Yolo\Resources\Ec2\LoadBalancerSecurityGroup;
 
 class SyncTaskSecurityGroupStep implements Step
 {

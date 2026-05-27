@@ -10,10 +10,10 @@ use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Resources\ResolvesTags;
-use Codinglabs\Yolo\Resources\Fargate\EcsCluster;
-use Codinglabs\Yolo\Resources\Fargate\EcsService;
-use Codinglabs\Yolo\Resources\Storage\AssetBucket;
-use Codinglabs\Yolo\Resources\Fargate\EcrRepository;
+use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
+use Codinglabs\Yolo\Resources\Ecs\EcsService;
+use Codinglabs\Yolo\Resources\S3\AssetBucket;
+use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**

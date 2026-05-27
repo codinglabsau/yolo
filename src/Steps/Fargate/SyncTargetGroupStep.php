@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Steps\Fargate;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
-use Codinglabs\Yolo\Resources\Fargate\TargetGroup;
+use Codinglabs\Yolo\Resources\ElbV2\TargetGroup;
 
 class SyncTargetGroupStep implements ExecutesWebStep
 {

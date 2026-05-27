@@ -8,7 +8,7 @@ use Codinglabs\Yolo\Manifest;
 use Symfony\Component\Process\Process;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Console\Input\InputOption;
-use Codinglabs\Yolo\Resources\Fargate\EcsCluster;
+use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
 use Symfony\Component\Console\Input\InputArgument;
 
 use function Laravel\Prompts\note;

@@ -5,7 +5,7 @@ use Aws\MockHandler;
 use Aws\CommandInterface;
 use Codinglabs\Yolo\Helpers;
 use GuzzleHttp\Promise\Create;
-use Codinglabs\Yolo\Resources\Fargate\TargetGroup;
+use Codinglabs\Yolo\Resources\ElbV2\TargetGroup;
 use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
 
 beforeEach(function () {

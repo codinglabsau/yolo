@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Steps\Network;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Resources\Network\RouteTable;
+use Codinglabs\Yolo\Resources\Ec2\RouteTable;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
 
 class SyncRouteTableStep implements Step

@@ -6,7 +6,7 @@ use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
-use Codinglabs\Yolo\Resources\Fargate\TaskLogGroup;
+use Codinglabs\Yolo\Resources\CloudWatchLogs\TaskLogGroup;
 
 class SyncTaskLogGroupStep implements Step
 {

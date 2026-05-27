@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Resources\Network;
+namespace Codinglabs\Yolo\Resources\Ec2;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ec2;
@@ -11,17 +11,18 @@ use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Shared internet gateway for the environment. Attaching it to the VPC and
- * routing 0.0.0.0/0 through it are separate relationship actions
- * (SyncInternetGatewayAttachmentStep, SyncDefaultRouteStep).
+ * Shared VPC for the environment (not per-app). The 10.1.0.0/16 block is
+ * deliberate — it sidesteps a clash with the 10.0.0.0/16 a co-located Vapor
+ * stack uses. Point `aws.vpc` at an existing VPC name to adopt rather than
+ * create one; SyncVpcStep reports that as CUSTOM_MANAGED.
  */
-class InternetGateway implements Resource
+class Vpc implements Resource
 {
     use ResolvesTags;
 
     public function name(): string
     {
-        return Manifest::get('aws.internet-gateway', $this->keyedName());
+        return Manifest::get('aws.vpc', $this->keyedName());
     }
 
     public function scope(): Scope
@@ -32,7 +33,7 @@ class InternetGateway implements Resource
     public function exists(): bool
     {
         try {
-            Ec2::internetGateway($this->name());
+            Ec2::vpc($this->name());
 
             return true;
         } catch (ResourceDoesNotExistException) {
@@ -42,14 +43,15 @@ class InternetGateway implements Resource
 
     public function arn(): string
     {
-        return Ec2::internetGateway($this->name())['InternetGatewayId'];
+        return Ec2::vpc($this->name())['VpcId'];
     }
 
     public function create(): void
     {
-        Aws::ec2()->createInternetGateway([
+        Aws::ec2()->createVpc([
+            'CidrBlock' => '10.1.0.0/16',
             'TagSpecifications' => [
-                ['ResourceType' => 'internet-gateway', ...Aws::tags($this->tags())],
+                ['ResourceType' => 'vpc', ...Aws::tags($this->tags())],
             ],
         ]);
     }

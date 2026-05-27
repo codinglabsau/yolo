@@ -6,7 +6,7 @@ use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Resources\Storage\S3Bucket;
+use Codinglabs\Yolo\Resources\S3\S3Bucket;
 
 class SyncS3BucketStep implements Step
 {

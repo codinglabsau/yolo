@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Resources\Network;
+namespace Codinglabs\Yolo\Resources\Ec2;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ec2;
@@ -11,16 +11,17 @@ use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Shared public route table for the environment. The default 0.0.0.0/0 route
- * and the subnet associations are separate relationship actions.
+ * Shared internet gateway for the environment. Attaching it to the VPC and
+ * routing 0.0.0.0/0 through it are separate relationship actions
+ * (SyncInternetGatewayAttachmentStep, SyncDefaultRouteStep).
  */
-class RouteTable implements Resource
+class InternetGateway implements Resource
 {
     use ResolvesTags;
 
     public function name(): string
     {
-        return Manifest::get('aws.route-table', $this->keyedName());
+        return Manifest::get('aws.internet-gateway', $this->keyedName());
     }
 
     public function scope(): Scope
@@ -31,7 +32,7 @@ class RouteTable implements Resource
     public function exists(): bool
     {
         try {
-            Ec2::routeTable($this->name());
+            Ec2::internetGateway($this->name());
 
             return true;
         } catch (ResourceDoesNotExistException) {
@@ -41,15 +42,14 @@ class RouteTable implements Resource
 
     public function arn(): string
     {
-        return Ec2::routeTable($this->name())['RouteTableId'];
+        return Ec2::internetGateway($this->name())['InternetGatewayId'];
     }
 
     public function create(): void
     {
-        Aws::ec2()->createRouteTable([
-            'VpcId' => (new Vpc())->arn(),
+        Aws::ec2()->createInternetGateway([
             'TagSpecifications' => [
-                ['ResourceType' => 'route-table', ...Aws::tags($this->tags())],
+                ['ResourceType' => 'internet-gateway', ...Aws::tags($this->tags())],
             ],
         ]);
     }

@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Steps\Network;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Resources\Network\RdsSubnet;
+use Codinglabs\Yolo\Resources\Rds\RdsSubnet;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
 
 class SyncRdsSubnetStep implements Step

@@ -10,8 +10,8 @@ use Codinglabs\Yolo\Aws\ElbV2;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
-use Codinglabs\Yolo\Resources\Fargate\LoadBalancer;
-use Codinglabs\Yolo\Resources\Fargate\HttpsListener;
+use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
+use Codinglabs\Yolo\Resources\ElbV2\HttpsListener;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class SyncHttpsListenerStep implements ExecutesWebStep

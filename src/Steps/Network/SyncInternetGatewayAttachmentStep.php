@@ -7,8 +7,8 @@ use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Resources\Network\Vpc;
-use Codinglabs\Yolo\Resources\Network\InternetGateway;
+use Codinglabs\Yolo\Resources\Ec2\Vpc;
+use Codinglabs\Yolo\Resources\Ec2\InternetGateway;
 
 class SyncInternetGatewayAttachmentStep implements Step
 {

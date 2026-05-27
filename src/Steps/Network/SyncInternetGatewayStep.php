@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
-use Codinglabs\Yolo\Resources\Network\InternetGateway;
+use Codinglabs\Yolo\Resources\Ec2\InternetGateway;
 
 class SyncInternetGatewayStep implements Step
 {

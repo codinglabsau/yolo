@@ -1,6 +1,6 @@
 <?php
 
-use Codinglabs\Yolo\Resources\Fargate\ListenerRule;
+use Codinglabs\Yolo\Resources\ElbV2\ListenerRule;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 describe('routedHosts', function () {

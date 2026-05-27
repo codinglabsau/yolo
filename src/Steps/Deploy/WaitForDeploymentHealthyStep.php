@@ -7,9 +7,9 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ecs;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Resources\Fargate\EcsCluster;
-use Codinglabs\Yolo\Resources\Fargate\EcsService;
-use Codinglabs\Yolo\Resources\Fargate\TargetGroup;
+use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
+use Codinglabs\Yolo\Resources\Ecs\EcsService;
+use Codinglabs\Yolo\Resources\ElbV2\TargetGroup;
 
 class WaitForDeploymentHealthyStep implements Step
 {

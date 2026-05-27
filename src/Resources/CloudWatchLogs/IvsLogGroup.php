@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Resources\Logging;
+namespace Codinglabs\Yolo\Resources\CloudWatchLogs;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;

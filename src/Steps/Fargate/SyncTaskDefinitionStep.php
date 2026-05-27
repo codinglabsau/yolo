@@ -9,10 +9,10 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\ShutdownTimings;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\Iam\EcsTaskRole;
-use Codinglabs\Yolo\Resources\Fargate\EcsService;
-use Codinglabs\Yolo\Resources\Fargate\TaskLogGroup;
+use Codinglabs\Yolo\Resources\Ecs\EcsService;
+use Codinglabs\Yolo\Resources\CloudWatchLogs\TaskLogGroup;
 use Codinglabs\Yolo\Resources\Iam\EcsExecutionRole;
-use Codinglabs\Yolo\Resources\Fargate\EcrRepository;
+use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
 
 class SyncTaskDefinitionStep implements Step
 {

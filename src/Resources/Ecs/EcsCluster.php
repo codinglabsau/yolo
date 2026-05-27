@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Resources\Fargate;
+namespace Codinglabs\Yolo\Resources\Ecs;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ecs;

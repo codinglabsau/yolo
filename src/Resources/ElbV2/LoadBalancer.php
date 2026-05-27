@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Resources\Fargate;
+namespace Codinglabs\Yolo\Resources\ElbV2;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
@@ -10,10 +10,10 @@ use Codinglabs\Yolo\Aws\ElbV2;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\ResolvesTags;
-use Codinglabs\Yolo\Resources\Network\PublicSubnet;
+use Codinglabs\Yolo\Resources\Ec2\PublicSubnet;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
+use Codinglabs\Yolo\Resources\Ec2\LoadBalancerSecurityGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
-use Codinglabs\Yolo\Resources\Network\LoadBalancerSecurityGroup;
 
 /**
  * The application load balancer fronting the app's web tasks. Env-scoped, so

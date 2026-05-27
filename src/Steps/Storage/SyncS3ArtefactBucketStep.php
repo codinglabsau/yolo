@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Steps\Storage;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
-use Codinglabs\Yolo\Resources\Storage\S3ArtefactBucket;
+use Codinglabs\Yolo\Resources\S3\S3ArtefactBucket;
 
 class SyncS3ArtefactBucketStep implements Step
 {

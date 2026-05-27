@@ -5,7 +5,7 @@ namespace Codinglabs\Yolo\Steps\Fargate;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
-use Codinglabs\Yolo\Resources\Fargate\LoadBalancer;
+use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
 
 class SyncLoadBalancerStep implements ExecutesWebStep
 {

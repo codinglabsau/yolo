@@ -1,14 +1,14 @@
 <?php
 
-namespace Codinglabs\Yolo\Resources\Fargate;
+namespace Codinglabs\Yolo\Resources\ElbV2;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\ElbV2;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\ShutdownTimings;
+use Codinglabs\Yolo\Resources\Ec2\Vpc;
 use Codinglabs\Yolo\Resources\Resource;
-use Codinglabs\Yolo\Resources\Network\Vpc;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;

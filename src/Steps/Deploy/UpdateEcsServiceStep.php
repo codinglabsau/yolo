@@ -5,8 +5,8 @@ namespace Codinglabs\Yolo\Steps\Deploy;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Resources\Fargate\EcsCluster;
-use Codinglabs\Yolo\Resources\Fargate\EcsService;
+use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
+use Codinglabs\Yolo\Resources\Ecs\EcsService;
 
 class UpdateEcsServiceStep implements Step
 {

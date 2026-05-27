@@ -1,6 +1,6 @@
 <?php
 
-use Codinglabs\Yolo\Resources\Fargate\EcsService;
+use Codinglabs\Yolo\Resources\Ecs\EcsService;
 
 describe('serviceNeedsUpdate', function () {
     beforeEach(function () {

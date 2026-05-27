@@ -4,7 +4,7 @@ namespace Codinglabs\Yolo\Resources\CloudWatch;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\Resources\Network\SnsAlarmTopic;
+use Codinglabs\Yolo\Resources\Sns\SnsAlarmTopic;
 
 /**
  * A CloudWatch alarm that fires to the SNS alarm topic when an SQS queue gets

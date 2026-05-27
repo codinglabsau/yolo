@@ -1,7 +1,7 @@
 <?php
 
-use Codinglabs\Yolo\Resources\Fargate\EcsCluster;
-use Codinglabs\Yolo\Resources\Fargate\EcsService;
+use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
+use Codinglabs\Yolo\Resources\Ecs\EcsService;
 
 it('derives the ECS cluster name from app + environment by default', function () {
     writeManifest([]);

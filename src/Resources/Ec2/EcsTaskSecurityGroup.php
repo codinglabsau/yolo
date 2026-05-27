@@ -1,9 +1,10 @@
 <?php
 
-namespace Codinglabs\Yolo\Resources\Network;
+namespace Codinglabs\Yolo\Resources\Ec2;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ec2;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Enums\SecurityGroup;
@@ -11,22 +12,25 @@ use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Shared security group fronting the load balancer. Models identity + tags only;
- * the HTTP/HTTPS ingress rules are reconciled by SyncLoadBalancerSecurityGroupStep
- * (rules are a separate AWS concept with their own diff surface).
+ * Models the security group identity + tags only. Ingress-rule management
+ * (the load-balancer-to-task port-allow rule) lives in SyncTaskSecurityGroupStep
+ * because it's a separate AWS concept with its own reconciliation surface.
  */
-class LoadBalancerSecurityGroup implements Resource
+class EcsTaskSecurityGroup implements Resource
 {
     use ResolvesTags;
 
     public function name(): string
     {
-        return $this->keyedName(SecurityGroup::LOAD_BALANCER_SECURITY_GROUP);
+        return Manifest::get(
+            'aws.ecs.security-group',
+            $this->keyedName(SecurityGroup::ECS_TASK_SECURITY_GROUP),
+        );
     }
 
     public function scope(): Scope
     {
-        return Scope::Env;
+        return Scope::App;
     }
 
     public function exists(): bool
@@ -48,11 +52,14 @@ class LoadBalancerSecurityGroup implements Resource
     public function create(): void
     {
         Aws::ec2()->createSecurityGroup([
-            'Description' => 'Enable HTTP and HTTPS from anywhere',
+            'Description' => 'Enable load balancer traffic to Fargate task ENI',
             'GroupName' => $this->name(),
             'VpcId' => (new Vpc())->arn(),
             'TagSpecifications' => [
-                ['ResourceType' => 'security-group', ...Aws::tags($this->tags())],
+                [
+                    'ResourceType' => 'security-group',
+                    ...Aws::tags($this->tags()),
+                ],
             ],
         ]);
     }

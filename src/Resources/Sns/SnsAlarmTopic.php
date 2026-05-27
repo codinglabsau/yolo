@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Resources\Network;
+namespace Codinglabs\Yolo\Resources\Sns;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Sns;
