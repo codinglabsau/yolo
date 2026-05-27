@@ -28,10 +28,17 @@ environments:
         port: 8000
         enable-execute-command: true   # ECS Exec shell access (gate with MFA on your IAM)
         queue: true                    # run queue:work in the web container
-        scheduler: true                # run schedule:work in the web container
+        scheduler: true                # run the scheduler (cron + schedule:run) in the web container
+
+        # shutdown-grace-period: seconds a process gets to finish work on SIGTERM before it's killed
+        # (default 10). For web it's also the ALB drain window (no deploy 502s) and the container
+        # stop timeout derives from it — bump for long in-flight requests (uploads, exports, SSE).
+        # web/queue/scheduler share the key; expand queue or scheduler to an object to override:
+        #   queue:
+        #     shutdown-grace-period: 90
 
       # Independent task groups — not yet implemented. Today the web task runs
-      # octane + queue:work + schedule:work together (toggle the flags above).
+      # octane + queue:work + the scheduler together (toggle the flags above).
       # When you need to scale the web tier without duplicating the scheduler,
       # these become their own ECS services:
       # queue:

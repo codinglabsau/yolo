@@ -121,3 +121,17 @@ describe('updatePayload', function () {
         expect((new EcsService())->updatePayload())->not->toHaveKey('desiredCount');
     });
 });
+
+describe('deploymentConfiguration', function () {
+    it('enables the circuit breaker with rollback so a failed rollout self-reverts', function () {
+        expect(EcsService::deploymentConfiguration()['deploymentCircuitBreaker'])
+            ->toBe(['enable' => true, 'rollback' => true]);
+    });
+
+    it('keeps one-at-a-time rolling capacity (100% min healthy, 200% max)', function () {
+        $config = EcsService::deploymentConfiguration();
+
+        expect($config['minimumHealthyPercent'])->toBe(100);
+        expect($config['maximumPercent'])->toBe(200);
+    });
+});
