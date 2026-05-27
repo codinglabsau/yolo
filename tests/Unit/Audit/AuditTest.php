@@ -69,6 +69,22 @@ it('assigns an ownership tier to each resource', function () {
         ->and($byArn['arn:aws:s3:::some-bucket']['tier'])->toBe('env');
 });
 
+it('orders rows by tier (account → env → app), then drift-first within a tier', function () {
+    $rows = [
+        ['tier' => 'app', 'status' => 'ok', 'app' => 'codinglabs', 'name' => 'web'],
+        ['tier' => 'env', 'status' => 'unattributed', 'app' => null, 'name' => 'vpc'],
+        ['tier' => 'account', 'status' => 'unattributed', 'app' => null, 'name' => 'oidc'],
+        ['tier' => 'app', 'status' => 'drift', 'app' => 'ghost', 'name' => 'repo'],
+        ['tier' => 'env', 'status' => 'unattributed', 'app' => null, 'name' => 'alb'],
+    ];
+
+    $ordered = collect($rows)->sortBy(fn (array $resource) => Audit::orderKey($resource))->values();
+
+    expect($ordered->pluck('name')->all())->toBe(['oidc', 'alb', 'vpc', 'repo', 'web']);
+    // account first, then env (alb before vpc by name), then app (drift before ok)
+    expect($ordered->pluck('tier')->all())->toBe(['account', 'env', 'env', 'app', 'app']);
+});
+
 it('derives a readable type and name for each resource', function () {
     $report = Audit::classify([
         auditResource('arn:aws:ecs:ap-southeast-2:111:service/yolo-production-codinglabs/web', ['Name' => 'yolo-production-codinglabs-web']),

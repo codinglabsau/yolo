@@ -145,6 +145,29 @@ class Audit
     }
 
     /**
+     * A single composite sort key for the audit table: tier (account → env → app,
+     * top to bottom), then status (drift first within a tier), then app and name.
+     * Returned as one string so a single-closure `sortBy` orders the whole table —
+     * the multi-closure `sortBy([...])` form silently ignores closure keys on
+     * current illuminate/collections.
+     *
+     * @param  array<string, mixed>  $resource
+     */
+    public static function orderKey(array $resource): string
+    {
+        $tierOrder = [self::TIER_ACCOUNT => 0, self::TIER_ENV => 1, self::TIER_APP => 2];
+        $statusOrder = [self::STATUS_DRIFT => 0, self::STATUS_UNATTRIBUTED => 1, self::STATUS_OK => 2];
+
+        return sprintf(
+            '%d-%d-%s-%s',
+            $tierOrder[$resource['tier']] ?? 9,
+            $statusOrder[$resource['status']] ?? 9,
+            $resource['app'] ?? '',
+            $resource['name'],
+        );
+    }
+
+    /**
      * A readable resource type from the ARN — service, plus the resource-type
      * segment when there is one (e.g. ecs/service, elasticloadbalancing/targetgroup,
      * s3). Display only; no behaviour keys off it.

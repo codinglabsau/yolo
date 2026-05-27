@@ -126,18 +126,10 @@ class AuditCommand extends Command
      */
     protected function filtered(array $resources)
     {
-        $tierOrder = [Audit::TIER_ACCOUNT => 0, Audit::TIER_ENV => 1, Audit::TIER_APP => 2];
-        $statusOrder = [Audit::STATUS_DRIFT => 0, Audit::STATUS_UNATTRIBUTED => 1, Audit::STATUS_OK => 2];
-
         return collect($resources)
             ->when($this->option('app'), fn ($rows, $app) => $rows->where('app', $app))
             ->when($this->option('drift'), fn ($rows) => $rows->where('status', Audit::STATUS_DRIFT))
-            ->sortBy([
-                fn (array $resource) => $tierOrder[$resource['tier']] ?? 9,
-                fn (array $resource) => $statusOrder[$resource['status']] ?? 9,
-                fn (array $resource) => $resource['app'] ?? '',
-                fn (array $resource) => $resource['name'],
-            ])
+            ->sortBy(fn (array $resource) => Audit::orderKey($resource))
             ->values();
     }
 
@@ -163,7 +155,7 @@ class AuditCommand extends Command
     {
         return match ($tier) {
             Audit::TIER_ACCOUNT => '<fg=magenta>account</>',
-            Audit::TIER_ENV => '<fg=cyan>env</>',
+            Audit::TIER_ENV => '<fg=cyan>environment</>',
             default => '<fg=blue>app</>',
         };
     }
