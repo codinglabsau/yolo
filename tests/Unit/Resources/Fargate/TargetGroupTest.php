@@ -124,3 +124,37 @@ it('caps the deregistration delay when it is still on the AWS 300s default', fun
 
     expect($recorder->calls)->toContain('ModifyTargetGroupAttributes');
 });
+
+it('returns the drifted health-check field as a current → desired change', function () {
+    bindRecordingElbV2Client(liveTargetGroup(['HealthCheckIntervalSeconds' => 30]), deregistrationDelayAttributes('10'));
+
+    $change = collect((new TargetGroup())->synchroniseConfiguration())
+        ->firstWhere('attribute', 'HealthCheckIntervalSeconds');
+
+    expect($change)->not->toBeNull();
+    expect($change->from)->toBe('30');
+    expect($change->to)->toBe('10');
+});
+
+it('returns the deregistration delay as a change when on the AWS default', function () {
+    bindRecordingElbV2Client(liveTargetGroup(), deregistrationDelayAttributes('300'));
+
+    $change = collect((new TargetGroup())->synchroniseConfiguration())
+        ->firstWhere('attribute', 'deregistration_delay.timeout_seconds');
+
+    expect($change->from)->toBe('300');
+    expect($change->to)->toBe('10');
+});
+
+it('returns no changes when health-check and deregistration both match', function () {
+    bindRecordingElbV2Client(liveTargetGroup(), deregistrationDelayAttributes('10'));
+
+    expect((new TargetGroup())->synchroniseConfiguration())->toBe([]);
+});
+
+it('computes the diff without writing under apply:false', function () {
+    $recorder = bindRecordingElbV2Client(liveTargetGroup(['HealthCheckIntervalSeconds' => 30]), deregistrationDelayAttributes('10'));
+
+    expect((new TargetGroup())->synchroniseConfiguration(apply: false))->not->toBeEmpty();
+    expect($recorder->calls)->not->toContain('ModifyTargetGroup');
+});

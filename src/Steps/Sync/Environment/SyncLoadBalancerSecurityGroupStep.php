@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Steps\Sync\Environment;
 
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Change;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Helpers;
@@ -50,42 +51,50 @@ class SyncLoadBalancerSecurityGroupStep implements Step
 
     protected function reconcileRules(string $groupId, bool $dryRun): StepResult
     {
+        $drifted = false;
+
         foreach ($this->expectedRules() as $tag => $expectedRule) {
+            $rule = $expectedRule($groupId);
+            $permission = $rule['IpPermissions'][0];
+            $label = sprintf('ingress %d/tcp from %s', $permission['FromPort'], $permission['IpRanges'][0]['CidrIp']);
+
             $liveRules = Ec2::securityGroupRules($groupId, $tag);
 
             if (empty($liveRules)) {
-                if ($dryRun) {
-                    return StepResult::OUT_OF_SYNC;
-                }
+                $drifted = true;
+                $this->recordChange(Change::make($label, null, 'authorised'));
 
-                Aws::ec2()->authorizeSecurityGroupIngress($expectedRule($groupId));
+                if (! $dryRun) {
+                    Aws::ec2()->authorizeSecurityGroupIngress($rule);
+                }
 
                 continue;
             }
 
-            $desired = static::mapRule($expectedRule($groupId)['IpPermissions'][0]);
+            $desired = static::mapRule($permission);
 
             if (Helpers::payloadHasDifferences($desired, $liveRules[0])) {
-                if ($dryRun) {
-                    return StepResult::OUT_OF_SYNC;
-                }
+                $drifted = true;
+                $this->recordChange(Change::make($label, 'drifted', 'reconciled'));
 
-                Aws::ec2()->modifySecurityGroupRules([
-                    'GroupId' => $groupId,
-                    'SecurityGroupRules' => [
-                        [
-                            'SecurityGroupRuleId' => $liveRules[0]['SecurityGroupRuleId'],
-                            'SecurityGroupRule' => [
-                                ...$desired,
-                                'Description' => $expectedRule($groupId)['IpPermissions'][0]['IpRanges'][0]['Description'],
+                if (! $dryRun) {
+                    Aws::ec2()->modifySecurityGroupRules([
+                        'GroupId' => $groupId,
+                        'SecurityGroupRules' => [
+                            [
+                                'SecurityGroupRuleId' => $liveRules[0]['SecurityGroupRuleId'],
+                                'SecurityGroupRule' => [
+                                    ...$desired,
+                                    'Description' => $permission['IpRanges'][0]['Description'],
+                                ],
                             ],
                         ],
-                    ],
-                ]);
+                    ]);
+                }
             }
         }
 
-        return StepResult::SYNCED;
+        return $drifted && $dryRun ? StepResult::WOULD_SYNC : StepResult::SYNCED;
     }
 
     /**

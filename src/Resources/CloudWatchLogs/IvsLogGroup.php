@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Resources\CloudWatchLogs;
 
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Change;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
@@ -68,10 +69,12 @@ class IvsLogGroup implements Resource, SynchronisesConfiguration
         Aws::synchroniseCloudWatchLogsTags($this->arn(), $this->tags());
     }
 
-    public function synchroniseConfiguration(): void
+    public function synchroniseConfiguration(bool $apply = true): array
     {
-        $this->reconcileRetention();
-        $this->putEventBridgeResourcePolicy();
+        return [
+            ...$this->reconcileRetention($apply),
+            ...$this->reconcileEventBridgeResourcePolicy($apply),
+        ];
     }
 
     public function retentionDays(): int
@@ -79,42 +82,76 @@ class IvsLogGroup implements Resource, SynchronisesConfiguration
         return (int) Manifest::get('aws.ivs.log-retention-days', 14);
     }
 
-    protected function reconcileRetention(): void
+    /**
+     * @return array<int, Change>
+     */
+    protected function reconcileRetention(bool $apply): array
     {
         $logGroup = CloudWatchLogs::logGroup($this->name());
+        $current = $logGroup['retentionInDays'] ?? null;
 
-        if (($logGroup['retentionInDays'] ?? null) === $this->retentionDays()) {
-            return;
+        if ($current === $this->retentionDays()) {
+            return [];
         }
 
-        Aws::cloudWatchLogs()->putRetentionPolicy([
-            'logGroupName' => $this->name(),
-            'retentionInDays' => $this->retentionDays(),
-        ]);
+        if ($apply) {
+            Aws::cloudWatchLogs()->putRetentionPolicy([
+                'logGroupName' => $this->name(),
+                'retentionInDays' => $this->retentionDays(),
+            ]);
+        }
+
+        return [Change::make('retention-days', $current, $this->retentionDays())];
     }
 
     /**
      * Grant EventBridge permission to deliver IVS events into any /aws/ivs/ log
-     * group. Idempotent put, so it's safe to re-apply on every sync.
+     * group. Diffs the live resource policy against the desired document first, so
+     * a clean sync makes no write and a dry-run reports the change.
+     *
+     * @return array<int, Change>
      */
-    protected function putEventBridgeResourcePolicy(): void
+    protected function reconcileEventBridgeResourcePolicy(bool $apply): array
     {
-        Aws::cloudWatchLogs()->putResourcePolicy([
-            'policyName' => Helpers::keyedResourceName('ivs-eventbridge-policy', exclusive: false),
-            'policyDocument' => json_encode([
-                'Version' => '2012-10-17',
-                'Statement' => [[
-                    'Sid' => 'EventBridgeToCloudWatchLogs',
-                    'Effect' => 'Allow',
-                    'Principal' => ['Service' => 'events.amazonaws.com'],
-                    'Action' => ['logs:CreateLogStream', 'logs:PutLogEvents'],
-                    'Resource' => sprintf(
-                        'arn:aws:logs:%s:%s:log-group:/aws/ivs/*',
-                        Manifest::get('aws.region'),
-                        Aws::accountId(),
-                    ),
-                ]],
-            ]),
-        ]);
+        $current = CloudWatchLogs::resourcePolicy($this->eventBridgePolicyName());
+
+        if (Helpers::documentsEqual($current, $this->eventBridgePolicyDocument())) {
+            return [];
+        }
+
+        if ($apply) {
+            Aws::cloudWatchLogs()->putResourcePolicy([
+                'policyName' => $this->eventBridgePolicyName(),
+                'policyDocument' => json_encode($this->eventBridgePolicyDocument()),
+            ]);
+        }
+
+        return [Change::make('eventbridge-resource-policy', $current === null ? null : 'present', 'events.amazonaws.com → /aws/ivs/*')];
+    }
+
+    protected function eventBridgePolicyName(): string
+    {
+        return Helpers::keyedResourceName('ivs-eventbridge-policy', exclusive: false);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function eventBridgePolicyDocument(): array
+    {
+        return [
+            'Version' => '2012-10-17',
+            'Statement' => [[
+                'Sid' => 'EventBridgeToCloudWatchLogs',
+                'Effect' => 'Allow',
+                'Principal' => ['Service' => 'events.amazonaws.com'],
+                'Action' => ['logs:CreateLogStream', 'logs:PutLogEvents'],
+                'Resource' => sprintf(
+                    'arn:aws:logs:%s:%s:log-group:/aws/ivs/*',
+                    Manifest::get('aws.region'),
+                    Aws::accountId(),
+                ),
+            ]],
+        ];
     }
 }

@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Resources\Ecs;
 
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Change;
 use Codinglabs\Yolo\Aws\Ecs;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
@@ -66,29 +67,56 @@ class EcsService implements Resource
      */
     public function needsUpdate(): bool
     {
-        return static::serviceNeedsUpdate(
+        return $this->pendingChanges() !== [];
+    }
+
+    /**
+     * The service-level attributes that have drifted from the manifest — read
+     * live and diffed so the sync step can report each current → desired change.
+     *
+     * @return array<int, Change>
+     */
+    public function pendingChanges(): array
+    {
+        return static::serviceChanges(
             Ecs::service((new EcsCluster())->name(), $this->name()),
             $this->gracePeriod(),
             $this->enableExecuteCommand(),
         );
     }
 
-    /**
-     * Pure comparison — extracted so tests can pin headless / missing-grace-period
-     * behaviour without mocking the ECS client.
-     */
     public static function serviceNeedsUpdate(array $service, int $gracePeriod, bool $enableExecuteCommand): bool
     {
-        if (($service['enableExecuteCommand'] ?? false) !== $enableExecuteCommand) {
-            return true;
+        return static::serviceChanges($service, $gracePeriod, $enableExecuteCommand) !== [];
+    }
+
+    /**
+     * Pure comparison — extracted so tests can pin headless / missing-grace-period
+     * behaviour without mocking the ECS client. Exec-command drift is always
+     * reconciled; the grace period only when the service is ALB-attached (headless
+     * services have no grace period to reconcile).
+     *
+     * @return array<int, Change>
+     */
+    public static function serviceChanges(array $service, int $gracePeriod, bool $enableExecuteCommand): array
+    {
+        $changes = [];
+
+        $currentExecuteCommand = $service['enableExecuteCommand'] ?? false;
+
+        if ($currentExecuteCommand !== $enableExecuteCommand) {
+            $changes[] = Change::make('enableExecuteCommand', $currentExecuteCommand, $enableExecuteCommand);
         }
 
-        // Headless services have no ALB association and therefore no grace period to reconcile.
-        if (Manifest::isHeadless()) {
-            return false;
+        if (! Manifest::isHeadless()) {
+            $currentGracePeriod = $service['healthCheckGracePeriodSeconds'] ?? $gracePeriod;
+
+            if ($currentGracePeriod !== $gracePeriod) {
+                $changes[] = Change::make('healthCheckGracePeriodSeconds', $currentGracePeriod, $gracePeriod);
+            }
         }
 
-        return ($service['healthCheckGracePeriodSeconds'] ?? $gracePeriod) !== $gracePeriod;
+        return $changes;
     }
 
     public function update(): void

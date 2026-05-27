@@ -131,3 +131,30 @@ it('modifies the load balancer when a managed attribute has drifted', function (
     expect(collect($recorder->calls)->pluck('name'))->toContain('ModifyLoadBalancerAttributes');
     expect(modifiedAttributes($recorder->calls)['routing.http.drop_invalid_header_fields.enabled'])->toBe('true');
 });
+
+it('returns the drifted attribute as a current → desired change', function () {
+    bindRecordingLoadBalancerClient(syncedLoadBalancerAttributes(['idle_timeout.timeout_seconds' => '30']));
+
+    $changes = (new LoadBalancer())->synchroniseConfiguration();
+
+    expect($changes)->toHaveCount(1);
+    expect($changes[0]->attribute)->toBe('idle_timeout.timeout_seconds');
+    expect($changes[0]->from)->toBe('30');
+    expect($changes[0]->to)->toBe('60');
+});
+
+it('returns no changes when every managed attribute matches', function () {
+    bindRecordingLoadBalancerClient(syncedLoadBalancerAttributes());
+
+    expect((new LoadBalancer())->synchroniseConfiguration())->toBe([]);
+});
+
+it('computes the diff without writing under apply:false', function () {
+    $recorder = bindRecordingLoadBalancerClient(syncedLoadBalancerAttributes(['routing.http2.enabled' => 'false']));
+
+    $changes = (new LoadBalancer())->synchroniseConfiguration(apply: false);
+
+    expect($changes)->toHaveCount(1);
+    expect($changes[0]->attribute)->toBe('routing.http2.enabled');
+    expect(collect($recorder->calls)->pluck('name'))->not->toContain('ModifyLoadBalancerAttributes');
+});

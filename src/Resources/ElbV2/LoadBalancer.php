@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Resources\ElbV2;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Change;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\ElbV2;
@@ -75,7 +76,7 @@ class LoadBalancer implements Resource, SynchronisesConfiguration
         // off, invalid headers passed through); bring our hardened attributes onto
         // it. The artefacts bucket access-logs policy is provisioned earlier in the
         // sync (Storage runs before Compute), so enabling access logs validates.
-        $this->reconcileAttributes($arn, current: []);
+        $this->reconcileAttributes($arn, current: [], apply: true);
     }
 
     public function synchroniseTags(): void
@@ -87,30 +88,35 @@ class LoadBalancer implements Resource, SynchronisesConfiguration
      * Push the hardened attribute defaults onto an existing ALB. Tag sync doesn't
      * cover load-balancer attributes, so without this a changed default would never
      * reach an already-provisioned load balancer. Diffs first so a clean sync makes
-     * no needless write.
+     * no needless write, and returns the drifted attributes so sync can report them.
      */
-    public function synchroniseConfiguration(): void
+    public function synchroniseConfiguration(bool $apply = true): array
     {
         $arn = $this->arn();
 
-        $this->reconcileAttributes($arn, $this->currentAttributes($arn));
+        return $this->reconcileAttributes($arn, $this->currentAttributes($arn), $apply);
     }
 
     /**
-     * Batch every managed attribute into a single modifyLoadBalancerAttributes
-     * call, but only when at least one has drifted from the desired value.
+     * Batch every drifted attribute into a single modifyLoadBalancerAttributes
+     * call (only when something drifted and $apply is set), and return the diff
+     * as Change[] so the operator sees each current → desired comparison.
      *
      * @param  array<string, string>  $current  live attributes (empty on create)
+     * @return array<int, Change>
      */
-    protected function reconcileAttributes(string $arn, array $current): void
+    protected function reconcileAttributes(string $arn, array $current, bool $apply): array
     {
         $desired = $this->desiredAttributes();
 
-        $drifted = collect($desired)
-            ->contains(fn (string $value, string $key) => ($current[$key] ?? null) !== $value);
+        $changes = collect($desired)
+            ->filter(fn (string $value, string $key) => ($current[$key] ?? null) !== $value)
+            ->map(fn (string $value, string $key) => Change::make($key, $current[$key] ?? null, $value))
+            ->values()
+            ->all();
 
-        if (! $drifted) {
-            return;
+        if ($changes === [] || ! $apply) {
+            return $changes;
         }
 
         Aws::elasticLoadBalancingV2()->modifyLoadBalancerAttributes([
@@ -120,6 +126,8 @@ class LoadBalancer implements Resource, SynchronisesConfiguration
                 ->values()
                 ->all(),
         ]);
+
+        return $changes;
     }
 
     /**

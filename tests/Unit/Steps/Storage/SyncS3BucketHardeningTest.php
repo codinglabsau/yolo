@@ -131,18 +131,21 @@ it('reconciles BPA, versioning and the yolo:app tag onto an existing artefact bu
     expect($tags['yolo:app'])->toBe('my-app');
 });
 
-it('does not mutate the artefact bucket during a dry-run', function () {
+it('reports drift but does not mutate the artefact bucket during a dry-run', function () {
     $captured = [];
 
     bindMockS3Client([
         'HeadBucket' => new Result(),   // exists
     ], $captured);
 
-    expect((new SyncS3ArtefactBucketStep())(['dry-run' => true]))->toBe(StepResult::SYNCED);
+    // The live config reads back empty here, so a dry-run sees drift (WOULD_SYNC)
+    // but writes nothing.
+    expect((new SyncS3ArtefactBucketStep())(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC);
 
     $names = array_column($captured, 'name');
     expect($names)->not->toContain('PutPublicAccessBlock')
-        ->not->toContain('PutBucketVersioning');
+        ->not->toContain('PutBucketVersioning')
+        ->not->toContain('PutBucketPolicy');
 });
 
 it('blocks public access on a newly created app bucket', function () {
@@ -229,7 +232,7 @@ it('does not write the log-delivery policy during a dry-run', function () {
         'HeadBucket' => new Result(),   // exists
     ], $captured);
 
-    expect((new SyncS3ArtefactBucketStep())(['dry-run' => true]))->toBe(StepResult::SYNCED);
+    expect((new SyncS3ArtefactBucketStep())(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC);
 
     expect(array_column($captured, 'name'))->not->toContain('PutBucketPolicy');
 });

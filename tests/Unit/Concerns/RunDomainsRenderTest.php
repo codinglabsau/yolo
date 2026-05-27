@@ -1,11 +1,14 @@
 <?php
 
+use Codinglabs\Yolo\Change;
+use Illuminate\Support\Arr;
 use Laravel\Prompts\Prompt;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Commands\SyncCommand;
 use Codinglabs\Yolo\Commands\SyncAppCommand;
+use Codinglabs\Yolo\Concerns\RecordsChanges;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 
@@ -14,6 +17,19 @@ class RunDomainsFakeStep implements Step
     public function __invoke(array $options): StepResult
     {
         return StepResult::CREATED;
+    }
+}
+
+/** A step that reconciled (or, on a dry-run, would reconcile) one attribute. */
+class RunDomainsChangeStep implements Step
+{
+    use RecordsChanges;
+
+    public function __invoke(array $options): StepResult
+    {
+        $this->recordChange(Change::make('idle_timeout', 30, 60));
+
+        return Arr::get($options, 'dry-run') ? StepResult::WOULD_SYNC : StepResult::SYNCED;
     }
 }
 
@@ -78,4 +94,39 @@ it('auto-proceeds without a prompt when non-interactive', function () {
     );
 
     expect($output)->toContain('Synced testing');
+});
+
+it('reports each reconciled attribute under an applied-changes section', function () {
+    $output = runDomainsCapture(
+        ['Network' => [RunDomainsChangeStep::class]],
+        ['--no-progress' => true],
+    );
+
+    expect($output)
+        ->toContain('Changes applied')
+        ->toContain('idle_timeout')
+        ->toContain('30')
+        ->toContain('60');
+});
+
+it('frames the attribute changes as pending on a dry-run', function () {
+    $output = runDomainsCapture(
+        ['Network' => [RunDomainsChangeStep::class]],
+        ['--no-progress' => true, '--dry-run' => true],
+    );
+
+    expect($output)
+        ->toContain('Pending changes')
+        ->toContain('idle_timeout');
+});
+
+it('omits the changes section entirely when nothing drifted', function () {
+    $output = runDomainsCapture(
+        ['Network' => [RunDomainsFakeStep::class]],
+        ['--no-progress' => true],
+    );
+
+    expect($output)
+        ->not->toContain('Changes applied')
+        ->not->toContain('Pending changes');
 });

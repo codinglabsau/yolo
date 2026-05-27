@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Resources\ElbV2;
 
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Change;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\ElbV2;
 use Codinglabs\Yolo\Enums\Scope;
@@ -57,7 +58,7 @@ class TargetGroup implements Resource, SynchronisesConfiguration
         ])['TargetGroups'][0]['TargetGroupArn'];
 
         // A fresh target group defaults to 300s deregistration; bring it to ours.
-        $this->reconcileDeregistrationDelay($arn);
+        $this->reconcileDeregistrationDelay($arn, apply: true);
     }
 
     public function synchroniseTags(): void
@@ -70,21 +71,25 @@ class TargetGroup implements Resource, SynchronisesConfiguration
      * and the deregistration delay. Create sets these once; without this a
      * changed default or manifest override would never reach an already-deployed
      * app, since tag sync doesn't cover them. Each reconcile diffs first so a
-     * clean sync makes no needless write. (The service grace period is a
-     * separate, service-level setting reconciled by EcsService.)
+     * clean sync makes no needless write, and returns the drifted attributes so
+     * sync can report each current → desired comparison. (The service grace
+     * period is a separate, service-level setting reconciled by EcsService.)
      */
-    public function synchroniseConfiguration(): void
+    public function synchroniseConfiguration(bool $apply = true): array
     {
         $live = ElbV2::targetGroup($this->name());
 
-        $this->reconcileHealthCheck($live);
-        $this->reconcileDeregistrationDelay($live['TargetGroupArn']);
+        return [
+            ...$this->reconcileHealthCheck($live, $apply),
+            ...$this->reconcileDeregistrationDelay($live['TargetGroupArn'], $apply),
+        ];
     }
 
     /**
      * @param  array<string, mixed>  $live
+     * @return array<int, Change>
      */
-    protected function reconcileHealthCheck(array $live): void
+    protected function reconcileHealthCheck(array $live, bool $apply): array
     {
         $desired = static::reconcilableHealthCheck();
 
@@ -97,14 +102,32 @@ class TargetGroup implements Resource, SynchronisesConfiguration
             'Matcher' => ['HttpCode' => $live['Matcher']['HttpCode'] ?? null],
         ];
 
-        if ($current == $desired) {
-            return;
+        $changes = [];
+
+        foreach ($desired as $key => $value) {
+            if ($key === 'Matcher') {
+                if (($current['Matcher']['HttpCode'] ?? null) !== ($value['HttpCode'] ?? null)) {
+                    $changes[] = Change::make('Matcher.HttpCode', $current['Matcher']['HttpCode'] ?? null, $value['HttpCode'] ?? null);
+                }
+
+                continue;
+            }
+
+            if (($current[$key] ?? null) !== $value) {
+                $changes[] = Change::make($key, $current[$key] ?? null, $value);
+            }
+        }
+
+        if ($changes === [] || ! $apply) {
+            return $changes;
         }
 
         Aws::elasticLoadBalancingV2()->modifyTargetGroup([
             'TargetGroupArn' => $live['TargetGroupArn'],
             ...$desired,
         ]);
+
+        return $changes;
     }
 
     /**
@@ -113,8 +136,10 @@ class TargetGroup implements Resource, SynchronisesConfiguration
      * any real request needs. Bump tasks.web.shutdown-grace-period for apps with genuinely
      * long in-flight requests (uploads, exports, SSE) — anything still in flight
      * when the timer elapses has its connection closed.
+     *
+     * @return array<int, Change>
      */
-    protected function reconcileDeregistrationDelay(string $arn): void
+    protected function reconcileDeregistrationDelay(string $arn, bool $apply): array
     {
         $desired = (string) $this->deregistrationDelay();
 
@@ -125,15 +150,19 @@ class TargetGroup implements Resource, SynchronisesConfiguration
         );
 
         if ($current === $desired) {
-            return;
+            return [];
         }
 
-        Aws::elasticLoadBalancingV2()->modifyTargetGroupAttributes([
-            'TargetGroupArn' => $arn,
-            'Attributes' => [
-                ['Key' => 'deregistration_delay.timeout_seconds', 'Value' => $desired],
-            ],
-        ]);
+        if ($apply) {
+            Aws::elasticLoadBalancingV2()->modifyTargetGroupAttributes([
+                'TargetGroupArn' => $arn,
+                'Attributes' => [
+                    ['Key' => 'deregistration_delay.timeout_seconds', 'Value' => $desired],
+                ],
+            ]);
+        }
+
+        return [Change::make('deregistration_delay.timeout_seconds', $current, $desired)];
     }
 
     public function deregistrationDelay(): int
