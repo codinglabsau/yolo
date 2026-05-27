@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Resources\Storage;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Aws\S3;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\ResolvesTags;
@@ -16,6 +17,10 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
  * its objects must be recoverable, so Block Public Access (all four settings)
  * and versioning are reconciled onto it on every sync — both declarative,
  * idempotent puts. The yolo:app owner tag lets `yolo audit` attribute it.
+ *
+ * It also doubles as the destination for the ALB's access logs, so sync grants
+ * the ELB log-delivery service principal write access under the alb-access-logs/
+ * prefix.
  */
 class S3ArtefactBucket implements Resource, SynchronisesConfiguration
 {
@@ -78,6 +83,53 @@ class S3ArtefactBucket implements Resource, SynchronisesConfiguration
         Aws::s3()->putBucketVersioning([
             'Bucket' => $this->name(),
             'VersioningConfiguration' => ['Status' => 'Enabled'],
+        ]);
+
+        $this->grantAlbAccessLogDelivery();
+    }
+
+    /**
+     * Grant Elastic Load Balancing permission to deliver ALB access logs into this
+     * bucket under the alb-access-logs/ prefix. Enabling access logs on the load
+     * balancer (LoadBalancer resource) fails AWS's write-test without this, so the
+     * policy must exist before sync:compute runs — Storage runs ahead of Compute,
+     * so it does.
+     *
+     * Uses the log-delivery service principal (recommended for the SSE-S3-encrypted
+     * artefacts bucket; no customer-managed KMS key in play) rather than a
+     * per-Region ELB account ID. SourceAccount + SourceArn scope the grant to this
+     * account's load balancers, so it is never public and coexists with the
+     * bucket's BlockPublicPolicy. putBucketPolicy is a full replace and the
+     * artefacts bucket carries no other policy, so this is idempotent on re-sync.
+     */
+    protected function grantAlbAccessLogDelivery(): void
+    {
+        $accountId = Aws::accountId();
+
+        Aws::s3()->putBucketPolicy([
+            'Bucket' => $this->name(),
+            'Policy' => json_encode([
+                'Version' => '2012-10-17',
+                'Statement' => [
+                    [
+                        'Sid' => 'AllowELBAccessLogDelivery',
+                        'Effect' => 'Allow',
+                        'Principal' => ['Service' => 'logdelivery.elasticloadbalancing.amazonaws.com'],
+                        'Action' => 's3:PutObject',
+                        'Resource' => sprintf('arn:aws:s3:::%s/alb-access-logs/*', $this->name()),
+                        'Condition' => [
+                            'StringEquals' => ['aws:SourceAccount' => $accountId],
+                            'ArnLike' => [
+                                'aws:SourceArn' => sprintf(
+                                    'arn:aws:elasticloadbalancing:%s:%s:loadbalancer/*',
+                                    Manifest::get('aws.region'),
+                                    $accountId,
+                                ),
+                            ],
+                        ],
+                    ],
+                ],
+            ]),
         ]);
     }
 }

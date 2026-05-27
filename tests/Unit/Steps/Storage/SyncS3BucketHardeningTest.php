@@ -177,3 +177,59 @@ it('does not flip public access on an existing app bucket', function () {
     expect((new SyncS3BucketStep())([]))->toBe(StepResult::SYNCED);
     expect(array_column($captured, 'name'))->not->toContain('PutPublicAccessBlock');
 });
+
+it('grants ELB access-log delivery to the log-delivery service principal on a new artefact bucket', function () {
+    $captured = [];
+
+    bindMockS3Client([
+        'HeadBucket' => [s3NotFound(), new Result(['@metadata' => ['statusCode' => 200]])],
+        'CreateBucket' => new Result(),
+        'PutBucketTagging' => new Result(),
+        'PutPublicAccessBlock' => new Result(),
+        'PutBucketVersioning' => new Result(),
+        'PutBucketPolicy' => new Result(),
+    ], $captured);
+
+    expect((new SyncS3ArtefactBucketStep())([]))->toBe(StepResult::CREATED);
+
+    $policy = collect($captured)->firstWhere('name', 'PutBucketPolicy');
+    expect($policy)->not->toBeNull();
+
+    $statement = json_decode($policy['args']['Policy'], true)['Statement'][0];
+
+    expect($statement['Effect'])->toBe('Allow')
+        ->and($statement['Principal'])->toBe(['Service' => 'logdelivery.elasticloadbalancing.amazonaws.com'])
+        ->and($statement['Action'])->toBe('s3:PutObject')
+        ->and($statement['Resource'])->toBe('arn:aws:s3:::yolo-testing-my-app-artefacts/alb-access-logs/*')
+        ->and($statement['Condition']['StringEquals']['aws:SourceAccount'])->toBe('111111111111')
+        ->and($statement['Condition']['ArnLike']['aws:SourceArn'])
+        ->toBe('arn:aws:elasticloadbalancing:ap-southeast-2:111111111111:loadbalancer/*');
+});
+
+it('backfills the ELB access-log delivery policy onto an existing artefact bucket', function () {
+    $captured = [];
+
+    bindMockS3Client([
+        'HeadBucket' => new Result(),   // exists
+        'PutPublicAccessBlock' => new Result(),
+        'PutBucketVersioning' => new Result(),
+        'PutBucketPolicy' => new Result(),
+        'PutBucketTagging' => new Result(),
+    ], $captured);
+
+    expect((new SyncS3ArtefactBucketStep())([]))->toBe(StepResult::SYNCED);
+
+    expect(array_column($captured, 'name'))->toContain('PutBucketPolicy');
+});
+
+it('does not write the log-delivery policy during a dry-run', function () {
+    $captured = [];
+
+    bindMockS3Client([
+        'HeadBucket' => new Result(),   // exists
+    ], $captured);
+
+    expect((new SyncS3ArtefactBucketStep())(['dry-run' => true]))->toBe(StepResult::SYNCED);
+
+    expect(array_column($captured, 'name'))->not->toContain('PutBucketPolicy');
+});
