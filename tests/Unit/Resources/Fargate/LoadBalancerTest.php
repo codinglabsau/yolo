@@ -1,0 +1,133 @@
+<?php
+
+use Aws\Result;
+use Aws\MockHandler;
+use Aws\CommandInterface;
+use Codinglabs\Yolo\Helpers;
+use GuzzleHttp\Promise\Create;
+use Codinglabs\Yolo\Resources\Fargate\LoadBalancer;
+use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
+
+/**
+ * Bind an ELBv2 client that records every command (name + args) and returns the
+ * supplied load-balancer attributes from DescribeLoadBalancerAttributes. Returns
+ * the recorder so tests can read `$recorder->calls`.
+ *
+ * @param  array<int, array{Key: string, Value: string}>  $attributes
+ */
+function bindRecordingLoadBalancerClient(array $attributes = []): object
+{
+    $recorder = new class($attributes) extends MockHandler
+    {
+        /** @var array<int, array{name: string, args: array<string, mixed>}> */
+        public array $calls = [];
+
+        public function __construct(public array $attributes) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            $this->calls[] = ['name' => $cmd->getName(), 'args' => $cmd->toArray()];
+
+            return Create::promiseFor(match ($cmd->getName()) {
+                'DescribeLoadBalancers' => new Result([
+                    'LoadBalancers' => [[
+                        'LoadBalancerName' => 'yolo-testing',
+                        'LoadBalancerArn' => 'arn:aws:elasticloadbalancing:ap-southeast-2:111111111111:loadbalancer/app/yolo-testing/abc',
+                    ]],
+                ]),
+                'DescribeLoadBalancerAttributes' => new Result(['Attributes' => $this->attributes]),
+                default => new Result([]),
+            });
+        }
+    };
+
+    Helpers::app()->instance('elasticLoadBalancingV2', new ElasticLoadBalancingV2Client([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $recorder,
+    ]));
+
+    return $recorder;
+}
+
+/**
+ * Flatten a captured Attributes argument list into an associative Key => Value map.
+ *
+ * @param  array<int, array{name: string, args: array<string, mixed>}>  $calls
+ * @return array<string, string>
+ */
+function modifiedAttributes(array $calls): array
+{
+    $modify = collect($calls)->firstWhere('name', 'ModifyLoadBalancerAttributes');
+
+    return collect($modify['args']['Attributes'])
+        ->mapWithKeys(fn (array $attribute) => [$attribute['Key'] => $attribute['Value']])
+        ->all();
+}
+
+/**
+ * The live-attribute shape DescribeLoadBalancerAttributes returns for an ALB that
+ * already carries every attribute YOLO manages — used to prove a clean sync makes
+ * no write. Defaults match the desired values (deletion protection on in every
+ * environment).
+ *
+ * @param  array<string, string>  $overrides
+ * @return array<int, array{Key: string, Value: string}>
+ */
+function syncedLoadBalancerAttributes(array $overrides = []): array
+{
+    $attributes = array_merge([
+        'deletion_protection.enabled' => 'true',
+        'access_logs.s3.enabled' => 'true',
+        'access_logs.s3.bucket' => 'yolo-testing-my-app-artefacts',
+        'access_logs.s3.prefix' => 'alb-access-logs/testing/yolo-testing',
+        'routing.http.drop_invalid_header_fields.enabled' => 'true',
+        'routing.http2.enabled' => 'true',
+        'idle_timeout.timeout_seconds' => '60',
+    ], $overrides);
+
+    return collect($attributes)
+        ->map(fn (string $value, string $key) => ['Key' => $key, 'Value' => $value])
+        ->values()
+        ->all();
+}
+
+beforeEach(function () {
+    writeManifest([
+        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+    ]);
+});
+
+it('pins the full hardened attribute shape', function () {
+    // Hardcoded sensible defaults — the argument shape create + sync both push
+    // through modifyLoadBalancerAttributes. Deletion protection is always on.
+    expect((new LoadBalancer())->desiredAttributes())->toBe([
+        'deletion_protection.enabled' => 'true',
+        'access_logs.s3.enabled' => 'true',
+        'access_logs.s3.bucket' => 'yolo-testing-my-app-artefacts',
+        'access_logs.s3.prefix' => 'alb-access-logs/testing/yolo-testing',
+        'routing.http.drop_invalid_header_fields.enabled' => 'true',
+        'routing.http2.enabled' => 'true',
+        'idle_timeout.timeout_seconds' => '60',
+    ]);
+});
+
+it('makes no write when every managed attribute already matches', function () {
+    $recorder = bindRecordingLoadBalancerClient(syncedLoadBalancerAttributes());
+
+    (new LoadBalancer())->synchroniseConfiguration();
+
+    expect(collect($recorder->calls)->pluck('name'))->not->toContain('ModifyLoadBalancerAttributes');
+});
+
+it('modifies the load balancer when a managed attribute has drifted', function () {
+    $recorder = bindRecordingLoadBalancerClient(
+        syncedLoadBalancerAttributes(['routing.http.drop_invalid_header_fields.enabled' => 'false'])
+    );
+
+    (new LoadBalancer())->synchroniseConfiguration();
+
+    expect(collect($recorder->calls)->pluck('name'))->toContain('ModifyLoadBalancerAttributes');
+    expect(modifiedAttributes($recorder->calls)['routing.http.drop_invalid_header_fields.enabled'])->toBe('true');
+});
