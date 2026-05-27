@@ -3,10 +3,31 @@
 namespace Codinglabs\Yolo\Aws;
 
 use Codinglabs\Yolo\Aws;
+use Aws\Exception\AwsException;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class Iam
 {
+    /**
+     * The managed policies attached to a role, as [{PolicyName, PolicyArn}], or
+     * an empty list when the role does not yet exist (a dry-run can reach the
+     * attach step before the role's own create step has run).
+     *
+     * @return array<int, array<string, string>>
+     */
+    public static function attachedRolePolicies(string $roleName): array
+    {
+        try {
+            return Aws::iam()->listAttachedRolePolicies(['RoleName' => $roleName])['AttachedPolicies'] ?? [];
+        } catch (AwsException $e) {
+            if ($e->getAwsErrorCode() === 'NoSuchEntity') {
+                return [];
+            }
+
+            throw $e;
+        }
+    }
+
     public static function role(string $name): array
     {
         $roles = Aws::iam()->listRoles();

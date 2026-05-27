@@ -2,6 +2,7 @@
 
 namespace Codinglabs\Yolo\Concerns;
 
+use Codinglabs\Yolo\Change;
 use Illuminate\Support\Str;
 use Laravel\Prompts\Prompt;
 use Codinglabs\Yolo\Manifest;
@@ -171,7 +172,7 @@ trait RunsSteppedCommands
     /**
      * Render the progress frame for a step, invoke it, and time it.
      *
-     * @return array{status: StepResult|string, elapsed: int}
+     * @return array{status: StepResult|string, elapsed: int, changes: array<int, Change>}
      */
     protected function invokeStep(Step $step, ?Progress $progress, string $label, int $now): array
     {
@@ -193,7 +194,14 @@ trait RunsSteppedCommands
 
         $progress?->advance();
 
-        return ['status' => $status, 'elapsed' => time() - $started];
+        return [
+            'status' => $status,
+            'elapsed' => time() - $started,
+            // Steps that reconcile config (directly, or via SynchronisesResource)
+            // record the attributes they changed so the Changes report can surface
+            // each current → desired comparison.
+            'changes' => method_exists($step, 'changes') ? $step->changes() : [],
+        ];
     }
 
     /**
@@ -230,6 +238,8 @@ trait RunsSteppedCommands
             );
         }
 
+        $this->renderChanges($ran, $multiDomain);
+
         if ($skipped->isNotEmpty()) {
             if ($this->output->isVerbose()) {
                 table(
@@ -250,6 +260,46 @@ trait RunsSteppedCommands
         }
 
         info(sprintf('Synced %s in %ds.', $environment, $elapsed));
+    }
+
+    /**
+     * Print the per-attribute detail behind the status column: which attributes
+     * each step reconciled (or, under --dry-run, would reconcile), as a
+     * current → desired comparison. Steps that changed nothing are omitted, so a
+     * clean sync stays quiet and drift stands out.
+     *
+     * @param  Collection<int, array{domain: string, step: Step, status: StepResult|string, changes: array<int, Change>}>  $ran
+     */
+    protected function renderChanges(Collection $ran, bool $multiDomain): void
+    {
+        $withChanges = $ran->filter(fn (array $result) => $result['changes'] !== []);
+
+        if ($withChanges->isEmpty()) {
+            return;
+        }
+
+        $this->output->writeln('');
+        $this->output->writeln(sprintf(
+            '  <options=bold>%s</>',
+            $this->option('dry-run') ? 'Pending changes' : 'Changes applied',
+        ));
+
+        $withChanges->each(function (array $result) use ($multiDomain) {
+            $label = $multiDomain
+                ? sprintf('%s · %s', $result['domain'], static::normaliseStep($result['step']))
+                : static::normaliseStep($result['step']);
+
+            $this->output->writeln(sprintf('  <fg=cyan>%s</>', $label));
+
+            foreach ($result['changes'] as $change) {
+                $this->output->writeln(sprintf(
+                    '    %s: <fg=red>%s</> <fg=gray>→</> <fg=green>%s</>',
+                    $change->attribute,
+                    $change->from ?? 'absent',
+                    $change->to ?? 'absent',
+                ));
+            }
+        });
     }
 
     protected function handleSteps(string $environment): int
@@ -375,7 +425,6 @@ trait RunsSteppedCommands
 
             // red
             StepResult::MANIFEST_INVALID => '<fg=red>MANIFEST INVALID</>',
-            StepResult::OUT_OF_SYNC => '<fg=red>OUT OF SYNC</>',
             StepResult::TIMEOUT => '<fg=red>TIMEOUT</>',
             default => is_string($status) ? $status : '',
         };

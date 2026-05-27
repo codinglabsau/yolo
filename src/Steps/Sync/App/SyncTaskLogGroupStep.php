@@ -2,6 +2,7 @@
 
 namespace Codinglabs\Yolo\Steps\Sync\App;
 
+use Codinglabs\Yolo\Change;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -16,7 +17,9 @@ class SyncTaskLogGroupStep implements Step
     {
         $logGroup = new TaskLogGroup();
 
-        if ($logGroup->exists() && $logGroup->currentRetentionInDays() !== $logGroup->retentionInDays()) {
+        if ($logGroup->exists() && ($current = $logGroup->currentRetentionInDays()) !== $logGroup->retentionInDays()) {
+            $this->recordChange(Change::make('retention-days', $current, $logGroup->retentionInDays()));
+
             if (Arr::get($options, 'dry-run')) {
                 return StepResult::WOULD_SYNC;
             }

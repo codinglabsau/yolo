@@ -141,14 +141,30 @@ it('creates the deployer role with the OIDC trust policy when absent', function 
     expect($create['args']['AssumeRolePolicyDocument'])->toContain('sts:AssumeRoleWithWebIdentity');
 });
 
-it('would-sync the policy attachment on a dry-run', function () {
+it('would-sync the policy attachment on a dry-run without attaching', function () {
     manifestWithDeployer();
 
     $captured = [];
+    // No AttachedPolicies returned → the deployer policy is not attached yet, so a
+    // dry-run reports the pending attachment but never calls AttachRolePolicy.
     bindRoutedIamClient([], $captured);
 
     expect((new AttachDeployerRolePoliciesStep())(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC);
-    expect($captured)->toBeEmpty();
+    expect(array_column($captured, 'name'))->not->toContain('AttachRolePolicy');
+});
+
+it('reports the policy attachment as synced when it is already attached', function () {
+    manifestWithDeployer();
+
+    $captured = [];
+    bindRoutedIamClient([
+        'ListAttachedRolePolicies' => new Result(['AttachedPolicies' => [
+            ['PolicyName' => 'yolo-testing-my-app-deployer-policy', 'PolicyArn' => 'arn:aws:iam::111111111111:policy/yolo-testing-my-app-deployer-policy'],
+        ]]),
+    ], $captured);
+
+    expect((new AttachDeployerRolePoliciesStep())([]))->toBe(StepResult::SYNCED);
+    expect(array_column($captured, 'name'))->not->toContain('AttachRolePolicy');
 });
 
 it('attaches the deployer policy to the deployer role', function () {

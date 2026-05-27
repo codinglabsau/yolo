@@ -2,26 +2,23 @@
 
 namespace Codinglabs\Yolo\Steps\Sync\Environment;
 
-use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\Iam\EcsTaskRole;
 use Codinglabs\Yolo\Resources\Iam\EcsTaskPolicy;
+use Codinglabs\Yolo\Concerns\AttachesRolePolicies;
 
 class AttachEcsTaskRolePoliciesStep implements Step
 {
+    use AttachesRolePolicies;
+
     public function __invoke(array $options): StepResult
     {
-        if (Arr::get($options, 'dry-run')) {
-            return StepResult::WOULD_SYNC;
-        }
-
-        Aws::iam()->attachRolePolicy([
-            'RoleName' => (new EcsTaskRole())->name(),
-            'PolicyArn' => (new EcsTaskPolicy())->arn(),
-        ]);
-
-        return StepResult::SYNCED;
+        return $this->attachRolePolicies(
+            (new EcsTaskRole())->name(),
+            [$this->customerManagedPolicyArn((new EcsTaskPolicy())->name())],
+            (bool) Arr::get($options, 'dry-run'),
+        );
     }
 }

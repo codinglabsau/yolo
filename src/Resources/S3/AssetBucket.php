@@ -4,6 +4,8 @@ namespace Codinglabs\Yolo\Resources\S3;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\S3;
+use Codinglabs\Yolo\Change;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\ResolvesTags;
@@ -86,23 +88,40 @@ class AssetBucket implements Resource, SynchronisesConfiguration
     /**
      * Allow any origin to read the assets (GET/HEAD). They're public,
      * content-hashed build files behind CloudFront — `*` is correct and keeps
-     * the cached response origin-agnostic. Idempotent: a re-sync re-puts the
-     * same rule, so existing buckets pick it up without a re-create.
+     * the cached response origin-agnostic. Diffs the live CORS rules against the
+     * desired set first, so a clean sync makes no write and a dry-run reports the
+     * change; returns the drift as Change[].
      */
-    public function synchroniseConfiguration(): void
+    public function synchroniseConfiguration(bool $apply = true): array
     {
-        Aws::s3()->putBucketCors([
-            'Bucket' => $this->name(),
-            'CORSConfiguration' => [
-                'CORSRules' => [
-                    [
-                        'AllowedMethods' => ['GET', 'HEAD'],
-                        'AllowedOrigins' => ['*'],
-                        'AllowedHeaders' => ['*'],
-                        'MaxAgeSeconds' => 86400,
-                    ],
-                ],
+        $current = S3::bucketCors($this->name());
+
+        if (Helpers::documentsEqual($current, $this->corsRules())) {
+            return [];
+        }
+
+        if ($apply) {
+            Aws::s3()->putBucketCors([
+                'Bucket' => $this->name(),
+                'CORSConfiguration' => ['CORSRules' => $this->corsRules()],
+            ]);
+        }
+
+        return [Change::make('cors', $current === null ? null : 'present', 'GET,HEAD from *')];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    protected function corsRules(): array
+    {
+        return [
+            [
+                'AllowedMethods' => ['GET', 'HEAD'],
+                'AllowedOrigins' => ['*'],
+                'AllowedHeaders' => ['*'],
+                'MaxAgeSeconds' => 86400,
             ],
-        ]);
+        ];
     }
 }

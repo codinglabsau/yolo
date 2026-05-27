@@ -195,6 +195,40 @@ class Helpers
         return $validated;
     }
 
+    /**
+     * Compare two policy / config documents for semantic equality, ignoring the
+     * key ordering AWS is free to reshuffle on read. Object keys are sorted
+     * recursively; list order is preserved (it can be meaningful). Either side
+     * may be null (no document present).
+     *
+     * @param  array<string, mixed>|null  $a
+     * @param  array<string, mixed>|null  $b
+     */
+    public static function documentsEqual(?array $a, ?array $b): bool
+    {
+        return static::canonicaliseDocument($a) === static::canonicaliseDocument($b);
+    }
+
+    /**
+     * @param  array<mixed>|null  $document
+     */
+    protected static function canonicaliseDocument(?array $document): ?string
+    {
+        if ($document === null) {
+            return null;
+        }
+
+        $sort = function (array $value) use (&$sort): array {
+            if (! array_is_list($value)) {
+                ksort($value);
+            }
+
+            return array_map(fn ($item) => is_array($item) ? $sort($item) : $item, $value);
+        };
+
+        return json_encode($sort($document));
+    }
+
     public static function payloadHasDifferences(array $expected, array $actual): bool
     {
         foreach ($expected as $key => $value) {

@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Steps\Sync\App;
 
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Change;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Manifest;
@@ -11,6 +12,7 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Resources\Ec2\RdsSecurityGroup;
 use Codinglabs\Yolo\Resources\Ec2\EcsTaskSecurityGroup;
+use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * Provisions the RDS security group and authorises the Fargate tasks to reach
@@ -35,10 +37,13 @@ class SyncRdsSecurityGroupStep implements Step
             return StepResult::CUSTOM_MANAGED;
         }
 
+        $dryRun = (bool) Arr::get($options, 'dry-run');
         $result = $this->syncResource($securityGroup, $options);
 
-        if ($securityGroup->exists()) {
-            $this->ensureTaskIngressRule($securityGroup->arn(), (bool) Arr::get($options, 'dry-run'));
+        if ($securityGroup->exists() && $this->reconcileTaskIngressRule($securityGroup->arn(), $dryRun) && $dryRun && $result === StepResult::SYNCED) {
+            // The group already exists but the ingress rule is missing, so a
+            // dry-run has a pending change to report rather than a clean SYNCED.
+            $result = StepResult::WOULD_SYNC;
         }
 
         return $result;
@@ -47,17 +52,21 @@ class SyncRdsSecurityGroupStep implements Step
     /**
      * Additively ensure a 3306-from-task-SG ingress rule exists, identified by its
      * content (AWS rejects duplicate permissions anyway, so no marker tag is
-     * needed). Never revokes, and a no-op under --dry-run.
+     * needed). Never revokes, records the change it makes, and writes nothing under
+     * --dry-run. Returns whether the rule is missing (a change is pending/applied).
      */
-    protected function ensureTaskIngressRule(string $groupId, bool $dryRun): void
+    protected function reconcileTaskIngressRule(string $groupId, bool $dryRun): bool
     {
-        if ($dryRun) {
-            return;
-        }
+        try {
+            // Name lookup throws ResourceDoesNotExistException if the task SG is
+            // missing — sync:compute provisions it before this step runs, but a
+            // dry-run on a fresh environment can reach here before it exists.
+            $taskSecurityGroupId = (new EcsTaskSecurityGroup())->arn();
+        } catch (ResourceDoesNotExistException) {
+            $this->recordChange(Change::make('ingress 3306/tcp from task security group', null, 'authorised (task SG pending)'));
 
-        // Name lookup throws ResourceDoesNotExistException if the task SG is
-        // missing — sync:compute provisions it before this step runs.
-        $taskSecurityGroupId = (new EcsTaskSecurityGroup())->arn();
+            return true;
+        }
 
         $alreadyAuthorised = collect(Ec2::securityGroupRules($groupId))->contains(
             fn (array $rule) => ! ($rule['IsEgress'] ?? false)
@@ -67,24 +76,30 @@ class SyncRdsSecurityGroupStep implements Step
         );
 
         if ($alreadyAuthorised) {
-            return;
+            return false;
         }
 
-        Aws::ec2()->authorizeSecurityGroupIngress([
-            'GroupId' => $groupId,
-            'IpPermissions' => [
-                [
-                    'IpProtocol' => 'tcp',
-                    'FromPort' => 3306,
-                    'ToPort' => 3306,
-                    'UserIdGroupPairs' => [
-                        [
-                            'GroupId' => $taskSecurityGroupId,
-                            'Description' => 'Enable Fargate tasks to connect to RDS',
+        $this->recordChange(Change::make('ingress 3306/tcp from task security group', null, $taskSecurityGroupId));
+
+        if (! $dryRun) {
+            Aws::ec2()->authorizeSecurityGroupIngress([
+                'GroupId' => $groupId,
+                'IpPermissions' => [
+                    [
+                        'IpProtocol' => 'tcp',
+                        'FromPort' => 3306,
+                        'ToPort' => 3306,
+                        'UserIdGroupPairs' => [
+                            [
+                                'GroupId' => $taskSecurityGroupId,
+                                'Description' => 'Enable Fargate tasks to connect to RDS',
+                            ],
                         ],
                     ],
                 ],
-            ],
-        ]);
+            ]);
+        }
+
+        return true;
     }
 }

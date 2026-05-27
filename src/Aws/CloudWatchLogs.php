@@ -26,4 +26,22 @@ class CloudWatchLogs
 
         throw new ResourceDoesNotExistException("Could not find CloudWatch log group $name");
     }
+
+    /**
+     * The account-level resource policy with the given name decoded to an array,
+     * or null when no such policy exists. Used to diff the EventBridge log-delivery
+     * grant before re-putting it.
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function resourcePolicy(string $name): ?array
+    {
+        foreach (Aws::cloudWatchLogs()->describeResourcePolicies()['resourcePolicies'] ?? [] as $policy) {
+            if (($policy['policyName'] ?? null) === $name) {
+                return json_decode((string) $policy['policyDocument'], true);
+            }
+        }
+
+        return null;
+    }
 }

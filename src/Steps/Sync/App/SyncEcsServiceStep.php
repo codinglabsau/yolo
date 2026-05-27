@@ -18,7 +18,9 @@ class SyncEcsServiceStep implements Step
 
         // Task definition revision adoption is owned by `yolo deploy`, not sync —
         // sync reconciles only the slow-moving service-level knobs.
-        if ($service->exists() && $service->needsUpdate()) {
+        if ($service->exists() && ($changes = $service->pendingChanges()) !== []) {
+            $this->recordChanges($changes);
+
             if (Arr::get($options, 'dry-run')) {
                 return StepResult::WOULD_SYNC;
             }

@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Resources\CloudFront;
 
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Change;
 use Illuminate\Support\Str;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
@@ -123,9 +124,11 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
      * CORS-S3Origin origin-request policy after it was created), so sync
      * reconciles the behaviour fields we own. CloudFront updates trigger a full
      * edge redeploy (~15 min), so we only call updateDistribution when a managed
-     * field has drifted.
+     * field has drifted, and we return the drifted fields so sync can report each
+     * current → desired comparison. A dry-run ($apply false) never creates the
+     * cache policy and never calls updateDistribution.
      */
-    public function synchroniseConfiguration(): void
+    public function synchroniseConfiguration(bool $apply = true): array
     {
         $id = CloudFront::distributionByComment($this->name())['Id'];
 
@@ -133,19 +136,42 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
         $config = (array) $response['DistributionConfig'];
         $behaviour = (array) $config['DefaultCacheBehavior'];
 
-        $reconciled = array_merge($behaviour, static::reconcilableBehaviour($this->ensureCachePolicy()));
+        $desired = static::reconcilableBehaviour($this->resolveCachePolicyId($apply));
 
-        if ($reconciled == $behaviour) {
-            return;
+        $changes = collect($desired)
+            ->filter(fn (mixed $value, string $key) => ($behaviour[$key] ?? null) !== $value)
+            ->map(fn (mixed $value, string $key) => Change::make($key, $behaviour[$key] ?? null, $value))
+            ->values()
+            ->all();
+
+        if ($changes === [] || ! $apply) {
+            return $changes;
         }
 
-        $config['DefaultCacheBehavior'] = $reconciled;
+        $config['DefaultCacheBehavior'] = array_merge($behaviour, $desired);
 
         Aws::cloudFront()->updateDistribution([
             'Id' => $id,
             'DistributionConfig' => $config,
             'IfMatch' => (string) $response['ETag'],
         ]);
+
+        return $changes;
+    }
+
+    /**
+     * The cache policy id for diffing. An existing distribution was created with
+     * the policy already in place, so the lookup all but always resolves; the
+     * dry-run fallback ('(pending …)') only shows if it were somehow missing, and
+     * never creates the policy as a side effect of a read-only --dry-run.
+     */
+    protected function resolveCachePolicyId(bool $apply): string
+    {
+        try {
+            return CloudFront::cachePolicyByName(static::CACHE_POLICY_NAME)['Id'];
+        } catch (ResourceDoesNotExistException) {
+            return $apply ? $this->ensureCachePolicy() : sprintf('(pending: %s)', static::CACHE_POLICY_NAME);
+        }
     }
 
     /**
