@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
+use Codinglabs\Yolo\ShutdownTimings;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\Iam\EcsTaskRole;
 use Codinglabs\Yolo\Resources\Fargate\EcsService;
@@ -50,6 +51,11 @@ class SyncTaskDefinitionStep implements Step
         // own Resource (re-registered every sync — no exists/create distinction).
         $family = (new EcsService())->name();
 
+        // ECS's SIGTERM-to-SIGKILL ceiling. Derived from the same source as the
+        // entrypoint drain and supervisord's stop waits so a long drain or queue
+        // job isn't cut short by SIGKILL mid-shutdown.
+        $stopTimeout = ShutdownTimings::stopTimeout();
+
         return [
             'family' => $family,
             'networkMode' => 'awsvpc',
@@ -63,6 +69,7 @@ class SyncTaskDefinitionStep implements Step
                     'name' => 'web',
                     'image' => $image,
                     'essential' => true,
+                    'stopTimeout' => $stopTimeout,
                     'linuxParameters' => [
                         'initProcessEnabled' => true,
                     ],

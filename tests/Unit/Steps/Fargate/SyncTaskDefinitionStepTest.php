@@ -1,5 +1,6 @@
 <?php
 
+use Codinglabs\Yolo\ShutdownTimings;
 use Codinglabs\Yolo\Steps\Fargate\SyncTaskDefinitionStep;
 
 beforeEach(function () {
@@ -103,6 +104,11 @@ it('falls back to defaults when manifest omits task config', function () {
     expect($payload['containerDefinitions'][0]['portMappings'][0]['containerPort'])->toBe(8000);
     expect($payload['taskRoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-ecs-task-role');
     expect($payload['executionRoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role');
+});
+
+it('wires the container stop timeout to the shutdown-timings resolver', function () {
+    expect(SyncTaskDefinitionStep::payload()['containerDefinitions'][0]['stopTimeout'])
+        ->toBe(ShutdownTimings::stopTimeout());
 });
 
 it('enables init process in the web container for proper PID 1 signal handling', function () {

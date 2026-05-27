@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\ElbV2;
+use Codinglabs\Yolo\ShutdownTimings;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\AppScoped;
 use Codinglabs\Yolo\Resources\Network\Vpc;
@@ -105,9 +106,9 @@ class TargetGroup implements AppScoped, Resource, SynchronisesConfiguration
     /**
      * Cap connection draining at a sane window (default 10s) rather than the AWS
      * default 300s, so a deploy isn't held draining the old task far longer than
-     * any real request needs. Bump tasks.web.deregistration-delay for apps with
-     * genuinely long in-flight requests (uploads, exports, SSE) — anything still
-     * in flight when the timer elapses has its connection closed.
+     * any real request needs. Bump tasks.web.shutdown-grace-period for apps with genuinely
+     * long in-flight requests (uploads, exports, SSE) — anything still in flight
+     * when the timer elapses has its connection closed.
      */
     protected function reconcileDeregistrationDelay(string $arn): void
     {
@@ -133,7 +134,9 @@ class TargetGroup implements AppScoped, Resource, SynchronisesConfiguration
 
     public function deregistrationDelay(): int
     {
-        return (int) Manifest::get('tasks.web.deregistration-delay', 10);
+        // The ALB drains for exactly as long as the web process keeps serving on
+        // shutdown — one knob (tasks.web.shutdown-grace-period), no separate delay to tune.
+        return ShutdownTimings::webGrace();
     }
 
     /**
