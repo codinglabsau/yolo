@@ -9,17 +9,17 @@ abstract class SyncSteppedCommand extends SteppedCommand
 {
     public function handle(): int
     {
-        return $this->runDomains($this->argument('environment'), $this->domains());
+        return $this->runScopes($this->argument('environment'), $this->scopes());
     }
 
     /**
-     * The ordered, domain-labelled steps this command will sync. Labels must stay
+     * The ordered, scope-labelled steps this command will sync. Labels must stay
      * distinct across the tiers the top-level `sync` composes, or the merge would
      * drop a colliding group's steps.
      *
      * @return array<string, array<int, class-string>>
      */
-    abstract public function domains(): array;
+    abstract public function scopes(): array;
 
     protected function addSyncOptions(): static
     {

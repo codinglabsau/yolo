@@ -31,15 +31,15 @@ trait RunsSteppedCommands
     use ChecksIfCommandsShouldBeRunning;
 
     /**
-     * Collate, plan, confirm and execute a set of domain-grouped steps as a single flow.
+     * Collate, plan, confirm and execute a set of scope-grouped steps as a single flow.
      *
-     * @param  array<string, array<int, class-string>>  $domains  ordered label => step class names
+     * @param  array<string, array<int, class-string>>  $scopes  ordered label => step class names
      */
-    protected function runDomains(string $environment, array $domains): int
+    protected function runScopes(string $environment, array $scopes): int
     {
         Prompt::interactive($this->input->isInteractive());
 
-        [$plan, $skipped] = $this->collateSteps($domains, $environment);
+        [$plan, $skipped] = $this->collateSteps($scopes, $environment);
 
         if ($plan->isEmpty() && $skipped->isEmpty()) {
             warning('No steps detected.');
@@ -65,25 +65,25 @@ trait RunsSteppedCommands
     }
 
     /**
-     * Expand and partition every domain's steps into a runnable plan and a skipped ledger.
+     * Expand and partition every scope's steps into a runnable plan and a skipped ledger.
      *
-     * @param  array<string, array<int, class-string>>  $domains
-     * @return array{0: Collection<int, array{domain: string, step: Step}>, 1: Collection<int, array{domain: string, step: Step, reason: string}>}
+     * @param  array<string, array<int, class-string>>  $scopes
+     * @return array{0: Collection<int, array{scope: string, step: Step}>, 1: Collection<int, array{scope: string, step: Step, reason: string}>}
      */
-    protected function collateSteps(array $domains, string $environment): array
+    protected function collateSteps(array $scopes, string $environment): array
     {
         $plan = collect();
         $skipped = collect();
 
-        foreach ($domains as $label => $stepNames) {
+        foreach ($scopes as $label => $stepNames) {
             foreach ($stepNames as $stepName) {
                 foreach ($this->expandStep(new $stepName($environment), $environment) as $step) {
                     $reason = $this->skipReason($step);
 
                     if ($reason === null) {
-                        $plan->push(['domain' => $label, 'step' => $step]);
+                        $plan->push(['scope' => $label, 'step' => $step]);
                     } else {
-                        $skipped->push(['domain' => $label, 'step' => $step, 'reason' => $reason]);
+                        $skipped->push(['scope' => $label, 'step' => $step, 'reason' => $reason]);
                     }
                 }
             }
@@ -98,8 +98,8 @@ trait RunsSteppedCommands
 
         $this->output->writeln('  <options=bold>Will sync</>');
 
-        $plan->groupBy('domain')->each(function (Collection $entries, string $domain) {
-            $this->output->writeln(sprintf('  <fg=green>✔</> %s <fg=gray>(%d)</>', $domain, $entries->count()));
+        $plan->groupBy('scope')->each(function (Collection $entries, string $scope) {
+            $this->output->writeln(sprintf('  <fg=green>✔</> %s <fg=gray>(%d)</>', $scope, $entries->count()));
         });
 
         if ($skipped->isNotEmpty()) {
@@ -107,13 +107,13 @@ trait RunsSteppedCommands
             $this->output->writeln('  <options=bold>Skipping</>');
 
             $skipped
-                ->groupBy(fn (array $entry) => $entry['domain'] . '|' . $entry['reason'])
+                ->groupBy(fn (array $entry) => $entry['scope'] . '|' . $entry['reason'])
                 ->each(function (Collection $group) {
                     $first = $group->first();
 
                     $this->output->writeln(sprintf(
                         '  <fg=yellow>•</> %s <fg=gray>(%d)</> — %s',
-                        $first['domain'],
+                        $first['scope'],
                         $group->count(),
                         $first['reason'],
                     ));
@@ -136,12 +136,12 @@ trait RunsSteppedCommands
     }
 
     /**
-     * @param  Collection<int, array{domain: string, step: Step}>  $plan
-     * @return Collection<int, array{index: int, domain: string, step: Step, status: StepResult|string, elapsed: int}>
+     * @param  Collection<int, array{scope: string, step: Step}>  $plan
+     * @return Collection<int, array{index: int, scope: string, step: Step, status: StepResult|string, elapsed: int}>
      */
     protected function executePlan(Collection $plan, int $now): Collection
     {
-        $multiDomain = $plan->pluck('domain')->unique()->count() > 1;
+        $multiScope = $plan->pluck('scope')->unique()->count() > 1;
 
         $progress = $this->option('no-progress')
             ? null
@@ -149,16 +149,16 @@ trait RunsSteppedCommands
 
         $progress?->start();
 
-        $ran = $plan->values()->map(function (array $entry, int $i) use ($progress, $now, $multiDomain) {
+        $ran = $plan->values()->map(function (array $entry, int $i) use ($progress, $now, $multiScope) {
             $step = $entry['step'];
 
-            $label = $multiDomain
-                ? sprintf('%s · %s', $entry['domain'], static::normaliseStep($step))
+            $label = $multiScope
+                ? sprintf('%s · %s', $entry['scope'], static::normaliseStep($step))
                 : static::normaliseStep($step);
 
             return [
                 'index' => $i + 1,
-                'domain' => $entry['domain'],
+                'scope' => $entry['scope'],
                 'step' => $step,
                 ...$this->invokeStep($step, $progress, $label, $now),
             ];
@@ -205,21 +205,21 @@ trait RunsSteppedCommands
     }
 
     /**
-     * @param  Collection<int, array{index: int, domain: string, step: Step, status: StepResult|string, elapsed: int}>  $ran
-     * @param  Collection<int, array{domain: string, step: Step, reason: string}>  $skipped
+     * @param  Collection<int, array{index: int, scope: string, step: Step, status: StepResult|string, elapsed: int}>  $ran
+     * @param  Collection<int, array{scope: string, step: Step, reason: string}>  $skipped
      */
     protected function renderResults(string $environment, Collection $ran, Collection $skipped, int $elapsed): void
     {
-        $multiDomain = $ran->pluck('domain')->unique()->count() > 1;
+        $multiScope = $ran->pluck('scope')->unique()->count() > 1;
 
-        $lastDomain = null;
+        $lastScope = null;
 
-        $rows = $ran->map(function (array $result) use (&$lastDomain, $multiDomain) {
+        $rows = $ran->map(function (array $result) use (&$lastScope, $multiScope) {
             $row = [$result['index']];
 
-            if ($multiDomain) {
-                $row[] = $result['domain'] === $lastDomain ? '' : $result['domain'];
-                $lastDomain = $result['domain'];
+            if ($multiScope) {
+                $row[] = $result['scope'] === $lastScope ? '' : $result['scope'];
+                $lastScope = $result['scope'];
             }
 
             $row[] = static::normaliseStep($result['step'], pad: true, bold: true, arrow: true);
@@ -231,21 +231,21 @@ trait RunsSteppedCommands
 
         if ($rows->isNotEmpty()) {
             table(
-                $multiDomain
-                    ? ['#', 'Domain', 'Step', 'Status', 'Elapsed']
+                $multiScope
+                    ? ['#', 'Scope', 'Step', 'Status', 'Elapsed']
                     : ['#', 'Step', 'Status', 'Elapsed'],
                 $rows->all()
             );
         }
 
-        $this->renderChanges($ran, $multiDomain);
+        $this->renderChanges($ran, $multiScope);
 
         if ($skipped->isNotEmpty()) {
             if ($this->output->isVerbose()) {
                 table(
-                    ['Domain', 'Step', 'Reason'],
+                    ['Scope', 'Step', 'Reason'],
                     $skipped->map(fn (array $entry) => [
-                        $entry['domain'],
+                        $entry['scope'],
                         static::normaliseStep($entry['step']),
                         $entry['reason'],
                     ])->all()
@@ -268,9 +268,9 @@ trait RunsSteppedCommands
      * current → desired comparison. Steps that changed nothing are omitted, so a
      * clean sync stays quiet and drift stands out.
      *
-     * @param  Collection<int, array{domain: string, step: Step, status: StepResult|string, changes: array<int, Change>}>  $ran
+     * @param  Collection<int, array{scope: string, step: Step, status: StepResult|string, changes: array<int, Change>}>  $ran
      */
-    protected function renderChanges(Collection $ran, bool $multiDomain): void
+    protected function renderChanges(Collection $ran, bool $multiScope): void
     {
         $withChanges = $ran->filter(fn (array $result) => $result['changes'] !== []);
 
@@ -284,9 +284,9 @@ trait RunsSteppedCommands
             $this->option('dry-run') ? 'Pending changes' : 'Changes applied',
         ));
 
-        $withChanges->each(function (array $result) use ($multiDomain) {
-            $label = $multiDomain
-                ? sprintf('%s · %s', $result['domain'], static::normaliseStep($result['step']))
+        $withChanges->each(function (array $result) use ($multiScope) {
+            $label = $multiScope
+                ? sprintf('%s · %s', $result['scope'], static::normaliseStep($result['step']))
                 : static::normaliseStep($result['step']);
 
             $this->output->writeln(sprintf('  <fg=cyan>%s</>', $label));

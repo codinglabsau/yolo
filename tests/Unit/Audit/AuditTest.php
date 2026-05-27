@@ -49,13 +49,13 @@ it('classifies resources as ok, drift or unattributed', function () {
     expect($byArn['arn:aws:elasticloadbalancing:ap-southeast-2:111:loadbalancer/app/yolo-production/abc']['app'])->toBeNull();
 });
 
-it('assigns an ownership tier to each resource', function () {
+it('assigns an ownership scope to each resource', function () {
     $report = Audit::classify([
-        // yolo:app present → app tier (even when drift, an orphaned app resource)
+        // yolo:app present → app scope (even when drift, an orphaned app resource)
         auditResource('arn:aws:ecr:ap-southeast-2:111:repository/yolo-production-ghost', ['yolo:app' => 'ghost']),
-        // no yolo:app, env-shared infra → env tier
+        // no yolo:app, env-shared infra → env scope
         auditResource('arn:aws:elasticloadbalancing:ap-southeast-2:111:loadbalancer/app/yolo-production/abc'),
-        // the GitHub OIDC provider is account-global → account tier
+        // the GitHub OIDC provider is account-global → account scope
         auditResource('arn:aws:iam::111:oidc-provider/token.actions.githubusercontent.com'),
         // an explicit yolo:scope tag wins over inference
         auditResource('arn:aws:s3:::some-bucket', ['yolo:scope' => 'env']),
@@ -63,26 +63,26 @@ it('assigns an ownership tier to each resource', function () {
 
     $byArn = collect($report['resources'])->keyBy('arn');
 
-    expect($byArn['arn:aws:ecr:ap-southeast-2:111:repository/yolo-production-ghost']['tier'])->toBe('app')
-        ->and($byArn['arn:aws:elasticloadbalancing:ap-southeast-2:111:loadbalancer/app/yolo-production/abc']['tier'])->toBe('env')
-        ->and($byArn['arn:aws:iam::111:oidc-provider/token.actions.githubusercontent.com']['tier'])->toBe('account')
-        ->and($byArn['arn:aws:s3:::some-bucket']['tier'])->toBe('env');
+    expect($byArn['arn:aws:ecr:ap-southeast-2:111:repository/yolo-production-ghost']['scope'])->toBe('app')
+        ->and($byArn['arn:aws:elasticloadbalancing:ap-southeast-2:111:loadbalancer/app/yolo-production/abc']['scope'])->toBe('env')
+        ->and($byArn['arn:aws:iam::111:oidc-provider/token.actions.githubusercontent.com']['scope'])->toBe('account')
+        ->and($byArn['arn:aws:s3:::some-bucket']['scope'])->toBe('env');
 });
 
-it('orders rows by tier (account → env → app), then drift-first within a tier', function () {
+it('orders rows by scope (account → env → app), then drift-first within a scope', function () {
     $rows = [
-        ['tier' => 'app', 'status' => 'ok', 'app' => 'codinglabs', 'name' => 'web'],
-        ['tier' => 'env', 'status' => 'unattributed', 'app' => null, 'name' => 'vpc'],
-        ['tier' => 'account', 'status' => 'unattributed', 'app' => null, 'name' => 'oidc'],
-        ['tier' => 'app', 'status' => 'drift', 'app' => 'ghost', 'name' => 'repo'],
-        ['tier' => 'env', 'status' => 'unattributed', 'app' => null, 'name' => 'alb'],
+        ['scope' => 'app', 'status' => 'ok', 'app' => 'codinglabs', 'name' => 'web'],
+        ['scope' => 'env', 'status' => 'unattributed', 'app' => null, 'name' => 'vpc'],
+        ['scope' => 'account', 'status' => 'unattributed', 'app' => null, 'name' => 'oidc'],
+        ['scope' => 'app', 'status' => 'drift', 'app' => 'ghost', 'name' => 'repo'],
+        ['scope' => 'env', 'status' => 'unattributed', 'app' => null, 'name' => 'alb'],
     ];
 
     $ordered = collect($rows)->sortBy(fn (array $resource) => Audit::orderKey($resource))->values();
 
     expect($ordered->pluck('name')->all())->toBe(['oidc', 'alb', 'vpc', 'repo', 'web']);
     // account first, then env (alb before vpc by name), then app (drift before ok)
-    expect($ordered->pluck('tier')->all())->toBe(['account', 'env', 'env', 'app', 'app']);
+    expect($ordered->pluck('scope')->all())->toBe(['account', 'env', 'env', 'app', 'app']);
 });
 
 it('derives a readable type and name for each resource', function () {

@@ -27,11 +27,11 @@ class Audit
 
     public const STATUS_UNATTRIBUTED = 'unattributed';
 
-    public const TIER_ACCOUNT = 'account';
+    public const SCOPE_ACCOUNT = 'account';
 
-    public const TIER_ENV = 'env';
+    public const SCOPE_ENV = 'env';
 
-    public const TIER_APP = 'app';
+    public const SCOPE_APP = 'app';
 
     /**
      * Deploy ephemera the audit ignores: ECS task definitions (immutable
@@ -95,7 +95,7 @@ class Audit
 
                 return [
                     'arn' => $resource['ResourceARN'],
-                    'tier' => static::tier($parsed, $tags),
+                    'scope' => static::scope($parsed, $tags),
                     'type' => static::type($parsed),
                     'name' => $tags[self::NAME_TAG] ?? $parsed?->resourceId ?? $resource['ResourceARN'],
                     'app' => $app,
@@ -113,24 +113,24 @@ class Audit
     }
 
     /**
-     * Ownership tier of a resource — account / env / app — mirroring the
+     * Ownership scope of a resource — account / env / app — mirroring the
      * `Enums\Scope` a resource declares in code. Prefers an explicit `yolo:scope`
      * tag if one is present (forward-compatible for when sync starts stamping it),
-     * otherwise derives it: a `yolo:app` tag means app-tier; the account-global
-     * resources (the GitHub OIDC provider) are account-tier; everything else
+     * otherwise derives it: a `yolo:app` tag means app-scope; the account-global
+     * resources (the GitHub OIDC provider) are account-scope; everything else
      * yolo-tagged is env-shared infrastructure.
      *
      * @param  array<string, string>  $tags
      */
-    public static function tier(?Arn $arn, array $tags): string
+    public static function scope(?Arn $arn, array $tags): string
     {
         $scope = $tags[self::SCOPE_TAG] ?? null;
 
         return match (true) {
-            in_array($scope, [self::TIER_ACCOUNT, self::TIER_ENV, self::TIER_APP], true) => $scope,
-            isset($tags[self::APP_TAG]) => self::TIER_APP,
-            static::isAccountGlobal($arn) => self::TIER_ACCOUNT,
-            default => self::TIER_ENV,
+            in_array($scope, [self::SCOPE_ACCOUNT, self::SCOPE_ENV, self::SCOPE_APP], true) => $scope,
+            isset($tags[self::APP_TAG]) => self::SCOPE_APP,
+            static::isAccountGlobal($arn) => self::SCOPE_ACCOUNT,
+            default => self::SCOPE_ENV,
         };
     }
 
@@ -145,8 +145,8 @@ class Audit
     }
 
     /**
-     * A single composite sort key for the audit table: tier (account → env → app,
-     * top to bottom), then status (drift first within a tier), then app and name.
+     * A single composite sort key for the audit table: scope (account → env → app,
+     * top to bottom), then status (drift first within a scope), then app and name.
      * Returned as one string so a single-closure `sortBy` orders the whole table —
      * the multi-closure `sortBy([...])` form silently ignores closure keys on
      * current illuminate/collections.
@@ -155,12 +155,12 @@ class Audit
      */
     public static function orderKey(array $resource): string
     {
-        $tierOrder = [self::TIER_ACCOUNT => 0, self::TIER_ENV => 1, self::TIER_APP => 2];
+        $scopeOrder = [self::SCOPE_ACCOUNT => 0, self::SCOPE_ENV => 1, self::SCOPE_APP => 2];
         $statusOrder = [self::STATUS_DRIFT => 0, self::STATUS_UNATTRIBUTED => 1, self::STATUS_OK => 2];
 
         return sprintf(
             '%d-%d-%s-%s',
-            $tierOrder[$resource['tier']] ?? 9,
+            $scopeOrder[$resource['scope']] ?? 9,
             $statusOrder[$resource['status']] ?? 9,
             $resource['app'] ?? '',
             $resource['name'],

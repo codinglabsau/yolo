@@ -20,7 +20,7 @@ use function Laravel\Prompts\warning;
  * Read-only audit of the YOLO-tagged resources in an environment. Surfaces
  * "drift" — resources tagged for an app that no longer has a live Fargate
  * cluster — alongside the ok (owned by a live app) and unattributed (shared /
- * not-yet-stamped) resources, grouped by ownership tier (account → env → app),
+ * not-yet-stamped) resources, grouped by ownership scope (account → env → app),
  * so a cutover can confirm nothing's been left behind.
  */
 class AuditCommand extends Command
@@ -93,9 +93,9 @@ class AuditCommand extends Command
         }
 
         table(
-            ['Tier', 'Status', 'Type', 'Name', 'App'],
+            ['Scope', 'Status', 'Type', 'Name', 'App'],
             $rows->map(fn (array $resource) => [
-                static::tierLabel($resource['tier']),
+                static::scopeLabel($resource['scope']),
                 static::statusLabel($resource['status']),
                 $resource['type'],
                 static::nameCell($resource),
@@ -116,8 +116,8 @@ class AuditCommand extends Command
     }
 
     /**
-     * Apply the --app and --drift filters, then order by tier (account → env →
-     * app, top to bottom), drift first within a tier, then app and name. Drift is
+     * Apply the --app and --drift filters, then order by scope (account → env →
+     * app, top to bottom), drift first within a scope, then app and name. Drift is
      * still surfaced regardless of position — via the warning line, the red label
      * and --drift.
      *
@@ -151,11 +151,11 @@ class AuditCommand extends Command
         };
     }
 
-    protected static function tierLabel(string $tier): string
+    protected static function scopeLabel(string $scope): string
     {
-        return match ($tier) {
-            Audit::TIER_ACCOUNT => '<fg=magenta>account</>',
-            Audit::TIER_ENV => '<fg=cyan>environment</>',
+        return match ($scope) {
+            Audit::SCOPE_ACCOUNT => '<fg=magenta>account</>',
+            Audit::SCOPE_ENV => '<fg=cyan>environment</>',
             default => '<fg=blue>app</>',
         };
     }

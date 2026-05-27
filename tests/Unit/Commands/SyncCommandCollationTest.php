@@ -1,5 +1,6 @@
 <?php
 
+use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Helpers;
 use Illuminate\Support\Collection;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -16,10 +17,10 @@ beforeEach(function () {
 });
 
 /**
- * @param  array<string, array<int, class-string>>  $domains
+ * @param  array<string, array<int, class-string>>  $scopes
  * @return array{0: Collection, 1: Collection} [$plan, $skipped]
  */
-function collate(array $domains, ?SyncSteppedCommand $command = null, array $options = []): array
+function collate(array $scopes, ?SyncSteppedCommand $command = null, array $options = []): array
 {
     $command ??= new SyncCommand();
 
@@ -28,7 +29,17 @@ function collate(array $domains, ?SyncSteppedCommand $command = null, array $opt
     $command->input = $input;
     $command->output = new BufferedOutput();
 
-    return (new ReflectionMethod($command, 'collateSteps'))->invoke($command, $domains, 'testing');
+    return (new ReflectionMethod($command, 'collateSteps'))->invoke($command, $scopes, 'testing');
+}
+
+/** The three IVS steps, skipped unless aws.ivs is enabled. */
+function ivsSteps(): array
+{
+    return [
+        Steps\Sync\App\SyncIvsCloudWatchLogGroupStep::class,
+        Steps\Sync\App\SyncIvsEventBridgeRuleStep::class,
+        Steps\Sync\App\SyncIvsEventBridgeTargetStep::class,
+    ];
 }
 
 /** A per-tenant step that needs no AWS — to exercise the fan-out / --tenant filter. */
@@ -40,55 +51,69 @@ class CollationFakeTenantStep extends TenantStep
     }
 }
 
-it('orchestrates account → environment → app domains for a solo app without a web task', function () {
+it('orchestrates the three scopes in order — account → environment → app', function () {
     writeManifest(['aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2']]);
 
-    expect(array_keys((new SyncCommand())->domains()))
-        ->toBe(['IAM (account)', 'Network', 'IAM (shared)', 'Load balancer', 'Storage', 'IAM (app)', 'Solo', 'Logging']);
+    expect(array_keys((new SyncCommand())->scopes()))->toBe(['account', 'environment', 'app']);
 });
 
-it('includes the Fargate and CDN groups when the manifest declares a web task', function () {
+it('folds the Fargate + CDN steps into the app scope when a web task is declared', function () {
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
         'domain' => 'codinglabs.com.au',
         'tasks' => ['web' => ['cpu' => 512, 'memory' => 1024]],
     ]);
 
-    expect(array_keys((new SyncCommand())->domains()))
-        ->toBe(['IAM (account)', 'Network', 'IAM (shared)', 'Load balancer', 'Storage', 'IAM (app)', 'Solo', 'Fargate', 'CDN', 'Logging']);
+    $appSteps = (new SyncCommand())->scopes()['app'];
+
+    expect($appSteps)->toContain(Steps\Sync\App\SyncEcsServiceStep::class)
+        ->and($appSteps)->toContain(Steps\Sync\App\SyncAssetDistributionStep::class);
 });
 
-it('swaps the Solo group for Landlord + Tenants on a multi-tenant app', function () {
+it('omits the Fargate + CDN steps from a solo app with no web task', function () {
+    writeManifest(['aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2']]);
+
+    $appSteps = (new SyncCommand())->scopes()['app'];
+
+    expect($appSteps)->not->toContain(Steps\Sync\App\SyncEcsServiceStep::class)
+        ->and($appSteps)->toContain(Steps\Sync\App\Solo\SyncHostedZoneStep::class);
+});
+
+it('swaps the Solo steps for Landlord + Tenant steps on a multi-tenant app', function () {
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
         'tenants' => ['alpha' => []],
     ]);
 
-    expect(array_keys((new SyncCommand())->domains()))
-        ->toBe(['IAM (account)', 'Network', 'IAM (shared)', 'Load balancer', 'Storage', 'IAM (app)', 'Landlord', 'Tenants', 'Logging']);
+    $appSteps = (new SyncCommand())->scopes()['app'];
+
+    expect($appSteps)->toContain(Steps\Sync\App\Landlord\SyncQueueStep::class)
+        ->and($appSteps)->toContain(Steps\Sync\App\Tenant\SyncQueueStep::class)
+        ->and($appSteps)->not->toContain(Steps\Sync\App\Solo\SyncHostedZoneStep::class);
 });
 
-it('composes distinct tier labels so no group is dropped on merge', function () {
+it('keys each scope distinctly so no scope is dropped on merge', function () {
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
         'domain' => 'codinglabs.com.au',
         'tasks' => ['web' => []],
     ]);
 
-    $labels = array_keys((new SyncCommand())->domains());
+    $scopes = array_keys((new SyncCommand())->scopes());
 
-    expect($labels)->toEqual(array_unique($labels));
+    expect($scopes)->toBe(['account', 'environment', 'app'])
+        ->and($scopes)->toEqual(array_unique($scopes));
 });
 
 it('groups the three skipped IVS steps under a single determination', function () {
     writeManifest(['aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2']]);
 
-    [$plan, $skipped] = collate(['Logging' => (new SyncAppCommand())->domains()['Logging']]);
+    [$plan, $skipped] = collate(['app' => ivsSteps()]);
 
     expect($plan)->toHaveCount(0);
     expect($skipped)->toHaveCount(3);
 
-    expect($skipped->groupBy(fn (array $entry) => $entry['domain'] . '|' . $entry['reason']))
+    expect($skipped->groupBy(fn (array $entry) => $entry['scope'] . '|' . $entry['reason']))
         ->toHaveCount(1);
     expect($skipped->first()['reason'])->toBe('aws.ivs not enabled in manifest');
 });
@@ -98,7 +123,7 @@ it('plans the IVS steps when aws.ivs is enabled', function () {
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'ivs' => true],
     ]);
 
-    [$plan, $skipped] = collate(['Logging' => (new SyncAppCommand())->domains()['Logging']]);
+    [$plan, $skipped] = collate(['app' => ivsSteps()]);
 
     expect($plan)->toHaveCount(3);
     expect($skipped)->toHaveCount(0);
@@ -110,7 +135,7 @@ it('fans a per-tenant step out across every tenant by default', function () {
         'tenants' => ['alpha' => [], 'beta' => []],
     ]);
 
-    [$plan] = collate(['Tenants' => [CollationFakeTenantStep::class]], new SyncAppCommand());
+    [$plan] = collate(['app' => [CollationFakeTenantStep::class]], new SyncAppCommand());
 
     expect($plan->pluck('step')->map->tenantId()->all())->toBe(['alpha', 'beta']);
 });
@@ -121,7 +146,7 @@ it('narrows the per-tenant fan-out to a single tenant with --tenant', function (
         'tenants' => ['alpha' => [], 'beta' => []],
     ]);
 
-    [$plan] = collate(['Tenants' => [CollationFakeTenantStep::class]], new SyncAppCommand(), ['--tenant' => 'alpha']);
+    [$plan] = collate(['app' => [CollationFakeTenantStep::class]], new SyncAppCommand(), ['--tenant' => 'alpha']);
 
     expect($plan)->toHaveCount(1);
     expect($plan->first()['step']->tenantId())->toBe('alpha');
@@ -133,5 +158,5 @@ it('errors on an unknown --tenant id', function () {
         'tenants' => ['alpha' => []],
     ]);
 
-    collate(['Tenants' => [CollationFakeTenantStep::class]], new SyncAppCommand(), ['--tenant' => 'ghost']);
+    collate(['app' => [CollationFakeTenantStep::class]], new SyncAppCommand(), ['--tenant' => 'ghost']);
 })->throws(IntegrityCheckException::class, 'Unknown tenant "ghost"');

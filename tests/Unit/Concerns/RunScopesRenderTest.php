@@ -1,5 +1,6 @@
 <?php
 
+use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Change;
 use Illuminate\Support\Arr;
 use Laravel\Prompts\Prompt;
@@ -7,12 +8,11 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Commands\SyncCommand;
-use Codinglabs\Yolo\Commands\SyncAppCommand;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 
-class RunDomainsFakeStep implements Step
+class RunScopesFakeStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
@@ -21,7 +21,7 @@ class RunDomainsFakeStep implements Step
 }
 
 /** A step that reconciled (or, on a dry-run, would reconcile) one attribute. */
-class RunDomainsChangeStep implements Step
+class RunScopesChangeStep implements Step
 {
     use RecordsChanges;
 
@@ -37,10 +37,10 @@ class RunDomainsChangeStep implements Step
  * Drive the full collate → determinations → confirm → execute → results pipeline
  * against a non-interactive command and return everything written to the terminal.
  *
- * @param  array<string, array<int, class-string>>  $domains
+ * @param  array<string, array<int, class-string>>  $scopes
  * @param  array<string, mixed>  $options
  */
-function runDomainsCapture(array $domains, array $options = []): string
+function runScopesCapture(array $scopes, array $options = []): string
 {
     $command = new SyncCommand();
 
@@ -54,7 +54,7 @@ function runDomainsCapture(array $domains, array $options = []): string
 
     Prompt::setOutput($output);
 
-    (new ReflectionMethod($command, 'runDomains'))->invoke($command, 'testing', $domains);
+    (new ReflectionMethod($command, 'runScopes'))->invoke($command, 'testing', $scopes);
 
     return $output->fetch();
 }
@@ -64,18 +64,23 @@ beforeEach(function () {
     writeManifest(['aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2']]);
 });
 
-it('prints determinations, runs the plan, and reports skips in one flow', function () {
-    $output = runDomainsCapture([
-        'Network' => [RunDomainsFakeStep::class, RunDomainsFakeStep::class],
-        'Storage' => [RunDomainsFakeStep::class],
-        'Logging' => (new SyncAppCommand())->domains()['Logging'],
+it('prints determinations grouped by scope, runs the plan, and reports skips', function () {
+    $output = runScopesCapture([
+        'environment' => [RunScopesFakeStep::class, RunScopesFakeStep::class],
+        'app' => [
+            RunScopesFakeStep::class,
+            // the three IVS steps skip unless aws.ivs is enabled
+            Steps\Sync\App\SyncIvsCloudWatchLogGroupStep::class,
+            Steps\Sync\App\SyncIvsEventBridgeRuleStep::class,
+            Steps\Sync\App\SyncIvsEventBridgeTargetStep::class,
+        ],
     ], ['--no-progress' => true]);
 
-    // up-front determinations summary
+    // up-front determinations summary, grouped by scope
     expect($output)
         ->toContain('Will sync')
-        ->toContain('Network')
-        ->toContain('Storage')
+        ->toContain('environment')
+        ->toContain('app')
         ->toContain('Skipping')
         ->toContain('aws.ivs not enabled in manifest');
 
@@ -88,8 +93,8 @@ it('prints determinations, runs the plan, and reports skips in one flow', functi
 
 it('auto-proceeds without a prompt when non-interactive', function () {
     // No exception / no hang means confirmGate short-circuited on !isInteractive.
-    $output = runDomainsCapture(
-        ['Network' => [RunDomainsFakeStep::class]],
+    $output = runScopesCapture(
+        ['environment' => [RunScopesFakeStep::class]],
         ['--no-progress' => true],
     );
 
@@ -97,8 +102,8 @@ it('auto-proceeds without a prompt when non-interactive', function () {
 });
 
 it('reports each reconciled attribute under an applied-changes section', function () {
-    $output = runDomainsCapture(
-        ['Network' => [RunDomainsChangeStep::class]],
+    $output = runScopesCapture(
+        ['environment' => [RunScopesChangeStep::class]],
         ['--no-progress' => true],
     );
 
@@ -110,8 +115,8 @@ it('reports each reconciled attribute under an applied-changes section', functio
 });
 
 it('frames the attribute changes as pending on a dry-run', function () {
-    $output = runDomainsCapture(
-        ['Network' => [RunDomainsChangeStep::class]],
+    $output = runScopesCapture(
+        ['environment' => [RunScopesChangeStep::class]],
         ['--no-progress' => true, '--dry-run' => true],
     );
 
@@ -121,8 +126,8 @@ it('frames the attribute changes as pending on a dry-run', function () {
 });
 
 it('omits the changes section entirely when nothing drifted', function () {
-    $output = runDomainsCapture(
-        ['Network' => [RunDomainsFakeStep::class]],
+    $output = runScopesCapture(
+        ['environment' => [RunScopesFakeStep::class]],
         ['--no-progress' => true],
     );
 

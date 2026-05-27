@@ -25,46 +25,40 @@ class SyncAppCommand extends SyncSteppedCommand
             ->setDescription('Sync a single application\'s resources for the given environment');
     }
 
-    public function domains(): array
+    public function scopes(): array
     {
         return [
-            'Storage' => [
+            'app' => [
+                // storage
                 Steps\Sync\App\SyncS3ArtefactBucketStep::class,
                 Steps\Sync\App\SyncS3BucketStep::class,
                 Steps\Sync\App\SyncS3AssetBucketStep::class,
-            ],
-            'IAM (app)' => [
+                // app IAM (deployer + MediaConvert)
                 Steps\Sync\App\SyncMediaConvertRoleStep::class,
                 Steps\Sync\App\AttachMediaConvertRolePoliciesStep::class,
                 Steps\Sync\App\SyncDeployerPolicyStep::class,
                 Steps\Sync\App\SyncDeployerRoleStep::class,
                 Steps\Sync\App\AttachDeployerRolePoliciesStep::class,
-            ],
-            // The cert/DNS group runs before Fargate so the SSL certificate exists
-            // before the HTTPS listener that needs it (solo only — multi-tenant has
-            // no env-level apex, so the listener skips and certs attach per tenant).
-            ...Manifest::isMultitenanted()
-                ? [
-                    'Landlord' => [
+                // cert/DNS + queues — runs before Fargate so the SSL certificate
+                // exists before the HTTPS listener that needs it. Solo gets an
+                // env-level apex zone + cert; multi-tenant has none (certs attach
+                // per tenant via SNI), so it fans out landlord + per-tenant queues.
+                ...Manifest::isMultitenanted()
+                    ? [
                         Steps\Sync\App\Landlord\SyncQueueStep::class,
                         Steps\Sync\App\Landlord\SyncQueueAlarmStep::class,
-                    ],
-                    'Tenants' => [
                         Steps\Sync\App\Tenant\SyncQueueStep::class,
                         Steps\Sync\App\Tenant\SyncQueueAlarmStep::class,
-                    ],
-                ]
-                : [
-                    'Solo' => [
+                    ]
+                    : [
                         Steps\Sync\App\Solo\SyncHostedZoneStep::class,
                         Steps\Sync\App\Solo\SyncSslCertificateStep::class,
                         Steps\Sync\App\Solo\SyncQueueStep::class,
                         Steps\Sync\App\Solo\SyncQueueAlarmStep::class,
                     ],
-                ],
-            ...Manifest::has('tasks.web')
-                ? [
-                    'Fargate' => [
+                // Fargate + CDN (web tasks only)
+                ...Manifest::has('tasks.web')
+                    ? [
                         Steps\Sync\App\SyncEcrRepositoryStep::class,
                         Steps\Sync\App\SyncEcsClusterStep::class,
                         Steps\Sync\App\SyncTaskSecurityGroupStep::class,
@@ -75,13 +69,10 @@ class SyncAppCommand extends SyncSteppedCommand
                         Steps\Sync\App\SyncTaskLogGroupStep::class,
                         Steps\Sync\App\SyncTaskDefinitionStep::class,
                         Steps\Sync\App\SyncEcsServiceStep::class,
-                    ],
-                    'CDN' => [
                         Steps\Sync\App\SyncAssetDistributionStep::class,
-                    ],
-                ]
-                : [],
-            'Logging' => [
+                    ]
+                    : [],
+                // logging (IVS CloudWatch + EventBridge)
                 Steps\Sync\App\SyncIvsCloudWatchLogGroupStep::class,
                 Steps\Sync\App\SyncIvsEventBridgeRuleStep::class,
                 Steps\Sync\App\SyncIvsEventBridgeTargetStep::class,

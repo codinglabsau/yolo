@@ -19,10 +19,11 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
             ->setDescription('Sync the env-shared (environment-tier) resources for the given environment');
     }
 
-    public function domains(): array
+    public function scopes(): array
     {
         return [
-            'Network' => [
+            'environment' => [
+                // network
                 Steps\Sync\Environment\SyncVpcStep::class,
                 Steps\Sync\Environment\SyncInternetGatewayStep::class,
                 Steps\Sync\Environment\SyncInternetGatewayAttachmentStep::class,
@@ -35,15 +36,13 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 Steps\Sync\Environment\SyncPublicSubnetsAssociationToRouteTableStep::class,
                 Steps\Sync\Environment\SyncLoadBalancerSecurityGroupStep::class,
                 Steps\Sync\Environment\SyncSnsAlarmTopicStep::class,
-            ],
-            'IAM (shared)' => [
+                // shared IAM (task + execution roles)
                 Steps\Sync\Environment\SyncEcsTaskPolicyStep::class,
                 Steps\Sync\Environment\SyncEcsTaskRoleStep::class,
                 Steps\Sync\Environment\AttachEcsTaskRolePoliciesStep::class,
                 Steps\Sync\Environment\SyncEcsExecutionRoleStep::class,
                 Steps\Sync\Environment\AttachEcsExecutionRolePoliciesStep::class,
-            ],
-            'Load balancer' => [
+                // load balancer + :80 listener
                 Steps\Sync\Environment\SyncLoadBalancerStep::class,
                 Steps\Sync\Environment\SyncHttpListenerStep::class,
             ],

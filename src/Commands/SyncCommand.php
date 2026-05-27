@@ -12,18 +12,19 @@ class SyncCommand extends SyncSteppedCommand
     }
 
     /**
-     * The full sync orchestrates the three tiers in dependency order — account,
-     * then the env-shared environment tier, then this app. Each tier's labels are distinct,
-     * so composing them preserves every group (a colliding label would drop one).
+     * The full sync orchestrates the three scopes in dependency order — account,
+     * then the env-shared environment tier, then this app. Each command keys its
+     * steps under its own scope (account / environment / app), so merging the
+     * three composes cleanly into the ordered scope map the renderer groups by.
      *
      * @return array<string, array<int, class-string>>
      */
-    public function domains(): array
+    public function scopes(): array
     {
         return [
-            ...(new SyncAccountCommand())->domains(),
-            ...(new SyncEnvironmentCommand())->domains(),
-            ...(new SyncAppCommand())->domains(),
+            ...(new SyncAccountCommand())->scopes(),
+            ...(new SyncEnvironmentCommand())->scopes(),
+            ...(new SyncAppCommand())->scopes(),
         ];
     }
 }

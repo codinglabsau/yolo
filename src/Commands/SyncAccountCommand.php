@@ -17,10 +17,10 @@ class SyncAccountCommand extends SyncSteppedCommand
             ->setDescription('Sync the account-global resources (shared across every environment)');
     }
 
-    public function domains(): array
+    public function scopes(): array
     {
         return [
-            'IAM (account)' => [
+            'account' => [
                 Steps\Sync\Account\SyncGithubOidcProviderStep::class,
             ],
         ];
