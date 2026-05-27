@@ -5,18 +5,18 @@ namespace Codinglabs\Yolo\Commands;
 use Codinglabs\Yolo\Steps;
 
 /**
- * Writer of env-shared platform resources — one set per environment, shared by
+ * Writer of env-shared (environment-tier) resources — one set per environment, shared by
  * every app in it (VPC, subnets, ALB, shared IAM roles). Blast radius: all apps
  * in the environment. Apps depend on these and additively attach, but never
  * mutate them.
  */
-class SyncPlatformCommand extends SyncSteppedCommand
+class SyncEnvironmentCommand extends SyncSteppedCommand
 {
     protected function configure(): void
     {
         $this->addSyncOptions()
-            ->setName('sync:platform')
-            ->setDescription('Sync the env-shared platform resources for the given environment');
+            ->setName('sync:environment')
+            ->setDescription('Sync the env-shared (environment-tier) resources for the given environment');
     }
 
     public function domains(): array

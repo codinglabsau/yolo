@@ -9,14 +9,14 @@ namespace Codinglabs\Yolo\Enums;
  * It drives three things at once, so they can't drift apart:
  *   - the resource's name (App → yolo-{env}-{app}-…; Env/Account → yolo-{env}-…)
  *   - its tags (yolo:app owner only on App; yolo:scope on all)
- *   - which sync tier is its single writer (sync:app / sync:platform / sync:account)
+ *   - which sync tier is its single writer (sync:app / sync:environment / sync:account)
  */
 enum Scope: string
 {
     /** One app within one env — exclusive, yolo:app-tagged. Writer: sync:app. */
     case App = 'app';
 
-    /** Shared within an env (VPC, subnets, ALB, shared roles). Writer: sync:platform. */
+    /** Shared within an env (VPC, subnets, ALB, shared roles). Writer: sync:environment. */
     case Env = 'env';
 
     /** Genuinely account-global (GitHub OIDC provider, MFA controls). Writer: sync:account. */

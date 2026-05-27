@@ -25,10 +25,10 @@ class Yolo
         // Exec
         Commands\RunCommand::class,
 
-        // Sync (scope-grouped: account → platform → app, orchestrated by `sync`)
+        // Sync (scope-grouped: account → environment → app, orchestrated by `sync`)
         Commands\SyncCommand::class,
         Commands\SyncAccountCommand::class,
-        Commands\SyncPlatformCommand::class,
+        Commands\SyncEnvironmentCommand::class,
         Commands\SyncAppCommand::class,
 
         // Audit

@@ -8,12 +8,12 @@ class SyncCommand extends SyncSteppedCommand
     {
         $this->addSyncOptions()
             ->setName('sync')
-            ->setDescription('Sync all resources for the given environment (account → platform → app)');
+            ->setDescription('Sync all resources for the given environment (account → environment → app)');
     }
 
     /**
      * The full sync orchestrates the three tiers in dependency order — account,
-     * then env-shared platform, then this app. Each tier's labels are distinct,
+     * then the env-shared environment tier, then this app. Each tier's labels are distinct,
      * so composing them preserves every group (a colliding label would drop one).
      *
      * @return array<string, array<int, class-string>>
@@ -22,7 +22,7 @@ class SyncCommand extends SyncSteppedCommand
     {
         return [
             ...(new SyncAccountCommand())->domains(),
-            ...(new SyncPlatformCommand())->domains(),
+            ...(new SyncEnvironmentCommand())->domains(),
             ...(new SyncAppCommand())->domains(),
         ];
     }

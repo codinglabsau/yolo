@@ -8,11 +8,11 @@ use Codinglabs\Yolo\Manifest;
 /**
  * Writer of one app's resources within an environment. Blast radius: this app.
  * Mode-aware (solo vs multi-tenant) and `--tenant`-filterable for a single-tenant
- * cutover. Assumes the platform tier exists — depends on shared resources and
+ * cutover. Assumes the environment tier exists — depends on shared resources and
  * additively attaches (listener rule, SNI cert), never mutating them.
  *
  * Two env-shared resources are provisioned here by exception rather than in
- * sync:platform: the RDS security group (its real work is this app's task-SG
+ * sync:environment: the RDS security group (its real work is this app's task-SG
  * ingress) and the HTTPS listener (its creation needs this app's ACM cert).
  * Both are created-if-missing and never mutated, so single-writer still holds.
  */

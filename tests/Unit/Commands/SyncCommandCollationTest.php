@@ -40,7 +40,7 @@ class CollationFakeTenantStep extends TenantStep
     }
 }
 
-it('orchestrates account → platform → app domains for a solo app without a web task', function () {
+it('orchestrates account → environment → app domains for a solo app without a web task', function () {
     writeManifest(['aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2']]);
 
     expect(array_keys((new SyncCommand())->domains()))

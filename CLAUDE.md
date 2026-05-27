@@ -58,7 +58,7 @@ All commands extend `Command` (base) or, for multi-step work, `SteppedCommand` /
 The full command set: `init`, `env:pull`, `env:push`, `build`, `deploy`, `run`, `audit`, and the scope-grouped sync
 commands below.
 
-### Sync is scope-first (`sync` / `sync:account` / `sync:platform` / `sync:app`)
+### Sync is scope-first (`sync` / `sync:account` / `sync:environment` / `sync:app`)
 
 Sync commands are grouped by **ownership scope**, not by AWS service. Each resource declares its scope once
 (`Resource::scope()` → `Enums\Scope`), and that single declaration drives its name, its tags, and which sync tier is
@@ -67,10 +67,10 @@ allowed to write it:
 | Command | `Scope` | Blast radius | Examples |
 | --- | --- | --- | --- |
 | `sync:account` | `Account` | the whole AWS account | GitHub OIDC provider |
-| `sync:platform <env>` | `Env` | every app in the environment | VPC, subnets, IGW/routes, RDS SG, SNS topic, shared task/exec IAM roles, ALB + `:80` listener |
+| `sync:environment <env>` | `Env` | every app in the environment | VPC, subnets, IGW/routes, RDS SG, SNS topic, shared task/exec IAM roles, ALB + `:80` listener |
 | `sync:app <env>` | `App` | one app | Storage, app IAM, Fargate (cluster/service/task def + `:443` listener + RDS-SG ingress), CDN, IVS, mode-aware Queue/DNS |
 
-`sync` orchestrates **account → platform → app** in dependency order. `sync:app` only depends on and *additively
+`sync` orchestrates **account → environment → app** in dependency order. `sync:app` only depends on and *additively
 attaches to* shared infra (a listener rule, an SNI cert) — it never mutates it, so the shared tier keeps a single
 writer. Two env-named resources (the HTTPS `:443` listener and the RDS security group) are provisioned by `sync:app`
 by exception, because their creation has a per-app dependency; both are created-if-missing and never mutated.

@@ -34,7 +34,7 @@ class Helpers
     /**
      * Whether a version is a tagged release (including pre-releases like
      * `1.0.0-alpha.5`) rather than a branch/dev pin (`dev-main`, `1.0.x-dev`).
-     * The platform and account tiers refuse to advance their version-of-record
+     * The environment and account tiers refuse to advance their version-of-record
      * from a non-release pin — a moving branch can't be a monotonic version.
      */
     public static function isReleaseVersion(string $version): bool
