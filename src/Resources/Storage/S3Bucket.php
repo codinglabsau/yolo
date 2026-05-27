@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Resources\Storage;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Aws\S3;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 
@@ -24,6 +25,11 @@ class S3Bucket implements Resource
     public function name(): string
     {
         return Paths::s3AppBucket();
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::App;
     }
 
     public function exists(): bool

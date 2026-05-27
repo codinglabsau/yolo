@@ -4,8 +4,8 @@ namespace Codinglabs\Yolo\Resources\Network;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ec2;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -22,7 +22,12 @@ class Vpc implements Resource
 
     public function name(): string
     {
-        return Manifest::get('aws.vpc', Helpers::keyedResourceName(exclusive: false));
+        return Manifest::get('aws.vpc', $this->keyedName());
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::Env;
     }
 
     public function exists(): bool

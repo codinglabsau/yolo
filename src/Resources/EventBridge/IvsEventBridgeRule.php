@@ -3,10 +3,9 @@
 namespace Codinglabs\Yolo\Resources\EventBridge;
 
 use Codinglabs\Yolo\Aws;
-use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Aws\EventBridge;
 use Codinglabs\Yolo\Resources\Resource;
-use Codinglabs\Yolo\Resources\AppScoped;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -16,13 +15,18 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * IvsLogGroup (via IvsEventBridgeTargetStep). putRule is an upsert, so rule
  * config is reconciled through synchroniseConfiguration on every existing sync.
  */
-class IvsEventBridgeRule implements AppScoped, Resource, SynchronisesConfiguration
+class IvsEventBridgeRule implements Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
 
     public function name(): string
     {
-        return Helpers::keyedResourceName('ivs-state-change');
+        return $this->keyedName('ivs-state-change');
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::App;
     }
 
     public function exists(): bool

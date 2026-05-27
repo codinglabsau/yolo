@@ -3,11 +3,10 @@
 namespace Codinglabs\Yolo\Resources\Fargate;
 
 use Codinglabs\Yolo\Aws;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\ElbV2;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
-use Codinglabs\Yolo\Resources\AppScoped;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
@@ -17,7 +16,7 @@ use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
  * priority via a CRC32 hash of the rule's name so the same app lands on the same
  * priority across re-creates.
  */
-class ListenerRule implements AppScoped, Resource
+class ListenerRule implements Resource
 {
     use ResolvesTags;
 
@@ -27,7 +26,12 @@ class ListenerRule implements AppScoped, Resource
 
     public function name(): string
     {
-        return Helpers::keyedResourceName(exclusive: true);
+        return $this->keyedName();
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::App;
     }
 
     public function exists(): bool

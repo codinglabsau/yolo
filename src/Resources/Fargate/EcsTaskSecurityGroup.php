@@ -4,11 +4,10 @@ namespace Codinglabs\Yolo\Resources\Fargate;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ec2;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Enums\SecurityGroup;
-use Codinglabs\Yolo\Resources\AppScoped;
 use Codinglabs\Yolo\Resources\Network\Vpc;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -18,7 +17,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * (the load-balancer-to-task port-allow rule) lives in SyncTaskSecurityGroupStep
  * because it's a separate AWS concept with its own reconciliation surface.
  */
-class EcsTaskSecurityGroup implements AppScoped, Resource
+class EcsTaskSecurityGroup implements Resource
 {
     use ResolvesTags;
 
@@ -26,8 +25,13 @@ class EcsTaskSecurityGroup implements AppScoped, Resource
     {
         return Manifest::get(
             'aws.ecs.security-group',
-            Helpers::keyedResourceName(SecurityGroup::ECS_TASK_SECURITY_GROUP, exclusive: true),
+            $this->keyedName(SecurityGroup::ECS_TASK_SECURITY_GROUP),
         );
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::App;
     }
 
     public function exists(): bool

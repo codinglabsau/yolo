@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo;
 
 use BackedEnum;
+use Composer\InstalledVersions;
 use Illuminate\Container\Container;
 use Symfony\Component\Process\Process;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
@@ -14,6 +15,33 @@ class Helpers
         return $name
             ? Container::getInstance()->make($name)
             : Container::getInstance();
+    }
+
+    /**
+     * The running CLI version — the *installed* `codinglabsau/yolo` version, not a
+     * hardcoded string, so the version-of-record fence compares what's actually
+     * deployed. A tag (e.g. `1.0.0-alpha.35`); a branch pin reports as `dev-*`.
+     */
+    public static function version(): string
+    {
+        try {
+            return (string) InstalledVersions::getPrettyVersion('codinglabsau/yolo');
+        } catch (\OutOfBoundsException) {
+            return 'unknown';
+        }
+    }
+
+    /**
+     * Whether a version is a tagged release (including pre-releases like
+     * `1.0.0-alpha.5`) rather than a branch/dev pin (`dev-main`, `1.0.x-dev`).
+     * The platform and account tiers refuse to advance their version-of-record
+     * from a non-release pin — a moving branch can't be a monotonic version.
+     */
+    public static function isReleaseVersion(string $version): bool
+    {
+        return $version !== 'unknown'
+            && ! str_starts_with($version, 'dev-')
+            && ! str_ends_with($version, '-dev');
     }
 
     public static function keyedEnvName(string $key): ?string

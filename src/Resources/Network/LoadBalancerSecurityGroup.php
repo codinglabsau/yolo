@@ -4,7 +4,7 @@ namespace Codinglabs\Yolo\Resources\Network;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ec2;
-use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Enums\SecurityGroup;
 use Codinglabs\Yolo\Resources\ResolvesTags;
@@ -21,7 +21,12 @@ class LoadBalancerSecurityGroup implements Resource
 
     public function name(): string
     {
-        return Helpers::keyedResourceName(SecurityGroup::LOAD_BALANCER_SECURITY_GROUP, exclusive: false);
+        return $this->keyedName(SecurityGroup::LOAD_BALANCER_SECURITY_GROUP);
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::Env;
     }
 
     public function exists(): bool

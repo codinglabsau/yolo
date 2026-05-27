@@ -3,8 +3,8 @@
 namespace Codinglabs\Yolo\Resources\Iam;
 
 use Codinglabs\Yolo\Aws;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Enums\Iam;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Resources\ResolvesTags;
@@ -22,7 +22,12 @@ class EcsTaskRole implements Resource
 
     public function name(): string
     {
-        return Helpers::keyedResourceName(Iam::ECS_TASK_ROLE, exclusive: false);
+        return $this->keyedName(Iam::ECS_TASK_ROLE);
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::Env;
     }
 
     public function exists(): bool

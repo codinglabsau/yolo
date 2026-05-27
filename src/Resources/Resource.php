@@ -2,6 +2,7 @@
 
 namespace Codinglabs\Yolo\Resources;
 
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
@@ -16,6 +17,13 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 interface Resource
 {
     public function name(): string;
+
+    /**
+     * Ownership scope — the single source of truth (replacing the AppScoped
+     * marker + keyedResourceName(exclusive:) bool) for the resource's name
+     * exclusivity, its yolo:app tag, and which sync tier writes it.
+     */
+    public function scope(): Scope;
 
     /**
      * Associative {Key => Value} tag map. The `yolo:environment` baseline is

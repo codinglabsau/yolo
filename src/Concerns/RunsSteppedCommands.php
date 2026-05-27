@@ -15,6 +15,7 @@ use Codinglabs\Yolo\Contracts\RunsOnBuild;
 use Codinglabs\Yolo\Contracts\ExecutesTenantStep;
 use Codinglabs\Yolo\Contracts\ExecutesCommandStep;
 use Codinglabs\Yolo\Steps\ExecuteBuildCommandStep;
+use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Symfony\Component\Console\Command\Command as SymfonyCommand;
 
 use function Laravel\Prompts\info;
@@ -322,7 +323,7 @@ trait RunsSteppedCommands
         }
 
         if ($step instanceof ExecutesTenantStep) {
-            return collect(Manifest::tenants())
+            return collect($this->tenantsToExpand())
                 ->map(function (array $config, string $tenantId) use ($step) {
                     $clone = clone $step;
 
@@ -334,6 +335,28 @@ trait RunsSteppedCommands
         }
 
         return [$step];
+    }
+
+    /**
+     * The tenants per-tenant steps fan out over — every manifest tenant, narrowed
+     * to one when the command exposes `--tenant` and it's set (a single-tenant
+     * cutover). Commands without the option (start/build) get the full set.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    protected function tenantsToExpand(): array
+    {
+        $tenants = Manifest::tenants();
+
+        if (! $this->getDefinition()->hasOption('tenant') || ($only = $this->option('tenant')) === null) {
+            return $tenants;
+        }
+
+        if (! array_key_exists($only, $tenants)) {
+            throw new IntegrityCheckException(sprintf('Unknown tenant "%s" — not defined in the manifest.', $only));
+        }
+
+        return [$only => $tenants[$only]];
     }
 
     protected static function renderStatus(StepResult|string $status): string

@@ -5,13 +5,13 @@ namespace Codinglabs\Yolo\Resources\Fargate;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Aws\CloudWatchLogs;
 use Codinglabs\Yolo\Resources\Resource;
-use Codinglabs\Yolo\Resources\AppScoped;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class TaskLogGroup implements AppScoped, Resource
+class TaskLogGroup implements Resource
 {
     use ResolvesTags;
 
@@ -19,8 +19,13 @@ class TaskLogGroup implements AppScoped, Resource
     {
         return Manifest::get(
             'tasks.web.log-group',
-            sprintf('/yolo/%s', Helpers::keyedResourceName(exclusive: true))
+            sprintf('/yolo/%s', $this->keyedName())
         );
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::App;
     }
 
     public function exists(): bool

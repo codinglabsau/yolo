@@ -4,20 +4,24 @@ namespace Codinglabs\Yolo\Resources\Fargate;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ecs;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
-use Codinglabs\Yolo\Resources\AppScoped;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class EcsCluster implements AppScoped, Resource
+class EcsCluster implements Resource
 {
     use ResolvesTags;
 
     public function name(): string
     {
-        return Manifest::get('ecs.cluster', Helpers::keyedResourceName(exclusive: true));
+        return Manifest::get('ecs.cluster', $this->keyedName());
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::App;
     }
 
     public function exists(): bool

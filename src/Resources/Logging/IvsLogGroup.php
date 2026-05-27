@@ -5,9 +5,9 @@ namespace Codinglabs\Yolo\Resources\Logging;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Aws\CloudWatchLogs;
 use Codinglabs\Yolo\Resources\Resource;
-use Codinglabs\Yolo\Resources\AppScoped;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -18,13 +18,18 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * service log groups. Retention and the EventBridge-delivery resource policy
  * are reconciled on every sync.
  */
-class IvsLogGroup implements AppScoped, Resource, SynchronisesConfiguration
+class IvsLogGroup implements Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
 
     public function name(): string
     {
-        return '/aws/ivs/' . Helpers::keyedResourceName();
+        return '/aws/ivs/' . $this->keyedName();
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::App;
     }
 
     public function exists(): bool

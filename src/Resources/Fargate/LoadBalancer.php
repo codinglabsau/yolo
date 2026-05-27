@@ -3,9 +3,9 @@
 namespace Codinglabs\Yolo\Resources\Fargate;
 
 use Codinglabs\Yolo\Aws;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\ElbV2;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\Network\PublicSubnet;
@@ -18,7 +18,12 @@ class LoadBalancer implements Resource
 
     public function name(): string
     {
-        return Manifest::get('aws.alb', Helpers::keyedResourceName(exclusive: false));
+        return Manifest::get('aws.alb', $this->keyedName());
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::Env;
     }
 
     public function exists(): bool

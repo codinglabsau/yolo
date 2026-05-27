@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Resources\Iam;
 
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -37,6 +38,11 @@ class GithubOidcProvider implements Resource
     public function name(): string
     {
         return self::URL;
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::Account;
     }
 
     public function tags(): array

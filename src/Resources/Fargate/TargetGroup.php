@@ -3,24 +3,28 @@
 namespace Codinglabs\Yolo\Resources\Fargate;
 
 use Codinglabs\Yolo\Aws;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\ElbV2;
+use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\ShutdownTimings;
 use Codinglabs\Yolo\Resources\Resource;
-use Codinglabs\Yolo\Resources\AppScoped;
 use Codinglabs\Yolo\Resources\Network\Vpc;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class TargetGroup implements AppScoped, Resource, SynchronisesConfiguration
+class TargetGroup implements Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
 
     public function name(): string
     {
-        return Helpers::keyedResourceName(exclusive: true);
+        return $this->keyedName();
+    }
+
+    public function scope(): Scope
+    {
+        return Scope::App;
     }
 
     public function exists(): bool
