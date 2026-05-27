@@ -1,5 +1,6 @@
 <?php
 
+use Aws\Command;
 use Symfony\Component\Filesystem\Filesystem;
 use Codinglabs\Yolo\Steps\Deploy\PushAssetsToS3Step;
 
@@ -67,4 +68,23 @@ it('never ships dotfiles, dot-directories or source maps to the public CDN', fun
         'build/assets/app-abc123.js',
         'uploads/photo.jpg',
     ]);
+});
+
+it('stamps the immutable cache-control onto uploaded objects', function () {
+    $put = new Command('PutObject');
+    PushAssetsToS3Step::applyCacheControl($put);
+
+    expect($put['CacheControl'])->toBe('public, max-age=31536000, immutable');
+
+    $multipart = new Command('CreateMultipartUpload');
+    PushAssetsToS3Step::applyCacheControl($multipart);
+
+    expect($multipart['CacheControl'])->toBe('public, max-age=31536000, immutable');
+});
+
+it('leaves non-upload commands untouched', function () {
+    $get = new Command('GetObject');
+    PushAssetsToS3Step::applyCacheControl($get);
+
+    expect(isset($get['CacheControl']))->toBeFalse();
 });

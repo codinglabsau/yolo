@@ -25,6 +25,14 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * `builds/*` -> S3 and everything-else -> ALB would hijack any app that has its
  * own `/builds` route. The keyed name is stamped into the distribution's
  * Comment (and the OAC's Name) for lookup, and surfaced as the `Name` tag.
+ *
+ * CORS for cross-origin module imports (the app is on the ALB domain, assets on
+ * this distribution) is owned entirely by a response-headers policy that stamps
+ * a static `Access-Control-Allow-Origin: *` on every response. The cache key
+ * carries no request headers, so there is one cache entry per object for every
+ * viewer — no Vary: Origin split, and a transient origin 5xx is never cached
+ * (ErrorCachingMinTTL 0) against the immutable, content-hashed paths it would
+ * otherwise poison until the next deploy. See the constants below.
  */
 class AssetDistribution implements Resource, SynchronisesConfiguration
 {
@@ -32,26 +40,37 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
 
     protected const ORIGIN_ID = 'asset-bucket';
 
-    // Custom cache policy: like CachingOptimized but with `Origin` in the cache
-    // key. S3 only returns Access-Control-Allow-Origin when a request carries
-    // Origin, so a no-Origin request (CloudFront's own compression fetch, a
-    // preload, a bot) would otherwise cache a header-less copy that Origin-
-    // bearing browser requests then hit. Keying on Origin caches the with-CORS
-    // and without-CORS variants separately, so browsers can't be served a
-    // poisoned entry. No managed cache policy includes Origin, hence a custom.
-    protected const CACHE_POLICY_NAME = 'yolo-asset-cors';
+    // AWS managed "CachingOptimized". No request headers in the cache key (gzip
+    // /brotli only), so there is a single cache entry per object regardless of
+    // the viewer's Origin. The previous custom "Origin in the key" policy split
+    // the cache into with-CORS / without-CORS variants; the browser-only variant
+    // was sparsely warmed and a transient origin 503 cached against it broke
+    // every cross-origin import() until the next deploy. One entry can't drift
+    // apart like that. Same TTLs as the old custom policy (1 / 86400 / 31536000).
+    protected const CACHE_POLICY_ID = '658327ea-f89d-4fab-a63d-7e88639e58f6';
 
-    // AWS managed "CORS-S3Origin" origin-request policy. Forwards the viewer
-    // Origin header (+ Access-Control-Request-*) to S3 so the bucket's own CORS
-    // config returns Access-Control-Allow-Origin. CloudFront then caches and
-    // serves that as a normal origin header on every path — unlike a
-    // response-headers-policy CORS header, which CloudFront silently omits on
-    // the revalidation it forces for `Cache-Control: no-cache` / `max-age=0`
-    // (reloads, DevTools "Disable cache"). Empty ResponseHeadersPolicyId: the
-    // origin now owns CORS, and a second source would emit a duplicate header.
-    protected const ORIGIN_REQUEST_POLICY_ID = '88a5eaf4-2fd4-4709-b370-b4c650ea3fcf';
+    // No origin-request policy: the viewer Origin header is no longer forwarded
+    // to S3, so S3 never runs its bucket CORS and never emits its own
+    // Access-Control-Allow-Origin. CORS is owned solely by the response-headers
+    // policy below — one unconditional header, no second source to double up,
+    // and nothing Origin-dependent reaching the origin to force a Vary.
+    protected const ORIGIN_REQUEST_POLICY_ID = '';
 
-    protected const RESPONSE_HEADERS_POLICY_ID = '';
+    // Custom response-headers policy that stamps a static
+    // `Access-Control-Allow-Origin: *` on EVERY response via a custom header —
+    // not a managed CORS policy. A managed CORS policy only adds the header when
+    // the request carries Origin, and CloudFront drops it on the revalidation it
+    // forces for `Cache-Control: no-cache` / `max-age=0` (reloads, DevTools
+    // "Disable cache"); a custom header is unconditional and survives that.
+    // Account-scoped and generic, so every YOLO asset distribution shares the one
+    // policy — looked up by name like the OAC.
+    protected const RESPONSE_HEADERS_POLICY_NAME = 'yolo-asset-headers';
+
+    // Build assets live under a per-deploy `builds/{version}/` prefix (ASSET_URL
+    // carries the version), so every object is immutable — a new deploy is a new
+    // URL, never an overwrite. A transient origin 5xx must therefore never be
+    // cached against these paths: the poisoned entry would never self-bust.
+    protected const ERROR_CODES_NOT_CACHED = [500, 502, 503, 504];
 
     public function name(): string
     {
@@ -88,10 +107,11 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
     {
         $bucket = new AssetBucket();
         $oacId = $this->ensureOriginAccessControl();
+        $responseHeadersPolicyId = $this->ensureResponseHeadersPolicy();
 
         $distribution = Aws::cloudFront()->createDistributionWithTags([
             'DistributionConfigWithTags' => [
-                'DistributionConfig' => $this->distributionConfig($bucket, $oacId),
+                'DistributionConfig' => $this->distributionConfig($bucket, $oacId, $responseHeadersPolicyId),
                 'Tags' => [
                     'Items' => collect(Aws::expectedTags($this->tags()))
                         ->map(fn ($value, $key) => ['Key' => $key, 'Value' => $value])
@@ -119,14 +139,15 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
     }
 
     /**
-     * Push managed cache-behaviour config onto an existing distribution. Tags
-     * alone don't cover config changes (e.g. swapping a distribution to the
-     * CORS-S3Origin origin-request policy after it was created), so sync
-     * reconciles the behaviour fields we own. CloudFront updates trigger a full
-     * edge redeploy (~15 min), so we only call updateDistribution when a managed
-     * field has drifted, and we return the drifted fields so sync can report each
-     * current → desired comparison. A dry-run ($apply false) never creates the
-     * cache policy and never calls updateDistribution.
+     * Push managed config onto an existing distribution. Tags alone don't cover
+     * config changes, so sync reconciles the fields we own: the cache-behaviour
+     * policy IDs (swapping a distribution off the old Origin-keyed cache policy
+     * onto CachingOptimized + the static-CORS response-headers policy) and the
+     * 5xx error-caching rules. CloudFront updates trigger a full edge redeploy
+     * (~15 min), so updateDistribution only fires when a field has drifted, and
+     * the drifted fields are returned so sync can report each current → desired
+     * comparison. A dry-run ($apply false) never creates the response-headers
+     * policy and never calls updateDistribution.
      */
     public function synchroniseConfiguration(bool $apply = true): array
     {
@@ -136,7 +157,7 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
         $config = (array) $response['DistributionConfig'];
         $behaviour = (array) $config['DefaultCacheBehavior'];
 
-        $desired = static::reconcilableBehaviour($this->resolveCachePolicyId($apply));
+        $desired = static::reconcilableBehaviour($this->resolveResponseHeadersPolicyId($apply));
 
         $changes = collect($desired)
             ->filter(fn (mixed $value, string $key) => ($behaviour[$key] ?? null) !== $value)
@@ -144,11 +165,16 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
             ->values()
             ->all();
 
+        if ($errorChange = static::errorCachingDrift((array) ($config['CustomErrorResponses'] ?? []))) {
+            $changes[] = $errorChange;
+        }
+
         if ($changes === [] || ! $apply) {
             return $changes;
         }
 
         $config['DefaultCacheBehavior'] = array_merge($behaviour, $desired);
+        $config['CustomErrorResponses'] = static::customErrorResponses();
 
         Aws::cloudFront()->updateDistribution([
             'Id' => $id,
@@ -160,21 +186,6 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
     }
 
     /**
-     * The cache policy id for diffing. An existing distribution was created with
-     * the policy already in place, so the lookup all but always resolves; the
-     * dry-run fallback ('(pending …)') only shows if it were somehow missing, and
-     * never creates the policy as a side effect of a read-only --dry-run.
-     */
-    protected function resolveCachePolicyId(bool $apply): string
-    {
-        try {
-            return CloudFront::cachePolicyByName(static::CACHE_POLICY_NAME)['Id'];
-        } catch (ResourceDoesNotExistException) {
-            return $apply ? $this->ensureCachePolicy() : sprintf('(pending: %s)', static::CACHE_POLICY_NAME);
-        }
-    }
-
-    /**
      * The cache-behaviour fields sync keeps current on an existing distribution.
      * Scalars only — the policy IDs are the realistic drift surface; nested
      * blocks like AllowedMethods are set once at create and comparing them risks
@@ -182,46 +193,103 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
      *
      * @return array<string, mixed>
      */
-    public static function reconcilableBehaviour(string $cachePolicyId): array
+    public static function reconcilableBehaviour(string $responseHeadersPolicyId): array
     {
         return [
             'ViewerProtocolPolicy' => 'redirect-to-https',
             'Compress' => true,
-            'CachePolicyId' => $cachePolicyId,
+            'CachePolicyId' => static::CACHE_POLICY_ID,
             'OriginRequestPolicyId' => static::ORIGIN_REQUEST_POLICY_ID,
-            'ResponseHeadersPolicyId' => static::RESPONSE_HEADERS_POLICY_ID,
+            'ResponseHeadersPolicyId' => $responseHeadersPolicyId,
         ];
     }
 
     /**
-     * Resolve the custom cache policy (Origin in the cache key), creating it
-     * once if absent. Account-scoped and generic, so every YOLO asset
-     * distribution shares the one policy — looked up by name like the OAC.
+     * The 5xx error-caching rules. ErrorCachingMinTTL 0 means a transient origin
+     * blip is never cached, so the next request retries the origin and self-heals
+     * rather than pinning a broken entry against an immutable asset path.
+     *
+     * @return array{Quantity: int, Items: array<int, array{ErrorCode: int, ErrorCachingMinTTL: int}>}
      */
-    protected function ensureCachePolicy(): string
+    public static function customErrorResponses(): array
+    {
+        return [
+            'Quantity' => count(static::ERROR_CODES_NOT_CACHED),
+            'Items' => array_map(fn (int $code) => [
+                'ErrorCode' => $code,
+                'ErrorCachingMinTTL' => 0,
+            ], static::ERROR_CODES_NOT_CACHED),
+        ];
+    }
+
+    /**
+     * Whether the live CustomErrorResponses already pin every tracked 5xx to a
+     * 0s cache TTL. Compared by code → TTL only (not the whole block) so AWS's
+     * default ResponseCode/ResponsePagePath fields and item ordering can't read
+     * as false drift and force a needless redeploy. Returns null when already in
+     * sync, otherwise a Change with a semantic label rather than a JSON dump.
+     */
+    public static function errorCachingDrift(array $live): ?Change
+    {
+        $cached = collect($live['Items'] ?? [])
+            ->mapWithKeys(fn (array $item) => [(int) $item['ErrorCode'] => (int) $item['ErrorCachingMinTTL']]);
+
+        $pinned = collect(static::ERROR_CODES_NOT_CACHED)
+            ->every(fn (int $code) => $cached->get($code) === 0);
+
+        if ($pinned) {
+            return null;
+        }
+
+        return new Change(
+            'CustomErrorResponses',
+            $cached->isEmpty() ? 'unset (CloudFront default ~10s)' : 'caches some 5xx',
+            sprintf('TTL 0 for %s', collect(static::ERROR_CODES_NOT_CACHED)->implode('/')),
+        );
+    }
+
+    /**
+     * The response-headers policy id for diffing. An existing distribution was
+     * created with the policy already in place, so the lookup all but always
+     * resolves; the dry-run fallback ('(pending …)') only shows if it were
+     * somehow missing, and never creates the policy as a side effect of a
+     * read-only --dry-run.
+     */
+    protected function resolveResponseHeadersPolicyId(bool $apply): string
     {
         try {
-            return CloudFront::cachePolicyByName(static::CACHE_POLICY_NAME)['Id'];
+            return CloudFront::responseHeadersPolicyByName(static::RESPONSE_HEADERS_POLICY_NAME)['Id'];
         } catch (ResourceDoesNotExistException) {
-            return Aws::cloudFront()->createCachePolicy([
-                'CachePolicyConfig' => [
-                    'Name' => static::CACHE_POLICY_NAME,
-                    'Comment' => 'YOLO build assets — Origin in cache key for CORS',
-                    'MinTTL' => 1,
-                    'DefaultTTL' => 86400,
-                    'MaxTTL' => 31536000,
-                    'ParametersInCacheKeyAndForwardedToOrigin' => [
-                        'EnableAcceptEncodingGzip' => true,
-                        'EnableAcceptEncodingBrotli' => true,
-                        'HeadersConfig' => [
-                            'HeaderBehavior' => 'whitelist',
-                            'Headers' => ['Quantity' => 1, 'Items' => ['Origin']],
+            return $apply ? $this->ensureResponseHeadersPolicy() : sprintf('(pending: %s)', static::RESPONSE_HEADERS_POLICY_NAME);
+        }
+    }
+
+    /**
+     * Resolve the custom response-headers policy (static ACAO), creating it once
+     * if absent. Account-scoped and generic, so every YOLO asset distribution
+     * shares the one policy — looked up by name like the OAC.
+     */
+    protected function ensureResponseHeadersPolicy(): string
+    {
+        try {
+            return CloudFront::responseHeadersPolicyByName(static::RESPONSE_HEADERS_POLICY_NAME)['Id'];
+        } catch (ResourceDoesNotExistException) {
+            return Aws::cloudFront()->createResponseHeadersPolicy([
+                'ResponseHeadersPolicyConfig' => [
+                    'Name' => static::RESPONSE_HEADERS_POLICY_NAME,
+                    'Comment' => 'YOLO build assets — static Access-Control-Allow-Origin: * on every response',
+                    'CustomHeadersConfig' => [
+                        'Quantity' => 1,
+                        'Items' => [
+                            [
+                                'Header' => 'Access-Control-Allow-Origin',
+                                'Value' => '*',
+                                'Override' => true,
+                            ],
                         ],
-                        'CookiesConfig' => ['CookieBehavior' => 'none'],
-                        'QueryStringsConfig' => ['QueryStringBehavior' => 'none'],
                     ],
                 ],
-            ])['CachePolicy']['Id'];
+            ])['ResponseHeadersPolicy']['Id'];
         }
     }
 
@@ -241,7 +309,7 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
         }
     }
 
-    protected function distributionConfig(AssetBucket $bucket, string $originAccessControlId): array
+    protected function distributionConfig(AssetBucket $bucket, string $originAccessControlId, string $responseHeadersPolicyId): array
     {
         return [
             'CallerReference' => (string) Str::uuid(),
@@ -262,7 +330,7 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
             ],
             'DefaultCacheBehavior' => [
                 'TargetOriginId' => static::ORIGIN_ID,
-                ...static::reconcilableBehaviour($this->ensureCachePolicy()),
+                ...static::reconcilableBehaviour($responseHeadersPolicyId),
                 'AllowedMethods' => [
                     'Quantity' => 2,
                     'Items' => ['GET', 'HEAD'],
@@ -272,6 +340,7 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
                     ],
                 ],
             ],
+            'CustomErrorResponses' => static::customErrorResponses(),
         ];
     }
 

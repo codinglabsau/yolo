@@ -33,26 +33,26 @@ class CloudFront
         throw new ResourceDoesNotExistException("Could not find CloudFront distribution with comment $comment");
     }
 
-    public static function cachePolicyByName(string $name): array
+    public static function responseHeadersPolicyByName(string $name): array
     {
         $marker = null;
 
         do {
-            $list = Aws::cloudFront()->listCachePolicies([
+            $list = Aws::cloudFront()->listResponseHeadersPolicies([
                 'Type' => 'custom',
                 ...$marker ? ['Marker' => $marker] : [],
-            ])['CachePolicyList'];
+            ])['ResponseHeadersPolicyList'];
 
             foreach ($list['Items'] ?? [] as $item) {
-                if (($item['CachePolicy']['CachePolicyConfig']['Name'] ?? null) === $name) {
-                    return $item['CachePolicy'];
+                if (($item['ResponseHeadersPolicy']['ResponseHeadersPolicyConfig']['Name'] ?? null) === $name) {
+                    return $item['ResponseHeadersPolicy'];
                 }
             }
 
             $marker = ($list['IsTruncated'] ?? false) ? $list['NextMarker'] : null;
         } while ($marker);
 
-        throw new ResourceDoesNotExistException("Could not find cache policy with name $name");
+        throw new ResourceDoesNotExistException("Could not find response headers policy with name $name");
     }
 
     public static function originAccessControlByName(string $name): array
