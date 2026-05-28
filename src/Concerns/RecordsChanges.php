@@ -38,4 +38,14 @@ trait RecordsChanges
             $this->recordedChanges[] = $change;
         }
     }
+
+    /**
+     * Drop everything recorded so the next invocation starts clean. Used by
+     * `runScopes` between the plan and apply passes so the apply pass doesn't
+     * carry forward the plan pass's changes on the same step instance.
+     */
+    public function resetChanges(): void
+    {
+        $this->recordedChanges = [];
+    }
 }

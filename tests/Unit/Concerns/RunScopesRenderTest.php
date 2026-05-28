@@ -34,13 +34,17 @@ class RunScopesChangeStep implements Step
 }
 
 /**
- * Drive the full collate → determinations → confirm → execute → results pipeline
- * against a non-interactive command and return everything written to the terminal.
+ * Drive the full collate → plan → confirm → apply → results pipeline against a
+ * non-interactive command and return everything written to the terminal.
+ *
+ * Non-interactive auto-approves the confirm gate, so both the plan output (Will
+ * sync / Pending changes / Skipping) and the apply output (results table +
+ * completion line) appear in the captured stream.
  *
  * @param  array<string, array<int, class-string>>  $scopes
  * @param  array<string, mixed>  $options
  */
-function runScopesCapture(array $scopes, array $options = []): string
+function runScopesCapture(array $scopes, array $options = [], int $verbosity = BufferedOutput::VERBOSITY_NORMAL): string
 {
     $command = new SyncCommand();
 
@@ -48,6 +52,7 @@ function runScopesCapture(array $scopes, array $options = []): string
     $input->setInteractive(false);
 
     $output = new BufferedOutput();
+    $output->setVerbosity($verbosity);
 
     $command->input = $input;
     $command->output = $output;
@@ -64,7 +69,7 @@ beforeEach(function () {
     writeManifest(['aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2']]);
 });
 
-it('prints determinations grouped by scope, runs the plan, and reports skips', function () {
+it('plans (scopes + skipping) before applying, ending with the results table', function () {
     $output = runScopesCapture([
         'environment' => [RunScopesFakeStep::class, RunScopesFakeStep::class],
         'app' => [
@@ -76,19 +81,19 @@ it('prints determinations grouped by scope, runs the plan, and reports skips', f
         ],
     ], ['--no-progress' => true]);
 
-    // up-front determinations summary, grouped by scope
+    // the plan (Will sync + Skipping) renders, then the apply pass + results
     expect($output)
         ->toContain('Will sync')
         ->toContain('environment')
         ->toContain('app')
         ->toContain('Skipping')
-        ->toContain('aws.ivs not enabled in manifest');
-
-    // executed results, skip summary, and completion line
-    expect($output)
+        ->toContain('aws.ivs not enabled in manifest')
         ->toContain('CREATED')
-        ->toContain('3 steps skipped')
         ->toContain('Synced testing');
+
+    // and the plan really is rendered BEFORE the apply pass — "Will sync"
+    // must appear ahead of the completion line, not after it.
+    expect(strpos($output, 'Will sync'))->toBeLessThan(strpos($output, 'Synced testing'));
 });
 
 it('auto-proceeds without a prompt when non-interactive', function () {
@@ -101,28 +106,22 @@ it('auto-proceeds without a prompt when non-interactive', function () {
     expect($output)->toContain('Synced testing');
 });
 
-it('reports each reconciled attribute under an applied-changes section', function () {
+it('shows every pending attribute change before the confirm gate, even on a real run', function () {
     $output = runScopesCapture(
         ['environment' => [RunScopesChangeStep::class]],
         ['--no-progress' => true],
     );
 
+    // Pending changes is rendered by the plan pass — i.e. *before* the confirm
+    // gate fires — so the operator sees what's about to apply, not after.
     expect($output)
-        ->toContain('Changes applied')
+        ->toContain('Pending changes')
         ->toContain('idle_timeout')
         ->toContain('30')
         ->toContain('60');
-});
 
-it('frames the attribute changes as pending on a dry-run', function () {
-    $output = runScopesCapture(
-        ['environment' => [RunScopesChangeStep::class]],
-        ['--no-progress' => true, '--dry-run' => true],
-    );
-
-    expect($output)
-        ->toContain('Pending changes')
-        ->toContain('idle_timeout');
+    // And it precedes the completion line.
+    expect(strpos($output, 'Pending changes'))->toBeLessThan(strpos($output, 'Synced testing'));
 });
 
 it('omits the changes section entirely when nothing drifted', function () {
@@ -132,6 +131,55 @@ it('omits the changes section entirely when nothing drifted', function () {
     );
 
     expect($output)
-        ->not->toContain('Changes applied')
-        ->not->toContain('Pending changes');
+        ->not->toContain('Pending changes')
+        ->not->toContain('Changes applied');
+});
+
+it('shows the skipped concept summary at normal verbosity but hides per-resource names', function () {
+    $output = runScopesCapture([
+        'app' => [
+            Steps\Sync\App\SyncIvsCloudWatchLogGroupStep::class,
+            Steps\Sync\App\SyncIvsEventBridgeRuleStep::class,
+            Steps\Sync\App\SyncIvsEventBridgeTargetStep::class,
+        ],
+    ], ['--no-progress' => true]);
+
+    expect($output)
+        ->toContain('Skipping')
+        ->toContain('aws.ivs not enabled in manifest')
+        ->toContain('(3)')                            // concept-summary count
+        ->not->toContain('ivs cloud watch log group') // per-resource detail hidden
+        ->not->toContain('ivs event bridge rule');
+});
+
+it('expands the skipped section to per-resource names under -v', function () {
+    $output = runScopesCapture([
+        'app' => [
+            Steps\Sync\App\SyncIvsCloudWatchLogGroupStep::class,
+            Steps\Sync\App\SyncIvsEventBridgeRuleStep::class,
+            Steps\Sync\App\SyncIvsEventBridgeTargetStep::class,
+        ],
+    ], ['--no-progress' => true], BufferedOutput::VERBOSITY_VERBOSE);
+
+    // concept summary still there, plus the per-resource expansion
+    // (normaliseStep lowercases everything past the first char)
+    expect($output)
+        ->toContain('Skipping')
+        ->toContain('aws.ivs not enabled in manifest')
+        ->toContain('ivs cloud watch log group')
+        ->toContain('ivs event bridge rule')
+        ->toContain('ivs event bridge target');
+});
+
+it('dry-run renders the plan and stops — no apply, no results table, no completion line', function () {
+    $output = runScopesCapture(
+        ['environment' => [RunScopesChangeStep::class]],
+        ['--no-progress' => true, '--dry-run' => true],
+    );
+
+    expect($output)
+        ->toContain('Pending changes')
+        ->toContain('idle_timeout')
+        ->toContain('Dry run')
+        ->not->toContain('Synced testing'); // no apply ran
 });

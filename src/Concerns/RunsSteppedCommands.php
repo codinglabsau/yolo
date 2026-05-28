@@ -31,7 +31,15 @@ trait RunsSteppedCommands
     use ChecksIfCommandsShouldBeRunning;
 
     /**
-     * Collate, plan, confirm and execute a set of scope-grouped steps as a single flow.
+     * Collate, plan, confirm and apply a set of scope-grouped steps as a single flow.
+     *
+     * The flow is **approve-before-apply**: every step is invoked twice. A plan
+     * pass with `dry-run` injected runs each reconciler in compute-only mode and
+     * collects its status + attribute-level changes; the runner renders the full
+     * "Pending changes" diff and the "Skipping" summary against that, *then*
+     * gates the confirm, *then* runs the apply pass with the original options.
+     * The plan pass repeats read-only `Get*`/`List*` calls (one extra read per
+     * step) — fine at sync scale; the alternative is approving blind.
      *
      * @param  array<string, array<int, class-string>>  $scopes  ordered label => step class names
      */
@@ -39,15 +47,27 @@ trait RunsSteppedCommands
     {
         Prompt::interactive($this->input->isInteractive());
 
-        [$plan, $skipped] = $this->collateSteps($scopes, $environment);
+        [$planned, $skipped] = $this->collateSteps($scopes, $environment);
 
-        if ($plan->isEmpty() && $skipped->isEmpty()) {
+        if ($planned->isEmpty() && $skipped->isEmpty()) {
             warning('No steps detected.');
 
             return SymfonyCommand::SUCCESS;
         }
 
-        $this->printDeterminations($environment, $plan, $skipped);
+        intro(sprintf('Planning %s for %s', $this->getName(), $environment));
+
+        // PLAN PASS — compute-only. dry-run injection means SynchronisesResource
+        // and any bespoke reconcilers diff against live state without writing.
+        $plan = $this->executePlan($planned, time(), apply: false);
+
+        $this->printPlan($plan, $skipped);
+
+        if ($this->option('dry-run')) {
+            info(sprintf('Dry run — no changes applied to %s.', $environment));
+
+            return SymfonyCommand::SUCCESS;
+        }
 
         if (! $this->confirmGate($environment)) {
             warning('Aborted — no changes made.');
@@ -55,11 +75,15 @@ trait RunsSteppedCommands
             return SymfonyCommand::SUCCESS;
         }
 
+        // Step instances are reused across passes; clear the changes the plan
+        // pass recorded so RecordsChanges starts fresh under apply.
+        $this->resetRecordedChanges($planned);
+
         $now = time();
 
-        $ran = $this->executePlan($plan, $now);
+        $applied = $this->executePlan($planned, $now, apply: true);
 
-        $this->renderResults($environment, $ran, $skipped, time() - $now);
+        $this->renderResults($environment, $applied, time() - $now);
 
         return SymfonyCommand::SUCCESS;
     }
@@ -92,40 +116,33 @@ trait RunsSteppedCommands
         return [$plan, $skipped];
     }
 
-    protected function printDeterminations(string $environment, Collection $plan, Collection $skipped): void
+    /**
+     * Render the plan: scope counts, the full attribute-level Pending changes
+     * diff (when there's drift), and a single Skipping section grouped by
+     * scope + reason. With `-v`, the skipped section expands to list every
+     * resource under each concept group.
+     *
+     * @param  Collection<int, array{index: int, scope: string, step: Step, status: StepResult|string, elapsed: int, changes: array<int, Change>}>  $plan
+     * @param  Collection<int, array{scope: string, step: Step, reason: string}>  $skipped
+     */
+    protected function printPlan(Collection $plan, Collection $skipped): void
     {
-        intro(sprintf('Planning %s for %s', $this->getName(), $environment));
-
         $this->output->writeln('  <options=bold>Will sync</>');
 
         $plan->groupBy('scope')->each(function (Collection $entries, string $scope) {
             $this->output->writeln(sprintf('  <fg=green>✔</> %s <fg=gray>(%d)</>', $scope, $entries->count()));
         });
 
-        if ($skipped->isNotEmpty()) {
-            $this->output->writeln('');
-            $this->output->writeln('  <options=bold>Skipping</>');
+        $this->renderPendingChanges($plan);
 
-            $skipped
-                ->groupBy(fn (array $entry) => $entry['scope'] . '|' . $entry['reason'])
-                ->each(function (Collection $group) {
-                    $first = $group->first();
-
-                    $this->output->writeln(sprintf(
-                        '  <fg=yellow>•</> %s <fg=gray>(%d)</> — %s',
-                        $first['scope'],
-                        $group->count(),
-                        $first['reason'],
-                    ));
-                });
-        }
+        $this->renderSkipping($skipped);
 
         $this->output->writeln('');
     }
 
     protected function confirmGate(string $environment): bool
     {
-        if ($this->option('force') || $this->option('dry-run') || ! $this->input->isInteractive()) {
+        if ($this->option('force') || ! $this->input->isInteractive()) {
             return true;
         }
 
@@ -136,10 +153,15 @@ trait RunsSteppedCommands
     }
 
     /**
+     * Invoke every planned step once. Under `apply: false` (the plan pass)
+     * `dry-run` is injected into the options so reconcilers compute their diff
+     * without writing; under `apply: true` the original input options flow
+     * through unchanged.
+     *
      * @param  Collection<int, array{scope: string, step: Step}>  $plan
-     * @return Collection<int, array{index: int, scope: string, step: Step, status: StepResult|string, elapsed: int}>
+     * @return Collection<int, array{index: int, scope: string, step: Step, status: StepResult|string, elapsed: int, changes: array<int, Change>}>
      */
-    protected function executePlan(Collection $plan, int $now): Collection
+    protected function executePlan(Collection $plan, int $now, bool $apply): Collection
     {
         $multiScope = $plan->pluck('scope')->unique()->count() > 1;
 
@@ -149,7 +171,11 @@ trait RunsSteppedCommands
 
         $progress?->start();
 
-        $ran = $plan->values()->map(function (array $entry, int $i) use ($progress, $now, $multiScope) {
+        $options = $apply
+            ? $this->input->getOptions()
+            : [...$this->input->getOptions(), 'dry-run' => true];
+
+        $ran = $plan->values()->map(function (array $entry, int $i) use ($progress, $now, $multiScope, $options) {
             $step = $entry['step'];
 
             $label = $multiScope
@@ -160,7 +186,7 @@ trait RunsSteppedCommands
                 'index' => $i + 1,
                 'scope' => $entry['scope'],
                 'step' => $step,
-                ...$this->invokeStep($step, $progress, $label, $now),
+                ...$this->invokeStep($step, $progress, $label, $now, $options),
             ];
         });
 
@@ -170,11 +196,26 @@ trait RunsSteppedCommands
     }
 
     /**
+     * Clear changes recorded by a previous pass so the next pass starts clean.
+     *
+     * @param  Collection<int, array{scope: string, step: Step}>  $planned
+     */
+    protected function resetRecordedChanges(Collection $planned): void
+    {
+        $planned->each(function (array $entry) {
+            if (method_exists($entry['step'], 'resetChanges')) {
+                $entry['step']->resetChanges();
+            }
+        });
+    }
+
+    /**
      * Render the progress frame for a step, invoke it, and time it.
      *
+     * @param  array<string, mixed>  $options
      * @return array{status: StepResult|string, elapsed: int, changes: array<int, Change>}
      */
-    protected function invokeStep(Step $step, ?Progress $progress, string $label, int $now): array
+    protected function invokeStep(Step $step, ?Progress $progress, string $label, int $now, array $options): array
     {
         $progress?->label($label)
             ->hint(sprintf('%d seconds elapsed', time() - $now))
@@ -182,7 +223,7 @@ trait RunsSteppedCommands
 
         $started = time();
 
-        $status = $step->__invoke($this->input->getOptions(), $this);
+        $status = $step->__invoke($options, $this);
 
         // Build steps return void, and HasSubSteps steps return their sub-step
         // array (load-bearing for expandStep) — neither is a StepResult. Steps
@@ -205,10 +246,14 @@ trait RunsSteppedCommands
     }
 
     /**
+     * Render the post-apply results: per-step table + completion line. The
+     * attribute diffs were already shown pre-confirm in the plan's "Pending
+     * changes" section, and the skip ledger was rendered there too — neither
+     * is repeated here.
+     *
      * @param  Collection<int, array{index: int, scope: string, step: Step, status: StepResult|string, elapsed: int}>  $ran
-     * @param  Collection<int, array{scope: string, step: Step, reason: string}>  $skipped
      */
-    protected function renderResults(string $environment, Collection $ran, Collection $skipped, int $elapsed): void
+    protected function renderResults(string $environment, Collection $ran, int $elapsed): void
     {
         $multiScope = $ran->pluck('scope')->unique()->count() > 1;
 
@@ -238,60 +283,38 @@ trait RunsSteppedCommands
             );
         }
 
-        $this->renderChanges($ran, $multiScope);
-
-        if ($skipped->isNotEmpty()) {
-            if ($this->output->isVerbose()) {
-                table(
-                    ['Scope', 'Step', 'Reason'],
-                    $skipped->map(fn (array $entry) => [
-                        $entry['scope'],
-                        static::normaliseStep($entry['step']),
-                        $entry['reason'],
-                    ])->all()
-                );
-            } else {
-                info(sprintf(
-                    '%d step%s skipped (run with -v to show).',
-                    $skipped->count(),
-                    $skipped->count() === 1 ? '' : 's',
-                ));
-            }
-        }
-
         info(sprintf('Synced %s in %ds.', $environment, $elapsed));
     }
 
     /**
-     * Print the per-attribute detail behind the status column: which attributes
-     * each step reconciled (or, under --dry-run, would reconcile), as a
-     * current → desired comparison. Steps that changed nothing are omitted, so a
-     * clean sync stays quiet and drift stands out.
+     * Print the per-attribute Pending changes section: which attributes each
+     * step would reconcile, as a current → desired comparison. Steps that
+     * recorded nothing are omitted, so a clean plan stays quiet and drift
+     * stands out.
      *
-     * @param  Collection<int, array{scope: string, step: Step, status: StepResult|string, changes: array<int, Change>}>  $ran
+     * @param  Collection<int, array{scope: string, step: Step, changes: array<int, Change>}>  $plan
      */
-    protected function renderChanges(Collection $ran, bool $multiScope): void
+    protected function renderPendingChanges(Collection $plan): void
     {
-        $withChanges = $ran->filter(fn (array $result) => $result['changes'] !== []);
+        $withChanges = $plan->filter(fn (array $entry) => $entry['changes'] !== []);
 
         if ($withChanges->isEmpty()) {
             return;
         }
 
-        $this->output->writeln('');
-        $this->output->writeln(sprintf(
-            '  <options=bold>%s</>',
-            $this->option('dry-run') ? 'Pending changes' : 'Changes applied',
-        ));
+        $multiScope = $plan->pluck('scope')->unique()->count() > 1;
 
-        $withChanges->each(function (array $result) use ($multiScope) {
+        $this->output->writeln('');
+        $this->output->writeln('  <options=bold>Pending changes</>');
+
+        $withChanges->each(function (array $entry) use ($multiScope) {
             $label = $multiScope
-                ? sprintf('%s · %s', $result['scope'], static::normaliseStep($result['step']))
-                : static::normaliseStep($result['step']);
+                ? sprintf('%s · %s', $entry['scope'], static::normaliseStep($entry['step']))
+                : static::normaliseStep($entry['step']);
 
             $this->output->writeln(sprintf('  <fg=cyan>%s</>', $label));
 
-            foreach ($result['changes'] as $change) {
+            foreach ($entry['changes'] as $change) {
                 $this->output->writeln(sprintf(
                     '    %s: <fg=red>%s</> <fg=gray>→</> <fg=green>%s</>',
                     $change->attribute,
@@ -300,6 +323,47 @@ trait RunsSteppedCommands
                 ));
             }
         });
+    }
+
+    /**
+     * Print the Skipping section: one concept summary per scope + reason
+     * (always, regardless of verbosity), with the individual resource names
+     * listed under each summary when `-v` is set.
+     *
+     * @param  Collection<int, array{scope: string, step: Step, reason: string}>  $skipped
+     */
+    protected function renderSkipping(Collection $skipped): void
+    {
+        if ($skipped->isEmpty()) {
+            return;
+        }
+
+        $verbose = $this->output->isVerbose();
+
+        $this->output->writeln('');
+        $this->output->writeln('  <options=bold>Skipping</>');
+
+        $skipped
+            ->groupBy(fn (array $entry) => $entry['scope'] . '|' . $entry['reason'])
+            ->each(function (Collection $group) use ($verbose) {
+                $first = $group->first();
+
+                $this->output->writeln(sprintf(
+                    '  <fg=yellow>•</> %s <fg=gray>(%d)</> — %s',
+                    $first['scope'],
+                    $group->count(),
+                    $first['reason'],
+                ));
+
+                if ($verbose) {
+                    foreach ($group as $entry) {
+                        $this->output->writeln(sprintf(
+                            '      <fg=gray>· %s</>',
+                            static::normaliseStep($entry['step']),
+                        ));
+                    }
+                }
+            });
     }
 
     protected function handleSteps(string $environment): int
@@ -323,8 +387,10 @@ trait RunsSteppedCommands
 
         $progress?->start();
 
-        $output = $steps->map(function (Step $step, int $i) use ($progress, $now) {
-            ['status' => $status, 'elapsed' => $elapsed] = $this->invokeStep($step, $progress, static::normaliseStep($step), $now);
+        $options = $this->input->getOptions();
+
+        $output = $steps->map(function (Step $step, int $i) use ($progress, $now, $options) {
+            ['status' => $status, 'elapsed' => $elapsed] = $this->invokeStep($step, $progress, static::normaliseStep($step), $now, $options);
 
             return [
                 $i + 1,
