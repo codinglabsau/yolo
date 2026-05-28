@@ -74,6 +74,20 @@ class Paths
         return Manifest::get('aws.artefacts-bucket', Helpers::keyedResourceName('artefacts'));
     }
 
+    /**
+     * Env-scoped bucket holding the shared ALB's access logs. Separate from
+     * the per-app artefacts bucket because the ALB itself is env-shared — a
+     * per-app log destination would make multiple apps fight over a single
+     * ALB attribute (`access_logs.s3.bucket` is one value, last-writer-wins),
+     * and the ELB log-delivery bucket policy needs to live in the same scope
+     * as the ALB so sync's account → environment → app ordering can write it
+     * before the ALB attribute write that depends on it.
+     */
+    public static function s3LoadBalancerLogsBucket(): string
+    {
+        return Manifest::get('aws.alb-logs-bucket', sprintf('yolo-%s-alb-logs', Helpers::environment()));
+    }
+
     public static function s3Artefacts(string $appVersion, $path = null): string
     {
         return 'artefacts/' . $appVersion . ($path ? '/' . ltrim($path, '/') : '');

@@ -42,6 +42,11 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 Steps\Sync\Environment\AttachEcsTaskRolePoliciesStep::class,
                 Steps\Sync\Environment\SyncEcsExecutionRoleStep::class,
                 Steps\Sync\Environment\AttachEcsExecutionRolePoliciesStep::class,
+                // ALB log bucket — provisioned before the load balancer so the
+                // log-delivery bucket policy already grants the ELB service
+                // principal `s3:PutObject` when `SyncLoadBalancerStep` enables
+                // access logs (AWS verifies the policy at attribute-write time).
+                Steps\Sync\Environment\SyncS3LoadBalancerLogsStep::class,
                 // load balancer + :80 listener
                 Steps\Sync\Environment\SyncLoadBalancerStep::class,
                 Steps\Sync\Environment\SyncHttpListenerStep::class,

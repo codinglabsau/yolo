@@ -74,8 +74,9 @@ class LoadBalancer implements Resource, SynchronisesConfiguration
 
         // A fresh ALB starts on AWS defaults (no deletion protection, access logs
         // off, invalid headers passed through); bring our hardened attributes onto
-        // it. The artefacts bucket access-logs policy is provisioned earlier in the
-        // sync (Storage runs before Compute), so enabling access logs validates.
+        // it. The env-scoped ALB log bucket (S3LoadBalancerLogs) is provisioned
+        // earlier in the same scope, so enabling access logs validates against the
+        // log-delivery bucket policy that already exists.
         $this->reconcileAttributes($arn, current: [], apply: true);
     }
 
@@ -163,7 +164,7 @@ class LoadBalancer implements Resource, SynchronisesConfiguration
         return [
             'deletion_protection.enabled' => 'true',
             'access_logs.s3.enabled' => 'true',
-            'access_logs.s3.bucket' => Paths::s3ArtefactsBucket(),
+            'access_logs.s3.bucket' => Paths::s3LoadBalancerLogsBucket(),
             'access_logs.s3.prefix' => $this->accessLogsPrefix(),
             'routing.http.drop_invalid_header_fields.enabled' => 'true',
             'routing.http2.enabled' => 'true',
@@ -172,12 +173,13 @@ class LoadBalancer implements Resource, SynchronisesConfiguration
     }
 
     /**
-     * Access logs land under alb-access-logs/{env}/{name}/ in the artefacts
-     * bucket, so a shared ALB's logs are grouped by its name and split from any
-     * other yolo-managed objects. AWS appends /AWSLogs/{account}/... beneath it.
+     * Access logs land under {env}/{name}/ in the env-scoped ALB log bucket,
+     * so logs from multiple ALBs (e.g. one shared, one app-specific) land in
+     * the same bucket cleanly separated by ALB name. AWS appends
+     * /AWSLogs/{account}/... beneath it.
      */
     public function accessLogsPrefix(): string
     {
-        return sprintf('alb-access-logs/%s/%s', Helpers::environment(), $this->name());
+        return sprintf('%s/%s', Helpers::environment(), $this->name());
     }
 }
