@@ -50,8 +50,8 @@ class SnsAlarmTopic implements Resource
         ]);
     }
 
-    public function synchroniseTags(): void
+    public function synchroniseTags(bool $apply): array
     {
-        Aws::synchroniseSnsTags($this->arn(), $this->tags());
+        return Aws::synchroniseSnsTags($this->arn(), $this->tags(), $apply);
     }
 }

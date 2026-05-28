@@ -67,9 +67,9 @@ class ListenerRule implements Resource
         $this->cachedRule = null;
     }
 
-    public function synchroniseTags(): void
+    public function synchroniseTags(bool $apply): array
     {
-        Aws::synchroniseElbV2Tags($this->arn(), $this->tags());
+        return Aws::synchroniseElbV2Tags($this->arn(), $this->tags(), $apply);
     }
 
     protected function find(): ?array

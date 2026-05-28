@@ -55,8 +55,8 @@ class EcsCluster implements Resource
         ]);
     }
 
-    public function synchroniseTags(): void
+    public function synchroniseTags(bool $apply): array
     {
-        Aws::synchroniseEcsTags($this->arn(), $this->tags());
+        return Aws::synchroniseEcsTags($this->arn(), $this->tags(), $apply);
     }
 }

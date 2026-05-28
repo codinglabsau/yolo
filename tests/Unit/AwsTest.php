@@ -109,6 +109,7 @@ describe('synchroniseCloudWatchLogsTags', function () {
         Aws::synchroniseCloudWatchLogsTags(
             'arn:aws:logs:ap-southeast-2:111111111111:log-group:/yolo/my-app:*',
             ['Name' => '/yolo/my-app'],
+            apply: true,
         );
 
         foreach ($captured as $call) {

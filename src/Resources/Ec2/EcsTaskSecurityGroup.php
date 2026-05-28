@@ -64,8 +64,8 @@ class EcsTaskSecurityGroup implements Resource
         ]);
     }
 
-    public function synchroniseTags(): void
+    public function synchroniseTags(bool $apply): array
     {
-        Aws::synchroniseEc2Tags($this->arn(), $this->tags());
+        return Aws::synchroniseEc2Tags($this->arn(), $this->tags(), $apply);
     }
 }

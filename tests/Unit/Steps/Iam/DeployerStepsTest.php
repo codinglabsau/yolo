@@ -234,10 +234,29 @@ it('reconciles the deployer role trust policy when the env ref changes', functio
 it('never mutates IAM on a dry-run against existing deployer resources', function () {
     manifestWithDeployer();
 
+    // Pre-stamp the expected YOLO tags on the mocked existing policy + role so
+    // the dry-run sees zero tag drift and reports clean SYNCED — otherwise the
+    // missing-tag delta surfaces as WOULD_SYNC (the new plan-time tag-drift
+    // signal, deliberate behaviour from the SynchronisesResource fix).
+    $policyTags = [
+        ['Key' => 'Name', 'Value' => 'yolo-testing-my-app-deployer-policy'],
+        ['Key' => 'yolo:scope', 'Value' => 'app'],
+        ['Key' => 'yolo:app', 'Value' => 'my-app'],
+        ['Key' => 'yolo:environment', 'Value' => 'testing'],
+    ];
+    $roleTags = [
+        ['Key' => 'Name', 'Value' => 'yolo-testing-my-app-deployer'],
+        ['Key' => 'yolo:scope', 'Value' => 'app'],
+        ['Key' => 'yolo:app', 'Value' => 'my-app'],
+        ['Key' => 'yolo:environment', 'Value' => 'testing'],
+    ];
+
     $captured = [];
     bindRoutedIamClient([
         'ListPolicies' => new Result(['Policies' => [existingDeployerPolicy()]]),
         'ListRoles' => new Result(['Roles' => [existingDeployerRole()]]),
+        'ListPolicyTags' => new Result(['Tags' => $policyTags]),
+        'ListRoleTags' => new Result(['Tags' => $roleTags]),
     ], $captured);
 
     expect((new SyncDeployerPolicyStep())(['dry-run' => true]))->toBe(StepResult::SYNCED);
@@ -247,5 +266,7 @@ it('never mutates IAM on a dry-run against existing deployer resources', functio
         ->not->toContain('CreatePolicyVersion')
         ->not->toContain('UpdateAssumeRolePolicy')
         ->not->toContain('CreatePolicy')
-        ->not->toContain('CreateRole');
+        ->not->toContain('CreateRole')
+        ->not->toContain('TagPolicy')
+        ->not->toContain('TagRole');
 });

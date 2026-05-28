@@ -72,12 +72,9 @@ class EcsTaskPolicy implements Resource
         return 'YOLO managed baseline policy granting ECS Exec session channels, SQS queue access, and SES send to the shared task role';
     }
 
-    public function synchroniseTags(): void
+    public function synchroniseTags(bool $apply): array
     {
-        Aws::iam()->tagPolicy([
-            'PolicyArn' => $this->arn(),
-            ...Aws::tags($this->tags()),
-        ]);
+        return Aws::synchroniseIamPolicyTags($this->arn(), $this->tags(), $apply);
     }
 
     /**

@@ -53,11 +53,11 @@ class HostedZone implements Resource
             'Name' => $this->apex,
         ]);
 
-        $this->synchroniseTags();
+        $this->synchroniseTags(apply: true);
     }
 
-    public function synchroniseTags(): void
+    public function synchroniseTags(bool $apply): array
     {
-        Aws::synchroniseRoute53Tags($this->arn(), $this->tags());
+        return Aws::synchroniseRoute53Tags($this->arn(), $this->tags(), $apply);
     }
 }

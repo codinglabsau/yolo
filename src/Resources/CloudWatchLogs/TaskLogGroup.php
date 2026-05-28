@@ -57,9 +57,9 @@ class TaskLogGroup implements Resource
         ]);
     }
 
-    public function synchroniseTags(): void
+    public function synchroniseTags(bool $apply): array
     {
-        Aws::synchroniseCloudWatchLogsTags($this->arn(), $this->tags());
+        return Aws::synchroniseCloudWatchLogsTags($this->arn(), $this->tags(), $apply);
     }
 
     /**

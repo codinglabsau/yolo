@@ -38,7 +38,10 @@ function fakeResource(Scope $scope, string $name): Resource
 
         public function create(): void {}
 
-        public function synchroniseTags(): void {}
+        public function synchroniseTags(bool $apply): array
+        {
+            return [];
+        }
     };
 }
 

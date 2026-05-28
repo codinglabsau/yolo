@@ -61,9 +61,9 @@ class TargetGroup implements Resource, SynchronisesConfiguration
         $this->reconcileDeregistrationDelay($arn, apply: true);
     }
 
-    public function synchroniseTags(): void
+    public function synchroniseTags(bool $apply): array
     {
-        Aws::synchroniseElbV2Tags($this->arn(), $this->tags());
+        return Aws::synchroniseElbV2Tags($this->arn(), $this->tags(), $apply);
     }
 
     /**

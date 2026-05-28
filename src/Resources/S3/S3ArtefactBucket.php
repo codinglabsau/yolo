@@ -52,16 +52,13 @@ class S3ArtefactBucket implements Resource, SynchronisesConfiguration
             'Bucket' => $this->name(),
         ]);
 
-        $this->synchroniseTags();
+        $this->synchroniseTags(apply: true);
         $this->synchroniseConfiguration();
     }
 
-    public function synchroniseTags(): void
+    public function synchroniseTags(bool $apply): array
     {
-        Aws::s3()->putBucketTagging([
-            'Bucket' => $this->name(),
-            'Tagging' => Aws::tags($this->tags(), wrap: 'TagSet'),
-        ]);
+        return Aws::synchroniseS3Tags($this->name(), $this->tags(), $apply);
     }
 
     /**

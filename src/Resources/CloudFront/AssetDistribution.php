@@ -128,17 +128,9 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
         $this->grantBucketAccess($bucket, $distribution['ARN']);
     }
 
-    public function synchroniseTags(): void
+    public function synchroniseTags(bool $apply): array
     {
-        Aws::cloudFront()->tagResource([
-            'Resource' => $this->arn(),
-            'Tags' => [
-                'Items' => collect(Aws::expectedTags($this->tags()))
-                    ->map(fn ($value, $key) => ['Key' => $key, 'Value' => $value])
-                    ->values()
-                    ->all(),
-            ],
-        ]);
+        return Aws::synchroniseCloudFrontTags($this->arn(), $this->tags(), $apply);
     }
 
     /**

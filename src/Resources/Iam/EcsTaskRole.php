@@ -67,12 +67,9 @@ class EcsTaskRole implements Resource
         return 'YOLO managed ECS task role - shared default across all apps in this environment';
     }
 
-    public function synchroniseTags(): void
+    public function synchroniseTags(bool $apply): array
     {
-        Aws::iam()->tagRole([
-            'RoleName' => $this->name(),
-            ...Aws::tags($this->tags()),
-        ]);
+        return Aws::synchroniseIamRoleTags($this->name(), $this->tags(), $apply);
     }
 
     /**

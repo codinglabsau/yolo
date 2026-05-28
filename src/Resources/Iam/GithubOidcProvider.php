@@ -6,13 +6,17 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
+use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * The account-level IAM OIDC identity provider for GitHub Actions. There can be
  * exactly one provider per URL per account — it is shared across every YOLO
- * environment and app, so it is deliberately NOT keyed by environment and never
- * carries the yolo:environment tag.
+ * environment and app, so it is deliberately NOT keyed by environment. The
+ * resource declares Scope::Account, which makes `Aws::expectedTags()` skip the
+ * `yolo:environment` baseline (it would be a false label and a teardown hazard);
+ * `ResolvesTags` still stamps `yolo:scope=account` as the positive ownership
+ * marker so `audit:account` can recognise it.
  *
  * The deployer role's trust policy federates to this provider's ARN, letting a
  * GitHub Actions workflow exchange its OIDC token for short-lived AWS credentials
@@ -20,6 +24,8 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  */
 class GithubOidcProvider implements Resource
 {
+    use ResolvesTags;
+
     public const URL = 'token.actions.githubusercontent.com';
 
     public const AUDIENCE = 'sts.amazonaws.com';
@@ -43,11 +49,6 @@ class GithubOidcProvider implements Resource
     public function scope(): Scope
     {
         return Scope::Account;
-    }
-
-    public function tags(): array
-    {
-        return ['Name' => self::URL];
     }
 
     public function exists(): bool
@@ -74,20 +75,12 @@ class GithubOidcProvider implements Resource
             'Url' => sprintf('https://%s', self::URL),
             'ClientIDList' => [self::AUDIENCE],
             'ThumbprintList' => self::THUMBPRINTS,
-            // Shared account singleton — tag with Name only, never yolo:environment.
-            'Tags' => [
-                ['Key' => 'Name', 'Value' => self::URL],
-            ],
+            ...Aws::tags($this->tags()),
         ]);
     }
 
-    public function synchroniseTags(): void
+    public function synchroniseTags(bool $apply): array
     {
-        Aws::iam()->tagOpenIDConnectProvider([
-            'OpenIDConnectProviderArn' => $this->arn(),
-            'Tags' => [
-                ['Key' => 'Name', 'Value' => self::URL],
-            ],
-        ]);
+        return Aws::synchroniseIamOidcProviderTags($this->arn(), $this->tags(), $apply);
     }
 }

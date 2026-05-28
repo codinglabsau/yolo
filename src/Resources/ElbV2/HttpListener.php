@@ -62,8 +62,8 @@ class HttpListener implements Resource
         ]);
     }
 
-    public function synchroniseTags(): void
+    public function synchroniseTags(bool $apply): array
     {
-        Aws::synchroniseElbV2Tags($this->arn(), $this->tags());
+        return Aws::synchroniseElbV2Tags($this->arn(), $this->tags(), $apply);
     }
 }
