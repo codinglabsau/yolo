@@ -16,7 +16,18 @@ class RunScopesFakeStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        return StepResult::CREATED;
+        // Honour dry-run so the plan pass surfaces this step as pending work; apply
+        // would otherwise drop it (status CREATED counts as already-done).
+        return Arr::get($options, 'dry-run') ? StepResult::WOULD_CREATE : StepResult::CREATED;
+    }
+}
+
+/** A step that's already in sync — clean SYNCED on both passes, never any drift. */
+class RunScopesCleanStep implements Step
+{
+    public function __invoke(array $options): StepResult
+    {
+        return StepResult::SYNCED;
     }
 }
 
@@ -182,4 +193,38 @@ it('dry-run renders the plan and stops — no apply, no results table, no comple
         ->toContain('idle_timeout')
         ->toContain('Dry run')
         ->not->toContain('Synced testing'); // no apply ran
+});
+
+it('skips the apply pass when nothing drifted — no confirm, no results table', function () {
+    $output = runScopesCapture(
+        ['environment' => [RunScopesCleanStep::class, RunScopesCleanStep::class]],
+        ['--no-progress' => true],
+    );
+
+    expect($output)
+        ->toContain('Already in sync')
+        ->not->toContain('Pending changes')
+        ->not->toContain('Synced testing'); // apply never ran
+});
+
+it('apply pass runs only the pending steps — clean steps are dropped from the results table', function () {
+    $output = runScopesCapture(
+        ['environment' => [RunScopesCleanStep::class, RunScopesChangeStep::class, RunScopesCleanStep::class]],
+        ['--no-progress' => true],
+    );
+
+    // The drifted step appears in the apply table (renders as SYNCED post-apply
+    // because RunScopesChangeStep returns SYNCED when dry-run is off), and the
+    // clean RunScopesCleanSteps never re-ran — only one step is in the table.
+    expect($output)
+        ->toContain('Pending changes')
+        ->toContain('idle_timeout')
+        ->toContain('Synced testing')
+        ->toContain('Run scopes change');
+
+    // Only one row in the table — the table border ─ rules sit immediately above
+    // and below the row, so a single `Run scopes change` between them confirms
+    // the clean steps were dropped from apply.
+    expect(substr_count($output, 'Run scopes change'))->toBe(2); // pending + apply row
+    expect($output)->not->toContain('Run scopes clean');
 });
