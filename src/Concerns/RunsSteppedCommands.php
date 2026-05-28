@@ -33,13 +33,15 @@ trait RunsSteppedCommands
     /**
      * Collate, plan, confirm and apply a set of scope-grouped steps as a single flow.
      *
-     * The flow is **approve-before-apply**: every step is invoked twice. A plan
-     * pass with `dry-run` injected runs each reconciler in compute-only mode and
-     * collects its status + attribute-level changes; the runner renders the full
-     * "Pending changes" diff and the "Skipping" summary against that, *then*
-     * gates the confirm, *then* runs the apply pass with the original options.
-     * The plan pass repeats read-only `Get*`/`List*` calls (one extra read per
-     * step) — fine at sync scale; the alternative is approving blind.
+     * The flow is **approve-before-apply**. A plan pass with `dry-run` injected runs
+     * each reconciler in compute-only mode and collects its status + attribute-level
+     * changes; the runner renders the full "Pending changes" diff and the "Skipping"
+     * summary, gates the confirm, *then* runs the apply pass with the original
+     * options — but only over the steps the plan flagged as pending (WOULD_CREATE /
+     * WOULD_SYNC, or anything that recorded a change). Clean steps — already-synced
+     * resources with no drift — are dropped after plan, so apply doesn't repeat
+     * their `exists()` / Describe* round-trips or re-tag them, and the post-apply
+     * results table only lists what actually changed.
      *
      * @param  array<string, array<int, class-string>>  $scopes  ordered label => step class names
      */
@@ -69,23 +71,54 @@ trait RunsSteppedCommands
             return SymfonyCommand::SUCCESS;
         }
 
+        $pending = $plan->filter(fn (array $entry) => static::planEntryHasWork($entry))->values();
+
+        if ($pending->isEmpty()) {
+            info(sprintf('Already in sync — %s has no pending changes.', $environment));
+
+            return SymfonyCommand::SUCCESS;
+        }
+
         if (! $this->confirmGate($environment)) {
             warning('Aborted — no changes made.');
 
             return SymfonyCommand::SUCCESS;
         }
 
+        // Apply pass only over the pending entries — the plan-clean steps are
+        // already verified in sync and don't need a second Describe* + tag re-put.
+        $applyPlan = $pending->map(fn (array $entry) => [
+            'scope' => $entry['scope'],
+            'step' => $entry['step'],
+        ])->values();
+
         // Step instances are reused across passes; clear the changes the plan
         // pass recorded so RecordsChanges starts fresh under apply.
-        $this->resetRecordedChanges($planned);
+        $this->resetRecordedChanges($applyPlan);
 
         $now = time();
 
-        $applied = $this->executePlan($planned, $now, apply: true);
+        $applied = $this->executePlan($applyPlan, $now, apply: true);
 
         $this->renderResults($environment, $applied, time() - $now);
 
         return SymfonyCommand::SUCCESS;
+    }
+
+    /**
+     * Did the plan pass flag this step as having work for apply to do?
+     *
+     * A step has pending work when it would create or sync a resource, or when it
+     * recorded an attribute-level Change. Everything else — clean SYNCED, SKIPPED,
+     * CUSTOM_MANAGED — is dropped before apply.
+     *
+     * @param  array{status: StepResult|string, changes: array<int, Change>}  $entry
+     */
+    protected static function planEntryHasWork(array $entry): bool
+    {
+        return $entry['status'] === StepResult::WOULD_CREATE
+            || $entry['status'] === StepResult::WOULD_SYNC
+            || $entry['changes'] !== [];
     }
 
     /**
