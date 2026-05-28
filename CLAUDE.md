@@ -55,8 +55,8 @@ All commands extend `Command` (base) or, for multi-step work, `SteppedCommand` /
 - **`SyncSteppedCommand`** — a `SteppedCommand` whose steps are declared as scope-labelled `domains()`. Adds the
   `--dry-run`, `--force`, `--no-progress`, and `--tenant=<id>` options and an `environment` argument.
 
-The full command set: `init`, `env:pull`, `env:push`, `build`, `deploy`, `run`, `audit`, and the scope-grouped sync
-commands below.
+The full command set: `init`, `env:pull`, `env:push`, `build`, `deploy`, `run`, and the scope-grouped `sync` / `audit`
+verbs below.
 
 ### Sync is scope-first (`sync` / `sync:account` / `sync:environment` / `sync:app`)
 
@@ -74,6 +74,14 @@ allowed to write it:
 attaches to* shared infra (a listener rule, an SNI cert) — it never mutates it, so the shared tier keeps a single
 writer. Two env-named resources (the HTTPS `:443` listener and the RDS security group) are provisioned by `sync:app`
 by exception, because their creation has a per-app dependency; both are created-if-missing and never mutated.
+
+### Audit is scope-first too (`audit` / `audit:environment` / `audit:app`)
+
+Read-only counterpart to `sync` with the same scope split. `audit <env>` queries every resource tagged
+`yolo:environment=<env>` via the Resource Groups Tagging API, classifies each as `ok` / `drift` / `unattributed`
+(drift = `yolo:app` pointing at an app with no live Fargate cluster), and renders them grouped by scope.
+`audit:environment <env>` narrows to env-tier rows; `audit:app <env> <app>` narrows to one app. `--drift` is a
+universal flag — a no-op on `audit:environment` since env-scope resources never carry `yolo:app`.
 
 ### Steps (`src/Steps/`)
 

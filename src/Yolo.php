@@ -31,8 +31,10 @@ class Yolo
         Commands\SyncEnvironmentCommand::class,
         Commands\SyncAppCommand::class,
 
-        // Audit
+        // Audit (scope-grouped: account → environment → app, orchestrated by `audit`)
         Commands\AuditCommand::class,
+        Commands\AuditEnvironmentCommand::class,
+        Commands\AuditAppCommand::class,
     ];
 
     public function __construct()
