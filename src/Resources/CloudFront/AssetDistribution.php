@@ -57,13 +57,16 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
     protected const ORIGIN_REQUEST_POLICY_ID = '';
 
     // Custom response-headers policy that stamps a static
-    // `Access-Control-Allow-Origin: *` on EVERY response via a custom header —
-    // not a managed CORS policy. A managed CORS policy only adds the header when
-    // the request carries Origin, and CloudFront drops it on the revalidation it
-    // forces for `Cache-Control: no-cache` / `max-age=0` (reloads, DevTools
-    // "Disable cache"); a custom header is unconditional and survives that.
-    // Account-scoped and generic, so every YOLO asset distribution shares the one
-    // policy — looked up by name like the OAC.
+    // `Access-Control-Allow-Origin: *` on every response, via the policy's
+    // dedicated CorsConfig with OriginOverride: true. AWS rejects ACAO/ACAM/etc.
+    // as CustomHeadersConfig entries ("cannot be set as custom header") — those
+    // headers belong in CorsConfig, where CloudFront documents the policy's
+    // headers as "added to every response that CloudFront sends" for the
+    // matched cache behaviour. OriginOverride: true means the policy values
+    // win even when the origin's response includes its own CORS headers, so
+    // there's no Origin-dependent variance reaching the cached object.
+    // Account-scoped and generic, so every YOLO asset distribution shares the
+    // one policy — looked up by name like the OAC.
     protected const RESPONSE_HEADERS_POLICY_NAME = 'yolo-asset-headers';
 
     // Build assets live under a per-deploy `builds/{version}/` prefix (ASSET_URL
@@ -278,15 +281,33 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
                 'ResponseHeadersPolicyConfig' => [
                     'Name' => static::RESPONSE_HEADERS_POLICY_NAME,
                     'Comment' => 'YOLO build assets — static Access-Control-Allow-Origin: * on every response',
-                    'CustomHeadersConfig' => [
-                        'Quantity' => 1,
-                        'Items' => [
-                            [
-                                'Header' => 'Access-Control-Allow-Origin',
-                                'Value' => '*',
-                                'Override' => true,
-                            ],
+                    'CorsConfig' => [
+                        // `*` matches every cross-origin caller — the asset bucket
+                        // is public-by-design (immutable, content-hashed build
+                        // artefacts) so there's no caller to discriminate against.
+                        'AccessControlAllowOrigins' => [
+                            'Quantity' => 1,
+                            'Items' => ['*'],
                         ],
+                        // Browsers only fetch static assets with GET/HEAD plus the
+                        // OPTIONS preflight; anything else against the asset
+                        // distribution would already be wrong.
+                        'AccessControlAllowMethods' => [
+                            'Quantity' => 3,
+                            'Items' => ['GET', 'HEAD', 'OPTIONS'],
+                        ],
+                        'AccessControlAllowHeaders' => [
+                            'Quantity' => 1,
+                            'Items' => ['*'],
+                        ],
+                        // ACAO: * is incompatible with credentials, so this MUST
+                        // be false — AWS would reject the combination otherwise.
+                        'AccessControlAllowCredentials' => false,
+                        // The asset bucket no longer sees Origin (no origin-request
+                        // policy), so it never sends its own CORS headers — but
+                        // setting OriginOverride: true makes the policy's values
+                        // win regardless, even if S3 ever surfaces one.
+                        'OriginOverride' => true,
                     ],
                 ],
             ])['ResponseHeadersPolicy']['Id'];
