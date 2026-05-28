@@ -17,7 +17,7 @@ function statusFromInvoke(Step $step): StepResult|string
     $command->input = new ArrayInput(['environment' => 'testing'], $command->getDefinition());
 
     return (new ReflectionMethod($command, 'invokeStep'))
-        ->invoke($command, $step, null, 'label', time())['status'];
+        ->invoke($command, $step, null, 'label', time(), [])['status'];
 }
 
 it('coerces a void step return to SUCCESS', function () {
