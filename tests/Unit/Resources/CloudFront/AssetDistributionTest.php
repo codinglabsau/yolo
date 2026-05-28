@@ -50,7 +50,7 @@ beforeEach(function () {
 
 it('names + tags per app + environment', function () {
     expect((new AssetDistribution())->name())->toBe('yolo-testing-my-app-assets');
-    expect((new AssetDistribution())->tags())->toBe(['Name' => 'yolo-testing-my-app-assets', 'yolo:app' => 'my-app']);
+    expect((new AssetDistribution())->tags())->toBe(['Name' => 'yolo-testing-my-app-assets', 'yolo:scope' => 'app', 'yolo:app' => 'my-app']);
 });
 
 it('resolves its domain from the distribution matching its comment', function () {

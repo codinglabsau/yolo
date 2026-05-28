@@ -9,13 +9,18 @@ use Codinglabs\Yolo\Enums\Scope;
 
 /**
  * Tags and name derived from the resource's scope() — the single source of
- * truth. App-scoped resources carry the yolo:app owner tag; env- and
- * account-scoped (shared) resources resolve to Name only. The yolo:environment
- * baseline is still added by Aws::tags()/expectedTags() at write time.
+ * truth. Every YOLO-managed resource carries a `yolo:scope` tag matching its
+ * scope() (app / env / account); App-scoped resources additionally carry the
+ * `yolo:app` owner tag. The `yolo:environment` baseline is still added by
+ * Aws::tags()/expectedTags() at write time.
+ *
+ * The `yolo:scope` tag is what lets `audit` tell a YOLO-declared env-shared
+ * resource (ALB, VPC, subnets) apart from a genuinely rogue one — without it,
+ * "no `yolo:app` tag" was indistinguishable from "shouldn't be here".
  *
  * Driving everything off scope() means a resource declares its tier once and
- * its name exclusivity, its owner tag, and its writing command all follow — they
- * can't drift apart.
+ * its name exclusivity, its owner tag, the scope tag and its writing command
+ * all follow — they can't drift apart.
  *
  * @phpstan-require-implements Resource
  */
@@ -25,6 +30,7 @@ trait ResolvesTags
     {
         return [
             'Name' => $this->name(),
+            'yolo:scope' => $this->scope()->value,
             ...($this->scope() === Scope::App ? ['yolo:app' => Manifest::name()] : []),
         ];
     }

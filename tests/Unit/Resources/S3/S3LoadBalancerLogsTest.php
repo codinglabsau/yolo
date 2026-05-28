@@ -54,8 +54,8 @@ it('is env-scoped and named yolo-{env}-alb-logs', function () {
 
     expect($bucket->name())->toBe('yolo-testing-alb-logs')
         ->and($bucket->scope())->toBe(Scope::Env)
-        // env-scoped → no yolo:app owner tag (only Name)
-        ->and($bucket->tags())->toBe(['Name' => 'yolo-testing-alb-logs']);
+        // env-scoped → yolo:scope=env, no yolo:app owner tag
+        ->and($bucket->tags())->toBe(['Name' => 'yolo-testing-alb-logs', 'yolo:scope' => 'env']);
 });
 
 it('reconciles BPA + versioning + the log-delivery policy when none of them match', function () {

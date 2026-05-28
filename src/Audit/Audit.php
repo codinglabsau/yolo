@@ -25,7 +25,7 @@ class Audit
 
     public const STATUS_DRIFT = 'drift';
 
-    public const STATUS_UNATTRIBUTED = 'unattributed';
+    public const STATUS_ROGUE = 'rogue';
 
     public const SCOPE_ACCOUNT = 'account';
 
@@ -67,16 +67,23 @@ class Audit
     }
 
     /**
-     * Classify every tagged resource as belonging to a live app, drift (tagged
-     * for an app that's no longer live), or unattributed (no yolo:app tag — shared
-     * infrastructure, or a resource a sync hasn't stamped yet).
+     * Classify every tagged resource against the live AWS inventory:
+     *   - `ok`     — declared and accounted for. Either app-scope with a
+     *                `yolo:app` pointing at a live app, or env/account-scope
+     *                with a `yolo:scope` tag (shared infra YOLO owns by design).
+     *   - `drift`  — `yolo:app` points at an app whose cluster is gone.
+     *   - `rogue`  — has `yolo:environment` (so the audit found it) but no
+     *                YOLO ownership marker (`yolo:app`, `yolo:scope=env`,
+     *                `yolo:scope=account`). Either alpha-era debris from
+     *                before the scope-tag rollout, or a hand-rolled resource
+     *                that sneaked into the env namespace.
      *
      * Drift is only ever raised from an explicit yolo:app pointing at a dead app,
-     * so shared infrastructure (which carries no yolo:app) is never false-flagged.
+     * so shared infrastructure is never false-flagged.
      *
      * @param  array<int, array{ResourceARN: string, Tags?: array<int, array{Key: string, Value: string}>}>  $taggedResources
      * @param  array<int, string>  $liveApps
-     * @return array{resources: array<int, array<string, mixed>>, liveApps: array<int, string>, okCount: int, driftCount: int, unattributedCount: int}
+     * @return array{resources: array<int, array<string, mixed>>, liveApps: array<int, string>, okCount: int, driftCount: int, rogueCount: int}
      */
     public static function classify(array $taggedResources, array $liveApps): array
     {
@@ -85,12 +92,16 @@ class Audit
             ->map(function (array $resource) use ($liveApps) {
                 $tags = Aws::flattenTags($resource['Tags'] ?? []);
                 $app = $tags[self::APP_TAG] ?? null;
+                $scopeTag = $tags[self::SCOPE_TAG] ?? null;
                 $parsed = Arn::parse($resource['ResourceARN']);
 
+                $sharedScope = in_array($scopeTag, [self::SCOPE_ENV, self::SCOPE_ACCOUNT], true);
+
                 $status = match (true) {
-                    $app === null => self::STATUS_UNATTRIBUTED,
-                    in_array($app, $liveApps, true) => self::STATUS_OK,
-                    default => self::STATUS_DRIFT,
+                    $app !== null && in_array($app, $liveApps, true) => self::STATUS_OK,
+                    $app !== null => self::STATUS_DRIFT,
+                    $sharedScope => self::STATUS_OK,
+                    default => self::STATUS_ROGUE,
                 };
 
                 return [
@@ -108,17 +119,16 @@ class Audit
             'liveApps' => $liveApps,
             'okCount' => $resources->where('status', self::STATUS_OK)->count(),
             'driftCount' => $resources->where('status', self::STATUS_DRIFT)->count(),
-            'unattributedCount' => $resources->where('status', self::STATUS_UNATTRIBUTED)->count(),
+            'rogueCount' => $resources->where('status', self::STATUS_ROGUE)->count(),
         ];
     }
 
     /**
      * Ownership scope of a resource — account / env / app — mirroring the
-     * `Enums\Scope` a resource declares in code. Prefers an explicit `yolo:scope`
-     * tag if one is present (forward-compatible for when sync starts stamping it),
-     * otherwise derives it: a `yolo:app` tag means app-scope; the account-global
-     * resources (the GitHub OIDC provider) are account-scope; everything else
-     * yolo-tagged is env-shared infrastructure.
+     * `Enums\Scope` a resource declares in code. Reads the explicit `yolo:scope`
+     * tag stamped by sync; falls back to inference for resources synced before
+     * the tag rollout (a `yolo:app` tag means app-scope; the GitHub OIDC provider
+     * is account-scope; everything else yolo-tagged is env-shared infra).
      *
      * @param  array<string, string>  $tags
      */
@@ -156,7 +166,7 @@ class Audit
     public static function orderKey(array $resource): string
     {
         $scopeOrder = [self::SCOPE_ACCOUNT => 0, self::SCOPE_ENV => 1, self::SCOPE_APP => 2];
-        $statusOrder = [self::STATUS_DRIFT => 0, self::STATUS_UNATTRIBUTED => 1, self::STATUS_OK => 2];
+        $statusOrder = [self::STATUS_DRIFT => 0, self::STATUS_ROGUE => 1, self::STATUS_OK => 2];
 
         return sprintf(
             '%d-%d-%s-%s',

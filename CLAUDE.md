@@ -80,8 +80,14 @@ env-scope, created-if-missing, and never mutated by `sync:app`.
 ### Audit is scope-first too (`audit` / `audit:environment` / `audit:app`)
 
 Read-only counterpart to `sync` with the same scope split. `audit <env>` queries every resource tagged
-`yolo:environment=<env>` via the Resource Groups Tagging API, classifies each as `ok` / `drift` / `unattributed`
-(drift = `yolo:app` pointing at an app with no live Fargate cluster), and renders them grouped by scope.
+`yolo:environment=<env>` via the Resource Groups Tagging API, classifies each as `ok` / `drift` / `rogue`, and
+renders them grouped by scope. Sync stamps a positive ownership marker on everything it creates —
+`yolo:app=<app>` for App-scope, `yolo:scope=env`/`=account` for shared infra — so the three statuses mean:
+
+- `ok` — `yolo:app` points at a live app, or `yolo:scope=env`/`=account` is present (declared shared infra)
+- `drift` — `yolo:app` points at an app whose Fargate cluster is gone
+- `rogue` — has `yolo:environment` but no YOLO ownership marker (alpha-era debris, or hand-rolled infra in the env namespace)
+
 `audit:environment <env>` narrows to env-tier rows; `audit:app <env> <app>` narrows to one app. `--drift` is a
 universal flag — a no-op on `audit:environment` since env-scope resources never carry `yolo:app`.
 

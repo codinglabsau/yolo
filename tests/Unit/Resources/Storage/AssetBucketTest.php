@@ -57,7 +57,7 @@ it('derives the bucket ARN from the name', function () {
 });
 
 it('tags the bucket with its name and app owner', function () {
-    expect((new AssetBucket())->tags())->toBe(['Name' => 'yolo-testing-my-app-assets', 'yolo:app' => 'my-app']);
+    expect((new AssetBucket())->tags())->toBe(['Name' => 'yolo-testing-my-app-assets', 'yolo:scope' => 'app', 'yolo:app' => 'my-app']);
 });
 
 it('enforces the bucket CORS configuration through sync', function () {
