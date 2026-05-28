@@ -128,6 +128,12 @@ it('pins every tracked 5xx to a zero error-caching TTL', function () {
     expect($errors['Quantity'])->toBe(4);
     expect(collect($errors['Items'])->pluck('ErrorCachingMinTTL')->unique()->all())->toBe([0]);
     expect(collect($errors['Items'])->pluck('ErrorCode')->all())->toBe([500, 502, 503, 504]);
+
+    // AWS rejects UpdateDistribution with "The specified list of custom error
+    // responses does not exist or is not valid" when ResponsePagePath /
+    // ResponseCode are omitted. Pin them as empty strings on every item.
+    expect(collect($errors['Items'])->pluck('ResponsePagePath')->unique()->all())->toBe(['']);
+    expect(collect($errors['Items'])->pluck('ResponseCode')->unique()->all())->toBe(['']);
 });
 
 it('creates the response-headers policy with CorsConfig (not CustomHeadersConfig — AWS rejects ACAO there)', function () {
