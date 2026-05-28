@@ -162,11 +162,7 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
 
         $desired = static::reconcilableBehaviour($this->resolveResponseHeadersPolicyId($apply));
 
-        $changes = collect($desired)
-            ->filter(fn (mixed $value, string $key) => ($behaviour[$key] ?? null) !== $value)
-            ->map(fn (mixed $value, string $key) => Change::make($key, $behaviour[$key] ?? null, $value))
-            ->values()
-            ->all();
+        $changes = static::behaviourDrift($behaviour, $desired);
 
         if ($errorChange = static::errorCachingDrift((array) ($config['CustomErrorResponses'] ?? []))) {
             $changes[] = $errorChange;
@@ -231,6 +227,26 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
                 'ErrorCachingMinTTL' => 0,
             ], static::ERROR_CODES_NOT_CACHED),
         ];
+    }
+
+    /**
+     * Drifted reconcilable-behaviour fields between live and desired. Treats an
+     * absent live value as equivalent to a desired empty string — CloudFront
+     * returns an unset OriginRequestPolicyId as absent on read but accepts ''
+     * on UpdateDistribution write, so the value `'' → absent` round-trips and
+     * would otherwise read as permanent drift on every plan after apply.
+     *
+     * @param  array<string, mixed>  $behaviour
+     * @param  array<string, mixed>  $desired
+     * @return array<int, Change>
+     */
+    public static function behaviourDrift(array $behaviour, array $desired): array
+    {
+        return collect($desired)
+            ->filter(fn (mixed $value, string $key) => ($behaviour[$key] ?? '') !== $value)
+            ->map(fn (mixed $value, string $key) => Change::make($key, $behaviour[$key] ?? null, $value))
+            ->values()
+            ->all();
     }
 
     /**

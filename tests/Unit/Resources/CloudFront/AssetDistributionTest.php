@@ -91,18 +91,21 @@ it('reconciles the managed cache-behaviour policy fields', function () {
 });
 
 it('sees no drift when the live behaviour already carries the managed fields', function () {
+    // Realistic post-sync shape: CloudFront's GetDistributionConfig omits
+    // OriginRequestPolicyId from the response when no policy is attached, even
+    // though UpdateDistribution wrote it as ''. Filter must treat absent ↔ ''
+    // as equivalent or every plan reports phantom `OriginRequestPolicyId:
+    // absent → ` drift forever.
     $live = [
         'TargetOriginId' => 'asset-bucket',
         'ViewerProtocolPolicy' => 'redirect-to-https',
         'Compress' => true,
         'CachePolicyId' => '658327ea-f89d-4fab-a63d-7e88639e58f6',
-        'OriginRequestPolicyId' => '',
         'ResponseHeadersPolicyId' => 'rhp-resolved-id',
         'MinTTL' => 0,
     ];
 
-    // No update should fire — merging the managed fields leaves the block unchanged.
-    expect(array_merge($live, AssetDistribution::reconcilableBehaviour('rhp-resolved-id')) == $live)->toBeTrue();
+    expect(AssetDistribution::behaviourDrift($live, AssetDistribution::reconcilableBehaviour('rhp-resolved-id')))->toBe([]);
 });
 
 it('sees drift on a distribution still using the Origin-keyed cache policy', function () {
@@ -119,7 +122,10 @@ it('sees drift on a distribution still using the Origin-keyed cache policy', fun
         'MinTTL' => 0,
     ];
 
-    expect(array_merge($preFix, AssetDistribution::reconcilableBehaviour('rhp-resolved-id')) == $preFix)->toBeFalse();
+    $changes = AssetDistribution::behaviourDrift($preFix, AssetDistribution::reconcilableBehaviour('rhp-resolved-id'));
+
+    expect(collect($changes)->pluck('attribute')->all())
+        ->toEqualCanonicalizing(['CachePolicyId', 'OriginRequestPolicyId', 'ResponseHeadersPolicyId']);
 });
 
 it('pins every tracked 5xx to a zero error-caching TTL', function () {
