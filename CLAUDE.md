@@ -67,13 +67,15 @@ allowed to write it:
 | Command | `Scope` | Blast radius | Examples |
 | --- | --- | --- | --- |
 | `sync:account` | `Account` | the whole AWS account | GitHub OIDC provider |
-| `sync:environment <env>` | `Env` | every app in the environment | VPC, subnets, IGW/routes, RDS SG, SNS topic, shared task/exec IAM roles, ALB + `:80` listener |
-| `sync:app <env>` | `App` | one app | Storage, app IAM, Fargate (cluster/service/task def + `:443` listener + RDS-SG ingress), CDN, IVS, mode-aware Queue/DNS |
+| `sync:environment <env>` | `Env` | every app in the environment | VPC, subnets, IGW/routes, RDS SG, SNS topic, shared task/exec IAM roles, ALB + `:80` and `:443` listeners |
+| `sync:app <env>` | `App` | one app | Storage, app IAM, Fargate (cluster/service/task def), CDN, IVS, mode-aware Queue/DNS |
 
 `sync` orchestrates **account → environment → app** in dependency order. `sync:app` only depends on and *additively
-attaches to* shared infra (a listener rule, an SNI cert) — it never mutates it, so the shared tier keeps a single
-writer. Two env-named resources (the HTTPS `:443` listener and the RDS security group) are provisioned by `sync:app`
-by exception, because their creation has a per-app dependency; both are created-if-missing and never mutated.
+attaches to* shared infra (its SNI cert + listener-rule on the env `:443` listener, its 3306 ingress on the env RDS
+SG) — never mutating the shared resource itself, so the shared tier keeps a single writer. Two env-scope resources
+(the HTTPS `:443` listener and the RDS SG) are bootstrapped from `sync:app` by exception because their creation has
+a per-app trigger — the listener needs a first SNI cert, the SG needs a task SG to authorise — but both are tagged
+env-scope, created-if-missing, and never mutated by `sync:app`.
 
 ### Audit is scope-first too (`audit` / `audit:environment` / `audit:app`)
 
@@ -92,8 +94,8 @@ that axis belongs to Resources):
 - `Build/`, `Deploy/` — lifecycle phase: build the image / run the deployment (see flow below)
 - `Sync/Account/`, `Sync/Environment/`, `Sync/App/` — the sync steps, grouped by the **scope** that writes them, so
   each dir mirrors its `sync:account` / `sync:environment` / `sync:app` command's `domains()`. `Sync/App/{Solo,Tenant,
-  Landlord}/` holds the app-mode variants (single-tenant vs multi-tenant fan-out). The two by-exception env-named
-  resources provisioned from `sync:app` (the `:443` listener, the RDS security group) live under `Sync/App/`.
+  Landlord}/` holds the app-mode variants (single-tenant vs multi-tenant fan-out). The two by-exception env-scope
+  resources bootstrapped from `sync:app` (the `:443` listener, the RDS security group) live under `Sync/App/`.
 
 A sync step is typically thin: it `use`s the `SynchronisesResource` trait and delegates to a `Resource`
 (e.g. `return $this->syncResource(new TargetGroup(), $options);`). Steps decide *when* to create/sync; Resources
