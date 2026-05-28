@@ -212,7 +212,13 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
      * blip is never cached, so the next request retries the origin and self-heals
      * rather than pinning a broken entry against an immutable asset path.
      *
-     * @return array{Quantity: int, Items: array<int, array{ErrorCode: int, ErrorCachingMinTTL: int}>}
+     * `ResponsePagePath` and `ResponseCode` must be sent as empty strings even
+     * when we don't want a custom error page — AWS rejects UpdateDistribution
+     * with "The specified list of custom error responses does not exist or is
+     * not valid" if they're omitted. CloudFront stores them as `''` in the
+     * default-no-custom-page case, matching what DescribeDistribution returns.
+     *
+     * @return array{Quantity: int, Items: array<int, array{ErrorCode: int, ResponsePagePath: string, ResponseCode: string, ErrorCachingMinTTL: int}>}
      */
     public static function customErrorResponses(): array
     {
@@ -220,6 +226,8 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
             'Quantity' => count(static::ERROR_CODES_NOT_CACHED),
             'Items' => array_map(fn (int $code) => [
                 'ErrorCode' => $code,
+                'ResponsePagePath' => '',
+                'ResponseCode' => '',
                 'ErrorCachingMinTTL' => 0,
             ], static::ERROR_CODES_NOT_CACHED),
         ];
