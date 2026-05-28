@@ -80,8 +80,8 @@ function syncedLoadBalancerAttributes(array $overrides = []): array
     $attributes = array_merge([
         'deletion_protection.enabled' => 'true',
         'access_logs.s3.enabled' => 'true',
-        'access_logs.s3.bucket' => 'yolo-testing-my-app-artefacts',
-        'access_logs.s3.prefix' => 'alb-access-logs/testing/yolo-testing',
+        'access_logs.s3.bucket' => 'yolo-testing-alb-logs',
+        'access_logs.s3.prefix' => 'testing/yolo-testing',
         'routing.http.drop_invalid_header_fields.enabled' => 'true',
         'routing.http2.enabled' => 'true',
         'idle_timeout.timeout_seconds' => '60',
@@ -105,8 +105,8 @@ it('pins the full hardened attribute shape', function () {
     expect((new LoadBalancer())->desiredAttributes())->toBe([
         'deletion_protection.enabled' => 'true',
         'access_logs.s3.enabled' => 'true',
-        'access_logs.s3.bucket' => 'yolo-testing-my-app-artefacts',
-        'access_logs.s3.prefix' => 'alb-access-logs/testing/yolo-testing',
+        'access_logs.s3.bucket' => 'yolo-testing-alb-logs',
+        'access_logs.s3.prefix' => 'testing/yolo-testing',
         'routing.http.drop_invalid_header_fields.enabled' => 'true',
         'routing.http2.enabled' => 'true',
         'idle_timeout.timeout_seconds' => '60',

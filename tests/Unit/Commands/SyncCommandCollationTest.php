@@ -92,6 +92,23 @@ it('swaps the Solo steps for Landlord + Tenant steps on a multi-tenant app', fun
         ->and($appSteps)->not->toContain(Steps\Sync\App\Solo\SyncHostedZoneStep::class);
 });
 
+it('provisions the ALB log bucket before the load balancer in the environment scope', function () {
+    // `SyncLoadBalancerStep` writes `access_logs.s3.bucket`, which AWS validates
+    // against the bucket's log-delivery policy at attribute-write time. The bucket
+    // (S3LoadBalancerLogs) MUST therefore be provisioned first within the same
+    // scope, or a greenfield sync fails at `ModifyLoadBalancerAttributes`.
+    writeManifest(['aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2']]);
+
+    $envSteps = (new SyncCommand())->scopes()['environment'];
+
+    $logBucket = array_search(Steps\Sync\Environment\SyncS3LoadBalancerLogsStep::class, $envSteps, true);
+    $loadBalancer = array_search(Steps\Sync\Environment\SyncLoadBalancerStep::class, $envSteps, true);
+
+    expect($logBucket)->not->toBeFalse('log-bucket step is registered')
+        ->and($loadBalancer)->not->toBeFalse('load-balancer step is registered')
+        ->and($logBucket)->toBeLessThan($loadBalancer);
+});
+
 it('keys each scope distinctly so no scope is dropped on merge', function () {
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],

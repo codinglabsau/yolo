@@ -181,7 +181,13 @@ it('does not flip public access on an existing app bucket', function () {
     expect(array_column($captured, 'name'))->not->toContain('PutPublicAccessBlock');
 });
 
-it('grants ELB access-log delivery to the log-delivery service principal on a new artefact bucket', function () {
+it('never puts a bucket policy on the artefact bucket (log-delivery moved to S3LoadBalancerLogs)', function () {
+    // The artefacts bucket previously doubled as the ALB access-log destination,
+    // which forced its policy to grant logdelivery.elasticloadbalancing.amazonaws.com
+    // — but that put env-scoped policy logic on an app-scoped bucket and
+    // collided with the account → environment → app sync order. The log
+    // bucket now lives in env scope (S3LoadBalancerLogs), so a synced artefacts
+    // bucket must NEVER call PutBucketPolicy.
     $captured = [];
 
     bindMockS3Client([
@@ -190,49 +196,8 @@ it('grants ELB access-log delivery to the log-delivery service principal on a ne
         'PutBucketTagging' => new Result(),
         'PutPublicAccessBlock' => new Result(),
         'PutBucketVersioning' => new Result(),
-        'PutBucketPolicy' => new Result(),
     ], $captured);
 
     expect((new SyncS3ArtefactBucketStep())([]))->toBe(StepResult::CREATED);
-
-    $policy = collect($captured)->firstWhere('name', 'PutBucketPolicy');
-    expect($policy)->not->toBeNull();
-
-    $statement = json_decode($policy['args']['Policy'], true)['Statement'][0];
-
-    expect($statement['Effect'])->toBe('Allow')
-        ->and($statement['Principal'])->toBe(['Service' => 'logdelivery.elasticloadbalancing.amazonaws.com'])
-        ->and($statement['Action'])->toBe('s3:PutObject')
-        ->and($statement['Resource'])->toBe('arn:aws:s3:::yolo-testing-my-app-artefacts/alb-access-logs/*')
-        ->and($statement['Condition']['StringEquals']['aws:SourceAccount'])->toBe('111111111111')
-        ->and($statement['Condition']['ArnLike']['aws:SourceArn'])
-        ->toBe('arn:aws:elasticloadbalancing:ap-southeast-2:111111111111:loadbalancer/*');
-});
-
-it('backfills the ELB access-log delivery policy onto an existing artefact bucket', function () {
-    $captured = [];
-
-    bindMockS3Client([
-        'HeadBucket' => new Result(),   // exists
-        'PutPublicAccessBlock' => new Result(),
-        'PutBucketVersioning' => new Result(),
-        'PutBucketPolicy' => new Result(),
-        'PutBucketTagging' => new Result(),
-    ], $captured);
-
-    expect((new SyncS3ArtefactBucketStep())([]))->toBe(StepResult::SYNCED);
-
-    expect(array_column($captured, 'name'))->toContain('PutBucketPolicy');
-});
-
-it('does not write the log-delivery policy during a dry-run', function () {
-    $captured = [];
-
-    bindMockS3Client([
-        'HeadBucket' => new Result(),   // exists
-    ], $captured);
-
-    expect((new SyncS3ArtefactBucketStep())(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC);
-
     expect(array_column($captured, 'name'))->not->toContain('PutBucketPolicy');
 });
