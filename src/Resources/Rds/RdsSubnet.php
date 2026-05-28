@@ -58,8 +58,8 @@ class RdsSubnet implements Resource
         ]);
     }
 
-    public function synchroniseTags(): void
+    public function synchroniseTags(bool $apply): array
     {
-        Aws::synchroniseRdsTags($this->arn(), $this->tags());
+        return Aws::synchroniseRdsTags($this->arn(), $this->tags(), $apply);
     }
 }

@@ -64,9 +64,9 @@ class IvsLogGroup implements Resource, SynchronisesConfiguration
         $this->synchroniseConfiguration();
     }
 
-    public function synchroniseTags(): void
+    public function synchroniseTags(bool $apply): array
     {
-        Aws::synchroniseCloudWatchLogsTags($this->arn(), $this->tags());
+        return Aws::synchroniseCloudWatchLogsTags($this->arn(), $this->tags(), $apply);
     }
 
     public function synchroniseConfiguration(bool $apply = true): array

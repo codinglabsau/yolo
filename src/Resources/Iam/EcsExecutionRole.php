@@ -71,12 +71,9 @@ class EcsExecutionRole implements Resource
         return 'YOLO managed ECS execution role - pulls images and writes logs for all apps in this environment';
     }
 
-    public function synchroniseTags(): void
+    public function synchroniseTags(bool $apply): array
     {
-        Aws::iam()->tagRole([
-            'RoleName' => $this->name(),
-            ...Aws::tags($this->tags()),
-        ]);
+        return Aws::synchroniseIamRoleTags($this->name(), $this->tags(), $apply);
     }
 
     /**

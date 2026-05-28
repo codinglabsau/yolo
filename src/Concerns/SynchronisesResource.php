@@ -2,6 +2,7 @@
 
 namespace Codinglabs\Yolo\Concerns;
 
+use Codinglabs\Yolo\Change;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\Resource;
@@ -12,12 +13,14 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
  * Steps with extra gating (cert state, manifest predicates, ingress rules)
  * keep their orchestration but delegate identity / create / tag-sync here.
  *
- * Config-drift detail is surfaced, not swallowed: for a resource that can drift
- * (SynchronisesConfiguration) the diff is computed even under --dry-run (with
- * apply=false, so nothing is written) and recorded so the runner can report
- * exactly which attributes changed. An existing-but-drifted resource therefore
- * reports WOULD_SYNC (dry-run) / SYNCED-with-changes (real run) instead of a
- * silent SYNCED that hid the writes.
+ * Both kinds of drift — tags AND attribute config — surface symmetrically:
+ * each is computed against the live resource regardless of --dry-run (with
+ * apply=false so nothing is written), and any missing key / drifted attribute
+ * is recorded as a Change so the plan→apply orchestrator (`SyncSteppedCommand`)
+ * can list exactly what would change, and so the apply pass survives the
+ * "only-pending-steps" filter from PR #57 (a step with tag drift but no
+ * config drift was silently dropped before, so the plan-clean SYNCED meant
+ * the apply never ran the tag write).
  */
 trait SynchronisesResource
 {
@@ -28,18 +31,23 @@ trait SynchronisesResource
         $dryRun = (bool) Arr::get($options, 'dry-run');
 
         if ($resource->exists()) {
-            if (! $dryRun) {
-                $resource->synchroniseTags();
+            $hasChanges = false;
+
+            $missingTags = $resource->synchroniseTags(apply: ! $dryRun);
+
+            foreach ($missingTags as $key => $value) {
+                $this->recordChange(Change::make("tag {$key}", null, $value));
+                $hasChanges = true;
             }
 
             if ($resource instanceof SynchronisesConfiguration) {
-                $changes = $resource->synchroniseConfiguration(apply: ! $dryRun);
+                $configChanges = $resource->synchroniseConfiguration(apply: ! $dryRun);
+                $this->recordChanges($configChanges);
+                $hasChanges = $hasChanges || $configChanges !== [];
+            }
 
-                $this->recordChanges($changes);
-
-                if ($changes !== []) {
-                    return $dryRun ? StepResult::WOULD_SYNC : StepResult::SYNCED;
-                }
+            if ($hasChanges) {
+                return $dryRun ? StepResult::WOULD_SYNC : StepResult::SYNCED;
             }
 
             return StepResult::SYNCED;

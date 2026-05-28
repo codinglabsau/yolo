@@ -75,12 +75,9 @@ class DeployerRole implements Resource
         return 'YOLO managed GitHub Actions OIDC deployer role for this environment';
     }
 
-    public function synchroniseTags(): void
+    public function synchroniseTags(bool $apply): array
     {
-        Aws::iam()->tagRole([
-            'RoleName' => $this->name(),
-            ...Aws::tags($this->tags()),
-        ]);
+        return Aws::synchroniseIamRoleTags($this->name(), $this->tags(), $apply);
     }
 
     /**

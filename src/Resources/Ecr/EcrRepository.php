@@ -66,9 +66,9 @@ class EcrRepository implements Resource
         ]);
     }
 
-    public function synchroniseTags(): void
+    public function synchroniseTags(bool $apply): array
     {
-        Aws::synchroniseEcrTags($this->arn(), $this->tags());
+        return Aws::synchroniseEcrTags($this->arn(), $this->tags(), $apply);
     }
 
     public function lifecyclePolicy(): string

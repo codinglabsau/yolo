@@ -80,12 +80,9 @@ class DeployerPolicy implements Resource
         return 'YOLO managed deploy-time permissions for the GitHub Actions deployer role';
     }
 
-    public function synchroniseTags(): void
+    public function synchroniseTags(bool $apply): array
     {
-        Aws::iam()->tagPolicy([
-            'PolicyArn' => $this->arn(),
-            ...Aws::tags($this->tags()),
-        ]);
+        return Aws::synchroniseIamPolicyTags($this->arn(), $this->tags(), $apply);
     }
 
     /**

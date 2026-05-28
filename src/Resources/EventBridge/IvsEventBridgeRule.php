@@ -50,12 +50,12 @@ class IvsEventBridgeRule implements Resource, SynchronisesConfiguration
     public function create(): void
     {
         $this->putRule();
-        $this->synchroniseTags();
+        $this->synchroniseTags(apply: true);
     }
 
-    public function synchroniseTags(): void
+    public function synchroniseTags(bool $apply): array
     {
-        Aws::synchroniseEventBridgeTags($this->arn(), $this->tags());
+        return Aws::synchroniseEventBridgeTags($this->arn(), $this->tags(), $apply);
     }
 
     /**

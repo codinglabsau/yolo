@@ -80,7 +80,10 @@ it('strips the stream wildcard `:*` suffix before calling the CloudWatch Logs ta
     }
 });
 
-it('does not call the CloudWatch Logs tag APIs during a dry-run', function () {
+it('reads tags during a dry-run for plan-time drift but never writes', function () {
+    // The plan pass needs to know whether tag sync would change anything (so
+    // the apply-pending filter from PR #57 doesn't drop a step with tag drift),
+    // so ListTagsForResource is expected — but TagResource (the write) is not.
     $captured = [];
 
     bindMockCloudWatchLogsClient([
@@ -95,10 +98,6 @@ it('does not call the CloudWatch Logs tag APIs during a dry-run', function () {
 
     (new SyncTaskLogGroupStep())(['dry-run' => true]);
 
-    $tagCalls = array_filter(
-        $captured,
-        fn (array $call) => in_array($call['name'], ['ListTagsForResource', 'TagResource'], true),
-    );
-
-    expect($tagCalls)->toBeEmpty();
+    expect(array_column($captured, 'name'))
+        ->not->toContain('TagResource');
 });

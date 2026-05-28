@@ -28,9 +28,11 @@ it('creates the provider with the sts audience and pinned thumbprints', function
     expect($create['args']['ClientIDList'])->toBe(['sts.amazonaws.com']);
     expect($create['args']['ThumbprintList'])->toBe(GithubOidcProvider::THUMBPRINTS);
 
-    // Shared account singleton — Name tag only, never a yolo:environment tag.
+    // Shared account singleton — Name + yolo:scope=account, never a yolo:environment
+    // tag (env-baseline is suppressed for Scope::Account by Aws::expectedTags).
     expect($create['args']['Tags'])->toBe([
         ['Key' => 'Name', 'Value' => 'token.actions.githubusercontent.com'],
+        ['Key' => 'yolo:scope', 'Value' => 'account'],
     ]);
 });
 

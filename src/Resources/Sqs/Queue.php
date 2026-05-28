@@ -62,8 +62,8 @@ class Queue implements Resource
         ]);
     }
 
-    public function synchroniseTags(): void
+    public function synchroniseTags(bool $apply): array
     {
-        Aws::synchroniseSqsTags($this->url(), $this->tags());
+        return Aws::synchroniseSqsTags($this->url(), $this->tags(), $apply);
     }
 }

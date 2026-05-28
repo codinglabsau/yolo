@@ -41,5 +41,17 @@ interface Resource
 
     public function create(): void;
 
-    public function synchroniseTags(): void;
+    /**
+     * Reconcile tags against the live resource. Reads current tags, computes
+     * the additive delta against the resource's `tags()` (plus the
+     * `yolo:environment` baseline), writes the delta when `$apply` is true,
+     * and returns the missing keys either way so callers (e.g. the sync
+     * orchestrator) can record them as plan-time changes.
+     *
+     * Mirrors `SynchronisesConfiguration::synchroniseConfiguration` so tag
+     * drift and config drift share one shape.
+     *
+     * @return array<string, string> missing tag keys → expected values
+     */
+    public function synchroniseTags(bool $apply): array;
 }
