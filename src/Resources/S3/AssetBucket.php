@@ -5,7 +5,6 @@ namespace Codinglabs\Yolo\Resources\S3;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\S3;
 use Codinglabs\Yolo\Change;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\ResolvesTags;
@@ -18,13 +17,14 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
  * Access Control, never directly from the internet. Kept separate from the app
  * data bucket so there is never private data to accidentally expose.
  *
- * The bucket carries its own CORS configuration so it returns
- * Access-Control-Allow-Origin itself. CloudFront forwards the viewer Origin
- * header (the CORS-S3Origin origin-request policy) and serves S3's CORS header
- * as a normal cached response header — present on every request path, including
- * the revalidation CloudFront forces on `Cache-Control: no-cache` / `max-age=0`
- * (reloads, DevTools "Disable cache"), where a response-headers-policy CORS
- * header is silently dropped.
+ * The bucket deliberately carries NO CORS configuration. CORS for the
+ * cross-origin module imports is owned entirely by the distribution's
+ * response-headers policy (a static Access-Control-Allow-Origin: * on every
+ * response); the viewer Origin header is not forwarded to S3, so the bucket
+ * never needs its own rules. A CORS config here would be dead weight and a live
+ * foot-gun — if Origin forwarding were ever reintroduced, S3 would emit a second
+ * Access-Control-Allow-Origin and browsers reject duplicate headers. Sync
+ * enforces the absence: any CORS config found on the bucket is removed.
  */
 class AssetBucket implements Resource, SynchronisesConfiguration
 {
@@ -74,7 +74,6 @@ class AssetBucket implements Resource, SynchronisesConfiguration
         ]);
 
         $this->synchroniseTags();
-        $this->synchroniseConfiguration();
     }
 
     public function synchroniseTags(): void
@@ -86,42 +85,21 @@ class AssetBucket implements Resource, SynchronisesConfiguration
     }
 
     /**
-     * Allow any origin to read the assets (GET/HEAD). They're public,
-     * content-hashed build files behind CloudFront — `*` is correct and keeps
-     * the cached response origin-agnostic. Diffs the live CORS rules against the
-     * desired set first, so a clean sync makes no write and a dry-run reports the
-     * change; returns the drift as Change[].
+     * Enforce that the bucket carries no CORS configuration — CORS is owned by
+     * the distribution's response-headers policy. Checks the live config first so
+     * a clean sync writes nothing and a dry-run reports the removal; returns the
+     * drift as Change[].
      */
     public function synchroniseConfiguration(bool $apply = true): array
     {
-        $current = S3::bucketCors($this->name());
-
-        if (Helpers::documentsEqual($current, $this->corsRules())) {
+        if (S3::bucketCors($this->name()) === null) {
             return [];
         }
 
         if ($apply) {
-            Aws::s3()->putBucketCors([
-                'Bucket' => $this->name(),
-                'CORSConfiguration' => ['CORSRules' => $this->corsRules()],
-            ]);
+            Aws::s3()->deleteBucketCors(['Bucket' => $this->name()]);
         }
 
-        return [Change::make('cors', $current === null ? null : 'present', 'GET,HEAD from *')];
-    }
-
-    /**
-     * @return array<int, array<string, mixed>>
-     */
-    protected function corsRules(): array
-    {
-        return [
-            [
-                'AllowedMethods' => ['GET', 'HEAD'],
-                'AllowedOrigins' => ['*'],
-                'AllowedHeaders' => ['*'],
-                'MaxAgeSeconds' => 86400,
-            ],
-        ];
+        return [Change::make('cors', 'present', 'removed (owned by the distribution)')];
     }
 }

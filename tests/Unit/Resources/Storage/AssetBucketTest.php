@@ -42,16 +42,6 @@ function bindRecordingAssetS3Client(array $byCommand): object
     return $recorder;
 }
 
-function matchingCorsRules(): array
-{
-    return [[
-        'AllowedMethods' => ['GET', 'HEAD'],
-        'AllowedOrigins' => ['*'],
-        'AllowedHeaders' => ['*'],
-        'MaxAgeSeconds' => 86400,
-    ]];
-}
-
 beforeEach(function () {
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
@@ -70,34 +60,35 @@ it('tags the bucket with its name and app owner', function () {
     expect((new AssetBucket())->tags())->toBe(['Name' => 'yolo-testing-my-app-assets', 'yolo:app' => 'my-app']);
 });
 
-it('reconciles a CORS configuration so the origin serves Access-Control-Allow-Origin', function () {
+it('enforces the bucket CORS configuration through sync', function () {
     expect(new AssetBucket())->toBeInstanceOf(SynchronisesConfiguration::class);
 });
 
-it('returns no change and writes nothing when the CORS rules already match', function () {
-    $recorder = bindRecordingAssetS3Client(['GetBucketCors' => new Result(['CORSRules' => matchingCorsRules()])]);
+it('returns no change and writes nothing when the bucket already has no CORS', function () {
+    $recorder = bindRecordingAssetS3Client(['GetBucketCors' => new Result([])]);
 
     expect((new AssetBucket())->synchroniseConfiguration())->toBe([]);
-    expect($recorder->calls)->not->toContain('PutBucketCors');
+    expect($recorder->calls)->not->toContain('DeleteBucketCors');
 });
 
-it('returns a cors change and puts the rules when they drift', function () {
+it('returns a cors change and deletes the config when one is present', function () {
     $recorder = bindRecordingAssetS3Client([
-        'GetBucketCors' => new Result(['CORSRules' => [['AllowedMethods' => ['GET'], 'AllowedOrigins' => ['https://example.com']]]]),
+        'GetBucketCors' => new Result(['CORSRules' => [['AllowedMethods' => ['GET'], 'AllowedOrigins' => ['*']]]]),
     ]);
 
     $changes = (new AssetBucket())->synchroniseConfiguration();
 
     expect($changes)->toHaveCount(1);
     expect($changes[0]->attribute)->toBe('cors');
-    expect($recorder->calls)->toContain('PutBucketCors');
+    expect($changes[0]->to)->toBe('removed (owned by the distribution)');
+    expect($recorder->calls)->toContain('DeleteBucketCors');
 });
 
-it('computes the cors diff without writing under apply:false', function () {
+it('reports the cors removal without writing under apply:false', function () {
     $recorder = bindRecordingAssetS3Client([
-        'GetBucketCors' => new Result(['CORSRules' => [['AllowedMethods' => ['GET']]]]),
+        'GetBucketCors' => new Result(['CORSRules' => [['AllowedMethods' => ['GET'], 'AllowedOrigins' => ['*']]]]),
     ]);
 
     expect((new AssetBucket())->synchroniseConfiguration(apply: false))->toHaveCount(1);
-    expect($recorder->calls)->not->toContain('PutBucketCors');
+    expect($recorder->calls)->not->toContain('DeleteBucketCors');
 });

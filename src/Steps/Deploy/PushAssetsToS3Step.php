@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Steps\Deploy;
 
 use Aws\S3\Transfer;
 use Codinglabs\Yolo\Aws;
+use Aws\CommandInterface;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -19,10 +20,16 @@ use Codinglabs\Yolo\Resources\S3\AssetBucket;
  * icons. Uploading only `public/build` left those 403ing (ORB-blocked in the
  * browser). No public-read ACLs — the bucket is reachable only via the
  * distribution (OAC); the Transfer manager sets per-file Content-Type from the
- * extension.
+ * extension, and `applyCacheControl` stamps the immutable Cache-Control.
  */
 class PushAssetsToS3Step implements Step
 {
+    // Objects live under a per-deploy `builds/{version}/` prefix (ASSET_URL
+    // carries the version), so every upload is a brand-new immutable URL — a
+    // year-long immutable cache-control is always safe and keeps the CDN + the
+    // browser hot, shrinking the cold-miss window the distribution has to ride.
+    public const CACHE_CONTROL = 'public, max-age=31536000, immutable';
+
     public function __construct(
         protected string $environment,
         protected $filesystem = new Filesystem()
@@ -37,10 +44,22 @@ class PushAssetsToS3Step implements Step
             client: Aws::s3(),
             source: static::uploadableFiles($public),
             dest: sprintf('s3://%s/builds/%s', (new AssetBucket())->name(), $appVersion),
-            options: ['base_dir' => $public],
+            options: ['base_dir' => $public, 'before' => static::applyCacheControl(...)],
         ))->transfer();
 
         return StepResult::SUCCESS;
+    }
+
+    /**
+     * Transfer `before` hook: stamp the immutable Cache-Control onto each object
+     * as it's uploaded. Guarded to the upload commands so it's a no-op if the
+     * Transfer manager ever issues anything else.
+     */
+    public static function applyCacheControl(CommandInterface $command): void
+    {
+        if (in_array($command->getName(), ['PutObject', 'CreateMultipartUpload'], true)) {
+            $command['CacheControl'] = static::CACHE_CONTROL;
+        }
     }
 
     /**
