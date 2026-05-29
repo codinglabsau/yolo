@@ -12,6 +12,8 @@ use Symfony\Component\Yaml\Yaml;
 use Aws\CloudFront\CloudFrontClient;
 use Aws\CloudWatch\CloudWatchClient;
 use Aws\ElastiCache\ElastiCacheClient;
+use Aws\ApplicationAutoScaling\ApplicationAutoScalingClient;
+use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
 
 /*
 |--------------------------------------------------------------------------
@@ -345,6 +347,132 @@ function bindMockDynamoDbClient(array $byCommand, array &$captured): void
     };
 
     Helpers::app()->instance('dynamodb', new DynamoDbClient([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+}
+
+/**
+ * Bind a mock Application Auto Scaling client with command-routed responses,
+ * capturing every call. Mirrors bindMockEc2Client.
+ *
+ * @param  array<string, Result|array<int, Result>>  $byCommand
+ * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+ */
+function bindMockApplicationAutoScalingClient(array $byCommand, array &$captured): void
+{
+    $mock = new class($byCommand, $captured) extends MockHandler
+    {
+        /** @var array<string, int> */
+        private array $cursors = [];
+
+        public function __construct(protected array $byCommand, protected array &$captured) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            $name = $cmd->getName();
+            $this->captured[] = ['name' => $name, 'args' => $cmd->toArray()];
+
+            $entry = $this->byCommand[$name] ?? new Result();
+
+            if (is_array($entry)) {
+                $index = min($this->cursors[$name] ?? 0, count($entry) - 1);
+                $this->cursors[$name] = $index + 1;
+                $entry = $entry[$index];
+            }
+
+            return Create::promiseFor($entry);
+        }
+    };
+
+    Helpers::app()->instance('applicationAutoScaling', new ApplicationAutoScalingClient([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+}
+
+/**
+ * Bind a mock ECS client with command-routed responses, capturing every call.
+ * Mirrors bindMockEc2Client. (Named bindRouted* to avoid colliding with the
+ * MockHandler-based bindMockEcsClient in tests/Unit/Aws/EcsTest.php.)
+ *
+ * @param  array<string, Result|array<int, Result>>  $byCommand
+ * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+ */
+function bindRoutedEcsClient(array $byCommand, array &$captured): void
+{
+    $mock = new class($byCommand, $captured) extends MockHandler
+    {
+        /** @var array<string, int> */
+        private array $cursors = [];
+
+        public function __construct(protected array $byCommand, protected array &$captured) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            $name = $cmd->getName();
+            $this->captured[] = ['name' => $name, 'args' => $cmd->toArray()];
+
+            $entry = $this->byCommand[$name] ?? new Result();
+
+            if (is_array($entry)) {
+                $index = min($this->cursors[$name] ?? 0, count($entry) - 1);
+                $this->cursors[$name] = $index + 1;
+                $entry = $entry[$index];
+            }
+
+            return Create::promiseFor($entry);
+        }
+    };
+
+    Helpers::app()->instance('ecs', new EcsClient([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+}
+
+/**
+ * Bind a mock ELBv2 client with command-routed responses, capturing every call.
+ * Mirrors bindMockEc2Client. (bindRecordingElbV2Client in TargetGroupTest.php is
+ * target-group specific; this one routes any command — e.g. DescribeLoadBalancers
+ * + DescribeTargetGroups together for ResourceLabel resolution.)
+ *
+ * @param  array<string, Result|array<int, Result>>  $byCommand
+ * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+ */
+function bindRoutedElbV2Client(array $byCommand, array &$captured): void
+{
+    $mock = new class($byCommand, $captured) extends MockHandler
+    {
+        /** @var array<string, int> */
+        private array $cursors = [];
+
+        public function __construct(protected array $byCommand, protected array &$captured) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            $name = $cmd->getName();
+            $this->captured[] = ['name' => $name, 'args' => $cmd->toArray()];
+
+            $entry = $this->byCommand[$name] ?? new Result();
+
+            if (is_array($entry)) {
+                $index = min($this->cursors[$name] ?? 0, count($entry) - 1);
+                $this->cursors[$name] = $index + 1;
+                $entry = $entry[$index];
+            }
+
+            return Create::promiseFor($entry);
+        }
+    };
+
+    Helpers::app()->instance('elasticLoadBalancingV2', new ElasticLoadBalancingV2Client([
         'region' => 'ap-southeast-2',
         'version' => 'latest',
         'credentials' => false,

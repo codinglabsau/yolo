@@ -18,6 +18,7 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | [`build <env>`](#yolo-build) | Build and push the container image |
 | [`deploy <env>`](#yolo-deploy) | Build, then roll out a zero-downtime deploy |
 | [`run <env>`](#yolo-run) | Open a shell / run a command in a running container |
+| [`scale <env> [count]`](#yolo-scale) | Adjust the web service's task count out of band |
 | [`sync <env>`](#yolo-sync) | Provision all resources (account → environment → app) |
 | [`sync:account <env>`](#yolo-sync-account) | Provision account-global resources |
 | [`sync:environment <env>`](#yolo-sync-environment) | Provision environment-shared resources |
@@ -164,6 +165,35 @@ Today web, queue, and scheduler all run in the single `web` container, so the gr
 
 ---
 
+## `yolo scale`
+
+Adjust the web service's running capacity out of band — no build, no task-definition revision. Mirrors [`env:push`](#yolo-env-push): it reads live state, shows a current → new comparison, and asks before applying.
+
+```bash
+yolo scale <environment> [count]
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `environment` | yes | The environment name |
+| `count` | no | The desired number of tasks. Prompts when omitted. |
+
+**Options:** none
+
+It's **autoscaling-aware**:
+
+- **No scalable target registered** → sets the ECS service's desired count directly (`UpdateService`).
+- **Autoscaling enabled** (a [`tasks.web.autoscaling`](/reference/manifest#tasks-web-autoscaling) block) → a raw desired count would be overridden on the next scaling evaluation, so `scale` raises the target's **minimum capacity** (the floor) instead, and shows desired count as autoscaling-managed.
+
+```bash
+yolo scale production 3      # scale to 3 tasks (or raise the floor to 3 when autoscaling)
+yolo scale production        # prompt for the value
+```
+
+Capacity is otherwise create-only — a sync or deploy never resets it — so a manual scale (or the autoscaler) is never clobbered. See [Scaling](/guide/scaling).
+
+---
+
 ## `yolo sync`
 
 Sync **all** resources for the given environment, orchestrating the three scopes in dependency order: account → environment → app.
@@ -215,7 +245,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **environment**. These 
 
 ## `yolo sync:app`
 
-Sync a single application's resources for the given environment — S3 buckets, app IAM (deployer role/policy, MediaConvert role for IVS), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, SQS queues, a CloudWatch dashboard, and — for a solo app — its hosted zone and ACM certificate. When opted in, it also provisions the shared [Valkey cache](/guide/provisioning#cache-and-sessions) (`cache.store`) and a per-app [DynamoDB sessions table](/guide/provisioning#cache-and-sessions) (`session.driver: dynamodb`).
+Sync a single application's resources for the given environment — S3 buckets, app IAM (deployer role/policy, MediaConvert role for IVS), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, SQS queues, a CloudWatch dashboard, target-tracking autoscaling (when configured), and — for a solo app — its hosted zone and ACM certificate. When opted in, it also provisions the shared [Valkey cache](/guide/provisioning#cache-and-sessions) (`cache.store`) and a per-app [DynamoDB sessions table](/guide/provisioning#cache-and-sessions) (`session.driver: dynamodb`).
 
 ```bash
 yolo sync:app <environment> [--dry-run] [--force] [--no-progress] [--tenant=<id>]
@@ -228,6 +258,8 @@ The step set is mode-aware: a multi-tenant app fans out landlord + per-tenant qu
 Some environment-tier resources are bootstrapped here by exception — the RDS security group (because its real purpose is this app's task-SG ingress), the HTTPS `:443` listener (because its creation needs this app's certificate), and the shared Valkey cache when `cache.store` is set (its security group needs this app's task SG to authorise). All are created-if-missing and never mutated, so the environment tier remains their single writer.
 
 A per-app **CloudWatch dashboard** (`yolo-<env>-<app>-dashboard`) is generated last, so every resource it charts already exists. It panels the ECS service (CPU/memory/tasks), the ALB (target health, requests, latency, slow-request bands, error counts and a 5xx error-rate SLO), SQS depth/throughput, the asset CloudFront distribution (requests, errors and cache hit rate), the S3 buckets and the app's logs — plus an RDS panel derived from `DB_HOST` in the app's env file (CPU, connections, memory, throughput and read/write latency). It's a read-only convenience: CloudWatch dashboards can't carry tags, so it doesn't appear in `yolo audit`.
+
+When a [`tasks.web.autoscaling`](/reference/manifest#tasks-web-autoscaling) block is present, `sync:app` also registers the **scalable target** and its **target-tracking policies** (CPU always; request-count once `request-count-per-target` is set), right after the ECS service. App Auto Scaling targets aren't taggable either, so they're invisible to `yolo audit` too. If autoscaling is enabled on a task that also runs the scheduler, sync prints a one-line advisory — see [Scaling](/guide/scaling). Scaling is web-only and inert without the manifest block.
 
 ---
 

@@ -5,6 +5,8 @@ namespace Codinglabs\Yolo\Commands;
 use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Manifest;
 
+use function Laravel\Prompts\warning;
+
 /**
  * Writer of one app's resources within an environment. Blast radius: this app.
  * Mode-aware (solo vs multi-tenant) and `--tenant`-filterable for a single-tenant
@@ -23,6 +25,31 @@ class SyncAppCommand extends SyncSteppedCommand
         $this->addSyncOptions()
             ->setName('sync:app')
             ->setDescription('Sync a single application\'s resources for the given environment');
+    }
+
+    public function handle(): int
+    {
+        if ($advisory = static::schedulerAdvisory()) {
+            warning($advisory);
+        }
+
+        return parent::handle();
+    }
+
+    /**
+     * A soft, non-blocking nudge (not a guard) when autoscaling is enabled on a
+     * task that also runs the scheduler. Scaling the bundled task to N replicas
+     * runs cron N times, so every scheduled task must use ->onOneServer(); apps
+     * that outgrow that should separate the scheduler into its own service.
+     */
+    public static function schedulerAdvisory(): ?string
+    {
+        if (! Manifest::has('tasks.web.autoscaling') || empty(Manifest::get('tasks.web.scheduler'))) {
+            return null;
+        }
+
+        return 'Autoscaling a bundled web+scheduler task: every scheduled task must use ->onOneServer() so it does not run on each replica. '
+            . 'If a bundled cluster cannot scale cleanly, separate the scheduler into its own service (see LPX-649).';
     }
 
     public function scopes(): array
@@ -77,6 +104,14 @@ class SyncAppCommand extends SyncSteppedCommand
                         Steps\Sync\App\SyncTaskLogGroupStep::class,
                         Steps\Sync\App\SyncTaskDefinitionStep::class,
                         Steps\Sync\App\SyncEcsServiceStep::class,
+                        // Autoscaling (web only) — registered after the service it
+                        // scales, and only when a tasks.web.autoscaling block opts in.
+                        ...Manifest::has('tasks.web.autoscaling')
+                            ? [
+                                Steps\Sync\App\SyncScalableTargetStep::class,
+                                Steps\Sync\App\SyncScalingPoliciesStep::class,
+                            ]
+                            : [],
                         Steps\Sync\App\SyncAssetDistributionStep::class,
                     ]
                     : [],

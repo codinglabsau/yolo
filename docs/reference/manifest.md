@@ -261,6 +261,35 @@ ECR lifecycle policy for the app's repository:
 | `image-retention.keep-count` | `30` | Tagged images to keep. |
 | `image-retention.untagged-days` | `7` | Days to keep untagged images. |
 
+### `tasks.web.autoscaling.*`
+
+Add an `autoscaling` block to turn on [Application Auto Scaling](/guide/scaling) for the web service. Without it, the service runs a fixed single task (today's behaviour). With it, YOLO registers a scalable target plus a CPU target-tracking policy; add `request-count-per-target` (seeded from a load test) to also scale on per-target request rate.
+
+| Key | Default | Description |
+|---|---|---|
+| `autoscaling.min` | `1` | Minimum number of tasks. |
+| `autoscaling.max` | `4` | Maximum number of tasks. |
+| `autoscaling.cpu-utilization` | `65` | Target average CPU % — the always-on policy. |
+| `autoscaling.request-count-per-target` | — | Target requests per task per minute (`ALBRequestCountPerTarget`). Omit until you have a load-test number; the policy is created only once it's set. |
+| `autoscaling.scale-out-cooldown` | `60` | Seconds between scale-out steps. |
+| `autoscaling.scale-in-cooldown` | `300` | Seconds between scale-in steps (kept conservative). |
+
+```yaml
+tasks:
+  web:
+    queue: true
+    scheduler: true
+    autoscaling:
+      min: 1
+      max: 6
+      cpu-utilization: 65
+      request-count-per-target: 1000   # seed from a load test
+```
+
+::: warning Bundled scheduler
+When the scheduler runs in the same task (`tasks.web.scheduler: true`), scaling to N tasks runs cron N times — every scheduled task would fire on each replica. Every scheduled task **must** use Laravel's `->onOneServer()`, or you should separate the scheduler into its own service. `sync` prints a one-line advisory in this case. See [Scaling → the scheduler caveat](/guide/scaling#the-scheduler-caveat).
+:::
+
 ---
 
 ## Deploy hooks

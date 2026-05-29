@@ -22,7 +22,6 @@ use Aws\DynamoDb\DynamoDbClient;
 use Aws\CloudFront\CloudFrontClient;
 use Aws\CloudWatch\CloudWatchClient;
 use Aws\CodeDeploy\CodeDeployClient;
-use Aws\AutoScaling\AutoScalingClient;
 use Aws\ElastiCache\ElastiCacheClient;
 use Aws\EventBridge\EventBridgeClient;
 use Codinglabs\Yolo\Enums\ServerGroup;
@@ -30,6 +29,7 @@ use Aws\Credentials\CredentialProvider;
 use GuzzleHttp\Exception\ConnectException;
 use Aws\CloudWatchLogs\CloudWatchLogsClient;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
+use Aws\ApplicationAutoScaling\ApplicationAutoScalingClient;
 use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
 use Aws\ResourceGroupsTaggingAPI\ResourceGroupsTaggingAPIClient;
 
@@ -48,7 +48,7 @@ trait RegistersAws
 
         // register all required AWS clients
         Helpers::app()->singleton('acm', fn () => new AcmClient($arguments));
-        Helpers::app()->singleton('autoscaling', fn () => new AutoScalingClient($arguments));
+        Helpers::app()->singleton('applicationAutoScaling', fn () => new ApplicationAutoScalingClient($arguments));
         Helpers::app()->singleton('codeDeploy', fn () => new CodeDeployClient($arguments));
         Helpers::app()->singleton('cloudWatch', fn () => new CloudWatchClient($arguments));
         Helpers::app()->singleton('cloudWatchLogs', fn () => new CloudWatchLogsClient($arguments));
