@@ -125,6 +125,54 @@ it('builds every section for a full web app', function () {
         ->toContain('AWS/RDS', 'DBClusterIdentifier', 'my-cluster', 'Role', 'WRITER');
 });
 
+it('charts ALB target health off both the target-group and load-balancer dimensions', function () {
+    $health = findWidget(Dashboard::body(dashboardContext()), 'Target health');
+
+    expect($health['properties']['metrics'][0])
+        ->toContain('AWS/ApplicationELB', 'HealthyHostCount', 'TargetGroup', 'targetgroup/yolo-testing-my-app/0a1b2c3d4e5f', 'LoadBalancer', 'app/yolo-testing/abc123def456');
+
+    // Healthy reads the conservative floor (Minimum) over the period.
+    expect(end($health['properties']['metrics'][0])['stat'])->toBe('Minimum');
+    expect($health['properties']['annotations']['horizontal'][0]['value'])->toBe(1);
+});
+
+it('omits the target-health panel when the target group is not resolved yet', function () {
+    $body = Dashboard::body(dashboardContext(['targetGroupSuffix' => null]));
+
+    expect(findWidget($body, 'Target health'))->toBeNull();
+    // The 5xx rate only needs the ALB, so it still renders and takes the left slot.
+    expect(findWidget($body, '5xx error rate')['x'])->toBe(0);
+});
+
+it('expresses the 5xx error rate as a percentage of requests with a 1% SLO line', function () {
+    $rate = findWidget(Dashboard::body(dashboardContext()), '5xx error rate');
+
+    expect($rate['properties']['metrics'][0][0]['expression'])->toBe('(m1 + m2) / m3 * 100');
+    expect($rate['properties']['metrics'])->toHaveCount(4); // expression + target 5xx + elb 5xx + requests
+    expect($rate['properties']['annotations']['horizontal'][0]['value'])->toBe(1);
+    expect($rate['x'])->toBe(12); // sits beside target health when the target group exists
+});
+
+it('charts RDS read and write latency with p90 alongside the average', function () {
+    $latency = findWidget(Dashboard::body(dashboardContext()), 'RDS read/write latency');
+
+    $metrics = collect($latency['properties']['metrics']);
+
+    expect($metrics)->toHaveCount(4);
+    expect($metrics->map(fn ($m) => $m[1])->all())->toBe(['ReadLatency', 'ReadLatency', 'WriteLatency', 'WriteLatency']);
+    expect($metrics->filter(fn ($m) => (end($m)['stat'] ?? null) === 'p90'))->toHaveCount(2);
+    expect($latency['properties']['metrics'][0])->toContain('AWS/RDS', 'DBClusterIdentifier', 'my-cluster', 'Role', 'WRITER');
+});
+
+it('charts the CloudFront cache hit rate, and omits it with the rest of the CDN panels until the distribution exists', function () {
+    $hitRate = findWidget(Dashboard::body(dashboardContext()), 'Asset CDN — cache hit rate');
+
+    expect($hitRate['properties']['region'])->toBe('us-east-1');
+    expect($hitRate['properties']['metrics'][0])->toContain('AWS/CloudFront', 'CacheHitRate', 'Global', 'E123ABCDEF');
+
+    expect(findWidget(Dashboard::body(dashboardContext(['distributionId' => null])), 'Asset CDN — cache hit rate'))->toBeNull();
+});
+
 it('queries CloudFront in us-east-1 with the Global region dimension', function () {
     $requests = findWidget(Dashboard::body(dashboardContext()), 'Asset CDN — requests');
 

@@ -227,7 +227,7 @@ The step set is mode-aware: a multi-tenant app fans out landlord + per-tenant qu
 
 Two environment-tier resources are bootstrapped here by exception — the RDS security group (because its real purpose is this app's task-SG ingress) and the HTTPS `:443` listener (because its creation needs this app's certificate). Both are created-if-missing and never mutated, so the environment tier remains their single writer.
 
-A per-app **CloudWatch dashboard** (`yolo-<env>-<app>-dashboard`) is generated last, so every resource it charts already exists. It panels the ECS service (CPU/memory/tasks), the ALB (requests, latency, errors), SQS depth/throughput, the asset CloudFront distribution, the S3 buckets and the app's logs — plus an RDS panel derived from `DB_HOST` in the app's env file. It's a read-only convenience: CloudWatch dashboards can't carry tags, so it doesn't appear in `yolo audit`.
+A per-app **CloudWatch dashboard** (`yolo-<env>-<app>-dashboard`) is generated last, so every resource it charts already exists. It panels the ECS service (CPU/memory/tasks), the ALB (target health, requests, latency, slow-request bands, error counts and a 5xx error-rate SLO), SQS depth/throughput, the asset CloudFront distribution (requests, errors and cache hit rate), the S3 buckets and the app's logs — plus an RDS panel derived from `DB_HOST` in the app's env file (CPU, connections, memory, throughput and read/write latency). It's a read-only convenience: CloudWatch dashboards can't carry tags, so it doesn't appear in `yolo audit`.
 
 ---
 

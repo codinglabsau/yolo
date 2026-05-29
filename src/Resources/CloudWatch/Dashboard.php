@@ -56,6 +56,13 @@ class Dashboard
 
     protected const RESPONSE_TIME_ALARM = 1.5;
 
+    // The ALB should always have at least one task in rotation; anything below
+    // this floor means the service is degraded or fully out of rotation.
+    protected const EXPECTED_HEALTHY_HOSTS = 1;
+
+    // 5xx SLO line (% of requests). A sustained breach is a user-facing outage.
+    protected const ERROR_RATE_SLO = 1;
+
     protected const BLUE = '#1f77b4';
 
     protected const GREEN = '#2ca02c';
@@ -319,6 +326,51 @@ class Dashboard
         $y++;
 
         if ($alb !== null) {
+            // Availability & SLO headline: a task can be "running" in ECS while the
+            // ALB has pulled it out of rotation, so target health is the truest
+            // availability signal; the 5xx rate is the user-facing SLO.
+            $errorRateX = 0;
+
+            if ($targetGroup !== null) {
+                $widgets[] = static::metric(0, $y, 12, 6, [
+                    'title' => 'Target health',
+                    'region' => $region,
+                    'view' => 'timeSeries',
+                    'stacked' => false,
+                    'period' => 60,
+                    'stat' => 'Average',
+                    'yAxis' => ['left' => ['min' => 0]],
+                    'metrics' => [
+                        ['AWS/ApplicationELB', 'HealthyHostCount', 'TargetGroup', $targetGroup, 'LoadBalancer', $alb, ['label' => 'Healthy', 'stat' => 'Minimum', 'color' => static::GREEN]],
+                        ['AWS/ApplicationELB', 'UnHealthyHostCount', 'TargetGroup', $targetGroup, 'LoadBalancer', $alb, ['label' => 'Unhealthy', 'stat' => 'Maximum', 'color' => static::RED]],
+                    ],
+                    'annotations' => ['horizontal' => [
+                        ['color' => static::RED, 'label' => 'Min healthy', 'value' => static::EXPECTED_HEALTHY_HOSTS, 'fill' => 'below'],
+                    ]],
+                ]);
+                $errorRateX = 12;
+            }
+
+            $widgets[] = static::metric($errorRateX, $y, 12, 6, [
+                'title' => '5xx error rate',
+                'region' => $region,
+                'view' => 'timeSeries',
+                'stacked' => false,
+                'period' => 60,
+                'stat' => 'Sum',
+                'yAxis' => ['left' => ['min' => 0, 'showUnits' => false]],
+                'metrics' => [
+                    [['expression' => '(m1 + m2) / m3 * 100', 'label' => '5xx %', 'id' => 'e1', 'color' => static::RED]],
+                    ['AWS/ApplicationELB', 'HTTPCode_Target_5XX_Count', 'LoadBalancer', $alb, ['id' => 'm1', 'visible' => false]],
+                    ['AWS/ApplicationELB', 'HTTPCode_ELB_5XX_Count', 'LoadBalancer', $alb, ['id' => 'm2', 'visible' => false]],
+                    ['AWS/ApplicationELB', 'RequestCount', 'LoadBalancer', $alb, ['id' => 'm3', 'visible' => false]],
+                ],
+                'annotations' => ['horizontal' => [
+                    ['color' => static::RED, 'label' => 'SLO', 'value' => static::ERROR_RATE_SLO, 'fill' => 'above'],
+                ]],
+            ]);
+            $y += 6;
+
             $requests = [['AWS/ApplicationELB', 'RequestCount', 'LoadBalancer', $alb, ['label' => 'Total requests', 'color' => static::BLUE]]];
 
             if ($targetGroup !== null) {
@@ -465,6 +517,9 @@ class Dashboard
             ->map(fn (string $queue) => ['AWS/SQS', $metric, 'QueueName', $queue, ['label' => static::queueLabel($queue, $context['queuePrefix'])]])
             ->all();
 
+        // No dedicated dead-letter-queue depth panel: the Queue resource provisions
+        // a plain SQS queue with no RedrivePolicy, so there is no DLQ to chart. If a
+        // DLQ is ever added, a ">0 = silent job failures" panel belongs right here.
         $widgets = [static::header($y, '# Queue')];
         $y++;
 
@@ -571,6 +626,25 @@ class Dashboard
         ]);
         $y += 6;
 
+        // Read/write latency is the earliest DB-degradation tell — it climbs well
+        // before CPU or connections saturate. Seconds, p90 alongside the average.
+        $widgets[] = static::metric(0, $y, 12, 6, [
+            'title' => 'RDS read/write latency',
+            'region' => $region,
+            'view' => 'timeSeries',
+            'stacked' => false,
+            'period' => 60,
+            'stat' => 'Average',
+            'yAxis' => ['left' => ['min' => 0]],
+            'metrics' => [
+                $metric('ReadLatency', ['label' => 'Read avg', 'color' => static::BLUE]),
+                $metric('ReadLatency', ['label' => 'Read p90', 'stat' => 'p90', 'color' => static::PURPLE]),
+                $metric('WriteLatency', ['label' => 'Write avg', 'color' => static::GREEN]),
+                $metric('WriteLatency', ['label' => 'Write p90', 'stat' => 'p90', 'color' => static::ORANGE]),
+            ],
+        ]);
+        $y += 6;
+
         return [$widgets, $y];
     }
 
@@ -627,6 +701,22 @@ class Dashboard
                 'metrics' => [
                     [['expression' => 'm1/1000000', 'label' => 'Downloaded MB', 'id' => 'e1', 'region' => 'us-east-1']],
                     ['AWS/CloudFront', 'BytesDownloaded', 'Region', 'Global', 'DistributionId', $distributionId, ['id' => 'm1', 'visible' => false]],
+                ],
+            ]);
+            $y += 6;
+
+            // A low cache hit rate means the CDN is passing traffic through to the
+            // origin — more origin load, higher latency and higher transfer cost.
+            $widgets[] = static::metric(0, $y, 12, 6, [
+                'title' => 'Asset CDN — cache hit rate',
+                'region' => 'us-east-1',
+                'view' => 'timeSeries',
+                'stacked' => false,
+                'period' => 60,
+                'stat' => 'Average',
+                'yAxis' => ['left' => ['min' => 0, 'max' => 100, 'showUnits' => false]],
+                'metrics' => [
+                    ['AWS/CloudFront', 'CacheHitRate', 'Region', 'Global', 'DistributionId', $distributionId, ['label' => 'Cache hit %', 'color' => static::GREEN]],
                 ],
             ]);
             $y += 6;
