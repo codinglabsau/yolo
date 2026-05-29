@@ -65,12 +65,7 @@ class AssetBucket implements Resource, SynchronisesConfiguration
         // coexist with all four Block Public Access settings on.
         Aws::s3()->putPublicAccessBlock([
             'Bucket' => $this->name(),
-            'PublicAccessBlockConfiguration' => [
-                'BlockPublicAcls' => true,
-                'IgnorePublicAcls' => true,
-                'BlockPublicPolicy' => true,
-                'RestrictPublicBuckets' => true,
-            ],
+            'PublicAccessBlockConfiguration' => Aws::publicAccessBlockConfiguration(),
         ]);
 
         $this->synchroniseTags(apply: true);

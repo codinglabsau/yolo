@@ -58,6 +58,23 @@ class Aws
     }
 
     /**
+     * The Block Public Access configuration YOLO applies to every bucket it
+     * owns — all four protections on. A single source of truth for the config
+     * shape that the S3 resources otherwise repeat verbatim, mirroring tags().
+     *
+     * @return array<string, bool>
+     */
+    public static function publicAccessBlockConfiguration(): array
+    {
+        return [
+            'BlockPublicAcls' => true,
+            'IgnorePublicAcls' => true,
+            'BlockPublicPolicy' => true,
+            'RestrictPublicBuckets' => true,
+        ];
+    }
+
+    /**
      * ECS uses lower-case `key`/`value` tag pairs instead of the standard
      * upper-case `Key`/`Value` shape returned by tags().
      */

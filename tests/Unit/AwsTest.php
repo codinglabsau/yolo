@@ -45,6 +45,17 @@ describe('tags', function () {
     });
 });
 
+describe('publicAccessBlockConfiguration', function () {
+    it('returns all four Block Public Access protections enabled', function () {
+        expect(Aws::publicAccessBlockConfiguration())->toBe([
+            'BlockPublicAcls' => true,
+            'IgnorePublicAcls' => true,
+            'BlockPublicPolicy' => true,
+            'RestrictPublicBuckets' => true,
+        ]);
+    });
+});
+
 describe('expectedTags', function () {
     it('returns associative map including environment by default', function () {
         expect(Aws::expectedTags())->toBe(['yolo:environment' => 'testing']);

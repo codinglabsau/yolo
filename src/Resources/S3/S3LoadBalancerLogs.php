@@ -101,12 +101,7 @@ class S3LoadBalancerLogs implements Resource, SynchronisesConfiguration
      */
     protected function reconcilePublicAccessBlock(bool $apply): array
     {
-        $desired = [
-            'BlockPublicAcls' => true,
-            'IgnorePublicAcls' => true,
-            'BlockPublicPolicy' => true,
-            'RestrictPublicBuckets' => true,
-        ];
+        $desired = Aws::publicAccessBlockConfiguration();
 
         $current = S3::publicAccessBlock($this->name());
 

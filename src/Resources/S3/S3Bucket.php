@@ -56,12 +56,7 @@ class S3Bucket implements Resource
         // why this is never reconciled onto an existing bucket.
         Aws::s3()->putPublicAccessBlock([
             'Bucket' => $this->name(),
-            'PublicAccessBlockConfiguration' => [
-                'BlockPublicAcls' => true,
-                'IgnorePublicAcls' => true,
-                'BlockPublicPolicy' => true,
-                'RestrictPublicBuckets' => true,
-            ],
+            'PublicAccessBlockConfiguration' => Aws::publicAccessBlockConfiguration(),
         ]);
 
         $this->synchroniseTags(apply: true);
