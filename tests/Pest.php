@@ -2,6 +2,7 @@
 
 use Aws\Result;
 use Aws\MockHandler;
+use Aws\Ec2\Ec2Client;
 use Aws\Iam\IamClient;
 use Aws\CommandInterface;
 use Codinglabs\Yolo\Helpers;
@@ -178,6 +179,48 @@ function bindMockCloudFrontClient(array $distributions): void
 
     Helpers::app()->instance('cloudFront', new CloudFrontClient([
         'region' => 'us-east-1',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+}
+
+/**
+ * Bind a mock EC2 client with command-routed responses. A command's value may be
+ * a single Result (repeated for every call) or an array of Results used as a
+ * queue (the last entry repeats once exhausted). Calls are captured by reference.
+ *
+ * @param  array<string, Result|array<int, Result>>  $byCommand
+ * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+ */
+function bindMockEc2Client(array $byCommand, array &$captured): void
+{
+    $mock = new class($byCommand, $captured) extends MockHandler
+    {
+        /** @var array<string, int> */
+        private array $cursors = [];
+
+        public function __construct(protected array $byCommand, protected array &$captured) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            $name = $cmd->getName();
+            $this->captured[] = ['name' => $name, 'args' => $cmd->toArray()];
+
+            $entry = $this->byCommand[$name] ?? new Result();
+
+            if (is_array($entry)) {
+                $index = min($this->cursors[$name] ?? 0, count($entry) - 1);
+                $this->cursors[$name] = $index + 1;
+                $entry = $entry[$index];
+            }
+
+            return Create::promiseFor($entry);
+        }
+    };
+
+    Helpers::app()->instance('ec2', new Ec2Client([
+        'region' => 'ap-southeast-2',
         'version' => 'latest',
         'credentials' => false,
         'handler' => $mock,

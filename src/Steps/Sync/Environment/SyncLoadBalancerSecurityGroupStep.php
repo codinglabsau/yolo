@@ -42,17 +42,22 @@ class SyncLoadBalancerSecurityGroupStep implements Step
             return StepResult::CREATED;
         }
 
-        if (! $dryRun) {
-            $securityGroup->synchroniseTags();
-        }
-
-        return $this->reconcileRules($securityGroup->arn(), $dryRun);
-    }
-
-    protected function reconcileRules(string $groupId, bool $dryRun): StepResult
-    {
+        // Surface tag drift (e.g. the yolo:scope marker) the way
+        // SynchronisesResource does: compute it regardless of --dry-run so the
+        // plan lists it and the apply pass isn't dropped by the
+        // only-pending-steps filter (#57); the write happens only when applying.
         $drifted = false;
 
+        foreach ($securityGroup->synchroniseTags(apply: ! $dryRun) as $key => $value) {
+            $this->recordChange(Change::make("tag {$key}", null, $value));
+            $drifted = true;
+        }
+
+        return $this->reconcileRules($securityGroup->arn(), $dryRun, $drifted);
+    }
+
+    protected function reconcileRules(string $groupId, bool $dryRun, bool $drifted = false): StepResult
+    {
         foreach ($this->expectedRules() as $tag => $expectedRule) {
             $rule = $expectedRule($groupId);
             $permission = $rule['IpPermissions'][0];
