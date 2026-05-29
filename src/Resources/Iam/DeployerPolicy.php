@@ -254,55 +254,15 @@ class DeployerPolicy implements Resource
             $statements = [...$statements, ...$this->route53Statements()];
         }
 
-        // Only apps that opt into autoscaling need the deployer role to provision
-        // and reconcile the scalable target + policies (yolo sync / yolo scale).
-        if (Manifest::has('tasks.web.autoscaling')) {
-            $statements = [...$statements, ...$this->autoscalingStatements()];
-        }
+        // Autoscaling deliberately gets no statement here: `yolo deploy` never
+        // touches the scalable target or its policies (a deploy rolls a task-def
+        // revision and UpdateService without desiredCount — App Auto Scaling keeps
+        // owning capacity straight through). The scaling APIs are exercised only by
+        // `yolo sync` / `yolo scale`, which run with admin creds, not this role.
 
         return [
             'Version' => '2012-10-17',
             'Statement' => $statements,
-        ];
-    }
-
-    /**
-     * Provision and reconcile the ECS service's Application Auto Scaling target +
-     * target-tracking policies. Application Auto Scaling, and the CloudWatch alarms
-     * target tracking creates on its behalf, don't support resource-level
-     * permissions, so these are granted on "*". CreateServiceLinkedRole is fenced
-     * to exactly the ECS scaling service principal.
-     *
-     * @return array<int, array<string, mixed>>
-     */
-    protected function autoscalingStatements(): array
-    {
-        return [
-            [
-                'Effect' => 'Allow',
-                'Resource' => '*',
-                'Action' => [
-                    'application-autoscaling:RegisterScalableTarget',
-                    'application-autoscaling:DeregisterScalableTarget',
-                    'application-autoscaling:DescribeScalableTargets',
-                    'application-autoscaling:PutScalingPolicy',
-                    'application-autoscaling:DeleteScalingPolicy',
-                    'application-autoscaling:DescribeScalingPolicies',
-                    'cloudwatch:PutMetricAlarm',
-                    'cloudwatch:DescribeAlarms',
-                    'cloudwatch:DeleteAlarms',
-                ],
-            ],
-            [
-                'Effect' => 'Allow',
-                'Resource' => 'arn:aws:iam::*:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/*',
-                'Action' => ['iam:CreateServiceLinkedRole'],
-                'Condition' => [
-                    'StringEquals' => [
-                        'iam:AWSServiceName' => 'ecs.application-autoscaling.amazonaws.com',
-                    ],
-                ],
-            ],
         ];
     }
 
