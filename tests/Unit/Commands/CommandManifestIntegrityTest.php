@@ -67,3 +67,41 @@ it('bails when aws.account-id is missing', function () {
 
     expect(test()->promptOutput->fetch())->toContain('aws.account-id');
 });
+
+it('accepts a supported session.driver', function () {
+    writeManifest([
+        'aws' => ['account-id' => '848509375702', 'region' => 'ap-southeast-2'],
+        'session' => ['driver' => 'dynamodb'],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+});
+
+it('bails on an unknown session.driver', function () {
+    writeManifest([
+        'aws' => ['account-id' => '848509375702', 'region' => 'ap-southeast-2'],
+        'session' => ['driver' => 'mysql'],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+    expect(test()->promptOutput->fetch())->toContain('session.driver');
+});
+
+it('bails when session.driver is redis but aws.cache is off', function () {
+    writeManifest([
+        'aws' => ['account-id' => '848509375702', 'region' => 'ap-southeast-2'],
+        'session' => ['driver' => 'redis'],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+    expect(test()->promptOutput->fetch())->toContain('aws.cache');
+});
+
+it('accepts session.driver redis when aws.cache is enabled', function () {
+    writeManifest([
+        'aws' => ['account-id' => '848509375702', 'region' => 'ap-southeast-2', 'cache' => true],
+        'session' => ['driver' => 'redis'],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+});

@@ -63,6 +63,14 @@ class SyncAppCommand extends SyncSteppedCommand
                         Steps\Sync\App\SyncEcsClusterStep::class,
                         Steps\Sync\App\SyncTaskSecurityGroupStep::class,
                         Steps\Sync\App\SyncRdsSecurityGroupStep::class,
+                        // Valkey cache (gated on aws.cache) — env-shared, bootstrapped
+                        // from sync:app like the RDS SG; the cache SG needs the task SG.
+                        Steps\Sync\App\SyncCacheSubnetGroupStep::class,
+                        Steps\Sync\App\SyncCacheParameterGroupStep::class,
+                        Steps\Sync\App\SyncCacheSecurityGroupStep::class,
+                        Steps\Sync\App\SyncCacheClusterStep::class,
+                        // DynamoDB sessions table (gated on session.driver: dynamodb)
+                        Steps\Sync\App\SyncDynamoDbSessionsTableStep::class,
                         Steps\Sync\App\SyncTargetGroupStep::class,
                         Steps\Sync\App\SyncHttpsListenerStep::class,
                         Steps\Sync\App\SyncListenerRuleStep::class,

@@ -8,35 +8,40 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Concerns\AuthorisesTaskIngress;
-use Codinglabs\Yolo\Resources\Ec2\RdsSecurityGroup;
+use Codinglabs\Yolo\Resources\Ec2\CacheSecurityGroup;
+use Codinglabs\Yolo\Resources\ElastiCache\CacheCluster;
 
 /**
- * Provisions the RDS security group and authorises the Fargate tasks to reach
- * the database on 3306. Runs in sync:app (after SyncTaskSecurityGroupStep)
- * rather than sync:environment, because the ingress source is the ECS task SG,
- * which sync:app creates — the RDS subnet group stays in sync:environment.
+ * Provisions the Valkey cache security group and authorises the Fargate tasks
+ * to reach the cache on 6379. Runs in sync:app (after SyncTaskSecurityGroupStep)
+ * because the ingress source is the ECS task SG, which sync:app creates.
  *
  * The ingress rule is managed purely additively (see AuthorisesTaskIngress).
+ * Mirrors SyncRdsSecurityGroupStep.
  */
-class SyncRdsSecurityGroupStep implements Step
+class SyncCacheSecurityGroupStep implements Step
 {
     use AuthorisesTaskIngress;
     use SynchronisesResource;
 
     public function __invoke(array $options): StepResult
     {
-        $securityGroup = new RdsSecurityGroup();
+        if (! Manifest::has('aws.cache')) {
+            return StepResult::SKIPPED;
+        }
 
-        if (Manifest::has('aws.rds.security-group') && $securityGroup->exists()) {
+        $securityGroup = new CacheSecurityGroup();
+
+        if (Manifest::has('aws.cache.security-group') && $securityGroup->exists()) {
             return StepResult::CUSTOM_MANAGED;
         }
 
         $dryRun = (bool) Arr::get($options, 'dry-run');
         $result = $this->syncResource($securityGroup, $options);
 
-        $description = 'Enable Fargate tasks to connect to RDS';
+        $description = 'Enable Fargate tasks to connect to the Valkey cache';
 
-        if ($securityGroup->exists() && $this->reconcileTaskIngressRule($securityGroup->arn(), 3306, $description, $dryRun) && $dryRun && $result === StepResult::SYNCED) {
+        if ($securityGroup->exists() && $this->reconcileTaskIngressRule($securityGroup->arn(), CacheCluster::PORT, $description, $dryRun) && $dryRun && $result === StepResult::SYNCED) {
             // The group already exists but the ingress rule is missing, so a
             // dry-run has a pending change to report rather than a clean SYNCED.
             $result = StepResult::WOULD_SYNC;

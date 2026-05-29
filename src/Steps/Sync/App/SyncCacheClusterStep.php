@@ -1,0 +1,28 @@
+<?php
+
+namespace Codinglabs\Yolo\Steps\Sync\App;
+
+use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Contracts\Step;
+use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Concerns\SynchronisesResource;
+use Codinglabs\Yolo\Resources\ElastiCache\CacheCluster;
+
+/**
+ * Provisions the shared single-node Valkey replication group when the app opts
+ * into the cache (`aws.cache`). Depends on the cache subnet group, parameter
+ * group and security group, so it runs last in the cache sequence.
+ */
+class SyncCacheClusterStep implements Step
+{
+    use SynchronisesResource;
+
+    public function __invoke(array $options): StepResult
+    {
+        if (! Manifest::has('aws.cache')) {
+            return StepResult::SKIPPED;
+        }
+
+        return $this->syncResource(new CacheCluster(), $options);
+    }
+}

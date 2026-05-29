@@ -10,6 +10,8 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Contracts\Step;
 use Illuminate\Filesystem\Filesystem;
+use Codinglabs\Yolo\Resources\DynamoDb\SessionsTable;
+use Codinglabs\Yolo\Resources\ElastiCache\CacheCluster;
 use Codinglabs\Yolo\Resources\CloudFront\AssetDistribution;
 
 class ConfigureEnvAndVersionStep implements Step
@@ -72,6 +74,28 @@ class ConfigureEnvAndVersionStep implements Step
 
         if (Manifest::has('aws.bucket')) {
             $defaults['AWS_BUCKET'] = Manifest::get('aws.bucket');
+        }
+
+        // Shared Valkey cache: point the redis driver at the YOLO-provisioned
+        // cluster (read live — the cluster is synced before deploy) and isolate
+        // this app on the shared node with a per-app key prefix. CACHE_STORE is
+        // wired to redis; sessions are a separate, manifest-driven choice below.
+        if (Manifest::has('aws.cache')) {
+            $defaults['CACHE_STORE'] = 'redis';
+            $defaults['REDIS_HOST'] = (new CacheCluster())->endpoint();
+            $defaults['REDIS_PORT'] = (string) CacheCluster::PORT;
+            $defaults['REDIS_PREFIX'] = Helpers::keyedResourceName() . '_';
+        }
+
+        // session.driver is the single source of truth for the session backend.
+        // Pin the driver; for dynamodb, point its cache-backed store at the
+        // YOLO-provisioned table. Other drivers need no extra env here.
+        if ($sessionDriver = Manifest::get('session.driver')) {
+            $defaults['SESSION_DRIVER'] = $sessionDriver;
+
+            if ($sessionDriver === 'dynamodb') {
+                $defaults['DYNAMODB_CACHE_TABLE'] = (new SessionsTable())->name();
+            }
         }
 
         foreach ($defaults as $key => $value) {

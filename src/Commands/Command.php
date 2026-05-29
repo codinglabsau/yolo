@@ -87,7 +87,39 @@ abstract class Command extends SymfonyCommand
     {
         return $this->ensureNameDeclared()
             && $this->ensureManifestKeyDeclared('aws.region')
-            && $this->ensureManifestKeyDeclared('aws.account-id');
+            && $this->ensureManifestKeyDeclared('aws.account-id')
+            && $this->ensureSessionDriverValid();
+    }
+
+    /**
+     * `session.driver` (when set) must be a Laravel session driver YOLO supports,
+     * and `redis` requires `aws.cache` — there's no redis store without the
+     * Valkey cache. Hard-fail loudly rather than silently shipping a broken
+     * session backend.
+     */
+    protected function ensureSessionDriverValid(): bool
+    {
+        $driver = Manifest::get('session.driver');
+
+        if ($driver === null) {
+            return true;
+        }
+
+        $allowed = ['redis', 'dynamodb', 'database', 'cookie', 'file'];
+
+        if (! in_array($driver, $allowed, true)) {
+            error(sprintf('yolo.yml `session.driver` must be one of: %s.', implode(', ', $allowed)));
+
+            return false;
+        }
+
+        if ($driver === 'redis' && ! Manifest::has('aws.cache')) {
+            error('yolo.yml `session.driver: redis` needs `aws.cache` enabled — the Valkey cache is the redis store.');
+
+            return false;
+        }
+
+        return true;
     }
 
     protected function ensureNameDeclared(): bool

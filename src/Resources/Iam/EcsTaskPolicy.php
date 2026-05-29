@@ -69,7 +69,7 @@ class EcsTaskPolicy implements Resource
      */
     public function description(): string
     {
-        return 'YOLO managed baseline policy granting ECS Exec session channels, SQS queue access, and SES send to the shared task role';
+        return 'YOLO managed baseline policy granting ECS Exec session channels, SQS queue access, SES send, and DynamoDB session-table access to the shared task role';
     }
 
     public function synchroniseTags(bool $apply): array
@@ -144,6 +144,21 @@ class EcsTaskPolicy implements Resource
                         'ses:SendEmail',
                     ],
                 ],
+                [
+                    // Lets the container use a YOLO-provisioned DynamoDB table via
+                    // the task role (no static AWS keys) — the `dynamodb` session
+                    // driver's store. Shared policy → scoped to every YOLO table in
+                    // this environment (`yolo-{env}-{app}-sessions`).
+                    'Effect' => 'Allow',
+                    'Resource' => $this->dynamoDbTableArnPattern(),
+                    'Action' => [
+                        'dynamodb:GetItem',
+                        'dynamodb:PutItem',
+                        'dynamodb:UpdateItem',
+                        'dynamodb:DeleteItem',
+                        'dynamodb:DescribeTable',
+                    ],
+                ],
             ],
         ];
     }
@@ -161,6 +176,16 @@ class EcsTaskPolicy implements Resource
     {
         return sprintf(
             'arn:aws:sqs:%s:%s:%s-*',
+            Manifest::get('aws.region'),
+            Aws::accountId(),
+            Helpers::keyedResourceName(exclusive: false),
+        );
+    }
+
+    protected function dynamoDbTableArnPattern(): string
+    {
+        return sprintf(
+            'arn:aws:dynamodb:%s:%s:table/%s-*',
             Manifest::get('aws.region'),
             Aws::accountId(),
             Helpers::keyedResourceName(exclusive: false),
