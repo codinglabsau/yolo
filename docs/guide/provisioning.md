@@ -14,7 +14,7 @@ YOLO groups every resource by **ownership scope** — the blast radius if it cha
 |---|---|---|---|
 | `yolo sync:account <env>` | **Account** | the whole AWS account | GitHub OIDC provider |
 | `yolo sync:environment <env>` | **Environment** | every app in the environment | VPC, subnets, internet gateway & routes, RDS security group, SNS alarm topic, shared ECS task & execution IAM roles, the ALB and its `:80`/`:443` listeners |
-| `yolo sync:app <env>` | **App** | one app | S3 buckets, app IAM (deployer role/policy), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, hosted zone & ACM certificate, SQS queues |
+| `yolo sync:app <env>` | **App** | one app | S3 buckets, app IAM (deployer role/policy), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, hosted zone & ACM certificate, SQS queues, CloudWatch dashboard |
 
 The bare `yolo sync` runs all three **in dependency order** — account, then environment, then app:
 
@@ -77,6 +77,10 @@ yolo audit production
 | `ok` | Accounted for — `yolo:app` points at a live app, or it carries a `yolo:scope=env`/`=account` marker (declared shared infra). |
 | `drift` | `yolo:app` points at an app whose ECS cluster is gone — leftover resources from a removed app. |
 | `rogue` | Tagged for the environment but with **no** YOLO ownership marker — hand-rolled infrastructure or alpha-era debris in the environment's namespace. |
+
+::: tip The per-app dashboard isn't audited
+`sync:app` also generates a CloudWatch dashboard (`yolo-<env>-<app>-dashboard`) panelling the app's ECS service, ALB, SQS queues, CloudFront, S3 and logs, plus an RDS panel derived from `DB_HOST`. CloudWatch dashboards can't carry tags, so it's a read-only convenience that **won't** show up in `yolo audit`.
+:::
 
 Like sync, audit is scope-grouped — narrow it with `audit:environment <env>` or `audit:app <env> <app>`, and add `--drift` to show only the drifted rows:
 

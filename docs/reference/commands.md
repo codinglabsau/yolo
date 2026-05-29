@@ -215,7 +215,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **environment**. These 
 
 ## `yolo sync:app`
 
-Sync a single application's resources for the given environment — S3 buckets, app IAM (deployer role/policy, MediaConvert role for IVS), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, SQS queues, and — for a solo app — its hosted zone and ACM certificate.
+Sync a single application's resources for the given environment — S3 buckets, app IAM (deployer role/policy, MediaConvert role for IVS), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, SQS queues, a CloudWatch dashboard, and — for a solo app — its hosted zone and ACM certificate.
 
 ```bash
 yolo sync:app <environment> [--dry-run] [--force] [--no-progress] [--tenant=<id>]
@@ -226,6 +226,8 @@ Arguments and options as [`sync`](#sync-options). Scope: **app**.
 The step set is mode-aware: a multi-tenant app fans out landlord + per-tenant queues (and skips the solo hosted zone/cert); a solo app gets the apex zone + certificate. Web/CDN steps only run when `tasks.web` is declared. Use `--tenant=<id>` to narrow per-tenant steps to one tenant.
 
 Two environment-tier resources are bootstrapped here by exception — the RDS security group (because its real purpose is this app's task-SG ingress) and the HTTPS `:443` listener (because its creation needs this app's certificate). Both are created-if-missing and never mutated, so the environment tier remains their single writer.
+
+A per-app **CloudWatch dashboard** (`yolo-<env>-<app>-dashboard`) is generated last, so every resource it charts already exists. It panels the ECS service (CPU/memory/tasks), the ALB (requests, latency, errors), SQS depth/throughput, the asset CloudFront distribution, the S3 buckets and the app's logs — plus an RDS panel derived from `DB_HOST` in the app's env file. It's a read-only convenience: CloudWatch dashboards can't carry tags, so it doesn't appear in `yolo audit`.
 
 ---
 

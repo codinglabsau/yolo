@@ -76,6 +76,8 @@ class SyncAppCommand extends SyncSteppedCommand
                 Steps\Sync\App\SyncIvsCloudWatchLogGroupStep::class,
                 Steps\Sync\App\SyncIvsEventBridgeRuleStep::class,
                 Steps\Sync\App\SyncIvsEventBridgeTargetStep::class,
+                // observability — runs last so every resource it charts already exists
+                Steps\Sync\App\SyncCloudWatchDashboardStep::class,
             ],
         ];
     }

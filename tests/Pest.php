@@ -9,6 +9,7 @@ use Codinglabs\Yolo\Helpers;
 use GuzzleHttp\Promise\Create;
 use Symfony\Component\Yaml\Yaml;
 use Aws\CloudFront\CloudFrontClient;
+use Aws\CloudWatch\CloudWatchClient;
 
 /*
 |--------------------------------------------------------------------------
@@ -220,6 +221,41 @@ function bindMockEc2Client(array $byCommand, array &$captured): void
     };
 
     Helpers::app()->instance('ec2', new Ec2Client([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+}
+
+/**
+ * Bind a mock CloudWatch client with command-routed responses, capturing every
+ * call. A command's value is a single Result (repeated for every call), or a
+ * Throwable (returned as a rejection, e.g. a GetDashboard not-found) repeated
+ * the same way. Mirrors bindMockEc2Client.
+ *
+ * @param  array<string, Result|Throwable>  $byCommand
+ * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+ */
+function bindMockCloudWatchClient(array $byCommand, array &$captured): void
+{
+    $mock = new class($byCommand, $captured) extends MockHandler
+    {
+        public function __construct(protected array $byCommand, protected array &$captured) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            $this->captured[] = ['name' => $cmd->getName(), 'args' => $cmd->toArray()];
+
+            $entry = $this->byCommand[$cmd->getName()] ?? new Result();
+
+            return $entry instanceof Throwable
+                ? Create::rejectionFor($entry)
+                : Create::promiseFor($entry);
+        }
+    };
+
+    Helpers::app()->instance('cloudWatch', new CloudWatchClient([
         'region' => 'ap-southeast-2',
         'version' => 'latest',
         'credentials' => false,
