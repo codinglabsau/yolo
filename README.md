@@ -9,6 +9,14 @@ YOLO deploys Laravel applications to AWS Fargate.
 > [!IMPORTANT]
 > This package is in active development - contributions are welcome!
 
+## Documentation
+
+Full documentation — getting started, the command reference, and the manifest reference — lives at
+**[codinglabsau.github.io/yolo](https://codinglabsau.github.io/yolo/)**. You can have a Laravel app live on Fargate in
+under an hour by following the [Getting Started guide](https://codinglabsau.github.io/yolo/guide/getting-started).
+
+The docs are a VitePress site under [`docs/`](docs/) and deploy to GitHub Pages on every push to `main`.
+
 ## Composer pinning
 
 For new apps and Fargate canaries:

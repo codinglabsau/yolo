@@ -17,6 +17,12 @@ deployments.
 
 - Always format code with pint after making changes
 - Always run tests before pushing changes
+- **Update the docs when you change behaviour or the public surface.** Any change to a command's
+  arguments/options, a manifest key (name, default, or semantics), the Dockerfile/entrypoint contract, the
+  manifest-required keys, or the sync/audit scope model must update the matching page under `docs/` in the same
+  change — the CLI reference (`docs/reference/commands.md`), the manifest reference
+  (`docs/reference/manifest.md`), and any affected guide page (`docs/guide/*`). Treat the docs as part of the
+  change, not a follow-up. The VitePress site fails its build on dead internal links, so keep cross-links valid.
 
 ## Commands
 
