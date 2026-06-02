@@ -11,6 +11,7 @@ use Codinglabs\Yolo\Commands\SyncCommand;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
+use Symfony\Component\Console\Command\Command as SymfonyCommand;
 
 class RunScopesFakeStep implements Step
 {
@@ -57,6 +58,19 @@ class RunScopesChangeStep implements Step
  */
 function runScopesCapture(array $scopes, array $options = [], int $verbosity = BufferedOutput::VERBOSITY_NORMAL): string
 {
+    return runScopesResult($scopes, $options, $verbosity)[0];
+}
+
+/**
+ * As {@see runScopesCapture()}, but returns the captured output *and* the
+ * command exit code, so the `--check` non-zero-on-drift contract can be asserted.
+ *
+ * @param  array<string, array<int, class-string>>  $scopes
+ * @param  array<string, mixed>  $options
+ * @return array{0: string, 1: int}
+ */
+function runScopesResult(array $scopes, array $options = [], int $verbosity = BufferedOutput::VERBOSITY_NORMAL): array
+{
     $command = new SyncCommand();
 
     $input = new ArrayInput(['environment' => 'testing'] + $options, $command->getDefinition());
@@ -70,9 +84,9 @@ function runScopesCapture(array $scopes, array $options = [], int $verbosity = B
 
     Prompt::setOutput($output);
 
-    (new ReflectionMethod($command, 'runScopes'))->invoke($command, 'testing', $scopes);
+    $exitCode = (new ReflectionMethod($command, 'runScopes'))->invoke($command, 'testing', $scopes);
 
-    return $output->fetch();
+    return [$output->fetch(), $exitCode];
 }
 
 beforeEach(function () {
@@ -193,6 +207,33 @@ it('dry-run renders the plan and stops — no apply, no results table, no comple
         ->toContain('idle_timeout')
         ->toContain('Dry run')
         ->not->toContain('Synced testing'); // no apply ran
+});
+
+it('--check exits non-zero on drift and never applies', function () {
+    [$output, $exitCode] = runScopesResult(
+        ['environment' => [RunScopesChangeStep::class]],
+        ['--no-progress' => true, '--check' => true],
+    );
+
+    expect($exitCode)->toBe(SymfonyCommand::FAILURE);
+    expect($output)
+        ->toContain('Pending changes')
+        ->toContain('idle_timeout')
+        ->toContain('Drift detected')
+        ->not->toContain('Synced testing'); // gate only — no apply ran
+});
+
+it('--check exits zero when the environment is already in sync', function () {
+    [$output, $exitCode] = runScopesResult(
+        ['environment' => [RunScopesCleanStep::class, RunScopesCleanStep::class]],
+        ['--no-progress' => true, '--check' => true],
+    );
+
+    expect($exitCode)->toBe(SymfonyCommand::SUCCESS);
+    expect($output)
+        ->toContain('In sync')
+        ->not->toContain('Pending changes')
+        ->not->toContain('Synced testing');
 });
 
 it('skips the apply pass when nothing drifted — no confirm, no results table', function () {
