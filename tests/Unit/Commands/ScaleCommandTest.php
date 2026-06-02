@@ -70,7 +70,8 @@ it('errors on --queue (not yet a separate service)', function () {
 
 it('fixed: sets the ECS desired count directly when no scalable target exists', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111',
+        'region' => 'ap-southeast-2',
         'tasks' => ['web' => []],
     ]);
 
@@ -90,7 +91,8 @@ it('fixed: sets the ECS desired count directly when no scalable target exists', 
 
 it('bounds: writes the manifest and registers when raising', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111',
+        'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['autoscaling' => ['min' => 1, 'max' => 4]]],
     ]);
 
@@ -111,7 +113,8 @@ it('bounds: writes the manifest and registers when raising', function () {
 
 it('bounds: does not reduce without confirmation', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111',
+        'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['autoscaling' => ['min' => 5, 'max' => 10]]],
     ]);
 
@@ -129,7 +132,8 @@ it('bounds: does not reduce without confirmation', function () {
 
 it('rejects a desired count on an autoscaling-managed service', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111',
+        'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['autoscaling' => ['min' => 1, 'max' => 4]]],
     ]);
 

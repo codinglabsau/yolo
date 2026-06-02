@@ -4,7 +4,8 @@ use Codinglabs\Yolo\Commands\SyncAppCommand;
 
 it('gives no advisory when autoscaling is not configured', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111',
+        'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['scheduler' => true]],
     ]);
 
@@ -13,7 +14,8 @@ it('gives no advisory when autoscaling is not configured', function () {
 
 it('gives no advisory when the scheduler is not bundled', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111',
+        'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['autoscaling' => ['max' => 4]]],
     ]);
 
@@ -22,7 +24,8 @@ it('gives no advisory when the scheduler is not bundled', function () {
 
 it('advises onOneServer and service separation when autoscaling a bundled scheduler', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111',
+        'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['scheduler' => true, 'autoscaling' => ['max' => 4]]],
     ]);
 

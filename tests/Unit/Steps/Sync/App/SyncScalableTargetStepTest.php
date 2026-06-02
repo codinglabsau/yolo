@@ -8,7 +8,8 @@ use Codinglabs\Yolo\Steps\Sync\App\SyncScalableTargetStep;
 
 beforeEach(function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111',
+        'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['autoscaling' => ['min' => 2, 'max' => 6]]],
     ]);
 });

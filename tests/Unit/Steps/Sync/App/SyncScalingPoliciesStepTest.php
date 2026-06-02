@@ -6,7 +6,8 @@ use Codinglabs\Yolo\Steps\Sync\App\SyncScalingPoliciesStep;
 
 beforeEach(function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111',
+        'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['autoscaling' => ['cpu-utilization' => 65]]],
     ]);
 });
@@ -59,7 +60,8 @@ it('builds the {alb-suffix}/{tg-suffix} ResourceLabel from the live ALB and targ
 
 it('composes both the CPU and request-count policies when request-count is set and the ALB/TG resolve', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111',
+        'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['autoscaling' => ['cpu-utilization' => 65, 'request-count-per-target' => 1000]]],
     ]);
 
@@ -74,7 +76,8 @@ it('composes both the CPU and request-count policies when request-count is set a
 
 it('defers the request-count policy when the ALB/TG are not resolvable yet', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111',
+        'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['autoscaling' => ['cpu-utilization' => 65, 'request-count-per-target' => 1000]]],
     ]);
 
@@ -90,7 +93,8 @@ it('defers the request-count policy when the ALB/TG are not resolvable yet', fun
 
 it('puts the request-count policy with its ResourceLabel when applying', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111',
+        'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['autoscaling' => ['cpu-utilization' => 65, 'request-count-per-target' => 1000]]],
     ]);
 
