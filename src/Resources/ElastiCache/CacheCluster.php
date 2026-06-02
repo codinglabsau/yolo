@@ -26,9 +26,9 @@ class CacheCluster implements Resource
     // Pinned as a matched pair — a custom parameter group forces a family that
     // is coupled to the engine major. The only pinned version in YOLO; revisit
     // on a Valkey engine bump.
-    public const ENGINE_VERSION = '8.0';
+    public const ENGINE_VERSION = '9.0';
 
-    public const PARAMETER_GROUP_FAMILY = 'valkey8';
+    public const PARAMETER_GROUP_FAMILY = 'valkey9';
 
     public const NODE_TYPE = 'cache.t4g.micro';
 
@@ -81,8 +81,8 @@ class CacheCluster implements Resource
             'AutomaticFailoverEnabled' => false,
             'MultiAZEnabled' => false,
             'AtRestEncryptionEnabled' => true,
-            // Valkey 8.0 requires this explicitly once any encryption setting is touched — it no longer
-            // defaults. TLS in-transit is deferred; the cache is SG-locked to the task SG on 6379, so
+            // Valkey requires this explicitly once any encryption setting is touched — it has no
+            // default. TLS in-transit is deferred; the cache is SG-locked to the task SG on 6379, so
             // plaintext stays inside the VPC.
             'TransitEncryptionEnabled' => false,
             'Port' => self::PORT,

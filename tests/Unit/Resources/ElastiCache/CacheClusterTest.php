@@ -41,6 +41,7 @@ it('creates a single-node Valkey replication group locked to the cache SG', func
 
     expect($call['args']['ReplicationGroupId'])->toBe('yolo-testing-cache');
     expect($call['args']['Engine'])->toBe('valkey');
+    expect($call['args']['EngineVersion'])->toBe('9.0');
     expect($call['args']['CacheNodeType'])->toBe('cache.t4g.micro');
     expect($call['args']['NumCacheClusters'])->toBe(1);
     expect($call['args']['AutomaticFailoverEnabled'])->toBeFalse();
