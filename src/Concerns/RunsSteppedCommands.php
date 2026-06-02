@@ -7,11 +7,13 @@ use Illuminate\Support\Str;
 use Laravel\Prompts\Prompt;
 use Codinglabs\Yolo\Manifest;
 use Laravel\Prompts\Progress;
+use Codinglabs\Yolo\WaitReporter;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Stringable;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\HasSubSteps;
+use Codinglabs\Yolo\Contracts\LongRunning;
 use Codinglabs\Yolo\Contracts\RunsOnBuild;
 use Codinglabs\Yolo\Contracts\ExecutesTenantStep;
 use Codinglabs\Yolo\Contracts\ExecutesCommandStep;
@@ -268,13 +270,30 @@ trait RunsSteppedCommands
      */
     protected function invokeStep(Step $step, ?Progress $progress, string $label, int $now, array $options): array
     {
-        $progress?->label($label)
-            ->hint(sprintf('%d seconds elapsed', time() - $now))
-            ->render();
-
         $started = time();
 
-        $status = $step->__invoke($options, $this);
+        // A LongRunning step blocks inside an AWS waiter, so its progress frame
+        // would freeze at "0 seconds elapsed" and read as hung. Show the patience
+        // message up front and tick an elapsed-time heartbeat on every waiter
+        // poll (the one moment control returns to us mid-wait) so the bar keeps
+        // moving. Plain steps keep the original elapsed-since-start hint.
+        if ($step instanceof LongRunning && $progress !== null) {
+            $progress->label($label)->hint($step->patienceMessage())->render();
+
+            WaitReporter::using(fn () => $progress->label($label)
+                ->hint(sprintf('%s · %s elapsed', $step->patienceMessage(), static::humaniseElapsed(time() - $started)))
+                ->render());
+        } else {
+            $progress?->label($label)
+                ->hint(sprintf('%d seconds elapsed', time() - $now))
+                ->render();
+        }
+
+        try {
+            $status = $step->__invoke($options, $this);
+        } finally {
+            WaitReporter::clear();
+        }
 
         // Build steps return void, and HasSubSteps steps return their sub-step
         // array (load-bearing for expandStep) — neither is a StepResult. Steps
@@ -558,6 +577,24 @@ trait RunsSteppedCommands
         }
 
         return [$only => $tenants[$only]];
+    }
+
+    /**
+     * Render an elapsed-seconds count as a compact "45s" / "3m" / "12m 30s" so
+     * a LongRunning step's heartbeat reads naturally past the one-minute mark.
+     */
+    protected static function humaniseElapsed(int $seconds): string
+    {
+        if ($seconds < 60) {
+            return sprintf('%ds', $seconds);
+        }
+
+        $minutes = intdiv($seconds, 60);
+        $remainder = $seconds % 60;
+
+        return $remainder === 0
+            ? sprintf('%dm', $minutes)
+            : sprintf('%dm %ds', $minutes, $remainder);
     }
 
     protected static function renderStatus(StepResult|string $status): string

@@ -147,6 +147,9 @@ Interfaces a step implements to declare its execution context:
 - `ExecutesTenantStep` / `ExecutesSoloStep` / `ExecutesMultitenancyStep` / `ExecutesWebStep` / `ExecutesCommandStep` /
   `ExecutesIvsStep` — per-tenant fan-out and app-mode gating
 - `HasSubSteps` — step contains sub-steps (e.g. manifest build commands)
+- `LongRunning` — step blocks on a slow AWS waiter (cache cluster, sessions table, deploy task); the runner shows
+  its `patienceMessage()` and ticks an elapsed-time heartbeat (via `WaitReporter` + `Aws::waitFor`) so the progress
+  bar keeps moving instead of freezing mid-wait
 
 ### Concerns (`src/Concerns/`)
 

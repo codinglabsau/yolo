@@ -92,9 +92,12 @@ class CacheCluster implements Resource
             ...Aws::tags($this->tags()),
         ]);
 
-        Aws::elastiCache()->waitUntil('ReplicationGroupAvailable', [
+        // A fresh single-node Valkey cluster routinely takes longer than the
+        // SDK's 10-minute default, so wait up to 20 minutes — the heartbeat
+        // keeps the (LongRunning) sync step's progress bar moving meanwhile.
+        Aws::waitFor(Aws::elastiCache(), 'ReplicationGroupAvailable', [
             'ReplicationGroupId' => $this->name(),
-        ]);
+        ], timeout: 20 * 60);
     }
 
     public function synchroniseTags(bool $apply): array

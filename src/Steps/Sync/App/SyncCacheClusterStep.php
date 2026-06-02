@@ -3,8 +3,8 @@
 namespace Codinglabs\Yolo\Steps\Sync\App;
 
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Contracts\LongRunning;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Resources\ElastiCache\CacheCluster;
 
@@ -13,7 +13,7 @@ use Codinglabs\Yolo\Resources\ElastiCache\CacheCluster;
  * into the cache (`cache`). Depends on the cache subnet group, parameter
  * group and security group, so it runs last in the cache sequence.
  */
-class SyncCacheClusterStep implements Step
+class SyncCacheClusterStep implements LongRunning
 {
     use SynchronisesResource;
 
@@ -24,5 +24,10 @@ class SyncCacheClusterStep implements Step
         }
 
         return $this->syncResource(new CacheCluster(), $options);
+    }
+
+    public function patienceMessage(): string
+    {
+        return 'Provisioning the Valkey cache cluster — ElastiCache usually takes 5–15 minutes';
     }
 }

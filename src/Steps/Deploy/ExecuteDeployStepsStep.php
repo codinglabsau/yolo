@@ -4,17 +4,22 @@ namespace Codinglabs\Yolo\Steps\Deploy;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Contracts\LongRunning;
 use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
 use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Resources\Ec2\PublicSubnet;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Codinglabs\Yolo\Resources\Ec2\EcsTaskSecurityGroup;
 
-class ExecuteDeployStepsStep implements Step
+class ExecuteDeployStepsStep implements LongRunning
 {
     public function __construct(protected string $environment) {}
+
+    public function patienceMessage(): string
+    {
+        return 'Running deploy tasks (migrations, etc.) — this can take a few minutes';
+    }
 
     public function __invoke(): StepResult
     {
@@ -61,11 +66,10 @@ class ExecuteDeployStepsStep implements Step
 
         $taskArn = $run['tasks'][0]['taskArn'];
 
-        Aws::ecs()->waitUntil('TasksStopped', [
+        Aws::waitFor(Aws::ecs(), 'TasksStopped', [
             'cluster' => $cluster,
             'tasks' => [$taskArn],
-            '@waiter' => ['maxAttempts' => 120, 'delay' => 10],
-        ]);
+        ], timeout: 20 * 60, interval: 10);
 
         $stopped = Aws::ecs()->describeTasks([
             'cluster' => $cluster,

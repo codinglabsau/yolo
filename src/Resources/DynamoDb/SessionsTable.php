@@ -62,9 +62,9 @@ class SessionsTable implements Resource
             ...Aws::tags($this->tags()),
         ]);
 
-        Aws::dynamoDb()->waitUntil('TableExists', [
+        Aws::waitFor(Aws::dynamoDb(), 'TableExists', [
             'TableName' => $this->name(),
-        ]);
+        ], timeout: 5 * 60, interval: 10);
 
         Aws::dynamoDb()->updateTimeToLive([
             'TableName' => $this->name(),

@@ -13,6 +13,7 @@ use Aws\Sns\SnsClient;
 use Aws\Sqs\SqsClient;
 use Aws\Ssm\SsmClient;
 use Aws\Sts\StsClient;
+use Aws\AwsClientInterface;
 use Illuminate\Support\Str;
 use Aws\Route53\Route53Client;
 use Aws\DynamoDb\DynamoDbClient;
@@ -561,6 +562,36 @@ class Aws
             ->map(fn ($value, $key) => ['key' => $key, 'value' => $value])
             ->values()
             ->all();
+    }
+
+    /**
+     * Wait for an AWS waiter to reach its success state, with two things the
+     * raw SDK `waitUntil` doesn't give us:
+     *
+     *  - an explicit timeout. The SDK's per-waiter defaults are too tight for a
+     *    cold provision — `ReplicationGroupAvailable` caps at 10 minutes
+     *    (40 × 15s), but a fresh single-node Valkey cluster routinely takes
+     *    longer, so a slow-but-fine create would false-fail with a scary
+     *    "waiter failed after attempt #40". `$timeout` / `$interval` set the
+     *    ceiling per call instead.
+     *
+     *  - a heartbeat. A blocking waiter freezes the progress bar, so the
+     *    before-attempt callback pings WaitReporter every `$interval` seconds.
+     *    When the runner has registered a reporter (a LongRunning step), that
+     *    redraws the bar with elapsed time; otherwise it's a no-op.
+     *
+     * @param  array<string, mixed>  $args
+     */
+    public static function waitFor(AwsClientInterface $client, string $waiter, array $args, int $timeout = 600, int $interval = 15): void
+    {
+        $client->waitUntil($waiter, [
+            ...$args,
+            '@waiter' => [
+                'delay' => $interval,
+                'maxAttempts' => max(1, (int) ceil($timeout / $interval)),
+                'before' => fn ($command, $attempt) => WaitReporter::poll(),
+            ],
+        ]);
     }
 
     public static function accountId(): string

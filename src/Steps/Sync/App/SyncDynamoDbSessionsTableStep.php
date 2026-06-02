@@ -3,8 +3,8 @@
 namespace Codinglabs\Yolo\Steps\Sync\App;
 
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Contracts\LongRunning;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Resources\DynamoDb\SessionsTable;
 
@@ -13,7 +13,7 @@ use Codinglabs\Yolo\Resources\DynamoDb\SessionsTable;
  * the `dynamodb` session driver. Other drivers (redis, database, cookie, file)
  * need no YOLO-provisioned infra here.
  */
-class SyncDynamoDbSessionsTableStep implements Step
+class SyncDynamoDbSessionsTableStep implements LongRunning
 {
     use SynchronisesResource;
 
@@ -24,5 +24,10 @@ class SyncDynamoDbSessionsTableStep implements Step
         }
 
         return $this->syncResource(new SessionsTable(), $options);
+    }
+
+    public function patienceMessage(): string
+    {
+        return 'Creating the DynamoDB sessions table — usually under a minute';
     }
 }
