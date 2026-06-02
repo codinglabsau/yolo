@@ -65,6 +65,20 @@ class Iam
     }
 
     /**
+     * Every version of a managed policy, as [{VersionId, IsDefaultVersion,
+     * CreateDate}]. A managed policy holds at most 5; the document reconciler
+     * prunes the oldest non-default version before pushing a new one.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function policyVersions(string $policyArn): array
+    {
+        return Aws::iam()->listPolicyVersions([
+            'PolicyArn' => $policyArn,
+        ])['Versions'] ?? [];
+    }
+
+    /**
      * OIDC providers are account-level singletons keyed by their full ARN
      * (no name field) — match the list entry by ARN.
      */

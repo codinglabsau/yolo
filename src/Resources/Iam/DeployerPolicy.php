@@ -14,6 +14,7 @@ use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
 use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Resources\S3\AssetBucket;
 use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
+use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
@@ -27,11 +28,13 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * (region, account id, app name), so the document is pure — no live AWS calls,
  * and no coupling to resources later sync phases provision.
  *
- * Document drift is reconciled via createPolicyVersion (see EcsTaskPolicy).
+ * Document drift is reconciled as a plan-visible Change via the shared
+ * SynchronisesPolicyDocument trait (createPolicyVersion + 5-version pruning).
  */
-class DeployerPolicy implements Resource
+class DeployerPolicy implements Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
+    use SynchronisesPolicyDocument;
 
     public function name(): string
     {
@@ -83,29 +86,6 @@ class DeployerPolicy implements Resource
     public function synchroniseTags(bool $apply): array
     {
         return Aws::synchroniseIamPolicyTags($this->arn(), $this->tags(), $apply);
-    }
-
-    /**
-     * Policy-document drift is reconciled by creating a new version and setting
-     * it as default — the mechanism that lets a YOLO upgrade that adds a deploy
-     * step also widen the deployer's permissions. AWS keeps up to 5 versions.
-     */
-    public function synchroniseDocument(): void
-    {
-        $policy = IamClient::policy($this->name());
-        $document = json_encode($this->document());
-
-        $currentVersion = IamClient::policyVersion($policy['Arn'], $policy['DefaultVersionId']);
-
-        if (urldecode($currentVersion['Document']) === $document) {
-            return;
-        }
-
-        Aws::iam()->createPolicyVersion([
-            'PolicyArn' => $policy['Arn'],
-            'PolicyDocument' => $document,
-            'SetAsDefault' => true,
-        ]);
     }
 
     public function document(): array

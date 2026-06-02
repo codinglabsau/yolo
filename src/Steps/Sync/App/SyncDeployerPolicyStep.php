@@ -2,7 +2,6 @@
 
 namespace Codinglabs\Yolo\Steps\Sync\App;
 
-use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -19,14 +18,10 @@ class SyncDeployerPolicyStep implements Step
             return StepResult::SKIPPED;
         }
 
-        $policy = new DeployerPolicy();
-
-        // Document drift (a YOLO upgrade that widened the deploy-time call set)
-        // reconciled by creating a new policy version.
-        if ($policy->exists() && ! Arr::get($options, 'dry-run')) {
-            $policy->synchroniseDocument();
-        }
-
-        return $this->syncResource($policy, $options);
+        // Tag drift and policy-document drift (a YOLO upgrade that widened the
+        // deploy-time call set) both flow through syncResource — document drift
+        // surfaces as a plan-time Change via SynchronisesPolicyDocument, so the
+        // plan flags it and apply actually re-versions the policy.
+        return $this->syncResource(new DeployerPolicy(), $options);
     }
 }

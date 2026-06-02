@@ -257,6 +257,11 @@ it('never mutates IAM on a dry-run against existing deployer resources', functio
         'ListRoles' => new Result(['Roles' => [existingDeployerRole()]]),
         'ListPolicyTags' => new Result(['Tags' => $policyTags]),
         'ListRoleTags' => new Result(['Tags' => $roleTags]),
+        // The live document matches the rendered one, so the document reconciler
+        // sees no drift and the dry-run stays clean SYNCED.
+        'GetPolicyVersion' => new Result(['PolicyVersion' => [
+            'Document' => rawurlencode(json_encode((new DeployerPolicy())->document())),
+        ]]),
     ], $captured);
 
     expect((new SyncDeployerPolicyStep())(['dry-run' => true]))->toBe(StepResult::SYNCED);
@@ -269,4 +274,55 @@ it('never mutates IAM on a dry-run against existing deployer resources', functio
         ->not->toContain('CreateRole')
         ->not->toContain('TagPolicy')
         ->not->toContain('TagRole');
+});
+
+it('flags deployer document drift during the plan pass without creating a version', function () {
+    manifestWithDeployer();
+
+    $captured = [];
+    bindRoutedIamClient([
+        'ListPolicies' => new Result(['Policies' => [existingDeployerPolicy()]]),
+        // A stale document — drift the plan must surface so the apply pass isn't
+        // dropped by SyncSteppedCommand's only-pending-steps filter.
+        'GetPolicyVersion' => new Result(['PolicyVersion' => [
+            'Document' => rawurlencode('{"Version":"2012-10-17","Statement":[]}'),
+        ]]),
+    ], $captured);
+
+    // dry-run = plan pass: drift is detected and reported as WOULD_SYNC, but no
+    // version is written.
+    expect((new SyncDeployerPolicyStep())(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC);
+    expect(array_column($captured, 'name'))->not->toContain('CreatePolicyVersion');
+});
+
+it('prunes the oldest non-default version when the policy is at the 5-version limit before re-versioning', function () {
+    manifestWithDeployer();
+
+    $captured = [];
+    bindRoutedIamClient([
+        'ListPolicies' => new Result(['Policies' => [existingDeployerPolicy()]]),
+        'GetPolicyVersion' => new Result(['PolicyVersion' => [
+            'Document' => rawurlencode('{"Version":"2012-10-17","Statement":[]}'),
+        ]]),
+        // Five versions already exist — createPolicyVersion would LimitExceed
+        // without pruning. v1 is the oldest non-default; v3 is default (untouched).
+        'ListPolicyVersions' => new Result(['Versions' => [
+            ['VersionId' => 'v3', 'IsDefaultVersion' => true, 'CreateDate' => '2026-05-25T11:05:25+00:00'],
+            ['VersionId' => 'v1', 'IsDefaultVersion' => false, 'CreateDate' => '2026-05-25T10:21:17+00:00'],
+            ['VersionId' => 'v2', 'IsDefaultVersion' => false, 'CreateDate' => '2026-05-25T10:41:53+00:00'],
+            ['VersionId' => 'v4', 'IsDefaultVersion' => false, 'CreateDate' => '2026-05-25T11:30:00+00:00'],
+            ['VersionId' => 'v5', 'IsDefaultVersion' => false, 'CreateDate' => '2026-05-25T11:45:00+00:00'],
+        ]]),
+    ], $captured);
+
+    expect((new SyncDeployerPolicyStep())([]))->toBe(StepResult::SYNCED);
+
+    $delete = collect($captured)->firstWhere('name', 'DeletePolicyVersion');
+    expect($delete)->not->toBeNull();
+    expect($delete['args']['VersionId'])->toBe('v1'); // oldest non-default
+
+    // The prune happens before the new version is created.
+    $names = array_column($captured, 'name');
+    expect(array_search('DeletePolicyVersion', $names, true))
+        ->toBeLessThan(array_search('CreatePolicyVersion', $names, true));
 });

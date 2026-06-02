@@ -2,7 +2,6 @@
 
 namespace Codinglabs\Yolo\Steps\Sync\Environment;
 
-use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\Iam\EcsTaskPolicy;
@@ -14,14 +13,10 @@ class SyncEcsTaskPolicyStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        $policy = new EcsTaskPolicy();
-
-        // Policy-document drift (the ssmmessages:* statement) reconciled by
-        // creating a new policy version.
-        if ($policy->exists() && ! Arr::get($options, 'dry-run')) {
-            $policy->synchroniseDocument();
-        }
-
-        return $this->syncResource($policy, $options);
+        // Policy-document drift (e.g. a new statement added by a YOLO upgrade)
+        // flows through syncResource as a plan-time Change via
+        // SynchronisesPolicyDocument, so the plan flags it and apply re-versions
+        // the policy — alongside the usual tag sync.
+        return $this->syncResource(new EcsTaskPolicy(), $options);
     }
 }

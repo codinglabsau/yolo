@@ -10,6 +10,7 @@ use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Resources\ResolvesTags;
+use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
@@ -19,11 +20,14 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  *
  * IAM doesn't have a per-resource "tagResource" API that mirrors the other
  * services — tags are written via `createPolicy` at create time and synced
- * via `tagPolicy`. Policy *document* drift is reconciled via `createPolicyVersion`.
+ * via `tagPolicy`. Policy *document* drift is reconciled as a plan-visible
+ * Change via the shared SynchronisesPolicyDocument trait (createPolicyVersion
+ * + 5-version pruning).
  */
-class EcsTaskPolicy implements Resource
+class EcsTaskPolicy implements Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
+    use SynchronisesPolicyDocument;
 
     public function name(): string
     {
@@ -75,28 +79,6 @@ class EcsTaskPolicy implements Resource
     public function synchroniseTags(bool $apply): array
     {
         return Aws::synchroniseIamPolicyTags($this->arn(), $this->tags(), $apply);
-    }
-
-    /**
-     * Policy-document drift is reconciled by creating a new version and
-     * setting it as default. AWS keeps up to 5 versions per managed policy.
-     */
-    public function synchroniseDocument(): void
-    {
-        $policy = IamClient::policy($this->name());
-        $document = json_encode($this->document());
-
-        $currentVersion = IamClient::policyVersion($policy['Arn'], $policy['DefaultVersionId']);
-
-        if (urldecode($currentVersion['Document']) === $document) {
-            return;
-        }
-
-        Aws::iam()->createPolicyVersion([
-            'PolicyArn' => $policy['Arn'],
-            'PolicyDocument' => $document,
-            'SetAsDefault' => true,
-        ]);
     }
 
     public function document(): array
