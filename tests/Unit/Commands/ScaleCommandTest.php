@@ -3,28 +3,34 @@
 use Aws\Result;
 use Codinglabs\Yolo\Yolo;
 use Laravel\Prompts\Prompt;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Commands\ScaleCommand;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 
 /**
  * Drive ScaleCommand::handle() directly with mocked AWS clients. Prompts run
- * non-interactively (confirm returns its default `true`), and the count is passed
- * as an argument so resolveCount() never reaches the text() prompt.
+ * non-interactively: confirm() returns its default (true for raises/applies,
+ * false for the reduction guard), and a passed count argument keeps resolveCount
+ * away from the text() prompt.
+ *
+ * @param  array<string, string>  $arguments
+ * @param  array<string, string|bool>  $options
  */
-function invokeScale(?string $count = null, string $environment = 'testing'): void
+function invokeScale(array $arguments = [], array $options = [], string $environment = 'testing'): void
 {
     Prompt::interactive(false);
     Prompt::setOutput(new BufferedOutput());
 
     $command = new ScaleCommand();
-    $arguments = ['environment' => $environment];
 
-    if ($count !== null) {
-        $arguments['count'] = $count;
+    $input = ['environment' => $environment, ...$arguments];
+
+    foreach ($options as $name => $value) {
+        $input['--' . $name] = $value;
     }
 
-    $command->input = new ArrayInput($arguments, $command->getDefinition());
+    $command->input = new ArrayInput($input, $command->getDefinition());
     $command->output = new BufferedOutput();
     $command->handle();
 }
@@ -39,63 +45,30 @@ it('is registered in the application', function () {
     expect($commands)->toContain(ScaleCommand::class);
 });
 
-it('compares desired count when the service is not autoscaling-managed', function () {
-    expect(ScaleCommand::rows(managed: false, currentDesired: 1, running: 1, live: null, new: 3))->toBe([
+it('shows desired count current → new for a fixed service', function () {
+    expect(ScaleCommand::desiredCountRows(currentDesired: 1, running: 1, new: 3))->toBe([
         ['Desired count', '1', '3'],
         ['Running', '1', '—'],
     ]);
 });
 
-it('compares minimum capacity and marks desired count autoscaling-managed when managed', function () {
-    expect(ScaleCommand::rows(managed: true, currentDesired: 2, running: 2, live: ['min' => 1, 'max' => 6], new: 3))->toBe([
+it('shows min/max and an autoscaling-managed desired count for the bounds path', function () {
+    expect(ScaleCommand::boundsRows(live: ['min' => 1, 'max' => 6], newMin: 3, newMax: 10))->toBe([
         ['Min capacity', '1', '3'],
+        ['Max capacity', '6', '10'],
         ['Desired count', '— (autoscaling-managed)', '—'],
-        ['Running', '2', '—'],
     ]);
 });
 
-it('managed: raises the minimum capacity and lifts the ceiling when scaling above max', function () {
-    writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'tasks' => ['web' => ['autoscaling' => ['min' => 1, 'max' => 4]]],
-    ]);
+it('errors on --scheduler without touching AWS', function () {
+    invokeScale(options: ['scheduler' => true]);
+})->throwsNoExceptions();
 
-    $ecs = [];
-    $aa = [];
-    bindRoutedEcsClient(['DescribeServices' => new Result(['services' => [['status' => 'ACTIVE', 'desiredCount' => 1, 'runningCount' => 1]]])], $ecs);
-    bindMockApplicationAutoScalingClient([
-        'DescribeScalableTargets' => new Result(['ScalableTargets' => [['MinCapacity' => 1, 'MaxCapacity' => 4]]]),
-        'RegisterScalableTarget' => new Result([]),
-    ], $aa);
+it('errors on --queue (not yet a separate service)', function () {
+    invokeScale(options: ['queue' => true]);
+})->throwsNoExceptions();
 
-    invokeScale('6'); // above the current max of 4
-
-    $register = collect($aa)->firstWhere('name', 'RegisterScalableTarget');
-    expect($register['args'])->toMatchArray(['MinCapacity' => 6, 'MaxCapacity' => 6]);
-    expect(collect($ecs)->pluck('name'))->not->toContain('UpdateService');
-});
-
-it('managed: preserves the existing ceiling when scaling within it', function () {
-    writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'tasks' => ['web' => ['autoscaling' => ['min' => 1, 'max' => 6]]],
-    ]);
-
-    $ecs = [];
-    $aa = [];
-    bindRoutedEcsClient(['DescribeServices' => new Result(['services' => [['status' => 'ACTIVE', 'desiredCount' => 2, 'runningCount' => 2]]])], $ecs);
-    bindMockApplicationAutoScalingClient([
-        'DescribeScalableTargets' => new Result(['ScalableTargets' => [['MinCapacity' => 1, 'MaxCapacity' => 6]]]),
-        'RegisterScalableTarget' => new Result([]),
-    ], $aa);
-
-    invokeScale('3');
-
-    $register = collect($aa)->firstWhere('name', 'RegisterScalableTarget');
-    expect($register['args'])->toMatchArray(['MinCapacity' => 3, 'MaxCapacity' => 6]);
-});
-
-it('unmanaged: sets the ECS desired count directly when no scalable target exists', function () {
+it('fixed: sets the ECS desired count directly when no scalable target exists', function () {
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
         'tasks' => ['web' => []],
@@ -109,23 +82,64 @@ it('unmanaged: sets the ECS desired count directly when no scalable target exist
     ], $ecs);
     bindMockApplicationAutoScalingClient(['DescribeScalableTargets' => new Result(['ScalableTargets' => []])], $aa);
 
-    invokeScale('3');
+    invokeScale(arguments: ['count' => '3']);
 
-    $update = collect($ecs)->firstWhere('name', 'UpdateService');
-    expect($update['args'])->toMatchArray(['desiredCount' => 3]);
+    expect(collect($ecs)->firstWhere('name', 'UpdateService')['args'])->toMatchArray(['desiredCount' => 3]);
     expect(collect($aa)->pluck('name'))->not->toContain('RegisterScalableTarget');
 });
 
-it('errors and makes no change when the web service is not found', function () {
+it('bounds: writes the manifest and registers when raising', function () {
     writeManifest([
         'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
-        'tasks' => ['web' => []],
+        'tasks' => ['web' => ['autoscaling' => ['min' => 1, 'max' => 4]]],
     ]);
 
     $ecs = [];
-    bindRoutedEcsClient(['DescribeServices' => new Result(['services' => []])], $ecs);
+    $aa = [];
+    bindRoutedEcsClient(['DescribeServices' => new Result(['services' => [['status' => 'ACTIVE', 'desiredCount' => 1, 'runningCount' => 1]]])], $ecs);
+    bindMockApplicationAutoScalingClient([
+        'DescribeScalableTargets' => new Result(['ScalableTargets' => [['MinCapacity' => 1, 'MaxCapacity' => 4]]]),
+        'RegisterScalableTarget' => new Result([]),
+    ], $aa);
 
-    invokeScale('3');
+    invokeScale(options: ['web' => true, 'min' => '3', 'max' => '10']);
+
+    expect(collect($aa)->firstWhere('name', 'RegisterScalableTarget')['args'])->toMatchArray(['MinCapacity' => 3, 'MaxCapacity' => 10]);
+    expect(Manifest::get('tasks.web.autoscaling.min'))->toBe(3);
+    expect(Manifest::get('tasks.web.autoscaling.max'))->toBe(10);
+});
+
+it('bounds: does not reduce without confirmation', function () {
+    writeManifest([
+        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'tasks' => ['web' => ['autoscaling' => ['min' => 5, 'max' => 10]]],
+    ]);
+
+    $ecs = [];
+    $aa = [];
+    bindRoutedEcsClient(['DescribeServices' => new Result(['services' => [['status' => 'ACTIVE', 'desiredCount' => 5, 'runningCount' => 5]]])], $ecs);
+    bindMockApplicationAutoScalingClient(['DescribeScalableTargets' => new Result(['ScalableTargets' => [['MinCapacity' => 5, 'MaxCapacity' => 10]]])], $aa);
+
+    // Non-interactive confirm returns the reduction guard's default (false) → bails.
+    invokeScale(options: ['web' => true, 'min' => '2']);
+
+    expect(collect($aa)->pluck('name'))->not->toContain('RegisterScalableTarget');
+    expect(Manifest::get('tasks.web.autoscaling.min'))->toBe(5);
+});
+
+it('rejects a desired count on an autoscaling-managed service', function () {
+    writeManifest([
+        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'tasks' => ['web' => ['autoscaling' => ['min' => 1, 'max' => 4]]],
+    ]);
+
+    $ecs = [];
+    $aa = [];
+    bindRoutedEcsClient(['DescribeServices' => new Result(['services' => [['status' => 'ACTIVE', 'desiredCount' => 1, 'runningCount' => 1]]])], $ecs);
+    bindMockApplicationAutoScalingClient(['DescribeScalableTargets' => new Result(['ScalableTargets' => [['MinCapacity' => 1, 'MaxCapacity' => 4]]])], $aa);
+
+    invokeScale(arguments: ['count' => '3'], options: ['web' => true]);
 
     expect(collect($ecs)->pluck('name'))->not->toContain('UpdateService');
+    expect(collect($aa)->pluck('name'))->not->toContain('RegisterScalableTarget');
 });
