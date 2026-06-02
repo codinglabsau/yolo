@@ -3,6 +3,7 @@
 use Aws\Result;
 use Aws\MockHandler;
 use Aws\Ec2\Ec2Client;
+use Aws\Ecs\EcsClient;
 use Aws\Iam\IamClient;
 use Aws\CommandInterface;
 use Codinglabs\Yolo\Helpers;
