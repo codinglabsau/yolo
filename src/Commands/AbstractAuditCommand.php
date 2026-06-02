@@ -87,7 +87,7 @@ abstract class AbstractAuditCommand extends Command
     protected function render(array $report, string $environment): int
     {
         if (empty($report['resources'])) {
-            info(sprintf("Nothing tagged for '%s'. 🐥", $environment));
+            info(sprintf("Nothing tagged for '%s'.", $environment));
 
             return self::SUCCESS;
         }

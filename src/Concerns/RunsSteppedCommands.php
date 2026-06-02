@@ -80,7 +80,7 @@ trait RunsSteppedCommands
         }
 
         if (! $this->confirmGate($environment)) {
-            warning('Aborted — no changes made.');
+            warning('🐥 Chickened out — no changes made.');
 
             return SymfonyCommand::SUCCESS;
         }

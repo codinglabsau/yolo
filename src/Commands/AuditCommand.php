@@ -27,9 +27,9 @@ class AuditCommand extends AbstractAuditCommand
     protected function emptyFilterMessage(string $environment): string
     {
         if ($this->option('drift')) {
-            return sprintf("No drift in '%s' — every tagged resource maps to a live app. 🐥", $environment);
+            return sprintf("No drift in '%s' — every tagged resource maps to a live app.", $environment);
         }
 
-        return sprintf("Nothing tagged for '%s'. 🐥", $environment);
+        return sprintf("Nothing tagged for '%s'.", $environment);
     }
 }
