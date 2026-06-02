@@ -44,11 +44,6 @@ class Paths
         return static::yolo(Helpers::artefactName());
     }
 
-    public static function assetUrl(string $appVersion): string
-    {
-        return Manifest::get('asset-url', Manifest::get('cloudfront')) . '/' . static::versionedBuildAssets($appVersion);
-    }
-
     public static function s3AppBucket(): string
     {
         return Manifest::get('bucket');

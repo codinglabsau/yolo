@@ -22,10 +22,10 @@ class Manifest
      */
     protected const ALLOWED_ENVIRONMENT_KEYS = [
         'account-id', 'region',
-        'domain', 'apex', 'asset-url', 'branch', 'tag', 'repository',
+        'domain', 'apex', 'branch', 'tag', 'repository',
         'tenants.*',
         'bucket', 'alb', 'alb-logs-bucket', 'artefacts-bucket',
-        'cloudfront', 'mediaconvert', 'public-subnets',
+        'mediaconvert', 'public-subnets',
         'internet-gateway', 'route-table', 'vpc',
         'ivs', 'ivs.logging', 'ivs.log-retention-days',
         'rds.subnet', 'rds.security-group',

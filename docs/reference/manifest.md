@@ -108,10 +108,6 @@ Control the CI deployer role's OIDC trust — see [CI/CD](/guide/ci-cd).
 - **`tag`** — a tag pattern (e.g. `'v*'`, or `true` for any tag) instead of a branch.
 - **`repository`** — `org/repo`, inferred from your git origin if omitted; set only to override (monorepo / fork).
 
-### `asset-url`
-
-Base URL for versioned build assets. Defaults to `cloudfront`. Override only if you serve assets from a different host.
-
 ---
 
 ## Infrastructure keys
@@ -141,10 +137,6 @@ Bucket holding env files and build artefacts. Defaults to `yolo-{env}-artefacts`
 ### `alb-logs-bucket`
 
 Bucket for ALB access logs. Defaults to `yolo-{env}-alb-logs`.
-
-### `cloudfront`
-
-The CloudFront distribution domain used as the asset URL.
 
 ### `ivs`
 
