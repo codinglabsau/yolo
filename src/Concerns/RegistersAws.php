@@ -183,9 +183,7 @@ trait RegistersAws
                     ],
                 ]);
 
-                $allowedMatch = Manifest::get('autoscaling.combine', false)
-                    ? Helpers::keyedResourceName(ServerGroup::WEB, exclusive: false)
-                    : Helpers::keyedResourceName($serverGroup, exclusive: false);
+                $allowedMatch = Helpers::keyedResourceName($serverGroup, exclusive: false);
 
                 foreach ($awsResult['Tags'] as $tag) {
                     if ($tag['Key'] === 'Name' && $tag['Value'] === $allowedMatch) {
