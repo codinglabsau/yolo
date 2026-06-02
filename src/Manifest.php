@@ -157,6 +157,21 @@ class Manifest
 
     public static function put(string $key, mixed $value): false|int
     {
+        // Scalar writes are applied surgically — only the changed value's
+        // characters are rewritten, so comments, blank lines, key ordering and
+        // quoting in yolo.yml all survive. Non-scalar writes (init scaffolding
+        // arrays like deploy/tenants into a fresh file) and any key the surgical
+        // pass can't locate fall back to a full re-dump.
+        if (is_scalar($value)) {
+            $path = [...['environments', Helpers::environment()], ...explode('.', $key)];
+
+            $rewritten = static::setScalarPreservingFormat(file_get_contents(Paths::manifest()), $path, $value);
+
+            if ($rewritten !== null) {
+                return file_put_contents(Paths::manifest(), $rewritten);
+            }
+        }
+
         $manifest = static::current();
 
         Arr::set($manifest, sprintf('environments.%s.%s', Helpers::environment(), $key), $value);
@@ -165,6 +180,84 @@ class Manifest
             Paths::manifest(),
             str_replace("'", '', Yaml::dump($manifest, inline: 20, indent: 2))
         );
+    }
+
+    /**
+     * Rewrite a single scalar at $path (e.g. [environments, production, tasks,
+     * web, autoscaling, min]) in raw block-style YAML, preserving every other byte
+     * — comments, blank lines, ordering, indentation, quoting. Updates the value
+     * in place when the key exists; inserts it as the first child when only its
+     * immediate parent block exists. Returns null when neither the key nor its
+     * parent can be located, so the caller can fall back to a full dump.
+     */
+    protected static function setScalarPreservingFormat(string $raw, array $path, mixed $value): ?string
+    {
+        $formatted = static::formatScalar($value);
+        $lines = explode("\n", $raw);
+
+        // Walk the block structure, tracking the active key path by indentation.
+        $stack = [];          // list of [indent, key] for the current ancestry
+        $parentLine = null;   // line index of the immediate parent block, if present
+        $parentIndent = null;
+        $parentPath = array_slice($path, 0, -1);
+
+        foreach ($lines as $index => $line) {
+            if (! preg_match('/^(\s*)([A-Za-z0-9_.-]+):(.*)$/', $line, $matches)) {
+                continue; // blank line, comment, list item or continuation — leave untouched
+            }
+
+            $indent = strlen($matches[1]);
+
+            while ($stack !== [] && end($stack)[0] >= $indent) {
+                array_pop($stack);
+            }
+
+            $stack[] = [$indent, $matches[2]];
+            $currentPath = array_map(fn (array $entry) => $entry[1], $stack);
+
+            if ($currentPath === $path) {
+                // Update in place: keep indent + key, the exact post-colon spacing
+                // and any trailing inline comment — replace only the value.
+                preg_match('/^(\s*[A-Za-z0-9_.-]+:)(\s*)(.*?)(\s*(?:#.*)?)$/', $line, $leaf);
+                $lines[$index] = $leaf[1] . $leaf[2] . $formatted . $leaf[4];
+
+                return implode("\n", $lines);
+            }
+
+            if ($currentPath === $parentPath) {
+                $parentLine = $index;
+                $parentIndent = $indent;
+            }
+        }
+
+        // Key absent but its immediate parent block exists → insert as first child.
+        if ($parentLine !== null) {
+            $childIndent = str_repeat(' ', $parentIndent + 2);
+            array_splice($lines, $parentLine + 1, 0, sprintf('%s%s: %s', $childIndent, end($path), $formatted));
+
+            return implode("\n", $lines);
+        }
+
+        return null;
+    }
+
+    /**
+     * Render a scalar as a YAML value — bare where safe, double-quoted when it
+     * contains characters that would otherwise change the parse.
+     */
+    protected static function formatScalar(mixed $value): string
+    {
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return (string) $value;
+        }
+
+        return preg_match('/^[A-Za-z0-9_.\/@-]+$/', (string) $value)
+            ? (string) $value
+            : '"' . str_replace('"', '\"', (string) $value) . '"';
     }
 
     public static function timezone(): string

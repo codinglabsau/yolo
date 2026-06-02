@@ -19,10 +19,10 @@ use Aws\DynamoDb\DynamoDbClient;
 use Aws\CloudFront\CloudFrontClient;
 use Aws\CloudWatch\CloudWatchClient;
 use Aws\CodeDeploy\CodeDeployClient;
-use Aws\AutoScaling\AutoScalingClient;
 use Aws\ElastiCache\ElastiCacheClient;
 use Aws\EventBridge\EventBridgeClient;
 use Aws\CloudWatchLogs\CloudWatchLogsClient;
+use Aws\ApplicationAutoScaling\ApplicationAutoScalingClient;
 use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
 use Aws\ResourceGroupsTaggingAPI\ResourceGroupsTaggingAPIClient;
 
@@ -578,9 +578,9 @@ class Aws
         return Helpers::app('acm');
     }
 
-    public static function autoscaling(): AutoScalingClient
+    public static function applicationAutoScaling(): ApplicationAutoScalingClient
     {
-        return Helpers::app('autoscaling');
+        return Helpers::app('applicationAutoScaling');
     }
 
     public static function cloudFront(): CloudFrontClient

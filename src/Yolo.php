@@ -25,6 +25,9 @@ class Yolo
         // Exec
         Commands\RunCommand::class,
 
+        // Scale
+        Commands\ScaleCommand::class,
+
         // Sync (scope-grouped: account → environment → app, orchestrated by `sync`)
         Commands\SyncCommand::class,
         Commands\SyncAccountCommand::class,

@@ -2,6 +2,8 @@
 
 namespace Codinglabs\Yolo\Commands;
 
+use function Laravel\Prompts\warning;
+
 class SyncCommand extends SyncSteppedCommand
 {
     protected function configure(): void
@@ -9,6 +11,18 @@ class SyncCommand extends SyncSteppedCommand
         $this->addSyncOptions()
             ->setName('sync')
             ->setDescription('Sync all resources for the given environment (account → environment → app)');
+    }
+
+    public function handle(): int
+    {
+        // The orchestrating `sync` composes SyncAppCommand's scopes but not its
+        // handle(), so surface the app-level scheduler advisory here too — it's the
+        // command most people run.
+        if ($advisory = SyncAppCommand::schedulerAdvisory()) {
+            warning($advisory);
+        }
+
+        return parent::handle();
     }
 
     /**

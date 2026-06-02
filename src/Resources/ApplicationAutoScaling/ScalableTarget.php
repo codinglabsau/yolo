@@ -1,0 +1,129 @@
+<?php
+
+namespace Codinglabs\Yolo\Resources\ApplicationAutoScaling;
+
+use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Change;
+use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
+use Codinglabs\Yolo\Resources\Ecs\EcsService;
+use Codinglabs\Yolo\Aws\ApplicationAutoScaling;
+use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
+
+/**
+ * The Application Auto Scaling scalable target that hands the web ECS service's
+ * desired count to target-tracking policies. Like QueueAlarm / Dashboard this is
+ * a standalone reconciler, NOT a Resource: App Auto Scaling targets aren't
+ * RGT-taggable (so they carry none of the ownership tags the Resource contract
+ * reconciles, and stay invisible to `yolo audit`) and RegisterScalableTarget is a
+ * pure upsert with no create/update split.
+ *
+ * Dry-run honest — it reads the live min/max, diffs them, and only re-registers
+ * on drift, so `sync --dry-run` reports exactly when the capacity bounds change.
+ *
+ * Registering a target hands desired-count ownership to App Auto Scaling, which
+ * is precisely why EcsService leaves desiredCount create-only: sync never fights
+ * the scaler for capacity.
+ */
+class ScalableTarget
+{
+    /**
+     * service/{cluster}/{web-service} — the App Auto Scaling resource id for the
+     * app's ECS web service.
+     */
+    public static function resourceId(): string
+    {
+        return sprintf('service/%s/%s', (new EcsCluster())->name(), (new EcsService())->name());
+    }
+
+    public function exists(): bool
+    {
+        return $this->current() !== null;
+    }
+
+    public function min(): int
+    {
+        return Helpers::validatePositiveInt(
+            Manifest::get('tasks.web.autoscaling.min', 1),
+            'tasks.web.autoscaling.min',
+        );
+    }
+
+    public function max(): int
+    {
+        return Helpers::validatePositiveInt(
+            Manifest::get('tasks.web.autoscaling.max', 4),
+            'tasks.web.autoscaling.max',
+        );
+    }
+
+    /**
+     * Diff the live min/max against the manifest and (only on drift, when
+     * applying) re-register the target. Returns the drift as Change[] so the sync
+     * step reports WOULD_CREATE / WOULD_SYNC / SYNCED and the apply pass survives
+     * the only-pending-steps filter.
+     *
+     * @return array<int, Change>
+     */
+    public function synchronise(bool $apply): array
+    {
+        $live = $this->current();
+        $min = $this->min();
+        $max = $this->max();
+
+        $changes = [];
+
+        if (($live['min'] ?? null) !== $min) {
+            $changes[] = Change::make('MinCapacity', $live['min'] ?? null, $min);
+        }
+
+        if (($live['max'] ?? null) !== $max) {
+            $changes[] = Change::make('MaxCapacity', $live['max'] ?? null, $max);
+        }
+
+        if ($changes === [] || ! $apply) {
+            return $changes;
+        }
+
+        $this->register($min, $max);
+
+        return $changes;
+    }
+
+    public function register(int $min, int $max): void
+    {
+        Aws::applicationAutoScaling()->registerScalableTarget([
+            'ServiceNamespace' => ApplicationAutoScaling::SERVICE_NAMESPACE,
+            'ResourceId' => static::resourceId(),
+            'ScalableDimension' => ApplicationAutoScaling::SCALABLE_DIMENSION,
+            'MinCapacity' => $min,
+            'MaxCapacity' => $max,
+        ]);
+    }
+
+    public function deregister(): void
+    {
+        Aws::applicationAutoScaling()->deregisterScalableTarget([
+            'ServiceNamespace' => ApplicationAutoScaling::SERVICE_NAMESPACE,
+            'ResourceId' => static::resourceId(),
+            'ScalableDimension' => ApplicationAutoScaling::SCALABLE_DIMENSION,
+        ]);
+    }
+
+    /**
+     * The live min/max of the registered target, or null when none is registered.
+     *
+     * @return array{min: int, max: int}|null
+     */
+    public function current(): ?array
+    {
+        try {
+            $target = ApplicationAutoScaling::scalableTarget(static::resourceId());
+
+            return ['min' => (int) $target['MinCapacity'], 'max' => (int) $target['MaxCapacity']];
+        } catch (ResourceDoesNotExistException) {
+            return null;
+        }
+    }
+}

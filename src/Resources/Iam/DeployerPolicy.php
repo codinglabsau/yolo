@@ -254,6 +254,12 @@ class DeployerPolicy implements Resource
             $statements = [...$statements, ...$this->route53Statements()];
         }
 
+        // Autoscaling deliberately gets no statement here: `yolo deploy` never
+        // touches the scalable target or its policies (a deploy rolls a task-def
+        // revision and UpdateService without desiredCount — App Auto Scaling keeps
+        // owning capacity straight through). The scaling APIs are exercised only by
+        // `yolo sync` / `yolo scale`, which run with admin creds, not this role.
+
         return [
             'Version' => '2012-10-17',
             'Statement' => $statements,

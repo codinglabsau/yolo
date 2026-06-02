@@ -46,6 +46,7 @@ export default defineConfig({
         items: [
           { text: 'Domains', link: '/guide/domains' },
           { text: 'Multi-Tenancy', link: '/guide/multi-tenancy' },
+          { text: 'Scaling', link: '/guide/scaling' },
           { text: 'CI/CD', link: '/guide/ci-cd' },
         ],
       },

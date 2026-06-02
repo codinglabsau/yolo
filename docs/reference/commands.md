@@ -18,6 +18,7 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | [`build <env>`](#yolo-build) | Build and push the container image |
 | [`deploy <env>`](#yolo-deploy) | Build, then roll out a zero-downtime deploy |
 | [`run <env>`](#yolo-run) | Open a shell / run a command in a running container |
+| [`scale <env> [count]`](#yolo-scale) | Adjust the web service's task count out of band |
 | [`sync <env>`](#yolo-sync) | Provision all resources (account → environment → app) |
 | [`sync:account <env>`](#yolo-sync-account) | Provision account-global resources |
 | [`sync:environment <env>`](#yolo-sync-environment) | Provision environment-shared resources |
@@ -164,6 +165,41 @@ Today web, queue, and scheduler all run in the single `web` container, so the gr
 
 ---
 
+## `yolo scale`
+
+Adjust a service's capacity out of band — no build, no task-definition revision. Mirrors [`env:push`](#yolo-env-push): reads live state, shows a current → new comparison, and asks before applying.
+
+```bash
+yolo scale <environment> [count] [--web] [--min=<n>] [--max=<n>] [--queue] [--scheduler]
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `environment` | yes | The environment name |
+| `count` | no | Desired task count for a **fixed** (non-autoscaled) service. Prompts when omitted. |
+
+| Option | Value | Description |
+|---|---|---|
+| `--web` | flag | Target the web service (the default). |
+| `--min` / `--max` | int | Autoscaling bounds — the autoscaled form. |
+| `--queue` | flag | Target the queue service (errors until it's a separate service — [LPX-649](https://linear.app/codinglabsau/issue/LPX-649)). |
+| `--scheduler` | flag | Always errors — the scheduler is a singleton and can't be scaled. |
+
+The web service has two forms, picked by what you pass:
+
+- **Autoscaled** — `--min`/`--max` set the bounds. The values are written back to [`tasks.web.autoscaling.min/max`](/reference/manifest#tasks-web-autoscaling) (surgically — comments and formatting are preserved) and the scalable target is registered, so the **manifest stays the source of truth** and the next sync reconciles to the same values. A desired count is never set under autoscaling (the policies would override it).
+- **Fixed** — a positional `count` sets the ECS desired count directly (`UpdateService`), for a service with no `autoscaling` block. Trying to pass a count to an autoscaling-managed service errors and points you to `--min/--max`.
+
+```bash
+yolo scale production --web --min=3 --max=10   # autoscaled bounds (writes the manifest)
+yolo scale production --web 3                   # fixed desired count
+yolo scale production                           # prompt for a fixed count
+```
+
+**Reducing capacity** (a bound below the live value) is confirm-gated and defaults to *no*. See [Scaling](/guide/scaling).
+
+---
+
 ## `yolo sync`
 
 Sync **all** resources for the given environment, orchestrating the three scopes in dependency order: account → environment → app.
@@ -218,7 +254,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **environment**. These 
 
 ## `yolo sync:app`
 
-Sync a single application's resources for the given environment — S3 buckets, app IAM (deployer role/policy, MediaConvert role for IVS), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, SQS queues, a CloudWatch dashboard, and — for a solo app — its hosted zone and ACM certificate. When opted in, it also provisions the shared [Valkey cache](/guide/provisioning#cache-and-sessions) (`cache.store`) and a per-app [DynamoDB sessions table](/guide/provisioning#cache-and-sessions) (`session.driver: dynamodb`).
+Sync a single application's resources for the given environment — S3 buckets, app IAM (deployer role/policy, MediaConvert role for IVS), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, SQS queues, a CloudWatch dashboard, target-tracking autoscaling (when configured), and — for a solo app — its hosted zone and ACM certificate. When opted in, it also provisions the shared [Valkey cache](/guide/provisioning#cache-and-sessions) (`cache.store`) and a per-app [DynamoDB sessions table](/guide/provisioning#cache-and-sessions) (`session.driver: dynamodb`).
 
 ```bash
 yolo sync:app <environment> [--dry-run] [--check] [--force] [--no-progress] [--tenant=<id>]
@@ -231,6 +267,8 @@ The step set is mode-aware: a multi-tenant app fans out landlord + per-tenant qu
 Some environment-tier resources are bootstrapped here by exception — the RDS security group (because its real purpose is this app's task-SG ingress), the HTTPS `:443` listener (because its creation needs this app's certificate), and the shared Valkey cache when `cache.store` is set (its security group needs this app's task SG to authorise). All are created-if-missing and never mutated, so the environment tier remains their single writer.
 
 A per-app **CloudWatch dashboard** (`yolo-<env>-<app>-dashboard`) is generated last, so every resource it charts already exists. It panels the ECS service (CPU/memory/tasks), the ALB (target health, requests, latency, slow-request bands, error counts and a 5xx error-rate SLO), SQS depth/throughput, the asset CloudFront distribution (requests, errors and cache hit rate), the S3 buckets and the app's logs — plus an RDS panel derived from `DB_HOST` in the app's env file (CPU, connections, memory, throughput and read/write latency). It's a read-only convenience: CloudWatch dashboards can't carry tags, so it doesn't appear in `yolo audit`.
+
+When a [`tasks.web.autoscaling`](/reference/manifest#tasks-web-autoscaling) block is present, `sync:app` also registers the **scalable target** and its **target-tracking policies** (CPU always; request-count once `request-count-per-target` is set), right after the ECS service. App Auto Scaling targets aren't taggable either, so they're invisible to `yolo audit` too. If autoscaling is enabled on a task that also runs the scheduler, sync prints a one-line advisory — see [Scaling](/guide/scaling). Scaling is web-only and inert without the manifest block.
 
 ---
 
