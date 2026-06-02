@@ -32,7 +32,7 @@ class AuditAppCommand extends AbstractAuditCommand
         $app = $this->argument('app');
 
         if ($this->option('drift')) {
-            return sprintf("No drift for app '%s' in '%s'. 🐥", $app, $environment);
+            return sprintf("No drift for app '%s' in '%s'.", $app, $environment);
         }
 
         return sprintf("No resources tagged for app '%s' in '%s'.", $app, $environment);

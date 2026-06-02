@@ -103,7 +103,7 @@ yolo deploy production
 
 `deploy` builds your container image, pushes it to ECR, registers a new task definition, runs your deploy hooks (e.g. `php artisan migrate`), rolls the ECS service over to the new version, and waits for it to go healthy before pointing DNS at it. If the new version fails its health checks, the [deployment circuit breaker](/guide/building-and-deploying#zero-downtime-rollout) rolls it back automatically.
 
-When it finishes, your app is live. 🐥
+When it finishes, your app is live. 🚀
 
 ## 7. Visit your app
 

@@ -70,7 +70,7 @@ class EnvPushCommand extends Command
 
             if (! $confirm) {
                 unlink(Paths::base($temporaryFilename));
-                info('🐥 yolo');
+                info('🐥 Nothing uploaded.');
 
                 return;
             }

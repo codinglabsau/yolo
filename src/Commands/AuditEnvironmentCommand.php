@@ -29,7 +29,7 @@ class AuditEnvironmentCommand extends AbstractAuditCommand
     protected function emptyFilterMessage(string $environment): string
     {
         if ($this->option('drift')) {
-            return sprintf("No drift at the environment tier in '%s' — drift only applies to app-scope resources. 🐥", $environment);
+            return sprintf("No drift at the environment tier in '%s' — drift only applies to app-scope resources.", $environment);
         }
 
         return sprintf("No environment-tier resources tagged for '%s'.", $environment);
