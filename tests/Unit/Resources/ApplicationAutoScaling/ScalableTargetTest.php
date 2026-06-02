@@ -74,3 +74,18 @@ it('reports drift but does not register on a dry-run', function () {
     expect($changes[0]->describe())->toContain('MinCapacity');
     expect(collect($captured)->pluck('name'))->not->toContain('RegisterScalableTarget');
 });
+
+it('deregisters the target with the fixed namespace and dimension', function () {
+    $captured = [];
+    bindMockApplicationAutoScalingClient(['DeregisterScalableTarget' => new Result([])], $captured);
+
+    (new ScalableTarget())->deregister();
+
+    $call = collect($captured)->firstWhere('name', 'DeregisterScalableTarget');
+
+    expect($call['args'])->toMatchArray([
+        'ServiceNamespace' => 'ecs',
+        'ResourceId' => 'service/yolo-testing-my-app/yolo-testing-my-app-web',
+        'ScalableDimension' => 'ecs:service:DesiredCount',
+    ]);
+});
