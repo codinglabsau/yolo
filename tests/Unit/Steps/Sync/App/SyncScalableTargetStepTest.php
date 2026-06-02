@@ -1,7 +1,9 @@
 <?php
 
 use Aws\Result;
+use Laravel\Prompts\Prompt;
 use Codinglabs\Yolo\Enums\StepResult;
+use Symfony\Component\Console\Output\BufferedOutput;
 use Codinglabs\Yolo\Steps\Sync\App\SyncScalableTargetStep;
 
 beforeEach(function () {
@@ -39,4 +41,30 @@ it('creates the target when applying and the service exists', function () {
 
     expect((new SyncScalableTargetStep())([]))->toBe(StepResult::CREATED);
     expect(collect($aa)->pluck('name'))->toContain('RegisterScalableTarget');
+});
+
+it('refuses to reduce live bounds under --force', function () {
+    Prompt::setOutput(new BufferedOutput());
+
+    $ecs = [];
+    $aa = [];
+    bindRoutedEcsClient(['DescribeServices' => new Result(['services' => [['status' => 'ACTIVE', 'serviceArn' => 'arn']]])], $ecs);
+    // Live is 5–10; manifest (from beforeEach) is 2–6 → reconciling would lower both.
+    bindMockApplicationAutoScalingClient(['DescribeScalableTargets' => new Result(['ScalableTargets' => [['MinCapacity' => 5, 'MaxCapacity' => 10]]])], $aa);
+
+    expect((new SyncScalableTargetStep())(['force' => true]))->toBe(StepResult::SKIPPED);
+    expect(collect($aa)->pluck('name'))->not->toContain('RegisterScalableTarget');
+});
+
+it('reduces live bounds when run attended (no force)', function () {
+    $ecs = [];
+    $aa = [];
+    bindRoutedEcsClient(['DescribeServices' => new Result(['services' => [['status' => 'ACTIVE', 'serviceArn' => 'arn']]])], $ecs);
+    bindMockApplicationAutoScalingClient([
+        'DescribeScalableTargets' => new Result(['ScalableTargets' => [['MinCapacity' => 5, 'MaxCapacity' => 10]]]),
+        'RegisterScalableTarget' => new Result([]),
+    ], $aa);
+
+    expect((new SyncScalableTargetStep())([]))->toBe(StepResult::SYNCED);
+    expect(collect($aa)->firstWhere('name', 'RegisterScalableTarget')['args'])->toMatchArray(['MinCapacity' => 2, 'MaxCapacity' => 6]);
 });

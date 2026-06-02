@@ -167,30 +167,36 @@ Today web, queue, and scheduler all run in the single `web` container, so the gr
 
 ## `yolo scale`
 
-Adjust the web service's running capacity out of band — no build, no task-definition revision. Mirrors [`env:push`](#yolo-env-push): it reads live state, shows a current → new comparison, and asks before applying.
+Adjust a service's capacity out of band — no build, no task-definition revision. Mirrors [`env:push`](#yolo-env-push): reads live state, shows a current → new comparison, and asks before applying.
 
 ```bash
-yolo scale <environment> [count]
+yolo scale <environment> [count] [--web] [--min=<n>] [--max=<n>] [--queue] [--scheduler]
 ```
 
 | Argument | Required | Description |
 |---|---|---|
 | `environment` | yes | The environment name |
-| `count` | no | The desired number of tasks. Prompts when omitted. |
+| `count` | no | Desired task count for a **fixed** (non-autoscaled) service. Prompts when omitted. |
 
-**Options:** none
+| Option | Value | Description |
+|---|---|---|
+| `--web` | flag | Target the web service (the default). |
+| `--min` / `--max` | int | Autoscaling bounds — the autoscaled form. |
+| `--queue` | flag | Target the queue service (errors until it's a separate service — [LPX-649](https://linear.app/codinglabsau/issue/LPX-649)). |
+| `--scheduler` | flag | Always errors — the scheduler is a singleton and can't be scaled. |
 
-It's **autoscaling-aware**:
+The web service has two forms, picked by what you pass:
 
-- **No scalable target registered** → sets the ECS service's desired count directly (`UpdateService`).
-- **Autoscaling enabled** (a [`tasks.web.autoscaling`](/reference/manifest#tasks-web-autoscaling) block) → a raw desired count would be overridden on the next scaling evaluation, so `scale` raises the target's **minimum capacity** (the floor) instead, and shows desired count as autoscaling-managed.
+- **Autoscaled** — `--min`/`--max` set the bounds. The values are written back to [`tasks.web.autoscaling.min/max`](/reference/manifest#tasks-web-autoscaling) (surgically — comments and formatting are preserved) and the scalable target is registered, so the **manifest stays the source of truth** and the next sync reconciles to the same values. A desired count is never set under autoscaling (the policies would override it).
+- **Fixed** — a positional `count` sets the ECS desired count directly (`UpdateService`), for a service with no `autoscaling` block. Trying to pass a count to an autoscaling-managed service errors and points you to `--min/--max`.
 
 ```bash
-yolo scale production 3      # scale to 3 tasks (or raise the floor to 3 when autoscaling)
-yolo scale production        # prompt for the value
+yolo scale production --web --min=3 --max=10   # autoscaled bounds (writes the manifest)
+yolo scale production --web 3                   # fixed desired count
+yolo scale production                           # prompt for a fixed count
 ```
 
-Capacity is otherwise create-only — a sync or deploy never resets it — so a manual scale (or the autoscaler) is never clobbered. See [Scaling](/guide/scaling).
+**Reducing capacity** (a bound below the live value) is confirm-gated and defaults to *no*. See [Scaling](/guide/scaling).
 
 ---
 

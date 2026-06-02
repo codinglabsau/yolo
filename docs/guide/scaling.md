@@ -5,7 +5,7 @@ YOLO runs the web service as a single Fargate task by default. You can scale it 
 - **Autoscaling** — let AWS adjust the task count automatically from live metrics.
 - **`yolo scale`** — set the capacity yourself, out of band, without a deploy.
 
-Both leave capacity **create-only**: a `sync` or `deploy` never resets the task count, so neither the autoscaler nor a manual scale is ever clobbered by a routine deploy.
+Autoscaling **bounds** (`min`/`max`) live in the manifest and are reconciled by sync, so they're declarative and never drift — with a guard so a stale manifest can't scale production down unattended (see [Reducing capacity is guarded](#reducing-capacity-is-guarded)). A **fixed** service's desired count is create-only — set once, then owned by `yolo scale`, never reset by a routine sync or deploy.
 
 ## Autoscaling
 
@@ -48,13 +48,26 @@ Application Auto Scaling targets and policies can't carry tags, so they don't sh
 
 ## Manual scaling
 
-[`yolo scale`](/reference/commands#yolo-scale) changes capacity without a build or deploy. Like `env:push`, it shows a current → new comparison and asks before applying:
+[`yolo scale`](/reference/commands#yolo-scale) changes capacity without a build or deploy. Like `env:push`, it shows a current → new comparison and asks before applying.
 
 ```bash
-yolo scale production 3      # set the count (prompts if omitted)
+yolo scale production --web --min=3 --max=10   # autoscaled: set the bounds
+yolo scale production --web 3                    # fixed: set the desired count
 ```
 
-It's autoscaling-aware. With no scalable target it sets the ECS desired count directly. Once autoscaling is on, a raw desired count would just be overridden on the next evaluation — so `scale` raises the target's **minimum capacity** (the floor) instead, which is the durable lever.
+Under autoscaling you set the **bounds** (`--min`/`--max`), never a desired count — the policies own desired count and would override it. Crucially, `scale` **writes the bounds back to the manifest** (surgically — your comments and formatting survive), so the manifest stays the single source of truth and the next `yolo sync` reconciles to the same values rather than clobbering your change.
+
+For a fixed service (no `autoscaling` block) a positional `count` sets the ECS desired count directly.
+
+### Reducing capacity is guarded
+
+Because the manifest is authoritative, a `yolo sync` run with a **stale** manifest could otherwise scale production *down* — exactly the wrong thing during an incident. So lowering a live bound is gated:
+
+- **`yolo scale`** down → an explicit confirm that defaults to **no**.
+- **`yolo sync`** (interactive) → the reduction shows in the plan and the normal confirm gate guards it; abort and nothing changes.
+- **`yolo sync --force` / non-interactive** → the reduction is **refused** (skipped + warned). Lowering capacity must be deliberate and attended — an interactive sync or `yolo scale`. Raises always apply.
+
+So an emergency `yolo scale production --web --min=10` is durable: it's written to the manifest *and* live, and no unattended sync can quietly walk it back.
 
 ## The scheduler caveat
 
