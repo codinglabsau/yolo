@@ -16,6 +16,12 @@ function writeFormattedManifest(string $yaml, string $environment = 'production'
     Helpers::app()->instance('environment', $environment);
 }
 
+// These tests set a 'production' env + a custom manifest file. Restore the
+// bootstrap default (env 'testing', stub manifest) after each so we don't
+// pollute global state for tests that rely on it under `pest --parallel` —
+// e.g. PathsTest, which has no beforeEach and asserts yolo-testing-my-app.
+afterEach(fn () => writeManifest([]));
+
 $richManifest = <<<'YAML'
 name: my-app  # the application
 
