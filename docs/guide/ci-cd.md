@@ -58,6 +58,42 @@ In CI, YOLO defers to the AWS SDK's default credential chain, so the assumed-rol
 Pair `tag: 'v*'` with a GitHub protected-tag ruleset (only maintainers may cut `v*` tags). The AWS trust then just confirms "a tag push from this repo", and GitHub enforces who can trigger it.
 :::
 
+## Gate CI on drift with `yolo sync --check`
+
+`yolo deploy` ships your code; `yolo sync --check` guards the infrastructure behind it. Run it in CI to fail a pipeline the moment your live AWS resources drift from `yolo.yml` — someone hand-edited a resource in the console, or a manifest change merged without anyone running `yolo sync`.
+
+`--check` runs the same read-only plan pass as [`--dry-run`](/guide/provisioning) and prints the same diff, but **never applies** and exits non-zero when there are pending changes:
+
+| Exit code | Meaning |
+|---|---|
+| `0` | In sync — no pending changes. |
+| non-zero | Drift detected, **or** the check itself errored (bad credentials, an AWS API failure, an invalid manifest). |
+
+Either way, a non-zero exit means the job should fail and a human should read the printed plan.
+
+::: warning Use read-capable credentials, not the deployer role
+`--check` is a `sync` operation, not a deploy: it `Describe`s every resource across the stack to compute drift, so it needs **read access to the whole provisioned surface** — far broader than the deploy-scoped deployer role above. Run the check with a read-capable identity (your SSO role, or one granted AWS's managed `ReadOnlyAccess`), separate from the narrow deploy role. Pointed at the deployer role it would `AccessDenied` and fail for the wrong reason.
+:::
+
+```yaml
+# A scheduled (or pre-deploy) drift check — note the read-capable role
+permissions:
+  id-token: write
+  contents: read
+
+steps:
+  - uses: actions/checkout@v4
+
+  - uses: aws-actions/configure-aws-credentials@v4
+    with:
+      role-to-assume: arn:aws:iam::<account-id>:role/<read-capable-role>
+      aws-region: <region>
+
+  - run: vendor/bin/yolo sync production --check --no-progress
+```
+
+See the [`sync` reference](/reference/commands#sync-options) for the full option list.
+
 ## Other auth methods
 
 The default credential chain means all three auth methods work with no extra config:

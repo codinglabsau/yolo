@@ -169,7 +169,7 @@ Today web, queue, and scheduler all run in the single `web` container, so the gr
 Sync **all** resources for the given environment, orchestrating the three scopes in dependency order: account → environment → app.
 
 ```bash
-yolo sync <environment> [--dry-run] [--force] [--no-progress] [--tenant=<id>]
+yolo sync <environment> [--dry-run] [--check] [--force] [--no-progress] [--tenant=<id>]
 ```
 
 | Argument | Required | Description |
@@ -181,9 +181,12 @@ yolo sync <environment> [--dry-run] [--force] [--no-progress] [--tenant=<id>]
 | Option | Short | Value | Description |
 |---|---|---|---|
 | `--dry-run` | | flag | Show what would change without applying it. |
+| `--check` | | flag | Plan only and exit non-zero if the environment has drifted — never applies. Intended as a CI gate. |
 | `--force` | `-f` | flag | Skip the confirmation prompt. |
 | `--no-progress` | | flag | Hide the live progress output. |
 | `--tenant` | | string | Limit per-tenant steps to a single tenant id. |
+
+`--check` is the machine-readable form of `--dry-run`: it runs the same plan pass and prints the same diff, but never applies and returns a non-zero exit code when there are pending changes (and `0` when the environment is already in sync). Run `yolo sync <env> --check` in CI to fail a pipeline on drifted or unsynced infrastructure. A non-zero exit also covers a dry-run that errored (bad credentials, AWS API failure, invalid manifest) — either way, CI should stop and a human should look.
 
 These four options are shared by every `sync` command below. See [Provisioning](/guide/provisioning) for the plan/confirm/apply flow.
 
@@ -194,7 +197,7 @@ These four options are shared by every `sync` command below. See [Provisioning](
 Sync the account-global resources (shared across every environment) — the GitHub OIDC identity provider.
 
 ```bash
-yolo sync:account <environment> [--dry-run] [--force] [--no-progress] [--tenant=<id>]
+yolo sync:account <environment> [--dry-run] [--check] [--force] [--no-progress] [--tenant=<id>]
 ```
 
 Arguments and options as [`sync`](#sync-options). Scope: **account**.
@@ -206,7 +209,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **account**.
 Sync the environment-shared (environment-tier) resources — VPC, subnets, internet gateway and routes, the load balancer security group, the ALB and its `:80` listener, the SNS alarm topic, and the shared ECS task & execution IAM roles.
 
 ```bash
-yolo sync:environment <environment> [--dry-run] [--force] [--no-progress] [--tenant=<id>]
+yolo sync:environment <environment> [--dry-run] [--check] [--force] [--no-progress] [--tenant=<id>]
 ```
 
 Arguments and options as [`sync`](#sync-options). Scope: **environment**. These resources are shared by every app in the environment; apps attach to them but never mutate them.
@@ -218,7 +221,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **environment**. These 
 Sync a single application's resources for the given environment — S3 buckets, app IAM (deployer role/policy, MediaConvert role for IVS), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, SQS queues, a CloudWatch dashboard, and — for a solo app — its hosted zone and ACM certificate. When opted in, it also provisions the shared [Valkey cache](/guide/provisioning#cache-and-sessions) (`cache.store`) and a per-app [DynamoDB sessions table](/guide/provisioning#cache-and-sessions) (`session.driver: dynamodb`).
 
 ```bash
-yolo sync:app <environment> [--dry-run] [--force] [--no-progress] [--tenant=<id>]
+yolo sync:app <environment> [--dry-run] [--check] [--force] [--no-progress] [--tenant=<id>]
 ```
 
 Arguments and options as [`sync`](#sync-options). Scope: **app**.

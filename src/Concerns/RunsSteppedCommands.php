@@ -65,13 +65,27 @@ trait RunsSteppedCommands
 
         $this->printPlan($plan, $skipped);
 
+        $pending = $plan->filter(fn (array $entry) => static::planEntryHasWork($entry))->values();
+
+        // --check is a CI gate: plan only, never apply, and exit non-zero when
+        // the environment has drifted so a pipeline can fail on unsynced infra.
+        if ($this->option('check')) {
+            if ($pending->isNotEmpty()) {
+                warning(sprintf('Drift detected — %s has %d pending change(s).', $environment, $pending->count()));
+
+                return SymfonyCommand::FAILURE;
+            }
+
+            info(sprintf('In sync — %s has no pending changes.', $environment));
+
+            return SymfonyCommand::SUCCESS;
+        }
+
         if ($this->option('dry-run')) {
             info(sprintf('Dry run — no changes applied to %s.', $environment));
 
             return SymfonyCommand::SUCCESS;
         }
-
-        $pending = $plan->filter(fn (array $entry) => static::planEntryHasWork($entry))->values();
 
         if ($pending->isEmpty()) {
             info(sprintf('Already in sync — %s has no pending changes.', $environment));

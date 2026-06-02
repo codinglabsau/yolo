@@ -48,6 +48,16 @@ yolo sync production --dry-run
 
 This computes and prints the full diff but makes no changes. It's the safe way to see what a `sync` would do before you commit — always dry-run first against an account you care about.
 
+### Gate CI on drift with `--check`
+
+`--check` is the machine-readable counterpart to `--dry-run`. It runs the same plan pass and prints the same diff, but never applies and **exits non-zero when the environment has drifted** (and `0` when it's already in sync):
+
+```bash
+yolo sync production --check
+```
+
+Wire it into CI to fail a pipeline the moment infrastructure drifts from the manifest — someone hand-edited a resource, or a `sync` was never run after a manifest change. A non-zero exit also covers a dry-run that errored (bad credentials, an AWS API failure, an invalid manifest); in every case CI should stop and a human should look at the printed plan.
+
 ### Skip the prompt with `--force`
 
 In automation, skip the interactive confirmation:
