@@ -134,7 +134,7 @@ class ScaleCommand extends Command
             : confirm(sprintf('Apply these autoscaling bounds to %s?', $this->argument('environment')));
 
         if (! $confirmed) {
-            info('🐥 yolo');
+            info('🐥 Nothing scaled.');
 
             return;
         }
@@ -163,7 +163,7 @@ class ScaleCommand extends Command
             : confirm(sprintf('Are you sure you want to scale %s to %d %s?', $this->argument('environment'), $new, $new === 1 ? 'task' : 'tasks'));
 
         if (! $confirmed) {
-            info('🐥 yolo');
+            info('🐥 Nothing scaled.');
 
             return;
         }
