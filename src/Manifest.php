@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo;
 
 use Illuminate\Support\Arr;
 use Symfony\Component\Yaml\Yaml;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 class Manifest
@@ -33,7 +34,7 @@ class Manifest
         'sqs.depth-alarm-threshold', 'sqs.depth-alarm-period', 'sqs.depth-alarm-evaluation-periods',
         'cache.store',
         'session.driver',
-        'tasks.web.*',
+        'tasks.web.*', 'tasks.queue.*', 'tasks.scheduler.*',
         'build', 'deploy', 'deploy-all',
     ];
 
@@ -224,7 +225,12 @@ class Manifest
                 return implode("\n", $lines);
             }
 
-            if ($currentPath === $parentPath) {
+            // Only a block-style parent (nothing after the colon but maybe a
+            // comment) can take a new child line. A parent with an inline value —
+            // `queue: {}` / `queue: []` — would be corrupted by splicing a block
+            // child beneath it, so leave parentLine null and let put() fall back to
+            // a full re-dump (which renders it as a proper block).
+            if ($currentPath === $parentPath && trim(preg_replace('/#.*$/', '', $matches[3])) === '') {
                 $parentLine = $index;
                 $parentIndent = $indent;
             }
@@ -287,6 +293,58 @@ class Manifest
     public static function sessionDriver(): ?string
     {
         return static::get('session.driver', static::has('tasks.web') ? 'redis' : null);
+    }
+
+    /**
+     * Whether the web container also runs this workload in-process (bundled mode)
+     * — `tasks.web.queue` / `tasks.web.scheduler` set truthy (a bare `true` or an
+     * object of overrides). The bare-flag form goes through strict bool validation
+     * so a typo can't silently disable a bundled process. The alternative is to
+     * extract the workload into its own service (see hasStandaloneQueue /
+     * hasStandaloneScheduler); a workload can't be both at once.
+     */
+    public static function bundles(string $program): bool
+    {
+        $value = static::get("tasks.web.$program", false);
+
+        return is_array($value) || Helpers::validateStrictBool($value, "tasks.web.$program");
+    }
+
+    /**
+     * Whether the queue runs as its own ECS service (a top-level `tasks.queue`
+     * block) rather than bundled in the web container. Presence is the opt-in —
+     * an empty block extracts the queue with default sizing and scale-to-zero.
+     */
+    public static function hasStandaloneQueue(): bool
+    {
+        return static::has('tasks.queue');
+    }
+
+    /**
+     * Whether the scheduler runs as its own pinned-singleton ECS service (a
+     * top-level `tasks.scheduler` block) rather than bundled in the web container.
+     */
+    public static function hasStandaloneScheduler(): bool
+    {
+        return static::has('tasks.scheduler');
+    }
+
+    /**
+     * The workloads that run as their own ECS service for this app: web (when
+     * there's a `tasks.web` block) plus any extracted queue/scheduler. This is the
+     * single list that deploy registers task-def revisions for, sync provisions
+     * services for, and `yolo run --group` fans across. Bundled queue/scheduler
+     * are NOT here — they ride inside the web container, not their own service.
+     *
+     * @return array<int, ServerGroup>
+     */
+    public static function serverGroups(): array
+    {
+        return array_values(array_filter([
+            static::has('tasks.web') ? ServerGroup::WEB : null,
+            static::hasStandaloneQueue() ? ServerGroup::QUEUE : null,
+            static::hasStandaloneScheduler() ? ServerGroup::SCHEDULER : null,
+        ]));
     }
 
     public static function apex(): string

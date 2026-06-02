@@ -1,6 +1,7 @@
 <?php
 
 use Codinglabs\Yolo\ShutdownTimings;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Steps\Sync\App\SyncTaskDefinitionStep;
 
 beforeEach(function () {
@@ -50,10 +51,40 @@ it('defaults image to the app ECR repository when not overridden', function () {
 });
 
 it('pins image to the supplied tag when one is passed', function () {
-    $payload = SyncTaskDefinitionStep::payload('26.21.2.1500');
+    $payload = SyncTaskDefinitionStep::payload(imageTag: '26.21.2.1500');
 
     expect($payload['containerDefinitions'][0]['image'])
         ->toBe('111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/my-app:26.21.2.1500');
+});
+
+it('names the container after the role and passes it as the command', function () {
+    $payload = SyncTaskDefinitionStep::payload(ServerGroup::QUEUE);
+
+    expect($payload['family'])->toBe('yolo-testing-my-app-queue');
+    expect($payload['containerDefinitions'][0]['name'])->toBe('queue');
+    expect($payload['containerDefinitions'][0]['command'])->toBe(['queue']);
+});
+
+it('maps no port for a headless worker group (queue/scheduler)', function () {
+    expect(SyncTaskDefinitionStep::payload(ServerGroup::SCHEDULER)['containerDefinitions'][0])
+        ->not->toHaveKey('portMappings');
+});
+
+it('sizes queue and scheduler smaller by default than web', function () {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
+    ]);
+
+    bindMockIamClient([
+        'yolo-testing-ecs-task-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-task-role',
+        'yolo-testing-ecs-execution-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role',
+    ]);
+
+    $queue = SyncTaskDefinitionStep::payload(ServerGroup::QUEUE);
+
+    expect($queue['cpu'])->toBe('256');
+    expect($queue['memory'])->toBe('512');
 });
 
 it('falls back to defaults when manifest omits task config', function () {

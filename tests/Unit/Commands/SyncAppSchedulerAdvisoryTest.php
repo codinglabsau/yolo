@@ -30,5 +30,6 @@ it('advises onOneServer when autoscaling a bundled scheduler', function () {
     ]);
 
     expect(SyncAppCommand::schedulerAdvisory())
-        ->toContain('onOneServer()');
+        ->toContain('onOneServer()')
+        ->toContain('tasks.scheduler');
 });

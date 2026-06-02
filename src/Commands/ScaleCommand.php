@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Commands;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ecs;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
 use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Symfony\Component\Console\Input\InputOption;
@@ -20,20 +21,20 @@ use function Laravel\Prompts\table;
 use function Laravel\Prompts\confirm;
 
 /**
- * Adjust the web service's capacity out of band — no build, no task-definition
+ * Adjust a service's capacity out of band — no build, no task-definition
  * revision. Mirrors env:push's compare-then-confirm UX: read live state, show a
  * current → new table, gate on a confirm, bail with the chick.
  *
  * The manifest is the source of truth, so the autoscaled path writes the new
  * bounds back to yolo.yml (surgically, preserving formatting) and registers them
  * — sync then reconciles to the same values rather than clobbering them. The
- * fixed path (no scalable target) sets the ECS desired count directly, since
- * there are no bounds to manage.
+ * fixed path (a web service with no scalable target) sets the ECS desired count
+ * directly, since there are no bounds to manage.
  *
- *   yolo scale production --web --min=3 --max=10   # autoscaled bounds
- *   yolo scale production --web 3                   # fixed desired count
- *   yolo scale production --queue …                 # not yet — the queue runs inside the web task
- *   yolo scale production --scheduler …             # error — the scheduler is a singleton
+ *   yolo scale production --web --min=3 --max=10     # web autoscaling bounds
+ *   yolo scale production --web 3                     # fixed web desired count
+ *   yolo scale production --queue --min=0 --max=20    # queue bounds (min 0 = scale to zero)
+ *   yolo scale production --scheduler …               # error — the scheduler is a singleton
  */
 class ScaleCommand extends Command
 {
@@ -53,34 +54,35 @@ class ScaleCommand extends Command
 
     public function handle(): void
     {
-        if (! $this->resolveWebGroup()) {
+        if (($group = $this->resolveGroup()) === null) {
             return;
         }
 
         $cluster = (new EcsCluster())->name();
-        $serviceName = (new EcsService())->name();
+        $serviceName = (new EcsService($group))->name();
 
         try {
             $service = Ecs::service($cluster, $serviceName);
         } catch (ResourceDoesNotExistException) {
-            error(sprintf('Could not find the web service for %s — has it been deployed?', $this->argument('environment')));
+            error(sprintf('Could not find the %s service for %s — has it been deployed?', $group->value, $this->argument('environment')));
 
             return;
         }
 
-        $target = new ScalableTarget();
+        $target = new ScalableTarget($group);
         $live = $target->current();
 
         if ($this->option('min') !== null || $this->option('max') !== null) {
-            $this->scaleBounds($target, $live);
+            $this->scaleBounds($group, $target, $live);
 
             return;
         }
 
-        // No bounds given → desired-count path. Setting desired count on an
-        // autoscaling-managed service is futile (the policies override it), so
-        // redirect to the bounds form rather than quietly no-op.
-        if ($live !== null) {
+        // A standalone queue is always autoscaling-managed, as is any web service
+        // with a registered target. Setting a fixed desired count there is futile
+        // (the policies override it), so redirect to the bounds form rather than
+        // quietly no-op. Only a fixed web service falls through to desired count.
+        if ($group === ServerGroup::QUEUE || $live !== null) {
             error('This service is autoscaling-managed — use --min/--max to change its bounds, not a desired count.');
 
             return;
@@ -90,32 +92,35 @@ class ScaleCommand extends Command
     }
 
     /**
-     * Resolve the target group. Only --web is live; --queue is a forward-compat
-     * stub until queue/scheduler become their own services, and --scheduler is
-     * never permitted (a singleton can't be scaled). Returns false when the
-     * command should stop (error already surfaced).
+     * Resolve the target group from the flags. The scheduler is a singleton and
+     * can never be scaled; web is the default. Returns null when the command
+     * should stop (error already surfaced).
      */
-    protected function resolveWebGroup(): bool
+    protected function resolveGroup(): ?ServerGroup
     {
         if ($this->option('scheduler')) {
             error('The scheduler is a singleton and cannot be scaled — it always runs exactly one task.');
 
-            return false;
+            return null;
         }
 
-        if ($this->option('queue')) {
-            error('Queue scaling will land when the queue becomes its own service. For now it runs inside the web task and scales with it.');
-
-            return false;
-        }
-
-        return true;
+        return $this->option('queue') ? ServerGroup::QUEUE : ServerGroup::WEB;
     }
 
-    protected function scaleBounds(ScalableTarget $target, ?array $live): void
+    protected function scaleBounds(ServerGroup $group, ScalableTarget $target, ?array $live): void
     {
         $newMin = $this->option('min') !== null ? (int) $this->option('min') : ($live['min'] ?? $target->min());
         $newMax = $this->option('max') !== null ? (int) $this->option('max') : ($live['max'] ?? $target->max());
+
+        // The queue may floor at zero (scale to zero); the web tier must keep at
+        // least one task serving.
+        $floor = $group === ServerGroup::QUEUE ? 0 : 1;
+
+        if ($newMin < $floor) {
+            error(sprintf('Minimum capacity for the %s service cannot be below %d.', $group->value, $floor));
+
+            return;
+        }
 
         if ($newMin > $newMax) {
             error(sprintf('Minimum capacity (%d) cannot exceed maximum capacity (%d).', $newMin, $newMax));
@@ -142,8 +147,10 @@ class ScaleCommand extends Command
         // Manifest is the source of truth — write the bounds back (surgically, so
         // comments/formatting survive) so the next sync reconciles to these values
         // rather than clobbering them.
-        Manifest::put('tasks.web.autoscaling.min', $newMin);
-        Manifest::put('tasks.web.autoscaling.max', $newMax);
+        [$minKey, $maxKey] = static::boundsKeys($group);
+
+        Manifest::put($minKey, $newMin);
+        Manifest::put($maxKey, $newMax);
 
         $target->register($newMin, $newMax);
 
@@ -177,6 +184,20 @@ class ScaleCommand extends Command
         ]);
 
         info('Scaled successfully.');
+    }
+
+    /**
+     * The manifest min/max key paths for a group — web autoscaling bounds live
+     * under tasks.web.autoscaling, the queue's directly under tasks.queue (a
+     * standalone queue is always autoscaled).
+     *
+     * @return array{0: string, 1: string}
+     */
+    public static function boundsKeys(ServerGroup $group): array
+    {
+        return $group === ServerGroup::QUEUE
+            ? ['tasks.queue.min', 'tasks.queue.max']
+            : ['tasks.web.autoscaling.min', 'tasks.web.autoscaling.max'];
     }
 
     /**

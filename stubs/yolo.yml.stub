@@ -43,13 +43,16 @@ environments:
         #   queue:
         #     shutdown-grace-period: 90
 
-      # Independent task groups — not yet implemented. Today the web task runs
-      # octane + queue:work + the scheduler together (toggle the flags above).
-      # When you need to scale the web tier without duplicating the scheduler,
-      # these become their own ECS services:
+      # Extract a workload into its own ECS service so it scales independently of
+      # web. Opt in by uncommenting — but configure each workload in ONE place:
+      # either bundled above (web.queue / web.scheduler) or extracted here, never
+      # both. A standalone queue scales to zero by default; the scheduler is a
+      # pinned singleton (exactly one task), which drops the onOneServer() need.
       # queue:
-      #   cpu: '256'
-      #   memory: '512'
+      #   min: 0                 # 0 = scale to zero when idle (default)
+      #   max: 10
+      #   backlog-per-task: 100  # target messages per running task
+      #   spot: true             # ~70% cheaper interruptible capacity
       # scheduler:
       #   cpu: '256'
       #   memory: '512'

@@ -1,6 +1,7 @@
 <?php
 
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 describe('has and get', function () {
@@ -196,5 +197,34 @@ describe('apex', function () {
 
         expect(fn () => Manifest::apex())
             ->toThrow(IntegrityCheckException::class);
+    });
+});
+
+describe('server groups', function () {
+    it('lists only web for a plain web app', function () {
+        writeManifest(['tasks' => ['web' => []]]);
+
+        expect(Manifest::serverGroups())->toBe([ServerGroup::WEB]);
+    });
+
+    it('lists web, queue and scheduler when both are extracted', function () {
+        writeManifest(['tasks' => ['web' => [], 'queue' => [], 'scheduler' => []]]);
+
+        expect(Manifest::serverGroups())->toBe([ServerGroup::WEB, ServerGroup::QUEUE, ServerGroup::SCHEDULER]);
+    });
+
+    it('does not list a bundled queue as its own group', function () {
+        writeManifest(['tasks' => ['web' => ['queue' => true]]]);
+
+        expect(Manifest::serverGroups())->toBe([ServerGroup::WEB]);
+        expect(Manifest::hasStandaloneQueue())->toBeFalse();
+        expect(Manifest::bundles('queue'))->toBeTrue();
+    });
+
+    it('detects a standalone queue and reads it as not bundled', function () {
+        writeManifest(['tasks' => ['web' => [], 'queue' => ['min' => 0]]]);
+
+        expect(Manifest::hasStandaloneQueue())->toBeTrue();
+        expect(Manifest::bundles('queue'))->toBeFalse();
     });
 });

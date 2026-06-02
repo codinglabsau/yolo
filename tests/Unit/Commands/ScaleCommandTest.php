@@ -64,9 +64,46 @@ it('errors on --scheduler without touching AWS', function () {
     invokeScale(options: ['scheduler' => true]);
 })->throwsNoExceptions();
 
-it('errors on --queue (not yet a separate service)', function () {
-    invokeScale(options: ['queue' => true]);
-})->throwsNoExceptions();
+it('queue: writes tasks.queue bounds and registers, allowing a zero floor', function () {
+    writeManifest([
+        'account-id' => '111111111111',
+        'region' => 'ap-southeast-2',
+        'tasks' => ['web' => [], 'queue' => []],
+    ]);
+
+    $ecs = [];
+    $aa = [];
+    bindRoutedEcsClient(['DescribeServices' => new Result(['services' => [['status' => 'ACTIVE', 'desiredCount' => 0, 'runningCount' => 0]]])], $ecs);
+    bindMockApplicationAutoScalingClient([
+        // Green-field queue — no target registered yet, so setting a zero floor
+        // isn't a reduction and applies straight through.
+        'DescribeScalableTargets' => new Result(['ScalableTargets' => []]),
+        'RegisterScalableTarget' => new Result([]),
+    ], $aa);
+
+    invokeScale(options: ['queue' => true, 'min' => '0', 'max' => '20']);
+
+    expect(collect($aa)->firstWhere('name', 'RegisterScalableTarget')['args'])->toMatchArray(['MinCapacity' => 0, 'MaxCapacity' => 20]);
+    expect(Manifest::get('tasks.queue.min'))->toBe(0);
+    expect(Manifest::get('tasks.queue.max'))->toBe(20);
+});
+
+it('queue: rejects a fixed desired count (always autoscaling-managed)', function () {
+    writeManifest([
+        'account-id' => '111111111111',
+        'region' => 'ap-southeast-2',
+        'tasks' => ['web' => [], 'queue' => []],
+    ]);
+
+    $ecs = [];
+    $aa = [];
+    bindRoutedEcsClient(['DescribeServices' => new Result(['services' => [['status' => 'ACTIVE', 'desiredCount' => 0, 'runningCount' => 0]]])], $ecs);
+    bindMockApplicationAutoScalingClient(['DescribeScalableTargets' => new Result(['ScalableTargets' => []])], $aa);
+
+    invokeScale(arguments: ['count' => '3'], options: ['queue' => true]);
+
+    expect(collect($ecs)->pluck('name'))->not->toContain('UpdateService');
+});
 
 it('fixed: sets the ECS desired count directly when no scalable target exists', function () {
     writeManifest([

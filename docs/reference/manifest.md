@@ -85,6 +85,28 @@ environments:
         #   scale-out-cooldown: 60        # default: 60
         #   scale-in-cooldown: 300        # default: 300
 
+      # Extract the queue into its own ECS service (scale independently of web).
+      # Mutually exclusive with `web.queue` above — configure a queue in one place,
+      # not both. A standalone queue scales to zero by default.
+      # queue:
+      #   min: 0                          # default: 0 — 0 = scale to zero when idle
+      #   max: 10                         # default: 10
+      #   backlog-per-task: 100           # default: 100 — target messages per running task
+      #   cpu: '256'                      # default: '256'
+      #   memory: '512'                   # default: '512'
+      #   spot: false                     # default: false — true = Fargate Spot (~70% cheaper)
+      #   shutdown-grace-period: 70       # default: 70 — let an in-flight job finish on SIGTERM
+      #   enable-execute-command: false   # default: false
+
+      # Extract the scheduler into its own pinned-singleton service (always one
+      # task; deploys stop-then-start so a rollout never runs two crons). Mutually
+      # exclusive with `web.scheduler` above.
+      # scheduler:
+      #   cpu: '256'                      # default: '256'
+      #   memory: '512'                   # default: '512'
+      #   shutdown-grace-period: 10       # default: 10 — wait out an in-flight schedule:run
+      #   enable-execute-command: false   # default: false
+
     build:
       - composer install --no-cache --no-interaction --optimize-autoloader --no-progress --classmap-authoritative --no-dev
       - npm ci
@@ -286,8 +308,8 @@ Declaring `tasks.web` makes the app a Fargate web service. Omit `tasks` entirely
 | `tasks.web.memory` | `'1024'` | Fargate memory (MB). |
 | `tasks.web.platform` | `linux/amd64` | Docker build platform. |
 | `tasks.web.enable-execute-command` | `false` | Enable ECS Exec so [`yolo run`](/reference/commands#yolo-run) can attach. Gate access with MFA on your IAM. |
-| `tasks.web.queue` | `false` | Run `queue:work` in the container. `true`, or an object to override its `shutdown-grace-period`. |
-| `tasks.web.scheduler` | `false` | Run the Laravel scheduler (cron + `schedule:run`). `true`, or an object form like `queue`. |
+| `tasks.web.queue` | `false` | Run `queue:work` **bundled** in the web container (warm, instant pickup). `true`, or an object to override its `shutdown-grace-period`. For independent scaling / scale-to-zero, extract it to a top-level [`tasks.queue`](#tasks-queue) instead — configuring both is an error. |
+| `tasks.web.scheduler` | `false` | Run the Laravel scheduler (cron + `schedule:run`) **bundled** in the web container. `true`, or an object form like `queue`. To make it a true singleton, extract it to a top-level [`tasks.scheduler`](#tasks-scheduler) instead — not both. |
 | `tasks.web.shutdown-grace-period` | `10` (web), `70` (queue) | Seconds a process gets on `SIGTERM` before `SIGKILL`. For web it's also the ALB drain window and the container `stopTimeout`. See [graceful shutdown](/guide/images#graceful-shutdown). |
 | `tasks.web.log-retention` | `30` | CloudWatch Logs retention (days). Must be a valid CloudWatch retention value. |
 | `tasks.web.execution-role` | shared `yolo-{env}` role | Override the ECS execution role ARN. |
@@ -332,8 +354,46 @@ tasks:
 ```
 
 ::: warning Bundled scheduler
-When the scheduler runs in the same task (`tasks.web.scheduler: true`), scaling to N tasks runs cron N times — every scheduled task would fire on each replica. Every scheduled task **must** use Laravel's `->onOneServer()`, or you should separate the scheduler into its own service. `sync` prints a one-line advisory in this case. See [Scaling → the scheduler caveat](/guide/scaling#the-scheduler-caveat).
+When the scheduler runs in the same task (`tasks.web.scheduler: true`), scaling to N tasks runs cron N times — every scheduled task would fire on each replica. Every scheduled task **must** use Laravel's `->onOneServer()`, or extract the scheduler into its own service ([`tasks.scheduler`](#tasks-scheduler)). `sync` prints a one-line advisory in this case. See [Scaling → the scheduler](/guide/scaling#the-scheduler).
 :::
+
+---
+
+## `tasks.queue.*`
+
+A top-level `tasks.queue` block extracts the queue worker into its **own** ECS service, so it scales independently of web. Presence is the opt-in — an empty block (`queue:`) gives a scale-to-zero worker on default sizing. Mutually exclusive with the bundled [`tasks.web.queue`](#tasks-web): configure the queue in one place, not both, or `sync` hard-fails.
+
+A standalone queue **scales to zero by default** (`min: 0`): zero tasks — and zero compute cost — when the queue is empty, scaling up on backlog. The trade-off is a ~30–60s Fargate cold start on the first message after idle, so it suits bursty, latency-tolerant work. For latency-sensitive jobs that must start instantly, keep them bundled in the web container (`tasks.web.queue: true`, a warm worker) or set a standing floor (`min: 1`).
+
+Scaling is **backlog-per-task** target tracking (`ApproximateNumberOfMessagesVisible / RunningTaskCount`, CloudWatch metric math — no Lambda). A scale-to-zero queue (`min: 0`) also gets a step-scaling alarm that lifts it 0→1 the instant a message arrives (target tracking can't divide by zero running tasks).
+
+| Key | Default | Description |
+|---|---|---|
+| `tasks.queue.min` | `0` | Minimum tasks. `0` = scale to zero when idle. |
+| `tasks.queue.max` | `10` | Maximum tasks. |
+| `tasks.queue.backlog-per-task` | `100` | Target visible messages per running task — the scale-out trigger. |
+| `tasks.queue.cpu` | `'256'` | Fargate CPU units. |
+| `tasks.queue.memory` | `'512'` | Fargate memory (MB). |
+| `tasks.queue.spot` | `false` | `true` runs the queue on Fargate Spot (~70% cheaper, interruptible — fine for a worker whose jobs retry). |
+| `tasks.queue.shutdown-grace-period` | `70` | Seconds the worker gets on `SIGTERM` to finish its in-flight job before `SIGKILL`. |
+| `tasks.queue.enable-execute-command` | `false` | Enable ECS Exec on the queue service. |
+
+See [Scaling → the queue](/guide/scaling#the-queue-scale-to-zero).
+
+---
+
+## `tasks.scheduler.*`
+
+A top-level `tasks.scheduler` block extracts the scheduler (busybox `crond` firing `schedule:run`) into its **own** ECS service, pinned at exactly one task — a genuine singleton, so `->onOneServer()` is no longer required. It deploys **stop-then-start** (`minimumHealthyPercent: 0` / `maximumPercent: 100`) so a rollout never briefly runs two crons; a missed cron minute is harmless, a double-run isn't. Mutually exclusive with the bundled [`tasks.web.scheduler`](#tasks-web).
+
+The scheduler never scales (a per-minute cron can't tolerate a cold start), so it has no `min`/`max`.
+
+| Key | Default | Description |
+|---|---|---|
+| `tasks.scheduler.cpu` | `'256'` | Fargate CPU units (the scheduler is light — the smallest tier is usually plenty). |
+| `tasks.scheduler.memory` | `'512'` | Fargate memory (MB). |
+| `tasks.scheduler.shutdown-grace-period` | `10` | Seconds to wait out an in-flight `schedule:run` on `SIGTERM`. Long-running work belongs on the queue, not the cron tick. |
+| `tasks.scheduler.enable-execute-command` | `false` | Enable ECS Exec on the scheduler service. |
 
 ---
 

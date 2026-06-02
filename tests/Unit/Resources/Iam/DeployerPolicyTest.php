@@ -14,6 +14,7 @@ function statementFor(array $document, string $action): array
 beforeEach(function () {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => []],
     ]);
 });
 
@@ -76,6 +77,22 @@ it('scopes UpdateService and RunTask to this app\'s cluster resources', function
         'arn:aws:ecs:ap-southeast-2:111111111111:task/yolo-testing-my-app/*',
     ]);
     expect($statement['Action'])->toContain('ecs:RunTask', 'ecs:DescribeServices');
+});
+
+it('widens UpdateService scope to the standalone queue and scheduler services when extracted', function () {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
+    ]);
+
+    $statement = statementFor((new DeployerPolicy())->document(), 'ecs:UpdateService');
+
+    expect($statement['Resource'])->toContain(
+        'arn:aws:ecs:ap-southeast-2:111111111111:service/yolo-testing-my-app/yolo-testing-my-app-queue',
+        'arn:aws:ecs:ap-southeast-2:111111111111:task-definition/yolo-testing-my-app-queue:*',
+        'arn:aws:ecs:ap-southeast-2:111111111111:service/yolo-testing-my-app/yolo-testing-my-app-scheduler',
+        'arn:aws:ecs:ap-southeast-2:111111111111:task-definition/yolo-testing-my-app-scheduler:*',
+    );
 });
 
 it('scopes PassRole to the task and execution roles, passed only to ECS tasks', function () {

@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Aws\Ecs;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\Ec2\PublicSubnet;
@@ -15,15 +16,35 @@ use Codinglabs\Yolo\Resources\ElbV2\TargetGroup;
 use Codinglabs\Yolo\Resources\Ec2\EcsTaskSecurityGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
+/**
+ * One app's ECS service for a given workload group. Each group (web / queue /
+ * scheduler) gets its own service + task-definition family so they scale
+ * independently. The group defaults to web, so every bare `new EcsService()`
+ * keeps meaning the web service it always did.
+ *
+ * Topology follows the group:
+ *  - web attaches to the ALB (target group, health-check grace, container port);
+ *    queue and scheduler are headless workers.
+ *  - the scheduler is a pinned singleton, deployed stop-then-start so a rollout
+ *    never briefly runs two crons; web and queue roll the normal way.
+ *  - desired count is create-only and owned by ops/autoscaling afterwards — sync
+ *    never clobbers it. The queue starts at its autoscaling floor (0 when it
+ *    scales to zero); web and scheduler start at one task.
+ */
 class EcsService implements Resource
 {
     use ResolvesTags;
 
-    protected const INITIAL_DESIRED_COUNT = 1;
+    public function __construct(protected ServerGroup $group = ServerGroup::WEB) {}
+
+    public function group(): ServerGroup
+    {
+        return $this->group;
+    }
 
     public function name(): string
     {
-        return $this->keyedName('web');
+        return $this->keyedName($this->group);
     }
 
     public function scope(): Scope
@@ -58,12 +79,11 @@ class EcsService implements Resource
     }
 
     /**
-     * Exec-command and grace-period drift are reconciled by updateService, so
-     * toggling tasks.web.enable-execute-command takes effect on the next sync.
-     * Desired count is NOT reconciled — capacity is set once at create then owned
-     * by ops (the console, a future `yolo scale`, or autoscaling), so a deploy/sync
-     * never resets it out from under a manual scale. Task definition revision
-     * adoption is owned by `yolo deploy`, not sync.
+     * Exec-command and (web only) grace-period drift are reconciled by
+     * updateService. Desired count is NOT reconciled — capacity is set once at
+     * create then owned by ops (the console, `yolo scale`, or autoscaling), so a
+     * deploy/sync never resets it out from under a manual scale. Task definition
+     * revision adoption is owned by `yolo deploy`, not sync.
      */
     public function needsUpdate(): bool
     {
@@ -82,23 +102,24 @@ class EcsService implements Resource
             Ecs::service((new EcsCluster())->name(), $this->name()),
             $this->gracePeriod(),
             $this->enableExecuteCommand(),
+            $this->reconcilesGracePeriod(),
         );
     }
 
-    public static function serviceNeedsUpdate(array $service, int $gracePeriod, bool $enableExecuteCommand): bool
+    public static function serviceNeedsUpdate(array $service, int $gracePeriod, bool $enableExecuteCommand, bool $reconcilesGracePeriod = true): bool
     {
-        return static::serviceChanges($service, $gracePeriod, $enableExecuteCommand) !== [];
+        return static::serviceChanges($service, $gracePeriod, $enableExecuteCommand, $reconcilesGracePeriod) !== [];
     }
 
     /**
      * Pure comparison — extracted so tests can pin headless / missing-grace-period
      * behaviour without mocking the ECS client. Exec-command drift is always
-     * reconciled; the grace period only when the service is ALB-attached (headless
-     * services have no grace period to reconcile).
+     * reconciled; the grace period only for an ALB-attached (web, non-headless)
+     * service — a headless web app or a queue/scheduler worker has none.
      *
      * @return array<int, Change>
      */
-    public static function serviceChanges(array $service, int $gracePeriod, bool $enableExecuteCommand): array
+    public static function serviceChanges(array $service, int $gracePeriod, bool $enableExecuteCommand, bool $reconcilesGracePeriod = true): array
     {
         $changes = [];
 
@@ -108,7 +129,7 @@ class EcsService implements Resource
             $changes[] = Change::make('enableExecuteCommand', $currentExecuteCommand, $enableExecuteCommand);
         }
 
-        if (! Manifest::isHeadless()) {
+        if ($reconcilesGracePeriod) {
             $currentGracePeriod = $service['healthCheckGracePeriodSeconds'] ?? $gracePeriod;
 
             if ($currentGracePeriod !== $gracePeriod) {
@@ -129,17 +150,17 @@ class EcsService implements Resource
         return [
             'cluster' => (new EcsCluster())->name(),
             'serviceName' => $this->name(),
-            // The task definition family is the web service name — SyncTaskDefinitionStep
+            // The task definition family is the service name — SyncTaskDefinitionStep
             // registers the family from this same value. TaskDef doesn't fit the Resource
             // shape (re-registered every sync, no exists/create distinction), so the family
             // is the service name rather than its own Resource.
             'taskDefinition' => $this->name(),
-            // Capacity isn't a manifest concern — start at one task and let ops
-            // scale it (console / `yolo scale` / autoscaling); never reconciled.
-            'desiredCount' => self::INITIAL_DESIRED_COUNT,
-            'launchType' => 'FARGATE',
-            ...Manifest::isHeadless() ? [] : ['healthCheckGracePeriodSeconds' => $this->gracePeriod()],
-            'deploymentConfiguration' => static::deploymentConfiguration(),
+            // Capacity isn't a manifest concern — start at the group's floor and let
+            // ops scale it (console / `yolo scale` / autoscaling); never reconciled.
+            'desiredCount' => $this->initialDesiredCount(),
+            ...$this->launchConfiguration(),
+            ...$this->attachesToLoadBalancer() ? ['healthCheckGracePeriodSeconds' => $this->gracePeriod()] : [],
+            'deploymentConfiguration' => $this->deploymentConfiguration(),
             'networkConfiguration' => [
                 'awsvpcConfiguration' => [
                     'subnets' => PublicSubnet::ids(),
@@ -147,15 +168,15 @@ class EcsService implements Resource
                     'assignPublicIp' => 'ENABLED',
                 ],
             ],
-            ...Manifest::isHeadless() ? [] : [
+            ...$this->attachesToLoadBalancer() ? [
                 'loadBalancers' => [
                     [
                         'targetGroupArn' => (new TargetGroup())->arn(),
-                        'containerName' => 'web',
+                        'containerName' => $this->group->value,
                         'containerPort' => (int) Manifest::get('tasks.web.port', 8000),
                     ],
                 ],
-            ],
+            ] : [],
             'tags' => Aws::ecsTags($this->tags()),
             'propagateTags' => 'SERVICE',
             'enableExecuteCommand' => $this->enableExecuteCommand(),
@@ -163,25 +184,46 @@ class EcsService implements Resource
     }
 
     /**
-     * Roll one task in at a time (minimumHealthyPercent 100 keeps the old version
-     * serving until the new one is healthy; maximumPercent 200 allows the extra
-     * task), with the deployment circuit breaker aborting and rolling back to the
-     * last healthy revision on a failed rollout. The breaker is also what makes
-     * ECS set the deployment's rolloutState to FAILED — the signal
-     * WaitForDeploymentHealthyStep fast-fails on — so without it a crash-looping
-     * deploy is never marked failed and the health-wait eats its full timeout.
+     * FARGATE by default. A standalone queue can opt into Spot (`tasks.queue.spot:
+     * true`) for ~70% cheaper interruptible capacity — fine for a worker whose
+     * jobs retry on interruption. Spot uses a capacity-provider strategy, which is
+     * mutually exclusive with launchType, so it's one or the other.
      *
      * @return array<string, mixed>
      */
-    public static function deploymentConfiguration(): array
+    protected function launchConfiguration(): array
+    {
+        if ($this->group === ServerGroup::QUEUE && $this->spot()) {
+            return ['capacityProviderStrategy' => [['capacityProvider' => 'FARGATE_SPOT', 'weight' => 1]]];
+        }
+
+        return ['launchType' => 'FARGATE'];
+    }
+
+    /**
+     * Roll one task in at a time (minimumHealthyPercent 100 keeps the old version
+     * serving until the new one is healthy; maximumPercent 200 allows the extra
+     * task), with the deployment circuit breaker aborting and rolling back to the
+     * last healthy revision on a failed rollout.
+     *
+     * The scheduler is the exception: it's a singleton, so it deploys stop-then-start
+     * (minimumHealthyPercent 0 / maximumPercent 100) — the old cron task stops
+     * before the new one starts, so a rollout never briefly runs two schedulers
+     * (a missed cron minute is harmless; a double-run isn't). The circuit breaker
+     * stays on either way — it's what makes ECS mark a broken deploy FAILED, the
+     * signal WaitForDeploymentHealthyStep fast-fails on.
+     *
+     * @return array<string, mixed>
+     */
+    public function deploymentConfiguration(): array
     {
         return [
             'deploymentCircuitBreaker' => [
                 'enable' => true,
                 'rollback' => true,
             ],
-            'minimumHealthyPercent' => 100,
-            'maximumPercent' => 200,
+            'minimumHealthyPercent' => $this->group->isSingleton() ? 0 : 100,
+            'maximumPercent' => $this->group->isSingleton() ? 100 : 200,
         ];
     }
 
@@ -192,20 +234,56 @@ class EcsService implements Resource
             'service' => $this->name(),
             'enableExecuteCommand' => $this->enableExecuteCommand(),
             // No desiredCount — capacity is create-only (see needsUpdate()).
-            ...Manifest::isHeadless() ? [] : ['healthCheckGracePeriodSeconds' => $this->gracePeriod()],
+            ...$this->attachesToLoadBalancer() ? ['healthCheckGracePeriodSeconds' => $this->gracePeriod()] : [],
         ];
     }
 
     public function enableExecuteCommand(): bool
     {
         return Helpers::validateStrictBool(
-            Manifest::get('tasks.web.enable-execute-command', false),
-            'tasks.web.enable-execute-command',
+            Manifest::get("{$this->group->manifestPrefix()}.enable-execute-command", false),
+            "{$this->group->manifestPrefix()}.enable-execute-command",
         );
     }
 
     public function gracePeriod(): int
     {
         return (int) Manifest::get('tasks.web.health-check.grace-period', 60);
+    }
+
+    /**
+     * The desired count to create the service at. The queue starts at its
+     * autoscaling floor — 0 when it scales to zero — so a fresh idle queue costs
+     * nothing; web and the scheduler start at one task.
+     */
+    protected function initialDesiredCount(): int
+    {
+        if ($this->group === ServerGroup::QUEUE) {
+            return (int) Manifest::get('tasks.queue.min', 0);
+        }
+
+        return 1;
+    }
+
+    /**
+     * Whether this service sits behind the ALB — web only, and only when the app
+     * isn't headless (no domain → no ALB to attach to).
+     */
+    protected function attachesToLoadBalancer(): bool
+    {
+        return $this->group->attachesToLoadBalancer() && ! Manifest::isHeadless();
+    }
+
+    protected function reconcilesGracePeriod(): bool
+    {
+        return $this->attachesToLoadBalancer();
+    }
+
+    protected function spot(): bool
+    {
+        return Helpers::validateStrictBool(
+            Manifest::get('tasks.queue.spot', false),
+            'tasks.queue.spot',
+        );
     }
 }

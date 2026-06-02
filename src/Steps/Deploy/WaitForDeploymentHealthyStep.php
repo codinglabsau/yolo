@@ -4,15 +4,20 @@ namespace Codinglabs\Yolo\Steps\Deploy;
 
 use RuntimeException;
 use Codinglabs\Yolo\Aws;
+use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Aws\Ecs;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
 use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Resources\ElbV2\TargetGroup;
+use Codinglabs\Yolo\Concerns\ResolvesServerGroups;
 
 class WaitForDeploymentHealthyStep implements Step
 {
+    use ResolvesServerGroups;
+
     public function __construct(protected string $environment) {}
 
     /**
@@ -25,6 +30,14 @@ class WaitForDeploymentHealthyStep implements Step
      */
     public function __invoke(array $options): StepResult
     {
+        // The health gate is ALB-based, so it only applies to the web service. A
+        // deploy that targets only the queue/scheduler (--group) has no ALB rollout
+        // to wait on — the ECS circuit breaker still auto-rolls-back a broken
+        // headless deploy — so skip the wait entirely.
+        if (! in_array(ServerGroup::WEB, $this->resolveServerGroups(Arr::get($options, 'group')), true)) {
+            return StepResult::SKIPPED;
+        }
+
         $cluster = (new EcsCluster())->name();
         $service = (new EcsService())->name();
         $targetGroupArn = (new TargetGroup())->arn();

@@ -137,3 +137,35 @@ it('accepts session.driver redis when cache.store is redis', function () {
 
     expect(invokeManifestIntegrity())->toBeTrue();
 });
+
+it('bails when the queue is both bundled and a standalone service', function () {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['queue' => true], 'queue' => ['min' => 0]],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    $output = test()->promptOutput->fetch();
+    expect($output)->toContain('tasks.web.queue');
+    expect($output)->toContain('tasks.queue');
+});
+
+it('bails when the scheduler is both bundled and a standalone service', function () {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['scheduler' => true], 'scheduler' => []],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+    expect(test()->promptOutput->fetch())->toContain('tasks.scheduler');
+});
+
+it('accepts a bundled queue with a standalone scheduler (mix and match per workload)', function () {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['queue' => true], 'scheduler' => []],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+});

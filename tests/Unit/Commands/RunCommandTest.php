@@ -7,6 +7,7 @@ it('builds the execute-command invocation with a profile', function () {
         cluster: 'yolo-production-codinglabs',
         task: 'arn:aws:ecs:ap-southeast-2:111:task/abc',
         command: '/bin/sh',
+        container: 'web',
         region: 'ap-southeast-2',
         profile: 'codinglabs',
     );
@@ -23,11 +24,25 @@ it('builds the execute-command invocation with a profile', function () {
     ]);
 });
 
+it('targets the container named after the service group', function () {
+    $args = RunCommand::executeCommandArgs(
+        cluster: 'yolo-production-codinglabs',
+        task: 'task-arn',
+        command: '/bin/sh',
+        container: 'queue',
+        region: 'ap-southeast-2',
+        profile: null,
+    );
+
+    expect($args)->toContain('--container', 'queue');
+});
+
 it('omits --profile when none is configured (e.g. running on AWS)', function () {
     $args = RunCommand::executeCommandArgs(
         cluster: 'yolo-production-codinglabs',
         task: 'task-arn',
         command: 'php artisan migrate --force',
+        container: 'web',
         region: 'ap-southeast-2',
         profile: null,
     );

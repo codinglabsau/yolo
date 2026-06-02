@@ -162,6 +162,25 @@ class Helpers
         return $validated;
     }
 
+    /**
+     * A whole number ≥ 0 — for capacity floors that may legitimately be zero (a
+     * queue that scales to zero), where validatePositiveInt's 1-minimum is wrong.
+     */
+    public static function validateNonNegativeInt(mixed $value, string $key): int
+    {
+        $validated = filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+
+        if ($validated === false) {
+            throw new IntegrityCheckException(sprintf(
+                '%s must be a non-negative integer (got %s)',
+                $key,
+                json_encode($value),
+            ));
+        }
+
+        return $validated;
+    }
+
     public static function validateCloudWatchLogRetention(mixed $value, string $key): int
     {
         $allowed = [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 2192, 2557, 2922, 3288, 3653];

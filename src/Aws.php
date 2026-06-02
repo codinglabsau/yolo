@@ -33,21 +33,6 @@ class Aws
         return Helpers::app('runningInAws');
     }
 
-    public static function runningInAwsWebEnvironment(): bool
-    {
-        return Helpers::app('runningInAwsWebEnvironment');
-    }
-
-    public static function runningInAwsQueueEnvironment(): bool
-    {
-        return Helpers::app('runningInAwsQueueEnvironment');
-    }
-
-    public static function runningInAwsSchedulerEnvironment(): bool
-    {
-        return Helpers::app('runningInAwsSchedulerEnvironment');
-    }
-
     public static function tags(array $tags = [], string $wrap = 'Tags', bool $associative = false): array
     {
         $tags = static::expectedTags($tags);

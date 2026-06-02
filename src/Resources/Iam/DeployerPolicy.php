@@ -96,7 +96,18 @@ class DeployerPolicy implements Resource, SynchronisesConfiguration
         $ecrRepositoryArn = sprintf('arn:aws:ecr:%s:%s:repository/%s', $region, $accountId, (new EcrRepository())->name());
 
         $cluster = (new EcsCluster())->name();
-        $service = (new EcsService())->name(); // also the task-definition family
+
+        // Each service group (web + any standalone queue/scheduler) gets its own
+        // service + task-definition family (the family is the service name), so the
+        // deployer needs UpdateService/RegisterTaskDefinition scoped to all of them.
+        $serviceArns = [];
+        $taskDefinitionArns = [];
+
+        foreach (Manifest::serverGroups() as $group) {
+            $name = (new EcsService($group))->name();
+            $serviceArns[] = sprintf('arn:aws:ecs:%s:%s:service/%s/%s', $region, $accountId, $cluster, $name);
+            $taskDefinitionArns[] = sprintf('arn:aws:ecs:%s:%s:task-definition/%s:*', $region, $accountId, $name);
+        }
 
         $assetBucketArn = sprintf('arn:aws:s3:::%s', (new AssetBucket())->name());
         $artefactsBucketArn = sprintf('arn:aws:s3:::%s', Paths::s3ArtefactsBucket());
@@ -147,13 +158,13 @@ class DeployerPolicy implements Resource, SynchronisesConfiguration
                 ],
             ],
             [
-                // Roll the new revision onto this app's service and run the one-off
+                // Roll the new revision onto this app's services and run the one-off
                 // deploy task (migrations) on its cluster.
                 'Effect' => 'Allow',
                 'Resource' => [
                     sprintf('arn:aws:ecs:%s:%s:cluster/%s', $region, $accountId, $cluster),
-                    sprintf('arn:aws:ecs:%s:%s:service/%s/%s', $region, $accountId, $cluster, $service),
-                    sprintf('arn:aws:ecs:%s:%s:task-definition/%s:*', $region, $accountId, $service),
+                    ...$serviceArns,
+                    ...$taskDefinitionArns,
                     sprintf('arn:aws:ecs:%s:%s:task/%s/*', $region, $accountId, $cluster),
                 ],
                 'Action' => [
