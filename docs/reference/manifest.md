@@ -4,41 +4,92 @@
 
 ## A complete example
 
-This is roughly what `yolo init` scaffolds — a single-app `production` environment running a web task with the queue and scheduler enabled:
+Every key YOLO understands, in one annotated `yolo.yml`. **Required keys are uncommented; everything else is commented out showing its default**, so you can copy this and uncomment only what you need to change. `yolo init` scaffolds a minimal subset of this — a web app with the queue and scheduler on.
 
 ```yaml
-name: codinglabs
+name: codinglabs                 # required — app name, prefixes every app-scoped resource
+# timezone: Australia/Brisbane   # default UTC — sets the year.week build-version prefix
 
 environments:
   production:
-    # Public domain. Omit both for a headless app (no ALB / DNS).
-    domain: codinglabs.com.au
-    # apex: codinglabs.com.au   # set separately when domain is a subdomain
+    # --- Required ---
+    account-id: '123456789012'   # required — verified against your AWS profile via STS
+    region: ap-southeast-2       # required
 
-    # Source ref this environment deploys from (drives the CI deployer OIDC trust).
-    # Defaults to the main branch.
-    # branch: main
-    # tag: 'v*'
-    # repository: org/repo
+    # --- Routing (see /guide/domains) ---
+    domain: codinglabs.com.au    # public domain; omit domain + apex + tenants for a headless app
+    # apex: codinglabs.com.au    # default: domain — set when domain is a subdomain
+    #
+    # Multi-tenant instead of a single domain (mutually exclusive with domain/apex):
+    # tenants:
+    #   acme:   { domain: acme.example.com }
+    #   globex: { domain: globex.example.com }
 
-    account-id: '123456789012'
-    region: ap-southeast-2
-    # bucket: my-app-bucket     # optional app S3 bucket, injected as AWS_BUCKET
+    # --- CI deployer OIDC trust (see /guide/ci-cd) ---
+    # branch: main               # default: main — branch this env deploys from
+    # tag: 'v*'                  # deploy on a tag pattern instead of a branch
+    # repository: org/repo       # default: inferred from your git origin
 
-    # Web apps default to these — uncomment only to override or opt out:
+    # --- App storage & shared infra names ---
+    # bucket: my-app-bucket                          # app S3 bucket, injected as AWS_BUCKET
+    # artefacts-bucket: yolo-production-artefacts    # default: yolo-{env}-artefacts
+    # alb: yolo-production                           # default: yolo-{env} — shared ALB to attach to
+    # alb-logs-bucket: yolo-production-alb-logs      # default: yolo-{env}-alb-logs
+
+    # --- Cache & session (web apps default to these; uncomment only to override) ---
     # cache:
-    #   store: redis            # default; file/database/array to opt out of the shared Valkey
+    #   store: redis             # default; file/database/array to opt out of the shared Valkey
     # session:
-    #   driver: dynamodb        # default; redis/database/cookie/file to change the session backend
+    #   driver: dynamodb         # default; redis/database/cookie/file to change the session backend
+
+    # --- Media: Amazon IVS + MediaConvert ---
+    # ivs: true                  # enable IVS event logging; or expand for finer control:
+    # ivs:
+    #   logging: true
+    #   log-retention-days: 30   # default: 14 — CloudWatch retention
+    # mediaconvert: arn:aws:iam::123456789012:role/MediaConvertRole   # transcoding role ARN (used with IVS)
+
+    # --- Queue depth alarm tuning ---
+    # sqs:
+    #   depth-alarm-threshold: 100          # default: 100 — messages before the alarm fires
+    #   depth-alarm-period: 300             # default: 300 — evaluation period (seconds)
+    #   depth-alarm-evaluation-periods: 3   # default: 3 — periods that must breach
 
     tasks:
       web:
-        cpu: '512'
-        memory: '1024'
-        port: 8000
-        enable-execute-command: true
-        queue: true
-        scheduler: true
+        cpu: '512'               # default: '512' — Fargate CPU units
+        memory: '1024'           # default: '1024' — Fargate memory (MB)
+        port: 8000               # default: 8000 — must match the Dockerfile & health check
+        enable-execute-command: true   # default: false — enables `yolo run` to attach (gate with MFA)
+        queue: true              # default: false — run queue:work in the container
+        scheduler: true          # default: false — run cron + schedule:run
+        # dockerfile: Dockerfile          # default: Dockerfile
+        # platform: linux/amd64           # default: linux/amd64
+        # image: 123...ecr.../app:tag     # default: built & pushed to ECR; set to use a prebuilt image
+        # shutdown-grace-period: 10       # default: 10 (web) / 70 (queue) — SIGTERM→SIGKILL window
+        # log-retention: 30               # default: 30 — CloudWatch Logs retention (days)
+        # execution-role: arn:aws:iam::123456789012:role/...   # default: shared yolo-{env} role
+        # task-role: arn:aws:iam::123456789012:role/...        # default: shared yolo-{env} role
+        #
+        # health-check:
+        #   path: /health                 # default: /health
+        #   interval: 10                  # default: 10 (seconds between checks)
+        #   timeout: 5                    # default: 5
+        #   healthy-threshold: 2          # default: 2
+        #   unhealthy-threshold: 3        # default: 3
+        #   grace-period: 60              # default: 60 (ECS health-check grace period)
+        #
+        # image-retention:
+        #   keep-count: 30                # default: 30 — tagged images kept
+        #   untagged-days: 7              # default: 7
+        #
+        # autoscaling:                    # omit the whole block for a fixed single task
+        #   min: 1                        # default: 1
+        #   max: 4                        # default: 4
+        #   cpu-utilization: 65           # default: 65 — always-on CPU target-tracking policy
+        #   request-count-per-target: 1000   # no default — seed from a load test (req/task/min)
+        #   scale-out-cooldown: 60        # default: 60
+        #   scale-in-cooldown: 300        # default: 300
 
     build:
       - composer install --no-cache --no-interaction --optimize-autoloader --no-progress --classmap-authoritative --no-dev
@@ -51,7 +102,21 @@ environments:
 
     deploy-all:
       - php artisan optimize
+
+    # --- Adopting existing infrastructure (advanced escape hatches; most apps never set these) ---
+    # vpc: vpc-0abc123                      # default: yolo-{env}
+    # internet-gateway: igw-0abc123         # default: yolo-{env}
+    # route-table: rtb-0abc123              # default: yolo-{env}
+    # public-subnets: [subnet-0aaa, subnet-0bbb]   # default: derived per env
+    # rds:
+    #   subnet: my-db-subnet-group          # adopt an existing RDS subnet group
+    #   security-group: sg-0abc123          # default: yolo-{env}-rds
+    # ecs:
+    #   cluster: my-cluster                 # default: yolo-{env}-{app}
+    #   security-group: sg-0def456          # default: yolo-{env}-{app}
 ```
+
+> Every commented key above has its own section below with the full semantics — this block is the map; the sections are the detail.
 
 ::: warning Required keys
 Every command except `init` fails fast unless these three are present:
