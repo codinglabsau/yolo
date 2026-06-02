@@ -254,6 +254,20 @@ class DeployerPolicy implements Resource
             $statements = [...$statements, ...$this->route53Statements()];
         }
 
+        // When the app uses the shared Valkey cache (`cache.store: redis`, the
+        // web-app default), the build bakes REDIS_HOST by reading the cluster's
+        // primary endpoint (ConfigureEnvAndVersionStep -> CacheCluster::endpoint()).
+        // DescribeReplicationGroups has no resource-level scoping, so it's granted
+        // on "*". Apps that opt out (file/database/array) never read the cluster
+        // and so get no elasticache permission.
+        if (Manifest::cacheStore() === 'redis') {
+            $statements[] = [
+                'Effect' => 'Allow',
+                'Resource' => '*',
+                'Action' => ['elasticache:DescribeReplicationGroups'],
+            ];
+        }
+
         // Autoscaling deliberately gets no statement here: `yolo deploy` never
         // touches the scalable target or its policies (a deploy rolls a task-def
         // revision and UpdateService without desiredCount — App Auto Scaling keeps

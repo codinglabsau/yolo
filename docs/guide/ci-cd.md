@@ -28,7 +28,7 @@ environments:
 When a GitHub repository is detected, `yolo sync` sets up the OIDC trust across two scopes:
 
 - **`sync:account`** provisions the account's GitHub Actions OIDC identity provider (`token.actions.githubusercontent.com`) — an account-level singleton shared by every app.
-- **`sync:app`** provisions the deployer role `yolo-{env}-{app}-deployer`, whose trust only lets the environment's repo + ref assume it, plus a permission policy scoped to exactly what `yolo deploy` does (ECR push, ECS register/update, `iam:PassRole` on the task + execution roles, S3 env/asset access, Route 53 record changes).
+- **`sync:app`** provisions the deployer role `yolo-{env}-{app}-deployer`, whose trust only lets the environment's repo + ref assume it, plus a permission policy scoped to exactly what `yolo deploy` does (ECR push, ECS register/update, `iam:PassRole` on the task + execution roles, S3 env/asset access, Route 53 record changes, and — when the app uses the shared Valkey cache — reading the cluster endpoint to bake `REDIS_HOST`).
 
 A plain `yolo sync <env>` does both. Re-run it whenever you change the `branch`/`tag`/`repository` for an environment.
 

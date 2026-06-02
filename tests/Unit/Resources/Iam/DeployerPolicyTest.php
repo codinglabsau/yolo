@@ -123,6 +123,32 @@ it('grants S3 object and bucket access on the asset and artefacts buckets', func
     ]);
 });
 
+it('grants elasticache:DescribeReplicationGroups on * when the app uses the redis cache store', function () {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'cache' => ['store' => 'redis'],
+    ]);
+
+    // The build bakes REDIS_HOST by reading the Valkey primary endpoint
+    // (ConfigureEnvAndVersionStep). DescribeReplicationGroups has no
+    // resource-level scoping, so it's granted on "*".
+    $statement = statementFor((new DeployerPolicy())->document(), 'elasticache:DescribeReplicationGroups');
+
+    expect($statement['Resource'])->toBe('*');
+});
+
+it('omits elasticache permissions when the app opts out of the shared Valkey cache', function () {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'cache' => ['store' => 'file'],
+    ]);
+
+    $actions = collect((new DeployerPolicy())->document()['Statement'])
+        ->flatMap(fn (array $statement) => (array) $statement['Action']);
+
+    expect($actions)->not->toContain('elasticache:DescribeReplicationGroups');
+});
+
 it('omits Route 53 permissions for a headless app with no domain', function () {
     $document = (new DeployerPolicy())->document();
 
