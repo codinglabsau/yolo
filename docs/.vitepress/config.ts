@@ -4,6 +4,7 @@ export default defineConfig({
   title: 'YOLO',
   description: 'Deploy Laravel apps to AWS Fargate',
   base: '/yolo/',
+  cleanUrls: true,
 
   head: [
     ['link', { rel: 'icon', href: '/logo.png' }],

@@ -108,7 +108,7 @@ abstract class Command extends SymfonyCommand
         }
 
         error(sprintf(
-            "Unrecognised %s in yolo.yml: %s.\nSee the manifest reference: https://codinglabsau.github.io/yolo/reference/manifest.html",
+            "Unrecognised %s in yolo.yml: %s.\nSee the manifest reference: https://codinglabsau.github.io/yolo/reference/manifest",
             count($unknown) === 1 ? 'key' : 'keys',
             implode(', ', $unknown),
         ));
