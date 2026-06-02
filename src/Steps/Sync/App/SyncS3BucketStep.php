@@ -15,7 +15,7 @@ class SyncS3BucketStep implements Step
         // The app data bucket is optional. Skip when the manifest doesn't define
         // one; when it does, provision it (ConfigureEnvAndVersionStep injects it
         // as AWS_BUCKET).
-        if (! Manifest::has('aws.bucket')) {
+        if (! Manifest::has('bucket')) {
             return StepResult::SKIPPED;
         }
 

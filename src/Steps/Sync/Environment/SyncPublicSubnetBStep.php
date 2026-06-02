@@ -16,7 +16,7 @@ class SyncPublicSubnetBStep implements Step
     {
         $subnet = new PublicSubnet(1);
 
-        if (Manifest::has('aws.public-subnets') && $subnet->exists()) {
+        if (Manifest::has('public-subnets') && $subnet->exists()) {
             return StepResult::CUSTOM_MANAGED;
         }
 

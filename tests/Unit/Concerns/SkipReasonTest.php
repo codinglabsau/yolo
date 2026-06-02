@@ -27,14 +27,14 @@ it('skips solo-only steps in a multi-tenant app', function () {
 });
 
 it('skips multi-tenancy steps in a solo app', function () {
-    writeManifest(['aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2']]);
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 
     expect(skipReasonFor(new class() implements ExecutesMultitenancyStep {}))
         ->toBe('multi-tenancy step in a solo app');
 });
 
 it('skips web steps for a headless app', function () {
-    writeManifest(['aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2']]);
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 
     expect(skipReasonFor(new class() implements ExecutesWebStep {}))
         ->toBe('headless app (no ALB / Route 53 / domain)');
@@ -42,30 +42,30 @@ it('skips web steps for a headless app', function () {
 
 it('runs web steps when the app has a domain', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'domain' => 'codinglabs.com.au',
     ]);
 
     expect(skipReasonFor(new class() implements ExecutesWebStep {}))->toBeNull();
 });
 
-it('skips IVS steps when aws.ivs is not enabled', function () {
-    writeManifest(['aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2']]);
+it('skips IVS steps when ivs is not enabled', function () {
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 
     expect(skipReasonFor(new class() implements ExecutesIvsStep {}))
-        ->toBe('aws.ivs not enabled in manifest');
+        ->toBe('ivs not enabled in manifest');
 });
 
-it('runs IVS steps when aws.ivs is enabled', function () {
+it('runs IVS steps when ivs is enabled', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'ivs' => true],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'ivs' => true,
     ]);
 
     expect(skipReasonFor(new class() implements ExecutesIvsStep {}))->toBeNull();
 });
 
 it('runs a plain step with no structural gate', function () {
-    writeManifest(['aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2']]);
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 
     expect(skipReasonFor(new class() implements Step {}))->toBeNull();
 });

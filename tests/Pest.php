@@ -7,9 +7,11 @@ use Aws\Iam\IamClient;
 use Aws\CommandInterface;
 use Codinglabs\Yolo\Helpers;
 use GuzzleHttp\Promise\Create;
+use Aws\DynamoDb\DynamoDbClient;
 use Symfony\Component\Yaml\Yaml;
 use Aws\CloudFront\CloudFrontClient;
 use Aws\CloudWatch\CloudWatchClient;
+use Aws\ElastiCache\ElastiCacheClient;
 
 /*
 |--------------------------------------------------------------------------
@@ -256,6 +258,93 @@ function bindMockCloudWatchClient(array $byCommand, array &$captured): void
     };
 
     Helpers::app()->instance('cloudWatch', new CloudWatchClient([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+}
+
+/**
+ * Bind a mock ElastiCache client with command-routed responses. A command's
+ * value may be a single Result (repeated) or an array of Results used as a queue
+ * (the last entry repeats once exhausted). Calls are captured by reference.
+ * Mirrors bindMockEc2Client.
+ *
+ * @param  array<string, Result|array<int, Result>>  $byCommand
+ * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+ */
+function bindMockElastiCacheClient(array $byCommand, array &$captured): void
+{
+    $mock = new class($byCommand, $captured) extends MockHandler
+    {
+        /** @var array<string, int> */
+        private array $cursors = [];
+
+        public function __construct(protected array $byCommand, protected array &$captured) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            $name = $cmd->getName();
+            $this->captured[] = ['name' => $name, 'args' => $cmd->toArray()];
+
+            $entry = $this->byCommand[$name] ?? new Result();
+
+            if (is_array($entry)) {
+                $index = min($this->cursors[$name] ?? 0, count($entry) - 1);
+                $this->cursors[$name] = $index + 1;
+                $entry = $entry[$index];
+            }
+
+            return Create::promiseFor($entry);
+        }
+    };
+
+    Helpers::app()->instance('elastiCache', new ElastiCacheClient([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+}
+
+/**
+ * Bind a mock DynamoDB client with command-routed responses. Same queue
+ * semantics as bindMockEc2Client. A command's value may also be a Throwable,
+ * returned as a rejection (e.g. a DescribeTable ResourceNotFoundException).
+ *
+ * @param  array<string, Result|Throwable|array<int, Result>>  $byCommand
+ * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+ */
+function bindMockDynamoDbClient(array $byCommand, array &$captured): void
+{
+    $mock = new class($byCommand, $captured) extends MockHandler
+    {
+        /** @var array<string, int> */
+        private array $cursors = [];
+
+        public function __construct(protected array $byCommand, protected array &$captured) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            $name = $cmd->getName();
+            $this->captured[] = ['name' => $name, 'args' => $cmd->toArray()];
+
+            $entry = $this->byCommand[$name] ?? new Result();
+
+            if (is_array($entry)) {
+                $index = min($this->cursors[$name] ?? 0, count($entry) - 1);
+                $this->cursors[$name] = $index + 1;
+                $entry = $entry[$index];
+            }
+
+            return $entry instanceof Throwable
+                ? Create::rejectionFor($entry)
+                : Create::promiseFor($entry);
+        }
+    };
+
+    Helpers::app()->instance('dynamodb', new DynamoDbClient([
         'region' => 'ap-southeast-2',
         'version' => 'latest',
         'credentials' => false,

@@ -16,7 +16,7 @@ class SyncRdsSubnetStep implements Step
     {
         $rdsSubnet = new RdsSubnet();
 
-        if (Manifest::has('aws.rds.subnet') && $rdsSubnet->exists()) {
+        if (Manifest::has('rds.subnet') && $rdsSubnet->exists()) {
             return StepResult::CUSTOM_MANAGED;
         }
 

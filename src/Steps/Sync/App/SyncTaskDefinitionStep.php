@@ -84,7 +84,7 @@ class SyncTaskDefinitionStep implements Step
                         'logDriver' => 'awslogs',
                         'options' => [
                             'awslogs-group' => (new TaskLogGroup())->name(),
-                            'awslogs-region' => Manifest::get('aws.region'),
+                            'awslogs-region' => Manifest::get('region'),
                             'awslogs-stream-prefix' => 'web',
                         ],
                     ],

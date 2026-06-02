@@ -20,7 +20,7 @@ class RouteTable implements Resource
 
     public function name(): string
     {
-        return Manifest::get('aws.route-table', $this->keyedName());
+        return Manifest::get('route-table', $this->keyedName());
     }
 
     public function scope(): Scope

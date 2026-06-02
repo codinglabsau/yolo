@@ -110,7 +110,7 @@ class DeployerPolicy implements Resource
 
     public function document(): array
     {
-        $region = Manifest::get('aws.region');
+        $region = Manifest::get('region');
         $accountId = Aws::accountId();
 
         $ecrRepositoryArn = sprintf('arn:aws:ecr:%s:%s:repository/%s', $region, $accountId, (new EcrRepository())->name());

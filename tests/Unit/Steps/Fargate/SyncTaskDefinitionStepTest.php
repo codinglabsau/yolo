@@ -5,7 +5,7 @@ use Codinglabs\Yolo\Steps\Sync\App\SyncTaskDefinitionStep;
 
 beforeEach(function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => [
             'web' => [
                 'port' => 9000,
@@ -58,7 +58,7 @@ it('pins image to the supplied tag when one is passed', function () {
 
 it('prefers the supplied tag over the manifest image override', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => [
             'image' => 'public.ecr.aws/nginx:stable',
             'task-role' => 'custom-task-role',
@@ -74,7 +74,7 @@ it('prefers the supplied tag over the manifest image override', function () {
 
 it('honours explicit task image override', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => [
             'image' => 'public.ecr.aws/nginx:stable',
             'task-role' => 'custom-task-role',
@@ -89,7 +89,7 @@ it('honours explicit task image override', function () {
 
 it('falls back to defaults when manifest omits task config', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 
     bindMockIamClient([

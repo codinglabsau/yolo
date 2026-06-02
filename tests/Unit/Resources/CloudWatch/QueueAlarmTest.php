@@ -36,7 +36,7 @@ function bindAlarmTopic(): void
 }
 
 beforeEach(function () {
-    writeManifest(['aws' => ['region' => 'ap-southeast-2', 'account-id' => '111111111111']]);
+    writeManifest(['region' => 'ap-southeast-2', 'account-id' => '111111111111']);
     bindAlarmTopic();
 });
 

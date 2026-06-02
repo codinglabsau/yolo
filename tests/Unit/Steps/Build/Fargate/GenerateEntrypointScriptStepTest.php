@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Steps\Build\Fargate\GenerateEntrypointScriptStep;
 beforeEach(function () {
     writeManifest([
         'apex' => 'example.com',
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => []],
     ]);
 
@@ -23,7 +23,7 @@ function generatedEntrypointScript(): string
 it('starts with a shebang and fails fast through the deploy-all hooks', function () {
     writeManifest([
         'apex' => 'example.com',
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => []],
         'deploy-all' => ['php artisan migrate --force', 'php artisan config:cache'],
     ]);
@@ -52,7 +52,7 @@ it('drains for the web shutdown-grace-period before forwarding the stop', functi
 it('tracks the manifest web shutdown-grace-period for the drain duration', function () {
     writeManifest([
         'apex' => 'example.com',
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['shutdown-grace-period' => 45]],
     ]);
 
@@ -61,7 +61,7 @@ it('tracks the manifest web shutdown-grace-period for the drain duration', funct
 
 it('omits the drain sleep when headless — no ALB target to drain', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['shutdown-grace-period' => 45]],
     ]);
 
@@ -80,7 +80,7 @@ it('does not mention the scheduler when it is disabled', function () {
 it('halts cron and waits out an in-flight schedule:run when the scheduler is enabled', function () {
     writeManifest([
         'apex' => 'example.com',
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['scheduler' => true]],
     ]);
 

@@ -20,7 +20,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * The application load balancer fronting the app's web tasks. Env-scoped, so
  * shared by default (auto-named yolo-{env}) — multiple apps in an environment
  * route off the one ALB via host-based listener rules — or pinned to a specific
- * name with `aws.alb`.
+ * name with `alb`.
  *
  * Beyond identity + tags, this resource also owns the ALB's hardened attribute
  * defaults (deletion protection, access logs, dropped invalid headers, idle
@@ -34,7 +34,7 @@ class LoadBalancer implements Resource, SynchronisesConfiguration
 
     public function name(): string
     {
-        return Manifest::get('aws.alb', $this->keyedName());
+        return Manifest::get('alb', $this->keyedName());
     }
 
     public function scope(): Scope

@@ -44,14 +44,9 @@ class Paths
         return static::yolo(Helpers::artefactName());
     }
 
-    public static function assetUrl(string $appVersion): string
-    {
-        return Manifest::get('asset-url', Manifest::get('aws.cloudfront')) . '/' . static::versionedBuildAssets($appVersion);
-    }
-
     public static function s3AppBucket(): string
     {
-        return Manifest::get('aws.bucket');
+        return Manifest::get('bucket');
     }
 
     public static function s3BuildAssets(string $appVersion): string
@@ -71,7 +66,7 @@ class Paths
 
     public static function s3ArtefactsBucket(): ?string
     {
-        return Manifest::get('aws.artefacts-bucket', Helpers::keyedResourceName('artefacts'));
+        return Manifest::get('artefacts-bucket', Helpers::keyedResourceName('artefacts'));
     }
 
     /**
@@ -85,7 +80,7 @@ class Paths
      */
     public static function s3LoadBalancerLogsBucket(): string
     {
-        return Manifest::get('aws.alb-logs-bucket', sprintf('yolo-%s-alb-logs', Helpers::environment()));
+        return Manifest::get('alb-logs-bucket', sprintf('yolo-%s-alb-logs', Helpers::environment()));
     }
 
     public static function s3Artefacts(string $appVersion, $path = null): string

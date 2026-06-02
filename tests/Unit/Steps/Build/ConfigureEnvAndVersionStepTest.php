@@ -1,11 +1,20 @@
 <?php
 
+use Aws\Result;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Steps\Build\ConfigureEnvAndVersionStep;
 
+function rebuildEnvFixture(array $config): void
+{
+    writeManifest($config);
+
+    is_dir(Paths::build()) || mkdir(Paths::build(), 0755, true);
+    file_exists(Paths::build('.env.testing')) && unlink(Paths::build('.env.testing'));
+}
+
 beforeEach(function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 
     is_dir(Paths::build()) || mkdir(Paths::build(), 0755, true);
@@ -19,6 +28,18 @@ beforeEach(function () {
             'Id' => 'E123',
         ],
     ]);
+
+    // Web-app manifests default cache.store to redis, so the build resolves the
+    // Valkey endpoint — bind a default cluster lookup for any tasks.web test.
+    $captured = [];
+    bindMockElastiCacheClient([
+        'DescribeReplicationGroups' => new Result(['ReplicationGroups' => [
+            [
+                'ReplicationGroupId' => 'yolo-testing-cache',
+                'NodeGroups' => [['PrimaryEndpoint' => ['Address' => 'master.yolo-testing-cache.cache.amazonaws.com']]],
+            ],
+        ]]),
+    ], $captured);
 });
 
 it('always points ASSET_URL at the CloudFront distribution, versioned per build', function () {
@@ -32,7 +53,7 @@ it('always points ASSET_URL at the CloudFront distribution, versioned per build'
 
 it('injects AWS_BUCKET from the manifest when the .env does not define it', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
     ]);
 
     is_dir(Paths::build()) || mkdir(Paths::build(), 0755, true);
@@ -51,7 +72,7 @@ it('does not inject AWS_BUCKET when the manifest does not define one', function 
 
 it('injects the SQS connection block when tasks.web.queue is on', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['queue' => true]],
     ]);
 
@@ -94,7 +115,7 @@ it('respects a QUEUE_CONNECTION already set in the .env', function () {
 
 it('does not pin SQS_QUEUE for a multitenant app (worker resolves it per tenant)', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['queue' => true]],
         'tenants' => ['acme' => ['domain' => 'acme.test']],
     ]);
@@ -112,7 +133,7 @@ it('does not pin SQS_QUEUE for a multitenant app (worker resolves it per tenant)
 
 it('respects an AWS_BUCKET already set in the .env', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
     ]);
 
     is_dir(Paths::build()) || mkdir(Paths::build(), 0755, true);
@@ -124,4 +145,105 @@ it('respects an AWS_BUCKET already set in the .env', function () {
 
     expect($env)->toContain('AWS_BUCKET=custom-bucket');
     expect($env)->not->toContain('AWS_BUCKET=my-app-bucket');
+});
+
+it('wires the redis cache env to the Valkey cluster when cache.store is redis', function () {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'cache' => ['store' => 'redis'],
+    ]);
+
+    $captured = [];
+    bindMockElastiCacheClient([
+        'DescribeReplicationGroups' => new Result(['ReplicationGroups' => [
+            [
+                'ReplicationGroupId' => 'yolo-testing-cache',
+                'NodeGroups' => [['PrimaryEndpoint' => ['Address' => 'master.yolo-testing-cache.cache.amazonaws.com']]],
+            ],
+        ]]),
+    ], $captured);
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('CACHE_STORE=redis');
+    expect($env)->toContain('REDIS_HOST=master.yolo-testing-cache.cache.amazonaws.com');
+    expect($env)->toContain('REDIS_PORT=6379');
+    expect($env)->toContain('REDIS_PREFIX=yolo-testing-my-app_');
+});
+
+it('does not wire cache or session for a non-web app (no tasks.web)', function () {
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->not->toContain('CACHE_STORE=');
+    expect($env)->not->toContain('REDIS_HOST=');
+    expect($env)->not->toContain('SESSION_DRIVER=');
+});
+
+it('defaults a web app to the shared redis cache and dynamodb sessions when neither is set', function () {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => []],
+    ]);
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('CACHE_STORE=redis');
+    expect($env)->toContain('REDIS_HOST=master.yolo-testing-cache.cache.amazonaws.com');
+    expect($env)->toContain('SESSION_DRIVER=dynamodb');
+    expect($env)->toContain('DYNAMODB_CACHE_TABLE=yolo-testing-my-app-sessions');
+});
+
+it('pins SESSION_DRIVER from the manifest', function () {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'session' => ['driver' => 'database'],
+    ]);
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('SESSION_DRIVER=database');
+    expect($env)->not->toContain('DYNAMODB_CACHE_TABLE=');
+});
+
+it('points the dynamodb session driver at the YOLO-provisioned table', function () {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'session' => ['driver' => 'dynamodb'],
+    ]);
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('SESSION_DRIVER=dynamodb');
+    expect($env)->toContain('DYNAMODB_CACHE_TABLE=yolo-testing-my-app-sessions');
+});
+
+it('does not pin SESSION_DRIVER when the manifest does not select one', function () {
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    expect(file_get_contents(Paths::build('.env.testing')))->not->toContain('SESSION_DRIVER=');
+});
+
+it('respects a SESSION_DRIVER already set in the .env', function () {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'session' => ['driver' => 'database'],
+    ]);
+
+    file_put_contents(Paths::build('.env.testing'), "SESSION_DRIVER=cookie\n");
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('SESSION_DRIVER=cookie');
+    expect($env)->not->toContain('SESSION_DRIVER=database');
 });

@@ -38,7 +38,7 @@ class LoginToEcrStep implements Step
         return sprintf(
             '%s.dkr.ecr.%s.amazonaws.com',
             Aws::accountId(),
-            Manifest::get('aws.region'),
+            Manifest::get('region'),
         );
     }
 }

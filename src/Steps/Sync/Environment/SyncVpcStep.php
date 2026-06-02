@@ -16,7 +16,7 @@ class SyncVpcStep implements Step
     {
         $vpc = new Vpc();
 
-        if (Manifest::has('aws.vpc') && $vpc->exists()) {
+        if (Manifest::has('vpc') && $vpc->exists()) {
             return StepResult::CUSTOM_MANAGED;
         }
 

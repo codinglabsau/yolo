@@ -23,7 +23,7 @@ class EcsTaskSecurityGroup implements Resource
     public function name(): string
     {
         return Manifest::get(
-            'aws.ecs.security-group',
+            'ecs.security-group',
             $this->keyedName(SecurityGroup::ECS_TASK_SECURITY_GROUP),
         );
     }

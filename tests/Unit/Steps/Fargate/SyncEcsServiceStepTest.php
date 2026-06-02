@@ -5,7 +5,7 @@ use Codinglabs\Yolo\Resources\Ecs\EcsService;
 describe('serviceNeedsUpdate', function () {
     beforeEach(function () {
         writeManifest([
-            'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'domain' => 'codinglabs.com.au',
             'tasks' => ['web' => []],
         ]);
@@ -56,7 +56,7 @@ describe('serviceNeedsUpdate', function () {
 describe('serviceNeedsUpdate when headless', function () {
     beforeEach(function () {
         writeManifest([
-            'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'tasks' => ['web' => []],
         ]);
     });
@@ -81,7 +81,7 @@ describe('serviceNeedsUpdate when headless', function () {
 describe('updatePayload', function () {
     it('omits healthCheckGracePeriodSeconds when headless', function () {
         writeManifest([
-            'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'tasks' => ['web' => []],
         ]);
 
@@ -94,7 +94,7 @@ describe('updatePayload', function () {
 
     it('includes healthCheckGracePeriodSeconds when not headless', function () {
         writeManifest([
-            'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'domain' => 'codinglabs.com.au',
             'tasks' => ['web' => ['health-check' => ['grace-period' => 60]]],
         ]);
@@ -104,7 +104,7 @@ describe('updatePayload', function () {
 
     it('reconciles the exec-command flag', function () {
         writeManifest([
-            'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'tasks' => ['web' => ['enable-execute-command' => true]],
         ]);
 
@@ -113,7 +113,7 @@ describe('updatePayload', function () {
 
     it('never includes desiredCount — capacity is set once at create, never reset on update', function () {
         writeManifest([
-            'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'tasks' => ['web' => []],
         ]);
 

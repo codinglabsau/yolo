@@ -45,8 +45,8 @@ class EcrRepository implements Resource
     {
         return sprintf(
             '%s.dkr.ecr.%s.amazonaws.com/%s',
-            Manifest::get('aws.account-id'),
-            Manifest::get('aws.region'),
+            Manifest::get('account-id'),
+            Manifest::get('region'),
             $this->name(),
         );
     }

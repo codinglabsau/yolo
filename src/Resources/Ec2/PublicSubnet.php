@@ -15,7 +15,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * One of the three public subnets (one per availability zone), addressed by AZ
  * index 0-2. Each gets a /24 in the VPC's 10.1 block and auto-assigns public
  * IPs so Fargate tasks reach the internet without a NAT gateway. Point
- * `aws.public-subnets` at three existing subnet names to adopt instead.
+ * `public-subnets` at three existing subnet names to adopt instead.
  */
 class PublicSubnet implements Resource
 {
@@ -38,8 +38,8 @@ class PublicSubnet implements Resource
 
     public function name(): string
     {
-        if (Manifest::has('aws.public-subnets')) {
-            return Manifest::get('aws.public-subnets')[$this->index];
+        if (Manifest::has('public-subnets')) {
+            return Manifest::get('public-subnets')[$this->index];
         }
 
         return $this->keyedName(PublicSubnets::cases()[$this->index]->value);
@@ -68,7 +68,7 @@ class PublicSubnet implements Resource
 
     public function create(): void
     {
-        $availabilityZones = Ec2::availabilityZones(Manifest::get('aws.region'));
+        $availabilityZones = Ec2::availabilityZones(Manifest::get('region'));
 
         Aws::ec2()->createSubnet([
             'AvailabilityZone' => $availabilityZones[$this->index]['ZoneName'],

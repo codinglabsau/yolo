@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 beforeEach(function () {
     writeManifest([
         'apex' => 'example.com',
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => []],
     ]);
 });
@@ -18,7 +18,7 @@ it('defaults the drain to 10 seconds', function () {
 it('drains for the manifest web shutdown-grace-period', function () {
     writeManifest([
         'apex' => 'example.com',
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['shutdown-grace-period' => 45]],
     ]);
 
@@ -27,7 +27,7 @@ it('drains for the manifest web shutdown-grace-period', function () {
 
 it('skips the drain entirely when headless (no ALB to drain)', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['shutdown-grace-period' => 45]],
     ]);
 
@@ -41,7 +41,7 @@ it('runs only octane by default, inheriting the drain for its stop window', func
 it('octane and scheduler inherit the web shutdown-grace-period', function () {
     writeManifest([
         'apex' => 'example.com',
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['shutdown-grace-period' => 20, 'scheduler' => true]],
     ]);
 
@@ -51,7 +51,7 @@ it('octane and scheduler inherit the web shutdown-grace-period', function () {
 it('gives the queue worker a longer default than the web tier', function () {
     writeManifest([
         'apex' => 'example.com',
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['queue' => true]],
     ]);
 
@@ -61,7 +61,7 @@ it('gives the queue worker a longer default than the web tier', function () {
 it('honours a queue shutdown-grace-period override via the object form', function () {
     writeManifest([
         'apex' => 'example.com',
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['queue' => ['shutdown-grace-period' => 90]]],
     ]);
 
@@ -71,7 +71,7 @@ it('honours a queue shutdown-grace-period override via the object form', functio
 it('treats the queue object form as enabled even without an explicit flag', function () {
     writeManifest([
         'apex' => 'example.com',
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['queue' => ['shutdown-grace-period' => 30], 'scheduler' => false]],
     ]);
 
@@ -89,7 +89,7 @@ it('derives the stop timeout from the drain plus the slowest program', function 
 it('sizes the stop timeout around a long queue grace', function () {
     writeManifest([
         'apex' => 'example.com',
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['queue' => true]],
     ]);
 
@@ -99,7 +99,7 @@ it('sizes the stop timeout around a long queue grace', function () {
 
 it('drops the drain from the stop timeout when headless', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['queue' => true]],
     ]);
 
@@ -110,7 +110,7 @@ it('drops the drain from the stop timeout when headless', function () {
 it('caps the stop timeout at the Fargate maximum of 120s', function () {
     writeManifest([
         'apex' => 'example.com',
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['queue' => ['shutdown-grace-period' => 300]]],
     ]);
 
@@ -120,7 +120,7 @@ it('caps the stop timeout at the Fargate maximum of 120s', function () {
 it('rejects a non-boolean, non-object program flag', function () {
     writeManifest([
         'apex' => 'example.com',
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['queue' => 'sometimes']],
     ]);
 

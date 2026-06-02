@@ -36,7 +36,7 @@ function existingDeployerRole(): array
 function manifestWithDeployer(array $environment = []): void
 {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'repository' => 'my-org/my-repo',
         ...$environment,
     ]);
@@ -49,7 +49,7 @@ function manifestWithDeployer(array $environment = []): void
 function manifestWithoutRepository(): void
 {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 
     putenv('GITHUB_REPOSITORY');

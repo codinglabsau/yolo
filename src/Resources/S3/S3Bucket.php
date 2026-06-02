@@ -11,7 +11,7 @@ use Codinglabs\Yolo\Resources\ResolvesTags;
 
 /**
  * The optional application data bucket (AWS_BUCKET) — user-facing storage for
- * the app's own objects. Provisioned only when the manifest defines `aws.bucket`.
+ * the app's own objects. Provisioned only when the manifest defines `bucket`.
  *
  * Block Public Access is applied on create, but never reconciled onto an
  * existing bucket: an app may already serve public objects and flipping BPA

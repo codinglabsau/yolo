@@ -5,8 +5,8 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 ## Conventions
 
 - **`<environment>`** — almost every command takes a required `environment` argument naming a key under `environments` in your `yolo.yml` (e.g. `production`, `staging`).
-- **AWS authentication** — outside CI, YOLO reads a named AWS profile from `YOLO_<ENVIRONMENT>_AWS_PROFILE` in your local `.env`. Before any AWS call it verifies (via STS) that the profile resolves to the `aws.account-id` declared in the manifest. The `default` profile is rejected. In CI it falls back to the AWS SDK default credential chain (OIDC, SSO, static keys).
-- **Required manifest keys** — every command except `init` checks that `name`, `aws.region`, and `aws.account-id` are declared, and fails fast if not.
+- **AWS authentication** — outside CI, YOLO reads a named AWS profile from `YOLO_<ENVIRONMENT>_AWS_PROFILE` in your local `.env`. Before any AWS call it verifies (via STS) that the profile resolves to the `account-id` declared in the manifest. The `default` profile is rejected. In CI it falls back to the AWS SDK default credential chain (OIDC, SSO, static keys).
+- **Required manifest keys** — every command except `init` checks that `name`, `region`, and `account-id` are declared, and fails fast if not.
 
 ## Commands at a glance
 
@@ -215,7 +215,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **environment**. These 
 
 ## `yolo sync:app`
 
-Sync a single application's resources for the given environment — S3 buckets, app IAM (deployer role/policy, MediaConvert role for IVS), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, SQS queues, a CloudWatch dashboard, and — for a solo app — its hosted zone and ACM certificate.
+Sync a single application's resources for the given environment — S3 buckets, app IAM (deployer role/policy, MediaConvert role for IVS), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, SQS queues, a CloudWatch dashboard, and — for a solo app — its hosted zone and ACM certificate. When opted in, it also provisions the shared [Valkey cache](/guide/provisioning#cache-and-sessions) (`cache.store`) and a per-app [DynamoDB sessions table](/guide/provisioning#cache-and-sessions) (`session.driver: dynamodb`).
 
 ```bash
 yolo sync:app <environment> [--dry-run] [--force] [--no-progress] [--tenant=<id>]
@@ -225,7 +225,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **app**.
 
 The step set is mode-aware: a multi-tenant app fans out landlord + per-tenant queues (and skips the solo hosted zone/cert); a solo app gets the apex zone + certificate. Web/CDN steps only run when `tasks.web` is declared. Use `--tenant=<id>` to narrow per-tenant steps to one tenant.
 
-Two environment-tier resources are bootstrapped here by exception — the RDS security group (because its real purpose is this app's task-SG ingress) and the HTTPS `:443` listener (because its creation needs this app's certificate). Both are created-if-missing and never mutated, so the environment tier remains their single writer.
+Some environment-tier resources are bootstrapped here by exception — the RDS security group (because its real purpose is this app's task-SG ingress), the HTTPS `:443` listener (because its creation needs this app's certificate), and the shared Valkey cache when `cache.store` is set (its security group needs this app's task SG to authorise). All are created-if-missing and never mutated, so the environment tier remains their single writer.
 
 A per-app **CloudWatch dashboard** (`yolo-<env>-<app>-dashboard`) is generated last, so every resource it charts already exists. It panels the ECS service (CPU/memory/tasks), the ALB (target health, requests, latency, slow-request bands, error counts and a 5xx error-rate SLO), SQS depth/throughput, the asset CloudFront distribution (requests, errors and cache hit rate), the S3 buckets and the app's logs — plus an RDS panel derived from `DB_HOST` in the app's env file (CPU, connections, memory, throughput and read/write latency). It's a read-only convenience: CloudWatch dashboards can't carry tags, so it doesn't appear in `yolo audit`.
 

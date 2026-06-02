@@ -359,7 +359,7 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
                     [
                         'Id' => static::ORIGIN_ID,
                         // Regional S3 endpoint is required for OAC outside us-east-1.
-                        'DomainName' => sprintf('%s.s3.%s.amazonaws.com', $bucket->name(), Manifest::get('aws.region')),
+                        'DomainName' => sprintf('%s.s3.%s.amazonaws.com', $bucket->name(), Manifest::get('region')),
                         'OriginAccessControlId' => $originAccessControlId,
                         'S3OriginConfig' => ['OriginAccessIdentity' => ''],
                     ],

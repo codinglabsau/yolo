@@ -5,7 +5,7 @@ use Codinglabs\Yolo\Resources\Iam\EcsTaskPolicy;
 
 beforeEach(function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 });
 
@@ -13,7 +13,7 @@ it('describes the ECS task policy with the four ssmmessages exec permissions', f
     $document = (new EcsTaskPolicy())->document();
 
     expect($document['Version'])->toBe('2012-10-17');
-    expect($document['Statement'])->toHaveCount(3);
+    expect($document['Statement'])->toHaveCount(4);
     expect($document['Statement'][0])->toMatchArray([
         'Effect' => 'Allow',
         'Resource' => '*',
@@ -43,6 +43,20 @@ it('grants SES send scoped to this region\'s verified identities', function () {
     expect($statement['Action'])->toEqualCanonicalizing([
         'ses:SendRawEmail',
         'ses:SendEmail',
+    ]);
+});
+
+it('grants DynamoDB access scoped to this environment\'s YOLO tables', function () {
+    $statement = (new EcsTaskPolicy())->document()['Statement'][3];
+
+    expect($statement['Effect'])->toBe('Allow');
+    expect($statement['Resource'])->toBe('arn:aws:dynamodb:ap-southeast-2:111111111111:table/yolo-testing-*');
+    expect($statement['Action'])->toEqualCanonicalizing([
+        'dynamodb:GetItem',
+        'dynamodb:PutItem',
+        'dynamodb:UpdateItem',
+        'dynamodb:DeleteItem',
+        'dynamodb:DescribeTable',
     ]);
 });
 

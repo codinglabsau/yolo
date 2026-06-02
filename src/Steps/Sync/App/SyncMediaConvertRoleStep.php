@@ -15,7 +15,7 @@ class SyncMediaConvertRoleStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::get('aws.mediaconvert')) {
+        if (! Manifest::get('mediaconvert')) {
             return StepResult::SKIPPED;
         }
 

@@ -8,6 +8,35 @@ use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 class Manifest
 {
+    /** Keys allowed at the manifest root, outside `environments`. */
+    protected const ALLOWED_ROOT_KEYS = ['name', 'timezone', 'environments'];
+
+    /**
+     * The complete set of valid environment-block keys as dot-paths — the single
+     * source of truth for the manifest's shape. There is no `aws.*` namespace:
+     * every key sits at the top of the environment block. A trailing `.*` allows
+     * that prefix and anything beneath it (free-form subtrees: per-tenant config,
+     * the tasks.web.* tree).
+     *
+     * @var array<int, string>
+     */
+    protected const ALLOWED_ENVIRONMENT_KEYS = [
+        'account-id', 'region',
+        'domain', 'apex', 'branch', 'tag', 'repository',
+        'tenants.*',
+        'bucket', 'alb', 'alb-logs-bucket', 'artefacts-bucket',
+        'mediaconvert', 'public-subnets',
+        'internet-gateway', 'route-table', 'vpc',
+        'ivs', 'ivs.logging', 'ivs.log-retention-days',
+        'rds.subnet', 'rds.security-group',
+        'ecs.cluster', 'ecs.security-group',
+        'sqs.depth-alarm-threshold', 'sqs.depth-alarm-period', 'sqs.depth-alarm-evaluation-periods',
+        'cache.store',
+        'session.driver',
+        'tasks.web.*',
+        'build', 'deploy', 'deploy-all',
+    ];
+
     public static function exists(): bool
     {
         return file_exists(Paths::manifest());
@@ -30,6 +59,76 @@ class Manifest
     public static function current(): array
     {
         return Yaml::parse(file_get_contents(Paths::manifest()));
+    }
+
+    /**
+     * Keys present in the manifest that aren't in the schema — or are at the
+     * wrong level. Empty array means the shape is valid. Checks both the file
+     * root and the current environment block.
+     *
+     * @return array<int, string>
+     */
+    public static function unknownKeys(): array
+    {
+        $manifest = static::current();
+
+        $unknown = array_values(array_filter(
+            array_keys($manifest),
+            fn (string $key) => ! in_array($key, static::ALLOWED_ROOT_KEYS, true),
+        ));
+
+        $prefix = sprintf('environments.%s.', Helpers::environment());
+
+        foreach (static::flattenKeys($manifest['environments'][Helpers::environment()] ?? []) as $path) {
+            if (! static::environmentKeyAllowed($path)) {
+                $unknown[] = $prefix . $path;
+            }
+        }
+
+        return $unknown;
+    }
+
+    /**
+     * Flatten an associative manifest node to leaf dot-paths. Lists and scalars
+     * are leaves at their own key — we don't descend into list items or
+     * free-form values.
+     *
+     * @param  array<string, mixed>  $node
+     * @return array<int, string>
+     */
+    protected static function flattenKeys(array $node, string $prefix = ''): array
+    {
+        $paths = [];
+
+        foreach ($node as $key => $value) {
+            $path = $prefix === '' ? (string) $key : "$prefix.$key";
+
+            if (is_array($value) && $value !== [] && ! array_is_list($value)) {
+                $paths = array_merge($paths, static::flattenKeys($value, $path));
+            } else {
+                $paths[] = $path;
+            }
+        }
+
+        return $paths;
+    }
+
+    protected static function environmentKeyAllowed(string $path): bool
+    {
+        foreach (static::ALLOWED_ENVIRONMENT_KEYS as $allowed) {
+            if ($allowed === $path) {
+                return true;
+            }
+
+            // `prefix.*` matches that prefix and anything beneath it. Comparing
+            // against `$path.` (trailing dot) stops `tasks.web.*` matching a
+            // sibling like `tasks.webhook`.
+            if (str_ends_with($allowed, '.*') && str_starts_with($path . '.', substr($allowed, 0, -1))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public static function name(): string
@@ -73,6 +172,29 @@ class Manifest
         return Arr::get(static::current(), 'timezone', 'UTC');
     }
 
+    /**
+     * The effective cache store. Web apps default to the shared Valkey cluster
+     * (`redis`) — the ephemeral per-task filesystem is broken across multiple
+     * Fargate tasks, so a working shared cache is the right default. Set
+     * `cache.store` to opt out (`file` / `database` / `array`). Non-web apps get
+     * no default.
+     */
+    public static function cacheStore(): ?string
+    {
+        return static::get('cache.store', static::has('tasks.web') ? 'redis' : null);
+    }
+
+    /**
+     * The effective session driver. Web apps default to `dynamodb` — a managed,
+     * multi-AZ store so sessions survive a task/node loss, which the ephemeral
+     * filesystem and a single cache node don't. Set `session.driver` to opt out.
+     * Non-web apps have no sessions, so no default.
+     */
+    public static function sessionDriver(): ?string
+    {
+        return static::get('session.driver', static::has('tasks.web') ? 'dynamodb' : null);
+    }
+
     public static function apex(): string
     {
         if (static::isMultitenanted()) {
@@ -106,8 +228,8 @@ class Manifest
 
     public static function ivsEnabled(): bool
     {
-        return static::get('aws.ivs') === true
-            || static::get('aws.ivs.logging') === true;
+        return static::get('ivs') === true
+            || static::get('ivs.logging') === true;
     }
 
     /**

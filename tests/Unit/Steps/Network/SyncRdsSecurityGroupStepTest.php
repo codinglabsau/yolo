@@ -16,7 +16,7 @@ function describeRdsAndTaskGroups(): Result
 
 beforeEach(function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 });
 
@@ -94,11 +94,9 @@ it('does not authorise again when a matching task-SG rule already exists', funct
 
 it('treats a manifest-specified RDS security group as custom-managed', function () {
     writeManifest([
-        'aws' => [
-            'account-id' => '111111111111',
-            'region' => 'ap-southeast-2',
-            'rds' => ['security-group' => 'yolo-testing-rds-security-group'],
-        ],
+        'account-id' => '111111111111',
+        'region' => 'ap-southeast-2',
+        'rds' => ['security-group' => 'yolo-testing-rds-security-group'],
     ]);
 
     $captured = [];

@@ -94,7 +94,7 @@ class RunCommand extends Command
     protected function exec(string $cluster, string $task, string $command, bool $interactive): int
     {
         $process = new Process(
-            static::executeCommandArgs($cluster, $task, $command, Manifest::get('aws.region'), Helpers::keyedEnv('AWS_PROFILE')),
+            static::executeCommandArgs($cluster, $task, $command, Manifest::get('region'), Helpers::keyedEnv('AWS_PROFILE')),
             timeout: null,
         );
 

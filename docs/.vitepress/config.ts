@@ -4,6 +4,7 @@ export default defineConfig({
   title: 'YOLO',
   description: 'Deploy Laravel apps to AWS Fargate',
   base: '/yolo/',
+  cleanUrls: true,
 
   head: [
     // A 🚀 emoji rendered as an inline SVG — no binary asset to ship, and a

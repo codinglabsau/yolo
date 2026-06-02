@@ -86,8 +86,89 @@ abstract class Command extends SymfonyCommand
     protected function ensureManifestIntegrity(): bool
     {
         return $this->ensureNameDeclared()
-            && $this->ensureManifestKeyDeclared('aws.region')
-            && $this->ensureManifestKeyDeclared('aws.account-id');
+            && $this->ensureNoUnknownManifestKeys()
+            && $this->ensureManifestKeyDeclared('region')
+            && $this->ensureManifestKeyDeclared('account-id')
+            && $this->ensureCacheStoreValid()
+            && $this->ensureSessionDriverValid();
+    }
+
+    /**
+     * The manifest is validated against a strict allow-list of keys. Any key not
+     * in the schema, or a valid key in the wrong place, hard-fails so a misshapen
+     * manifest can't deploy silently. Reports the fully-qualified key path and
+     * links the manifest reference.
+     */
+    protected function ensureNoUnknownManifestKeys(): bool
+    {
+        $unknown = Manifest::unknownKeys();
+
+        if ($unknown === []) {
+            return true;
+        }
+
+        error(sprintf(
+            "Unrecognised %s in yolo.yml: %s.\nSee the manifest reference: https://codinglabsau.github.io/yolo/reference/manifest",
+            count($unknown) === 1 ? 'key' : 'keys',
+            implode(', ', $unknown),
+        ));
+
+        return false;
+    }
+
+    /**
+     * `cache.store` (web apps default to `redis`). `redis` provisions the shared
+     * Valkey cluster; `file`/`database`/`array` opt out and are app-managed. Any
+     * other store should be configured in the app's `.env`, not here.
+     */
+    protected function ensureCacheStoreValid(): bool
+    {
+        $store = Manifest::get('cache.store');
+
+        if ($store === null) {
+            return true;
+        }
+
+        $allowed = ['redis', 'file', 'database', 'array'];
+
+        if (! in_array($store, $allowed, true)) {
+            error(sprintf('yolo.yml `cache.store` must be one of: %s (redis provisions the shared Valkey; the rest are app-managed).', implode(', ', $allowed)));
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * `session.driver` (when set) must be a Laravel session driver YOLO supports,
+     * and `redis` requires `cache.store: redis` — there's no redis store without
+     * the Valkey cache. Hard-fail loudly rather than silently shipping a broken
+     * session backend.
+     */
+    protected function ensureSessionDriverValid(): bool
+    {
+        $driver = Manifest::get('session.driver');
+
+        if ($driver === null) {
+            return true;
+        }
+
+        $allowed = ['redis', 'dynamodb', 'database', 'cookie', 'file'];
+
+        if (! in_array($driver, $allowed, true)) {
+            error(sprintf('yolo.yml `session.driver` must be one of: %s.', implode(', ', $allowed)));
+
+            return false;
+        }
+
+        if ($driver === 'redis' && Manifest::cacheStore() !== 'redis') {
+            error('yolo.yml `session.driver: redis` needs the Valkey cache (`cache.store: redis`, the web-app default) — don\'t opt the cache out.');
+
+            return false;
+        }
+
+        return true;
     }
 
     protected function ensureNameDeclared(): bool

@@ -18,10 +18,12 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Aws\Route53\Route53Client;
+use Aws\DynamoDb\DynamoDbClient;
 use Aws\CloudFront\CloudFrontClient;
 use Aws\CloudWatch\CloudWatchClient;
 use Aws\CodeDeploy\CodeDeployClient;
 use Aws\AutoScaling\AutoScalingClient;
+use Aws\ElastiCache\ElastiCacheClient;
 use Aws\EventBridge\EventBridgeClient;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Aws\Credentials\CredentialProvider;
@@ -39,7 +41,7 @@ trait RegistersAws
     {
         // common arguments for all AWS clients
         $arguments = [
-            'region' => Manifest::get('aws.region'),
+            'region' => Manifest::get('region'),
             'version' => 'latest',
             'credentials' => static::awsCredentials(),
         ];
@@ -52,7 +54,9 @@ trait RegistersAws
         Helpers::app()->singleton('cloudWatchLogs', fn () => new CloudWatchLogsClient($arguments));
         // CloudFront is a global service — its control-plane API only lives in us-east-1.
         Helpers::app()->singleton('cloudFront', fn () => new CloudFrontClient([...$arguments, 'region' => 'us-east-1']));
+        Helpers::app()->singleton('dynamodb', fn () => new DynamoDbClient($arguments));
         Helpers::app()->singleton('ec2', fn () => new Ec2Client($arguments));
+        Helpers::app()->singleton('elastiCache', fn () => new ElastiCacheClient($arguments));
         Helpers::app()->singleton('ecr', fn () => new EcrClient($arguments));
         Helpers::app()->singleton('ecs', fn () => new EcsClient($arguments));
         Helpers::app()->singleton('eventBridge', fn () => new EventBridgeClient($arguments));
@@ -179,9 +183,7 @@ trait RegistersAws
                     ],
                 ]);
 
-                $allowedMatch = Manifest::get('aws.autoscaling.combine', false)
-                    ? Helpers::keyedResourceName(ServerGroup::WEB, exclusive: false)
-                    : Helpers::keyedResourceName($serverGroup, exclusive: false);
+                $allowedMatch = Helpers::keyedResourceName($serverGroup, exclusive: false);
 
                 foreach ($awsResult['Tags'] as $tag) {
                     if ($tag['Key'] === 'Name' && $tag['Value'] === $allowedMatch) {

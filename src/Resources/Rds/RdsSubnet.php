@@ -15,7 +15,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * RDS DB subnet group spanning every subnet in the VPC, so a database can be
- * launched into the YOLO network. Point `aws.rds.subnet` at an existing group
+ * launched into the YOLO network. Point `rds.subnet` at an existing group
  * name to adopt one instead.
  */
 class RdsSubnet implements Resource
@@ -24,7 +24,7 @@ class RdsSubnet implements Resource
 
     public function name(): string
     {
-        return Manifest::get('aws.rds.subnet', $this->keyedName(RdsEnum::PUBLIC_SUBNET_GROUP));
+        return Manifest::get('rds.subnet', $this->keyedName(RdsEnum::PUBLIC_SUBNET_GROUP));
     }
 
     public function scope(): Scope

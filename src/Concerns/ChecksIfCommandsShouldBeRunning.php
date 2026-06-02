@@ -40,7 +40,7 @@ trait ChecksIfCommandsShouldBeRunning
         }
 
         if ($instance instanceof ExecutesIvsStep && ! Manifest::ivsEnabled()) {
-            return 'aws.ivs not enabled in manifest';
+            return 'ivs not enabled in manifest';
         }
 
         if (Aws::runningInAws()) {

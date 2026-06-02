@@ -80,7 +80,7 @@ function bindDashboardEnv(string $body): void
 }
 
 beforeEach(function () {
-    writeManifest(['aws' => ['region' => 'ap-southeast-2', 'account-id' => '111111111111']]);
+    writeManifest(['region' => 'ap-southeast-2', 'account-id' => '111111111111']);
 });
 
 it('names the dashboard per app + environment', function () {
