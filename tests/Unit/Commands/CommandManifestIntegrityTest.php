@@ -78,13 +78,16 @@ it('bails on an unknown environment key', function () {
     expect(test()->promptOutput->fetch())->toContain('flavour');
 });
 
-it('bails on a legacy aws.* namespaced manifest', function () {
+it('bails on a legacy aws.* namespaced manifest with the fully-qualified key path and a docs link', function () {
     writeManifest([
         'aws' => ['account-id' => '848509375702', 'region' => 'ap-southeast-2'],
     ]);
 
     expect(invokeManifestIntegrity())->toBeFalse();
-    expect(test()->promptOutput->fetch())->toContain('aws.region');
+
+    $output = test()->promptOutput->fetch();
+    expect($output)->toContain('environments.testing.aws.account-id');
+    expect($output)->toContain('codinglabsau.github.io/yolo/reference/manifest');
 });
 
 it('bails on a key at the wrong level (cache.store under a misplaced parent)', function () {

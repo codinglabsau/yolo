@@ -77,9 +77,11 @@ class Manifest
             fn (string $key) => ! in_array($key, static::ALLOWED_ROOT_KEYS, true),
         ));
 
+        $prefix = sprintf('environments.%s.', Helpers::environment());
+
         foreach (static::flattenKeys($manifest['environments'][Helpers::environment()] ?? []) as $path) {
             if (! static::environmentKeyAllowed($path)) {
-                $unknown[] = $path;
+                $unknown[] = $prefix . $path;
             }
         }
 

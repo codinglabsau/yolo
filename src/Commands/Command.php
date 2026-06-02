@@ -94,11 +94,10 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * The manifest is validated against a strict allow-list of keys (no AWS
-     * namespace — every key sits at the top of the environment block). Any key
-     * not in the schema, or a valid key in the wrong place, hard-fails so a
-     * misshapen manifest can't deploy silently. There is no back-compat for the
-     * old `aws.*` keys — the error points straight at what moved.
+     * The manifest is validated against a strict allow-list of keys. Any key not
+     * in the schema, or a valid key in the wrong place, hard-fails so a misshapen
+     * manifest can't deploy silently. Reports the fully-qualified key path and
+     * links the manifest reference.
      */
     protected function ensureNoUnknownManifestKeys(): bool
     {
@@ -108,7 +107,11 @@ abstract class Command extends SymfonyCommand
             return true;
         }
 
-        error(sprintf('yolo.yml has unknown or misplaced keys: %s.', implode(', ', $unknown)));
+        error(sprintf(
+            "Unrecognised %s in yolo.yml: %s.\nSee the manifest reference: https://codinglabsau.github.io/yolo/reference/manifest.html",
+            count($unknown) === 1 ? 'key' : 'keys',
+            implode(', ', $unknown),
+        ));
 
         return false;
     }
