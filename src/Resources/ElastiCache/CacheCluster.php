@@ -81,6 +81,10 @@ class CacheCluster implements Resource
             'AutomaticFailoverEnabled' => false,
             'MultiAZEnabled' => false,
             'AtRestEncryptionEnabled' => true,
+            // Valkey 8.0 requires this explicitly once any encryption setting is touched — it no longer
+            // defaults. TLS in-transit is deferred; the cache is SG-locked to the task SG on 6379, so
+            // plaintext stays inside the VPC.
+            'TransitEncryptionEnabled' => false,
             'Port' => self::PORT,
             'CacheSubnetGroupName' => (new CacheSubnetGroup())->name(),
             'CacheParameterGroupName' => (new CacheParameterGroup())->name(),
