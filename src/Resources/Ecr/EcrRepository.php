@@ -4,7 +4,6 @@ namespace Codinglabs\Yolo\Resources\Ecr;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ecr;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
@@ -73,35 +72,26 @@ class EcrRepository implements Resource
 
     public function lifecyclePolicy(): string
     {
-        $keepCount = Helpers::validatePositiveInt(
-            Manifest::get('tasks.web.image-retention.keep-count', 30),
-            'tasks.web.image-retention.keep-count',
-        );
-        $untaggedDays = Helpers::validatePositiveInt(
-            Manifest::get('tasks.web.image-retention.untagged-days', 7),
-            'tasks.web.image-retention.untagged-days',
-        );
-
         return json_encode([
             'rules' => [
                 [
                     'rulePriority' => 1,
-                    'description' => "Expire untagged images after $untaggedDays days",
+                    'description' => 'Expire untagged images after 7 days',
                     'selection' => [
                         'tagStatus' => 'untagged',
                         'countType' => 'sinceImagePushed',
                         'countUnit' => 'days',
-                        'countNumber' => $untaggedDays,
+                        'countNumber' => 7,
                     ],
                     'action' => ['type' => 'expire'],
                 ],
                 [
                     'rulePriority' => 2,
-                    'description' => "Keep last $keepCount tagged images",
+                    'description' => 'Keep last 30 tagged images',
                     'selection' => [
                         'tagStatus' => 'any',
                         'countType' => 'imageCountMoreThan',
-                        'countNumber' => $keepCount,
+                        'countNumber' => 30,
                     ],
                     'action' => ['type' => 'expire'],
                 ],

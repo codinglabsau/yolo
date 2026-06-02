@@ -33,10 +33,7 @@ class SyncTaskDefinitionStep implements Step
         $cpu = (string) Manifest::get('tasks.web.cpu', '512');
         $memory = (string) Manifest::get('tasks.web.memory', '1024');
 
-        $ecrUri = (new EcrRepository())->uri();
-        $image = $imageTag
-            ? "$ecrUri:$imageTag"
-            : Manifest::get('tasks.web.image', "$ecrUri:latest");
+        $image = (new EcrRepository())->uri() . ':' . ($imageTag ?? 'latest');
 
         $taskRoleArn = Manifest::has('tasks.web.task-role')
             ? Manifest::get('tasks.web.task-role')

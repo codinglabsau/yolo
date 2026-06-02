@@ -23,14 +23,13 @@ it('builds with inline cache seeded from the last pushed image', function () {
     expect($command)->toContain("$repository:latest");
 });
 
-it('respects the manifest platform and dockerfile overrides', function () {
+it('respects the manifest platform override', function () {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['platform' => 'linux/arm64', 'dockerfile' => 'docker/Dockerfile.prod']],
+        'tasks' => ['web' => ['platform' => 'linux/arm64']],
     ]);
 
     $command = BuildDockerImageStep::command('26.21.5.0900', 'repo');
 
     expect($command)->toContain('--platform', 'linux/arm64');
-    expect(implode(' ', $command))->toContain('docker/Dockerfile.prod');
 });

@@ -13,8 +13,8 @@ describe('validatePositiveInt', function () {
     });
 
     it('rejects zero', function () {
-        Helpers::validatePositiveInt(0, 'tasks.web.image-retention.keep-count');
-    })->throws(IntegrityCheckException::class, 'tasks.web.image-retention.keep-count must be a positive integer');
+        Helpers::validatePositiveInt(0, 'tasks.web.autoscaling.min');
+    })->throws(IntegrityCheckException::class, 'tasks.web.autoscaling.min must be a positive integer');
 
     it('rejects negative', function () {
         Helpers::validatePositiveInt(-5, 'k');

@@ -56,37 +56,6 @@ it('pins image to the supplied tag when one is passed', function () {
         ->toBe('111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/my-app:26.21.2.1500');
 });
 
-it('prefers the supplied tag over the manifest image override', function () {
-    writeManifest([
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [
-            'image' => 'public.ecr.aws/nginx:stable',
-            'task-role' => 'custom-task-role',
-            'execution-role' => 'custom-execution-role',
-        ]],
-    ]);
-
-    $payload = SyncTaskDefinitionStep::payload('26.21.2.1500');
-
-    expect($payload['containerDefinitions'][0]['image'])
-        ->toBe('111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/my-app:26.21.2.1500');
-});
-
-it('honours explicit task image override', function () {
-    writeManifest([
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [
-            'image' => 'public.ecr.aws/nginx:stable',
-            'task-role' => 'custom-task-role',
-            'execution-role' => 'custom-execution-role',
-        ]],
-    ]);
-
-    $payload = SyncTaskDefinitionStep::payload();
-
-    expect($payload['containerDefinitions'][0]['image'])->toBe('public.ecr.aws/nginx:stable');
-});
-
 it('falls back to defaults when manifest omits task config', function () {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',

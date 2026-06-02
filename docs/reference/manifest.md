@@ -63,9 +63,7 @@ environments:
         enable-execute-command: true   # default: false — enables `yolo run` to attach (gate with MFA)
         queue: true              # default: false — run queue:work in the container
         scheduler: true          # default: false — run cron + schedule:run
-        # dockerfile: Dockerfile          # default: Dockerfile
         # platform: linux/amd64           # default: linux/amd64
-        # image: 123...ecr.../app:tag     # default: built & pushed to ECR; set to use a prebuilt image
         # shutdown-grace-period: 10       # default: 10 (web) / 70 (queue) — SIGTERM→SIGKILL window
         # log-retention: 30               # default: 30 — CloudWatch Logs retention (days)
         # execution-role: arn:aws:iam::123456789012:role/...   # default: shared yolo-{env} role
@@ -78,10 +76,6 @@ environments:
         #   healthy-threshold: 2          # default: 2
         #   unhealthy-threshold: 3        # default: 3
         #   grace-period: 60              # default: 60 (ECS health-check grace period)
-        #
-        # image-retention:
-        #   keep-count: 30                # default: 30 — tagged images kept
-        #   untagged-days: 7              # default: 7
         #
         # autoscaling:                    # omit the whole block for a fixed single task
         #   min: 1                        # default: 1
@@ -112,7 +106,6 @@ environments:
     #   subnet: my-db-subnet-group          # adopt an existing RDS subnet group
     #   security-group: sg-0abc123          # default: yolo-{env}-rds
     # ecs:
-    #   cluster: my-cluster                 # default: yolo-{env}-{app}
     #   security-group: sg-0def456          # default: yolo-{env}-{app}
 ```
 
@@ -241,7 +234,6 @@ By default YOLO creates and names shared networking under `yolo-{env}-…`. To p
 | `rds.subnet` | — | RDS subnet |
 | `rds.security-group` | `yolo-{env}-rds` | RDS security group |
 | `ecs.security-group` | `yolo-{env}-{app}` | ECS task security group |
-| `ecs.cluster` | `yolo-{env}-{app}` | ECS cluster name |
 
 ---
 
@@ -293,9 +285,7 @@ Declaring `tasks.web` makes the app a Fargate web service. Omit `tasks` entirely
 | `tasks.web.port` | `8000` | Container port. Must match the Dockerfile's exposed port and the health check. |
 | `tasks.web.cpu` | `'512'` | Fargate CPU units. |
 | `tasks.web.memory` | `'1024'` | Fargate memory (MB). |
-| `tasks.web.dockerfile` | `Dockerfile` | Path to the Dockerfile. |
 | `tasks.web.platform` | `linux/amd64` | Docker build platform. |
-| `tasks.web.image` | built & pushed to ECR | Override to use a pre-built image instead of building one. |
 | `tasks.web.enable-execute-command` | `false` | Enable ECS Exec so [`yolo run`](/reference/commands#yolo-run) can attach. Gate access with MFA on your IAM. |
 | `tasks.web.queue` | `false` | Run `queue:work` in the container. `true`, or an object to override its `shutdown-grace-period`. |
 | `tasks.web.scheduler` | `false` | Run the Laravel scheduler (cron + `schedule:run`). `true`, or an object form like `queue`. |
@@ -316,15 +306,6 @@ ALB target-group health check:
 | `health-check.healthy-threshold` | `2` | Consecutive successes to mark healthy. |
 | `health-check.unhealthy-threshold` | `3` | Consecutive failures to mark unhealthy. |
 | `health-check.grace-period` | `60` | Seconds after task start before health checks count (the ECS health-check grace period). |
-
-### `tasks.web.image-retention.*`
-
-ECR lifecycle policy for the app's repository:
-
-| Key | Default | Description |
-|---|---|---|
-| `image-retention.keep-count` | `30` | Tagged images to keep. |
-| `image-retention.untagged-days` | `7` | Days to keep untagged images. |
 
 ### `tasks.web.autoscaling.*`
 

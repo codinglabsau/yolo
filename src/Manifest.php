@@ -29,7 +29,7 @@ class Manifest
         'internet-gateway', 'route-table', 'vpc',
         'ivs', 'ivs.logging', 'ivs.log-retention-days',
         'rds.subnet', 'rds.security-group',
-        'ecs.cluster', 'ecs.security-group',
+        'ecs.security-group',
         'sqs.depth-alarm-threshold', 'sqs.depth-alarm-period', 'sqs.depth-alarm-evaluation-periods',
         'cache.store',
         'session.driver',

@@ -44,7 +44,7 @@ class BuildDockerImageStep implements Step
         return [
             'docker', 'build',
             '--platform', Manifest::get('tasks.web.platform', 'linux/amd64'),
-            '--file', Paths::build(Manifest::get('tasks.web.dockerfile', 'Dockerfile')),
+            '--file', Paths::build('Dockerfile'),
             '--cache-from', "$repository:latest",
             '--cache-to', 'type=inline',
             '--tag', "$repository:$appVersion",

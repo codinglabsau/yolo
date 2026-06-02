@@ -4,7 +4,6 @@ namespace Codinglabs\Yolo\Resources\Ecs;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ecs;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\ResolvesTags;
@@ -16,7 +15,7 @@ class EcsCluster implements Resource
 
     public function name(): string
     {
-        return Manifest::get('ecs.cluster', $this->keyedName());
+        return $this->keyedName();
     }
 
     public function scope(): Scope
