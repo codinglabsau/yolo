@@ -46,6 +46,7 @@ it('creates a single-node Valkey replication group locked to the cache SG', func
     expect($call['args']['AutomaticFailoverEnabled'])->toBeFalse();
     expect($call['args']['MultiAZEnabled'])->toBeFalse();
     expect($call['args']['AtRestEncryptionEnabled'])->toBeTrue();
+    expect($call['args']['TransitEncryptionEnabled'])->toBeFalse();
     expect($call['args']['Port'])->toBe(6379);
     expect($call['args']['CacheSubnetGroupName'])->toBe('yolo-testing-cache-subnet-group');
     expect($call['args']['CacheParameterGroupName'])->toBe('yolo-testing-cache-parameter-group');
