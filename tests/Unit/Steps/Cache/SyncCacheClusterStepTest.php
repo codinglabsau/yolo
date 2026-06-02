@@ -4,17 +4,17 @@ use Aws\Result;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Steps\Sync\App\SyncCacheClusterStep;
 
-it('skips when aws.cache is not set', function () {
+it('skips when cache.store is not redis', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 
     expect((new SyncCacheClusterStep())([]))->toBe(StepResult::SKIPPED);
 });
 
-it('creates the replication group when aws.cache is set', function () {
+it('creates the replication group when cache.store is redis', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'cache' => true],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'cache' => ['store' => 'redis'],
     ]);
 
     $ec2 = [];

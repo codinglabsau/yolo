@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Resources\ElastiCache\CacheSubnetGroup;
 
 beforeEach(function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'cache' => true],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'cache' => ['store' => 'redis'],
     ]);
 });
 

@@ -15,11 +15,16 @@ environments:
     # tag: 'v*'             # or a tag push (true = any tag) — e.g. production
     # repository: org/repo  # optional — inferred from the git origin
 
-    aws:
-      account-id: {AWS_ACCOUNT_ID}
-      region: {AWS_REGION}
-      # bucket: my-app-bucket   # optional app S3 bucket, injected as AWS_BUCKET
-      # alb: my-shared-alb      # optional ALB name to adopt/create; defaults to a per-env shared yolo-{env} ALB
+    account-id: {AWS_ACCOUNT_ID}
+    region: {AWS_REGION}
+    # bucket: my-app-bucket   # optional app S3 bucket, injected as AWS_BUCKET
+    # alb: my-shared-alb      # optional ALB name to adopt/create; defaults to a per-env shared yolo-{env} ALB
+
+    # Laravel backends YOLO provisions + wires (each injects the matching env var):
+    # cache:
+    #   store: redis          # shared Valkey cache -> CACHE_STORE=redis + REDIS_HOST/PORT/PREFIX
+    # session:
+    #   driver: dynamodb      # redis | dynamodb | database | cookie | file (dynamodb provisions a table)
 
     tasks:
       web:

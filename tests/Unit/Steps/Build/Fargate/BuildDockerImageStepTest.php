@@ -4,7 +4,7 @@ use Codinglabs\Yolo\Steps\Build\Fargate\BuildDockerImageStep;
 
 beforeEach(function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => []],
     ]);
 });
@@ -25,7 +25,7 @@ it('builds with inline cache seeded from the last pushed image', function () {
 
 it('respects the manifest platform and dockerfile overrides', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['platform' => 'linux/arm64', 'dockerfile' => 'docker/Dockerfile.prod']],
     ]);
 

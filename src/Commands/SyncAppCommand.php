@@ -63,7 +63,7 @@ class SyncAppCommand extends SyncSteppedCommand
                         Steps\Sync\App\SyncEcsClusterStep::class,
                         Steps\Sync\App\SyncTaskSecurityGroupStep::class,
                         Steps\Sync\App\SyncRdsSecurityGroupStep::class,
-                        // Valkey cache (gated on aws.cache) — env-shared, bootstrapped
+                        // Valkey cache (gated on cache) — env-shared, bootstrapped
                         // from sync:app like the RDS SG; the cache SG needs the task SG.
                         Steps\Sync\App\SyncCacheSubnetGroupStep::class,
                         Steps\Sync\App\SyncCacheParameterGroupStep::class,

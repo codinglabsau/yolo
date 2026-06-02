@@ -5,7 +5,7 @@ use Codinglabs\Yolo\Steps\Build\Fargate\GenerateSupervisorConfigStep;
 
 beforeEach(function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => []],
     ]);
 
@@ -22,7 +22,7 @@ function generatedSupervisorConfig(): string
 
 it('always runs octane on the manifest port', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['port' => 9000]],
     ]);
 
@@ -46,7 +46,7 @@ it('runs octane only by default — scheduler and queue are opt-in', function ()
 
 it('runs the scheduler and queue worker when explicitly enabled', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['queue' => true, 'scheduler' => true]],
     ]);
 
@@ -62,7 +62,7 @@ it('runs the scheduler and queue worker when explicitly enabled', function () {
 
 it('writes a crontab firing schedule:run each minute when the scheduler is enabled', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['scheduler' => true]],
     ]);
 
@@ -82,7 +82,7 @@ it('writes no crontab when the scheduler is disabled', function () {
 
 it('uses the web shutdown-grace-period for octanes stop wait', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['shutdown-grace-period' => 25]],
     ]);
 
@@ -92,7 +92,7 @@ it('uses the web shutdown-grace-period for octanes stop wait', function () {
 
 it('honours a queue shutdown-grace-period override via the object form', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['queue' => ['shutdown-grace-period' => 90]]],
     ]);
 
@@ -104,7 +104,7 @@ it('honours a queue shutdown-grace-period override via the object form', functio
 
 it('runs the queue worker without the scheduler when only queue is enabled', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['queue' => true]],
     ]);
 

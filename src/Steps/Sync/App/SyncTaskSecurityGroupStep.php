@@ -21,7 +21,7 @@ class SyncTaskSecurityGroupStep implements Step
     {
         $securityGroup = new EcsTaskSecurityGroup();
 
-        if ($securityGroup->exists() && Manifest::has('aws.ecs.security-group')) {
+        if ($securityGroup->exists() && Manifest::has('ecs.security-group')) {
             return StepResult::CUSTOM_MANAGED;
         }
 

@@ -95,7 +95,7 @@ function syncedLoadBalancerAttributes(array $overrides = []): array
 
 beforeEach(function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 });
 

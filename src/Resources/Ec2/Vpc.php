@@ -13,7 +13,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 /**
  * Shared VPC for the environment (not per-app). The 10.1.0.0/16 block is
  * deliberate — it sidesteps a clash with the 10.0.0.0/16 a co-located Vapor
- * stack uses. Point `aws.vpc` at an existing VPC name to adopt rather than
+ * stack uses. Point `vpc` at an existing VPC name to adopt rather than
  * create one; SyncVpcStep reports that as CUSTOM_MANAGED.
  */
 class Vpc implements Resource
@@ -22,7 +22,7 @@ class Vpc implements Resource
 
     public function name(): string
     {
-        return Manifest::get('aws.vpc', $this->keyedName());
+        return Manifest::get('vpc', $this->keyedName());
     }
 
     public function scope(): Scope

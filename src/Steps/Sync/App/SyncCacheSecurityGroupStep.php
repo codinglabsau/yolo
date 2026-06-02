@@ -26,15 +26,11 @@ class SyncCacheSecurityGroupStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::has('aws.cache')) {
+        if (Manifest::get('cache.store') !== 'redis') {
             return StepResult::SKIPPED;
         }
 
         $securityGroup = new CacheSecurityGroup();
-
-        if (Manifest::has('aws.cache.security-group') && $securityGroup->exists()) {
-            return StepResult::CUSTOM_MANAGED;
-        }
 
         $dryRun = (bool) Arr::get($options, 'dry-run');
         $result = $this->syncResource($securityGroup, $options);

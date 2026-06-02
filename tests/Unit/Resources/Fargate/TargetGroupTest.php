@@ -10,7 +10,7 @@ use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
 
 beforeEach(function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 });
 
@@ -110,7 +110,7 @@ it('defaults the deregistration delay to 10s', function () {
 
 it('respects a manifest shutdown-grace-period override', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['shutdown-grace-period' => 30]],
     ]);
 

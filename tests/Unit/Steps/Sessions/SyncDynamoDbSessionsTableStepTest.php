@@ -8,7 +8,7 @@ use Codinglabs\Yolo\Steps\Sync\App\SyncDynamoDbSessionsTableStep;
 
 it('skips when the session driver is not dynamodb', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'session' => ['driver' => 'database'],
     ]);
 
@@ -17,7 +17,7 @@ it('skips when the session driver is not dynamodb', function () {
 
 it('skips when no session driver is set', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 
     expect((new SyncDynamoDbSessionsTableStep())([]))->toBe(StepResult::SKIPPED);
@@ -25,7 +25,7 @@ it('skips when no session driver is set', function () {
 
 it('creates the sessions table when the session driver is dynamodb', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'session' => ['driver' => 'dynamodb'],
     ]);
 

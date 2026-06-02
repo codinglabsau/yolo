@@ -45,7 +45,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 class Dashboard
 {
     // Sensible default annotation thresholds. The queue-depth line instead
-    // reuses aws.sqs.depth-alarm-threshold so the graph and the existing
+    // reuses sqs.depth-alarm-threshold so the graph and the existing
     // QueueAlarm agree. CPU bands stay hardcoded until the web-scaling config
     // lands with autoscaling, at which point the scale line reads from it.
     protected const CPU_SCALE_THRESHOLD = 60;
@@ -144,7 +144,7 @@ class Dashboard
         $web = Manifest::has('tasks.web');
 
         return [
-            'region' => Manifest::get('aws.region'),
+            'region' => Manifest::get('region'),
             'web' => $web,
             'clusterName' => $web ? (new EcsCluster())->name() : null,
             'serviceName' => $web ? (new EcsService())->name() : null,
@@ -157,7 +157,7 @@ class Dashboard
             'buckets' => static::bucketNames(),
             'taskLogGroup' => $web ? (new TaskLogGroup())->name() : null,
             'ivsLogGroup' => Manifest::ivsEnabled() ? (new IvsLogGroup())->name() : null,
-            'depthThreshold' => (int) Manifest::get('aws.sqs.depth-alarm-threshold', 100),
+            'depthThreshold' => (int) Manifest::get('sqs.depth-alarm-threshold', 100),
         ];
     }
 
@@ -193,7 +193,7 @@ class Dashboard
 
     /**
      * The S3 buckets YOLO owns for the app: artefacts and assets always, plus the
-     * optional application data bucket when aws.bucket is configured.
+     * optional application data bucket when bucket is configured.
      *
      * @return array<int, string>
      */
@@ -202,7 +202,7 @@ class Dashboard
         return collect([
             Paths::s3ArtefactsBucket(),
             (new AssetBucket())->name(),
-            Manifest::has('aws.bucket') ? Paths::s3AppBucket() : null,
+            Manifest::has('bucket') ? Paths::s3AppBucket() : null,
         ])->filter()->values()->all();
     }
 

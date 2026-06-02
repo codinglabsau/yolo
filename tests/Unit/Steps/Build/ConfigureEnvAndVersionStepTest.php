@@ -14,7 +14,7 @@ function rebuildEnvFixture(array $config): void
 
 beforeEach(function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 
     is_dir(Paths::build()) || mkdir(Paths::build(), 0755, true);
@@ -41,7 +41,7 @@ it('always points ASSET_URL at the CloudFront distribution, versioned per build'
 
 it('injects AWS_BUCKET from the manifest when the .env does not define it', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
     ]);
 
     is_dir(Paths::build()) || mkdir(Paths::build(), 0755, true);
@@ -60,7 +60,7 @@ it('does not inject AWS_BUCKET when the manifest does not define one', function 
 
 it('injects the SQS connection block when tasks.web.queue is on', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['queue' => true]],
     ]);
 
@@ -103,7 +103,7 @@ it('respects a QUEUE_CONNECTION already set in the .env', function () {
 
 it('does not pin SQS_QUEUE for a multitenant app (worker resolves it per tenant)', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['queue' => true]],
         'tenants' => ['acme' => ['domain' => 'acme.test']],
     ]);
@@ -121,7 +121,7 @@ it('does not pin SQS_QUEUE for a multitenant app (worker resolves it per tenant)
 
 it('respects an AWS_BUCKET already set in the .env', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
     ]);
 
     is_dir(Paths::build()) || mkdir(Paths::build(), 0755, true);
@@ -135,9 +135,9 @@ it('respects an AWS_BUCKET already set in the .env', function () {
     expect($env)->not->toContain('AWS_BUCKET=my-app-bucket');
 });
 
-it('wires the redis cache env to the Valkey cluster when aws.cache is set', function () {
+it('wires the redis cache env to the Valkey cluster when cache.store is redis', function () {
     rebuildEnvFixture([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'cache' => true],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'cache' => ['store' => 'redis'],
     ]);
 
     $captured = [];
@@ -160,7 +160,7 @@ it('wires the redis cache env to the Valkey cluster when aws.cache is set', func
     expect($env)->toContain('REDIS_PREFIX=yolo-testing-my-app_');
 });
 
-it('does not wire the redis cache env when aws.cache is absent', function () {
+it('does not wire the redis cache env when cache.store is absent', function () {
     (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
 
     $env = file_get_contents(Paths::build('.env.testing'));
@@ -171,7 +171,7 @@ it('does not wire the redis cache env when aws.cache is absent', function () {
 
 it('pins SESSION_DRIVER from the manifest', function () {
     rebuildEnvFixture([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'session' => ['driver' => 'database'],
     ]);
 
@@ -185,7 +185,7 @@ it('pins SESSION_DRIVER from the manifest', function () {
 
 it('points the dynamodb session driver at the YOLO-provisioned table', function () {
     rebuildEnvFixture([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'session' => ['driver' => 'dynamodb'],
     ]);
 
@@ -205,7 +205,7 @@ it('does not pin SESSION_DRIVER when the manifest does not select one', function
 
 it('respects a SESSION_DRIVER already set in the .env', function () {
     rebuildEnvFixture([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'session' => ['driver' => 'database'],
     ]);
 

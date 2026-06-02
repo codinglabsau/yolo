@@ -48,7 +48,7 @@ class IvsLogGroup implements Resource, SynchronisesConfiguration
     {
         return sprintf(
             'arn:aws:logs:%s:%s:log-group:%s',
-            Manifest::get('aws.region'),
+            Manifest::get('region'),
             Aws::accountId(),
             $this->name(),
         );
@@ -79,7 +79,7 @@ class IvsLogGroup implements Resource, SynchronisesConfiguration
 
     public function retentionDays(): int
     {
-        return (int) Manifest::get('aws.ivs.log-retention-days', 14);
+        return (int) Manifest::get('ivs.log-retention-days', 14);
     }
 
     /**
@@ -148,7 +148,7 @@ class IvsLogGroup implements Resource, SynchronisesConfiguration
                 'Action' => ['logs:CreateLogStream', 'logs:PutLogEvents'],
                 'Resource' => sprintf(
                     'arn:aws:logs:%s:%s:log-group:/aws/ivs/*',
-                    Manifest::get('aws.region'),
+                    Manifest::get('region'),
                     Aws::accountId(),
                 ),
             ]],

@@ -14,7 +14,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 /**
  * Shared security group attached to RDS. Models identity + tags only; the
  * 3306-from-task-SG ingress rule is reconciled additively by
- * SyncRdsSecurityGroupStep. Point `aws.rds.security-group` at an existing group
+ * SyncRdsSecurityGroupStep. Point `rds.security-group` at an existing group
  * to adopt one (reported CUSTOM_MANAGED, never mutated).
  */
 class RdsSecurityGroup implements Resource
@@ -23,7 +23,7 @@ class RdsSecurityGroup implements Resource
 
     public function name(): string
     {
-        return Manifest::get('aws.rds.security-group', $this->keyedName(SecurityGroup::RDS_SECURITY_GROUP));
+        return Manifest::get('rds.security-group', $this->keyedName(SecurityGroup::RDS_SECURITY_GROUP));
     }
 
     public function scope(): Scope

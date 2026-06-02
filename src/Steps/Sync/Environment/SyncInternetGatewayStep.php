@@ -16,7 +16,7 @@ class SyncInternetGatewayStep implements Step
     {
         $internetGateway = new InternetGateway();
 
-        if (Manifest::has('aws.internet-gateway') && $internetGateway->exists()) {
+        if (Manifest::has('internet-gateway') && $internetGateway->exists()) {
             return StepResult::CUSTOM_MANAGED;
         }
 

@@ -32,7 +32,7 @@ function collate(array $scopes, ?SyncSteppedCommand $command = null, array $opti
     return (new ReflectionMethod($command, 'collateSteps'))->invoke($command, $scopes, 'testing');
 }
 
-/** The three IVS steps, skipped unless aws.ivs is enabled. */
+/** The three IVS steps, skipped unless ivs is enabled. */
 function ivsSteps(): array
 {
     return [
@@ -52,14 +52,14 @@ class CollationFakeTenantStep extends TenantStep
 }
 
 it('orchestrates the three scopes in order — account → environment → app', function () {
-    writeManifest(['aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2']]);
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 
     expect(array_keys((new SyncCommand())->scopes()))->toBe(['account', 'environment', 'app']);
 });
 
 it('folds the Fargate + CDN steps into the app scope when a web task is declared', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'domain' => 'codinglabs.com.au',
         'tasks' => ['web' => ['cpu' => 512, 'memory' => 1024]],
     ]);
@@ -71,7 +71,7 @@ it('folds the Fargate + CDN steps into the app scope when a web task is declared
 });
 
 it('omits the Fargate + CDN steps from a solo app with no web task', function () {
-    writeManifest(['aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2']]);
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 
     $appSteps = (new SyncCommand())->scopes()['app'];
 
@@ -81,7 +81,7 @@ it('omits the Fargate + CDN steps from a solo app with no web task', function ()
 
 it('swaps the Solo steps for Landlord + Tenant steps on a multi-tenant app', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tenants' => ['alpha' => []],
     ]);
 
@@ -97,7 +97,7 @@ it('provisions the ALB log bucket before the load balancer in the environment sc
     // against the bucket's log-delivery policy at attribute-write time. The bucket
     // (S3LoadBalancerLogs) MUST therefore be provisioned first within the same
     // scope, or a greenfield sync fails at `ModifyLoadBalancerAttributes`.
-    writeManifest(['aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2']]);
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 
     $envSteps = (new SyncCommand())->scopes()['environment'];
 
@@ -111,7 +111,7 @@ it('provisions the ALB log bucket before the load balancer in the environment sc
 
 it('keys each scope distinctly so no scope is dropped on merge', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'domain' => 'codinglabs.com.au',
         'tasks' => ['web' => []],
     ]);
@@ -123,7 +123,7 @@ it('keys each scope distinctly so no scope is dropped on merge', function () {
 });
 
 it('groups the three skipped IVS steps under a single determination', function () {
-    writeManifest(['aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2']]);
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 
     [$plan, $skipped] = collate(['app' => ivsSteps()]);
 
@@ -132,12 +132,12 @@ it('groups the three skipped IVS steps under a single determination', function (
 
     expect($skipped->groupBy(fn (array $entry) => $entry['scope'] . '|' . $entry['reason']))
         ->toHaveCount(1);
-    expect($skipped->first()['reason'])->toBe('aws.ivs not enabled in manifest');
+    expect($skipped->first()['reason'])->toBe('ivs not enabled in manifest');
 });
 
-it('plans the IVS steps when aws.ivs is enabled', function () {
+it('plans the IVS steps when ivs is enabled', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'ivs' => true],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'ivs' => true,
     ]);
 
     [$plan, $skipped] = collate(['app' => ivsSteps()]);
@@ -148,7 +148,7 @@ it('plans the IVS steps when aws.ivs is enabled', function () {
 
 it('fans a per-tenant step out across every tenant by default', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tenants' => ['alpha' => [], 'beta' => []],
     ]);
 
@@ -159,7 +159,7 @@ it('fans a per-tenant step out across every tenant by default', function () {
 
 it('narrows the per-tenant fan-out to a single tenant with --tenant', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tenants' => ['alpha' => [], 'beta' => []],
     ]);
 
@@ -171,7 +171,7 @@ it('narrows the per-tenant fan-out to a single tenant with --tenant', function (
 
 it('errors on an unknown --tenant id', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tenants' => ['alpha' => []],
     ]);
 

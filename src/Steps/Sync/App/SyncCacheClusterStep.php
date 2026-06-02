@@ -10,7 +10,7 @@ use Codinglabs\Yolo\Resources\ElastiCache\CacheCluster;
 
 /**
  * Provisions the shared single-node Valkey replication group when the app opts
- * into the cache (`aws.cache`). Depends on the cache subnet group, parameter
+ * into the cache (`cache`). Depends on the cache subnet group, parameter
  * group and security group, so it runs last in the cache sequence.
  */
 class SyncCacheClusterStep implements Step
@@ -19,7 +19,7 @@ class SyncCacheClusterStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::has('aws.cache')) {
+        if (Manifest::get('cache.store') !== 'redis') {
             return StepResult::SKIPPED;
         }
 

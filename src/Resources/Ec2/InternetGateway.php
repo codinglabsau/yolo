@@ -21,7 +21,7 @@ class InternetGateway implements Resource
 
     public function name(): string
     {
-        return Manifest::get('aws.internet-gateway', $this->keyedName());
+        return Manifest::get('internet-gateway', $this->keyedName());
     }
 
     public function scope(): Scope

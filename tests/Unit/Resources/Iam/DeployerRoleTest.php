@@ -14,7 +14,7 @@ afterEach(function () {
 function deployerManifest(array $environment = []): void
 {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'repository' => 'my-org/my-repo',
         ...$environment,
     ]);
@@ -79,7 +79,7 @@ it('throws when both a branch and a tag are set', function () {
 
 it('infers the repository from GITHUB_REPOSITORY when the manifest omits it', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 
     putenv('GITHUB_REPOSITORY=codinglabsau/codinglabs');
@@ -93,7 +93,7 @@ it('infers the repository from GITHUB_REPOSITORY when the manifest omits it', fu
 
 it('throws when the repository cannot be resolved', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 
     // No manifest repository, no GITHUB_REPOSITORY, and the temp manifest dir is

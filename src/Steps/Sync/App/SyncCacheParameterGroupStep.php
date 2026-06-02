@@ -10,7 +10,7 @@ use Codinglabs\Yolo\Resources\ElastiCache\CacheParameterGroup;
 
 /**
  * Provisions the custom cache parameter group (`maxmemory-policy=allkeys-lru`)
- * when the app opts into the shared Valkey cache (`aws.cache`).
+ * when the app opts into the shared Valkey cache (`cache.store: redis`).
  */
 class SyncCacheParameterGroupStep implements Step
 {
@@ -18,7 +18,7 @@ class SyncCacheParameterGroupStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::has('aws.cache')) {
+        if (Manifest::get('cache.store') !== 'redis') {
             return StepResult::SKIPPED;
         }
 

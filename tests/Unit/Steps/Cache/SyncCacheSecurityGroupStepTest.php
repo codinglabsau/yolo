@@ -16,13 +16,13 @@ function describeCacheAndTaskGroups(): Result
 
 beforeEach(function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'cache' => true],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'cache' => ['store' => 'redis'],
     ]);
 });
 
-it('skips when aws.cache is not set', function () {
+it('skips when cache.store is not redis', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 
     expect((new SyncCacheSecurityGroupStep())([]))->toBe(StepResult::SKIPPED);
@@ -88,25 +88,6 @@ it('does not authorise again when a matching 6379 rule already exists', function
 
     (new SyncCacheSecurityGroupStep())([]);
 
-    expect(array_column($captured, 'name'))->not->toContain('AuthorizeSecurityGroupIngress');
-});
-
-it('treats a manifest-specified cache security group as custom-managed', function () {
-    writeManifest([
-        'aws' => [
-            'account-id' => '111111111111',
-            'region' => 'ap-southeast-2',
-            'cache' => ['security-group' => 'yolo-testing-cache-security-group'],
-        ],
-    ]);
-
-    $captured = [];
-
-    bindMockEc2Client([
-        'DescribeSecurityGroups' => describeCacheAndTaskGroups(),
-    ], $captured);
-
-    expect((new SyncCacheSecurityGroupStep())([]))->toBe(StepResult::CUSTOM_MANAGED);
     expect(array_column($captured, 'name'))->not->toContain('AuthorizeSecurityGroupIngress');
 });
 

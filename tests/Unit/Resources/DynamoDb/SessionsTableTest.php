@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Resources\DynamoDb\SessionsTable;
 
 beforeEach(function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'session' => ['driver' => 'dynamodb'],
     ]);
 });

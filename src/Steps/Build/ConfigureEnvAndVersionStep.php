@@ -50,7 +50,7 @@ class ConfigureEnvAndVersionStep implements Step
         // already set them — the app "just works" with zero config but can still
         // override.
         $defaults = [
-            'AWS_DEFAULT_REGION' => Manifest::get('aws.region'),
+            'AWS_DEFAULT_REGION' => Manifest::get('region'),
         ];
 
         // tasks.web.queue is the single switch for "this app uses the SQS queue".
@@ -63,7 +63,7 @@ class ConfigureEnvAndVersionStep implements Step
         // per-tenant queue at runtime, so SQS_QUEUE is not pinned for it.
         if (Helpers::validateStrictBool(Manifest::get('tasks.web.queue', false), 'tasks.web.queue')) {
             $defaults['QUEUE_CONNECTION'] = 'sqs';
-            $defaults['SQS_PREFIX'] = sprintf('https://sqs.%s.amazonaws.com/%s', Manifest::get('aws.region'), Aws::accountId());
+            $defaults['SQS_PREFIX'] = sprintf('https://sqs.%s.amazonaws.com/%s', Manifest::get('region'), Aws::accountId());
 
             if (! Manifest::isMultitenanted()) {
                 $defaults['SQS_QUEUE'] = Helpers::keyedResourceName();
@@ -72,15 +72,15 @@ class ConfigureEnvAndVersionStep implements Step
             $defaults['QUEUE_CONNECTION'] = 'sync';
         }
 
-        if (Manifest::has('aws.bucket')) {
-            $defaults['AWS_BUCKET'] = Manifest::get('aws.bucket');
+        if (Manifest::has('bucket')) {
+            $defaults['AWS_BUCKET'] = Manifest::get('bucket');
         }
 
         // Shared Valkey cache: point the redis driver at the YOLO-provisioned
         // cluster (read live — the cluster is synced before deploy) and isolate
         // this app on the shared node with a per-app key prefix. CACHE_STORE is
         // wired to redis; sessions are a separate, manifest-driven choice below.
-        if (Manifest::has('aws.cache')) {
+        if (Manifest::get('cache.store') === 'redis') {
             $defaults['CACHE_STORE'] = 'redis';
             $defaults['REDIS_HOST'] = (new CacheCluster())->endpoint();
             $defaults['REDIS_PORT'] = (string) CacheCluster::PORT;

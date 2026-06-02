@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 describe('routedHosts', function () {
     it('routes apex + www.apex when domain matches apex', function () {
         writeManifest([
-            'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'domain' => 'codinglabs.com.au',
         ]);
 
@@ -16,7 +16,7 @@ describe('routedHosts', function () {
 
     it('routes apex + www.apex when only apex is set', function () {
         writeManifest([
-            'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'apex' => 'codinglabs.com.au',
         ]);
 
@@ -26,7 +26,7 @@ describe('routedHosts', function () {
 
     it('routes only the literal domain when apex and domain differ', function () {
         writeManifest([
-            'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'apex' => 'codinglabs.com.au',
             'domain' => 'fargate.codinglabs.com.au',
         ]);
@@ -37,7 +37,7 @@ describe('routedHosts', function () {
 
     it('routes only the literal domain for tenant-style subdomains (apex ≠ domain)', function () {
         writeManifest([
-            'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'apex' => 'liveplatforms.net',
             'domain' => 'brushly.liveplatforms.net',
         ]);

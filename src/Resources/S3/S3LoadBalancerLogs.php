@@ -149,7 +149,7 @@ class S3LoadBalancerLogs implements Resource, SynchronisesConfiguration
                         'ArnLike' => [
                             'aws:SourceArn' => sprintf(
                                 'arn:aws:elasticloadbalancing:%s:%s:loadbalancer/*',
-                                Manifest::get('aws.region'),
+                                Manifest::get('region'),
                                 $accountId,
                             ),
                         ],

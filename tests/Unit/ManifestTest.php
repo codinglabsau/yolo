@@ -5,30 +5,30 @@ use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 describe('has and get', function () {
     it('returns true for existing keys', function () {
-        writeManifest(['aws' => ['region' => 'us-west-2']]);
+        writeManifest(['region' => 'us-west-2']);
 
-        expect(Manifest::has('aws.region'))->toBeTrue();
+        expect(Manifest::has('region'))->toBeTrue();
     });
 
     it('returns false for missing keys', function () {
         writeManifest([]);
 
-        expect(Manifest::has('aws.region'))->toBeFalse();
-        expect(Manifest::doesntHave('aws.region'))->toBeTrue();
+        expect(Manifest::has('region'))->toBeFalse();
+        expect(Manifest::doesntHave('region'))->toBeTrue();
     });
 
     it('gets values with defaults', function () {
-        writeManifest(['aws' => ['region' => 'us-west-2']]);
+        writeManifest(['region' => 'us-west-2']);
 
-        expect(Manifest::get('aws.region'))->toBe('us-west-2');
-        expect(Manifest::get('aws.missing', 'fallback'))->toBe('fallback');
+        expect(Manifest::get('region'))->toBe('us-west-2');
+        expect(Manifest::get('missing', 'fallback'))->toBe('fallback');
     });
 
     it('has returns true even for falsy values', function () {
-        writeManifest(['aws' => ['ivs' => false]]);
+        writeManifest(['ivs' => false]);
 
-        expect(Manifest::has('aws.ivs'))->toBeTrue();
-        expect(Manifest::get('aws.ivs'))->toBeFalse();
+        expect(Manifest::has('ivs'))->toBeTrue();
+        expect(Manifest::get('ivs'))->toBeFalse();
     });
 });
 
@@ -96,38 +96,38 @@ describe('multitenancy', function () {
 });
 
 describe('ivsEnabled', function () {
-    it('is false when aws.ivs is absent', function () {
+    it('is false when ivs is absent', function () {
         writeManifest([]);
 
         expect(Manifest::ivsEnabled())->toBeFalse();
     });
 
     it('is true for the boolean shorthand', function () {
-        writeManifest(['aws' => ['ivs' => true]]);
+        writeManifest(['ivs' => true]);
 
         expect(Manifest::ivsEnabled())->toBeTrue();
     });
 
-    it('is false when aws.ivs is explicitly false', function () {
-        writeManifest(['aws' => ['ivs' => false]]);
+    it('is false when ivs is explicitly false', function () {
+        writeManifest(['ivs' => false]);
 
         expect(Manifest::ivsEnabled())->toBeFalse();
     });
 
     it('is true for the expanded form with logging on', function () {
-        writeManifest(['aws' => ['ivs' => ['logging' => true, 'log-retention-days' => 30]]]);
+        writeManifest(['ivs' => ['logging' => true, 'log-retention-days' => 30]]);
 
         expect(Manifest::ivsEnabled())->toBeTrue();
     });
 
     it('is false for the expanded form with logging off', function () {
-        writeManifest(['aws' => ['ivs' => ['logging' => false, 'log-retention-days' => 30]]]);
+        writeManifest(['ivs' => ['logging' => false, 'log-retention-days' => 30]]);
 
         expect(Manifest::ivsEnabled())->toBeFalse();
     });
 
     it('is false for the expanded form without a logging key', function () {
-        writeManifest(['aws' => ['ivs' => ['log-retention-days' => 30]]]);
+        writeManifest(['ivs' => ['log-retention-days' => 30]]);
 
         expect(Manifest::ivsEnabled())->toBeFalse();
     });

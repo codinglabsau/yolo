@@ -16,7 +16,7 @@ class SyncRouteTableStep implements Step
     {
         $routeTable = new RouteTable();
 
-        if (Manifest::has('aws.route-table') && $routeTable->exists()) {
+        if (Manifest::has('route-table') && $routeTable->exists()) {
             return StepResult::CUSTOM_MANAGED;
         }
 

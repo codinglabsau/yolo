@@ -86,15 +86,55 @@ abstract class Command extends SymfonyCommand
     protected function ensureManifestIntegrity(): bool
     {
         return $this->ensureNameDeclared()
-            && $this->ensureManifestKeyDeclared('aws.region')
-            && $this->ensureManifestKeyDeclared('aws.account-id')
+            && $this->ensureNoUnknownManifestKeys()
+            && $this->ensureManifestKeyDeclared('region')
+            && $this->ensureManifestKeyDeclared('account-id')
+            && $this->ensureCacheStoreValid()
             && $this->ensureSessionDriverValid();
     }
 
     /**
+     * The manifest is validated against a strict allow-list of keys (no AWS
+     * namespace — every key sits at the top of the environment block). Any key
+     * not in the schema, or a valid key in the wrong place, hard-fails so a
+     * misshapen manifest can't deploy silently. There is no back-compat for the
+     * old `aws.*` keys — the error points straight at what moved.
+     */
+    protected function ensureNoUnknownManifestKeys(): bool
+    {
+        $unknown = Manifest::unknownKeys();
+
+        if ($unknown === []) {
+            return true;
+        }
+
+        error(sprintf('yolo.yml has unknown or misplaced keys: %s.', implode(', ', $unknown)));
+
+        return false;
+    }
+
+    /**
+     * `cache.store`, when set, must be `redis` — the only cache store YOLO
+     * provisions (the shared Valkey cluster). Other stores are the app's own
+     * `.env` concern.
+     */
+    protected function ensureCacheStoreValid(): bool
+    {
+        $store = Manifest::get('cache.store');
+
+        if ($store === null || $store === 'redis') {
+            return true;
+        }
+
+        error('yolo.yml `cache.store` must be `redis` (the Valkey cache) — set any other cache store in your .env.');
+
+        return false;
+    }
+
+    /**
      * `session.driver` (when set) must be a Laravel session driver YOLO supports,
-     * and `redis` requires `aws.cache` — there's no redis store without the
-     * Valkey cache. Hard-fail loudly rather than silently shipping a broken
+     * and `redis` requires `cache.store: redis` — there's no redis store without
+     * the Valkey cache. Hard-fail loudly rather than silently shipping a broken
      * session backend.
      */
     protected function ensureSessionDriverValid(): bool
@@ -113,8 +153,8 @@ abstract class Command extends SymfonyCommand
             return false;
         }
 
-        if ($driver === 'redis' && ! Manifest::has('aws.cache')) {
-            error('yolo.yml `session.driver: redis` needs `aws.cache` enabled — the Valkey cache is the redis store.');
+        if ($driver === 'redis' && Manifest::get('cache.store') !== 'redis') {
+            error('yolo.yml `session.driver: redis` needs `cache.store: redis` — the Valkey cache is the redis store.');
 
             return false;
         }

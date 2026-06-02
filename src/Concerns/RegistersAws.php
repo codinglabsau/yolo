@@ -41,7 +41,7 @@ trait RegistersAws
     {
         // common arguments for all AWS clients
         $arguments = [
-            'region' => Manifest::get('aws.region'),
+            'region' => Manifest::get('region'),
             'version' => 'latest',
             'credentials' => static::awsCredentials(),
         ];
@@ -183,7 +183,7 @@ trait RegistersAws
                     ],
                 ]);
 
-                $allowedMatch = Manifest::get('aws.autoscaling.combine', false)
+                $allowedMatch = Manifest::get('autoscaling.combine', false)
                     ? Helpers::keyedResourceName(ServerGroup::WEB, exclusive: false)
                     : Helpers::keyedResourceName($serverGroup, exclusive: false);
 

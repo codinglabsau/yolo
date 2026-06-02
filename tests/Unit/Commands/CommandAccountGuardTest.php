@@ -37,7 +37,7 @@ beforeEach(function () {
 
 it('returns true when the manifest account matches the resolved STS account', function () {
     writeManifest([
-        'aws' => ['account-id' => '848509375702', 'region' => 'ap-southeast-2'],
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
     ]);
 
     bindMockStsClient('848509375702');
@@ -47,7 +47,7 @@ it('returns true when the manifest account matches the resolved STS account', fu
 
 it('returns false and surfaces both account IDs + env var name on mismatch', function () {
     writeManifest([
-        'aws' => ['account-id' => '848509375702', 'region' => 'ap-southeast-2'],
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
     ]);
 
     bindMockStsClient('999999999999');

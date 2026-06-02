@@ -4,7 +4,6 @@ namespace Codinglabs\Yolo\Resources\Ec2;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ec2;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Enums\SecurityGroup;
@@ -14,9 +13,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 /**
  * Shared security group attached to the Valkey cache. Models identity + tags
  * only; the 6379-from-task-SG ingress rule is reconciled additively by
- * SyncCacheSecurityGroupStep. Point `aws.cache.security-group` at an existing
- * group to adopt one (reported CUSTOM_MANAGED, never mutated). Mirrors
- * RdsSecurityGroup.
+ * SyncCacheSecurityGroupStep. Mirrors RdsSecurityGroup.
  */
 class CacheSecurityGroup implements Resource
 {
@@ -24,7 +21,7 @@ class CacheSecurityGroup implements Resource
 
     public function name(): string
     {
-        return Manifest::get('aws.cache.security-group', $this->keyedName(SecurityGroup::CACHE_SECURITY_GROUP));
+        return $this->keyedName(SecurityGroup::CACHE_SECURITY_GROUP);
     }
 
     public function scope(): Scope

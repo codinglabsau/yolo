@@ -10,8 +10,8 @@ use Codinglabs\Yolo\Resources\ElastiCache\CacheSubnetGroup;
 
 /**
  * Provisions the ElastiCache subnet group when the app opts into the shared
- * Valkey cache (`aws.cache`). Env-scoped resource bootstrapped from sync:app,
- * created-if-missing and never mutated — mirrors the RDS-SG exception pattern.
+ * Valkey cache (`cache.store: redis`). Env-scoped resource bootstrapped from
+ * sync:app, created-if-missing and never mutated — mirrors the RDS-SG exception.
  */
 class SyncCacheSubnetGroupStep implements Step
 {
@@ -19,7 +19,7 @@ class SyncCacheSubnetGroupStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::has('aws.cache')) {
+        if (Manifest::get('cache.store') !== 'redis') {
             return StepResult::SKIPPED;
         }
 

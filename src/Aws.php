@@ -565,7 +565,7 @@ class Aws
 
     public static function accountId(): string
     {
-        return Manifest::get('aws.account-id');
+        return Manifest::get('account-id');
     }
 
     public static function profileAccountId(): string

@@ -41,7 +41,7 @@ function bindMockCloudWatchLogsClient(array $byCommand, array &$captured): void
 
 beforeEach(function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['log-group' => '/yolo/my-app']],
     ]);
 });

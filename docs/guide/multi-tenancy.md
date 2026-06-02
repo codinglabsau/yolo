@@ -9,9 +9,8 @@ Declare tenants under the environment, keyed by a unique tenant id:
 ```yaml
 environments:
   production:
-    aws:
-      account-id: '123456789012'
-      region: ap-southeast-2
+    account-id: '123456789012'
+    region: ap-southeast-2
     tenants:
       acme:
         domain: acme.example.com

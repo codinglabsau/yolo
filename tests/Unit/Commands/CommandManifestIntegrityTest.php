@@ -26,9 +26,9 @@ beforeEach(function () {
     test()->promptOutput = $buffer;
 });
 
-it('returns true for a manifest declaring name, aws.region, and aws.account-id', function () {
+it('returns true for a manifest declaring name, region, and account-id', function () {
     writeManifest([
-        'aws' => ['account-id' => '848509375702', 'region' => 'ap-southeast-2'],
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
     ]);
 
     expect(invokeManifestIntegrity())->toBeTrue();
@@ -38,7 +38,7 @@ it('bails when the top-level name is missing', function () {
     writeRawManifest([
         'environments' => [
             'testing' => [
-                'aws' => ['account-id' => '848509375702', 'region' => 'ap-southeast-2'],
+                'account-id' => '848509375702', 'region' => 'ap-southeast-2',
             ],
         ],
     ]);
@@ -48,29 +48,58 @@ it('bails when the top-level name is missing', function () {
     expect(test()->promptOutput->fetch())->toContain('`name`');
 });
 
-it('bails when aws.region is missing', function () {
+it('bails when region is missing', function () {
     writeManifest([
-        'aws' => ['account-id' => '848509375702'],
+        'account-id' => '848509375702',
     ]);
 
     expect(invokeManifestIntegrity())->toBeFalse();
 
+    expect(test()->promptOutput->fetch())->toContain('region');
+});
+
+it('bails when account-id is missing', function () {
+    writeManifest([
+        'region' => 'ap-southeast-2',
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    expect(test()->promptOutput->fetch())->toContain('account-id');
+});
+
+it('bails on an unknown environment key', function () {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'flavour' => 'spicy',
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+    expect(test()->promptOutput->fetch())->toContain('flavour');
+});
+
+it('bails on a legacy aws.* namespaced manifest', function () {
+    writeManifest([
+        'aws' => ['account-id' => '848509375702', 'region' => 'ap-southeast-2'],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
     expect(test()->promptOutput->fetch())->toContain('aws.region');
 });
 
-it('bails when aws.account-id is missing', function () {
+it('bails on a key at the wrong level (cache.store under a misplaced parent)', function () {
     writeManifest([
-        'aws' => ['region' => 'ap-southeast-2'],
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'cache' => ['store' => 'redis', 'driver' => 'redis'],
     ]);
 
     expect(invokeManifestIntegrity())->toBeFalse();
-
-    expect(test()->promptOutput->fetch())->toContain('aws.account-id');
+    expect(test()->promptOutput->fetch())->toContain('cache.driver');
 });
 
 it('accepts a supported session.driver', function () {
     writeManifest([
-        'aws' => ['account-id' => '848509375702', 'region' => 'ap-southeast-2'],
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
         'session' => ['driver' => 'dynamodb'],
     ]);
 
@@ -79,7 +108,7 @@ it('accepts a supported session.driver', function () {
 
 it('bails on an unknown session.driver', function () {
     writeManifest([
-        'aws' => ['account-id' => '848509375702', 'region' => 'ap-southeast-2'],
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
         'session' => ['driver' => 'mysql'],
     ]);
 
@@ -87,19 +116,19 @@ it('bails on an unknown session.driver', function () {
     expect(test()->promptOutput->fetch())->toContain('session.driver');
 });
 
-it('bails when session.driver is redis but aws.cache is off', function () {
+it('bails when session.driver is redis but cache.store is off', function () {
     writeManifest([
-        'aws' => ['account-id' => '848509375702', 'region' => 'ap-southeast-2'],
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
         'session' => ['driver' => 'redis'],
     ]);
 
     expect(invokeManifestIntegrity())->toBeFalse();
-    expect(test()->promptOutput->fetch())->toContain('aws.cache');
+    expect(test()->promptOutput->fetch())->toContain('cache.store');
 });
 
-it('accepts session.driver redis when aws.cache is enabled', function () {
+it('accepts session.driver redis when cache.store is redis', function () {
     writeManifest([
-        'aws' => ['account-id' => '848509375702', 'region' => 'ap-southeast-2', 'cache' => true],
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2', 'cache' => ['store' => 'redis'],
         'session' => ['driver' => 'redis'],
     ]);
 

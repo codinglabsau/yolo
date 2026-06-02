@@ -40,9 +40,8 @@ An app that has no public web front — a worker-only service, an internal API b
 ```yaml
 environments:
   production:
-    aws:
-      account-id: '123456789012'
-      region: ap-southeast-2
+    account-id: '123456789012'
+    region: ap-southeast-2
     # no domain / apex / tenants
     tasks:
       web:

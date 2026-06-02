@@ -8,6 +8,35 @@ use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 class Manifest
 {
+    /** Keys allowed at the manifest root, outside `environments`. */
+    protected const ALLOWED_ROOT_KEYS = ['name', 'timezone', 'environments'];
+
+    /**
+     * The complete set of valid environment-block keys as dot-paths — the single
+     * source of truth for the manifest's shape. There is no `aws.*` namespace:
+     * every key sits at the top of the environment block. A trailing `.*` allows
+     * that prefix and anything beneath it (free-form subtrees: per-tenant config,
+     * the tasks.web.* tree).
+     *
+     * @var array<int, string>
+     */
+    protected const ALLOWED_ENVIRONMENT_KEYS = [
+        'account-id', 'region',
+        'domain', 'apex', 'asset-url', 'branch', 'tag', 'repository',
+        'tenants.*',
+        'bucket', 'alb', 'alb-logs-bucket', 'artefacts-bucket',
+        'cloudfront', 'mediaconvert', 'public-subnets',
+        'internet-gateway', 'route-table', 'vpc',
+        'ivs', 'ivs.logging', 'ivs.log-retention-days',
+        'rds.subnet', 'rds.security-group',
+        'ecs.cluster', 'ecs.security-group',
+        'sqs.depth-alarm-threshold', 'sqs.depth-alarm-period', 'sqs.depth-alarm-evaluation-periods',
+        'cache.store',
+        'session.driver',
+        'tasks.web.*',
+        'build', 'deploy', 'deploy-all',
+    ];
+
     public static function exists(): bool
     {
         return file_exists(Paths::manifest());
@@ -30,6 +59,74 @@ class Manifest
     public static function current(): array
     {
         return Yaml::parse(file_get_contents(Paths::manifest()));
+    }
+
+    /**
+     * Keys present in the manifest that aren't in the schema — or are at the
+     * wrong level. Empty array means the shape is valid. Checks both the file
+     * root and the current environment block.
+     *
+     * @return array<int, string>
+     */
+    public static function unknownKeys(): array
+    {
+        $manifest = static::current();
+
+        $unknown = array_values(array_filter(
+            array_keys($manifest),
+            fn (string $key) => ! in_array($key, static::ALLOWED_ROOT_KEYS, true),
+        ));
+
+        foreach (static::flattenKeys($manifest['environments'][Helpers::environment()] ?? []) as $path) {
+            if (! static::environmentKeyAllowed($path)) {
+                $unknown[] = $path;
+            }
+        }
+
+        return $unknown;
+    }
+
+    /**
+     * Flatten an associative manifest node to leaf dot-paths. Lists and scalars
+     * are leaves at their own key — we don't descend into list items or
+     * free-form values.
+     *
+     * @param  array<string, mixed>  $node
+     * @return array<int, string>
+     */
+    protected static function flattenKeys(array $node, string $prefix = ''): array
+    {
+        $paths = [];
+
+        foreach ($node as $key => $value) {
+            $path = $prefix === '' ? (string) $key : "$prefix.$key";
+
+            if (is_array($value) && $value !== [] && ! array_is_list($value)) {
+                $paths = array_merge($paths, static::flattenKeys($value, $path));
+            } else {
+                $paths[] = $path;
+            }
+        }
+
+        return $paths;
+    }
+
+    protected static function environmentKeyAllowed(string $path): bool
+    {
+        foreach (static::ALLOWED_ENVIRONMENT_KEYS as $allowed) {
+            if ($allowed === $path) {
+                return true;
+            }
+
+            // `prefix.*` matches that prefix and anything beneath it. Comparing
+            // against `$path.` (trailing dot) stops `tasks.web.*` matching a
+            // sibling like `tasks.webhook`.
+            if (str_ends_with($allowed, '.*') && str_starts_with($path . '.', substr($allowed, 0, -1))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public static function name(): string
@@ -106,8 +203,8 @@ class Manifest
 
     public static function ivsEnabled(): bool
     {
-        return static::get('aws.ivs') === true
-            || static::get('aws.ivs.logging') === true;
+        return static::get('ivs') === true
+            || static::get('ivs.logging') === true;
     }
 
     /**

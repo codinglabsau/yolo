@@ -27,7 +27,7 @@ class SyncRdsSecurityGroupStep implements Step
     {
         $securityGroup = new RdsSecurityGroup();
 
-        if (Manifest::has('aws.rds.security-group') && $securityGroup->exists()) {
+        if (Manifest::has('rds.security-group') && $securityGroup->exists()) {
             return StepResult::CUSTOM_MANAGED;
         }
 

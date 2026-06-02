@@ -167,7 +167,7 @@ class EcsTaskPolicy implements Resource
     {
         return sprintf(
             'arn:aws:ses:%s:%s:identity/*',
-            Manifest::get('aws.region'),
+            Manifest::get('region'),
             Aws::accountId(),
         );
     }
@@ -176,7 +176,7 @@ class EcsTaskPolicy implements Resource
     {
         return sprintf(
             'arn:aws:sqs:%s:%s:%s-*',
-            Manifest::get('aws.region'),
+            Manifest::get('region'),
             Aws::accountId(),
             Helpers::keyedResourceName(exclusive: false),
         );
@@ -186,7 +186,7 @@ class EcsTaskPolicy implements Resource
     {
         return sprintf(
             'arn:aws:dynamodb:%s:%s:table/%s-*',
-            Manifest::get('aws.region'),
+            Manifest::get('region'),
             Aws::accountId(),
             Helpers::keyedResourceName(exclusive: false),
         );

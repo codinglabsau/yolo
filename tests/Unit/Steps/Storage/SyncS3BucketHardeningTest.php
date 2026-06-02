@@ -68,7 +68,7 @@ function s3NotFound(): S3Exception
 
 beforeEach(function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 });
 
@@ -150,7 +150,7 @@ it('reports drift but does not mutate the artefact bucket during a dry-run', fun
 
 it('blocks public access on a newly created app bucket', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
     ]);
 
     $captured = [];
@@ -168,7 +168,7 @@ it('blocks public access on a newly created app bucket', function () {
 
 it('does not flip public access on an existing app bucket', function () {
     writeManifest([
-        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
     ]);
 
     $captured = [];
