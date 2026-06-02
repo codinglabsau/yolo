@@ -146,6 +146,40 @@ it('omits the changes section entirely when nothing drifted', function () {
         ->not->toContain('Changes applied');
 });
 
+it('names brand-new resources under Will create, before the confirm gate', function () {
+    $output = runScopesCapture(
+        ['app' => [RunScopesFakeStep::class]],
+        ['--no-progress' => true],
+    );
+
+    // A WOULD_CREATE step records no attribute Change, so without the Will create
+    // list it would be folded silently into the scope tally and never named.
+    // Creation is not an attribute diff, so it stays out of Pending changes.
+    expect($output)
+        ->toContain('Will create')
+        ->toContain('Run scopes fake')
+        ->not->toContain('Pending changes');
+
+    // It's part of the plan — rendered ahead of the apply/completion line.
+    expect(strpos($output, 'Will create'))->toBeLessThan(strpos($output, 'Synced testing'));
+});
+
+it('separates brand-new resources (Will create) from drift on existing ones (Pending changes)', function () {
+    $output = runScopesCapture(
+        ['app' => [RunScopesFakeStep::class, RunScopesChangeStep::class]],
+        ['--no-progress' => true],
+    );
+
+    // The create is named under Will create; the attribute drift is itemised
+    // under Pending changes — and Will create leads, as the more consequential.
+    expect($output)
+        ->toContain('Will create')
+        ->toContain('Pending changes')
+        ->toContain('idle_timeout');
+
+    expect(strpos($output, 'Will create'))->toBeLessThan(strpos($output, 'Pending changes'));
+});
+
 it('shows the skipped concept summary at normal verbosity but hides per-resource names', function () {
     $output = runScopesCapture([
         'app' => [

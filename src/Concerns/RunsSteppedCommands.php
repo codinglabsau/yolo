@@ -150,10 +150,10 @@ trait RunsSteppedCommands
     }
 
     /**
-     * Render the plan: scope counts, the full attribute-level Pending changes
-     * diff (when there's drift), and a single Skipping section grouped by
-     * scope + reason. With `-v`, the skipped section expands to list every
-     * resource under each concept group.
+     * Render the plan: scope counts, a Will create list of brand-new resources,
+     * the per-attribute Pending changes diff for drift on existing resources,
+     * and a single Skipping section grouped by scope + reason. With `-v`, the
+     * skipped section expands to list every resource under each concept group.
      *
      * @param  Collection<int, array{index: int, scope: string, step: Step, status: StepResult|string, elapsed: int, changes: array<int, Change>}>  $plan
      * @param  Collection<int, array{scope: string, step: Step, reason: string}>  $skipped
@@ -166,7 +166,11 @@ trait RunsSteppedCommands
             $this->output->writeln(sprintf('  <fg=green>✔</> %s <fg=gray>(%d)</>', $scope, $entries->count()));
         });
 
-        $this->renderPendingChanges($plan);
+        $multiScope = $plan->pluck('scope')->unique()->count() > 1;
+
+        $this->renderWillCreate($plan, $multiScope);
+
+        $this->renderPendingChanges($plan, $multiScope);
 
         $this->renderSkipping($skipped);
 
@@ -320,14 +324,41 @@ trait RunsSteppedCommands
     }
 
     /**
+     * Print the Will create section: every resource the plan would stand up
+     * fresh (status WOULD_CREATE). Creation records no attribute-level Change —
+     * there's no "before" to diff — so without an explicit list a new resource
+     * is folded silently into the scope tally and never named. Standing up new
+     * (billable, least-reversible) infra is the most consequential thing apply
+     * does, so the plan names it before the per-attribute drift diff.
+     *
+     * @param  Collection<int, array{scope: string, step: Step, status: StepResult|string, changes: array<int, Change>}>  $plan
+     */
+    protected function renderWillCreate(Collection $plan, bool $multiScope): void
+    {
+        $creating = $plan->filter(fn (array $entry) => $entry['status'] === StepResult::WOULD_CREATE);
+
+        if ($creating->isEmpty()) {
+            return;
+        }
+
+        $this->output->writeln('');
+        $this->output->writeln('  <options=bold>Will create</>');
+
+        $creating->each(function (array $entry) use ($multiScope) {
+            $this->output->writeln(sprintf('  <fg=green>+</> %s', static::planEntryLabel($entry, $multiScope)));
+        });
+    }
+
+    /**
      * Print the per-attribute Pending changes section: which attributes each
-     * step would reconcile, as a current → desired comparison. Steps that
-     * recorded nothing are omitted, so a clean plan stays quiet and drift
-     * stands out.
+     * step would reconcile on an *existing* resource, as a current → desired
+     * comparison. Brand-new resources are listed by renderWillCreate(), not
+     * here. Steps that recorded nothing are omitted, so a clean plan stays
+     * quiet and drift stands out.
      *
      * @param  Collection<int, array{scope: string, step: Step, changes: array<int, Change>}>  $plan
      */
-    protected function renderPendingChanges(Collection $plan): void
+    protected function renderPendingChanges(Collection $plan, bool $multiScope): void
     {
         $withChanges = $plan->filter(fn (array $entry) => $entry['changes'] !== []);
 
@@ -335,17 +366,11 @@ trait RunsSteppedCommands
             return;
         }
 
-        $multiScope = $plan->pluck('scope')->unique()->count() > 1;
-
         $this->output->writeln('');
         $this->output->writeln('  <options=bold>Pending changes</>');
 
         $withChanges->each(function (array $entry) use ($multiScope) {
-            $label = $multiScope
-                ? sprintf('%s · %s', $entry['scope'], static::normaliseStep($entry['step']))
-                : static::normaliseStep($entry['step']);
-
-            $this->output->writeln(sprintf('  <fg=cyan>%s</>', $label));
+            $this->output->writeln(sprintf('  <fg=cyan>%s</>', static::planEntryLabel($entry, $multiScope)));
 
             foreach ($entry['changes'] as $change) {
                 $this->output->writeln(sprintf(
@@ -356,6 +381,19 @@ trait RunsSteppedCommands
                 ));
             }
         });
+    }
+
+    /**
+     * The scope-qualified label for a plan entry — "app · Cache cluster" when a
+     * multi-scope sync is in play, just "Cache cluster" for a single scope.
+     *
+     * @param  array{scope: string, step: Step}  $entry
+     */
+    protected static function planEntryLabel(array $entry, bool $multiScope): string
+    {
+        return $multiScope
+            ? sprintf('%s · %s', $entry['scope'], static::normaliseStep($entry['step']))
+            : static::normaliseStep($entry['step']);
     }
 
     /**

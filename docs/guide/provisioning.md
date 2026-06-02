@@ -34,7 +34,7 @@ Several apps can share one environment's VPC and load balancer. Because `sync:ap
 
 `sync` never surprises you. It runs as a three-step flow:
 
-1. **Plan** — YOLO inspects live AWS state and computes what would change, rendering it grouped by scope with per-attribute diffs (`current → desired`).
+1. **Plan** — YOLO inspects live AWS state and computes what would change, rendering it grouped by scope. Brand-new resources are listed under **Will create** (one `+` line each); drift on existing resources is shown under **Pending changes** as per-attribute diffs (`current → desired`).
 2. **Confirm** — you're shown the plan and asked to approve. If nothing has drifted, it short-circuits with **"Already in sync"** and exits without touching anything.
 3. **Apply** — only the changed steps run.
 
