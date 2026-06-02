@@ -28,6 +28,18 @@ beforeEach(function () {
             'Id' => 'E123',
         ],
     ]);
+
+    // Web-app manifests default cache.store to redis, so the build resolves the
+    // Valkey endpoint — bind a default cluster lookup for any tasks.web test.
+    $captured = [];
+    bindMockElastiCacheClient([
+        'DescribeReplicationGroups' => new Result(['ReplicationGroups' => [
+            [
+                'ReplicationGroupId' => 'yolo-testing-cache',
+                'NodeGroups' => [['PrimaryEndpoint' => ['Address' => 'master.yolo-testing-cache.cache.amazonaws.com']]],
+            ],
+        ]]),
+    ], $captured);
 });
 
 it('always points ASSET_URL at the CloudFront distribution, versioned per build', function () {
@@ -160,13 +172,30 @@ it('wires the redis cache env to the Valkey cluster when cache.store is redis', 
     expect($env)->toContain('REDIS_PREFIX=yolo-testing-my-app_');
 });
 
-it('does not wire the redis cache env when cache.store is absent', function () {
+it('does not wire cache or session for a non-web app (no tasks.web)', function () {
     (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
 
     $env = file_get_contents(Paths::build('.env.testing'));
 
-    expect($env)->not->toContain('CACHE_STORE=redis');
+    expect($env)->not->toContain('CACHE_STORE=');
     expect($env)->not->toContain('REDIS_HOST=');
+    expect($env)->not->toContain('SESSION_DRIVER=');
+});
+
+it('defaults a web app to the shared redis cache and dynamodb sessions when neither is set', function () {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => []],
+    ]);
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('CACHE_STORE=redis');
+    expect($env)->toContain('REDIS_HOST=master.yolo-testing-cache.cache.amazonaws.com');
+    expect($env)->toContain('SESSION_DRIVER=dynamodb');
+    expect($env)->toContain('DYNAMODB_CACHE_TABLE=yolo-testing-my-app-sessions');
 });
 
 it('pins SESSION_DRIVER from the manifest', function () {

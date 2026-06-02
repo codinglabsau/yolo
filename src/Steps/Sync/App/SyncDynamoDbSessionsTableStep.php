@@ -19,7 +19,7 @@ class SyncDynamoDbSessionsTableStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        if (Manifest::get('session.driver') !== 'dynamodb') {
+        if (Manifest::sessionDriver() !== 'dynamodb') {
             return StepResult::SKIPPED;
         }
 

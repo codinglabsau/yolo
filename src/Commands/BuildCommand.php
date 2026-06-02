@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Carbon\Carbon;
+use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Manifest;
 use Symfony\Component\Console\Input\InputArgument;
@@ -55,6 +56,12 @@ class BuildCommand extends SteppedCommand
 
         $this->input->setOption('app-version', $appVersion);
 
+        if (Manifest::sessionDriver() === 'dynamodb' && ! $this->appHasAwsSdk()) {
+            error('Sessions use the `dynamodb` driver (the web-app default), which needs `aws/aws-sdk-php` in your app. Add it (`composer require aws/aws-sdk-php`) or set `session.driver` to another value in yolo.yml.');
+
+            return self::FAILURE;
+        }
+
         if (Manifest::has('tasks')) {
             $this->steps = [...$this->steps, ...$this->fargateSteps];
         }
@@ -62,5 +69,25 @@ class BuildCommand extends SteppedCommand
         intro("Building app version: {$appVersion}");
 
         return parent::handle();
+    }
+
+    /**
+     * Whether the app ships aws/aws-sdk-php as a *production* dependency (directly
+     * or transitively, e.g. via flysystem-s3) — required at runtime by the
+     * dynamodb session driver. Reads composer.lock's production `packages` (not
+     * `packages-dev`, which `composer install --no-dev` strips). If the lock is
+     * absent we can't tell, so we don't block.
+     */
+    protected function appHasAwsSdk(): bool
+    {
+        $lock = Paths::base('composer.lock');
+
+        if (! file_exists($lock)) {
+            return true;
+        }
+
+        $packages = json_decode(file_get_contents($lock), true)['packages'] ?? [];
+
+        return collect($packages)->contains(fn (array $package) => ($package['name'] ?? null) === 'aws/aws-sdk-php');
     }
 }

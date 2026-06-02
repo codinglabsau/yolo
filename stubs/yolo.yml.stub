@@ -20,11 +20,12 @@ environments:
     # bucket: my-app-bucket   # optional app S3 bucket, injected as AWS_BUCKET
     # alb: my-shared-alb      # optional ALB name to adopt/create; defaults to a per-env shared yolo-{env} ALB
 
-    # Laravel backends YOLO provisions + wires (each injects the matching env var):
+    # Web apps default to a shared Valkey cache + dynamodb sessions (provisioned and
+    # wired automatically). Uncomment only to override or opt out:
     # cache:
-    #   store: redis          # shared Valkey cache -> CACHE_STORE=redis + REDIS_HOST/PORT/PREFIX
+    #   store: redis          # default; file/database/array to opt out of the shared Valkey
     # session:
-    #   driver: dynamodb      # redis | dynamodb | database | cookie | file (dynamodb provisions a table)
+    #   driver: dynamodb      # default; redis | database | cookie | file to change the backend
 
     tasks:
       web:

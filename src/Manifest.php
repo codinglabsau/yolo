@@ -172,6 +172,29 @@ class Manifest
         return Arr::get(static::current(), 'timezone', 'UTC');
     }
 
+    /**
+     * The effective cache store. Web apps default to the shared Valkey cluster
+     * (`redis`) — the ephemeral per-task filesystem is broken across multiple
+     * Fargate tasks, so a working shared cache is the right default. Set
+     * `cache.store` to opt out (`file` / `database` / `array`). Non-web apps get
+     * no default.
+     */
+    public static function cacheStore(): ?string
+    {
+        return static::get('cache.store', static::has('tasks.web') ? 'redis' : null);
+    }
+
+    /**
+     * The effective session driver. Web apps default to `dynamodb` — a managed,
+     * multi-AZ store so sessions survive a task/node loss, which the ephemeral
+     * filesystem and a single cache node don't. Set `session.driver` to opt out.
+     * Non-web apps have no sessions, so no default.
+     */
+    public static function sessionDriver(): ?string
+    {
+        return static::get('session.driver', static::has('tasks.web') ? 'dynamodb' : null);
+    }
+
     public static function apex(): string
     {
         if (static::isMultitenanted()) {

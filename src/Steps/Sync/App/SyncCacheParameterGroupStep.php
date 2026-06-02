@@ -18,7 +18,7 @@ class SyncCacheParameterGroupStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        if (Manifest::get('cache.store') !== 'redis') {
+        if (Manifest::cacheStore() !== 'redis') {
             return StepResult::SKIPPED;
         }
 

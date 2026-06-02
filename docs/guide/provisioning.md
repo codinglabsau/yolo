@@ -14,7 +14,7 @@ YOLO groups every resource by **ownership scope** — the blast radius if it cha
 |---|---|---|---|
 | `yolo sync:account <env>` | **Account** | the whole AWS account | GitHub OIDC provider |
 | `yolo sync:environment <env>` | **Environment** | every app in the environment | VPC, subnets, internet gateway & routes, RDS security group, SNS alarm topic, shared ECS task & execution IAM roles, the ALB and its `:80`/`:443` listeners |
-| `yolo sync:app <env>` | **App** | one app | S3 buckets, app IAM (deployer role/policy), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, hosted zone & ACM certificate, SQS queues, CloudWatch dashboard — plus, when opted in, the shared [Valkey cache](#cache-and-sessions) (`cache.store`) and a [DynamoDB sessions table](#cache-and-sessions) (`session.driver: dynamodb`) |
+| `yolo sync:app <env>` | **App** | one app | S3 buckets, app IAM (deployer role/policy), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, hosted zone & ACM certificate, SQS queues, CloudWatch dashboard — plus, for web apps, the shared [Valkey cache](#cache-and-sessions) and a per-app [DynamoDB sessions table](#cache-and-sessions) (both default-on; opt out via `cache.store` / `session.driver`) |
 
 The bare `yolo sync` runs all three **in dependency order** — account, then environment, then app:
 
@@ -24,7 +24,7 @@ yolo sync production   # account → environment → app
 
 `sync:app` only *additively attaches* to shared infrastructure (its SNI certificate and listener rule on the environment's `:443` listener, its `3306` ingress rule on the shared RDS security group, its `6379` ingress rule on the shared cache security group). It never modifies the shared resource itself, so the environment tier stays the single writer.
 
-The shared **Valkey cache** is env-scoped but bootstrapped from `sync:app` by exception (like the RDS security group), because its security group needs this app's task SG to authorise. The first app to declare `cache.store` creates the cluster; later apps find it and just wire their env. The **DynamoDB sessions table** is genuinely per-app.
+The shared **Valkey cache** is env-scoped but bootstrapped from `sync:app` by exception (like the RDS security group), because its security group needs this app's task SG to authorise. The first web app to sync creates the cluster (cache defaults on); later apps find it and just wire their env. The **DynamoDB sessions table** is genuinely per-app.
 
 ::: tip Why scopes matter
 Several apps can share one environment's VPC and load balancer. Because `sync:app` only attaches and never mutates, deploying app B can't break app A's networking. When you're iterating on one app, `sync:app` is faster than a full `sync` — the account and environment tiers rarely change.
@@ -68,20 +68,20 @@ See the [`sync` command reference](/reference/commands#yolo-sync) for every opti
 
 ## Cache and sessions
 
-Fargate tasks share nothing on their local filesystem, so a cache or session that lives there breaks the moment an app runs more than one task. YOLO provides two shared stores, each opt-in.
+Fargate tasks share nothing on their local filesystem, so a cache or session that lives there breaks the moment an app runs more than one task. **Web apps therefore get a shared cache and session store by default** — opt out per app, rather than opt in to not being broken.
 
 ### Cache
 
-Set [`cache.store: redis`](/reference/manifest#cache) to provision a shared **ElastiCache for Valkey** cache — one cluster per environment, isolated per app by a `REDIS_PREFIX`. It's a single `cache.t4g.micro` node (a standard single instance; auto-failover/Multi-AZ off, ~A$11/mo) with `allkeys-lru` eviction, locked by a security group that only allows `6379` from the Fargate task SG. The container env is wired with `CACHE_STORE=redis`, `REDIS_HOST`, `REDIS_PORT` and `REDIS_PREFIX` — each only if your `.env` doesn't already set it.
+A web app defaults to [`cache.store: redis`](/reference/manifest#cache) — a shared **ElastiCache for Valkey** cache, one cluster per environment, isolated per app by a `REDIS_PREFIX`. It's a single `cache.t4g.micro` node (a standard single instance; auto-failover/Multi-AZ off, ~A$11/mo) with `allkeys-lru` eviction, locked by a security group that only allows `6379` from the Fargate task SG. The container env is wired with `CACHE_STORE=redis`, `REDIS_HOST`, `REDIS_PORT` and `REDIS_PREFIX` — each only if your `.env` doesn't already set it. Set `cache.store: file|database|array` to opt out.
 
 Scaling is a deliberate vertical resize (a brief ~60s endpoint blip, data retained), not autoscaling — a cache evicts rather than runs out, and at this size the dollars don't justify a control loop.
 
 ### Sessions
 
-The [`session.driver`](/reference/manifest#session) manifest key picks the session backend, and YOLO provisions only what that driver needs:
+A web app defaults to [`session.driver: dynamodb`](/reference/manifest#session); set the key to override. YOLO provisions only what the chosen driver needs:
 
-- **`dynamodb`** — a per-app DynamoDB table (on-demand, multi-AZ, no single point of failure), plus `SESSION_DRIVER=dynamodb` and `DYNAMODB_CACHE_TABLE`. The durable choice when a node loss logging everyone out is unacceptable.
-- **`redis`** — reuses the Valkey cache (requires `cache.store`); cheapest, but sessions don't survive a cache-node loss.
+- **`dynamodb`** (default) — a per-app DynamoDB table (on-demand, multi-AZ, no single point of failure), plus `SESSION_DRIVER=dynamodb` and `DYNAMODB_CACHE_TABLE`. The durable choice — sessions survive a task/node loss. Requires `aws/aws-sdk-php` in the app (`yolo build` hard-fails if it's missing).
+- **`redis`** — reuses the Valkey cache (needs `cache.store: redis`); cheapest, but sessions don't survive a cache-node loss.
 - **`database` / `cookie` / `file`** — no infrastructure; YOLO just pins `SESSION_DRIVER`.
 
 ### Cache high availability

@@ -25,10 +25,11 @@ environments:
     region: ap-southeast-2
     # bucket: my-app-bucket     # optional app S3 bucket, injected as AWS_BUCKET
 
+    # Web apps default to these — uncomment only to override or opt out:
     # cache:
-    #   store: redis            # shared Valkey cache → CACHE_STORE=redis + REDIS_*
+    #   store: redis            # default; file/database/array to opt out of the shared Valkey
     # session:
-    #   driver: dynamodb        # session backend; dynamodb provisions a table
+    #   driver: dynamodb        # default; redis/database/cookie/file to change the session backend
 
     tasks:
       web:
@@ -181,31 +182,31 @@ By default YOLO creates and names shared networking under `yolo-{env}-…`. To p
 
 ## `cache.*`
 
-Declares the app's cache store. Today the only value is `redis`, which provisions a shared **ElastiCache for Valkey** cache for the environment — one cluster shared by every app in the env, isolated by a per-app key prefix.
+Declares the app's cache store. **Web apps (`tasks.web`) default to `redis`** — the per-task filesystem is broken across multiple Fargate tasks, so a working shared cache is the right default. `redis` provisions a shared **ElastiCache for Valkey** cache for the environment (one cluster shared by every app, isolated by a per-app key prefix). Set `cache.store` to `file`, `database`, or `array` to opt out (app-managed, nothing provisioned). Non-web apps get no default.
 
 ```yaml
 cache:
-  store: redis
+  store: redis   # the web-app default; set file/database/array to opt out
 ```
 
-Hardcoded, sensible defaults (no tuning knobs until a real need lands):
+`redis` provisions, with hardcoded sensible defaults (no tuning knobs until a real need lands):
 
 - a single-node replication group on `cache.t4g.micro` (auto-failover / Multi-AZ off — a standard single instance, ~A$11/mo), at-rest encryption on;
 - `maxmemory-policy=allkeys-lru` (writes never fail under memory pressure);
 - a security group allowing ingress on `6379` **only** from the Fargate task security group (the cache has no public endpoint);
 - a cache subnet group across the VPC subnets.
 
-When set, the container env gets `CACHE_STORE=redis`, `REDIS_HOST` (the cluster's primary endpoint), `REDIS_PORT=6379`, and a per-app `REDIS_PREFIX` — each only if your `.env` doesn't already set it. Scaling is a manual vertical resize; there's no autoscaling. For availability, see the [Laravel `failover` cache store](/guide/provisioning#cache-high-availability) rather than adding a replica. For any other cache backend, set `CACHE_STORE` in your `.env` and omit `cache.store`.
+With the `redis` store, the container env gets `CACHE_STORE=redis`, `REDIS_HOST` (the cluster's primary endpoint), `REDIS_PORT=6379`, and a per-app `REDIS_PREFIX` — each only if your `.env` doesn't already set it. Scaling is a manual vertical resize; there's no autoscaling. For availability, see the [Laravel `failover` cache store](/guide/provisioning#cache-high-availability) rather than adding a replica. For a backend YOLO doesn't model, set `CACHE_STORE` in your `.env` and `cache.store: file`.
 
 ---
 
 ## `session.*`
 
-Declares the app's session backend. YOLO injects `SESSION_DRIVER` (only if your `.env` doesn't already set it) and provisions infrastructure **only for the driver that needs it**.
+Declares the app's session backend. **Web apps (`tasks.web`) default to `dynamodb`** — a managed, multi-AZ store, so sessions survive a task/node loss (the ephemeral filesystem and a single cache node don't). YOLO injects `SESSION_DRIVER` (only if your `.env` doesn't already set it) and provisions infrastructure **only for the driver that needs it**. Non-web apps have no sessions, so no default.
 
 ```yaml
 session:
-  driver: dynamodb   # redis | dynamodb | database | cookie | file
+  driver: dynamodb   # the web-app default; redis | dynamodb | database | cookie | file
 ```
 
 | `session.driver` | YOLO provisions | Also injects | Notes |
@@ -214,7 +215,7 @@ session:
 | `redis` | Nothing new (reuses the Valkey cache) | — | **Requires `cache.store: redis`** — there's no redis store without it. Sessions share the single Valkey node, so a node loss logs users out. |
 | `database` / `cookie` / `file` | Nothing | — | App-managed. `cookie` is capped at ~4&nbsp;KB per browser cookie — risky once flashed validation errors are stored. |
 
-Omit `session` entirely to leave `SESSION_DRIVER` to your `.env`.
+On a web app, omitting `session` gives you the `dynamodb` default; set a driver to override it. On a non-web app, `SESSION_DRIVER` is left to your `.env`.
 
 ---
 

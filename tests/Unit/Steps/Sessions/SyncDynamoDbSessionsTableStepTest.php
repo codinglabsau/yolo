@@ -55,3 +55,34 @@ it('creates the sessions table when the session driver is dynamodb', function ()
     $names = array_column($captured, 'name');
     expect($names)->toContain('CreateTable')->toContain('UpdateTimeToLive');
 });
+
+it('creates the sessions table for a web app by default (no session.driver set)', function () {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => []],
+    ]);
+
+    $captured = [];
+
+    $notFound = new DynamoDbException(
+        'Requested resource not found',
+        new Command('DescribeTable'),
+        ['code' => 'ResourceNotFoundException'],
+    );
+
+    bindMockDynamoDbClient([
+        'DescribeTable' => [
+            $notFound,
+            new Result(['Table' => [
+                'TableName' => 'yolo-testing-my-app-sessions',
+                'TableStatus' => 'ACTIVE',
+                'TableArn' => 'arn:aws:dynamodb:ap-southeast-2:111111111111:table/yolo-testing-my-app-sessions',
+            ]]),
+        ],
+        'CreateTable' => new Result(),
+        'UpdateTimeToLive' => new Result(),
+    ], $captured);
+
+    expect((new SyncDynamoDbSessionsTableStep())([]))->toBe(StepResult::CREATED);
+    expect(array_column($captured, 'name'))->toContain('CreateTable');
+});

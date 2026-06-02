@@ -76,21 +76,24 @@ class ConfigureEnvAndVersionStep implements Step
             $defaults['AWS_BUCKET'] = Manifest::get('bucket');
         }
 
-        // Shared Valkey cache: point the redis driver at the YOLO-provisioned
-        // cluster (read live — the cluster is synced before deploy) and isolate
-        // this app on the shared node with a per-app key prefix. CACHE_STORE is
-        // wired to redis; sessions are a separate, manifest-driven choice below.
-        if (Manifest::get('cache.store') === 'redis') {
-            $defaults['CACHE_STORE'] = 'redis';
-            $defaults['REDIS_HOST'] = (new CacheCluster())->endpoint();
-            $defaults['REDIS_PORT'] = (string) CacheCluster::PORT;
-            $defaults['REDIS_PREFIX'] = Helpers::keyedResourceName() . '_';
+        // Cache store: web apps default to the shared Valkey (Manifest::cacheStore).
+        // Pin CACHE_STORE; when it's redis, point the driver at the YOLO-provisioned
+        // cluster (read live — synced before deploy) and isolate this app on the
+        // shared node with a per-app key prefix.
+        if ($cacheStore = Manifest::cacheStore()) {
+            $defaults['CACHE_STORE'] = $cacheStore;
+
+            if ($cacheStore === 'redis') {
+                $defaults['REDIS_HOST'] = (new CacheCluster())->endpoint();
+                $defaults['REDIS_PORT'] = (string) CacheCluster::PORT;
+                $defaults['REDIS_PREFIX'] = Helpers::keyedResourceName() . '_';
+            }
         }
 
-        // session.driver is the single source of truth for the session backend.
-        // Pin the driver; for dynamodb, point its cache-backed store at the
+        // Session driver: web apps default to dynamodb (Manifest::sessionDriver).
+        // Pin SESSION_DRIVER; for dynamodb, point its cache-backed store at the
         // YOLO-provisioned table. Other drivers need no extra env here.
-        if ($sessionDriver = Manifest::get('session.driver')) {
+        if ($sessionDriver = Manifest::sessionDriver()) {
             $defaults['SESSION_DRIVER'] = $sessionDriver;
 
             if ($sessionDriver === 'dynamodb') {

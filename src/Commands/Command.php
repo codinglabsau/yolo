@@ -117,21 +117,27 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * `cache.store`, when set, must be `redis` — the only cache store YOLO
-     * provisions (the shared Valkey cluster). Other stores are the app's own
-     * `.env` concern.
+     * `cache.store` (web apps default to `redis`). `redis` provisions the shared
+     * Valkey cluster; `file`/`database`/`array` opt out and are app-managed. Any
+     * other store should be configured in the app's `.env`, not here.
      */
     protected function ensureCacheStoreValid(): bool
     {
         $store = Manifest::get('cache.store');
 
-        if ($store === null || $store === 'redis') {
+        if ($store === null) {
             return true;
         }
 
-        error('yolo.yml `cache.store` must be `redis` (the Valkey cache) — set any other cache store in your .env.');
+        $allowed = ['redis', 'file', 'database', 'array'];
 
-        return false;
+        if (! in_array($store, $allowed, true)) {
+            error(sprintf('yolo.yml `cache.store` must be one of: %s (redis provisions the shared Valkey; the rest are app-managed).', implode(', ', $allowed)));
+
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -156,8 +162,8 @@ abstract class Command extends SymfonyCommand
             return false;
         }
 
-        if ($driver === 'redis' && Manifest::get('cache.store') !== 'redis') {
-            error('yolo.yml `session.driver: redis` needs `cache.store: redis` — the Valkey cache is the redis store.');
+        if ($driver === 'redis' && Manifest::cacheStore() !== 'redis') {
+            error('yolo.yml `session.driver: redis` needs the Valkey cache (`cache.store: redis`, the web-app default) — don\'t opt the cache out.');
 
             return false;
         }

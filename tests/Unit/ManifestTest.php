@@ -95,6 +95,37 @@ describe('multitenancy', function () {
     });
 });
 
+describe('cache + session defaults', function () {
+    it('defaults web apps to the shared redis cache and dynamodb sessions', function () {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => []],
+        ]);
+
+        expect(Manifest::cacheStore())->toBe('redis');
+        expect(Manifest::sessionDriver())->toBe('dynamodb');
+    });
+
+    it('has no cache or session default for a non-web app', function () {
+        writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
+
+        expect(Manifest::cacheStore())->toBeNull();
+        expect(Manifest::sessionDriver())->toBeNull();
+    });
+
+    it('respects explicit cache.store and session.driver overrides', function () {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => []],
+            'cache' => ['store' => 'file'],
+            'session' => ['driver' => 'cookie'],
+        ]);
+
+        expect(Manifest::cacheStore())->toBe('file');
+        expect(Manifest::sessionDriver())->toBe('cookie');
+    });
+});
+
 describe('ivsEnabled', function () {
     it('is false when ivs is absent', function () {
         writeManifest([]);
