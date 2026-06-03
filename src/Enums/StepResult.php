@@ -11,6 +11,9 @@ enum StepResult
     case SYNCED;
     case WOULD_SYNC;
 
+    case DELETED;
+    case WOULD_DELETE;
+
     case CUSTOM_MANAGED;
     case TIMEOUT;
     case SKIPPED;

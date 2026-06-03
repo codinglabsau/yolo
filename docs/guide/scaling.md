@@ -42,9 +42,20 @@ Start with CPU (it ships working). Add the request-count policy once you have a 
 
 Until you set it, CPU-based autoscaling is already active — you lose nothing by waiting for real data.
 
+### Turning autoscaling off
+
+Autoscaling is declarative — sync reconciles live state down to what the manifest asks for, so removing config tears the matching infrastructure back down on the next `yolo sync`:
+
+| You remove… | Next sync… |
+| --- | --- |
+| `request-count-per-target` (keep the block) | Deletes the request-count policy and the scale-out / scale-in alarms AWS generated for it. The CPU policy stays. |
+| The whole `autoscaling` block | Deregisters the scalable target, which cascades the delete to **every** policy and alarm on it. |
+
+Deregistering doesn't drop tasks — the service reverts to a **fixed** task count frozen at its current live count. Bring it down with [`yolo scale`](#manual-scaling) if you no longer need the extra capacity.
+
 ### What isn't tagged
 
-Application Auto Scaling targets and policies can't carry tags, so they don't show up in [`yolo audit`](/reference/commands#yolo-audit). Tearing an app down has to deregister the scalable target explicitly.
+Application Auto Scaling targets and policies can't carry tags, so they don't show up in [`yolo audit`](/reference/commands#yolo-audit) — they're reconciled by config (above) rather than by the tag-driven audit.
 
 ## Manual scaling
 

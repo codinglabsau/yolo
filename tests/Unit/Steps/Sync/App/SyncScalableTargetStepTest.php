@@ -69,3 +69,57 @@ it('reduces live bounds when run attended (no force)', function () {
     expect((new SyncScalableTargetStep())([]))->toBe(StepResult::SYNCED);
     expect(collect($aa)->firstWhere('name', 'RegisterScalableTarget')['args'])->toMatchArray(['MinCapacity' => 2, 'MaxCapacity' => 6]);
 });
+
+it('deregisters the target when the autoscaling block is removed', function () {
+    writeManifest([
+        'account-id' => '111111111111',
+        'region' => 'ap-southeast-2',
+        'tasks' => ['web' => []],
+    ]);
+
+    $ecs = [];
+    $aa = [];
+    bindRoutedEcsClient(['DescribeServices' => new Result(['services' => [['status' => 'ACTIVE', 'serviceArn' => 'arn']]])], $ecs);
+    bindMockApplicationAutoScalingClient([
+        'DescribeScalableTargets' => new Result(['ScalableTargets' => [['MinCapacity' => 1, 'MaxCapacity' => 4]]]),
+        'DeregisterScalableTarget' => new Result([]),
+    ], $aa);
+
+    expect((new SyncScalableTargetStep())([]))->toBe(StepResult::DELETED);
+    expect(collect($aa)->pluck('name'))->toContain('DeregisterScalableTarget');
+});
+
+it('would-deregister on a dry-run without deregistering', function () {
+    writeManifest([
+        'account-id' => '111111111111',
+        'region' => 'ap-southeast-2',
+        'tasks' => ['web' => []],
+    ]);
+
+    $ecs = [];
+    $aa = [];
+    bindRoutedEcsClient(['DescribeServices' => new Result(['services' => [['status' => 'ACTIVE', 'serviceArn' => 'arn']]])], $ecs);
+    bindMockApplicationAutoScalingClient([
+        'DescribeScalableTargets' => new Result(['ScalableTargets' => [['MinCapacity' => 1, 'MaxCapacity' => 4]]]),
+        'DeregisterScalableTarget' => new Result([]),
+    ], $aa);
+
+    expect((new SyncScalableTargetStep())(['dry-run' => true]))->toBe(StepResult::WOULD_DELETE);
+    expect(collect($aa)->pluck('name'))->not->toContain('DeregisterScalableTarget');
+});
+
+it('skips when autoscaling is removed and no target is registered', function () {
+    writeManifest([
+        'account-id' => '111111111111',
+        'region' => 'ap-southeast-2',
+        'tasks' => ['web' => []],
+    ]);
+
+    $ecs = [];
+    $aa = [];
+    bindRoutedEcsClient(['DescribeServices' => new Result(['services' => [['status' => 'ACTIVE', 'serviceArn' => 'arn']]])], $ecs);
+    bindMockApplicationAutoScalingClient(['DescribeScalableTargets' => new Result(['ScalableTargets' => []])], $aa);
+
+    expect((new SyncScalableTargetStep())([]))->toBe(StepResult::SKIPPED);
+    expect(collect($aa)->pluck('name'))->not->toContain('DeregisterScalableTarget');
+});

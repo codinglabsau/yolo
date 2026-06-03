@@ -102,13 +102,12 @@ class SyncAppCommand extends SyncSteppedCommand
                         Steps\Sync\App\SyncTaskDefinitionStep::class,
                         Steps\Sync\App\SyncEcsServiceStep::class,
                         // Autoscaling (web only) — registered after the service it
-                        // scales, and only when a tasks.web.autoscaling block opts in.
-                        ...Manifest::has('tasks.web.autoscaling')
-                            ? [
-                                Steps\Sync\App\SyncScalableTargetStep::class,
-                                Steps\Sync\App\SyncScalingPoliciesStep::class,
-                            ]
-                            : [],
+                        // scales. Wired whenever the web task exists, not just when
+                        // autoscaling is on, so removing the tasks.web.autoscaling
+                        // block tears the scalable target, policies and their alarms
+                        // back down. Both steps no-op when it was never enabled.
+                        Steps\Sync\App\SyncScalableTargetStep::class,
+                        Steps\Sync\App\SyncScalingPoliciesStep::class,
                         Steps\Sync\App\SyncAssetDistributionStep::class,
                     ]
                     : [],
