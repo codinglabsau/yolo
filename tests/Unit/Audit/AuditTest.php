@@ -101,45 +101,23 @@ it('flags a yolo:app pointing at a dead app as unexpected (app cluster gone)', f
         ->and($report['resources'][0]['reason'])->toBe(Audit::REASON_DEAD_APP);
 });
 
-it('falls back to inference for resources synced before the yolo:scope rollout', function () {
-    // An app-scope resource pre-rollout still has yolo:app and resolves as ok.
-    $appReport = Audit::classify([
-        auditResource('arn:aws:ecs:ap-southeast-2:111:service/yolo-production-codinglabs/web', ['yolo:app' => 'codinglabs']),
-    ], liveApps: ['codinglabs']);
-
-    expect($appReport['okCount'])->toBe(1)
-        ->and($appReport['unexpectedCount'])->toBe(0);
-
-    // A pre-rollout env-shared resource (no yolo:app, no yolo:scope) reads as
-    // unexpected/no-owner until sync backfills the scope tag. That's the cost of
-    // a positive ownership signal — preferable to false-greening genuine debris.
-    $envReport = Audit::classify([
-        auditResource('arn:aws:elasticloadbalancing:ap-southeast-2:111:loadbalancer/app/yolo-production/abc', ['Name' => 'yolo-production']),
-    ], liveApps: []);
-
-    expect($envReport['okCount'])->toBe(0)
-        ->and($envReport['unexpectedCount'])->toBe(1)
-        ->and($envReport['resources'][0]['reason'])->toBe(Audit::REASON_NO_OWNER);
-});
-
-it('assigns an ownership scope to each resource', function () {
+it('assigns an ownership scope from the yolo:scope tag, defaulting unowned resources to env', function () {
     $report = Audit::classify([
-        // yolo:app present → app scope (even when drift, an orphaned app resource)
-        auditResource('arn:aws:ecr:ap-southeast-2:111:repository/yolo-production-ghost', ['yolo:app' => 'ghost']),
-        // no yolo:app, env-shared infra → env scope
-        auditResource('arn:aws:elasticloadbalancing:ap-southeast-2:111:loadbalancer/app/yolo-production/abc'),
-        // the GitHub OIDC provider is account-global → account scope
-        auditResource('arn:aws:iam::111:oidc-provider/token.actions.githubusercontent.com'),
-        // an explicit yolo:scope tag wins over inference
+        // explicit yolo:scope tags (stamped by sync on everything it creates) map
+        // straight through — including the account-global OIDC provider
+        auditResource('arn:aws:ecr:ap-southeast-2:111:repository/yolo-production-ghost', ['yolo:app' => 'ghost', 'yolo:scope' => 'app']),
         auditResource('arn:aws:s3:::some-bucket', ['yolo:scope' => 'env']),
+        auditResource('arn:aws:iam::111:oidc-provider/token.actions.githubusercontent.com', ['yolo:scope' => 'account']),
+        // no yolo:scope marker at all → an unowned resource, bucketed under env
+        auditResource('arn:aws:elasticloadbalancing:ap-southeast-2:111:loadbalancer/app/yolo-production/abc'),
     ], liveApps: []);
 
     $byArn = collect($report['resources'])->keyBy('arn');
 
     expect($byArn['arn:aws:ecr:ap-southeast-2:111:repository/yolo-production-ghost']['scope'])->toBe('app')
-        ->and($byArn['arn:aws:elasticloadbalancing:ap-southeast-2:111:loadbalancer/app/yolo-production/abc']['scope'])->toBe('env')
+        ->and($byArn['arn:aws:s3:::some-bucket']['scope'])->toBe('env')
         ->and($byArn['arn:aws:iam::111:oidc-provider/token.actions.githubusercontent.com']['scope'])->toBe('account')
-        ->and($byArn['arn:aws:s3:::some-bucket']['scope'])->toBe('env');
+        ->and($byArn['arn:aws:elasticloadbalancing:ap-southeast-2:111:loadbalancer/app/yolo-production/abc']['scope'])->toBe('env');
 });
 
 it('orders rows by scope (account → env → app), then unexpected-first within a scope', function () {

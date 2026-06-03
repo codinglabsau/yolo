@@ -3,8 +3,8 @@
 namespace Codinglabs\Yolo\Audit;
 
 /**
- * A parsed AWS ARN. Only the pieces the legacy audit needs to classify a
- * resource — service, region, and the type/id split of the resource segment.
+ * A parsed AWS ARN. Only the pieces the audit needs to classify a resource —
+ * service, region, and the type/id split of the resource segment.
  */
 class Arn
 {
