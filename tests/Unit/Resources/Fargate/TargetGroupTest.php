@@ -56,9 +56,9 @@ function liveTargetGroup(array $overrides = []): array
         'TargetGroupArn' => 'arn:aws:elasticloadbalancing:ap-southeast-2:111111111111:targetgroup/yolo-testing-my-app/abc',
         'HealthCheckPath' => '/health',
         'HealthCheckIntervalSeconds' => 10,
-        'HealthCheckTimeoutSeconds' => 5,
+        'HealthCheckTimeoutSeconds' => 8,
         'HealthyThresholdCount' => 2,
-        'UnhealthyThresholdCount' => 3,
+        'UnhealthyThresholdCount' => 5,
         'Matcher' => ['HttpCode' => '200'],
     ], $overrides);
 }
@@ -72,11 +72,55 @@ it('shares one health-check config between create and sync', function () {
     expect(TargetGroup::reconcilableHealthCheck())->toBe([
         'HealthCheckPath' => '/health',
         'HealthCheckIntervalSeconds' => 10,
-        'HealthCheckTimeoutSeconds' => 5,
+        'HealthCheckTimeoutSeconds' => 8,
         'HealthyThresholdCount' => 2,
-        'UnhealthyThresholdCount' => 3,
+        'UnhealthyThresholdCount' => 5,
         'Matcher' => ['HttpCode' => '200'],
     ]);
+});
+
+it('lets the manifest override each health-check field', function () {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['health-check' => [
+            'path' => '/up',
+            'interval' => 15,
+            'timeout' => 10,
+            'healthy-threshold' => 3,
+            'unhealthy-threshold' => 4,
+        ]]],
+    ]);
+
+    expect(TargetGroup::reconcilableHealthCheck())->toBe([
+        'HealthCheckPath' => '/up',
+        'HealthCheckIntervalSeconds' => 15,
+        'HealthCheckTimeoutSeconds' => 10,
+        'HealthyThresholdCount' => 3,
+        'UnhealthyThresholdCount' => 4,
+        'Matcher' => ['HttpCode' => '200'],
+    ]);
+});
+
+it('reconciles a target group still on the old aggressive health-check defaults to the tolerant ones', function () {
+    // CL's live target group sits on the pre-tolerance values (5s timeout, 3
+    // unhealthy). A plain `yolo sync` must drag it onto the new defaults via
+    // ModifyTargetGroup — the health check is reconciled, not create-only.
+    $recorder = bindRecordingElbV2Client(
+        liveTargetGroup(['HealthCheckTimeoutSeconds' => 5, 'UnhealthyThresholdCount' => 3]),
+        deregistrationDelayAttributes('10'),
+    );
+
+    $changes = collect((new TargetGroup())->synchroniseConfiguration());
+
+    expect($recorder->calls)->toContain('ModifyTargetGroup');
+
+    $timeout = $changes->firstWhere('attribute', 'HealthCheckTimeoutSeconds');
+    expect($timeout->from)->toBe('5');
+    expect($timeout->to)->toBe('8');
+
+    $unhealthy = $changes->firstWhere('attribute', 'UnhealthyThresholdCount');
+    expect($unhealthy->from)->toBe('3');
+    expect($unhealthy->to)->toBe('5');
 });
 
 it('modifies the target group when a health-check field has drifted', function () {

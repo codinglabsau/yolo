@@ -177,6 +177,16 @@ class TargetGroup implements Resource, SynchronisesConfiguration
      * of truth so the two paths can't drift apart. Timeout must stay below the
      * interval (an AWS constraint on ModifyTargetGroup).
      *
+     * Defaults are tuned to avoid false-positive failures on a Laravel/Octane
+     * app under CPU load: when the FrankenPHP worker pool is saturated the
+     * /health probe queues behind in-flight requests and answers slowly (6-7s)
+     * rather than failing, so an 8s timeout (still below the 10s interval) keeps
+     * a slow-but-alive task in service, and the roomier unhealthy threshold (5)
+     * adds cushion. A real deadlock (no response / 30s+) still trips within ~a
+     * minute. Capacity is autoscaling's signal, not the health check's. Each
+     * field is overridable per app via tasks.web.health-check.* for the rare app
+     * that needs a different path or timing.
+     *
      * @return array<string, mixed>
      */
     public static function reconcilableHealthCheck(): array
@@ -184,9 +194,9 @@ class TargetGroup implements Resource, SynchronisesConfiguration
         return [
             'HealthCheckPath' => Manifest::get('tasks.web.health-check.path', '/health'),
             'HealthCheckIntervalSeconds' => (int) Manifest::get('tasks.web.health-check.interval', 10),
-            'HealthCheckTimeoutSeconds' => (int) Manifest::get('tasks.web.health-check.timeout', 5),
+            'HealthCheckTimeoutSeconds' => (int) Manifest::get('tasks.web.health-check.timeout', 8),
             'HealthyThresholdCount' => (int) Manifest::get('tasks.web.health-check.healthy-threshold', 2),
-            'UnhealthyThresholdCount' => (int) Manifest::get('tasks.web.health-check.unhealthy-threshold', 3),
+            'UnhealthyThresholdCount' => (int) Manifest::get('tasks.web.health-check.unhealthy-threshold', 5),
             'Matcher' => ['HttpCode' => '200'],
         ];
     }

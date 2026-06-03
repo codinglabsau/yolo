@@ -72,9 +72,9 @@ environments:
         # health-check:
         #   path: /health                 # default: /health
         #   interval: 10                  # default: 10 (seconds between checks)
-        #   timeout: 5                    # default: 5
+        #   timeout: 8                    # default: 8 — tolerant of a slow /health under load
         #   healthy-threshold: 2          # default: 2
-        #   unhealthy-threshold: 3        # default: 3
+        #   unhealthy-threshold: 5        # default: 5 — cushion for a slow-but-alive task
         #   grace-period: 60              # default: 60 (ECS health-check grace period)
         #
         # autoscaling:                    # omit the whole block for a fixed single task
@@ -297,15 +297,15 @@ Declaring `tasks.web` makes the app a Fargate web service. Omit `tasks` entirely
 
 ### `tasks.web.health-check.*`
 
-ALB target-group health check:
+ALB target-group health check. The defaults are tuned to avoid false-positive failures on a Laravel/Octane app under load: when the FrankenPHP worker pool is saturated the `/health` probe answers slowly (6–7s) rather than failing, so the timeout sits at `8`s — a slow-but-alive task stays in service — with a roomier `5`-failure unhealthy threshold for cushion. A genuine deadlock (no response / 30s+) still trips within ~a minute. Capacity is [autoscaling](/guide/scaling)'s job, not the health check's. Override any field per app if you need to:
 
 | Key | Default | Description |
 |---|---|---|
-| `health-check.path` | `/health` | Path the ALB requests. |
+| `health-check.path` | `/health` | Path the ALB requests. Keep it on a route that exercises PHP so a broken boot still fails the check. |
 | `health-check.interval` | `10` | Seconds between checks. |
-| `health-check.timeout` | `5` | Seconds before a check times out. |
+| `health-check.timeout` | `8` | Seconds before a check times out. Must stay below the interval. |
 | `health-check.healthy-threshold` | `2` | Consecutive successes to mark healthy. |
-| `health-check.unhealthy-threshold` | `3` | Consecutive failures to mark unhealthy. |
+| `health-check.unhealthy-threshold` | `5` | Consecutive failures to mark unhealthy. |
 | `health-check.grace-period` | `60` | Seconds after task start before health checks count (the ECS health-check grace period). |
 
 ### `tasks.web.autoscaling.*`
