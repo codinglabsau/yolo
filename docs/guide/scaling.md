@@ -91,7 +91,7 @@ The catch: it's per-task. A scheduled task registered by a package (Telescope pr
 
 ### 2. Separate the scheduler
 
-Move the scheduler into its own service pinned at exactly one task. This removes the requirement entirely (it's genuinely a singleton) and lets the web tier scale without any scheduler concern. Tracked in [LPX-649](https://linear.app/codinglabsau/issue/LPX-649).
+Move the scheduler into its own service pinned at exactly one task. This removes the requirement entirely (it's genuinely a singleton) and lets the web tier scale without any scheduler concern. (Dedicated queue/scheduler services are on the roadmap.)
 
 ::: tip
 When you enable autoscaling on a task that still runs the scheduler, `yolo sync` prints a one-line reminder of exactly this. It's a nudge, not a gate — YOLO can't see inside your kernel to know which strategy you chose.

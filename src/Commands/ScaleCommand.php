@@ -32,7 +32,7 @@ use function Laravel\Prompts\confirm;
  *
  *   yolo scale production --web --min=3 --max=10   # autoscaled bounds
  *   yolo scale production --web 3                   # fixed desired count
- *   yolo scale production --queue …                 # LPX-649 (not yet a service)
+ *   yolo scale production --queue …                 # not yet — the queue runs inside the web task
  *   yolo scale production --scheduler …             # error — the scheduler is a singleton
  */
 class ScaleCommand extends Command
@@ -104,7 +104,7 @@ class ScaleCommand extends Command
         }
 
         if ($this->option('queue')) {
-            error('Queue scaling lands when the queue becomes its own service (LPX-649). Today it runs inside the web task.');
+            error('Queue scaling will land when the queue becomes its own service. For now it runs inside the web task and scales with it.');
 
             return false;
         }

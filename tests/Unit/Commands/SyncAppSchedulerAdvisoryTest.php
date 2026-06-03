@@ -31,5 +31,5 @@ it('advises onOneServer and service separation when autoscaling a bundled schedu
 
     expect(SyncAppCommand::schedulerAdvisory())
         ->toContain('onOneServer()')
-        ->toContain('LPX-649');
+        ->toContain('separate the scheduler into its own service');
 });
