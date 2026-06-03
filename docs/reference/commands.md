@@ -182,7 +182,7 @@ yolo scale <environment> [count] [--web] [--min=<n>] [--max=<n>] [--queue] [--sc
 |---|---|---|
 | `--web` | flag | Target the web service (the default). |
 | `--min` / `--max` | int | Autoscaling bounds — the autoscaled form. |
-| `--queue` | flag | Target the queue service (errors until it's a separate service — [LPX-649](https://linear.app/codinglabsau/issue/LPX-649)). |
+| `--queue` | flag | Target the queue service (errors until it's a separate service — on the roadmap). |
 | `--scheduler` | flag | Always errors — the scheduler is a singleton and can't be scaled. |
 
 The web service has two forms, picked by what you pass:
