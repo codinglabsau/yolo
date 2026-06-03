@@ -86,12 +86,13 @@ env-scope, created-if-missing, and never mutated by `sync:app`.
 ### Audit is scope-first too (`audit` / `audit:environment` / `audit:app`)
 
 Read-only counterpart to `sync` with the same scope split. `audit <env>` queries every resource tagged
-`yolo:environment=<env>` via the Resource Groups Tagging API, classifies each as `ok` / `drift` / `rogue`, and
-renders them grouped by scope. Sync stamps a positive ownership marker on everything it creates —
-`yolo:app=<app>` for App-scope, `yolo:scope=env`/`=account` for shared infra — so the three statuses mean:
+`yolo:environment=<env>` via the Resource Groups Tagging API, classifies each as `ok` / `drift` / `orphan` /
+`rogue`, and renders them grouped by scope. Sync stamps a positive ownership marker on everything it creates —
+`yolo:app=<app>` for App-scope, `yolo:scope=env`/`=account` for shared infra — so the four statuses mean:
 
 - `ok` — `yolo:app` points at a live app, or `yolo:scope=env`/`=account` is present (declared shared infra)
 - `drift` — `yolo:app` points at an app whose Fargate cluster is gone
+- `orphan` — carries a YOLO ownership marker but is of an AWS service YOLO no longer provisions (it has no `Resources/` class, so sync would never recreate it) — e.g. the DynamoDB sessions table left behind after DynamoDB support was removed. Driven by `Audit::SERVICE_BY_RESOURCE_GROUP`, whose keys mirror the `src/Resources/*` dirs (enforced by a test), so dropping a service dir auto-surfaces its leftovers as orphans and adding one fails until it's catalogued — no managed service is ever false-flagged
 - `rogue` — has `yolo:environment` but no YOLO ownership marker (alpha-era debris, or hand-rolled infra in the env namespace)
 
 `audit:environment <env>` narrows to env-tier rows; `audit:app <env> <app>` narrows to one app. `--drift` is a

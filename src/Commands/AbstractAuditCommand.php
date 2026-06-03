@@ -82,7 +82,7 @@ abstract class AbstractAuditCommand extends Command
     }
 
     /**
-     * @param  array{resources: array<int, array<string, mixed>>, liveApps: array<int, string>, okCount: int, driftCount: int, rogueCount: int}  $report
+     * @param  array{resources: array<int, array<string, mixed>>, liveApps: array<int, string>, okCount: int, driftCount: int, orphanCount: int, rogueCount: int}  $report
      */
     protected function render(array $report, string $environment): int
     {
@@ -106,6 +106,10 @@ abstract class AbstractAuditCommand extends Command
             warning(sprintf('%d resource(s) are drift — tagged for an app that is no longer live.', $report['driftCount']));
         }
 
+        if (! $this->option('drift') && $report['orphanCount'] > 0) {
+            warning(sprintf('%d resource(s) are orphan — YOLO-tagged but of a service YOLO no longer provisions (e.g. left behind by a removed feature). Safe to delete once confirmed.', $report['orphanCount']));
+        }
+
         if (! $this->option('drift') && $report['rogueCount'] > 0) {
             warning(sprintf('%d resource(s) are rogue — no YOLO ownership marker (`yolo:app` or `yolo:scope`).', $report['rogueCount']));
         }
@@ -122,10 +126,11 @@ abstract class AbstractAuditCommand extends Command
         );
 
         note(sprintf(
-            "%d tagged for '%s' · %d drift · %d rogue · %d ok",
+            "%d tagged for '%s' · %d drift · %d orphan · %d rogue · %d ok",
             count($report['resources']),
             $environment,
             $report['driftCount'],
+            $report['orphanCount'],
             $report['rogueCount'],
             $report['okCount'],
         ));
@@ -155,6 +160,7 @@ abstract class AbstractAuditCommand extends Command
     {
         return match ($status) {
             Audit::STATUS_DRIFT => '<fg=red;options=bold>DRIFT</>',
+            Audit::STATUS_ORPHAN => '<fg=red>orphan</>',
             Audit::STATUS_OK => '<fg=green>ok</>',
             default => '<fg=yellow>rogue</>',
         };

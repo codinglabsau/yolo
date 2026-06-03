@@ -273,8 +273,6 @@ session:
 
 On a web app, omitting `session` gives you the `redis` default; set a driver to override it. On a non-web app, `SESSION_DRIVER` is left to your `.env`.
 
-> DynamoDB is no longer a supported session backend. A manifest still setting `session.driver: dynamodb` hard-fails validation with a pointer to `redis`.
-
 ---
 
 ## `tasks.web.*`

@@ -27,11 +27,61 @@ class Audit
 
     public const STATUS_ROGUE = 'rogue';
 
+    public const STATUS_ORPHAN = 'orphan';
+
     public const SCOPE_ACCOUNT = 'account';
 
     public const SCOPE_ENV = 'env';
 
     public const SCOPE_APP = 'app';
+
+    /**
+     * The AWS services YOLO provisions, keyed by their `src/Resources/{group}`
+     * directory. A YOLO-owned resource (one carrying a `yolo:app` or
+     * `yolo:scope` marker) whose ARN service is *not* one of these is an
+     * `orphan` — YOLO created it once but no longer has a Resource class for
+     * that service, so it would never appear in a sync plan. The DynamoDB
+     * sessions table left behind when DynamoDB support was removed is the
+     * canonical case.
+     *
+     * Keys mirror the `src/Resources/*` directories one-for-one (enforced by
+     * ManagedServicesTest), so this stays correct by construction: dropping a
+     * service directory automatically surfaces its leftover resources as
+     * orphans, and adding one fails the test until it is catalogued here —
+     * which stops a newly-supported service from being false-flagged.
+     *
+     * @var array<string, string>
+     */
+    public const SERVICE_BY_RESOURCE_GROUP = [
+        'Acm' => 'acm',
+        'ApplicationAutoScaling' => 'application-autoscaling',
+        'CloudFront' => 'cloudfront',
+        'CloudWatch' => 'cloudwatch',
+        'CloudWatchLogs' => 'logs',
+        'Ec2' => 'ec2',
+        'Ecr' => 'ecr',
+        'Ecs' => 'ecs',
+        'ElastiCache' => 'elasticache',
+        'ElbV2' => 'elasticloadbalancing',
+        'EventBridge' => 'events',
+        'Iam' => 'iam',
+        'Rds' => 'rds',
+        'Route53' => 'route53',
+        'S3' => 's3',
+        'Sns' => 'sns',
+        'Sqs' => 'sqs',
+    ];
+
+    /**
+     * The ARN service strings YOLO provisions — the values of the
+     * resource-group catalogue above.
+     *
+     * @return array<int, string>
+     */
+    public static function managedServices(): array
+    {
+        return array_values(self::SERVICE_BY_RESOURCE_GROUP);
+    }
 
     /**
      * Deploy ephemera the audit ignores: ECS task definitions (immutable
@@ -72,6 +122,17 @@ class Audit
      *                `yolo:app` pointing at a live app, or env/account-scope
      *                with a `yolo:scope` tag (shared infra YOLO owns by design).
      *   - `drift`  — `yolo:app` points at an app whose cluster is gone.
+     *   - `orphan` — carries a YOLO ownership marker but is of an AWS service
+     *                YOLO no longer provisions (no `Resources/` class for it),
+     *                so sync would never (re)create it. The DynamoDB sessions
+     *                table left behind after DynamoDB support was removed is
+     *                the canonical case: still tagged `yolo:app=<live app>`, so
+     *                it reads as `ok` under the ownership test alone, but YOLO
+     *                has no DynamoDB resource any more — it's dead weight to
+     *                tear down. Takes precedence over ok/drift, since "YOLO
+     *                doesn't manage this kind of resource" is the more
+     *                actionable verdict regardless of whether the owning app is
+     *                still live.
      *   - `rogue`  — has `yolo:environment` (so the audit found it) but no
      *                YOLO ownership marker (`yolo:app`, `yolo:scope=env`,
      *                `yolo:scope=account`). Either alpha-era debris from
@@ -79,25 +140,31 @@ class Audit
      *                that sneaked into the env namespace.
      *
      * Drift is only ever raised from an explicit yolo:app pointing at a dead app,
-     * so shared infrastructure is never false-flagged.
+     * and orphan only from an ownership marker plus an unmanaged service, so
+     * shared infrastructure of a managed service is never false-flagged.
      *
      * @param  array<int, array{ResourceARN: string, Tags?: array<int, array{Key: string, Value: string}>}>  $taggedResources
      * @param  array<int, string>  $liveApps
-     * @return array{resources: array<int, array<string, mixed>>, liveApps: array<int, string>, okCount: int, driftCount: int, rogueCount: int}
+     * @return array{resources: array<int, array<string, mixed>>, liveApps: array<int, string>, okCount: int, driftCount: int, orphanCount: int, rogueCount: int}
      */
     public static function classify(array $taggedResources, array $liveApps): array
     {
+        $managedServices = self::managedServices();
+
         $resources = collect($taggedResources)
             ->reject(fn (array $resource) => static::isIgnored(Arn::parse($resource['ResourceARN'])))
-            ->map(function (array $resource) use ($liveApps) {
+            ->map(function (array $resource) use ($liveApps, $managedServices) {
                 $tags = Aws::flattenTags($resource['Tags'] ?? []);
                 $app = $tags[self::APP_TAG] ?? null;
                 $scopeTag = $tags[self::SCOPE_TAG] ?? null;
                 $parsed = Arn::parse($resource['ResourceARN']);
 
                 $sharedScope = in_array($scopeTag, [self::SCOPE_ENV, self::SCOPE_ACCOUNT], true);
+                $owned = $app !== null || $sharedScope;
+                $managedService = $parsed !== null && in_array($parsed->service, $managedServices, true);
 
                 $status = match (true) {
+                    $owned && ! $managedService => self::STATUS_ORPHAN,
                     $app !== null && in_array($app, $liveApps, true) => self::STATUS_OK,
                     $app !== null => self::STATUS_DRIFT,
                     $sharedScope => self::STATUS_OK,
@@ -119,6 +186,7 @@ class Audit
             'liveApps' => $liveApps,
             'okCount' => $resources->where('status', self::STATUS_OK)->count(),
             'driftCount' => $resources->where('status', self::STATUS_DRIFT)->count(),
+            'orphanCount' => $resources->where('status', self::STATUS_ORPHAN)->count(),
             'rogueCount' => $resources->where('status', self::STATUS_ROGUE)->count(),
         ];
     }
@@ -156,7 +224,8 @@ class Audit
 
     /**
      * A single composite sort key for the audit table: scope (account → env → app,
-     * top to bottom), then status (drift first within a scope), then app and name.
+     * top to bottom), then status (cleanup first within a scope — drift, then
+     * orphan, then rogue, then ok), then app and name.
      * Returned as one string so a single-closure `sortBy` orders the whole table —
      * the multi-closure `sortBy([...])` form silently ignores closure keys on
      * current illuminate/collections.
@@ -166,7 +235,7 @@ class Audit
     public static function orderKey(array $resource): string
     {
         $scopeOrder = [self::SCOPE_ACCOUNT => 0, self::SCOPE_ENV => 1, self::SCOPE_APP => 2];
-        $statusOrder = [self::STATUS_DRIFT => 0, self::STATUS_ROGUE => 1, self::STATUS_OK => 2];
+        $statusOrder = [self::STATUS_DRIFT => 0, self::STATUS_ORPHAN => 1, self::STATUS_ROGUE => 2, self::STATUS_OK => 3];
 
         return sprintf(
             '%d-%d-%s-%s',

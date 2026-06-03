@@ -20,12 +20,12 @@ environments:
     # bucket: my-app-bucket   # optional app S3 bucket, injected as AWS_BUCKET
     # alb: my-shared-alb      # optional ALB name to adopt/create; defaults to a per-env shared yolo-{env} ALB
 
-    # Web apps default to a shared Valkey cache + dynamodb sessions (provisioned and
+    # Web apps default to a shared Valkey cache + Valkey-backed sessions (provisioned and
     # wired automatically). Uncomment only to override or opt out:
     # cache:
     #   store: redis          # default; file/database/array to opt out of the shared Valkey
     # session:
-    #   driver: dynamodb      # default; redis | database | cookie | file to change the backend
+    #   driver: redis         # default; database | cookie | file to change the backend
 
     tasks:
       web:

@@ -142,21 +142,14 @@ abstract class Command extends SymfonyCommand
 
     /**
      * `session.driver` (when set) must be a Laravel session driver YOLO supports.
-     * `dynamodb` was removed (DynamoDB support is gone — sessions live on Valkey),
-     * so it hard-fails with a pointer to redis. `redis` requires `cache.store:
-     * redis` — sessions can't land on a Valkey cluster that isn't provisioned —
-     * and that holds for the web-app default too, not just an explicit `redis`.
-     * Hard-fail loudly rather than silently shipping a broken session backend.
+     * `redis` requires `cache.store: redis` — sessions can't land on a Valkey
+     * cluster that isn't provisioned — and that holds for the web-app default too,
+     * not just an explicit `redis`. Hard-fail loudly rather than silently shipping
+     * a broken session backend.
      */
     protected function ensureSessionDriverValid(): bool
     {
         $driver = Manifest::get('session.driver');
-
-        if ($driver === 'dynamodb') {
-            error('yolo.yml `session.driver: dynamodb` is no longer supported — use redis. Sessions now live on the shared Valkey cluster.');
-
-            return false;
-        }
 
         $allowed = ['redis', 'database', 'cookie', 'file'];
 

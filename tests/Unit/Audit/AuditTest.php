@@ -54,6 +54,41 @@ it('classifies resources as ok, drift or rogue', function () {
     expect($byArn['arn:aws:ssm:ap-southeast-2:111:parameter/yolo/production/background-work-strategy']['status'])->toBe('rogue');
 });
 
+it('classifies a YOLO-owned resource of an unmanaged service as orphan', function () {
+    $report = Audit::classify([
+        // The DynamoDB sessions table left behind after DynamoDB support was
+        // removed: still tagged for a LIVE app, so the ownership test alone reads
+        // it as ok — but YOLO has no DynamoDB resource any more, so it's orphan.
+        auditResource('arn:aws:dynamodb:ap-southeast-2:111:table/yolo-production-codinglabs-sessions', ['yolo:app' => 'codinglabs', 'yolo:scope' => 'app', 'Name' => 'yolo-production-codinglabs-sessions']),
+        // A managed-service resource for the same live app stays ok — orphan must
+        // not over-fire on services YOLO still provisions.
+        auditResource('arn:aws:ecs:ap-southeast-2:111:service/yolo-production-codinglabs/web', ['yolo:app' => 'codinglabs', 'yolo:scope' => 'app', 'Name' => 'yolo-production-codinglabs-web']),
+        // An unmanaged service with NO ownership marker is rogue, not orphan —
+        // orphan is reserved for resources YOLO genuinely owns.
+        auditResource('arn:aws:dynamodb:ap-southeast-2:111:table/hand-rolled', ['Name' => 'hand-rolled']),
+    ], liveApps: ['codinglabs']);
+
+    expect($report['orphanCount'])->toBe(1)
+        ->and($report['okCount'])->toBe(1)
+        ->and($report['rogueCount'])->toBe(1)
+        ->and($report['driftCount'])->toBe(0);
+
+    $byArn = collect($report['resources'])->keyBy('arn');
+
+    expect($byArn['arn:aws:dynamodb:ap-southeast-2:111:table/yolo-production-codinglabs-sessions']['status'])->toBe('orphan')
+        ->and($byArn['arn:aws:ecs:ap-southeast-2:111:service/yolo-production-codinglabs/web']['status'])->toBe('ok')
+        ->and($byArn['arn:aws:dynamodb:ap-southeast-2:111:table/hand-rolled']['status'])->toBe('rogue');
+});
+
+it('flags an orphan even when the owning app is no longer live (orphan precedes drift)', function () {
+    $report = Audit::classify([
+        auditResource('arn:aws:dynamodb:ap-southeast-2:111:table/yolo-production-ghost-sessions', ['yolo:app' => 'ghost', 'yolo:scope' => 'app']),
+    ], liveApps: ['codinglabs']);
+
+    expect($report['orphanCount'])->toBe(1)
+        ->and($report['driftCount'])->toBe(0);
+});
+
 it('treats a yolo:app pointing at a dead app as drift even when yolo:scope=app is stamped', function () {
     $report = Audit::classify([
         auditResource('arn:aws:ecr:ap-southeast-2:111:repository/yolo-production-ghost', ['yolo:app' => 'ghost', 'yolo:scope' => 'app']),
@@ -142,6 +177,7 @@ it('returns zero counts and no resources for an empty inventory', function () {
     expect($report['resources'])->toBe([])
         ->and($report['okCount'])->toBe(0)
         ->and($report['driftCount'])->toBe(0)
+        ->and($report['orphanCount'])->toBe(0)
         ->and($report['rogueCount'])->toBe(0)
         ->and($report['liveApps'])->toBe(['codinglabs']);
 });

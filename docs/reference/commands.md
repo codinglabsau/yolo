@@ -288,7 +288,7 @@ yolo audit <environment> [--drift]
 |---|---|---|
 | `--drift` | flag | Only show drift — resources tagged for an app that is no longer live. |
 
-Queries the Resource Groups Tagging API for everything tagged `yolo:environment=<env>` and classifies each resource as **`ok`**, **`drift`**, or **`rogue`** (see [Provisioning › Auditing](/guide/provisioning#auditing-what-s-deployed)). Results are grouped by scope, drift-first within a scope, with clickable AWS Console links where the terminal supports them.
+Queries the Resource Groups Tagging API for everything tagged `yolo:environment=<env>` and classifies each resource as **`ok`**, **`drift`**, **`orphan`**, or **`rogue`** (see [Provisioning › Auditing](/guide/provisioning#auditing-what-s-deployed)). An `orphan` is YOLO-tagged but of an AWS service YOLO no longer provisions — left behind when support for a service is removed, and safe to delete once confirmed. Results are grouped by scope, cleanup-first within a scope, with clickable AWS Console links where the terminal supports them.
 
 ---
 
@@ -321,4 +321,4 @@ yolo audit:app <environment> <app> [--drift]
 |---|---|---|
 | `--drift` | flag | Only show drift for this app. |
 
-Filters the environment-wide report to rows whose `yolo:app` tag matches `<app>`, so only `ok` and `drift` rows for that app appear (a `rogue` resource has no `yolo:app`, so it never shows here).
+Filters the environment-wide report to rows whose `yolo:app` tag matches `<app>`, so only `ok`, `drift` and `orphan` rows for that app appear (a `rogue` resource has no `yolo:app`, so it never shows here).

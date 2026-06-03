@@ -134,7 +134,10 @@ yolo audit production
 |---|---|
 | `ok` | Accounted for — `yolo:app` points at a live app, or it carries a `yolo:scope=env`/`=account` marker (declared shared infra). |
 | `drift` | `yolo:app` points at an app whose ECS cluster is gone — leftover resources from a removed app. |
+| `orphan` | Carries a YOLO ownership marker but is of an AWS service YOLO no longer provisions — there's no `Resources/` class for it, so a sync would never create it. Left behind when support for a service is removed (the DynamoDB sessions table after DynamoDB sessions were dropped is the canonical case). Safe to delete once confirmed. |
 | `rogue` | Tagged for the environment but with **no** YOLO ownership marker — hand-rolled infrastructure or alpha-era debris in the environment's namespace. |
+
+The orphan check is driven by the catalogue of services YOLO has resource classes for, which mirrors the `src/Resources/*` directories. That means it's correct by construction: a managed service is never false-flagged, and the day a service is dropped its leftover resources surface automatically — no allow-list to keep in sync by hand.
 
 ::: tip The per-app dashboard isn't audited
 `sync:app` also generates a CloudWatch dashboard (`yolo-<env>-<app>-dashboard`) panelling the app's ECS service, ALB, SQS queues, CloudFront, S3 and logs, plus an RDS panel derived from `DB_HOST`. CloudWatch dashboards can't carry tags, so it's a read-only convenience that **won't** show up in `yolo audit`.

@@ -16,7 +16,7 @@ class AuditCommand extends AbstractAuditCommand
 
         $this
             ->setName('audit')
-            ->setDescription('Audit YOLO-tagged resources for an environment (account → environment → app) and flag unexplained drift');
+            ->setDescription('Audit YOLO-tagged resources for an environment (account → environment → app) and flag drift, orphans and unexplained resources');
     }
 
     protected function includes(array $resource): bool

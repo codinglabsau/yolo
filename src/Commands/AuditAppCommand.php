@@ -7,8 +7,8 @@ use Symfony\Component\Console\Input\InputArgument;
 /**
  * Audit one app's resources in an environment. Filters the env-wide audit
  * report to rows whose `yolo:app` tag matches the given app — so an
- * unaccounted-for (`rogue`) row never shows up here, only `ok` and
- * `drift` against that app.
+ * unaccounted-for (`rogue`) row never shows up here, only `ok`, `drift`
+ * and `orphan` against that app.
  */
 class AuditAppCommand extends AbstractAuditCommand
 {

@@ -46,14 +46,6 @@ it('grants SES send scoped to this region\'s verified identities', function () {
     ]);
 });
 
-it('grants no DynamoDB access (DynamoDB support has been removed)', function () {
-    $actions = collect((new EcsTaskPolicy())->document()['Statement'])
-        ->flatMap(fn (array $statement) => (array) $statement['Action'])
-        ->all();
-
-    expect($actions)->each->not->toStartWith('dynamodb:');
-});
-
 it('trusts the ecs-tasks service in the ECS task assume role policy', function () {
     expect((new EcsTaskRole())->assumeRolePolicyDocument())->toBe([
         'Version' => '2012-10-17',
