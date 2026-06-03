@@ -13,7 +13,7 @@ it('describes the ECS task policy with the four ssmmessages exec permissions', f
     $document = (new EcsTaskPolicy())->document();
 
     expect($document['Version'])->toBe('2012-10-17');
-    expect($document['Statement'])->toHaveCount(4);
+    expect($document['Statement'])->toHaveCount(3);
     expect($document['Statement'][0])->toMatchArray([
         'Effect' => 'Allow',
         'Resource' => '*',
@@ -46,18 +46,12 @@ it('grants SES send scoped to this region\'s verified identities', function () {
     ]);
 });
 
-it('grants DynamoDB access scoped to this environment\'s YOLO tables', function () {
-    $statement = (new EcsTaskPolicy())->document()['Statement'][3];
+it('grants no DynamoDB access (DynamoDB support has been removed)', function () {
+    $actions = collect((new EcsTaskPolicy())->document()['Statement'])
+        ->flatMap(fn (array $statement) => (array) $statement['Action'])
+        ->all();
 
-    expect($statement['Effect'])->toBe('Allow');
-    expect($statement['Resource'])->toBe('arn:aws:dynamodb:ap-southeast-2:111111111111:table/yolo-testing-*');
-    expect($statement['Action'])->toEqualCanonicalizing([
-        'dynamodb:GetItem',
-        'dynamodb:PutItem',
-        'dynamodb:UpdateItem',
-        'dynamodb:DeleteItem',
-        'dynamodb:DescribeTable',
-    ]);
+    expect($actions)->each->not->toStartWith('dynamodb:');
 });
 
 it('trusts the ecs-tasks service in the ECS task assume role policy', function () {

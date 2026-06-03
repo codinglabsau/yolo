@@ -254,7 +254,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **environment**. These 
 
 ## `yolo sync:app`
 
-Sync a single application's resources for the given environment — S3 buckets, app IAM (deployer role/policy, MediaConvert role for IVS), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, SQS queues, a CloudWatch dashboard, target-tracking autoscaling (when configured), and — for a solo app — its hosted zone and ACM certificate. When opted in, it also provisions the shared [Valkey cache](/guide/provisioning#cache-and-sessions) (`cache.store`) and a per-app [DynamoDB sessions table](/guide/provisioning#cache-and-sessions) (`session.driver: dynamodb`).
+Sync a single application's resources for the given environment — S3 buckets, app IAM (deployer role/policy, MediaConvert role for IVS), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, SQS queues, a CloudWatch dashboard, target-tracking autoscaling (when configured), and — for a solo app — its hosted zone and ACM certificate. For web apps it also provisions the shared [Valkey cache](/guide/provisioning#cache-and-sessions) (`cache.store`, default-on); sessions ride the same cluster by default ([`session.driver: redis`](/guide/provisioning#cache-and-sessions)), so they need no resources of their own.
 
 ```bash
 yolo sync:app <environment> [--dry-run] [--check] [--force] [--no-progress] [--tenant=<id>]

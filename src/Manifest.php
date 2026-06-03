@@ -278,14 +278,15 @@ class Manifest
     }
 
     /**
-     * The effective session driver. Web apps default to `dynamodb` — a managed,
-     * multi-AZ store so sessions survive a task/node loss, which the ephemeral
-     * filesystem and a single cache node don't. Set `session.driver` to opt out.
-     * Non-web apps have no sessions, so no default.
+     * The effective session driver. Web apps default to `redis` — sessions land
+     * on the shared Valkey cluster (strong read-after-write consistency), on its
+     * own logical database (DB 0) so they're isolated from the cache keyspace
+     * (DB 1) while sharing the instance. Set `session.driver` to opt out. Non-web
+     * apps have no sessions, so no default.
      */
     public static function sessionDriver(): ?string
     {
-        return static::get('session.driver', static::has('tasks.web') ? 'dynamodb' : null);
+        return static::get('session.driver', static::has('tasks.web') ? 'redis' : null);
     }
 
     public static function apex(): string

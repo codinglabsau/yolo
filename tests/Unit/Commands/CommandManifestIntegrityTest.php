@@ -103,10 +103,24 @@ it('bails on a key at the wrong level (cache.store under a misplaced parent)', f
 it('accepts a supported session.driver', function () {
     writeManifest([
         'account-id' => '848509375702', 'region' => 'ap-southeast-2',
-        'session' => ['driver' => 'dynamodb'],
+        'session' => ['driver' => 'database'],
     ]);
 
     expect(invokeManifestIntegrity())->toBeTrue();
+});
+
+it('bails on session.driver: dynamodb with a pointer to redis (support removed)', function () {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'session' => ['driver' => 'dynamodb'],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    $output = test()->promptOutput->fetch();
+    expect($output)->toContain('dynamodb');
+    expect($output)->toContain('no longer supported');
+    expect($output)->toContain('redis');
 });
 
 it('bails on an unknown session.driver', function () {
