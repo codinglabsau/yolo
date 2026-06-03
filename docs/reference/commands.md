@@ -23,7 +23,7 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | [`sync:account <env>`](#yolo-sync-account) | Provision account-global resources |
 | [`sync:environment <env>`](#yolo-sync-environment) | Provision environment-shared resources |
 | [`sync:app <env>`](#yolo-sync-app) | Provision one app's resources |
-| [`audit <env>`](#yolo-audit) | Audit tagged resources and flag drift |
+| [`audit <env>`](#yolo-audit) | Audit tagged resources and flag anything unexpected |
 | [`audit:environment <env>`](#yolo-audit-environment) | Audit environment-tier resources |
 | [`audit:app <env> <app>`](#yolo-audit-app) | Audit one app's resources |
 
@@ -274,10 +274,10 @@ When a [`tasks.web.autoscaling`](/reference/manifest#tasks-web-autoscaling) bloc
 
 ## `yolo audit`
 
-Audit YOLO-tagged resources for an environment (account → environment → app) and flag unexplained drift. Read-only.
+Audit YOLO-tagged resources for an environment (account → environment → app) and flag anything not accounted for. Read-only.
 
 ```bash
-yolo audit <environment> [--drift]
+yolo audit <environment> [--unexpected]
 ```
 
 | Argument | Required | Description |
@@ -286,9 +286,9 @@ yolo audit <environment> [--drift]
 
 | Option | Value | Description |
 |---|---|---|
-| `--drift` | flag | Only show drift — resources tagged for an app that is no longer live. |
+| `--unexpected` | flag | Only show unexpected resources — anything not accounted for by YOLO. |
 
-Queries the Resource Groups Tagging API for everything tagged `yolo:environment=<env>` and classifies each resource as **`ok`**, **`drift`**, or **`rogue`** (see [Provisioning › Auditing](/guide/provisioning#auditing-what-s-deployed)). Results are grouped by scope, drift-first within a scope, with clickable AWS Console links where the terminal supports them.
+Queries the Resource Groups Tagging API for everything tagged `yolo:environment=<env>` and classifies each resource as **`ok`** or **`unexpected`**, with a **Reason** explaining each unexpected row — `no ownership tag`, `service no longer provisioned`, or `app cluster gone` (see [Provisioning › Auditing](/guide/provisioning#auditing-what-s-deployed)). Audit is an ownership/inventory check; it does not inspect a resource's configuration (that's `sync`'s job). Results are grouped by scope, unexpected-first within a scope, with clickable AWS Console links where the terminal supports them.
 
 ---
 
@@ -297,10 +297,10 @@ Queries the Resource Groups Tagging API for everything tagged `yolo:environment=
 Audit only the environment-tier resources for the given environment.
 
 ```bash
-yolo audit:environment <environment> [--drift]
+yolo audit:environment <environment> [--unexpected]
 ```
 
-Arguments and options as [`audit`](#yolo-audit). Filters to environment-scope rows. Environment-scope resources never carry `yolo:app`, so `--drift` is a no-op here — drift is an app-scope concept.
+Arguments and options as [`audit`](#yolo-audit). Filters to environment-scope rows. Environment-scope resources never carry `yolo:app`, but they can still be `unexpected` (an untagged resource in the namespace, or a leftover of a service YOLO no longer provisions), so `--unexpected` is meaningful here.
 
 ---
 
@@ -309,7 +309,7 @@ Arguments and options as [`audit`](#yolo-audit). Filters to environment-scope ro
 Audit a single app's resources for the given environment.
 
 ```bash
-yolo audit:app <environment> <app> [--drift]
+yolo audit:app <environment> <app> [--unexpected]
 ```
 
 | Argument | Required | Description |
@@ -319,6 +319,6 @@ yolo audit:app <environment> <app> [--drift]
 
 | Option | Value | Description |
 |---|---|---|
-| `--drift` | flag | Only show drift for this app. |
+| `--unexpected` | flag | Only show unexpected resources for this app. |
 
-Filters the environment-wide report to rows whose `yolo:app` tag matches `<app>`, so only `ok` and `drift` rows for that app appear (a `rogue` resource has no `yolo:app`, so it never shows here).
+Filters the environment-wide report to rows whose `yolo:app` tag matches `<app>`, so only `ok` and `unexpected` rows for that app appear (a resource with no `yolo:app` marker never shows here).

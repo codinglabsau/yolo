@@ -86,16 +86,20 @@ env-scope, created-if-missing, and never mutated by `sync:app`.
 ### Audit is scope-first too (`audit` / `audit:environment` / `audit:app`)
 
 Read-only counterpart to `sync` with the same scope split. `audit <env>` queries every resource tagged
-`yolo:environment=<env>` via the Resource Groups Tagging API, classifies each as `ok` / `drift` / `rogue`, and
-renders them grouped by scope. Sync stamps a positive ownership marker on everything it creates —
-`yolo:app=<app>` for App-scope, `yolo:scope=env`/`=account` for shared infra — so the three statuses mean:
+`yolo:environment=<env>` via the Resource Groups Tagging API, classifies each as `ok` or `unexpected`, and
+renders them grouped by scope. Audit is an ownership/inventory check, **not** a config check — it reads tags, the
+ARN service and whether the owning app's cluster is live, and never compares a resource's attributes against the
+manifest (that's `sync`'s job, where "drift" means attribute mismatch). Sync stamps a positive ownership marker
+on everything it creates — `yolo:app=<app>` for App-scope, `yolo:scope=env`/`=account` for shared infra — so:
 
 - `ok` — `yolo:app` points at a live app, or `yolo:scope=env`/`=account` is present (declared shared infra)
-- `drift` — `yolo:app` points at an app whose Fargate cluster is gone
-- `rogue` — has `yolo:environment` but no YOLO ownership marker (alpha-era debris, or hand-rolled infra in the env namespace)
+- `unexpected` — found in the env's tag namespace but not accounted for; a `reason` column says why:
+  - `no ownership tag` — no `yolo:app`/`yolo:scope` marker (hand-rolled, or alpha-era debris)
+  - `service no longer provisioned` — YOLO-owned but of an AWS service with no `Resources/` class, so sync would never recreate it (e.g. the DynamoDB sessions table left behind after DynamoDB support was removed). Surfaced via `Audit::SERVICE_BY_RESOURCE_GROUP`, whose keys mirror the `src/Resources/*` dirs (enforced by a test), so dropping a service dir auto-surfaces its leftovers and adding one fails until catalogued — no managed service is ever false-flagged
+  - `app cluster gone` — YOLO-owned, managed service, but `yolo:app` points at an app whose Fargate cluster is gone
 
-`audit:environment <env>` narrows to env-tier rows; `audit:app <env> <app>` narrows to one app. `--drift` is a
-universal flag — a no-op on `audit:environment` since env-scope resources never carry `yolo:app`.
+`audit:environment <env>` narrows to env-tier rows; `audit:app <env> <app>` narrows to one app. `--unexpected`
+is a universal flag that filters to just the rows needing attention.
 
 ### Steps (`src/Steps/`)
 

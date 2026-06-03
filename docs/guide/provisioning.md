@@ -124,26 +124,35 @@ Writes that land in the fallback store during an outage are **not** synced back 
 
 ## Auditing what's deployed
 
-`yolo audit` is the read-only counterpart to `sync`. It queries every resource tagged `yolo:environment=<env>` and classifies each one:
+`yolo audit` is the read-only counterpart to `sync`. It's an **ownership/inventory** check — it queries every resource tagged `yolo:environment=<env>` and asks "is this accounted for?". It does **not** inspect a resource's configuration; comparing live attributes against the manifest is `sync`'s job (and `sync`'s "drift" — config superseded — is a different thing from anything here).
 
 ```bash
 yolo audit production
 ```
 
+There are two statuses, and a **Reason** column explains every `unexpected` row:
+
 | Status | Meaning |
 |---|---|
 | `ok` | Accounted for — `yolo:app` points at a live app, or it carries a `yolo:scope=env`/`=account` marker (declared shared infra). |
-| `drift` | `yolo:app` points at an app whose ECS cluster is gone — leftover resources from a removed app. |
-| `rogue` | Tagged for the environment but with **no** YOLO ownership marker — hand-rolled infrastructure or alpha-era debris in the environment's namespace. |
+| `unexpected` | In the environment's tag namespace but not accounted for. See the Reason. |
+
+| Reason (on `unexpected`) | Meaning |
+|---|---|
+| `no ownership tag` | **No** YOLO ownership marker (`yolo:app`/`yolo:scope`) — hand-rolled infrastructure, or alpha-era debris in the namespace. |
+| `service no longer provisioned` | YOLO-owned, but of an AWS service YOLO no longer provisions — there's no `Resources/` class for it, so a sync would never create it. Left behind when support for a service is removed (the DynamoDB sessions table after DynamoDB sessions were dropped is the canonical case). Safe to delete once confirmed. |
+| `app cluster gone` | YOLO-owned, managed service, but `yolo:app` points at an app whose ECS cluster no longer exists — leftover resources from a removed app. |
+
+The `service no longer provisioned` check is driven by the catalogue of services YOLO has resource classes for, which mirrors the `src/Resources/*` directories. That makes it correct by construction: a managed service is never false-flagged, and the day a service is dropped its leftover resources surface automatically — no allow-list to keep in sync by hand.
 
 ::: tip The per-app dashboard isn't audited
 `sync:app` also generates a CloudWatch dashboard (`yolo-<env>-<app>-dashboard`) panelling the app's ECS service, ALB, SQS queues, CloudFront, S3 and logs, plus an RDS panel derived from `DB_HOST`. CloudWatch dashboards can't carry tags, so it's a read-only convenience that **won't** show up in `yolo audit`.
 :::
 
-Like sync, audit is scope-grouped — narrow it with `audit:environment <env>` or `audit:app <env> <app>`, and add `--drift` to show only the drifted rows:
+Like sync, audit is scope-grouped — narrow it with `audit:environment <env>` or `audit:app <env> <app>`, and add `--unexpected` to show only the rows needing attention:
 
 ```bash
-yolo audit production --drift
+yolo audit production --unexpected
 yolo audit:app production myapp
 ```
 

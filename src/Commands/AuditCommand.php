@@ -16,7 +16,7 @@ class AuditCommand extends AbstractAuditCommand
 
         $this
             ->setName('audit')
-            ->setDescription('Audit YOLO-tagged resources for an environment (account → environment → app) and flag unexplained drift');
+            ->setDescription('Audit YOLO-tagged resources for an environment (account → environment → app) and flag anything not accounted for');
     }
 
     protected function includes(array $resource): bool
@@ -26,8 +26,8 @@ class AuditCommand extends AbstractAuditCommand
 
     protected function emptyFilterMessage(string $environment): string
     {
-        if ($this->option('drift')) {
-            return sprintf("No drift in '%s' — every tagged resource maps to a live app.", $environment);
+        if ($this->option('unexpected')) {
+            return sprintf("No unexpected resources in '%s' — everything tagged is accounted for.", $environment);
         }
 
         return sprintf("Nothing tagged for '%s'.", $environment);

@@ -23,15 +23,74 @@ class Audit
 
     public const STATUS_OK = 'ok';
 
-    public const STATUS_DRIFT = 'drift';
+    public const STATUS_UNEXPECTED = 'unexpected';
 
-    public const STATUS_ROGUE = 'rogue';
+    /**
+     * Why an `unexpected` resource isn't accounted for — surfaced in the audit's
+     * Reason column. Audit only inspects tags, the ARN service and whether the
+     * owning app's cluster is live; it never compares a resource's configuration
+     * against the manifest (that's `sync`'s job), so none of these is a config
+     * concern — each is an ownership/inventory fact.
+     */
+    public const REASON_DEAD_APP = 'app cluster gone';
+
+    public const REASON_UNMANAGED_SERVICE = 'service no longer provisioned';
+
+    public const REASON_NO_OWNER = 'no ownership tag';
 
     public const SCOPE_ACCOUNT = 'account';
 
     public const SCOPE_ENV = 'env';
 
     public const SCOPE_APP = 'app';
+
+    /**
+     * The AWS services YOLO provisions, keyed by their `src/Resources/{group}`
+     * directory. A YOLO-owned resource (one carrying a `yolo:app` or
+     * `yolo:scope` marker) whose ARN service is *not* one of these is an
+     * `orphan` — YOLO created it once but no longer has a Resource class for
+     * that service, so it would never appear in a sync plan. The DynamoDB
+     * sessions table left behind when DynamoDB support was removed is the
+     * canonical case.
+     *
+     * Keys mirror the `src/Resources/*` directories one-for-one (enforced by
+     * ManagedServicesTest), so this stays correct by construction: dropping a
+     * service directory automatically surfaces its leftover resources as
+     * orphans, and adding one fails the test until it is catalogued here —
+     * which stops a newly-supported service from being false-flagged.
+     *
+     * @var array<string, string>
+     */
+    public const SERVICE_BY_RESOURCE_GROUP = [
+        'Acm' => 'acm',
+        'ApplicationAutoScaling' => 'application-autoscaling',
+        'CloudFront' => 'cloudfront',
+        'CloudWatch' => 'cloudwatch',
+        'CloudWatchLogs' => 'logs',
+        'Ec2' => 'ec2',
+        'Ecr' => 'ecr',
+        'Ecs' => 'ecs',
+        'ElastiCache' => 'elasticache',
+        'ElbV2' => 'elasticloadbalancing',
+        'EventBridge' => 'events',
+        'Iam' => 'iam',
+        'Rds' => 'rds',
+        'Route53' => 'route53',
+        'S3' => 's3',
+        'Sns' => 'sns',
+        'Sqs' => 'sqs',
+    ];
+
+    /**
+     * The ARN service strings YOLO provisions — the values of the
+     * resource-group catalogue above.
+     *
+     * @return array<int, string>
+     */
+    public static function managedServices(): array
+    {
+        return array_values(self::SERVICE_BY_RESOURCE_GROUP);
+    }
 
     /**
      * Deploy ephemera the audit ignores: ECS task definitions (immutable
@@ -67,41 +126,58 @@ class Audit
     }
 
     /**
-     * Classify every tagged resource against the live AWS inventory:
-     *   - `ok`     — declared and accounted for. Either app-scope with a
-     *                `yolo:app` pointing at a live app, or env/account-scope
-     *                with a `yolo:scope` tag (shared infra YOLO owns by design).
-     *   - `drift`  — `yolo:app` points at an app whose cluster is gone.
-     *   - `rogue`  — has `yolo:environment` (so the audit found it) but no
-     *                YOLO ownership marker (`yolo:app`, `yolo:scope=env`,
-     *                `yolo:scope=account`). Either alpha-era debris from
-     *                before the scope-tag rollout, or a hand-rolled resource
-     *                that sneaked into the env namespace.
+     * Classify every tagged resource against the live AWS inventory. Audit is an
+     * ownership/inventory check, not a configuration check — it reads tags, the
+     * ARN service and whether the owning app's cluster is live, and never
+     * compares a resource's attributes against the manifest (that is `sync`'s
+     * job). So there are just two statuses:
      *
-     * Drift is only ever raised from an explicit yolo:app pointing at a dead app,
-     * so shared infrastructure is never false-flagged.
+     *   - `ok`         — accounted for. App-scope with a `yolo:app` pointing at a
+     *                    live app, or env/account-scope shared infra YOLO owns.
+     *   - `unexpected` — found in the environment's tag namespace but not
+     *                    accounted for. The `reason` says why:
+     *                      • REASON_NO_OWNER — no YOLO ownership marker at all
+     *                        (`yolo:app`/`yolo:scope`); hand-rolled, or alpha-era
+     *                        debris from before ownership tags.
+     *                      • REASON_UNMANAGED_SERVICE — YOLO-owned, but of a
+     *                        service YOLO no longer provisions (no `Resources/`
+     *                        class), so a sync would never recreate it. The
+     *                        DynamoDB sessions table left behind after DynamoDB
+     *                        support was removed is the canonical case: still
+     *                        tagged `yolo:app=<live app>`, so the ownership test
+     *                        alone would read it `ok`, but it's dead weight.
+     *                      • REASON_DEAD_APP — YOLO-owned, managed service, but
+     *                        `yolo:app` points at an app whose cluster is gone.
+     *
+     * The reasons are evaluated most-specific first: no-owner before unmanaged
+     * service before dead-app. A managed-service resource owned by a live app
+     * (or env/account shared infra) is never flagged.
      *
      * @param  array<int, array{ResourceARN: string, Tags?: array<int, array{Key: string, Value: string}>}>  $taggedResources
      * @param  array<int, string>  $liveApps
-     * @return array{resources: array<int, array<string, mixed>>, liveApps: array<int, string>, okCount: int, driftCount: int, rogueCount: int}
+     * @return array{resources: array<int, array<string, mixed>>, liveApps: array<int, string>, okCount: int, unexpectedCount: int}
      */
     public static function classify(array $taggedResources, array $liveApps): array
     {
+        $managedServices = self::managedServices();
+
         $resources = collect($taggedResources)
             ->reject(fn (array $resource) => static::isIgnored(Arn::parse($resource['ResourceARN'])))
-            ->map(function (array $resource) use ($liveApps) {
+            ->map(function (array $resource) use ($liveApps, $managedServices) {
                 $tags = Aws::flattenTags($resource['Tags'] ?? []);
                 $app = $tags[self::APP_TAG] ?? null;
                 $scopeTag = $tags[self::SCOPE_TAG] ?? null;
                 $parsed = Arn::parse($resource['ResourceARN']);
 
                 $sharedScope = in_array($scopeTag, [self::SCOPE_ENV, self::SCOPE_ACCOUNT], true);
+                $owned = $app !== null || $sharedScope;
+                $managedService = $parsed !== null && in_array($parsed->service, $managedServices, true);
 
-                $status = match (true) {
-                    $app !== null && in_array($app, $liveApps, true) => self::STATUS_OK,
-                    $app !== null => self::STATUS_DRIFT,
-                    $sharedScope => self::STATUS_OK,
-                    default => self::STATUS_ROGUE,
+                [$status, $reason] = match (true) {
+                    ! $owned => [self::STATUS_UNEXPECTED, self::REASON_NO_OWNER],
+                    ! $managedService => [self::STATUS_UNEXPECTED, self::REASON_UNMANAGED_SERVICE],
+                    $app !== null && ! in_array($app, $liveApps, true) => [self::STATUS_UNEXPECTED, self::REASON_DEAD_APP],
+                    default => [self::STATUS_OK, null],
                 };
 
                 return [
@@ -111,6 +187,7 @@ class Audit
                     'name' => $tags[self::NAME_TAG] ?? $parsed?->resourceId ?? $resource['ResourceARN'],
                     'app' => $app,
                     'status' => $status,
+                    'reason' => $reason,
                 ];
             });
 
@@ -118,8 +195,7 @@ class Audit
             'resources' => $resources->values()->all(),
             'liveApps' => $liveApps,
             'okCount' => $resources->where('status', self::STATUS_OK)->count(),
-            'driftCount' => $resources->where('status', self::STATUS_DRIFT)->count(),
-            'rogueCount' => $resources->where('status', self::STATUS_ROGUE)->count(),
+            'unexpectedCount' => $resources->where('status', self::STATUS_UNEXPECTED)->count(),
         ];
     }
 
@@ -156,7 +232,8 @@ class Audit
 
     /**
      * A single composite sort key for the audit table: scope (account → env → app,
-     * top to bottom), then status (drift first within a scope), then app and name.
+     * top to bottom), then status (unexpected before ok within a scope), then the
+     * reason (so unexpected rows cluster by cause), then app and name.
      * Returned as one string so a single-closure `sortBy` orders the whole table —
      * the multi-closure `sortBy([...])` form silently ignores closure keys on
      * current illuminate/collections.
@@ -166,12 +243,13 @@ class Audit
     public static function orderKey(array $resource): string
     {
         $scopeOrder = [self::SCOPE_ACCOUNT => 0, self::SCOPE_ENV => 1, self::SCOPE_APP => 2];
-        $statusOrder = [self::STATUS_DRIFT => 0, self::STATUS_ROGUE => 1, self::STATUS_OK => 2];
+        $statusOrder = [self::STATUS_UNEXPECTED => 0, self::STATUS_OK => 1];
 
         return sprintf(
-            '%d-%d-%s-%s',
+            '%d-%d-%s-%s-%s',
             $scopeOrder[$resource['scope']] ?? 9,
             $statusOrder[$resource['status']] ?? 9,
+            $resource['reason'] ?? '',
             $resource['app'] ?? '',
             $resource['name'],
         );

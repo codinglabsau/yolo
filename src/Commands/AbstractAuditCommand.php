@@ -30,7 +30,7 @@ abstract class AbstractAuditCommand extends Command
     {
         $this
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
-            ->addOption('drift', null, InputOption::VALUE_NONE, 'Only show drift (resources tagged for an app that is no longer live)');
+            ->addOption('unexpected', null, InputOption::VALUE_NONE, 'Only show unexpected resources (anything not accounted for by YOLO)');
     }
 
     public function handle(): int
@@ -48,17 +48,17 @@ abstract class AbstractAuditCommand extends Command
 
     /**
      * Per-subcommand row filter. Return true to include the row in the table.
-     * Applied before the universal `--drift` filter, so subclasses don't need
-     * to know about `--drift` at all.
+     * Applied before the universal `--unexpected` filter, so subclasses don't
+     * need to know about `--unexpected` at all.
      *
      * @param  array<string, mixed>  $resource
      */
     abstract protected function includes(array $resource): bool;
 
     /**
-     * Shown when the post-filter list is empty. Subclasses tailor the wording
-     * to their scope so `--drift` on a scope that can't carry drift reads
-     * clearly rather than as a non sequitur.
+     * Shown when the post-filter list is empty. Subclasses tailor the wording to
+     * their scope so `--unexpected` reads clearly when a scope happens to have
+     * nothing unexpected.
      */
     abstract protected function emptyFilterMessage(string $environment): string;
 
@@ -82,7 +82,7 @@ abstract class AbstractAuditCommand extends Command
     }
 
     /**
-     * @param  array{resources: array<int, array<string, mixed>>, liveApps: array<int, string>, okCount: int, driftCount: int, rogueCount: int}  $report
+     * @param  array{resources: array<int, array<string, mixed>>, liveApps: array<int, string>, okCount: int, unexpectedCount: int}  $report
      */
     protected function render(array $report, string $environment): int
     {
@@ -102,42 +102,38 @@ abstract class AbstractAuditCommand extends Command
             return self::SUCCESS;
         }
 
-        if (! $this->option('drift') && $report['driftCount'] > 0) {
-            warning(sprintf('%d resource(s) are drift — tagged for an app that is no longer live.', $report['driftCount']));
-        }
-
-        if (! $this->option('drift') && $report['rogueCount'] > 0) {
-            warning(sprintf('%d resource(s) are rogue — no YOLO ownership marker (`yolo:app` or `yolo:scope`).', $report['rogueCount']));
+        if (! $this->option('unexpected') && $report['unexpectedCount'] > 0) {
+            warning(sprintf('%d resource(s) are unexpected — not accounted for by YOLO. Check the Reason column before removing anything.', $report['unexpectedCount']));
         }
 
         table(
-            ['Scope', 'Status', 'Type', 'Name', 'App'],
+            ['Scope', 'Status', 'Type', 'Name', 'App', 'Reason'],
             $rows->map(fn (array $resource) => [
                 static::scopeLabel($resource['scope']),
                 static::statusLabel($resource['status']),
                 $resource['type'],
                 static::nameCell($resource),
                 $resource['app'] ?? '—',
+                $resource['reason'] ?? '—',
             ])->all(),
         );
 
         note(sprintf(
-            "%d tagged for '%s' · %d drift · %d rogue · %d ok",
+            "%d tagged for '%s' · %d ok · %d unexpected",
             count($report['resources']),
             $environment,
-            $report['driftCount'],
-            $report['rogueCount'],
             $report['okCount'],
+            $report['unexpectedCount'],
         ));
 
         return self::SUCCESS;
     }
 
     /**
-     * Apply the subcommand's scope filter and the universal `--drift` flag,
-     * then order by scope (account → env → app, top to bottom), drift first
-     * within a scope, then app and name. Drift is still surfaced regardless
-     * of position — via the warning line, the red label and `--drift`.
+     * Apply the subcommand's scope filter and the universal `--unexpected` flag,
+     * then order by scope (account → env → app, top to bottom), unexpected first
+     * within a scope, then by reason, app and name. Unexpected rows are still
+     * surfaced regardless of position — via the warning line and the label.
      *
      * @param  array<int, array<string, mixed>>  $resources
      * @return Collection<int, array<string, mixed>>
@@ -146,7 +142,7 @@ abstract class AbstractAuditCommand extends Command
     {
         return collect($resources)
             ->filter(fn (array $resource) => $this->includes($resource))
-            ->when($this->option('drift'), fn ($rows) => $rows->where('status', Audit::STATUS_DRIFT))
+            ->when($this->option('unexpected'), fn ($rows) => $rows->where('status', Audit::STATUS_UNEXPECTED))
             ->sortBy(fn (array $resource) => Audit::orderKey($resource))
             ->values();
     }
@@ -154,9 +150,8 @@ abstract class AbstractAuditCommand extends Command
     protected static function statusLabel(string $status): string
     {
         return match ($status) {
-            Audit::STATUS_DRIFT => '<fg=red;options=bold>DRIFT</>',
             Audit::STATUS_OK => '<fg=green>ok</>',
-            default => '<fg=yellow>rogue</>',
+            default => '<fg=yellow;options=bold>unexpected</>',
         };
     }
 
