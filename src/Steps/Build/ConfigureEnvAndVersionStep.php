@@ -10,7 +10,6 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Contracts\Step;
 use Illuminate\Filesystem\Filesystem;
-use Codinglabs\Yolo\Resources\DynamoDb\SessionsTable;
 use Codinglabs\Yolo\Resources\ElastiCache\CacheCluster;
 use Codinglabs\Yolo\Resources\CloudFront\AssetDistribution;
 
@@ -90,15 +89,14 @@ class ConfigureEnvAndVersionStep implements Step
             }
         }
 
-        // Session driver: web apps default to dynamodb (Manifest::sessionDriver).
-        // Pin SESSION_DRIVER; for dynamodb, point its cache-backed store at the
-        // YOLO-provisioned table. Other drivers need no extra env here.
+        // Session driver: web apps default to redis (Manifest::sessionDriver).
+        // Pin SESSION_DRIVER only. For redis we deliberately leave SESSION_CONNECTION
+        // unset — a null connection routes Laravel's redis session handler to the
+        // stock `default` connection (DB 0), keeping sessions off the cache
+        // connection (DB 1). Same Valkey instance, separate keyspace. Other drivers
+        // (database/cookie/file) need no extra env here.
         if ($sessionDriver = Manifest::sessionDriver()) {
             $defaults['SESSION_DRIVER'] = $sessionDriver;
-
-            if ($sessionDriver === 'dynamodb') {
-                $defaults['DYNAMODB_CACHE_TABLE'] = (new SessionsTable())->name();
-            }
         }
 
         foreach ($defaults as $key => $value) {

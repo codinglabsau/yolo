@@ -141,28 +141,35 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * `session.driver` (when set) must be a Laravel session driver YOLO supports,
-     * and `redis` requires `cache.store: redis` — there's no redis store without
-     * the Valkey cache. Hard-fail loudly rather than silently shipping a broken
-     * session backend.
+     * `session.driver` (when set) must be a Laravel session driver YOLO supports.
+     * `dynamodb` was removed (DynamoDB support is gone — sessions live on Valkey),
+     * so it hard-fails with a pointer to redis. `redis` requires `cache.store:
+     * redis` — sessions can't land on a Valkey cluster that isn't provisioned —
+     * and that holds for the web-app default too, not just an explicit `redis`.
+     * Hard-fail loudly rather than silently shipping a broken session backend.
      */
     protected function ensureSessionDriverValid(): bool
     {
         $driver = Manifest::get('session.driver');
 
-        if ($driver === null) {
-            return true;
+        if ($driver === 'dynamodb') {
+            error('yolo.yml `session.driver: dynamodb` is no longer supported — use redis. Sessions now live on the shared Valkey cluster.');
+
+            return false;
         }
 
-        $allowed = ['redis', 'dynamodb', 'database', 'cookie', 'file'];
+        $allowed = ['redis', 'database', 'cookie', 'file'];
 
-        if (! in_array($driver, $allowed, true)) {
+        if ($driver !== null && ! in_array($driver, $allowed, true)) {
             error(sprintf('yolo.yml `session.driver` must be one of: %s.', implode(', ', $allowed)));
 
             return false;
         }
 
-        if ($driver === 'redis' && Manifest::cacheStore() !== 'redis') {
+        // The effective driver (explicit or the web-app default) — so a web app
+        // that opts the cache out (cache.store: file) without re-pinning the
+        // session driver is caught, not silently shipped pointing at no cluster.
+        if (Manifest::sessionDriver() === 'redis' && Manifest::cacheStore() !== 'redis') {
             error('yolo.yml `session.driver: redis` needs the Valkey cache (`cache.store: redis`, the web-app default) — don\'t opt the cache out.');
 
             return false;

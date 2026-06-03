@@ -40,7 +40,7 @@ environments:
     # cache:
     #   store: redis             # default; file/database/array to opt out of the shared Valkey
     # session:
-    #   driver: dynamodb         # default; redis/database/cookie/file to change the session backend
+    #   driver: redis            # default (sessions live on the Valkey cluster); database/cookie/file to change the session backend
 
     # --- Media: Amazon IVS + MediaConvert ---
     # ivs: true                  # enable IVS event logging; or expand for finer control:
@@ -259,20 +259,21 @@ With the `redis` store, the container env gets `CACHE_STORE=redis`, `REDIS_HOST`
 
 ## `session.*`
 
-Declares the app's session backend. **Web apps (`tasks.web`) default to `dynamodb`** — a managed, multi-AZ store, so sessions survive a task/node loss (the ephemeral filesystem and a single cache node don't). YOLO injects `SESSION_DRIVER` (only if your `.env` doesn't already set it) and provisions infrastructure **only for the driver that needs it**. Non-web apps have no sessions, so no default.
+Declares the app's session backend. **Web apps (`tasks.web`) default to `redis`** — sessions land on the shared Valkey cluster, which gives strong read-after-write consistency (~1&nbsp;ms), so a session is readable the instant after it's written (no stale-read flicker right after login). YOLO injects `SESSION_DRIVER` (only if your `.env` doesn't already set it) and provisions infrastructure **only for the driver that needs it**. Non-web apps have no sessions, so no default.
 
 ```yaml
 session:
-  driver: dynamodb   # the web-app default; redis | dynamodb | database | cookie | file
+  driver: redis   # the web-app default; redis | database | cookie | file
 ```
 
 | `session.driver` | YOLO provisions | Also injects | Notes |
 |---|---|---|---|
-| `dynamodb` | A per-app **DynamoDB** table (`yolo-{env}-{app}-sessions`, on-demand billing, TTL on `expires_at`) | `DYNAMODB_CACHE_TABLE` | Laravel's `dynamodb` session driver is cache-backed, so the table uses the Laravel cache schema. Multi-AZ by default — no single point of failure, the durable choice for sessions. The task role is granted DynamoDB access to `yolo-{env}-*` tables. App needs `aws/aws-sdk-php`. |
-| `redis` | Nothing new (reuses the Valkey cache) | — | **Requires `cache.store: redis`** — there's no redis store without it. Sessions share the single Valkey node, so a node loss logs users out. |
-| `database` / `cookie` / `file` | Nothing | — | App-managed. `cookie` is capped at ~4&nbsp;KB per browser cookie — risky once flashed validation errors are stored. |
+| `redis` (default) | Nothing new (reuses the Valkey cache) | `SESSION_DRIVER` only | **Requires `cache.store: redis`** (the web-app default) — there's no redis store without it, and YOLO hard-fails if you opt the cache out without re-pinning the session driver. Sessions sit on Laravel's stock `default` connection (**DB 0**), the cache on the `cache` connection (**DB 1**) — same Valkey instance, separate keyspace, so a `cache:clear` never touches sessions. YOLO injects `SESSION_DRIVER=redis` only and leaves `SESSION_CONNECTION` unset; the split is inherited from your stock `config/database.php`, not enforced by YOLO, and relies on cluster-mode-disabled Valkey. A single node has no session HA — a node loss logs users out. See [Sessions and cache share the node, not the keyspace](/guide/provisioning#sessions-and-cache-share-the-node-not-the-keyspace) for the mechanism and caveats. |
+| `database` / `cookie` / `file` | Nothing | `SESSION_DRIVER` only | App-managed (pin-only). `cookie` is capped at ~4&nbsp;KB per browser cookie — risky once flashed validation errors are stored. |
 
-On a web app, omitting `session` gives you the `dynamodb` default; set a driver to override it. On a non-web app, `SESSION_DRIVER` is left to your `.env`.
+On a web app, omitting `session` gives you the `redis` default; set a driver to override it. On a non-web app, `SESSION_DRIVER` is left to your `.env`.
+
+> DynamoDB is no longer a supported session backend. A manifest still setting `session.driver: dynamodb` hard-fails validation with a pointer to `redis`.
 
 ---
 

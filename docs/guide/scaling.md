@@ -85,7 +85,7 @@ Add Laravel's [`onOneServer()`](https://laravel.com/docs/scheduling#running-task
 $schedule->command('reports:send')->daily()->onOneServer();
 ```
 
-This requires a shared lock store (Redis, DynamoDB, or a database cache) — which production apps run anyway. It keeps the simple single-service topology and lets the bundled task scale freely.
+This requires a shared lock store (the Valkey/Redis cache YOLO provisions, or a database cache) — which production apps run anyway. It keeps the simple single-service topology and lets the bundled task scale freely.
 
 The catch: it's per-task. A scheduled task registered by a package (Telescope pruning, backups, etc.) that you can't annotate will still multi-fire — which is your signal to reach for strategy 2.
 

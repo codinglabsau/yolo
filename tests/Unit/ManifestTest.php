@@ -96,14 +96,14 @@ describe('multitenancy', function () {
 });
 
 describe('cache + session defaults', function () {
-    it('defaults web apps to the shared redis cache and dynamodb sessions', function () {
+    it('defaults web apps to the shared redis cache and redis sessions', function () {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'tasks' => ['web' => []],
         ]);
 
         expect(Manifest::cacheStore())->toBe('redis');
-        expect(Manifest::sessionDriver())->toBe('dynamodb');
+        expect(Manifest::sessionDriver())->toBe('redis');
     });
 
     it('has no cache or session default for a non-web app', function () {

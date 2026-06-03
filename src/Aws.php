@@ -16,7 +16,6 @@ use Aws\Sts\StsClient;
 use Aws\AwsClientInterface;
 use Illuminate\Support\Str;
 use Aws\Route53\Route53Client;
-use Aws\DynamoDb\DynamoDbClient;
 use Aws\CloudFront\CloudFrontClient;
 use Aws\CloudWatch\CloudWatchClient;
 use Aws\CodeDeploy\CodeDeployClient;
@@ -404,25 +403,6 @@ class Aws
     }
 
     /**
-     * Synchronise tags on a DynamoDB table, addressed by its ARN. DynamoDB uses
-     * `ResourceArn` (not `ResourceName`) and upper-case Key/Value pairs.
-     *
-     * @return array<string, string>
-     */
-    public static function synchroniseDynamoDbTags(string $arn, array $tags, bool $apply): array
-    {
-        return static::reconcileTags(
-            $tags,
-            fn () => static::dynamoDb()->listTagsOfResource(['ResourceArn' => $arn])['Tags'] ?? [],
-            fn (array $missing) => static::dynamoDb()->tagResource([
-                'ResourceArn' => $arn,
-                'Tags' => static::keyValueTags($missing),
-            ]),
-            $apply,
-        );
-    }
-
-    /**
      * Synchronise tags on a CloudWatch alarm, addressed by its ARN.
      *
      * @return array<string, string>
@@ -632,11 +612,6 @@ class Aws
     public static function codeDeploy(): CodeDeployClient
     {
         return Helpers::app('codeDeploy');
-    }
-
-    public static function dynamoDb(): DynamoDbClient
-    {
-        return Helpers::app('dynamodb');
     }
 
     public static function ec2(): Ec2Client

@@ -182,7 +182,7 @@ it('does not wire cache or session for a non-web app (no tasks.web)', function (
     expect($env)->not->toContain('SESSION_DRIVER=');
 });
 
-it('defaults a web app to the shared redis cache and dynamodb sessions when neither is set', function () {
+it('defaults a web app to the shared redis cache and redis sessions when neither is set', function () {
     rebuildEnvFixture([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => []],
@@ -194,8 +194,12 @@ it('defaults a web app to the shared redis cache and dynamodb sessions when neit
 
     expect($env)->toContain('CACHE_STORE=redis');
     expect($env)->toContain('REDIS_HOST=master.yolo-testing-cache.cache.amazonaws.com');
-    expect($env)->toContain('SESSION_DRIVER=dynamodb');
-    expect($env)->toContain('DYNAMODB_CACHE_TABLE=yolo-testing-my-app-sessions');
+    expect($env)->toContain('SESSION_DRIVER=redis');
+    // No DynamoDB anything, and no SESSION_CONNECTION — a null connection routes
+    // the redis session handler to the stock default connection (DB 0), keeping
+    // sessions off the cache connection (DB 1).
+    expect($env)->not->toContain('DYNAMODB_CACHE_TABLE');
+    expect($env)->not->toContain('SESSION_CONNECTION');
 });
 
 it('pins SESSION_DRIVER from the manifest', function () {
@@ -210,20 +214,6 @@ it('pins SESSION_DRIVER from the manifest', function () {
 
     expect($env)->toContain('SESSION_DRIVER=database');
     expect($env)->not->toContain('DYNAMODB_CACHE_TABLE=');
-});
-
-it('points the dynamodb session driver at the YOLO-provisioned table', function () {
-    rebuildEnvFixture([
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'session' => ['driver' => 'dynamodb'],
-    ]);
-
-    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
-
-    $env = file_get_contents(Paths::build('.env.testing'));
-
-    expect($env)->toContain('SESSION_DRIVER=dynamodb');
-    expect($env)->toContain('DYNAMODB_CACHE_TABLE=yolo-testing-my-app-sessions');
 });
 
 it('does not pin SESSION_DRIVER when the manifest does not select one', function () {

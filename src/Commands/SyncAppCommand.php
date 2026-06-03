@@ -96,8 +96,6 @@ class SyncAppCommand extends SyncSteppedCommand
                         Steps\Sync\App\SyncCacheParameterGroupStep::class,
                         Steps\Sync\App\SyncCacheSecurityGroupStep::class,
                         Steps\Sync\App\SyncCacheClusterStep::class,
-                        // DynamoDB sessions table (gated on session.driver: dynamodb)
-                        Steps\Sync\App\SyncDynamoDbSessionsTableStep::class,
                         Steps\Sync\App\SyncTargetGroupStep::class,
                         Steps\Sync\App\SyncHttpsListenerStep::class,
                         Steps\Sync\App\SyncListenerRuleStep::class,

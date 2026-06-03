@@ -14,7 +14,7 @@ YOLO groups every resource by **ownership scope** — the blast radius if it cha
 |---|---|---|---|
 | `yolo sync:account <env>` | **Account** | the whole AWS account | GitHub OIDC provider |
 | `yolo sync:environment <env>` | **Environment** | every app in the environment | VPC, subnets, internet gateway & routes, RDS security group, SNS alarm topic, shared ECS task & execution IAM roles, the ALB and its `:80`/`:443` listeners |
-| `yolo sync:app <env>` | **App** | one app | S3 buckets, app IAM (deployer role/policy), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, hosted zone & ACM certificate, SQS queues, CloudWatch dashboard — plus, for web apps, the shared [Valkey cache](#cache-and-sessions) and a per-app [DynamoDB sessions table](#cache-and-sessions) (both default-on; opt out via `cache.store` / `session.driver`) |
+| `yolo sync:app <env>` | **App** | one app | S3 buckets, app IAM (deployer role/policy), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, hosted zone & ACM certificate, SQS queues, CloudWatch dashboard — plus, for web apps, the shared [Valkey cache](#cache-and-sessions) (default-on; opt out via `cache.store`). Sessions ride the same Valkey cluster by default, so they need no provisioning of their own |
 
 The bare `yolo sync` runs all three **in dependency order** — account, then environment, then app:
 
@@ -24,7 +24,7 @@ yolo sync production   # account → environment → app
 
 `sync:app` only *additively attaches* to shared infrastructure (its SNI certificate and listener rule on the environment's `:443` listener, its `3306` ingress rule on the shared RDS security group, its `6379` ingress rule on the shared cache security group). It never modifies the shared resource itself, so the environment tier stays the single writer.
 
-The shared **Valkey cache** is env-scoped but bootstrapped from `sync:app` by exception (like the RDS security group), because its security group needs this app's task SG to authorise. The first web app to sync creates the cluster (cache defaults on); later apps find it and just wire their env. The **DynamoDB sessions table** is genuinely per-app.
+The shared **Valkey cache** is env-scoped but bootstrapped from `sync:app` by exception (like the RDS security group), because its security group needs this app's task SG to authorise. The first web app to sync creates the cluster (cache defaults on); later apps find it and just wire their env. **Sessions reuse the same cluster** (on a separate logical database), so there's no extra session infrastructure to provision.
 
 ::: tip Why scopes matter
 Several apps can share one environment's VPC and load balancer. Because `sync:app` only attaches and never mutates, deploying app B can't break app A's networking. When you're iterating on one app, `sync:app` is faster than a full `sync` — the account and environment tiers rarely change.
@@ -88,18 +88,38 @@ Scaling is a deliberate vertical resize (a brief ~60s endpoint blip, data retain
 
 ### Sessions
 
-A web app defaults to [`session.driver: dynamodb`](/reference/manifest#session); set the key to override. YOLO provisions only what the chosen driver needs:
+A web app defaults to [`session.driver: redis`](/reference/manifest#session); set the key to override. YOLO provisions only what the chosen driver needs:
 
-- **`dynamodb`** (default) — a per-app DynamoDB table (on-demand, multi-AZ, no single point of failure), plus `SESSION_DRIVER=dynamodb` and `DYNAMODB_CACHE_TABLE`. The durable choice — sessions survive a task/node loss. Requires `aws/aws-sdk-php` in the app (`yolo build` hard-fails if it's missing).
-- **`redis`** — reuses the Valkey cache (needs `cache.store: redis`); cheapest, but sessions don't survive a cache-node loss.
+- **`redis`** (default) — reuses the Valkey cache (needs `cache.store: redis`, the web-app default; YOLO hard-fails if you opt the cache out without re-pinning the session driver). YOLO injects `SESSION_DRIVER=redis` only. Strong read-after-write consistency (~1&nbsp;ms) means a freshly written session is readable immediately — no stale-read flicker right after login. The single node has no session HA — a node loss logs users out.
 - **`database` / `cookie` / `file`** — no infrastructure; YOLO just pins `SESSION_DRIVER`.
+
+#### Sessions and cache share the node, not the keyspace
+
+With both on `redis`, sessions and cache run on the **same** Valkey instance but on **separate Redis logical databases** — so they never collide and a `cache:clear` never touches sessions:
+
+| Backend | Laravel redis connection | Logical DB | Database env (default) |
+|---|---|---|---|
+| Cache (`cache.store: redis`) | `cache` | **DB 1** | `REDIS_CACHE_DB` (1) |
+| Sessions (`session.driver: redis`) | `default` | **DB 0** | `REDIS_DB` (0) |
+
+You get this with no dedicated session connection because three stock Laravel defaults stack:
+
+1. `config/database.php` ships two redis connections out of the box — `default` (database `REDIS_DB`, default 0) and `cache` (database `REDIS_CACHE_DB`, default 1).
+2. `config/cache.php`'s `redis` store uses the `cache` connection → DB 1.
+3. The redis **session** handler routes by `session.connection`, *not* the cache store's connection: `SessionManager::createRedisDriver()` resolves the `redis` cache store and then **overrides** its connection with `config('session.connection')`. With `SESSION_CONNECTION` unset that's `null`, which Laravel's redis manager resolves to the `default` connection → DB 0.
+
+That's why YOLO injects `SESSION_DRIVER=redis` **only** and deliberately leaves `SESSION_CONNECTION` unset — and it relies on **cluster-mode-disabled** Valkey (the YOLO default), since logical databases don't exist in cluster mode.
+
+::: warning The split is inherited from your app's config, not enforced by YOLO
+YOLO injects `REDIS_HOST` / `REDIS_PORT` / `REDIS_PREFIX` but **not** `REDIS_DB`, `REDIS_CACHE_DB`, or `SESSION_CONNECTION` — the DB-0/DB-1 separation comes entirely from stock `config/database.php` + `config/cache.php`. If your app has dropped the `cache` connection, pointed both connections at the same database, or set `REDIS_DB`/`REDIS_CACHE_DB` to the same value, sessions and cache collapse onto one keyspace and a `cache:clear` will flush live sessions. Keep the two stock connections — or set `SESSION_CONNECTION` to a dedicated connection if you want sessions on a specific DB.
+:::
 
 ### Cache high availability
 
-The single cache node is a sound default — a node loss flushes the cache (it repopulates from source) and, on `redis` sessions, logs users out; both are rare and low-stakes for most apps. If you need graceful degradation **without** paying for a replica, use Laravel's first-party [`failover` cache store](https://laravel.com/docs/cache#cache-failover) (`CACHE_STORE=failover`, `stores: ['redis', 'database']`) — it falls through when the node is unreachable.
+The single cache node is a sound default — a node loss flushes the cache (it repopulates from source) and, since sessions ride the same Valkey cluster, logs users out; both are rare and low-stakes for most apps. If you need session durability across a node loss, add a Multi-AZ replica to the cluster (`IncreaseReplicaCount` + automatic failover) — a follow-up, not the default. If you only need graceful **cache** degradation without paying for a replica, use Laravel's first-party [`failover` cache store](https://laravel.com/docs/cache#cache-failover) (`CACHE_STORE=failover`, `stores: ['redis', 'database']`) — it falls through when the node is unreachable.
 
 ::: warning Failover isn't write-back
-Writes that land in the fallback store during an outage are **not** synced back to Valkey when it recovers, so it's a degradation cushion, not a replica. For sessions that must survive a node loss, use the `dynamodb` driver instead.
+Writes that land in the fallback store during an outage are **not** synced back to Valkey when it recovers, so it's a degradation cushion, not a replica. It also only covers the **cache** store — sessions on the redis driver still depend on the node being up, so for session HA add a Multi-AZ replica rather than relying on failover.
 :::
 
 ## Auditing what's deployed

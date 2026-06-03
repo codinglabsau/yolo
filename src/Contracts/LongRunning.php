@@ -4,9 +4,9 @@ namespace Codinglabs\Yolo\Contracts;
 
 /**
  * Marks a step whose work is a slow AWS provision — a fresh ElastiCache
- * replication group takes 5–15 minutes, a DynamoDB table tens of seconds, a
- * deploy task runs migrations. Such steps block inside an AWS waiter, which
- * would otherwise freeze the progress bar at its last frame and read as hung.
+ * replication group takes 5–15 minutes, a deploy task runs migrations. Such
+ * steps block inside an AWS waiter, which would otherwise freeze the progress
+ * bar at its last frame and read as hung.
  *
  * The stepped-command runner gives a LongRunning step special treatment: it
  * shows the patience message up front and ticks an elapsed-time heartbeat on
