@@ -90,8 +90,29 @@ Scaling is a deliberate vertical resize (a brief ~60s endpoint blip, data retain
 
 A web app defaults to [`session.driver: redis`](/reference/manifest#session); set the key to override. YOLO provisions only what the chosen driver needs:
 
-- **`redis`** (default) — reuses the Valkey cache (needs `cache.store: redis`, the web-app default — YOLO hard-fails if you opt the cache out without re-pinning the session driver). Sessions land on Laravel's stock `default` redis connection (**DB 0**), separate from the cache connection (**DB 1**): same Valkey instance, different keyspace, so `cache:clear` never wipes sessions. YOLO injects `SESSION_DRIVER=redis` only — `SESSION_CONNECTION` is deliberately left unset so the null connection resolves to `default`. This relies on cluster-mode-disabled Valkey (the YOLO default), where logical databases exist. Strong read-after-write consistency (~1&nbsp;ms) means a freshly written session is readable immediately. The single node has no session HA — a node loss logs users out.
+- **`redis`** (default) — reuses the Valkey cache (needs `cache.store: redis`, the web-app default; YOLO hard-fails if you opt the cache out without re-pinning the session driver). YOLO injects `SESSION_DRIVER=redis` only. Strong read-after-write consistency (~1&nbsp;ms) means a freshly written session is readable immediately — no stale-read flicker right after login. The single node has no session HA — a node loss logs users out.
 - **`database` / `cookie` / `file`** — no infrastructure; YOLO just pins `SESSION_DRIVER`.
+
+#### Sessions and cache share the node, not the keyspace
+
+With both on `redis`, sessions and cache run on the **same** Valkey instance but on **separate Redis logical databases** — so they never collide and a `cache:clear` never touches sessions:
+
+| Backend | Laravel redis connection | Logical DB | Database env (default) |
+|---|---|---|---|
+| Cache (`cache.store: redis`) | `cache` | **DB 1** | `REDIS_CACHE_DB` (1) |
+| Sessions (`session.driver: redis`) | `default` | **DB 0** | `REDIS_DB` (0) |
+
+You get this with no dedicated session connection because three stock Laravel defaults stack:
+
+1. `config/database.php` ships two redis connections out of the box — `default` (database `REDIS_DB`, default 0) and `cache` (database `REDIS_CACHE_DB`, default 1).
+2. `config/cache.php`'s `redis` store uses the `cache` connection → DB 1.
+3. The redis **session** handler routes by `session.connection`, *not* the cache store's connection: `SessionManager::createRedisDriver()` resolves the `redis` cache store and then **overrides** its connection with `config('session.connection')`. With `SESSION_CONNECTION` unset that's `null`, which Laravel's redis manager resolves to the `default` connection → DB 0.
+
+That's why YOLO injects `SESSION_DRIVER=redis` **only** and deliberately leaves `SESSION_CONNECTION` unset — and it relies on **cluster-mode-disabled** Valkey (the YOLO default), since logical databases don't exist in cluster mode.
+
+::: warning The split is inherited from your app's config, not enforced by YOLO
+YOLO injects `REDIS_HOST` / `REDIS_PORT` / `REDIS_PREFIX` but **not** `REDIS_DB`, `REDIS_CACHE_DB`, or `SESSION_CONNECTION` — the DB-0/DB-1 separation comes entirely from stock `config/database.php` + `config/cache.php`. If your app has dropped the `cache` connection, pointed both connections at the same database, or set `REDIS_DB`/`REDIS_CACHE_DB` to the same value, sessions and cache collapse onto one keyspace and a `cache:clear` will flush live sessions. Keep the two stock connections — or set `SESSION_CONNECTION` to a dedicated connection if you want sessions on a specific DB.
+:::
 
 ### Cache high availability
 
