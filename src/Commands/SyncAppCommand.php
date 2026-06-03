@@ -48,8 +48,7 @@ class SyncAppCommand extends SyncSteppedCommand
             return null;
         }
 
-        return 'Autoscaling a bundled web+scheduler task: every scheduled task must use ->onOneServer() so it does not run on each replica. '
-            . 'If a bundled cluster cannot scale cleanly, separate the scheduler into its own service.';
+        return 'Autoscaling a bundled web+scheduler task: every scheduled task must use ->onOneServer() so it does not run on each replica.';
     }
 
     public function scopes(): array

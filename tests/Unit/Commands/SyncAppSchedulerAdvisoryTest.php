@@ -22,7 +22,7 @@ it('gives no advisory when the scheduler is not bundled', function () {
     expect(SyncAppCommand::schedulerAdvisory())->toBeNull();
 });
 
-it('advises onOneServer and service separation when autoscaling a bundled scheduler', function () {
+it('advises onOneServer when autoscaling a bundled scheduler', function () {
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',
@@ -30,6 +30,5 @@ it('advises onOneServer and service separation when autoscaling a bundled schedu
     ]);
 
     expect(SyncAppCommand::schedulerAdvisory())
-        ->toContain('onOneServer()')
-        ->toContain('separate the scheduler into its own service');
+        ->toContain('onOneServer()');
 });
