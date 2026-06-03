@@ -182,7 +182,7 @@ class Audit
 
                 return [
                     'arn' => $resource['ResourceARN'],
-                    'scope' => static::scope($parsed, $tags),
+                    'scope' => static::scope($tags),
                     'type' => static::type($parsed),
                     'name' => $tags[self::NAME_TAG] ?? $parsed?->resourceId ?? $resource['ResourceARN'],
                     'app' => $app,
@@ -200,34 +200,21 @@ class Audit
     }
 
     /**
-     * Ownership scope of a resource — account / env / app — mirroring the
-     * `Enums\Scope` a resource declares in code. Reads the explicit `yolo:scope`
-     * tag stamped by sync; falls back to inference for resources synced before
-     * the tag rollout (a `yolo:app` tag means app-scope; the GitHub OIDC provider
-     * is account-scope; everything else yolo-tagged is env-shared infra).
+     * Ownership scope of a resource — account / env / app — read straight from
+     * the `yolo:scope` tag that sync stamps on everything it creates (via
+     * `ResolvesTags`, for every scope including the account-global OIDC provider).
+     * A resource with no `yolo:scope` tag isn't YOLO-scoped — it's an unexpected,
+     * unowned resource — so it's bucketed under `env` for display.
      *
      * @param  array<string, string>  $tags
      */
-    public static function scope(?Arn $arn, array $tags): string
+    public static function scope(array $tags): string
     {
         $scope = $tags[self::SCOPE_TAG] ?? null;
 
-        return match (true) {
-            in_array($scope, [self::SCOPE_ACCOUNT, self::SCOPE_ENV, self::SCOPE_APP], true) => $scope,
-            isset($tags[self::APP_TAG]) => self::SCOPE_APP,
-            static::isAccountGlobal($arn) => self::SCOPE_ACCOUNT,
-            default => self::SCOPE_ENV,
-        };
-    }
-
-    /**
-     * Account-global resources carry no env/app scoping. Today the only one YOLO
-     * provisions is the GitHub OIDC identity provider (one per account, shared by
-     * every environment).
-     */
-    protected static function isAccountGlobal(?Arn $arn): bool
-    {
-        return $arn !== null && $arn->service === 'iam' && $arn->resourceType === 'oidc-provider';
+        return in_array($scope, [self::SCOPE_ACCOUNT, self::SCOPE_ENV, self::SCOPE_APP], true)
+            ? $scope
+            : self::SCOPE_ENV;
     }
 
     /**
