@@ -14,7 +14,7 @@ it('drops the legacy --app option from the audit command', function () {
     $definition = (new AuditCommand())->getDefinition();
 
     expect($definition->hasOption('app'))->toBeFalse()
-        ->and($definition->hasOption('drift'))->toBeTrue()
+        ->and($definition->hasOption('unexpected'))->toBeTrue()
         ->and($definition->hasArgument('environment'))->toBeTrue();
 });
 
@@ -25,11 +25,11 @@ it('takes app as a required positional argument on audit:app', function () {
         ->and($definition->hasArgument('app'))->toBeTrue()
         ->and($definition->getArgument('app')->isRequired())->toBeTrue()
         ->and($definition->hasOption('app'))->toBeFalse()
-        ->and($definition->hasOption('drift'))->toBeTrue();
+        ->and($definition->hasOption('unexpected'))->toBeTrue();
 });
 
-it('exposes --drift consistently across all three audit verbs', function () {
-    expect((new AuditCommand())->getDefinition()->hasOption('drift'))->toBeTrue()
-        ->and((new AuditEnvironmentCommand())->getDefinition()->hasOption('drift'))->toBeTrue()
-        ->and((new AuditAppCommand())->getDefinition()->hasOption('drift'))->toBeTrue();
+it('exposes --unexpected consistently across all three audit verbs', function () {
+    expect((new AuditCommand())->getDefinition()->hasOption('unexpected'))->toBeTrue()
+        ->and((new AuditEnvironmentCommand())->getDefinition()->hasOption('unexpected'))->toBeTrue()
+        ->and((new AuditAppCommand())->getDefinition()->hasOption('unexpected'))->toBeTrue();
 });
