@@ -415,10 +415,10 @@ class Dashboard
                 'period' => 60,
                 'yAxis' => ['left' => ['showUnits' => false]],
                 'metrics' => [
-                    ['AWS/ApplicationELB', 'TargetResponseTime', 'LoadBalancer', $alb, ['label' => '2-5s', 'stat' => 'TS(2:5)', 'color' => '#98df8a']],
-                    ['AWS/ApplicationELB', 'TargetResponseTime', 'LoadBalancer', $alb, ['label' => '5-10s', 'stat' => 'TS(5:10)', 'color' => static::ORANGE]],
-                    ['AWS/ApplicationELB', 'TargetResponseTime', 'LoadBalancer', $alb, ['label' => '10-30s', 'stat' => 'TS(10:30)', 'color' => static::RED]],
-                    ['AWS/ApplicationELB', 'TargetResponseTime', 'LoadBalancer', $alb, ['label' => '> 30s', 'stat' => 'TS(30:60)', 'color' => static::PURPLE]],
+                    ['AWS/ApplicationELB', 'TargetResponseTime', 'LoadBalancer', $alb, ['label' => '2-5s', 'stat' => 'TC(2:5)', 'color' => '#98df8a']],
+                    ['AWS/ApplicationELB', 'TargetResponseTime', 'LoadBalancer', $alb, ['label' => '5-10s', 'stat' => 'TC(5:10)', 'color' => static::ORANGE]],
+                    ['AWS/ApplicationELB', 'TargetResponseTime', 'LoadBalancer', $alb, ['label' => '10-30s', 'stat' => 'TC(10:30)', 'color' => static::RED]],
+                    ['AWS/ApplicationELB', 'TargetResponseTime', 'LoadBalancer', $alb, ['label' => '> 30s', 'stat' => 'TC(30:60)', 'color' => static::PURPLE]],
                 ],
             ]);
 
