@@ -36,7 +36,7 @@ class CheckSsrRuntimeStep implements Step
     public function __invoke(): StepResult
     {
         if (! Manifest::bundles('ssr')) {
-            return StepResult::SUCCESS;
+            return StepResult::SKIPPED;
         }
 
         $dockerfile = Paths::base('Dockerfile');

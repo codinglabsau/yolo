@@ -25,14 +25,14 @@ afterEach(function () {
     is_file(Paths::base('Dockerfile')) && unlink(Paths::base('Dockerfile'));
 });
 
-it('passes without reading the Dockerfile when ssr is off', function () {
+it('skips without reading the Dockerfile when ssr is off', function () {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => []],
     ]);
 
     // No Dockerfile on disk — proof the step short-circuits before touching it.
-    expect((new CheckSsrRuntimeStep('testing'))())->toBe(StepResult::SUCCESS);
+    expect((new CheckSsrRuntimeStep('testing'))())->toBe(StepResult::SKIPPED);
 });
 
 it('passes when the Dockerfile installs a Node runtime', function (string $dockerfile) {
