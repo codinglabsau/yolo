@@ -71,4 +71,41 @@ class ApplicationAutoScaling
 
         throw new ResourceDoesNotExistException("Could not find scaling policy $policyName");
     }
+
+    /**
+     * Every scaling policy name registered on an ECS service resource id — an
+     * empty list when none are (or the target is gone). A sync step diffs this
+     * live set against the desired set to find policies to prune.
+     *
+     * @return array<int, string>
+     */
+    public static function policyNames(string $resourceId): array
+    {
+        try {
+            $policies = Aws::applicationAutoScaling()->describeScalingPolicies([
+                'ServiceNamespace' => self::SERVICE_NAMESPACE,
+                'ResourceId' => $resourceId,
+                'ScalableDimension' => self::SCALABLE_DIMENSION,
+            ])['ScalingPolicies'];
+        } catch (AwsException) {
+            return [];
+        }
+
+        return array_map(fn ($policy) => $policy['PolicyName'], $policies);
+    }
+
+    /**
+     * Delete a target-tracking scaling policy. Application Auto Scaling cascades
+     * the delete to the scale-out / scale-in CloudWatch alarms it generated for
+     * the policy, so this removes the policy and its alarms in one call.
+     */
+    public static function deleteScalingPolicy(string $resourceId, string $policyName): void
+    {
+        Aws::applicationAutoScaling()->deleteScalingPolicy([
+            'ServiceNamespace' => self::SERVICE_NAMESPACE,
+            'ResourceId' => $resourceId,
+            'ScalableDimension' => self::SCALABLE_DIMENSION,
+            'PolicyName' => $policyName,
+        ]);
+    }
 }

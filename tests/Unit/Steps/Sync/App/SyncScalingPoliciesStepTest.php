@@ -1,8 +1,29 @@
 <?php
 
 use Aws\Result;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Steps\Sync\App\SyncScalingPoliciesStep;
+
+/**
+ * A live CPU policy whose config matches the manifest default, so it reports no
+ * drift and the loop neither creates nor syncs it — leaving the prune as the only
+ * action under test.
+ *
+ * @return array<string, mixed>
+ */
+function matchingCpuPolicy(string $name): array
+{
+    return [
+        'PolicyName' => $name,
+        'TargetTrackingScalingPolicyConfiguration' => [
+            'TargetValue' => 65.0,
+            'PredefinedMetricSpecification' => ['PredefinedMetricType' => 'ECSServiceAverageCPUUtilization'],
+            'ScaleOutCooldown' => 60,
+            'ScaleInCooldown' => 300,
+        ],
+    ];
+}
 
 beforeEach(function () {
     writeManifest([
@@ -122,4 +143,85 @@ it('puts the request-count policy with its ResourceLabel when applying', functio
     $requestCount = $puts->first(fn ($call) => $call['args']['TargetTrackingScalingPolicyConfiguration']['PredefinedMetricSpecification']['PredefinedMetricType'] === 'ALBRequestCountPerTarget');
     expect($requestCount['args']['TargetTrackingScalingPolicyConfiguration']['PredefinedMetricSpecification']['ResourceLabel'])
         ->toBe('app/yolo-testing/abc123/targetgroup/yolo-testing-my-app/def456');
+});
+
+it('skips entirely when autoscaling is removed from the manifest', function () {
+    writeManifest([
+        'account-id' => '111111111111',
+        'region' => 'ap-southeast-2',
+        'tasks' => ['web' => []],
+    ]);
+
+    $aa = [];
+    bindMockApplicationAutoScalingClient([], $aa);
+
+    expect((new SyncScalingPoliciesStep())([]))->toBe(StepResult::SKIPPED);
+    expect($aa)->toBeEmpty();
+});
+
+it('prunes a live policy the manifest no longer wants (request-count removed)', function () {
+    // beforeEach manifest has the autoscaling block but no request-count → CPU is
+    // the only desired policy, so a live request-count policy is an orphan.
+    $cpu = Helpers::keyedResourceName('cpu-scaling-policy');
+    $requestCount = Helpers::keyedResourceName('request-count-scaling-policy');
+
+    $ecs = [];
+    $aa = [];
+    bindRoutedEcsClient(['DescribeServices' => new Result(['services' => [['status' => 'ACTIVE', 'serviceArn' => 'arn']]])], $ecs);
+    bindMockApplicationAutoScalingClient([
+        'DescribeScalingPolicies' => new Result(['ScalingPolicies' => [matchingCpuPolicy($cpu), ['PolicyName' => $requestCount]]]),
+        'DeleteScalingPolicy' => new Result([]),
+    ], $aa);
+
+    expect((new SyncScalingPoliciesStep())([]))->toBe(StepResult::DELETED);
+
+    $delete = collect($aa)->firstWhere('name', 'DeleteScalingPolicy');
+    expect($delete)->not->toBeNull();
+    expect($delete['args']['PolicyName'])->toBe($requestCount);
+});
+
+it('would-prune on a dry-run without deleting', function () {
+    $cpu = Helpers::keyedResourceName('cpu-scaling-policy');
+    $requestCount = Helpers::keyedResourceName('request-count-scaling-policy');
+
+    $ecs = [];
+    $aa = [];
+    bindRoutedEcsClient(['DescribeServices' => new Result(['services' => [['status' => 'ACTIVE', 'serviceArn' => 'arn']]])], $ecs);
+    bindMockApplicationAutoScalingClient([
+        'DescribeScalingPolicies' => new Result(['ScalingPolicies' => [matchingCpuPolicy($cpu), ['PolicyName' => $requestCount]]]),
+        'DeleteScalingPolicy' => new Result([]),
+    ], $aa);
+
+    expect((new SyncScalingPoliciesStep())(['dry-run' => true]))->toBe(StepResult::WOULD_DELETE);
+    expect(collect($aa)->pluck('name'))->not->toContain('DeleteScalingPolicy');
+});
+
+it('does not prune the request-count policy when it is only deferred (ALB/TG unresolved)', function () {
+    writeManifest([
+        'account-id' => '111111111111',
+        'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => ['cpu-utilization' => 65, 'request-count-per-target' => 1000]]],
+    ]);
+
+    $cpu = Helpers::keyedResourceName('cpu-scaling-policy');
+    $requestCount = Helpers::keyedResourceName('request-count-scaling-policy');
+
+    $ecs = [];
+    $aa = [];
+    $elb = [];
+    bindRoutedEcsClient(['DescribeServices' => new Result(['services' => [['status' => 'ACTIVE', 'serviceArn' => 'arn']]])], $ecs);
+    // ALB / target group don't resolve → request-count is deferred, not removed:
+    // desiredPolicyNames() still wants it, so it must NOT be pruned.
+    bindRoutedElbV2Client([
+        'DescribeLoadBalancers' => new Result(['LoadBalancers' => []]),
+        'DescribeTargetGroups' => new Result(['TargetGroups' => []]),
+    ], $elb);
+    bindMockApplicationAutoScalingClient([
+        'DescribeScalingPolicies' => new Result(['ScalingPolicies' => [matchingCpuPolicy($cpu), ['PolicyName' => $requestCount]]]),
+        'DeleteScalingPolicy' => new Result([]),
+    ], $aa);
+
+    (new SyncScalingPoliciesStep())([]);
+
+    expect(collect($aa)->pluck('name'))->not->toContain('DeleteScalingPolicy');
 });

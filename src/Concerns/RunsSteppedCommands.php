@@ -124,9 +124,9 @@ trait RunsSteppedCommands
     /**
      * Did the plan pass flag this step as having work for apply to do?
      *
-     * A step has pending work when it would create or sync a resource, or when it
-     * recorded an attribute-level Change. Everything else — clean SYNCED, SKIPPED,
-     * CUSTOM_MANAGED — is dropped before apply.
+     * A step has pending work when it would create, sync or delete a resource, or
+     * when it recorded an attribute-level Change. Everything else — clean SYNCED,
+     * SKIPPED, CUSTOM_MANAGED — is dropped before apply.
      *
      * @param  array{status: StepResult|string, changes: array<int, Change>}  $entry
      */
@@ -134,6 +134,7 @@ trait RunsSteppedCommands
     {
         return $entry['status'] === StepResult::WOULD_CREATE
             || $entry['status'] === StepResult::WOULD_SYNC
+            || $entry['status'] === StepResult::WOULD_DELETE
             || $entry['changes'] !== [];
     }
 
@@ -604,12 +605,14 @@ trait RunsSteppedCommands
             StepResult::CREATED => '<fg=green>CREATED</>',
             StepResult::SUCCESS => '<fg=green>SUCCESS</>',
             StepResult::SYNCED => '<fg=green>SYNCED</>',
+            StepResult::DELETED => '<fg=green>DELETED</>',
 
             // yellow
             StepResult::SKIPPED => '<fg=yellow>SKIPPED</>',
             StepResult::CUSTOM_MANAGED => '<fg=yellow>CUSTOM MANAGED</>',
             StepResult::WOULD_CREATE => '<fg=yellow>WOULD CREATE</>',
             StepResult::WOULD_SYNC => '<fg=yellow>WOULD SYNC</>',
+            StepResult::WOULD_DELETE => '<fg=yellow>WOULD DELETE</>',
 
             // red
             StepResult::MANIFEST_INVALID => '<fg=red>MANIFEST INVALID</>',

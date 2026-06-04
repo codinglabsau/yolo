@@ -2,8 +2,10 @@
 
 namespace Codinglabs\Yolo\Steps\Sync\App;
 
+use Codinglabs\Yolo\Change;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
@@ -16,8 +18,10 @@ use function Laravel\Prompts\warning;
  * Registers and reconciles the web service's Application Auto Scaling scalable
  * target — the min/max desired-count bounds the policies move within. The
  * manifest is the source of truth (tasks.web.autoscaling.min/max), reconciled
- * to live on every sync. Only wired into sync:app when a tasks.web.autoscaling
- * block is present, so a fixed app keeps its single create-only task.
+ * to live on every sync. Wired into sync:app whenever the web task exists (not
+ * only when autoscaling is on) so removing the block can tear the target down;
+ * with no block and nothing registered it no-ops, leaving a fixed app's single
+ * create-only task untouched.
  *
  * Reductions are surfaced as Changes and gated by the normal plan → confirm flow,
  * EXCEPT under --force / non-interactive: there the step refuses to lower a live
@@ -25,6 +29,12 @@ use function Laravel\Prompts\warning;
  * down. Lowering capacity must be a deliberate, attended act — an interactive
  * `yolo sync` (the operator sees the reduction in the plan and confirms) or
  * `yolo scale`. Raises always apply.
+ *
+ * When the autoscaling block is removed from the manifest the step deregisters
+ * the scalable target — Application Auto Scaling cascades the delete to every
+ * scaling policy on it and the alarms those policies generated. The ECS service
+ * reverts to a fixed task count, frozen at its current live count (deregister
+ * doesn't drop tasks); lower it with `yolo scale` if needed.
  *
  * Skips on a greenfield first sync when the ECS service doesn't exist yet.
  */
@@ -41,6 +51,20 @@ class SyncScalableTargetStep implements Step
         $dryRun = (bool) Arr::get($options, 'dry-run');
         $target = new ScalableTarget();
         $live = $target->current();
+
+        if (! Manifest::has('tasks.web.autoscaling')) {
+            if ($live === null) {
+                return StepResult::SKIPPED;
+            }
+
+            $this->recordChanges([Change::make('web autoscaling', sprintf('%d-%d', $live['min'], $live['max']), null)]);
+
+            if (! $dryRun) {
+                $target->deregister();
+            }
+
+            return $dryRun ? StepResult::WOULD_DELETE : StepResult::DELETED;
+        }
 
         if (! $dryRun && static::wouldReduce($target, $live) && static::unattended($options)) {
             warning(sprintf(
