@@ -14,10 +14,18 @@ namespace Codinglabs\Yolo;
  */
 class ProcessCommands
 {
+    /**
+     * The web process. `octane:start` is the server-agnostic launcher — it boots
+     * whichever Octane server OCTANE_SERVER names (YOLO injects frankenphp by
+     * default, matching the scaffolded Dockerfile's base image). Using the generic
+     * command rather than the dedicated octane:frankenphp keeps the configured
+     * server the single source of truth, so config('octane.server') can never
+     * disagree with the server actually running.
+     */
     public static function octane(): string
     {
         return sprintf(
-            'php artisan octane:frankenphp --host=0.0.0.0 --port=%d',
+            'php artisan octane:start --host=0.0.0.0 --port=%d',
             (int) Manifest::get('tasks.web.port', 8000),
         );
     }

@@ -29,7 +29,7 @@ it('always runs octane on the manifest port', function () {
     $config = generatedSupervisorConfig();
 
     expect($config)->toContain('[program:octane]');
-    expect($config)->toContain('command=php artisan octane:frankenphp --host=0.0.0.0 --port=9000');
+    expect($config)->toContain('command=php artisan octane:start --host=0.0.0.0 --port=9000');
 });
 
 it('defaults the octane port to 8000', function () {

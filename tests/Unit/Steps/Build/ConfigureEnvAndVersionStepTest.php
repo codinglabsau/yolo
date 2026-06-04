@@ -201,6 +201,39 @@ it('defaults a web app to the shared redis cache and redis sessions when neither
     expect($env)->not->toContain('SESSION_CONNECTION');
 });
 
+it('defaults OCTANE_SERVER to frankenphp for a web app', function () {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => []],
+    ]);
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    expect(file_get_contents(Paths::build('.env.testing')))->toContain('OCTANE_SERVER=frankenphp');
+});
+
+it('does not inject OCTANE_SERVER for a non-web app', function () {
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    expect(file_get_contents(Paths::build('.env.testing')))->not->toContain('OCTANE_SERVER=');
+});
+
+it('respects an OCTANE_SERVER already set in the .env (overridable for a different Octane server)', function () {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => []],
+    ]);
+
+    file_put_contents(Paths::build('.env.testing'), "OCTANE_SERVER=swoole\n");
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('OCTANE_SERVER=swoole');
+    expect($env)->not->toContain('OCTANE_SERVER=frankenphp');
+});
+
 it('pins SESSION_DRIVER from the manifest', function () {
     rebuildEnvFixture([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
