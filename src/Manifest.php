@@ -34,12 +34,11 @@ class Manifest
         'sqs.depth-alarm-threshold', 'sqs.depth-alarm-period', 'sqs.depth-alarm-evaluation-periods',
         'cache.store',
         'session.driver',
-        // tasks.web has a fixed, known shape, so every key is listed explicitly: a
-        // mistyped or removed key (e.g. the old tasks.web.queue / tasks.web.scheduler
-        // bundling flags, now derived from task presence) hard-fails as unrecognised
-        // rather than being silently ignored. health-check / autoscaling / the ssr
-        // object form are the only nested subtrees. The standalone tasks.queue /
-        // tasks.scheduler service blocks stay free-form.
+        // Each task group has a fixed, known shape, so every key is listed
+        // explicitly: an unrecognised key under tasks.web / tasks.queue /
+        // tasks.scheduler hard-fails rather than being silently accepted by a
+        // wildcard. health-check / autoscaling / the ssr object form are the only
+        // nested subtrees.
         'tasks.web',
         'tasks.web.port', 'tasks.web.cpu', 'tasks.web.memory', 'tasks.web.platform',
         'tasks.web.enable-execute-command', 'tasks.web.shutdown-grace-period',
@@ -47,7 +46,13 @@ class Manifest
         'tasks.web.execution-role', 'tasks.web.task-role',
         'tasks.web.ssr', 'tasks.web.ssr.*',
         'tasks.web.health-check.*', 'tasks.web.autoscaling.*',
-        'tasks.queue.*', 'tasks.scheduler.*',
+        'tasks.queue',
+        'tasks.queue.min', 'tasks.queue.max', 'tasks.queue.backlog-per-task',
+        'tasks.queue.cpu', 'tasks.queue.memory', 'tasks.queue.spot',
+        'tasks.queue.shutdown-grace-period', 'tasks.queue.enable-execute-command',
+        'tasks.scheduler',
+        'tasks.scheduler.cpu', 'tasks.scheduler.memory',
+        'tasks.scheduler.shutdown-grace-period', 'tasks.scheduler.enable-execute-command',
         'build', 'deploy', 'deploy-all',
     ];
 

@@ -138,38 +138,38 @@ it('accepts session.driver redis when cache.store is redis', function () {
     expect(invokeManifestIntegrity())->toBeTrue();
 });
 
-it('bails on the removed tasks.web.queue bundling flag (now derived from task presence)', function () {
+it('accepts the known shape of every task group', function () {
     writeManifest([
         'account-id' => '848509375702', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['queue' => true]],
-    ]);
-
-    expect(invokeManifestIntegrity())->toBeFalse();
-    expect(test()->promptOutput->fetch())->toContain('tasks.web.queue');
-});
-
-it('bails on the removed tasks.web.scheduler bundling flag', function () {
-    writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['scheduler' => true]],
-    ]);
-
-    expect(invokeManifestIntegrity())->toBeFalse();
-    expect(test()->promptOutput->fetch())->toContain('tasks.web.scheduler');
-});
-
-it('accepts the known tasks.web keys', function () {
-    writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [
-            'port' => 8000, 'cpu' => '512', 'memory' => '1024',
-            'enable-execute-command' => true, 'ssr' => true,
-            'health-check' => ['timeout' => 8],
-            'autoscaling' => ['min' => 1, 'max' => 4],
-        ]],
+        'tasks' => [
+            'web' => [
+                'port' => 8000, 'cpu' => '512', 'memory' => '1024', 'platform' => 'linux/amd64',
+                'enable-execute-command' => true, 'shutdown-grace-period' => 10, 'ssr' => true,
+                'health-check' => ['timeout' => 8], 'autoscaling' => ['min' => 1, 'max' => 4],
+            ],
+            'queue' => [
+                'min' => 1, 'max' => 10, 'backlog-per-task' => 100, 'cpu' => '256',
+                'memory' => '512', 'spot' => true, 'shutdown-grace-period' => 70,
+                'enable-execute-command' => false,
+            ],
+            'scheduler' => [
+                'cpu' => '256', 'memory' => '512', 'shutdown-grace-period' => 10,
+                'enable-execute-command' => false,
+            ],
+        ],
     ]);
 
     expect(invokeManifestIntegrity())->toBeTrue();
+});
+
+it('bails on an unrecognised key inside a task group', function () {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['nonsense' => true]],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+    expect(test()->promptOutput->fetch())->toContain('tasks.web.nonsense');
 });
 
 it('bails when the scheduler rides a queue explicitly set to scale to zero', function () {
