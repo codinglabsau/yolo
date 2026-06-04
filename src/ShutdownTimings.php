@@ -5,22 +5,22 @@ namespace Codinglabs\Yolo;
 use Codinglabs\Yolo\Enums\ServerGroup;
 
 /**
- * One source of truth for how a container shuts down, so supervisord's
+ * One source of truth for how each container shuts down, so supervisord's
  * per-program stop waits and ECS's stopTimeout can't drift apart.
  *
- * Each process shares one key — `shutdown-grace-period`: how long it gets to finish work on
- * SIGTERM before being killed. Octane sits behind the ALB, so its grace doubles
- * as the target group's deregistration delay and the entrypoint drain. The queue
- * worker defaults longer (its in-flight job can outlast an ALB drain); the
- * scheduler inherits octane's. Override a process's window by setting shutdown-grace-period,
- * expanding the opt-in flags to objects where needed:
+ * Each process has one knob — `shutdown-grace-period`: how long it gets to finish
+ * work on SIGTERM before being killed. Octane sits behind the ALB, so its grace
+ * doubles as the target group's deregistration delay and the entrypoint drain. The
+ * queue worker defaults longer (its in-flight job can outlast an ALB drain); the
+ * scheduler just needs its current cron tick to finish. Programs are placed by task
+ * presence (Manifest::queueHost / schedulerHost), not flags — so the graces for a
+ * given container follow from which group it is:
  *
  *     tasks:
  *       web:
- *         shutdown-grace-period: 10               # web process; also the ALB drain window
- *         queue:
- *           shutdown-grace-period: 90             # let a long job finish before SIGKILL
- *         scheduler: true
+ *         shutdown-grace-period: 10     # web (octane) process; also the ALB drain window
+ *       queue:
+ *         shutdown-grace-period: 90     # standalone queue worker — let a long job finish
  */
 class ShutdownTimings
 {
@@ -69,87 +69,89 @@ class ShutdownTimings
     }
 
     /**
-     * Enabled supervisord program => its graceful-stop window (seconds). Octane
-     * always runs; ssr, queue and scheduler are opt-in via tasks.web.*.
+     * The standalone queue worker's graceful-stop window. Defaults longer than web
+     * because an in-flight job can outlast an ALB drain. Read from `tasks.queue`
+     * (only present when extracted); a queue bundled in the web container has no
+     * block to override, so it gets the default.
+     */
+    public static function queueGrace(): int
+    {
+        return (int) Manifest::get('tasks.queue.shutdown-grace-period', static::QUEUE_DEFAULT_GRACE);
+    }
+
+    /**
+     * The scheduler's graceful-stop window — just long enough to wait out an
+     * in-flight schedule:run tick. Read from `tasks.scheduler` (only present when
+     * extracted); a bundled scheduler gets the default.
+     */
+    public static function schedulerGrace(): int
+    {
+        return (int) Manifest::get('tasks.scheduler.shutdown-grace-period', static::SCHEDULER_DEFAULT_GRACE);
+    }
+
+    /**
+     * The bundled SSR renderer's graceful-stop window (the object form of
+     * `tasks.web.ssr` can override it). SSR is always bundled in the web container.
+     */
+    public static function ssrGrace(): int
+    {
+        $value = Manifest::get('tasks.web.ssr');
+
+        return is_array($value) ? (int) ($value['shutdown-grace-period'] ?? static::SSR_DEFAULT_GRACE) : static::SSR_DEFAULT_GRACE;
+    }
+
+    /**
+     * The supervisord programs that run in a given container => each one's
+     * graceful-stop window. Placement is by task presence, not flags: octane and
+     * (when enabled) ssr are always web; the queue worker and the scheduler ride
+     * whichever container hosts them (Manifest::queueHost / schedulerHost). Every
+     * app runs all three roles somewhere, so a plain web app's web container runs
+     * octane + queue + scheduler.
      *
      * @return array<string, int>
      */
-    public static function programGraces(): array
+    public static function programGraces(ServerGroup $group = ServerGroup::WEB): array
     {
-        $graces = ['octane' => static::webGrace()];
-
-        if (static::enabled('ssr')) {
-            $graces['ssr'] = static::grace('ssr', static::SSR_DEFAULT_GRACE);
-        }
-
-        if (static::enabled('queue')) {
-            $graces['queue'] = static::grace('queue', static::QUEUE_DEFAULT_GRACE);
-        }
-
-        if (static::enabled('scheduler')) {
-            $graces['scheduler'] = static::grace('scheduler', static::webGrace());
-        }
-
-        return $graces;
-    }
-
-    /**
-     * The ECS SIGKILL ceiling: long enough to cover the drain plus the slowest
-     * program's graceful stop (they stop in parallel once the drain forwards the
-     * signal), with buffer, but never past Fargate's 120s limit.
-     */
-    public static function stopTimeout(): int
-    {
-        return min(
-            static::drain() + max(static::programGraces()) + static::STOP_TIMEOUT_BUFFER,
-            static::MAX_STOP_TIMEOUT,
-        );
-    }
-
-    /**
-     * The graceful-stop window for a standalone service's sole process, read from
-     * its own task block (`tasks.{group}.shutdown-grace-period`). The queue worker
-     * defaults longer (an in-flight job can run a while); the scheduler just needs
-     * its current cron tick to finish.
-     */
-    public static function standaloneGrace(ServerGroup $group): int
-    {
-        return match ($group) {
-            ServerGroup::WEB => static::webGrace(),
-            ServerGroup::QUEUE => (int) Manifest::get('tasks.queue.shutdown-grace-period', static::QUEUE_DEFAULT_GRACE),
-            ServerGroup::SCHEDULER => (int) Manifest::get('tasks.scheduler.shutdown-grace-period', static::SCHEDULER_DEFAULT_GRACE),
+        $graces = match ($group) {
+            ServerGroup::WEB => [
+                'octane' => static::webGrace(),
+                'ssr' => Manifest::bundles('ssr') ? static::ssrGrace() : null,
+                'scheduler' => Manifest::schedulerHost() === ServerGroup::WEB ? static::schedulerGrace() : null,
+                'queue' => Manifest::queueHost() === ServerGroup::WEB ? static::queueGrace() : null,
+            ],
+            ServerGroup::QUEUE => [
+                'scheduler' => Manifest::schedulerHost() === ServerGroup::QUEUE ? static::schedulerGrace() : null,
+                'queue' => static::queueGrace(),
+            ],
+            ServerGroup::SCHEDULER => [
+                'scheduler' => static::schedulerGrace(),
+            ],
         };
+
+        return array_filter($graces, fn (?int $grace) => $grace !== null);
     }
 
     /**
-     * ECS's SIGTERM-to-SIGKILL ceiling for a service's task. The web container
-     * bundles several processes behind the ALB drain, so it uses the full
-     * drain-plus-slowest-program calc. A standalone queue/scheduler runs one
-     * process with no ALB to drain, so it just needs its grace plus buffer.
+     * ECS's SIGTERM-to-SIGKILL ceiling for a group's task, with buffer and capped
+     * at Fargate's 120s. The drain runs the scheduler down first (cron halted,
+     * in-flight schedule:run waited out — overlapping the ALB window on web), then
+     * supervisord stops the remaining programs in parallel for the slowest of their
+     * graces. Without a scheduler it's the drain window plus the slowest program.
+     * Only the web container has an ALB drain window; queue/scheduler tasks have no
+     * load balancer to keep serving for.
      */
     public static function stopTimeoutFor(ServerGroup $group): int
     {
-        if ($group === ServerGroup::WEB) {
-            return static::stopTimeout();
+        $graces = static::programGraces($group);
+        $drainWindow = $group === ServerGroup::WEB ? static::drain() : 0;
+
+        if (isset($graces['scheduler'])) {
+            $rest = array_diff_key($graces, ['scheduler' => 0]);
+            $total = max($drainWindow, $graces['scheduler']) + ($rest === [] ? 0 : max($rest));
+        } else {
+            $total = $drainWindow + max($graces);
         }
 
-        return min(static::standaloneGrace($group) + static::STOP_TIMEOUT_BUFFER, static::MAX_STOP_TIMEOUT);
-    }
-
-    protected static function enabled(string $program): bool
-    {
-        // Whether the web container bundles this program — the object form (with
-        // overrides like shutdown-grace-period) means enabled; a bare flag still
-        // goes through strict validation so a typo can't silently disable it.
-        return Manifest::bundles($program);
-    }
-
-    protected static function grace(string $program, int $default): int
-    {
-        $value = Manifest::get("tasks.web.$program");
-
-        return is_array($value)
-            ? (int) ($value['shutdown-grace-period'] ?? $default)
-            : $default;
+        return min($total + static::STOP_TIMEOUT_BUFFER, static::MAX_STOP_TIMEOUT);
     }
 }

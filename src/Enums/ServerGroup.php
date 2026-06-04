@@ -5,8 +5,10 @@ namespace Codinglabs\Yolo\Enums;
 /**
  * The three workloads an app runs. Each can live in its own ECS service +
  * task-definition (`web` always; `queue` / `scheduler` when extracted via a
- * top-level `tasks.queue` / `tasks.scheduler` block), or — for queue/scheduler —
- * bundled inside the web container via `tasks.web.queue` / `tasks.web.scheduler`.
+ * top-level `tasks.queue` / `tasks.scheduler` block). A queue/scheduler that isn't
+ * extracted is bundled into another container, derived from task presence: the
+ * queue worker rides web, and the scheduler rides the standalone queue if there is
+ * one, else web (see Manifest::queueHost / schedulerHost).
  *
  * The enum value doubles as the resource-name suffix (`yolo-{env}-{app}-web`),
  * the task-definition container name, the entrypoint role argument and the

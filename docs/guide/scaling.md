@@ -1,6 +1,6 @@
 # Scaling
 
-By default an app runs as **one Fargate task** doing everything — Octane plus, if enabled, the bundled queue worker and scheduler (`tasks.web.queue` / `tasks.web.scheduler`). That's the cheap floor and fine at low scale. The three workloads have different scaling shapes, though, so each can be **extracted into its own ECS service** that scales independently:
+By default an app runs as **one Fargate task** doing everything — Octane plus the bundled queue worker and scheduler. That's the cheap floor and fine at low scale. The three workloads have different scaling shapes, though, so each can be **extracted into its own ECS service** that scales independently:
 
 | Service | How it scales | Opt in with |
 |---|---|---|
@@ -8,7 +8,7 @@ By default an app runs as **one Fargate task** doing everything — Octane plus,
 | **queue** | backlog-per-task, **scales to zero** | top-level `tasks.queue` |
 | **scheduler** | never — pinned singleton (exactly one task) | top-level `tasks.scheduler` |
 
-Extraction is additive and per-workload: keep the queue bundled but give the scheduler its own service, or any mix. A workload can't be both bundled (`tasks.web.queue`) and extracted (`tasks.queue`) at once — `sync` hard-fails if you configure both.
+Extraction is additive and per-workload: keep the queue bundled but give the scheduler its own service, or any mix. Bundling is derived from presence — there are no `tasks.web.queue` / `tasks.web.scheduler` flags; each workload rides the web container until a top-level `tasks.queue` / `tasks.scheduler` block extracts it. One wrinkle: with only the queue extracted, the scheduler rides that queue container (see [the scheduler](#the-scheduler)).
 
 You can scale the web (and queue) service two ways:
 
@@ -24,8 +24,6 @@ Add a `tasks.web.autoscaling` block to the environment to turn it on:
 ```yaml
 tasks:
   web:
-    queue: true
-    scheduler: true
     autoscaling:
       min: 1
       max: 6
@@ -113,7 +111,7 @@ That makes the choice of *where* the queue lives a latency decision:
 
 | Topology | Idle cost | Pickup latency | Use for |
 |---|---|---|---|
-| Bundled (`tasks.web.queue: true`) | included in web | **instant** (worker always warm) | light, latency-sensitive jobs |
+| Bundled (no `tasks.queue` block) | included in web | **instant** (worker always warm) | light, latency-sensitive jobs |
 | Standalone, `min: 0` | **~$0** | ~30–60s cold start from idle | bursty, latency-tolerant async |
 | Standalone, `min: 1+` | one always-on task | instant, then autoscales | high-volume, always-busy |
 
@@ -125,7 +123,7 @@ The scheduler (`crond` firing `schedule:run` every minute) must run as a **singl
 
 ### 1. `->onOneServer()`
 
-Keep the scheduler bundled in the web container (`tasks.web.scheduler: true`) and add Laravel's [`onOneServer()`](https://laravel.com/docs/scheduling#running-tasks-on-one-server) to **every** scheduled task. It takes an atomic lock in the shared cache so only one replica runs each task per minute:
+Keep the scheduler bundled in its default container (the web container, or the standalone queue if you've extracted one) and add Laravel's [`onOneServer()`](https://laravel.com/docs/scheduling#running-tasks-on-one-server) to **every** scheduled task. It takes an atomic lock in the shared cache so only one replica runs each task per minute:
 
 ```php
 $schedule->command('reports:send')->daily()->onOneServer();
@@ -149,5 +147,5 @@ tasks:
 YOLO pins it at exactly one task (never a scalable target) and deploys it **stop-then-start** (`minimumHealthyPercent: 0` / `maximumPercent: 100`) so a rollout stops the old cron before starting the new one — a deploy never briefly runs two schedulers (a missed cron minute is harmless; a double-run isn't). This removes the `onOneServer()` *requirement* entirely — it's genuinely a singleton now — though leaving `onOneServer()` on is harmless. The web tier then scales without any scheduler concern.
 
 ::: tip
-When you enable autoscaling on a web task that still **bundles** the scheduler, `yolo sync` prints a one-line advisory pointing at these two strategies. It's a nudge, not a gate — YOLO can't see inside your kernel to know whether you've used `onOneServer()`.
+When the scheduler is bundled into a host that runs more than one task — an autoscaling web task, or the standalone queue (which always autoscales) — `yolo sync` prints a one-line advisory pointing at these two strategies. It's a nudge, not a gate — YOLO can't see inside your kernel to know whether you've used `onOneServer()`.
 :::

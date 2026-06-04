@@ -4,7 +4,7 @@
 
 ## A complete example
 
-Every key YOLO understands, in one annotated `yolo.yml`. **Required keys are uncommented; everything else is commented out showing its default**, so you can copy this and uncomment only what you need to change. `yolo init` scaffolds a minimal subset of this — a web app with the queue and scheduler on.
+Every key YOLO understands, in one annotated `yolo.yml`. **Required keys are uncommented; everything else is commented out showing its default**, so you can copy this and uncomment only what you need to change. `yolo init` scaffolds a minimal subset of this — a plain web app whose one container runs all three roles (web, queue worker, scheduler).
 
 ```yaml
 name: codinglabs                 # required — app name, prefixes every app-scoped resource
@@ -55,17 +55,19 @@ environments:
     #   depth-alarm-period: 300             # default: 300 — evaluation period (seconds)
     #   depth-alarm-evaluation-periods: 3   # default: 3 — periods that must breach
 
+    # Every app runs three roles — web, the queue worker, and the scheduler. With
+    # just `web` below they share the one web container; uncommenting `queue` and/or
+    # `scheduler` further down extracts them into their own service (see the cascade
+    # table under tasks.web.*).
     tasks:
       web:
         cpu: '512'               # default: '512' — Fargate CPU units
         memory: '1024'           # default: '1024' — Fargate memory (MB)
         port: 8000               # default: 8000 — must match the Dockerfile & health check
         enable-execute-command: true   # default: false — enables `yolo run` to attach (gate with MFA)
-        queue: true              # default: false — run queue:work in the container
-        scheduler: true          # default: false — run cron + schedule:run
         # ssr: true                       # default: false — bundle Inertia SSR (needs Node in the Dockerfile)
         # platform: linux/amd64           # default: linux/amd64
-        # shutdown-grace-period: 10       # default: 10 (web) / 70 (queue) — SIGTERM→SIGKILL window
+        # shutdown-grace-period: 10       # default: 10 — web SIGTERM→SIGKILL window (also the ALB drain)
         # log-retention: 30               # default: 30 — CloudWatch Logs retention (days)
         # execution-role: arn:aws:iam::123456789012:role/...   # default: shared yolo-{env} role
         # task-role: arn:aws:iam::123456789012:role/...        # default: shared yolo-{env} role
@@ -87,8 +89,9 @@ environments:
         #   scale-in-cooldown: 300        # default: 300
 
       # Extract the queue into its own ECS service (scale independently of web).
-      # Mutually exclusive with `web.queue` above — configure a queue in one place,
-      # not both. A standalone queue scales to zero by default.
+      # Presence is the opt-in. A standalone queue scales to zero by default —
+      # unless it also hosts the scheduler (no `scheduler` block below), where the
+      # floor is pinned at min 1 so cron isn't killed when it idles.
       # queue:
       #   min: 0                          # default: 0 — 0 = scale to zero when idle
       #   max: 10                         # default: 10
@@ -100,8 +103,9 @@ environments:
       #   enable-execute-command: false   # default: false
 
       # Extract the scheduler into its own pinned-singleton service (always one
-      # task; deploys stop-then-start so a rollout never runs two crons). Mutually
-      # exclusive with `web.scheduler` above.
+      # task; deploys stop-then-start so a rollout never runs two crons), which
+      # drops the onOneServer() requirement. Without this block the scheduler rides
+      # the standalone queue if there is one, else the web container.
       # scheduler:
       #   cpu: '256'                      # default: '256'
       #   memory: '512'                   # default: '512'
@@ -302,6 +306,19 @@ On a web app, omitting `session` gives you the `redis` default; set a driver to 
 
 Declaring `tasks.web` makes the app a Fargate web service. Omit `tasks` entirely for a build-only / headless app with no container.
 
+### Where each role runs
+
+Every app runs three roles — **web** (Octane), the **queue worker**, and the **scheduler** (cron + `schedule:run`). There's no opt-out; the only choice is *where* each runs. The queue worker and the scheduler bundle into the web container by default, and you extract one into its own ECS service by adding a top-level [`tasks.queue`](#tasks-queue) / [`tasks.scheduler`](#tasks-scheduler) block. Bundling is derived from that presence — there are no `tasks.web.queue` / `tasks.web.scheduler` flags. The scheduler cascades onto the standalone queue if there is one (no point running a separate one-task service for cron when the queue is already a managed tier):
+
+| Manifest | web container | queue container | scheduler container |
+| --- | --- | --- | --- |
+| `web` only | web + queue + scheduler | — | — |
+| `web` + `queue` | web | queue + scheduler | — |
+| `web` + `scheduler` | web + queue | — | scheduler |
+| `web` + `queue` + `scheduler` | web | queue | scheduler |
+
+When the queue hosts the scheduler (the `web` + `queue` row), the queue can't scale to zero — cron would stop when it idled — so its floor is pinned at `min: 1` (an explicit `tasks.queue.min: 0` there is rejected).
+
 | Key | Default | Description |
 |---|---|---|
 | `tasks.web.port` | `8000` | Container port. Must match the Dockerfile's exposed port and the health check. |
@@ -309,10 +326,8 @@ Declaring `tasks.web` makes the app a Fargate web service. Omit `tasks` entirely
 | `tasks.web.memory` | `'1024'` | Fargate memory (MB). |
 | `tasks.web.platform` | `linux/amd64` | Docker build platform. |
 | `tasks.web.enable-execute-command` | `false` | Enable ECS Exec so [`yolo run`](/reference/commands#yolo-run) can attach. Gate access with MFA on your IAM. |
-| `tasks.web.queue` | `false` | Run `queue:work` **bundled** in the web container (warm, instant pickup). `true`, or an object to override its `shutdown-grace-period`. For independent scaling / scale-to-zero, extract it to a top-level [`tasks.queue`](#tasks-queue) instead — configuring both is an error. |
-| `tasks.web.scheduler` | `false` | Run the Laravel scheduler (cron + `schedule:run`) **bundled** in the web container. `true`, or an object form like `queue`. To make it a true singleton, extract it to a top-level [`tasks.scheduler`](#tasks-scheduler) instead — not both. |
 | `tasks.web.ssr` | `false` | Run Inertia's SSR renderer (`inertia:start-ssr`, a Node process on `127.0.0.1:13714`) **bundled** in the web container, so PHP server-renders your Vue pages. `true`, or an object to override its `shutdown-grace-period`. SSR is always bundled — never its own service. Needs a Node runtime in your Dockerfile and an SSR bundle from `npm run build`; YOLO injects `INERTIA_SSR_ENABLED=true` unless your `.env` sets it. See [Inertia SSR](/guide/images#inertia-ssr). |
-| `tasks.web.shutdown-grace-period` | `10` (web), `70` (queue) | Seconds a process gets on `SIGTERM` before `SIGKILL`. For web it's also the ALB drain window and the container `stopTimeout`. See [graceful shutdown](/guide/images#graceful-shutdown). |
+| `tasks.web.shutdown-grace-period` | `10` | Seconds the web process gets on `SIGTERM` before `SIGKILL`. It's also the ALB drain window and the container `stopTimeout`. See [graceful shutdown](/guide/images#graceful-shutdown). |
 | `tasks.web.log-retention` | `30` | CloudWatch Logs retention (days). Must be a valid CloudWatch retention value. |
 | `tasks.web.execution-role` | shared `yolo-{env}` role | Override the ECS execution role ARN. |
 | `tasks.web.task-role` | shared `yolo-{env}` role | Override the ECS task role ARN. |
@@ -348,8 +363,6 @@ Add an `autoscaling` block to turn on [Application Auto Scaling](/guide/scaling)
 ```yaml
 tasks:
   web:
-    queue: true
-    scheduler: true
     autoscaling:
       min: 1
       max: 6
@@ -358,16 +371,16 @@ tasks:
 ```
 
 ::: warning Bundled scheduler
-When the scheduler runs in the same task (`tasks.web.scheduler: true`), scaling to N tasks runs cron N times — every scheduled task would fire on each replica. Every scheduled task **must** use Laravel's `->onOneServer()`, or extract the scheduler into its own service ([`tasks.scheduler`](#tasks-scheduler)). `sync` prints a one-line advisory in this case. See [Scaling → the scheduler](/guide/scaling#the-scheduler).
+A plain web app bundles the scheduler in the web container, so scaling to N tasks runs cron N times — every scheduled task would fire on each replica. Every scheduled task **must** use Laravel's `->onOneServer()`, or extract the scheduler into its own service ([`tasks.scheduler`](#tasks-scheduler)). `sync` prints a one-line advisory whenever the scheduler is bundled into an autoscaling host (the web task, or the standalone queue, which always autoscales). See [Scaling → the scheduler](/guide/scaling#the-scheduler).
 :::
 
 ---
 
 ## `tasks.queue.*`
 
-A top-level `tasks.queue` block extracts the queue worker into its **own** ECS service, so it scales independently of web. Presence is the opt-in — an empty block (`queue:`) gives a scale-to-zero worker on default sizing. Mutually exclusive with the bundled [`tasks.web.queue`](#tasks-web): configure the queue in one place, not both, or `sync` hard-fails.
+A top-level `tasks.queue` block extracts the queue worker into its **own** ECS service, so it scales independently of web. Presence is the opt-in — an empty block (`queue:`) gives a scale-to-zero worker on default sizing. Without it, the worker stays bundled in the web container (see [Where each role runs](#where-each-role-runs)).
 
-A standalone queue **scales to zero by default** (`min: 0`): zero tasks — and zero compute cost — when the queue is empty, scaling up on backlog. The trade-off is a ~30–60s Fargate cold start on the first message after idle, so it suits bursty, latency-tolerant work. For latency-sensitive jobs that must start instantly, keep them bundled in the web container (`tasks.web.queue: true`, a warm worker) or set a standing floor (`min: 1`).
+A standalone queue **scales to zero by default** (`min: 0`): zero tasks — and zero compute cost — when the queue is empty, scaling up on backlog. The trade-off is a ~30–60s Fargate cold start on the first message after idle, so it suits bursty, latency-tolerant work. For latency-sensitive jobs that must start instantly, leave the queue bundled in the warm web container or set a standing floor (`min: 1`). One caveat: when the queue also hosts the scheduler (a `tasks.queue` block with no [`tasks.scheduler`](#tasks-scheduler)), it can't scale to zero — the floor is pinned at `min: 1`, and an explicit `tasks.queue.min: 0` is rejected.
 
 Scaling is **backlog-per-task** target tracking (`ApproximateNumberOfMessagesVisible / RunningTaskCount`, CloudWatch metric math — no Lambda). A scale-to-zero queue (`min: 0`) also gets a step-scaling alarm that lifts it 0→1 the instant a message arrives (target tracking can't divide by zero running tasks).
 
@@ -388,7 +401,7 @@ See [Scaling → the queue](/guide/scaling#the-queue-scale-to-zero).
 
 ## `tasks.scheduler.*`
 
-A top-level `tasks.scheduler` block extracts the scheduler (busybox `crond` firing `schedule:run`) into its **own** ECS service, pinned at exactly one task — a genuine singleton, so `->onOneServer()` is no longer required. It deploys **stop-then-start** (`minimumHealthyPercent: 0` / `maximumPercent: 100`) so a rollout never briefly runs two crons; a missed cron minute is harmless, a double-run isn't. Mutually exclusive with the bundled [`tasks.web.scheduler`](#tasks-web).
+A top-level `tasks.scheduler` block extracts the scheduler (busybox `crond` firing `schedule:run`) into its **own** ECS service, pinned at exactly one task — a genuine singleton, so `->onOneServer()` is no longer required. It deploys **stop-then-start** (`minimumHealthyPercent: 0` / `maximumPercent: 100`) so a rollout never briefly runs two crons; a missed cron minute is harmless, a double-run isn't. Without this block the scheduler rides the standalone queue if there is one, else the web container (see [Where each role runs](#where-each-role-runs)).
 
 The scheduler never scales (a per-minute cron can't tolerate a cold start), so it has no `min`/`max`.
 

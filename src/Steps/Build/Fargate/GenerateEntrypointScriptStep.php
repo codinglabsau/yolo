@@ -16,10 +16,13 @@ use Codinglabs\Yolo\Enums\ServerGroup;
  * every workload — the ECS task definition passes the role (web | queue |
  * scheduler) as the container command, and the entrypoint dispatches on it:
  *
- *  - web       → supervisord (octane + any bundled queue/scheduler), drained
+ *  - web       → supervisord (octane + any bundled queue/scheduler/ssr), drained
  *                behind the ALB so a deploy doesn't 502. The default role.
- *  - queue     → the queue worker; queue:work finishes its in-flight job on
- *                SIGTERM, so the generic supervise-and-forward is the whole drain.
+ *  - queue     → the standalone queue worker. queue:work alone finishes its
+ *                in-flight job on SIGTERM, so the generic supervise-and-forward is
+ *                the whole drain; when it also hosts the scheduler (no dedicated
+ *                scheduler service) it runs supervisord instead (queue:work +
+ *                crond) and drains cron like web does, minus the ALB window.
  *  - scheduler → busybox crond; the drain halts cron and waits out any in-flight
  *                schedule:run so a deploy never cuts a scheduled command short.
  *  - anything  → exec'd directly, replacing the shell (no supervise, no drain).
@@ -32,8 +35,9 @@ use Codinglabs\Yolo\Enums\ServerGroup;
  *
  * The queue and scheduler branches are emitted only when the app extracts them
  * into their own service (a top-level tasks.queue / tasks.scheduler block), so a
- * plain web app's entrypoint mentions neither. deploy-all: hooks run on every
- * container start regardless of role, before the dispatch.
+ * plain web app's entrypoint mentions neither — it bundles all three roles into
+ * the one web container. deploy-all: hooks run on every container start regardless
+ * of role, before the dispatch.
  */
 class GenerateEntrypointScriptStep implements Step
 {
@@ -94,7 +98,7 @@ exit "$status"
 
 SH,
             $this->indent($this->webDrainBody(), 12),
-            $this->schedulerDrainCase(),
+            $this->queueDrainCase() . $this->schedulerDrainCase(),
             $this->commandCases(),
         );
 
@@ -109,14 +113,20 @@ SH,
 
     /**
      * The cmd dispatch branches for the roles this app extracts into their own
-     * service. Web is the `*)` default (supervisord), so it needs no branch.
+     * service. Web is the explicit first branch (supervisord), so it needs none
+     * here. A standalone queue that also hosts the scheduler runs supervisord
+     * (queue:work + crond); a queue-only service runs the worker directly.
      */
     protected function commandCases(): string
     {
         $cases = '';
 
         if (Manifest::hasStandaloneQueue()) {
-            $cases .= sprintf("    queue)     cmd='%s' ;;\n", ProcessCommands::queue());
+            $cmd = Manifest::schedulerHost() === ServerGroup::QUEUE
+                ? 'supervisord -c /app/docker/supervisord.queue.conf -n'
+                : ProcessCommands::queue();
+
+            $cases .= sprintf("    queue)     cmd='%s' ;;\n", $cmd);
         }
 
         if (Manifest::hasStandaloneScheduler()) {
@@ -127,9 +137,26 @@ SH,
     }
 
     /**
+     * The standalone queue's drain branch — emitted only when the queue co-hosts
+     * the scheduler (no dedicated scheduler service), so it runs supervisord and
+     * must halt cron the same way web does. A queue-only service needs no branch:
+     * queue:work finishes its in-flight job on the generic SIGTERM forward.
+     */
+    protected function queueDrainCase(): string
+    {
+        if (Manifest::schedulerHost() !== ServerGroup::QUEUE) {
+            return '';
+        }
+
+        return sprintf(
+            "        queue)\n%s            ;;\n",
+            $this->indent($this->supervisordSchedulerDrain(0, '/app/docker/supervisord.queue.conf'), 12),
+        );
+    }
+
+    /**
      * The standalone scheduler's drain branch, emitted only when the scheduler is
-     * its own service. The queue role needs no drain branch — queue:work finishes
-     * its in-flight job on the generic SIGTERM forward.
+     * its own service.
      */
     protected function schedulerDrainCase(): string
     {
@@ -144,25 +171,33 @@ SH,
      * The web role's drain, run before the stop is forwarded to supervisord. ECS
      * sends SIGTERM the moment it deregisters the task, but the ALB takes a few
      * seconds to stop routing to a draining target, so we keep serving for the
-     * drain window first. With a bundled scheduler it also halts cron and waits
-     * out any in-flight schedule:run. A headless app has no target group, so the
-     * sleep is dropped and we stop at once.
+     * drain window first. When the web container hosts the scheduler (it isn't
+     * extracted) it also halts cron and waits out any in-flight schedule:run. A
+     * headless app has no target group, so the sleep is dropped and we stop at once.
      */
     protected function webDrainBody(): string
     {
         $drain = ShutdownTimings::drain();
-        $graces = ShutdownTimings::programGraces();
 
-        if (! isset($graces['scheduler'])) {
-            return $drain > 0 ? "sleep $drain\n" : '';
+        if (Manifest::schedulerHost() === ServerGroup::WEB) {
+            return $this->supervisordSchedulerDrain($drain, '/etc/supervisord.conf');
         }
 
-        // Stop cron first so no new schedule:run fires during the drain, then hold
-        // the container open until the drain window has elapsed *and* any in-flight
-        // schedule:run has finished — bounded by the scheduler's grace so a long job
-        // can't stall the deploy past the stopTimeout.
+        return $drain > 0 ? "sleep $drain\n" : '';
+    }
+
+    /**
+     * Drain a supervisord container that hosts the scheduler: stop cron first so no
+     * new schedule:run fires, then hold the container open until the drain window
+     * has elapsed (octane keeps serving behind the ALB on web; zero on a queue
+     * container, which has no ALB) *and* any in-flight schedule:run has finished —
+     * bounded by the scheduler's grace so a long job can't stall the deploy past the
+     * stopTimeout. The generic forwarder then stops the remaining programs.
+     */
+    protected function supervisordSchedulerDrain(int $drainWindow, string $conf): string
+    {
         return sprintf(<<<'SH'
-supervisorctl -c /etc/supervisord.conf stop scheduler >/dev/null 2>&1
+supervisorctl -c %s stop scheduler >/dev/null 2>&1
 waited=0
 while [ "$waited" -lt %d ]; do
     if [ "$waited" -ge %d ] && ! pgrep -f 'artisan schedule:run' >/dev/null 2>&1; then
@@ -172,7 +207,7 @@ while [ "$waited" -lt %d ]; do
     waited=$((waited + 1))
 done
 
-SH, max($drain, $graces['scheduler']), $drain);
+SH, $conf, max($drainWindow, ShutdownTimings::schedulerGrace()), $drainWindow);
     }
 
     /**
@@ -194,7 +229,7 @@ while [ "$waited" -lt %d ]; do
     waited=$((waited + 1))
 done
 
-SH, ShutdownTimings::standaloneGrace(ServerGroup::SCHEDULER));
+SH, ShutdownTimings::schedulerGrace());
     }
 
     /**

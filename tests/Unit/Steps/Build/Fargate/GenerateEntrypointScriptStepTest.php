@@ -44,12 +44,16 @@ it('supervises a known role so SIGTERM can be trapped and drained', function () 
     expect($script)->toContain('wait "$child"');
 });
 
-it('dispatches a web-only app to supervisord via an explicit branch, no queue or scheduler', function () {
+it('dispatches the web role to supervisord and bundles the scheduler drain for a plain web app', function () {
     $script = generatedEntrypointScript();
 
     expect($script)->toContain("web)       cmd='supervisord -c /etc/supervisord.conf -n'");
-    expect($script)->not->toContain('queue)');
-    expect($script)->not->toContain('scheduler)');
+    // No standalone queue/scheduler service → no extra cmd branches.
+    expect($script)->not->toContain('queue)     cmd=');
+    expect($script)->not->toContain('scheduler) cmd=');
+    // The web container hosts the scheduler, so its drain halts cron and waits.
+    expect($script)->toContain('supervisorctl -c /etc/supervisord.conf stop scheduler');
+    expect($script)->toContain("pgrep -f 'artisan schedule:run'");
 });
 
 it('execs an unknown command directly instead of booting the web server', function () {
@@ -62,14 +66,36 @@ it('execs an unknown command directly instead of booting the web server', functi
     expect($script)->not->toContain("*)         cmd='supervisord");
 });
 
-it('adds a queue branch running the worker when the queue is its own service', function () {
+it('runs a standalone queue under supervisord when it co-hosts the scheduler', function () {
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => [], 'queue' => []],
     ]);
 
-    expect(generatedEntrypointScript())->toContain("queue)     cmd='php artisan queue:work");
+    $script = generatedEntrypointScript();
+
+    // queue:work + crond is two processes → supervisord, drained like web (cron first).
+    expect($script)->toContain("queue)     cmd='supervisord -c /app/docker/supervisord.queue.conf -n'");
+    expect($script)->toContain('supervisorctl -c /app/docker/supervisord.queue.conf stop scheduler');
+    // The web container no longer hosts the scheduler — its drain is a plain sleep.
+    expect($script)->toContain("sleep 10\n");
+    expect($script)->not->toContain('scheduler) cmd=');
+});
+
+it('runs a standalone queue as a single worker process when the scheduler is its own service', function () {
+    writeManifest([
+        'apex' => 'example.com',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
+    ]);
+
+    $script = generatedEntrypointScript();
+
+    // Queue alone → exec'd worker (no supervisord); the scheduler is its own crond.
+    expect($script)->toContain("queue)     cmd='php artisan queue:work");
+    expect($script)->not->toContain('supervisord -c /app/docker/supervisord.queue.conf');
+    expect($script)->toContain("scheduler) cmd='crond");
 });
 
 it('adds a scheduler branch running cron when the scheduler is its own service', function () {
@@ -83,9 +109,19 @@ it('adds a scheduler branch running cron when the scheduler is its own service',
 
     expect($script)->toContain("scheduler) cmd='crond");
     expect($script)->toContain("pgrep -f 'artisan schedule:run'");
+    // The queue still rides the web container; the web drain is a plain sleep.
+    expect($script)->toContain("sleep 10\n");
+    expect($script)->not->toContain('queue)     cmd=');
 });
 
 it('drains for the web shutdown-grace-period before forwarding the stop', function () {
+    // Extract the scheduler so the web drain is the plain ALB-window sleep.
+    writeManifest([
+        'apex' => 'example.com',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => [], 'scheduler' => []],
+    ]);
+
     expect(generatedEntrypointScript())->toContain("sleep 10\n");
 });
 
@@ -93,41 +129,25 @@ it('tracks the manifest web shutdown-grace-period for the drain duration', funct
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['shutdown-grace-period' => 45]],
+        'tasks' => ['web' => ['shutdown-grace-period' => 45], 'scheduler' => []],
     ]);
 
     expect(generatedEntrypointScript())->toContain("sleep 45\n");
 });
 
-it('omits the drain sleep when headless — no ALB target to drain', function () {
+it('omits the ALB drain window when headless — no target to drain', function () {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['shutdown-grace-period' => 45]],
+        'tasks' => ['web' => ['shutdown-grace-period' => 45], 'scheduler' => []],
     ]);
 
     $script = generatedEntrypointScript();
 
-    // Still supervises + traps so the stop is forwarded cleanly, just no lame-duck sleep.
-    expect($script)->not->toContain('sleep');
+    // Still supervises + traps so the stop is forwarded cleanly, just no lame-duck
+    // ALB sleep window.
+    expect($script)->not->toContain('sleep 45');
     expect($script)->toContain('trap drain TERM');
     expect($script)->toContain('kill -TERM "$child"');
-});
-
-it('does not mention the scheduler when it is disabled', function () {
-    expect(generatedEntrypointScript())->not->toContain('schedule:run');
-});
-
-it('halts cron and waits out an in-flight schedule:run when the scheduler is enabled', function () {
-    writeManifest([
-        'apex' => 'example.com',
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['scheduler' => true]],
-    ]);
-
-    $script = generatedEntrypointScript();
-
-    expect($script)->toContain('supervisorctl -c /etc/supervisord.conf stop scheduler');
-    expect($script)->toContain("pgrep -f 'artisan schedule:run'");
 });
 
 it('forwards SIGTERM to the child and waits for a clean shutdown', function () {

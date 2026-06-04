@@ -44,7 +44,7 @@ During `yolo build`, YOLO writes two files into the build context that your Dock
 | File | Purpose |
 |---|---|
 | `.yolo-entrypoint.sh` | The container entrypoint. Runs your `deploy-all` hooks (e.g. `php artisan optimize`) on startup, then dispatches on the container command: a role (`web` / `queue` / `scheduler`) is supervised and traps `SIGTERM` so the web tier keeps serving across the ALB drain window before forwarding the stop; any other command — a one-off task such as a deploy migration — is `exec`'d directly (no supervise, no drain). ECS can override the command, not the entrypoint, which is why the dispatch lives here. |
-| `docker/supervisord.conf` | The supervisord program tree, generated from your `tasks.web.*` settings — FrankenPHP/Octane for web, plus `queue:work` and the scheduler if you've enabled them. A crontab is generated alongside it when the scheduler is on. |
+| `docker/supervisord.conf` | The web container's supervisord program tree — FrankenPHP/Octane, plus the `queue:work` worker and the scheduler unless you've extracted them into their own services. A crontab is generated alongside it (the scheduler always runs somewhere). A standalone queue that also hosts the scheduler gets a second `docker/supervisord.queue.conf`. |
 
 Because these are generated, your Dockerfile doesn't need to know how to run Octane, the queue, or the scheduler — it just copies the config and runs the entrypoint.
 
@@ -72,23 +72,21 @@ For your image to work with YOLO, the Dockerfile must:
 
 ## Processes in the container
 
-What runs inside the container is driven by `tasks.web` in your manifest:
+Every app runs three roles — web, the queue worker, and the scheduler — and by default they all share the one web container:
 
 ```yaml
 tasks:
   web:
     port: 8000
-    queue: true       # run queue:work alongside the web server
-    scheduler: true   # run the Laravel scheduler (cron + schedule:run)
 ```
 
 - **Web** always runs — `php artisan octane:start` serving Laravel Octane. `octane:start` boots whichever server your app's `OCTANE_SERVER` names; `yolo init` seeds `OCTANE_SERVER=frankenphp` in your `.env` to match the scaffolded Dockerfile. The server is an app concern, not infrastructure YOLO injects — to run a different Octane server, change the base image **and** `OCTANE_SERVER` together.
-- **`queue: true`** adds a `queue:work` program.
-- **`scheduler: true`** adds a busybox `crond` that fires `php artisan schedule:run` every minute. (YOLO uses cron, not `schedule:work`, so the scheduler survives `SIGTERM` cleanly.)
+- **The queue worker** runs `queue:work`, bundled in the web container until you extract it.
+- **The scheduler** runs a busybox `crond` that fires `php artisan schedule:run` every minute, bundled until you extract it. (YOLO uses cron, not `schedule:work`, so the scheduler survives `SIGTERM` cleanly.)
 - **`ssr: true`** adds Inertia's SSR renderer — see [Inertia SSR](#inertia-ssr) below.
 
 ::: tip Independent task groups
-Today web, queue, and scheduler share one container and scale together. Splitting them into independent ECS services (so you can scale the web tier without duplicating the scheduler) is on the roadmap — the manifest reserves `tasks.queue` / `tasks.scheduler` for it.
+Extract the queue and/or scheduler into their own ECS service — so you can scale the web tier without duplicating the scheduler — by adding a top-level `tasks.queue` / `tasks.scheduler` block. Where each role then runs is derived from which blocks you've added; see [Where each role runs](/reference/manifest#where-each-role-runs) and [Scaling](/guide/scaling).
 :::
 
 ## Inertia SSR

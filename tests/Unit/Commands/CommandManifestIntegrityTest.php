@@ -138,33 +138,75 @@ it('accepts session.driver redis when cache.store is redis', function () {
     expect(invokeManifestIntegrity())->toBeTrue();
 });
 
-it('bails when the queue is both bundled and a standalone service', function () {
+it('bails on the removed tasks.web.queue bundling flag (now derived from task presence)', function () {
     writeManifest([
         'account-id' => '848509375702', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['queue' => true], 'queue' => ['min' => 0]],
+        'tasks' => ['web' => ['queue' => true]],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+    expect(test()->promptOutput->fetch())->toContain('tasks.web.queue');
+});
+
+it('bails on the removed tasks.web.scheduler bundling flag', function () {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['scheduler' => true]],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+    expect(test()->promptOutput->fetch())->toContain('tasks.web.scheduler');
+});
+
+it('accepts the known tasks.web keys', function () {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => [
+            'port' => 8000, 'cpu' => '512', 'memory' => '1024',
+            'enable-execute-command' => true, 'ssr' => true,
+            'health-check' => ['timeout' => 8],
+            'autoscaling' => ['min' => 1, 'max' => 4],
+        ]],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+});
+
+it('bails when the scheduler rides a queue explicitly set to scale to zero', function () {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => [], 'queue' => ['min' => 0]],
     ]);
 
     expect(invokeManifestIntegrity())->toBeFalse();
 
     $output = test()->promptOutput->fetch();
-    expect($output)->toContain('tasks.web.queue');
-    expect($output)->toContain('tasks.queue');
+    expect($output)->toContain('tasks.queue.min');
+    expect($output)->toContain('tasks.scheduler');
 });
 
-it('bails when the scheduler is both bundled and a standalone service', function () {
+it('accepts a scheduler-hosting queue with a standing floor of one', function () {
     writeManifest([
         'account-id' => '848509375702', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['scheduler' => true], 'scheduler' => []],
+        'tasks' => ['web' => [], 'queue' => ['min' => 1]],
     ]);
 
-    expect(invokeManifestIntegrity())->toBeFalse();
-    expect(test()->promptOutput->fetch())->toContain('tasks.scheduler');
+    expect(invokeManifestIntegrity())->toBeTrue();
 });
 
-it('accepts a bundled queue with a standalone scheduler (mix and match per workload)', function () {
+it('accepts a scheduler-hosting queue with no explicit floor (defaults to one)', function () {
     writeManifest([
         'account-id' => '848509375702', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['queue' => true], 'scheduler' => []],
+        'tasks' => ['web' => [], 'queue' => []],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+});
+
+it('accepts a scale-to-zero queue when the scheduler is its own service', function () {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => [], 'queue' => ['min' => 0], 'scheduler' => []],
     ]);
 
     expect(invokeManifestIntegrity())->toBeTrue();
