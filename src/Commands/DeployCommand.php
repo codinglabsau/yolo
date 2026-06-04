@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Steps;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Input\InputArgument;
 
 use function Laravel\Prompts\intro;
@@ -25,6 +26,7 @@ class DeployCommand extends SteppedCommand
             ->setName('deploy')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('app-version', null, InputArgument::OPTIONAL, 'Tag to stamp on the build (defaults to a timestamp)')
+            ->addOption('group', null, InputOption::VALUE_REQUIRED, 'Comma-separated service groups to roll (web,queue,scheduler) — defaults to all the app runs')
             ->addOption('no-progress', null, null, 'Hide the progress output')
             ->setDescription('Build, push, and deploy the application');
     }

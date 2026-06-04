@@ -90,7 +90,32 @@ abstract class Command extends SymfonyCommand
             && $this->ensureManifestKeyDeclared('region')
             && $this->ensureManifestKeyDeclared('account-id')
             && $this->ensureCacheStoreValid()
-            && $this->ensureSessionDriverValid();
+            && $this->ensureSessionDriverValid()
+            && $this->ensureTaskGroupsNotDoublyDefined();
+    }
+
+    /**
+     * A workload runs either bundled in the web container (`tasks.web.queue` /
+     * `tasks.web.scheduler`) or as its own service (a top-level `tasks.queue` /
+     * `tasks.scheduler` block) — never both. Configuring both is ambiguous (is the
+     * queue in the web task or a service of its own?), so hard-fail and tell the
+     * operator which line to drop.
+     */
+    protected function ensureTaskGroupsNotDoublyDefined(): bool
+    {
+        foreach (['queue', 'scheduler'] as $group) {
+            if (Manifest::bundles($group) && Manifest::has("tasks.$group")) {
+                error(sprintf(
+                    "yolo.yml runs `%s` both bundled under `tasks.web.%s` and as its own service `tasks.%s` — pick one.\n"
+                    . 'Drop `tasks.web.%s` to extract it into a standalone service, or drop `tasks.%s` to keep it in the web container.',
+                    $group, $group, $group, $group, $group,
+                ));
+
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

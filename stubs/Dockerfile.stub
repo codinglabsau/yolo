@@ -1,7 +1,9 @@
 # Scaffolded by `yolo init`. Owns the base image + PHP extensions — customise
-# freely. YOLO generates the .yolo-entrypoint.sh (deploy-all hooks) and
-# docker/supervisord.conf (octane + queue + scheduler from tasks.web.*) into the
-# build context at build time, so this Dockerfile just runs them.
+# freely. YOLO generates the .yolo-entrypoint.sh (deploy-all hooks + per-role
+# dispatch) and docker/supervisord.conf (octane + any bundled queue/scheduler
+# from tasks.web.*) into the build context at build time, so this Dockerfile just
+# runs them. The entrypoint takes the role (web | queue | scheduler) as its
+# argument; each ECS task definition passes its own, so one image serves all.
 FROM dunglas/frankenphp:1-php8.4-alpine
 
 RUN apk add --no-cache git supervisor \
@@ -20,7 +22,8 @@ USER www-data
 ENV SERVER_NAME=:8000
 EXPOSE 8000
 
-# supervisord (PID 1 after the entrypoint exec) runs the supervised processes;
-# ECS sends SIGTERM to it, which stops the children gracefully.
+# The entrypoint dispatches on the role argument (default web → supervisord).
+# Each ECS task definition overrides this with its own role; ECS sends SIGTERM
+# on stop, which the entrypoint traps to drain before forwarding it.
 ENTRYPOINT ["/app/.yolo-entrypoint.sh"]
-CMD ["supervisord", "-n"]
+CMD ["web"]

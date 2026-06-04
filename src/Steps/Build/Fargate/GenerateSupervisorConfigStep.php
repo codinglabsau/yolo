@@ -3,8 +3,8 @@
 namespace Codinglabs\Yolo\Steps\Build\Fargate;
 
 use Codinglabs\Yolo\Paths;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
+use Codinglabs\Yolo\ProcessCommands;
 use Codinglabs\Yolo\ShutdownTimings;
 use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
@@ -55,23 +55,20 @@ class GenerateSupervisorConfigStep implements Step
         // matches the container stopTimeout derived from the same source.
         $blocks = [
             $this->header(),
-            $this->program('octane', sprintf(
-                'php artisan octane:frankenphp --host=0.0.0.0 --port=%d',
-                (int) Manifest::get('tasks.web.port', 8000),
-            ), stopwaitsecs: $graces['octane']),
+            $this->program('octane', ProcessCommands::octane(), stopwaitsecs: $graces['octane']),
         ];
 
         if (isset($graces['scheduler'])) {
             // Cron (crond) fires an ephemeral schedule:run each minute rather than a
             // long-lived schedule:work daemon — so the trigger halts cleanly on
             // shutdown and only the in-flight run is waited out (see the entrypoint).
-            $blocks[] = $this->program('scheduler', 'crond -f -d 8 -c /app/docker/crontabs', stopwaitsecs: $graces['scheduler']);
+            $blocks[] = $this->program('scheduler', ProcessCommands::scheduler(), stopwaitsecs: $graces['scheduler']);
         }
 
         if (isset($graces['queue'])) {
             // Longer stop wait so an in-flight job can finish on SIGTERM before
             // supervisor force-kills the worker.
-            $blocks[] = $this->program('queue', 'php artisan queue:work --tries=3 --max-time=3600', stopwaitsecs: $graces['queue']);
+            $blocks[] = $this->program('queue', ProcessCommands::queue(), stopwaitsecs: $graces['queue']);
         }
 
         return implode("\n\n", $blocks) . "\n";

@@ -1,6 +1,7 @@
 <?php
 
 use Codinglabs\Yolo\ShutdownTimings;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 beforeEach(function () {
@@ -126,4 +127,44 @@ it('rejects a non-boolean, non-object program flag', function () {
 
     expect(fn () => ShutdownTimings::programGraces())
         ->toThrow(IntegrityCheckException::class);
+});
+
+describe('standalone services', function () {
+    it('defaults the standalone queue grace longer than the scheduler', function () {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
+        ]);
+
+        expect(ShutdownTimings::standaloneGrace(ServerGroup::QUEUE))->toBe(70);
+        expect(ShutdownTimings::standaloneGrace(ServerGroup::SCHEDULER))->toBe(10);
+    });
+
+    it('honours a per-service shutdown-grace-period override', function () {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => [], 'queue' => ['shutdown-grace-period' => 110]],
+        ]);
+
+        expect(ShutdownTimings::standaloneGrace(ServerGroup::QUEUE))->toBe(110);
+    });
+
+    it('sizes a standalone stop timeout as the grace plus buffer (no ALB drain)', function () {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => [], 'queue' => []],
+        ]);
+
+        // 70 (default queue grace) + 5 buffer; no ALB drain folded in.
+        expect(ShutdownTimings::stopTimeoutFor(ServerGroup::QUEUE))->toBe(75);
+    });
+
+    it('caps a standalone stop timeout at the Fargate maximum', function () {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => [], 'queue' => ['shutdown-grace-period' => 200]],
+        ]);
+
+        expect(ShutdownTimings::stopTimeoutFor(ServerGroup::QUEUE))->toBe(120);
+    });
 });

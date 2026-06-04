@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
 use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\ScalableTarget;
@@ -42,14 +43,23 @@ class SyncScalableTargetStep implements Step
 {
     use RecordsChanges;
 
+    /**
+     * The workload group this step scales — web here; SyncQueueScalableTargetStep
+     * overrides it for the queue.
+     */
+    protected function group(): ServerGroup
+    {
+        return ServerGroup::WEB;
+    }
+
     public function __invoke(array $options): StepResult
     {
-        if (! (new EcsService())->exists()) {
+        if (! (new EcsService($this->group()))->exists()) {
             return StepResult::SKIPPED;
         }
 
         $dryRun = (bool) Arr::get($options, 'dry-run');
-        $target = new ScalableTarget();
+        $target = new ScalableTarget($this->group());
         $live = $target->current();
 
         if (! Manifest::has('tasks.web.autoscaling')) {
@@ -68,7 +78,8 @@ class SyncScalableTargetStep implements Step
 
         if (! $dryRun && static::wouldReduce($target, $live) && static::unattended($options)) {
             warning(sprintf(
-                'Skipped the web autoscaling reduction: manifest bounds (%d–%d) are below live (%d–%d). Lower capacity with an interactive `yolo sync` or `yolo scale` — never unattended.',
+                'Skipped the %s autoscaling reduction: manifest bounds (%d–%d) are below live (%d–%d). Lower capacity with an interactive `yolo sync` or `yolo scale` — never unattended.',
+                $this->group()->value,
                 $target->min(),
                 $target->max(),
                 $live['min'],

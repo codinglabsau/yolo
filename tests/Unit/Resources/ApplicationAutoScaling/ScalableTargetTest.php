@@ -1,6 +1,7 @@
 <?php
 
 use Aws\Result;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\ScalableTarget;
 
 beforeEach(function () {
@@ -74,6 +75,38 @@ it('reports drift but does not register on a dry-run', function () {
     expect($changes)->toHaveCount(1);
     expect($changes[0]->describe())->toContain('MinCapacity');
     expect(collect($captured)->pluck('name'))->not->toContain('RegisterScalableTarget');
+});
+
+it('builds the queue service resource id and defaults its floor to zero', function () {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => [], 'queue' => []],
+    ]);
+
+    expect(ScalableTarget::resourceId(ServerGroup::QUEUE))->toBe('service/yolo-testing-my-app/yolo-testing-my-app-queue');
+    expect((new ScalableTarget(ServerGroup::QUEUE))->min())->toBe(0);
+    expect((new ScalableTarget(ServerGroup::QUEUE))->max())->toBe(10);
+});
+
+it('registers the queue target with a zero floor (scale to zero)', function () {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => [], 'queue' => ['min' => 0, 'max' => 20]],
+    ]);
+
+    $captured = [];
+    bindMockApplicationAutoScalingClient([
+        'DescribeScalableTargets' => new Result(['ScalableTargets' => []]),
+        'RegisterScalableTarget' => new Result([]),
+    ], $captured);
+
+    (new ScalableTarget(ServerGroup::QUEUE))->synchronise(apply: true);
+
+    expect(collect($captured)->firstWhere('name', 'RegisterScalableTarget')['args'])->toMatchArray([
+        'ResourceId' => 'service/yolo-testing-my-app/yolo-testing-my-app-queue',
+        'MinCapacity' => 0,
+        'MaxCapacity' => 20,
+    ]);
 });
 
 it('deregisters the target with the fixed namespace and dimension', function () {

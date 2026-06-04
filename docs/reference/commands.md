@@ -113,7 +113,7 @@ The image-building steps only run when the manifest declares `tasks`. See [Build
 Build, push, and deploy the application — runs [`build`](#yolo-build) first, then the zero-downtime rollout.
 
 ```bash
-yolo deploy <environment> [--app-version=<tag>] [--no-progress]
+yolo deploy <environment> [--app-version=<tag>] [--group=<groups>] [--no-progress]
 ```
 
 | Argument | Required | Description |
@@ -123,9 +123,10 @@ yolo deploy <environment> [--app-version=<tag>] [--no-progress]
 | Option | Value | Default | Description |
 |---|---|---|---|
 | `--app-version` | string | timestamp `y.W.N.Hi` | Tag to stamp on the build (same rules as `build`). |
+| `--group` | comma-separated | all the app runs | Service groups to roll (`web,queue,scheduler`). Defaults to every service the app runs. |
 | `--no-progress` | flag | off | Hide the live progress output. |
 
-After building, `deploy` pushes assets to S3, registers a new task-definition revision, runs `deploy` hooks as a one-off task, updates the ECS service, waits for it to go healthy (the deployment circuit breaker auto-rolls-back on failure), then UPSERTs Route 53 records. It always waits for the rollout to stabilise — there is no opt-out flag.
+After building, `deploy` pushes assets to S3, registers a new task-definition revision **for each service group** (web plus any standalone queue/scheduler), runs `deploy` hooks as a one-off task, rolls each ECS service onto its new revision, waits for the web service to go healthy (the deployment circuit breaker auto-rolls-back on failure), then UPSERTs Route 53 records. It always waits for the rollout to stabilise — there is no opt-out flag. `--group` narrows the rollout to a subset of services (the shared image is built either way); a deploy that omits `web` skips the ALB health wait, relying on the circuit breaker.
 
 ---
 
@@ -151,17 +152,15 @@ yolo run <environment> [--command="<cmd>"] [--group=<groups>]
 - **No `--command`** → opens an interactive `/bin/sh` in the first running task (searched in the order `scheduler → queue → web`).
 - **With `--command`** → runs the command. With `--group`, it **fans out** across every running task in each listed group. Without `--group`, it runs on the first group that has a running task.
 
-**Requirements:** the AWS [Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) installed locally, and `tasks.web.enable-execute-command: true` in the manifest.
+Each group is its own ECS service when extracted, and `run` execs into the container named after the group. A bundled queue/scheduler runs inside the web container, so a `--group=queue` lookup that finds no standalone queue service simply falls through to the next group.
+
+**Requirements:** the AWS [Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) installed locally, and `enable-execute-command: true` on the target group in the manifest.
 
 ```bash
 yolo run production
 yolo run production --command="php artisan migrate:status"
 yolo run production --command="php artisan queue:restart" --group=web,queue
 ```
-
-::: tip
-Today web, queue, and scheduler all run in the single `web` container, so the groups collapse onto it — the distinction matters once independent task groups land.
-:::
 
 ---
 
@@ -181,19 +180,22 @@ yolo scale <environment> [count] [--web] [--min=<n>] [--max=<n>] [--queue] [--sc
 | Option | Value | Description |
 |---|---|---|
 | `--web` | flag | Target the web service (the default). |
-| `--min` / `--max` | int | Autoscaling bounds — the autoscaled form. |
-| `--queue` | flag | Target the queue service (errors until it's a separate service — on the roadmap). |
+| `--queue` | flag | Target the standalone queue service. Always autoscaling-managed — takes `--min`/`--max` (min may be `0`), never a count. |
 | `--scheduler` | flag | Always errors — the scheduler is a singleton and can't be scaled. |
+| `--min` / `--max` | int | Autoscaling bounds — the autoscaled form. |
 
-The web service has two forms, picked by what you pass:
+There are two forms, picked by what you pass:
 
-- **Autoscaled** — `--min`/`--max` set the bounds. The values are written back to [`tasks.web.autoscaling.min/max`](/reference/manifest#tasks-web-autoscaling) (surgically — comments and formatting are preserved) and the scalable target is registered, so the **manifest stays the source of truth** and the next sync reconciles to the same values. A desired count is never set under autoscaling (the policies would override it).
-- **Fixed** — a positional `count` sets the ECS desired count directly (`UpdateService`), for a service with no `autoscaling` block. Trying to pass a count to an autoscaling-managed service errors and points you to `--min/--max`.
+- **Autoscaled** — `--min`/`--max` set the bounds. The values are written back to the manifest (surgically — comments and formatting are preserved): web → [`tasks.web.autoscaling.min/max`](/reference/manifest#tasks-web-autoscaling), queue → [`tasks.queue.min/max`](/reference/manifest#tasks-queue). The scalable target is then registered, so the **manifest stays the source of truth** and the next sync reconciles to the same values. A desired count is never set under autoscaling (the policies would override it).
+- **Fixed** — a positional `count` sets the ECS desired count directly (`UpdateService`), for a **web** service with no `autoscaling` block. A standalone queue is always autoscaling-managed, so passing it a count errors and points you to `--min/--max`.
+
+Lowering a live bound is guarded the same as [reducing capacity](/guide/scaling#reducing-capacity-is-guarded) — an explicit confirm defaulting to no.
 
 ```bash
-yolo scale production --web --min=3 --max=10   # autoscaled bounds (writes the manifest)
-yolo scale production --web 3                   # fixed desired count
-yolo scale production                           # prompt for a fixed count
+yolo scale production --web --min=3 --max=10    # web autoscaled bounds (writes the manifest)
+yolo scale production --web 3                    # web fixed desired count
+yolo scale production --queue --min=0 --max=20   # queue bounds — min 0 = scale to zero
+yolo scale production                            # prompt for a fixed count
 ```
 
 **Reducing capacity** (a bound below the live value) is confirm-gated and defaults to *no*. See [Scaling](/guide/scaling).

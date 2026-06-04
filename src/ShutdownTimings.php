@@ -2,8 +2,10 @@
 
 namespace Codinglabs\Yolo;
 
+use Codinglabs\Yolo\Enums\ServerGroup;
+
 /**
- * One source of truth for how the web container shuts down, so supervisord's
+ * One source of truth for how a container shuts down, so supervisord's
  * per-program stop waits and ECS's stopTimeout can't drift apart.
  *
  * Each process shares one key — `shutdown-grace-period`: how long it gets to finish work on
@@ -28,6 +30,11 @@ class ShutdownTimings
 
     // The web process's graceful-stop window when not set in the manifest.
     private const WEB_DEFAULT_GRACE = 10;
+
+    // A standalone scheduler's graceful-stop window: long enough to let an
+    // in-flight schedule:run tick finish. A scheduled command that routinely
+    // outlasts this belongs on the queue, not the cron tick.
+    private const SCHEDULER_DEFAULT_GRACE = 10;
 
     // Headroom between the longest graceful stop and ECS's SIGKILL so a process
     // draining right up to its window isn't cut off at the wire.
@@ -90,14 +97,42 @@ class ShutdownTimings
         );
     }
 
+    /**
+     * The graceful-stop window for a standalone service's sole process, read from
+     * its own task block (`tasks.{group}.shutdown-grace-period`). The queue worker
+     * defaults longer (an in-flight job can run a while); the scheduler just needs
+     * its current cron tick to finish.
+     */
+    public static function standaloneGrace(ServerGroup $group): int
+    {
+        return match ($group) {
+            ServerGroup::WEB => static::webGrace(),
+            ServerGroup::QUEUE => (int) Manifest::get('tasks.queue.shutdown-grace-period', static::QUEUE_DEFAULT_GRACE),
+            ServerGroup::SCHEDULER => (int) Manifest::get('tasks.scheduler.shutdown-grace-period', static::SCHEDULER_DEFAULT_GRACE),
+        };
+    }
+
+    /**
+     * ECS's SIGTERM-to-SIGKILL ceiling for a service's task. The web container
+     * bundles several processes behind the ALB drain, so it uses the full
+     * drain-plus-slowest-program calc. A standalone queue/scheduler runs one
+     * process with no ALB to drain, so it just needs its grace plus buffer.
+     */
+    public static function stopTimeoutFor(ServerGroup $group): int
+    {
+        if ($group === ServerGroup::WEB) {
+            return static::stopTimeout();
+        }
+
+        return min(static::standaloneGrace($group) + static::STOP_TIMEOUT_BUFFER, static::MAX_STOP_TIMEOUT);
+    }
+
     protected static function enabled(string $program): bool
     {
-        $value = Manifest::get("tasks.web.$program", false);
-
-        // The object form (with overrides like shutdown-grace-period) means enabled; a bare
-        // flag still goes through strict validation so a typo can't silently
-        // disable a process.
-        return is_array($value) || Helpers::validateStrictBool($value, "tasks.web.$program");
+        // Whether the web container bundles this program — the object form (with
+        // overrides like shutdown-grace-period) means enabled; a bare flag still
+        // goes through strict validation so a typo can't silently disable it.
+        return Manifest::bundles($program);
     }
 
     protected static function grace(string $program, int $default): int

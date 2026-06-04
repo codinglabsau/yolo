@@ -23,7 +23,6 @@ use Aws\CloudWatch\CloudWatchClient;
 use Aws\CodeDeploy\CodeDeployClient;
 use Aws\ElastiCache\ElastiCacheClient;
 use Aws\EventBridge\EventBridgeClient;
-use Codinglabs\Yolo\Enums\ServerGroup;
 use Aws\Credentials\CredentialProvider;
 use GuzzleHttp\Exception\ConnectException;
 use Aws\CloudWatchLogs\CloudWatchLogsClient;
@@ -68,11 +67,6 @@ trait RegistersAws
         Helpers::app()->singleton('sqs', fn () => new SqsClient($arguments));
         Helpers::app()->singleton('ssm', fn () => new SsmClient($arguments));
         Helpers::app()->singleton('sts', fn () => new StsClient($arguments));
-
-        // with all clients registered, we can now determine specific environments
-        Helpers::app()->singleton('runningInAwsWebEnvironment', fn () => static::detectAwsWebEnvironment());
-        Helpers::app()->singleton('runningInAwsQueueEnvironment', fn () => static::detectAwsQueueEnvironment());
-        Helpers::app()->singleton('runningInAwsSchedulerEnvironment', fn () => static::detectAwsSchedulerEnvironment());
     }
 
     protected static function awsCredentials(): callable|array|null
@@ -155,7 +149,7 @@ trait RegistersAws
         return env('CI', false) === true;
     }
 
-    protected static function detectAwsEnvironment(?ServerGroup $serverGroup = null): bool
+    protected static function detectAwsEnvironment(): bool
     {
         if (static::detectLocalEnvironment() || static::detectCiEnvironment()) {
             // skip if we are local or in continuous integration
@@ -163,54 +157,13 @@ trait RegistersAws
         }
 
         try {
-            $instanceId = (new Client(['timeout' => 2]))
-                ->get('http://169.254.169.254/latest/meta-data/instance-id')
-                ->getBody();
-
-            if ($serverGroup) {
-                $awsResult = Aws::ec2()->describeTags([
-                    'Filters' => [
-                        [
-                            'Name' => 'resource-id',
-                            'Values' => [$instanceId],
-                        ],
-                        [
-                            'Name' => 'key',
-                            'Values' => ['Name'],
-                        ],
-                    ],
-                ]);
-
-                $allowedMatch = Helpers::keyedResourceName($serverGroup, exclusive: false);
-
-                foreach ($awsResult['Tags'] as $tag) {
-                    if ($tag['Key'] === 'Name' && $tag['Value'] === $allowedMatch) {
-                        return true;
-                    }
-                }
-
-                return false;
-            }
+            (new Client(['timeout' => 2]))
+                ->get('http://169.254.169.254/latest/meta-data/instance-id');
 
             return true;
         } catch (ConnectException $e) {
         }
 
         return false;
-    }
-
-    protected static function detectAwsWebEnvironment(): bool
-    {
-        return static::detectAwsEnvironment(ServerGroup::WEB);
-    }
-
-    protected static function detectAwsQueueEnvironment(): bool
-    {
-        return static::detectAwsEnvironment(ServerGroup::QUEUE);
-    }
-
-    protected static function detectAwsSchedulerEnvironment(): bool
-    {
-        return static::detectAwsEnvironment(ServerGroup::SCHEDULER);
     }
 }

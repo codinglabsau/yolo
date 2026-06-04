@@ -6,18 +6,24 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Change;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
 use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Aws\ApplicationAutoScaling;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * The Application Auto Scaling scalable target that hands the web ECS service's
- * desired count to target-tracking policies. Like QueueAlarm / Dashboard this is
- * a standalone reconciler, NOT a Resource: App Auto Scaling targets aren't
- * RGT-taggable (so they carry none of the ownership tags the Resource contract
- * reconciles, and stay invisible to `yolo audit`) and RegisterScalableTarget is a
- * pure upsert with no create/update split.
+ * The Application Auto Scaling scalable target that hands an ECS service's
+ * desired count to scaling policies. Group-aware: the web target's bounds come
+ * from `tasks.web.autoscaling.min/max` (autoscaling is opt-in for web), the queue
+ * target's from `tasks.queue.min/max` (a standalone queue is always autoscaled,
+ * and its floor may be 0 — scale to zero).
+ *
+ * Like QueueAlarm / Dashboard this is a standalone reconciler, NOT a Resource:
+ * App Auto Scaling targets aren't RGT-taggable (so they carry none of the
+ * ownership tags the Resource contract reconciles, and stay invisible to
+ * `yolo audit`) and RegisterScalableTarget is a pure upsert with no create/update
+ * split.
  *
  * Dry-run honest — it reads the live min/max, diffs them, and only re-registers
  * on drift, so `sync --dry-run` reports exactly when the capacity bounds change.
@@ -28,13 +34,15 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  */
 class ScalableTarget
 {
+    public function __construct(protected ServerGroup $group = ServerGroup::WEB) {}
+
     /**
-     * service/{cluster}/{web-service} — the App Auto Scaling resource id for the
-     * app's ECS web service.
+     * service/{cluster}/{service} — the App Auto Scaling resource id for a group's
+     * ECS service.
      */
-    public static function resourceId(): string
+    public static function resourceId(ServerGroup $group = ServerGroup::WEB): string
     {
-        return sprintf('service/%s/%s', (new EcsCluster())->name(), (new EcsService())->name());
+        return sprintf('service/%s/%s', (new EcsCluster())->name(), (new EcsService($group))->name());
     }
 
     public function exists(): bool
@@ -44,18 +52,21 @@ class ScalableTarget
 
     public function min(): int
     {
-        return Helpers::validatePositiveInt(
-            Manifest::get('tasks.web.autoscaling.min', 1),
-            'tasks.web.autoscaling.min',
-        );
+        if ($this->group === ServerGroup::QUEUE) {
+            // A standalone queue's floor may be 0 (scale to zero) — that's the opt-in.
+            return Helpers::validateNonNegativeInt(Manifest::get('tasks.queue.min', 0), 'tasks.queue.min');
+        }
+
+        return Helpers::validatePositiveInt(Manifest::get('tasks.web.autoscaling.min', 1), 'tasks.web.autoscaling.min');
     }
 
     public function max(): int
     {
-        return Helpers::validatePositiveInt(
-            Manifest::get('tasks.web.autoscaling.max', 4),
-            'tasks.web.autoscaling.max',
-        );
+        if ($this->group === ServerGroup::QUEUE) {
+            return Helpers::validatePositiveInt(Manifest::get('tasks.queue.max', 10), 'tasks.queue.max');
+        }
+
+        return Helpers::validatePositiveInt(Manifest::get('tasks.web.autoscaling.max', 4), 'tasks.web.autoscaling.max');
     }
 
     /**
@@ -95,7 +106,7 @@ class ScalableTarget
     {
         Aws::applicationAutoScaling()->registerScalableTarget([
             'ServiceNamespace' => ApplicationAutoScaling::SERVICE_NAMESPACE,
-            'ResourceId' => static::resourceId(),
+            'ResourceId' => static::resourceId($this->group),
             'ScalableDimension' => ApplicationAutoScaling::SCALABLE_DIMENSION,
             'MinCapacity' => $min,
             'MaxCapacity' => $max,
@@ -106,7 +117,7 @@ class ScalableTarget
     {
         Aws::applicationAutoScaling()->deregisterScalableTarget([
             'ServiceNamespace' => ApplicationAutoScaling::SERVICE_NAMESPACE,
-            'ResourceId' => static::resourceId(),
+            'ResourceId' => static::resourceId($this->group),
             'ScalableDimension' => ApplicationAutoScaling::SCALABLE_DIMENSION,
         ]);
     }
@@ -119,7 +130,7 @@ class ScalableTarget
     public function current(): ?array
     {
         try {
-            $target = ApplicationAutoScaling::scalableTarget(static::resourceId());
+            $target = ApplicationAutoScaling::scalableTarget(static::resourceId($this->group));
 
             return ['min' => (int) $target['MinCapacity'], 'max' => (int) $target['MaxCapacity']];
         } catch (ResourceDoesNotExistException) {

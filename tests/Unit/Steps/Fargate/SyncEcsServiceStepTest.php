@@ -1,5 +1,6 @@
 <?php
 
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Resources\Ecs\EcsService;
 
 describe('serviceNeedsUpdate', function () {
@@ -66,6 +67,7 @@ describe('serviceNeedsUpdate when headless', function () {
             service: ['enableExecuteCommand' => true, 'healthCheckGracePeriodSeconds' => 9999],
             gracePeriod: 60,
             enableExecuteCommand: true,
+            reconcilesGracePeriod: false,
         ))->toBeFalse();
     });
 
@@ -122,15 +124,29 @@ describe('updatePayload', function () {
 });
 
 describe('deploymentConfiguration', function () {
+    beforeEach(function () {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
+        ]);
+    });
+
     it('enables the circuit breaker with rollback so a failed rollout self-reverts', function () {
-        expect(EcsService::deploymentConfiguration()['deploymentCircuitBreaker'])
+        expect((new EcsService())->deploymentConfiguration()['deploymentCircuitBreaker'])
             ->toBe(['enable' => true, 'rollback' => true]);
     });
 
-    it('keeps one-at-a-time rolling capacity (100% min healthy, 200% max)', function () {
-        $config = EcsService::deploymentConfiguration();
+    it('keeps one-at-a-time rolling capacity for web (100% min healthy, 200% max)', function () {
+        $config = (new EcsService(ServerGroup::WEB))->deploymentConfiguration();
 
         expect($config['minimumHealthyPercent'])->toBe(100);
         expect($config['maximumPercent'])->toBe(200);
+    });
+
+    it('deploys the scheduler stop-then-start (0% min healthy, 100% max) so a rollout never runs two crons', function () {
+        $config = (new EcsService(ServerGroup::SCHEDULER))->deploymentConfiguration();
+
+        expect($config['minimumHealthyPercent'])->toBe(0);
+        expect($config['maximumPercent'])->toBe(100);
     });
 });

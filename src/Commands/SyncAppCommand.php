@@ -38,9 +38,9 @@ class SyncAppCommand extends SyncSteppedCommand
 
     /**
      * A soft, non-blocking nudge (not a guard) when autoscaling is enabled on a
-     * task that also runs the scheduler. Scaling the bundled task to N replicas
-     * runs cron N times, so every scheduled task must use ->onOneServer(); apps
-     * that outgrow that should separate the scheduler into its own service.
+     * web task that also bundles the scheduler. Scaling the bundled task to N
+     * replicas runs cron N times, so every scheduled task must use ->onOneServer();
+     * apps that outgrow that should extract the scheduler into its own service.
      */
     public static function schedulerAdvisory(): ?string
     {
@@ -48,7 +48,8 @@ class SyncAppCommand extends SyncSteppedCommand
             return null;
         }
 
-        return 'Autoscaling a bundled web+scheduler task: every scheduled task must use ->onOneServer() so it does not run on each replica.';
+        return 'Autoscaling a bundled web+scheduler task: every scheduled task must use ->onOneServer() so it does not run on each replica. '
+            . 'To drop that requirement, extract the scheduler into its own pinned-singleton service with a top-level `tasks.scheduler` block.';
     }
 
     public function scopes(): array
@@ -108,6 +109,26 @@ class SyncAppCommand extends SyncSteppedCommand
                         // back down. Both steps no-op when it was never enabled.
                         Steps\Sync\App\SyncScalableTargetStep::class,
                         Steps\Sync\App\SyncScalingPoliciesStep::class,
+                        // Standalone queue service (own task-def + service +
+                        // scale-to-zero autoscaling) — only when tasks.queue extracts
+                        // it from the web container.
+                        ...Manifest::hasStandaloneQueue()
+                            ? [
+                                Steps\Sync\App\SyncQueueTaskDefinitionStep::class,
+                                Steps\Sync\App\SyncQueueServiceStep::class,
+                                Steps\Sync\App\SyncQueueScalableTargetStep::class,
+                                Steps\Sync\App\SyncQueueScalingPolicyStep::class,
+                                Steps\Sync\App\SyncQueueScaleToZeroAlarmStep::class,
+                            ]
+                            : [],
+                        // Standalone scheduler service (pinned singleton) — only when
+                        // tasks.scheduler extracts it from the web container.
+                        ...Manifest::hasStandaloneScheduler()
+                            ? [
+                                Steps\Sync\App\SyncSchedulerTaskDefinitionStep::class,
+                                Steps\Sync\App\SyncSchedulerServiceStep::class,
+                            ]
+                            : [],
                         Steps\Sync\App\SyncAssetDistributionStep::class,
                     ]
                     : [],

@@ -1,6 +1,16 @@
 # Scaling
 
-YOLO runs the web service as a single Fargate task by default. You can scale it two ways:
+By default an app runs as **one Fargate task** doing everything — Octane plus, if enabled, the bundled queue worker and scheduler (`tasks.web.queue` / `tasks.web.scheduler`). That's the cheap floor and fine at low scale. The three workloads have different scaling shapes, though, so each can be **extracted into its own ECS service** that scales independently:
+
+| Service | How it scales | Opt in with |
+|---|---|---|
+| **web** | target tracking (CPU + request count), `min`→`max` | `tasks.web.autoscaling` |
+| **queue** | backlog-per-task, **scales to zero** | top-level `tasks.queue` |
+| **scheduler** | never — pinned singleton (exactly one task) | top-level `tasks.scheduler` |
+
+Extraction is additive and per-workload: keep the queue bundled but give the scheduler its own service, or any mix. A workload can't be both bundled (`tasks.web.queue`) and extracted (`tasks.queue`) at once — `sync` hard-fails if you configure both.
+
+You can scale the web (and queue) service two ways:
 
 - **Autoscaling** — let AWS adjust the task count automatically from live metrics.
 - **`yolo scale`** — set the capacity yourself, out of band, without a deploy.
@@ -62,13 +72,14 @@ Application Auto Scaling targets and policies can't carry tags, so they don't sh
 [`yolo scale`](/reference/commands#yolo-scale) changes capacity without a build or deploy. Like `env:push`, it shows a current → new comparison and asks before applying.
 
 ```bash
-yolo scale production --web --min=3 --max=10   # autoscaled: set the bounds
-yolo scale production --web 3                    # fixed: set the desired count
+yolo scale production --web --min=3 --max=10     # web autoscaled: set the bounds
+yolo scale production --web 3                      # web fixed: set the desired count
+yolo scale production --queue --min=0 --max=20     # queue bounds (min 0 = scale to zero)
 ```
 
 Under autoscaling you set the **bounds** (`--min`/`--max`), never a desired count — the policies own desired count and would override it. Crucially, `scale` **writes the bounds back to the manifest** (surgically — your comments and formatting survive), so the manifest stays the single source of truth and the next `yolo sync` reconciles to the same values rather than clobbering your change.
 
-For a fixed service (no `autoscaling` block) a positional `count` sets the ECS desired count directly.
+For a fixed web service (no `autoscaling` block) a positional `count` sets the ECS desired count directly. A standalone queue is always autoscaling-managed, so it only takes `--min`/`--max`. The scheduler is a singleton and can't be scaled (`--scheduler` errors out).
 
 ### Reducing capacity is guarded
 
@@ -80,17 +91,41 @@ Because the manifest is authoritative, a `yolo sync` run with a **stale** manife
 
 So an emergency `yolo scale production --web --min=10` is durable: it's written to the manifest *and* live, and no unattended sync can quietly walk it back.
 
-## The scheduler caveat
+## The queue (scale to zero)
 
-This is the one thing to get right before scaling a service that runs the scheduler.
+Add a top-level `tasks.queue` block to give the queue worker its own ECS service, separate from web:
 
-In the default topology the web container also runs the queue worker and the **scheduler** (`crond` firing `schedule:run` every minute). The queue is safe to multiply — SQS only hands each message to one worker. The scheduler is **not**: scale to N tasks and `schedule:run` fires on every replica, so every scheduled task runs N times (N× emails, N× billing, N× reports).
+```yaml
+tasks:
+  web: {}
+  queue:
+    min: 0          # scale to zero when idle (the default)
+    max: 20
+    backlog-per-task: 100
+    spot: true      # optional: ~70% cheaper interruptible capacity
+```
 
-There's no stable per-task identity on Fargate to elect a single scheduler from, so pick one of two strategies:
+It scales on **backlog per task** — `ApproximateNumberOfMessagesVisible / RunningTaskCount`, computed with CloudWatch metric math (no Lambda) and held at `backlog-per-task` messages per running task. As the backlog grows it scales out toward `max`; as it drains it scales back in toward `min`.
 
-### 1. `->onOneServer()` (recommended)
+With `min: 0` the queue **scales to zero**: no tasks and no compute cost when idle. Target tracking can't lift it off zero (dividing by zero running tasks is undefined), so YOLO also attaches a step-scaling alarm that sets the service to exactly one task the instant a message becomes visible; target tracking owns it from one upward. The cost is a **~30–60s cold start** (image pull + boot) on the first message after idle.
 
-Add Laravel's [`onOneServer()`](https://laravel.com/docs/scheduling#running-tasks-on-one-server) to **every** scheduled task in your console kernel. It takes an atomic lock in the shared cache so only one replica runs each task per minute:
+That makes the choice of *where* the queue lives a latency decision:
+
+| Topology | Idle cost | Pickup latency | Use for |
+|---|---|---|---|
+| Bundled (`tasks.web.queue: true`) | included in web | **instant** (worker always warm) | light, latency-sensitive jobs |
+| Standalone, `min: 0` | **~$0** | ~30–60s cold start from idle | bursty, latency-tolerant async |
+| Standalone, `min: 1+` | one always-on task | instant, then autoscales | high-volume, always-busy |
+
+For multi-tenant apps, a single queue service works the app's default queue; per-tenant queue fan-out composes with [LPX-601](https://linear.app/codinglabsau/issue/LPX-601) and isn't covered here.
+
+## The scheduler
+
+The scheduler (`crond` firing `schedule:run` every minute) must run as a **singleton** — if it runs on N tasks, every scheduled job fires N times (N× emails, N× billing, N× reports). The queue is safe to multiply (SQS hands each message to one worker); the scheduler is not. There's no stable per-task identity on Fargate to elect one from, so pick one of two strategies.
+
+### 1. `->onOneServer()`
+
+Keep the scheduler bundled in the web container (`tasks.web.scheduler: true`) and add Laravel's [`onOneServer()`](https://laravel.com/docs/scheduling#running-tasks-on-one-server) to **every** scheduled task. It takes an atomic lock in the shared cache so only one replica runs each task per minute:
 
 ```php
 $schedule->command('reports:send')->daily()->onOneServer();
@@ -100,10 +135,19 @@ This requires a shared lock store (the Valkey/Redis cache YOLO provisions, or a 
 
 The catch: it's per-task. A scheduled task registered by a package (Telescope pruning, backups, etc.) that you can't annotate will still multi-fire — which is your signal to reach for strategy 2.
 
-### 2. Separate the scheduler
+### 2. Extract the scheduler (recommended once web scales)
 
-Move the scheduler into its own service pinned at exactly one task. This removes the requirement entirely (it's genuinely a singleton) and lets the web tier scale without any scheduler concern. (Dedicated queue/scheduler services are on the roadmap.)
+Give the scheduler its own service with a top-level `tasks.scheduler` block:
+
+```yaml
+tasks:
+  web:
+    autoscaling: { min: 1, max: 6 }
+  scheduler: {}     # its own pinned-singleton service
+```
+
+YOLO pins it at exactly one task (never a scalable target) and deploys it **stop-then-start** (`minimumHealthyPercent: 0` / `maximumPercent: 100`) so a rollout stops the old cron before starting the new one — a deploy never briefly runs two schedulers (a missed cron minute is harmless; a double-run isn't). This removes the `onOneServer()` *requirement* entirely — it's genuinely a singleton now — though leaving `onOneServer()` on is harmless. The web tier then scales without any scheduler concern.
 
 ::: tip
-When you enable autoscaling on a task that still runs the scheduler, `yolo sync` prints a one-line reminder of exactly this. It's a nudge, not a gate — YOLO can't see inside your kernel to know which strategy you chose.
+When you enable autoscaling on a web task that still **bundles** the scheduler, `yolo sync` prints a one-line advisory pointing at these two strategies. It's a nudge, not a gate — YOLO can't see inside your kernel to know whether you've used `onOneServer()`.
 :::

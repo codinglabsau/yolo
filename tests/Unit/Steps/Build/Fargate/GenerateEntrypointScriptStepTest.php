@@ -35,14 +35,45 @@ it('starts with a shebang and fails fast through the deploy-all hooks', function
     expect($script)->toContain("php artisan migrate --force\nphp artisan config:cache\n");
 });
 
-it('supervises the CMD instead of exec-ing it so SIGTERM can be trapped', function () {
+it('supervises the role command instead of exec-ing it so SIGTERM can be trapped', function () {
     $script = generatedEntrypointScript();
 
     expect($script)->not->toContain('exec "$@"');
-    expect($script)->toContain('"$@" &');
+    expect($script)->toContain('$cmd &');
     expect($script)->toContain('child=$!');
     expect($script)->toContain('trap drain TERM');
     expect($script)->toContain('wait "$child"');
+});
+
+it('dispatches a web-only app to supervisord with no queue or scheduler branch', function () {
+    $script = generatedEntrypointScript();
+
+    expect($script)->toContain("cmd='supervisord -c /etc/supervisord.conf -n'");
+    expect($script)->not->toContain('queue)');
+    expect($script)->not->toContain('scheduler)');
+});
+
+it('adds a queue branch running the worker when the queue is its own service', function () {
+    writeManifest([
+        'apex' => 'example.com',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => [], 'queue' => []],
+    ]);
+
+    expect(generatedEntrypointScript())->toContain("queue)     cmd='php artisan queue:work");
+});
+
+it('adds a scheduler branch running cron when the scheduler is its own service', function () {
+    writeManifest([
+        'apex' => 'example.com',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => [], 'scheduler' => []],
+    ]);
+
+    $script = generatedEntrypointScript();
+
+    expect($script)->toContain("scheduler) cmd='crond");
+    expect($script)->toContain("pgrep -f 'artisan schedule:run'");
 });
 
 it('drains for the web shutdown-grace-period before forwarding the stop', function () {
