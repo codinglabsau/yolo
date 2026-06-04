@@ -63,7 +63,7 @@ For your image to work with YOLO, the Dockerfile must:
    ENTRYPOINT ["/app/.yolo-entrypoint.sh"]
    CMD ["supervisord", "-n"]
    ```
-4. **Expose the web port**, and make sure it matches `tasks.web.port` in your manifest (default `8000`). The ALB health-checks this port.
+4. **Expose the web port**, and make sure it matches `tasks.web.port` in your manifest (default `8000`). The ALB health-checks this port at `/up` (Laravel's built-in [health route](https://laravel.com/docs/deployment#the-health-route)) — override the path or timing via [`tasks.web.health-check.*`](/reference/manifest#tasks-web-health-check).
 5. Have **`supervisor`** installed (the default Dockerfile installs it via `apk add`).
 
 ## Processes in the container

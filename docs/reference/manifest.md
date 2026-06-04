@@ -70,9 +70,9 @@ environments:
         # task-role: arn:aws:iam::123456789012:role/...        # default: shared yolo-{env} role
         #
         # health-check:
-        #   path: /health                 # default: /health
+        #   path: /up                     # default: /up (Laravel's built-in health route)
         #   interval: 10                  # default: 10 (seconds between checks)
-        #   timeout: 8                    # default: 8 — tolerant of a slow /health under load
+        #   timeout: 8                    # default: 8 — tolerant of a slow /up under load
         #   healthy-threshold: 2          # default: 2
         #   unhealthy-threshold: 5        # default: 5 — cushion for a slow-but-alive task
         #   grace-period: 60              # default: 60 (ECS health-check grace period)
@@ -317,11 +317,13 @@ Declaring `tasks.web` makes the app a Fargate web service. Omit `tasks` entirely
 
 ### `tasks.web.health-check.*`
 
-ALB target-group health check. The defaults are tuned to avoid false-positive failures on a Laravel/Octane app under load: when the FrankenPHP worker pool is saturated the `/health` probe answers slowly (6–7s) rather than failing, so the timeout sits at `8`s — a slow-but-alive task stays in service — with a roomier `5`-failure unhealthy threshold for cushion. A genuine deadlock (no response / 30s+) still trips within ~a minute. Capacity is [autoscaling](/guide/scaling)'s job, not the health check's. Override any field per app if you need to:
+ALB target-group health check. The path defaults to Laravel's built-in [`/up` health route](https://laravel.com/docs/deployment#the-health-route), which returns `200` only once the framework boots without exceptions (and `500` otherwise) — so a broken boot fails the check. Requests to it also dispatch Laravel's `Illuminate\Foundation\Events\DiagnosingHealth` event, so you can add a listener that checks your database or cache and throws to mark the app unhealthy.
+
+The other defaults are tuned to avoid false-positive failures on a Laravel/Octane app under load: when the FrankenPHP worker pool is saturated the `/up` probe answers slowly (6–7s) rather than failing, so the timeout sits at `8`s — a slow-but-alive task stays in service — with a roomier `5`-failure unhealthy threshold for cushion. A genuine deadlock (no response / 30s+) still trips within ~a minute. Capacity is [autoscaling](/guide/scaling)'s job, not the health check's. Override any field per app if you need to:
 
 | Key | Default | Description |
 |---|---|---|
-| `health-check.path` | `/health` | Path the ALB requests. Keep it on a route that exercises PHP so a broken boot still fails the check. |
+| `health-check.path` | `/up` | Path the ALB requests — defaults to Laravel's built-in `/up` health route. Keep it on a route that exercises PHP so a broken boot still fails the check. |
 | `health-check.interval` | `10` | Seconds between checks. |
 | `health-check.timeout` | `8` | Seconds before a check times out. Must stay below the interval. |
 | `health-check.healthy-threshold` | `2` | Consecutive successes to mark healthy. |
