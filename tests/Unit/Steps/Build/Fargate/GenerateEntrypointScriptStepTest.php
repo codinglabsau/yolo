@@ -35,22 +35,31 @@ it('starts with a shebang and fails fast through the deploy-all hooks', function
     expect($script)->toContain("php artisan migrate --force\nphp artisan config:cache\n");
 });
 
-it('supervises the role command instead of exec-ing it so SIGTERM can be trapped', function () {
+it('supervises a known role so SIGTERM can be trapped and drained', function () {
     $script = generatedEntrypointScript();
 
-    expect($script)->not->toContain('exec "$@"');
     expect($script)->toContain('$cmd &');
     expect($script)->toContain('child=$!');
     expect($script)->toContain('trap drain TERM');
     expect($script)->toContain('wait "$child"');
 });
 
-it('dispatches a web-only app to supervisord with no queue or scheduler branch', function () {
+it('dispatches a web-only app to supervisord via an explicit branch, no queue or scheduler', function () {
     $script = generatedEntrypointScript();
 
-    expect($script)->toContain("cmd='supervisord -c /etc/supervisord.conf -n'");
+    expect($script)->toContain("web)       cmd='supervisord -c /etc/supervisord.conf -n'");
     expect($script)->not->toContain('queue)');
     expect($script)->not->toContain('scheduler)');
+});
+
+it('execs an unknown command directly instead of booting the web server', function () {
+    $script = generatedEntrypointScript();
+
+    // A one-off ecs:RunTask passes its command (e.g. `sh -c "…migrate…"`) as args
+    // to the fixed entrypoint — ECS can override the command but not the entrypoint.
+    // The catchall must exec it, never fall through to supervisord (the hang bug).
+    expect($script)->toContain('exec "$@"');
+    expect($script)->not->toContain("*)         cmd='supervisord");
 });
 
 it('adds a queue branch running the worker when the queue is its own service', function () {

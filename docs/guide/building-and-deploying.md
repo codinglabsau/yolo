@@ -60,6 +60,8 @@ Three manifest arrays run shell commands at different points:
 | `deploy` | Once per deploy, before traffic shifts | a one-off ECS task | `php artisan migrate --force` |
 | `deploy-all` | On every container start | the entrypoint | `php artisan optimize` (cache config/routes/views) |
 
+The `deploy` task templates on your management-tier service — a dedicated `scheduler` if you've extracted one, else a standalone `queue`, else `web` (the same `scheduler → queue → web` order `yolo run` uses). It's a one-off task, so it just runs the hooks once and exits.
+
 ```yaml
 build:
   - composer install --no-dev --optimize-autoloader

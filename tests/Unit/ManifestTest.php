@@ -228,3 +228,35 @@ describe('server groups', function () {
         expect(Manifest::bundles('queue'))->toBeFalse();
     });
 });
+
+describe('deploy group', function () {
+    it('runs deploy hooks on web for a plain web app', function () {
+        writeManifest(['tasks' => ['web' => []]]);
+
+        expect(Manifest::deployGroup())->toBe(ServerGroup::WEB);
+    });
+
+    it('runs deploy hooks on a standalone queue when there is no standalone scheduler', function () {
+        writeManifest(['tasks' => ['web' => [], 'queue' => []]]);
+
+        expect(Manifest::deployGroup())->toBe(ServerGroup::QUEUE);
+    });
+
+    it('runs deploy hooks on a standalone scheduler when one is extracted', function () {
+        writeManifest(['tasks' => ['web' => [], 'scheduler' => []]]);
+
+        expect(Manifest::deployGroup())->toBe(ServerGroup::SCHEDULER);
+    });
+
+    it('prefers the scheduler over the queue when both are extracted', function () {
+        writeManifest(['tasks' => ['web' => [], 'queue' => [], 'scheduler' => []]]);
+
+        expect(Manifest::deployGroup())->toBe(ServerGroup::SCHEDULER);
+    });
+
+    it('falls back to web when queue and scheduler are bundled, not standalone', function () {
+        writeManifest(['tasks' => ['web' => ['queue' => true, 'scheduler' => true]]]);
+
+        expect(Manifest::deployGroup())->toBe(ServerGroup::WEB);
+    });
+});

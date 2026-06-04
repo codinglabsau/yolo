@@ -31,19 +31,28 @@ class ExecuteDeployStepsStep implements LongRunning
 
         $script = "set -e\n" . implode("\n", $commands);
 
+        // One-off deploy hooks run on the management-tier task def — a dedicated
+        // scheduler if extracted, else a standalone queue, else web (see
+        // Manifest::deployGroup). The container override's name MUST match that
+        // group's container name (the task def names its container after the
+        // group): ECS matches overrides by container name, so a mismatch silently
+        // drops the command override and the task boots the role's default process
+        // (e.g. crond) instead of the deploy script — never stopping.
+        $group = Manifest::deployGroup();
+
         $cluster = (new EcsCluster())->name();
 
         $run = Aws::ecs()->runTask([
             'cluster' => $cluster,
-            // The task definition family is the web service name (see EcsService).
-            'taskDefinition' => (new EcsService())->name(),
+            // The task definition family is the service name for this group (see EcsService).
+            'taskDefinition' => (new EcsService($group))->name(),
             'launchType' => 'FARGATE',
             'count' => 1,
             'startedBy' => 'yolo-deploy',
             'overrides' => [
                 'containerOverrides' => [
                     [
-                        'name' => 'web',
+                        'name' => $group->value,
                         'command' => ['sh', '-c', $script],
                     ],
                 ],
