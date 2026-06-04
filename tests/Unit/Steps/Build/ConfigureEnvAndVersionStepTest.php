@@ -70,10 +70,10 @@ it('does not inject AWS_BUCKET when the manifest does not define one', function 
     expect(file_get_contents(Paths::build('.env.testing')))->not->toContain('AWS_BUCKET=');
 });
 
-it('injects the SQS connection block when tasks.web.queue is on', function () {
+it('wires the SQS connection for every web app (the worker always runs somewhere)', function () {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['queue' => true]],
+        'tasks' => ['web' => []],
     ]);
 
     is_dir(Paths::build()) || mkdir(Paths::build(), 0755, true);
@@ -89,7 +89,8 @@ it('injects the SQS connection block when tasks.web.queue is on', function () {
     expect($env)->toContain('SQS_QUEUE=yolo-testing-my-app');
 });
 
-it('forces QUEUE_CONNECTION=sync when the queue is off (no worker to consume)', function () {
+it('forces QUEUE_CONNECTION=sync for a non-web app (no worker to consume)', function () {
+    // No tasks.web → no container, so no queue worker; routing to SQS would dead-end.
     (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
 
     $env = file_get_contents(Paths::build('.env.testing'));
@@ -116,7 +117,7 @@ it('respects a QUEUE_CONNECTION already set in the .env', function () {
 it('does not pin SQS_QUEUE for a multitenant app (worker resolves it per tenant)', function () {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['queue' => true]],
+        'tasks' => ['web' => []],
         'tenants' => ['acme' => ['domain' => 'acme.test']],
     ]);
 

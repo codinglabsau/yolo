@@ -53,8 +53,10 @@ class ScalableTarget
     public function min(): int
     {
         if ($this->group === ServerGroup::QUEUE) {
-            // A standalone queue's floor may be 0 (scale to zero) — that's the opt-in.
-            return Helpers::validateNonNegativeInt(Manifest::get('tasks.queue.min', 0), 'tasks.queue.min');
+            // A standalone queue's floor may be 0 (scale to zero) — that's the opt-in
+            // — unless it also hosts the scheduler, where Manifest::queueMin floors it
+            // at 1 so cron isn't killed when the queue idles to zero.
+            return Manifest::queueMin();
         }
 
         return Helpers::validatePositiveInt(Manifest::get('tasks.web.autoscaling.min', 1), 'tasks.web.autoscaling.min');

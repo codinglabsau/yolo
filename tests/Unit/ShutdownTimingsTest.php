@@ -5,6 +5,8 @@ use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 beforeEach(function () {
+    // A plain web app: the web container bundles all three roles (octane + queue +
+    // scheduler), since neither queue nor scheduler is extracted.
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
@@ -35,38 +37,72 @@ it('skips the drain entirely when headless (no ALB to drain)', function () {
     expect(ShutdownTimings::drain())->toBe(0);
 });
 
-it('runs only octane by default, inheriting the drain for its stop window', function () {
-    expect(ShutdownTimings::programGraces())->toBe(['octane' => 10]);
+it('bundles octane, scheduler and queue into the web container for a plain web app', function () {
+    expect(ShutdownTimings::programGraces())->toBe(['octane' => 10, 'scheduler' => 10, 'queue' => 70]);
 });
 
-it('octane and scheduler inherit the web shutdown-grace-period', function () {
+it('runs octane alone in the web container when both queue and scheduler are extracted', function () {
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['shutdown-grace-period' => 20, 'scheduler' => true]],
+        'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
     ]);
 
-    expect(ShutdownTimings::programGraces())->toBe(['octane' => 20, 'scheduler' => 20]);
+    expect(ShutdownTimings::programGraces(ServerGroup::WEB))->toBe(['octane' => 10]);
 });
 
-it('gives the queue worker a longer default than the web tier', function () {
+it('tracks the web shutdown-grace-period for octane; the bundled scheduler keeps its own default', function () {
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['queue' => true]],
+        'tasks' => ['web' => ['shutdown-grace-period' => 20]],
     ]);
 
-    expect(ShutdownTimings::programGraces())->toBe(['octane' => 10, 'queue' => 70]);
+    expect(ShutdownTimings::programGraces(ServerGroup::WEB))->toBe(['octane' => 20, 'scheduler' => 10, 'queue' => 70]);
 });
 
-it('gives the bundled ssr renderer a short default grace alongside octane', function () {
+it('runs the scheduler and queue worker together in a standalone queue container', function () {
+    writeManifest([
+        'apex' => 'example.com',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => [], 'queue' => []],
+    ]);
+
+    // Queue extracted, scheduler not — so the scheduler rides the queue container,
+    // and the web container is left with octane alone.
+    expect(ShutdownTimings::programGraces(ServerGroup::QUEUE))->toBe(['scheduler' => 10, 'queue' => 70]);
+    expect(ShutdownTimings::programGraces(ServerGroup::WEB))->toBe(['octane' => 10]);
+});
+
+it('runs the queue worker alone in its container when the scheduler is its own service', function () {
+    writeManifest([
+        'apex' => 'example.com',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
+    ]);
+
+    expect(ShutdownTimings::programGraces(ServerGroup::QUEUE))->toBe(['queue' => 70]);
+    expect(ShutdownTimings::programGraces(ServerGroup::SCHEDULER))->toBe(['scheduler' => 10]);
+});
+
+it('honours a standalone queue shutdown-grace-period override', function () {
+    writeManifest([
+        'apex' => 'example.com',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => [], 'queue' => ['shutdown-grace-period' => 90], 'scheduler' => []],
+    ]);
+
+    expect(ShutdownTimings::programGraces(ServerGroup::QUEUE))->toBe(['queue' => 90]);
+});
+
+it('bundles the ssr renderer into the web container when tasks.web.ssr is on', function () {
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['ssr' => true]],
     ]);
 
-    expect(ShutdownTimings::programGraces())->toBe(['octane' => 10, 'ssr' => 5]);
+    expect(ShutdownTimings::programGraces(ServerGroup::WEB))->toBe(['octane' => 10, 'ssr' => 5, 'scheduler' => 10, 'queue' => 70]);
 });
 
 it('honours an ssr shutdown-grace-period override via the object form', function () {
@@ -76,113 +112,80 @@ it('honours an ssr shutdown-grace-period override via the object form', function
         'tasks' => ['web' => ['ssr' => ['shutdown-grace-period' => 12]]],
     ]);
 
-    expect(ShutdownTimings::programGraces())->toBe(['octane' => 10, 'ssr' => 12]);
+    expect(ShutdownTimings::programGraces(ServerGroup::WEB))->toBe(['octane' => 10, 'ssr' => 12, 'scheduler' => 10, 'queue' => 70]);
 });
 
-it('honours a queue shutdown-grace-period override via the object form', function () {
+it('sizes the web stop timeout around the drain, the scheduler wait and the slowest bundled program', function () {
+    // scheduler drains first within max(drain 10, scheduler 10), then supervisord
+    // stops octane + queue in parallel for max(10, 70); plus the 5s buffer.
+    expect(ShutdownTimings::stopTimeoutFor(ServerGroup::WEB))->toBe(85);
+});
+
+it('drops the ALB drain window from the web stop timeout when headless', function () {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => []],
+    ]);
+
+    // no drain window: max(0, scheduler 10) + max(octane 10, queue 70) + 5 buffer.
+    expect(ShutdownTimings::stopTimeoutFor(ServerGroup::WEB))->toBe(85);
+});
+
+it('caps the web stop timeout at the Fargate maximum of 120s', function () {
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['queue' => ['shutdown-grace-period' => 90]]],
+        'tasks' => ['web' => ['shutdown-grace-period' => 300]],
     ]);
 
-    expect(ShutdownTimings::programGraces())->toBe(['octane' => 10, 'queue' => 90]);
+    expect(ShutdownTimings::stopTimeoutFor(ServerGroup::WEB))->toBe(120);
 });
 
-it('treats the queue object form as enabled even without an explicit flag', function () {
+it('rejects a non-boolean, non-object ssr flag', function () {
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['queue' => ['shutdown-grace-period' => 30], 'scheduler' => false]],
+        'tasks' => ['web' => ['ssr' => 'sometimes']],
     ]);
 
-    $graces = ShutdownTimings::programGraces();
-
-    expect($graces)->toHaveKey('queue');
-    expect($graces)->not->toHaveKey('scheduler');
-});
-
-it('derives the stop timeout from the drain plus the slowest program', function () {
-    // octane only: drain 10 + max(octane 10) + 5 buffer.
-    expect(ShutdownTimings::stopTimeout())->toBe(25);
-});
-
-it('sizes the stop timeout around a long queue grace', function () {
-    writeManifest([
-        'apex' => 'example.com',
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['queue' => true]],
-    ]);
-
-    // drain 10 + max(octane 10, queue 70) + 5 buffer.
-    expect(ShutdownTimings::stopTimeout())->toBe(85);
-});
-
-it('drops the drain from the stop timeout when headless', function () {
-    writeManifest([
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['queue' => true]],
-    ]);
-
-    // no drain + max(octane 10, queue 70) + 5 buffer.
-    expect(ShutdownTimings::stopTimeout())->toBe(75);
-});
-
-it('caps the stop timeout at the Fargate maximum of 120s', function () {
-    writeManifest([
-        'apex' => 'example.com',
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['queue' => ['shutdown-grace-period' => 300]]],
-    ]);
-
-    expect(ShutdownTimings::stopTimeout())->toBe(120);
-});
-
-it('rejects a non-boolean, non-object program flag', function () {
-    writeManifest([
-        'apex' => 'example.com',
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['queue' => 'sometimes']],
-    ]);
-
-    expect(fn () => ShutdownTimings::programGraces())
+    expect(fn () => ShutdownTimings::programGraces(ServerGroup::WEB))
         ->toThrow(IntegrityCheckException::class);
 });
 
 describe('standalone services', function () {
-    it('defaults the standalone queue grace longer than the scheduler', function () {
+    it('sizes a queue-only stop timeout as the grace plus buffer (no ALB drain, no scheduler)', function () {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
         ]);
 
-        expect(ShutdownTimings::standaloneGrace(ServerGroup::QUEUE))->toBe(70);
-        expect(ShutdownTimings::standaloneGrace(ServerGroup::SCHEDULER))->toBe(10);
+        // 70 (default queue grace) + 5 buffer; no ALB drain, no co-hosted scheduler.
+        expect(ShutdownTimings::stopTimeoutFor(ServerGroup::QUEUE))->toBe(75);
     });
 
-    it('honours a per-service shutdown-grace-period override', function () {
-        writeManifest([
-            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tasks' => ['web' => [], 'queue' => ['shutdown-grace-period' => 110]],
-        ]);
-
-        expect(ShutdownTimings::standaloneGrace(ServerGroup::QUEUE))->toBe(110);
-    });
-
-    it('sizes a standalone stop timeout as the grace plus buffer (no ALB drain)', function () {
+    it('sizes a queue+scheduler stop timeout as the scheduler wait plus the queue grace', function () {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'tasks' => ['web' => [], 'queue' => []],
         ]);
 
-        // 70 (default queue grace) + 5 buffer; no ALB drain folded in.
-        expect(ShutdownTimings::stopTimeoutFor(ServerGroup::QUEUE))->toBe(75);
+        // scheduler drains first (max(0, 10)), then the queue worker stops (70); plus buffer.
+        expect(ShutdownTimings::stopTimeoutFor(ServerGroup::QUEUE))->toBe(85);
+    });
+
+    it('sizes a scheduler-only stop timeout as its grace plus buffer', function () {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
+        ]);
+
+        expect(ShutdownTimings::stopTimeoutFor(ServerGroup::SCHEDULER))->toBe(15);
     });
 
     it('caps a standalone stop timeout at the Fargate maximum', function () {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tasks' => ['web' => [], 'queue' => ['shutdown-grace-period' => 200]],
+            'tasks' => ['web' => [], 'queue' => ['shutdown-grace-period' => 200], 'scheduler' => []],
         ]);
 
         expect(ShutdownTimings::stopTimeoutFor(ServerGroup::QUEUE))->toBe(120);

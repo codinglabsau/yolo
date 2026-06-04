@@ -77,10 +77,10 @@ it('reports drift but does not register on a dry-run', function () {
     expect(collect($captured)->pluck('name'))->not->toContain('RegisterScalableTarget');
 });
 
-it('builds the queue service resource id and defaults its floor to zero', function () {
+it('builds the queue service resource id and defaults its floor to zero when the scheduler is extracted', function () {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => []],
+        'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
     ]);
 
     expect(ScalableTarget::resourceId(ServerGroup::QUEUE))->toBe('service/yolo-testing-my-app/yolo-testing-my-app-queue');
@@ -88,10 +88,21 @@ it('builds the queue service resource id and defaults its floor to zero', functi
     expect((new ScalableTarget(ServerGroup::QUEUE))->max())->toBe(10);
 });
 
+it('floors the queue at one task when it also hosts the scheduler', function () {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => [], 'queue' => []],
+    ]);
+
+    // No dedicated scheduler service → the scheduler rides the queue, so it can't
+    // scale to zero (cron would stop) — the floor defaults to 1.
+    expect((new ScalableTarget(ServerGroup::QUEUE))->min())->toBe(1);
+});
+
 it('registers the queue target with a zero floor (scale to zero)', function () {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => ['min' => 0, 'max' => 20]],
+        'tasks' => ['web' => [], 'queue' => ['min' => 0, 'max' => 20], 'scheduler' => []],
     ]);
 
     $captured = [];

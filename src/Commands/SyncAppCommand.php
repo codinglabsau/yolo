@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\ServerGroup;
 
 use function Laravel\Prompts\warning;
 
@@ -37,17 +38,30 @@ class SyncAppCommand extends SyncSteppedCommand
     }
 
     /**
-     * A soft, non-blocking nudge (not a guard) when autoscaling is enabled on a
-     * web task that also bundles the scheduler. Scaling the bundled task to N
-     * replicas runs cron N times, so every scheduled task must use ->onOneServer().
+     * A soft, non-blocking nudge (not a guard) when the scheduler is bundled into a
+     * host that can run more than one task — the autoscaling web container, or the
+     * standalone queue (which always autoscales). Cron then fires on every replica,
+     * so every scheduled task must use ->onOneServer(). A dedicated tasks.scheduler
+     * service is a pinned singleton and needs no nudge.
      */
     public static function schedulerAdvisory(): ?string
     {
-        if (! Manifest::has('tasks.web.autoscaling') || empty(Manifest::get('tasks.web.scheduler'))) {
+        $host = Manifest::schedulerHost();
+
+        $hostAutoscales = match ($host) {
+            ServerGroup::WEB => Manifest::has('tasks.web.autoscaling'),
+            ServerGroup::QUEUE => true, // a standalone queue is always autoscaled (min↔max)
+            ServerGroup::SCHEDULER => false, // dedicated singleton — never multi-fires
+        };
+
+        if (! $hostAutoscales) {
             return null;
         }
 
-        return 'Autoscaling a bundled web+scheduler task runs cron on every replica — guard each scheduled task with ->onOneServer() or it fires N times.';
+        return sprintf(
+            'The scheduler is bundled into the autoscaling %s task — cron fires on every replica. Guard each scheduled task with ->onOneServer(), or extract the scheduler into its own tasks.scheduler service.',
+            $host->value,
+        );
     }
 
     public function scopes(): array

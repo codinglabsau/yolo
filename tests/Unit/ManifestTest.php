@@ -214,18 +214,68 @@ describe('server groups', function () {
     });
 
     it('does not list a bundled queue as its own group', function () {
-        writeManifest(['tasks' => ['web' => ['queue' => true]]]);
+        writeManifest(['tasks' => ['web' => []]]);
 
         expect(Manifest::serverGroups())->toBe([ServerGroup::WEB]);
         expect(Manifest::hasStandaloneQueue())->toBeFalse();
-        expect(Manifest::bundles('queue'))->toBeTrue();
+        expect(Manifest::queueHost())->toBe(ServerGroup::WEB);
     });
 
-    it('detects a standalone queue and reads it as not bundled', function () {
-        writeManifest(['tasks' => ['web' => [], 'queue' => ['min' => 0]]]);
+    it('detects a standalone queue and lists it as its own group', function () {
+        writeManifest(['tasks' => ['web' => [], 'queue' => []]]);
 
         expect(Manifest::hasStandaloneQueue())->toBeTrue();
-        expect(Manifest::bundles('queue'))->toBeFalse();
+        expect(Manifest::queueHost())->toBe(ServerGroup::QUEUE);
+    });
+});
+
+describe('queue and scheduler hosts', function () {
+    it('bundles both the queue worker and the scheduler into web for a plain web app', function () {
+        writeManifest(['tasks' => ['web' => []]]);
+
+        expect(Manifest::queueHost())->toBe(ServerGroup::WEB);
+        expect(Manifest::schedulerHost())->toBe(ServerGroup::WEB);
+    });
+
+    it('rides the scheduler on the standalone queue when only the queue is extracted', function () {
+        writeManifest(['tasks' => ['web' => [], 'queue' => []]]);
+
+        expect(Manifest::queueHost())->toBe(ServerGroup::QUEUE);
+        expect(Manifest::schedulerHost())->toBe(ServerGroup::QUEUE);
+    });
+
+    it('keeps the queue worker in web but gives the scheduler its own service when only the scheduler is extracted', function () {
+        writeManifest(['tasks' => ['web' => [], 'scheduler' => []]]);
+
+        expect(Manifest::queueHost())->toBe(ServerGroup::WEB);
+        expect(Manifest::schedulerHost())->toBe(ServerGroup::SCHEDULER);
+    });
+
+    it('gives each role its own container when both are extracted', function () {
+        writeManifest(['tasks' => ['web' => [], 'queue' => [], 'scheduler' => []]]);
+
+        expect(Manifest::queueHost())->toBe(ServerGroup::QUEUE);
+        expect(Manifest::schedulerHost())->toBe(ServerGroup::SCHEDULER);
+    });
+});
+
+describe('queue floor', function () {
+    it('defaults a standalone queue to scale to zero when the scheduler is extracted', function () {
+        writeManifest(['tasks' => ['web' => [], 'queue' => [], 'scheduler' => []]]);
+
+        expect(Manifest::queueMin())->toBe(0);
+    });
+
+    it('defaults a scheduler-hosting queue to a floor of one', function () {
+        writeManifest(['tasks' => ['web' => [], 'queue' => []]]);
+
+        expect(Manifest::queueMin())->toBe(1);
+    });
+
+    it('honours an explicit queue min', function () {
+        writeManifest(['tasks' => ['web' => [], 'queue' => ['min' => 3], 'scheduler' => []]]);
+
+        expect(Manifest::queueMin())->toBe(3);
     });
 });
 
@@ -254,9 +304,9 @@ describe('deploy group', function () {
         expect(Manifest::deployGroup())->toBe(ServerGroup::SCHEDULER);
     });
 
-    it('falls back to web when queue and scheduler are bundled, not standalone', function () {
-        writeManifest(['tasks' => ['web' => ['queue' => true, 'scheduler' => true]]]);
+    it('tracks the scheduler host — deploy hooks run on the management tier', function () {
+        writeManifest(['tasks' => ['web' => [], 'queue' => []]]);
 
-        expect(Manifest::deployGroup())->toBe(ServerGroup::WEB);
+        expect(Manifest::deployGroup())->toBe(Manifest::schedulerHost());
     });
 });

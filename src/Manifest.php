@@ -34,7 +34,25 @@ class Manifest
         'sqs.depth-alarm-threshold', 'sqs.depth-alarm-period', 'sqs.depth-alarm-evaluation-periods',
         'cache.store',
         'session.driver',
-        'tasks.web.*', 'tasks.queue.*', 'tasks.scheduler.*',
+        // Each task group has a fixed, known shape, so every key is listed
+        // explicitly: an unrecognised key under tasks.web / tasks.queue /
+        // tasks.scheduler hard-fails rather than being silently accepted by a
+        // wildcard. health-check / autoscaling / the ssr object form are the only
+        // nested subtrees.
+        'tasks.web',
+        'tasks.web.port', 'tasks.web.cpu', 'tasks.web.memory', 'tasks.web.platform',
+        'tasks.web.enable-execute-command', 'tasks.web.shutdown-grace-period',
+        'tasks.web.log-retention', 'tasks.web.log-group',
+        'tasks.web.execution-role', 'tasks.web.task-role',
+        'tasks.web.ssr', 'tasks.web.ssr.*',
+        'tasks.web.health-check.*', 'tasks.web.autoscaling.*',
+        'tasks.queue',
+        'tasks.queue.min', 'tasks.queue.max', 'tasks.queue.backlog-per-task',
+        'tasks.queue.cpu', 'tasks.queue.memory', 'tasks.queue.spot',
+        'tasks.queue.shutdown-grace-period', 'tasks.queue.enable-execute-command',
+        'tasks.scheduler',
+        'tasks.scheduler.cpu', 'tasks.scheduler.memory',
+        'tasks.scheduler.shutdown-grace-period', 'tasks.scheduler.enable-execute-command',
         'build', 'deploy', 'deploy-all',
     ];
 
@@ -296,18 +314,60 @@ class Manifest
     }
 
     /**
-     * Whether the web container also runs this workload in-process (bundled mode)
-     * — `tasks.web.queue` / `tasks.web.scheduler` set truthy (a bare `true` or an
-     * object of overrides). The bare-flag form goes through strict bool validation
-     * so a typo can't silently disable a bundled process. The alternative is to
-     * extract the workload into its own service (see hasStandaloneQueue /
-     * hasStandaloneScheduler); a workload can't be both at once.
+     * Whether the web container bundles an opt-in in-process program — today only
+     * `tasks.web.ssr` (Inertia's SSR renderer). Truthy is a bare `true` or an
+     * object of overrides (e.g. shutdown-grace-period); the bare-flag form goes
+     * through strict bool validation so a typo can't silently disable it.
+     *
+     * Queue and scheduler bundling is NOT a flag — it's derived from task presence
+     * (see queueHost / schedulerHost): each rides the web container unless a
+     * top-level tasks.queue / tasks.scheduler block extracts it into its own service.
      */
     public static function bundles(string $program): bool
     {
         $value = static::get("tasks.web.$program", false);
 
         return is_array($value) || Helpers::validateStrictBool($value, "tasks.web.$program");
+    }
+
+    /**
+     * Which container runs the queue worker: a standalone `tasks.queue` service if
+     * extracted, else bundled in the web container. The worker always runs
+     * somewhere — there's no opt-out.
+     */
+    public static function queueHost(): ServerGroup
+    {
+        return static::hasStandaloneQueue() ? ServerGroup::QUEUE : ServerGroup::WEB;
+    }
+
+    /**
+     * Which container runs the scheduler (crond + schedule:run): a dedicated
+     * `tasks.scheduler` service if extracted, else the standalone queue if there is
+     * one, else the web container. The cron always runs somewhere — there's no
+     * opt-out — so management work lands on the least request-facing service that
+     * exists. This is also the deploy/management tier (see deployGroup).
+     */
+    public static function schedulerHost(): ServerGroup
+    {
+        return match (true) {
+            static::hasStandaloneScheduler() => ServerGroup::SCHEDULER,
+            static::hasStandaloneQueue() => ServerGroup::QUEUE,
+            default => ServerGroup::WEB,
+        };
+    }
+
+    /**
+     * The autoscaling/desired-count floor for the standalone queue. A scale-to-zero
+     * queue (`min: 0`, the default) idles to no tasks — but when the queue also
+     * hosts the scheduler (no dedicated `tasks.scheduler` service), it can't scale
+     * to zero or cron would stop, so the floor defaults to 1. An explicit
+     * `tasks.queue.min: 0` in that topology is rejected by the validator.
+     */
+    public static function queueMin(): int
+    {
+        $default = static::schedulerHost() === ServerGroup::QUEUE ? 1 : 0;
+
+        return Helpers::validateNonNegativeInt(static::get('tasks.queue.min', $default), 'tasks.queue.min');
     }
 
     /**
@@ -349,18 +409,13 @@ class Manifest
 
     /**
      * The service group a one-off deploy/management task (the `deploy:` hooks,
-     * e.g. migrations) templates its task definition on: a dedicated scheduler if
-     * extracted, else a standalone queue, else web. Mirrors `yolo run`'s
-     * scheduler → queue → web fallback — management work lands on the least
-     * request-facing service that exists, and web (always present) is the floor.
+     * e.g. migrations) templates its task definition on. It's the same least
+     * request-facing tier the scheduler rides — a dedicated scheduler if extracted,
+     * else a standalone queue, else web — so the one-off lands off the request path.
      */
     public static function deployGroup(): ServerGroup
     {
-        return match (true) {
-            static::hasStandaloneScheduler() => ServerGroup::SCHEDULER,
-            static::hasStandaloneQueue() => ServerGroup::QUEUE,
-            default => ServerGroup::WEB,
-        };
+        return static::schedulerHost();
     }
 
     public static function apex(): string

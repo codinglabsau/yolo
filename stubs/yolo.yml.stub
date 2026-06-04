@@ -27,32 +27,34 @@ environments:
     # session:
     #   driver: redis         # default; database | cookie | file to change the backend
 
+    # Every app runs three roles — web (Octane), the queue worker, and the
+    # scheduler (cron). With just `web` below, all three share the one web
+    # container. Extracting the queue and/or scheduler (the commented blocks
+    # further down) moves them into their own service; the scheduler then rides the
+    # standalone queue if there is one, else stays in web.
     tasks:
       web:
         cpu: '512'
         memory: '1024'
         port: 8000
         enable-execute-command: true   # ECS Exec shell access (gate with MFA on your IAM)
-        queue: true                    # run queue:work in the web container
-        scheduler: true                # run the scheduler (cron + schedule:run) in the web container
 
-        # shutdown-grace-period: seconds a process gets to finish work on SIGTERM before it's killed
-        # (default 10). For web it's also the ALB drain window (no deploy 502s) and the container
-        # stop timeout derives from it — bump for long in-flight requests (uploads, exports, SSE).
-        # web/queue/scheduler share the key; expand queue or scheduler to an object to override:
-        #   queue:
-        #     shutdown-grace-period: 90
+        # shutdown-grace-period: seconds the web process gets to finish work on SIGTERM before it's
+        # killed (default 10). It's also the ALB drain window (no deploy 502s) and the container stop
+        # timeout derives from it — bump for long in-flight requests (uploads, exports, SSE).
+        # shutdown-grace-period: 10
 
       # Extract a workload into its own ECS service so it scales independently of
-      # web. Opt in by uncommenting — but configure each workload in ONE place:
-      # either bundled above (web.queue / web.scheduler) or extracted here, never
-      # both. A standalone queue scales to zero by default; the scheduler is a
-      # pinned singleton (exactly one task), which drops the onOneServer() need.
+      # web — just uncomment its block (presence is the opt-in). A standalone queue
+      # scales to zero by default; the scheduler is a pinned singleton (exactly one
+      # task), which drops the onOneServer() need. With only a queue extracted, the
+      # scheduler rides that queue (so its floor is pinned at min 1).
       # queue:
       #   min: 0                 # 0 = scale to zero when idle (default)
       #   max: 10
       #   backlog-per-task: 100  # target messages per running task
       #   spot: true             # ~70% cheaper interruptible capacity
+      #   shutdown-grace-period: 70   # let an in-flight job finish on SIGTERM
       # scheduler:
       #   cpu: '256'
       #   memory: '512'

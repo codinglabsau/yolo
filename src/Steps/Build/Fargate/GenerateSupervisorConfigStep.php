@@ -3,27 +3,29 @@
 namespace Codinglabs\Yolo\Steps\Build\Fargate;
 
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\ProcessCommands;
 use Codinglabs\Yolo\ShutdownTimings;
 use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
+use Codinglabs\Yolo\Enums\ServerGroup;
 
 /**
- * Generates the container's supervisord.conf into the build context from the
+ * Generates each container's supervisord.conf into the build context from the
  * manifest — the same way GenerateEntrypointScriptStep generates the entrypoint,
  * so the running processes can't drift from the manifest and the octane port
  * always matches tasks.web.port (the same value the target group health-checks).
  *
- * Octane (the web server) always runs; the SSR renderer, scheduler and queue
- * worker run only when tasks.web.ssr / tasks.web.scheduler / tasks.web.queue are
- * explicitly true. The code default is false (octane only) — `yolo init` ships a
- * manifest that turns the queue and scheduler on, so a fresh app gets the full
- * web task while the absence of config stays conservative. This step only models
- * the web container's bundled programs; a queue/scheduler extracted into its own
- * service (top-level tasks.queue / tasks.scheduler) runs as that service's sole
- * process and is dispatched by the entrypoint, not supervisord. SSR is always
- * bundled (PHP calls it on localhost), so it never has a standalone form.
+ * Which program runs where is derived from task presence (Manifest::queueHost /
+ * schedulerHost), not flags. The web container always runs octane (plus the SSR
+ * renderer when tasks.web.ssr is on, and the queue worker / scheduler unless
+ * they've been extracted). A standalone queue that also hosts the scheduler runs
+ * two processes (queue:work + crond), so it gets its own supervisord.queue.conf; a
+ * queue-only or scheduler-only standalone service runs a single process the
+ * entrypoint exec's directly, with no supervisord config. The web config stays at
+ * the path the scaffolded Dockerfile copies (docker/supervisord.conf); the queue
+ * config rides along under docker/ via the Dockerfile's `COPY . /app`.
  */
 class GenerateSupervisorConfigStep implements Step
 {
@@ -34,19 +36,28 @@ class GenerateSupervisorConfigStep implements Step
 
     public function __invoke(): StepResult
     {
-        $graces = ShutdownTimings::programGraces();
+        // The web container always runs supervisord (octane + whatever it hosts).
+        $this->writeConfig('docker/supervisord.conf', ServerGroup::WEB);
 
-        $path = Paths::build('docker/supervisord.conf');
-        $this->filesystem->ensureDirectoryExists(dirname($path));
-        $this->filesystem->put($path, $this->config($graces));
-
-        // The scheduler runs as cron, not a schedule:work daemon, so the per-minute
-        // trigger lives in a crontab crond reads — written only when enabled.
-        if (isset($graces['scheduler'])) {
-            $this->writeCrontab();
+        // A standalone queue only needs supervisord when it co-hosts the scheduler
+        // (queue:work + crond = two processes). A queue-only service runs a single
+        // exec'd process — no config — so the entrypoint dispatches it directly.
+        if (Manifest::schedulerHost() === ServerGroup::QUEUE) {
+            $this->writeConfig('docker/supervisord.queue.conf', ServerGroup::QUEUE);
         }
 
+        // The scheduler runs cron in some container of every app, so the crontab it
+        // reads is always generated (the standalone scheduler service runs crond too).
+        $this->writeCrontab();
+
         return StepResult::SUCCESS;
+    }
+
+    protected function writeConfig(string $relativePath, ServerGroup $group): void
+    {
+        $path = Paths::build($relativePath);
+        $this->filesystem->ensureDirectoryExists(dirname($path));
+        $this->filesystem->put($path, $this->config(ShutdownTimings::programGraces($group)));
     }
 
     /**
@@ -54,31 +65,21 @@ class GenerateSupervisorConfigStep implements Step
      */
     protected function config(array $graces): string
     {
-        // Stop waits come from ShutdownTimings so a program's graceful-stop window
-        // matches the container stopTimeout derived from the same source.
-        $blocks = [
-            $this->header(),
-            $this->program('octane', ProcessCommands::octane(), stopwaitsecs: $graces['octane']),
-        ];
+        $blocks = [$this->header()];
 
-        if (isset($graces['ssr'])) {
-            // Inertia's Node SSR renderer, sitting alongside octane so PHP reaches
-            // it on localhost. autorestart brings it back if it crashes; while it's
-            // down Inertia just renders client-side, so the app keeps serving.
-            $blocks[] = $this->program('ssr', ProcessCommands::ssr(), stopwaitsecs: $graces['ssr']);
-        }
-
-        if (isset($graces['scheduler'])) {
-            // Cron (crond) fires an ephemeral schedule:run each minute rather than a
-            // long-lived schedule:work daemon — so the trigger halts cleanly on
-            // shutdown and only the in-flight run is waited out (see the entrypoint).
-            $blocks[] = $this->program('scheduler', ProcessCommands::scheduler(), stopwaitsecs: $graces['scheduler']);
-        }
-
-        if (isset($graces['queue'])) {
-            // Longer stop wait so an in-flight job can finish on SIGTERM before
-            // supervisor force-kills the worker.
-            $blocks[] = $this->program('queue', ProcessCommands::queue(), stopwaitsecs: $graces['queue']);
+        // One block per program present in this container, in a stable order. Stop
+        // waits come from ShutdownTimings so a program's graceful-stop window matches
+        // the container stopTimeout derived from the same source.
+        //  - octane    the web server (web container only)
+        //  - ssr       Inertia's Node renderer beside octane; autorestart brings it
+        //              back if it crashes, and Inertia renders client-side while it's down
+        //  - scheduler busybox crond firing an ephemeral schedule:run each minute (not a
+        //              schedule:work daemon — the trigger halts cleanly on shutdown)
+        //  - queue     queue:work, with a longer stop wait so an in-flight job can finish
+        foreach (['octane', 'ssr', 'scheduler', 'queue'] as $program) {
+            if (isset($graces[$program])) {
+                $blocks[] = $this->program($program, ProcessCommands::{$program}(), stopwaitsecs: $graces[$program]);
+            }
         }
 
         return implode("\n\n", $blocks) . "\n";
@@ -99,7 +100,7 @@ class GenerateSupervisorConfigStep implements Step
     protected function header(): string
     {
         return implode("\n", [
-            '# Auto-generated by YOLO from tasks.web.* in yolo.yml — do not edit.',
+            '# Auto-generated by YOLO from yolo.yml — do not edit.',
             '[supervisord]',
             'nodaemon=true',
             'user=www-data',

@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Commands;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Concerns\RegistersAws;
 use Codinglabs\Yolo\Concerns\HasAfterCallbacks;
 use Symfony\Component\Console\Input\InputInterface;
@@ -91,28 +92,32 @@ abstract class Command extends SymfonyCommand
             && $this->ensureManifestKeyDeclared('account-id')
             && $this->ensureCacheStoreValid()
             && $this->ensureSessionDriverValid()
-            && $this->ensureTaskGroupsNotDoublyDefined();
+            && $this->ensureSchedulerHostNotScaleToZero();
     }
 
     /**
-     * A workload runs either bundled in the web container (`tasks.web.queue` /
-     * `tasks.web.scheduler`) or as its own service (a top-level `tasks.queue` /
-     * `tasks.scheduler` block) — never both. Configuring both is ambiguous (is the
-     * queue in the web task or a service of its own?), so hard-fail and tell the
-     * operator which line to drop.
+     * When the scheduler rides the standalone queue (a `tasks.queue` block but no
+     * dedicated `tasks.scheduler` service), the queue can't scale to zero — cron
+     * would stop the moment it idled to no tasks. The floor defaults to 1 in that
+     * topology, but an explicit `tasks.queue.min: 0` is a contradiction, so
+     * hard-fail and point at the two ways out.
      */
-    protected function ensureTaskGroupsNotDoublyDefined(): bool
+    protected function ensureSchedulerHostNotScaleToZero(): bool
     {
-        foreach (['queue', 'scheduler'] as $group) {
-            if (Manifest::bundles($group) && Manifest::has("tasks.$group")) {
-                error(sprintf(
-                    "yolo.yml runs `%s` both bundled under `tasks.web.%s` and as its own service `tasks.%s` — pick one.\n"
-                    . 'Drop `tasks.web.%s` to extract it into a standalone service, or drop `tasks.%s` to keep it in the web container.',
-                    $group, $group, $group, $group, $group,
-                ));
+        if (Manifest::schedulerHost() !== ServerGroup::QUEUE) {
+            return true;
+        }
 
-                return false;
-            }
+        $min = Manifest::get('tasks.queue.min');
+
+        if ($min !== null && is_numeric($min) && (int) $min === 0) {
+            error(
+                "yolo.yml runs the scheduler inside the standalone queue (there's no `tasks.scheduler` service), "
+                . "so the queue can't scale to zero — cron would stop when it idles to 0 tasks.\n"
+                . 'Set `tasks.queue.min` to 1 or more, or extract the scheduler into its own `tasks.scheduler` service.'
+            );
+
+            return false;
         }
 
         return true;
