@@ -54,7 +54,7 @@ function liveTargetGroup(array $overrides = []): array
 {
     return array_merge([
         'TargetGroupArn' => 'arn:aws:elasticloadbalancing:ap-southeast-2:111111111111:targetgroup/yolo-testing-my-app/abc',
-        'HealthCheckPath' => '/health',
+        'HealthCheckPath' => '/up',
         'HealthCheckIntervalSeconds' => 10,
         'HealthCheckTimeoutSeconds' => 8,
         'HealthyThresholdCount' => 2,
@@ -70,7 +70,7 @@ function deregistrationDelayAttributes(string $value): array
 
 it('shares one health-check config between create and sync', function () {
     expect(TargetGroup::reconcilableHealthCheck())->toBe([
-        'HealthCheckPath' => '/health',
+        'HealthCheckPath' => '/up',
         'HealthCheckIntervalSeconds' => 10,
         'HealthCheckTimeoutSeconds' => 8,
         'HealthyThresholdCount' => 2,
@@ -83,7 +83,7 @@ it('lets the manifest override each health-check field', function () {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['health-check' => [
-            'path' => '/up',
+            'path' => '/health',
             'interval' => 15,
             'timeout' => 10,
             'healthy-threshold' => 3,
@@ -92,7 +92,7 @@ it('lets the manifest override each health-check field', function () {
     ]);
 
     expect(TargetGroup::reconcilableHealthCheck())->toBe([
-        'HealthCheckPath' => '/up',
+        'HealthCheckPath' => '/health',
         'HealthCheckIntervalSeconds' => 15,
         'HealthCheckTimeoutSeconds' => 10,
         'HealthyThresholdCount' => 3,
