@@ -27,8 +27,11 @@ USER www-data
 ENV SERVER_NAME=:8000
 EXPOSE 8000
 
+# The entrypoint dispatches on the role argument (default web → supervisord).
+# Each ECS task definition passes its own role; a one-off command (e.g. a
+# deploy migration) is exec'd directly.
 ENTRYPOINT ["/app/.yolo-entrypoint.sh"]
-CMD ["supervisord", "-n"]
+CMD ["web"]
 ```
 
 Customise it freely — add PHP extensions, system packages, a different base image. Just keep the contract below intact.
@@ -39,7 +42,7 @@ During `yolo build`, YOLO writes two files into the build context that your Dock
 
 | File | Purpose |
 |---|---|
-| `.yolo-entrypoint.sh` | The container entrypoint. Runs your `deploy-all` hooks (e.g. `php artisan optimize`) on startup, then `exec`s the `CMD` (supervisord). It traps `SIGTERM` so the web tier keeps serving across the ALB drain window before forwarding the stop signal. |
+| `.yolo-entrypoint.sh` | The container entrypoint. Runs your `deploy-all` hooks (e.g. `php artisan optimize`) on startup, then dispatches on the container command: a role (`web` / `queue` / `scheduler`) is supervised and traps `SIGTERM` so the web tier keeps serving across the ALB drain window before forwarding the stop; any other command — a one-off task such as a deploy migration — is `exec`'d directly (no supervise, no drain). ECS can override the command, not the entrypoint, which is why the dispatch lives here. |
 | `docker/supervisord.conf` | The supervisord program tree, generated from your `tasks.web.*` settings — FrankenPHP/Octane for web, plus `queue:work` and the scheduler if you've enabled them. A crontab is generated alongside it when the scheduler is on. |
 
 Because these are generated, your Dockerfile doesn't need to know how to run Octane, the queue, or the scheduler — it just copies the config and runs the entrypoint.
@@ -61,7 +64,7 @@ For your image to work with YOLO, the Dockerfile must:
    ```dockerfile
    RUN chmod +x /app/.yolo-entrypoint.sh
    ENTRYPOINT ["/app/.yolo-entrypoint.sh"]
-   CMD ["supervisord", "-n"]
+   CMD ["web"]
    ```
 4. **Expose the web port**, and make sure it matches `tasks.web.port` in your manifest (default `8000`). The ALB health-checks this port at `/up` (Laravel's built-in [health route](https://laravel.com/docs/deployment#the-health-route)) — override the path or timing via [`tasks.web.health-check.*`](/reference/manifest#tasks-web-health-check).
 5. Have **`supervisor`** installed (the default Dockerfile installs it via `apk add`).
