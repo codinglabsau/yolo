@@ -1,6 +1,6 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Sync\Environment;
+namespace Codinglabs\Yolo\Steps\Sync\App;
 
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Contracts\Step;

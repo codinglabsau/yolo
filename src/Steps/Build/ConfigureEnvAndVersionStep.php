@@ -55,11 +55,11 @@ class ConfigureEnvAndVersionStep implements Step
         // Every web app runs a queue worker somewhere — bundled in the web container
         // or its own standalone service (queue:work always runs; there's no opt-out)
         // — so wire the connection to the queue YOLO provisions for it (it owns the
-        // name + URL, so the app can't point at the wrong one). No static AWS keys;
-        // the task role carries access. Solo has one queue; multitenancy resolves the
-        // per-tenant queue at runtime, so SQS_QUEUE is not pinned for it. A non-web
-        // app has no worker, so force `sync` rather than route to a queue nothing
-        // consumes (the framework default of `database` has the same no-worker pitfall).
+        // name + URL, so the app can't point at the wrong one); the task role carries
+        // the access. Solo has one queue; multitenancy resolves the per-tenant queue
+        // at runtime, so SQS_QUEUE is not pinned for it. A non-web app has no worker,
+        // so force `sync` rather than route to a queue nothing consumes (the framework
+        // default of `database` has the same no-worker pitfall).
         if (Manifest::has('tasks.web')) {
             $defaults['QUEUE_CONNECTION'] = 'sqs';
             $defaults['SQS_PREFIX'] = sprintf('https://sqs.%s.amazonaws.com/%s', Manifest::get('region'), Aws::accountId());

@@ -31,8 +31,6 @@ use Aws\ApplicationAutoScaling\ApplicationAutoScalingClient;
 use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
 use Aws\ResourceGroupsTaggingAPI\ResourceGroupsTaggingAPIClient;
 
-use function Laravel\Prompts\warning;
-
 trait RegistersAws
 {
     protected function registerAwsServices(): void
@@ -77,18 +75,11 @@ trait RegistersAws
             return null;
         }
 
-        // In CI we defer to the SDK default credential chain too, so every auth
-        // method works out of the box with no manifest changes — the chain
-        // resolves whatever the runner provides:
-        //   - GitHub OIDC via aws-actions/configure-aws-credentials (key + secret
-        //     + session token in the env) or the raw web-identity-token file;
-        //   - AWS IAM Identity Center (SSO);
-        //   - long-lived static access keys (legacy — warned against below).
+        // In CI we defer to the SDK default credential chain too, so it works out
+        // of the box with no manifest changes — the chain resolves whatever the
+        // runner provides: GitHub OIDC via aws-actions/configure-aws-credentials
+        // (the keyless path) or AWS IAM Identity Center (SSO).
         if (static::detectCiEnvironment()) {
-            if (static::usingLongLivedAccessKeys()) {
-                warning('Using long-lived AWS access keys in CI. Prefer keyless GitHub OIDC: add a `deployer` block to yolo.yml, run `yolo sync:iam`, then assume the yolo-<env>-deployer role via aws-actions/configure-aws-credentials. See the YOLO README.');
-            }
-
             return null;
         }
 
@@ -99,12 +90,12 @@ trait RegistersAws
             throw new IntegrityCheckException(sprintf('Using the default AWS profile in your credentials file is risky. Name your profile to something specific and update %s in your .env file before proceeding.', Helpers::keyedEnvName('AWS_PROFILE')));
         }
 
-        // Resolve the named profile through credential_process and static keys in
-        // both the credentials and config files, so a `credential_process` profile
-        // (e.g. 1Password-backed short-lived creds) resolves alongside plain static
-        // keys. Built explicitly rather than via defaultProvider() — which only
-        // reads the profile from $AWS_PROFILE — so the profile stays scoped without
-        // mutating the environment. Memoised so credentials resolve once per run.
+        // Resolve the named profile from both the credentials and config files, so
+        // a `credential_process` profile (e.g. 1Password-backed short-lived creds)
+        // resolves from wherever it's defined. Built explicitly rather than via
+        // defaultProvider() — which only reads the profile from $AWS_PROFILE — so
+        // the profile stays scoped without mutating the environment. Memoised so
+        // credentials resolve once per run.
         $configFile = CredentialProvider::getConfigFileName();
 
         return CredentialProvider::memoize(
@@ -118,21 +109,11 @@ trait RegistersAws
     }
 
     /**
-     * A static IAM user access key with no session token — OIDC, assumed-role and
-     * SSO credentials always carry a session token, so a key without one is the
-     * tell that long-lived keys are in play.
-     */
-    protected static function usingLongLivedAccessKeys(): bool
-    {
-        return (bool) env('AWS_ACCESS_KEY_ID') && ! env('AWS_SESSION_TOKEN');
-    }
-
-    /**
      * A named AWS profile is required only for genuinely local runs (off AWS and
-     * outside CI). On AWS we use the instance role; in CI awsCredentials() defers
-     * to the SDK default chain (OIDC / static keys), so the profile is never
-     * consulted. The account guard still STS-verifies whatever creds resolve, so
-     * not requiring a profile here doesn't weaken the which-account safety net.
+     * outside CI). On AWS we use the task role; in CI awsCredentials() defers to
+     * the SDK default chain (OIDC / SSO), so the profile is never consulted. The
+     * account guard still STS-verifies whatever creds resolve, so not requiring a
+     * profile here doesn't weaken the which-account safety net.
      */
     protected static function requiresAwsProfile(): bool
     {

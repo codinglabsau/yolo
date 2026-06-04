@@ -12,10 +12,15 @@ beforeEach(function () {
                 'port' => 9000,
                 'cpu' => '1024',
                 'memory' => '2048',
-                'execution-role' => 'custom-execution-role',
-                'task-role' => 'custom-task-role',
             ],
         ],
+    ]);
+
+    // The payload resolves the managed task (per-app) + execution (env-shared)
+    // role ARNs by scanning the account role list.
+    bindMockIamClient([
+        'yolo-testing-my-app-ecs-task-role' => 'arn:aws:iam::111111111111:role/yolo-testing-my-app-ecs-task-role',
+        'yolo-testing-ecs-execution-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role',
     ]);
 });
 
@@ -27,8 +32,8 @@ it('renders a Fargate-compatible task definition payload', function () {
     expect($payload['requiresCompatibilities'])->toBe(['FARGATE']);
     expect($payload['cpu'])->toBe('1024');
     expect($payload['memory'])->toBe('2048');
-    expect($payload['executionRoleArn'])->toBe('custom-execution-role');
-    expect($payload['taskRoleArn'])->toBe('custom-task-role');
+    expect($payload['executionRoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role');
+    expect($payload['taskRoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-my-app-ecs-task-role');
 });
 
 it('renders web container with manifest port', function () {
@@ -77,7 +82,7 @@ it('sizes queue and scheduler smaller by default than web', function () {
     ]);
 
     bindMockIamClient([
-        'yolo-testing-ecs-task-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-task-role',
+        'yolo-testing-my-app-ecs-task-role' => 'arn:aws:iam::111111111111:role/yolo-testing-my-app-ecs-task-role',
         'yolo-testing-ecs-execution-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role',
     ]);
 
@@ -93,7 +98,7 @@ it('falls back to defaults when manifest omits task config', function () {
     ]);
 
     bindMockIamClient([
-        'yolo-testing-ecs-task-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-task-role',
+        'yolo-testing-my-app-ecs-task-role' => 'arn:aws:iam::111111111111:role/yolo-testing-my-app-ecs-task-role',
         'yolo-testing-ecs-execution-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role',
     ]);
 
@@ -102,7 +107,7 @@ it('falls back to defaults when manifest omits task config', function () {
     expect($payload['cpu'])->toBe('512');
     expect($payload['memory'])->toBe('1024');
     expect($payload['containerDefinitions'][0]['portMappings'][0]['containerPort'])->toBe(8000);
-    expect($payload['taskRoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-ecs-task-role');
+    expect($payload['taskRoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-my-app-ecs-task-role');
     expect($payload['executionRoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role');
 });
 

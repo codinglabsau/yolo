@@ -49,6 +49,11 @@ environments:
     #   log-retention-days: 30   # default: 14 — CloudWatch retention
     # mediaconvert: arn:aws:iam::123456789012:role/MediaConvertRole   # transcoding role ARN (used with IVS)
 
+    # --- Extra IAM for this app's task role (per-app; never reaches another app) ---
+    # task-role-policies:
+    #   - arn:aws:iam::123456789012:policy/my-app-extra-access
+    #   - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+
     # --- Queue depth alarm tuning ---
     # sqs:
     #   depth-alarm-threshold: 100          # default: 100 — messages before the alarm fires
@@ -69,8 +74,6 @@ environments:
         # platform: linux/amd64           # default: linux/amd64
         # shutdown-grace-period: 10       # default: 10 — web SIGTERM→SIGKILL window (also the ALB drain)
         # log-retention: 30               # default: 30 — CloudWatch Logs retention (days)
-        # execution-role: arn:aws:iam::123456789012:role/...   # default: shared yolo-{env} role
-        # task-role: arn:aws:iam::123456789012:role/...        # default: shared yolo-{env} role
         #
         # health-check:
         #   path: /up                     # default: /up (Laravel's built-in health route)
@@ -210,7 +213,7 @@ These live directly under an environment and provision or configure the app's AW
 
 ### `bucket`
 
-Name of an app S3 bucket for application storage. Injected into the container as `AWS_BUCKET`.
+Name of an app S3 bucket for application storage. Injected into the container as `AWS_BUCKET`, and this app's [ECS task role](#task-role-policies) is automatically granted read+write on it (object get/put/delete + multipart, plus bucket listing) — so the container reaches its bucket through the role. The grant is scoped to this one bucket. YOLO creates the bucket (Block Public Access on) when it doesn't already exist; an existing bucket (e.g. one adopted from another platform) is left untouched but still gets the role grant.
 
 ### `alb`
 
@@ -237,6 +240,18 @@ ivs:
 ### `mediaconvert`
 
 MediaConvert role ARN for video transcoding workloads (used with IVS).
+
+### `task-role-policies`
+
+Extra IAM policy ARNs to attach to this app's ECS **task role** — the runtime identity its containers (web, queue and scheduler) assume. YOLO gives every app its own task role, so these grants reach only this app and never another. This is how you let your container call an AWS service YOLO doesn't wire for you (an extra S3 bucket, DynamoDB, Bedrock, …): the role carries the access, so the app authenticates as itself with no credentials to manage.
+
+```yaml
+task-role-policies:
+  - arn:aws:iam::123456789012:policy/my-app-extra-access   # customer-managed
+  - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess          # AWS-managed
+```
+
+The list is reconciled on every `yolo sync`: an ARN you add gets attached, and one you remove gets detached — the role's attachment set is YOLO's to own, so there's no left-behind grant. Each entry must be a customer- or AWS-managed IAM policy ARN; a malformed value fails the sync plan rather than silently dropping the grant. The YOLO baseline policy (ECS Exec channels, this app's SQS queues, SES send, and read+write on the [`bucket`](#bucket) when declared) is always attached and isn't listed here.
 
 ### `sqs.*`
 
@@ -330,8 +345,8 @@ The scheduler rides the worker container (the `web` + `queue` row) rather than g
 | `tasks.web.ssr` | `false` | Run Inertia's SSR renderer (`inertia:start-ssr`, a Node process on `127.0.0.1:13714`) **bundled** in the web container, so PHP server-renders your Vue pages. `true`, or an object to override its `shutdown-grace-period`. SSR is always bundled — never its own service. Needs a Node runtime in your Dockerfile and an SSR bundle from `npm run build`; YOLO injects `INERTIA_SSR_ENABLED=true` unless your `.env` sets it. See [Inertia SSR](/guide/images#inertia-ssr). |
 | `tasks.web.shutdown-grace-period` | `10` | Seconds the web process gets on `SIGTERM` before `SIGKILL`. It's also the ALB drain window and the container `stopTimeout`. See [graceful shutdown](/guide/images#graceful-shutdown). |
 | `tasks.web.log-retention` | `30` | CloudWatch Logs retention (days). Must be a valid CloudWatch retention value. |
-| `tasks.web.execution-role` | shared `yolo-{env}` role | Override the ECS execution role ARN. |
-| `tasks.web.task-role` | shared `yolo-{env}` role | Override the ECS task role ARN. |
+
+YOLO manages the ECS task and execution roles for you — the task role is per-app (extend it with [`task-role-policies`](#task-role-policies)); the execution role is shared per environment.
 
 ### `tasks.web.health-check.*`
 

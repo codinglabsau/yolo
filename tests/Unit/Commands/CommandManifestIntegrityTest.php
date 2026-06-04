@@ -211,3 +211,12 @@ it('accepts a scale-to-zero queue when the scheduler is its own service', functi
 
     expect(invokeManifestIntegrity())->toBeTrue();
 });
+
+it('accepts a task-role-policies list', function () {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'task-role-policies' => ['arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess'],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+});

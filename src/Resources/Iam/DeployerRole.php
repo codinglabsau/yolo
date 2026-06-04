@@ -17,12 +17,12 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * YOLO-managed IAM role a GitHub Actions workflow assumes (via OIDC) to deploy.
  * The trust policy federates to the account's GitHub OIDC provider and is scoped
  * to a single repository + ref (the environment's branch or tag), so only that
- * workflow can assume it — no stored AWS access keys. The deploy-time permission
- * policy is provided by DeployerPolicy and attached by AttachDeployerRolePoliciesStep.
+ * workflow can assume it — keyless. The deploy-time permission policy is provided
+ * by DeployerPolicy and attached by AttachDeployerRolePoliciesStep.
  *
  * App + environment specific (yolo-{env}-{app}-deployer): both its trust (one
  * repo + ref) and its permissions (the app's ECR repo, buckets, cluster, service)
- * are app-specific, so unlike the shared task/execution roles it can't be shared.
+ * are app-specific, so unlike the shared ECS execution role it can't be shared.
  */
 class DeployerRole implements Resource
 {

@@ -73,8 +73,8 @@ allowed to write it:
 | Command | `Scope` | Blast radius | Examples |
 | --- | --- | --- | --- |
 | `sync:account` | `Account` | the whole AWS account | GitHub OIDC provider |
-| `sync:environment <env>` | `Env` | every app in the environment | VPC, subnets, IGW/routes, RDS SG, SNS topic, shared task/exec IAM roles, ALB + `:80` and `:443` listeners |
-| `sync:app <env>` | `App` | one app | Storage, app IAM, Fargate (cluster/service/task def), CDN, IVS, mode-aware Queue/DNS |
+| `sync:environment <env>` | `Env` | every app in the environment | VPC, subnets, IGW/routes, RDS SG, SNS topic, shared ECS execution role, ALB + `:80` and `:443` listeners |
+| `sync:app <env>` | `App` | one app | Storage, app IAM (deployer + per-app ECS task role + `task-role-policies`), Fargate (cluster/service/task def), CDN, IVS, mode-aware Queue/DNS |
 
 `sync` orchestrates **account → environment → app** in dependency order. `sync:app` only depends on and *additively
 attaches to* shared infra (its SNI cert + listener-rule on the env `:443` listener, its 3306 ingress on the env RDS

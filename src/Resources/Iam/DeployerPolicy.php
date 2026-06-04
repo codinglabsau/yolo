@@ -273,16 +273,12 @@ class DeployerPolicy implements Resource, SynchronisesConfiguration
 
     protected function taskRoleArn(): string
     {
-        return Manifest::has('tasks.web.task-role')
-            ? Manifest::get('tasks.web.task-role')
-            : sprintf('arn:aws:iam::%s:role/%s', Aws::accountId(), (new EcsTaskRole())->name());
+        return sprintf('arn:aws:iam::%s:role/%s', Aws::accountId(), (new EcsTaskRole())->name());
     }
 
     protected function executionRoleArn(): string
     {
-        return Manifest::has('tasks.web.execution-role')
-            ? Manifest::get('tasks.web.execution-role')
-            : sprintf('arn:aws:iam::%s:role/%s', Aws::accountId(), (new EcsExecutionRole())->name());
+        return sprintf('arn:aws:iam::%s:role/%s', Aws::accountId(), (new EcsExecutionRole())->name());
     }
 
     /**

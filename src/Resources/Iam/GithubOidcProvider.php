@@ -20,7 +20,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  *
  * The deployer role's trust policy federates to this provider's ARN, letting a
  * GitHub Actions workflow exchange its OIDC token for short-lived AWS credentials
- * via sts:AssumeRoleWithWebIdentity (no stored access keys).
+ * via sts:AssumeRoleWithWebIdentity — keyless.
  */
 class GithubOidcProvider implements Resource
 {

@@ -100,6 +100,13 @@ class SyncAppCommand extends SyncSteppedCommand
                     ? [
                         Steps\Sync\App\SyncEcrRepositoryStep::class,
                         Steps\Sync\App\SyncEcsClusterStep::class,
+                        // Per-app ECS task role (the container runtime identity for
+                        // web/queue/scheduler) + its baseline policy + any
+                        // manifest-declared `task-role-policies` — created before the
+                        // task definition that references the role ARN.
+                        Steps\Sync\App\SyncEcsTaskPolicyStep::class,
+                        Steps\Sync\App\SyncEcsTaskRoleStep::class,
+                        Steps\Sync\App\AttachEcsTaskRolePoliciesStep::class,
                         Steps\Sync\App\SyncTaskSecurityGroupStep::class,
                         Steps\Sync\App\SyncRdsSecurityGroupStep::class,
                         // Valkey cache (gated on cache) — env-shared, bootstrapped
