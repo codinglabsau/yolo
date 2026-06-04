@@ -19,8 +19,10 @@ use Illuminate\Filesystem\Filesystem;
  * when tasks.web.scheduler / tasks.web.queue are explicitly true. The code
  * default is false (octane only) — `yolo init` ships a manifest that turns both
  * on, so a fresh app gets the full web task while the absence of config stays
- * conservative. Splitting these into independent queue/scheduler services is a
- * later concern; this step only models the single-container web task.
+ * conservative. This step only models the web container's bundled programs; a
+ * queue/scheduler extracted into its own service (top-level tasks.queue /
+ * tasks.scheduler) runs as that service's sole process and is dispatched by the
+ * entrypoint, not supervisord.
  */
 class GenerateSupervisorConfigStep implements Step
 {
