@@ -39,8 +39,7 @@ class SyncAppCommand extends SyncSteppedCommand
     /**
      * A soft, non-blocking nudge (not a guard) when autoscaling is enabled on a
      * web task that also bundles the scheduler. Scaling the bundled task to N
-     * replicas runs cron N times, so every scheduled task must use ->onOneServer();
-     * apps that outgrow that should extract the scheduler into its own service.
+     * replicas runs cron N times, so every scheduled task must use ->onOneServer().
      */
     public static function schedulerAdvisory(): ?string
     {
@@ -48,8 +47,7 @@ class SyncAppCommand extends SyncSteppedCommand
             return null;
         }
 
-        return 'Autoscaling a bundled web+scheduler task: every scheduled task must use ->onOneServer() so it does not run on each replica. '
-            . 'To drop that requirement, extract the scheduler into its own pinned-singleton service with a top-level `tasks.scheduler` block.';
+        return 'Autoscaling a bundled web+scheduler task runs cron on every replica — guard each scheduled task with ->onOneServer() or it fires N times.';
     }
 
     public function scopes(): array
