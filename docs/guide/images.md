@@ -81,10 +81,22 @@ tasks:
 - **Web** always runs — FrankenPHP serving Laravel Octane.
 - **`queue: true`** adds a `queue:work` program.
 - **`scheduler: true`** adds a busybox `crond` that fires `php artisan schedule:run` every minute. (YOLO uses cron, not `schedule:work`, so the scheduler survives `SIGTERM` cleanly.)
+- **`ssr: true`** adds Inertia's SSR renderer — see [Inertia SSR](#inertia-ssr) below.
 
 ::: tip Independent task groups
 Today web, queue, and scheduler share one container and scale together. Splitting them into independent ECS services (so you can scale the web tier without duplicating the scheduler) is on the roadmap — the manifest reserves `tasks.queue` / `tasks.scheduler` for it.
 :::
+
+## Inertia SSR
+
+Set [`tasks.web.ssr: true`](/reference/manifest#tasks-web) to server-render your Inertia + Vue pages (better SEO, faster first paint). YOLO adds an `ssr` program to supervisord that runs `php artisan inertia:start-ssr` — a Node process listening on `127.0.0.1:13714`. PHP calls it on localhost for each render, so **SSR is always bundled in the web container** — never its own service. YOLO injects `INERTIA_SSR_ENABLED=true` (unless your `.env` already sets it); the render URL comes from Inertia's default `config/inertia.php`.
+
+Two things are on you:
+
+1. **A Node runtime in your image.** YOLO owns the entrypoint and supervisord config but not the Dockerfile, so add Node yourself — e.g. `RUN apk add --no-cache nodejs` on the default Alpine base. When `ssr` is on, `yolo build` checks the Dockerfile for a Node runtime and asks for confirmation if it can't find one (a warning only — it never blocks a non-interactive CI build).
+2. **An SSR bundle from your build.** Your `npm run build` must emit the SSR bundle (`bootstrap/ssr/`) — that's standard [Inertia SSR](https://inertiajs.com/server-side-rendering) setup in your `vite.config.js`. The bundle is copied into the image automatically (it isn't excluded by `.dockerignore` or the build's `node_modules` cleanup).
+
+If the SSR process is down, Inertia falls back to client-side rendering, so the app keeps serving — the ALB health check stays on PHP's `/up` and isn't coupled to SSR. supervisord restarts a crashed renderer automatically.
 
 ## The `.dockerignore`
 

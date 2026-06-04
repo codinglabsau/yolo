@@ -59,6 +59,26 @@ it('gives the queue worker a longer default than the web tier', function () {
     expect(ShutdownTimings::programGraces())->toBe(['octane' => 10, 'queue' => 70]);
 });
 
+it('gives the bundled ssr renderer a short default grace alongside octane', function () {
+    writeManifest([
+        'apex' => 'example.com',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['ssr' => true]],
+    ]);
+
+    expect(ShutdownTimings::programGraces())->toBe(['octane' => 10, 'ssr' => 5]);
+});
+
+it('honours an ssr shutdown-grace-period override via the object form', function () {
+    writeManifest([
+        'apex' => 'example.com',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['ssr' => ['shutdown-grace-period' => 12]]],
+    ]);
+
+    expect(ShutdownTimings::programGraces())->toBe(['octane' => 10, 'ssr' => 12]);
+});
+
 it('honours a queue shutdown-grace-period override via the object form', function () {
     writeManifest([
         'apex' => 'example.com',

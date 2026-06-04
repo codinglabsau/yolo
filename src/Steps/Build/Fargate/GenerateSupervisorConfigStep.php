@@ -15,14 +15,15 @@ use Illuminate\Filesystem\Filesystem;
  * so the running processes can't drift from the manifest and the octane port
  * always matches tasks.web.port (the same value the target group health-checks).
  *
- * Octane (the web server) always runs; the scheduler and queue worker run only
- * when tasks.web.scheduler / tasks.web.queue are explicitly true. The code
- * default is false (octane only) — `yolo init` ships a manifest that turns both
- * on, so a fresh app gets the full web task while the absence of config stays
- * conservative. This step only models the web container's bundled programs; a
- * queue/scheduler extracted into its own service (top-level tasks.queue /
- * tasks.scheduler) runs as that service's sole process and is dispatched by the
- * entrypoint, not supervisord.
+ * Octane (the web server) always runs; the SSR renderer, scheduler and queue
+ * worker run only when tasks.web.ssr / tasks.web.scheduler / tasks.web.queue are
+ * explicitly true. The code default is false (octane only) — `yolo init` ships a
+ * manifest that turns the queue and scheduler on, so a fresh app gets the full
+ * web task while the absence of config stays conservative. This step only models
+ * the web container's bundled programs; a queue/scheduler extracted into its own
+ * service (top-level tasks.queue / tasks.scheduler) runs as that service's sole
+ * process and is dispatched by the entrypoint, not supervisord. SSR is always
+ * bundled (PHP calls it on localhost), so it never has a standalone form.
  */
 class GenerateSupervisorConfigStep implements Step
 {
@@ -59,6 +60,13 @@ class GenerateSupervisorConfigStep implements Step
             $this->header(),
             $this->program('octane', ProcessCommands::octane(), stopwaitsecs: $graces['octane']),
         ];
+
+        if (isset($graces['ssr'])) {
+            // Inertia's Node SSR renderer, sitting alongside octane so PHP reaches
+            // it on localhost. autorestart brings it back if it crashes; while it's
+            // down Inertia just renders client-side, so the app keeps serving.
+            $blocks[] = $this->program('ssr', ProcessCommands::ssr(), stopwaitsecs: $graces['ssr']);
+        }
 
         if (isset($graces['scheduler'])) {
             // Cron (crond) fires an ephemeral schedule:run each minute rather than a
