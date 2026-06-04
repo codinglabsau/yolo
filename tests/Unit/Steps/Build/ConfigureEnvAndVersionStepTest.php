@@ -231,6 +231,44 @@ it('does not pin SESSION_DRIVER when the manifest does not select one', function
     expect(file_get_contents(Paths::build('.env.testing')))->not->toContain('SESSION_DRIVER=');
 });
 
+it('enables Inertia SSR when tasks.web.ssr is on', function () {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['ssr' => true]],
+    ]);
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    expect(file_get_contents(Paths::build('.env.testing')))->toContain('INERTIA_SSR_ENABLED=true');
+});
+
+it('does not enable Inertia SSR when tasks.web.ssr is off', function () {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => []],
+    ]);
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    expect(file_get_contents(Paths::build('.env.testing')))->not->toContain('INERTIA_SSR_ENABLED');
+});
+
+it('respects an INERTIA_SSR_ENABLED already set in the .env', function () {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['ssr' => true]],
+    ]);
+
+    file_put_contents(Paths::build('.env.testing'), "INERTIA_SSR_ENABLED=false\n");
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('INERTIA_SSR_ENABLED=false');
+    expect($env)->not->toContain('INERTIA_SSR_ENABLED=true');
+});
+
 it('respects a SESSION_DRIVER already set in the .env', function () {
     rebuildEnvFixture([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',

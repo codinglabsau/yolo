@@ -46,4 +46,15 @@ class ProcessCommands
     {
         return 'crond -f -d 8 -c /app/docker/crontabs';
     }
+
+    /**
+     * Inertia's SSR renderer — a Node process PHP calls over 127.0.0.1:13714 on
+     * each render. It's bundled in the web container (never its own service) so
+     * the call stays on localhost; a dead renderer degrades Inertia to
+     * client-side rendering rather than taking the app down.
+     */
+    public static function ssr(): string
+    {
+        return 'php artisan inertia:start-ssr';
+    }
 }

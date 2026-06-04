@@ -63,6 +63,7 @@ environments:
         enable-execute-command: true   # default: false — enables `yolo run` to attach (gate with MFA)
         queue: true              # default: false — run queue:work in the container
         scheduler: true          # default: false — run cron + schedule:run
+        # ssr: true                       # default: false — bundle Inertia SSR (needs Node in the Dockerfile)
         # platform: linux/amd64           # default: linux/amd64
         # shutdown-grace-period: 10       # default: 10 (web) / 70 (queue) — SIGTERM→SIGKILL window
         # log-retention: 30               # default: 30 — CloudWatch Logs retention (days)
@@ -310,6 +311,7 @@ Declaring `tasks.web` makes the app a Fargate web service. Omit `tasks` entirely
 | `tasks.web.enable-execute-command` | `false` | Enable ECS Exec so [`yolo run`](/reference/commands#yolo-run) can attach. Gate access with MFA on your IAM. |
 | `tasks.web.queue` | `false` | Run `queue:work` **bundled** in the web container (warm, instant pickup). `true`, or an object to override its `shutdown-grace-period`. For independent scaling / scale-to-zero, extract it to a top-level [`tasks.queue`](#tasks-queue) instead — configuring both is an error. |
 | `tasks.web.scheduler` | `false` | Run the Laravel scheduler (cron + `schedule:run`) **bundled** in the web container. `true`, or an object form like `queue`. To make it a true singleton, extract it to a top-level [`tasks.scheduler`](#tasks-scheduler) instead — not both. |
+| `tasks.web.ssr` | `false` | Run Inertia's SSR renderer (`inertia:start-ssr`, a Node process on `127.0.0.1:13714`) **bundled** in the web container, so PHP server-renders your Vue pages. `true`, or an object to override its `shutdown-grace-period`. SSR is always bundled — never its own service. Needs a Node runtime in your Dockerfile and an SSR bundle from `npm run build`; YOLO injects `INERTIA_SSR_ENABLED=true` unless your `.env` sets it. See [Inertia SSR](/guide/images#inertia-ssr). |
 | `tasks.web.shutdown-grace-period` | `10` (web), `70` (queue) | Seconds a process gets on `SIGTERM` before `SIGKILL`. For web it's also the ALB drain window and the container `stopTimeout`. See [graceful shutdown](/guide/images#graceful-shutdown). |
 | `tasks.web.log-retention` | `30` | CloudWatch Logs retention (days). Must be a valid CloudWatch retention value. |
 | `tasks.web.execution-role` | shared `yolo-{env}` role | Override the ECS execution role ARN. |

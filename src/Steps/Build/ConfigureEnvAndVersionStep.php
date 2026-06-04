@@ -99,6 +99,14 @@ class ConfigureEnvAndVersionStep implements Step
             $defaults['SESSION_DRIVER'] = $sessionDriver;
         }
 
+        // Inertia SSR: when the web container bundles the SSR Node process
+        // (tasks.web.ssr), turn Inertia's SSR on so PHP renders pages through it.
+        // The render URL defaults to 127.0.0.1:13714 in config/inertia.php, so only
+        // the enable flag is pinned — and only if the app hasn't set it already.
+        if (Manifest::bundles('ssr')) {
+            $defaults['INERTIA_SSR_ENABLED'] = 'true';
+        }
+
         foreach ($defaults as $key => $value) {
             if (! $this->envDefines($envPath, $key)) {
                 $values[$key] = $value;

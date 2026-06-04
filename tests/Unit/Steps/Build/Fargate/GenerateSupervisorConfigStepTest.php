@@ -102,6 +102,24 @@ it('honours a queue shutdown-grace-period override via the object form', functio
     expect($config)->toContain('stopwaitsecs=90');
 });
 
+it('runs the inertia ssr renderer when tasks.web.ssr is enabled', function () {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['ssr' => true]],
+    ]);
+
+    $config = generatedSupervisorConfig();
+
+    expect($config)->toContain('[program:ssr]');
+    expect($config)->toContain('command=php artisan inertia:start-ssr');
+    // Stateless renderer → short stop wait (the only non-octane program here).
+    expect($config)->toContain('stopwaitsecs=5');
+});
+
+it('does not run the ssr renderer by default', function () {
+    expect(generatedSupervisorConfig())->not->toContain('[program:ssr]');
+});
+
 it('runs the queue worker without the scheduler when only queue is enabled', function () {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',

@@ -36,6 +36,11 @@ class ShutdownTimings
     // outlasts this belongs on the queue, not the cron tick.
     private const SCHEDULER_DEFAULT_GRACE = 10;
 
+    // The bundled SSR renderer's graceful-stop window. A render is sub-second and
+    // stateless (Inertia falls back to client-side rendering if it's gone), so it
+    // only needs a moment to finish an in-flight render before SIGKILL.
+    private const SSR_DEFAULT_GRACE = 5;
+
     // Headroom between the longest graceful stop and ECS's SIGKILL so a process
     // draining right up to its window isn't cut off at the wire.
     private const STOP_TIMEOUT_BUFFER = 5;
@@ -65,13 +70,17 @@ class ShutdownTimings
 
     /**
      * Enabled supervisord program => its graceful-stop window (seconds). Octane
-     * always runs; queue and scheduler are opt-in via tasks.web.*.
+     * always runs; ssr, queue and scheduler are opt-in via tasks.web.*.
      *
      * @return array<string, int>
      */
     public static function programGraces(): array
     {
         $graces = ['octane' => static::webGrace()];
+
+        if (static::enabled('ssr')) {
+            $graces['ssr'] = static::grace('ssr', static::SSR_DEFAULT_GRACE);
+        }
 
         if (static::enabled('queue')) {
             $graces['queue'] = static::grace('queue', static::QUEUE_DEFAULT_GRACE);

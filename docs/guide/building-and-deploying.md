@@ -26,8 +26,8 @@ yolo deploy production
 
 1. Purge the build directory and stage a clean copy of your app.
 2. Pull `.env.<environment>` from S3 and stamp in `APP_VERSION` (and `ASSET_URL` if a CDN is configured).
-3. Run your manifest's `build` hooks (`composer install`, `npm run build`, …).
-4. Generate the entrypoint and supervisord config (see [The Container Image](/guide/images)).
+3. Run your manifest's `build` hooks (`composer install`, `npm run build`, …). With [Inertia SSR](/guide/images#inertia-ssr) enabled, this is also where `npm run build` produces the SSR bundle that gets baked into the image.
+4. Generate the entrypoint and supervisord config (see [The Container Image](/guide/images)). When `tasks.web.ssr` is on, this is where YOLO checks your Dockerfile for the Node runtime SSR needs.
 5. Log in to ECR, build the Docker image, and push it.
 
 The image-building steps (4–5) only run when your manifest declares `tasks` — a headless app with no web task still builds its source artefact.
