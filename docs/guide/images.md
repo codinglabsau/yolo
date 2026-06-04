@@ -78,7 +78,7 @@ tasks:
     scheduler: true   # run the Laravel scheduler (cron + schedule:run)
 ```
 
-- **Web** always runs — `php artisan octane:start` serving Laravel Octane. `octane:start` boots whichever server `OCTANE_SERVER` names; YOLO defaults that to `frankenphp` (matching the scaffolded Dockerfile's base image), so the zero-config image just works. To run a different Octane server, swap the base image and set `OCTANE_SERVER` in your `.env` — YOLO only supplies the default when you haven't.
+- **Web** always runs — `php artisan octane:start` serving Laravel Octane. `octane:start` boots whichever server your app's `OCTANE_SERVER` names; `yolo init` seeds `OCTANE_SERVER=frankenphp` in your `.env` to match the scaffolded Dockerfile. The server is an app concern, not infrastructure YOLO injects — to run a different Octane server, change the base image **and** `OCTANE_SERVER` together.
 - **`queue: true`** adds a `queue:work` program.
 - **`scheduler: true`** adds a busybox `crond` that fires `php artisan schedule:run` every minute. (YOLO uses cron, not `schedule:work`, so the scheduler survives `SIGTERM` cleanly.)
 

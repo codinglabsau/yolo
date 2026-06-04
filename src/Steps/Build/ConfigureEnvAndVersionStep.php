@@ -99,16 +99,6 @@ class ConfigureEnvAndVersionStep implements Step
             $defaults['SESSION_DRIVER'] = $sessionDriver;
         }
 
-        // Octane server: the web process runs `php artisan octane:start`, which boots
-        // whichever server OCTANE_SERVER names. Default it to frankenphp so the
-        // scaffolded (FrankenPHP) image just works with zero config. Left in the
-        // override-if-set tier on purpose — a developer who swaps the base image to
-        // another Octane server points the launcher at it via their own .env, and
-        // octane:start respects it. Web-only, so non-web (worker-only) apps skip it.
-        if (Manifest::has('tasks.web')) {
-            $defaults['OCTANE_SERVER'] = 'frankenphp';
-        }
-
         foreach ($defaults as $key => $value) {
             if (! $this->envDefines($envPath, $key)) {
                 $values[$key] = $value;

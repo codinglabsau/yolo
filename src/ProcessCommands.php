@@ -16,8 +16,10 @@ class ProcessCommands
 {
     /**
      * The web process. `octane:start` is the server-agnostic launcher — it boots
-     * whichever Octane server OCTANE_SERVER names (YOLO injects frankenphp by
-     * default, matching the scaffolded Dockerfile's base image). Using the generic
+     * whichever Octane server OCTANE_SERVER names. That var is the app's to own
+     * (it pairs with the Dockerfile's base image; `yolo init` seeds it to
+     * frankenphp) — YOLO deliberately does not inject it, since the server is a
+     * developer choice, not YOLO-provisioned infrastructure. Using the generic
      * command rather than the dedicated octane:frankenphp keeps the configured
      * server the single source of truth, so config('octane.server') can never
      * disagree with the server actually running.
