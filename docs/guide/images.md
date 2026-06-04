@@ -86,7 +86,7 @@ tasks:
 - **`ssr: true`** adds Inertia's SSR renderer — see [Inertia SSR](#inertia-ssr) below.
 
 ::: tip Independent task groups
-Extract the queue and/or scheduler into their own ECS service — so you can scale the web tier without duplicating the scheduler — by adding a top-level `tasks.queue` / `tasks.scheduler` block. Where each role then runs is derived from which blocks you've added; see [Where each role runs](/reference/manifest#where-each-role-runs) and [Scaling](/guide/scaling).
+Run web in isolation by extracting the **worker tier**: add a top-level `tasks.queue` block and the queue worker and scheduler move to their own service, leaving web as pure Octane. Add `tasks.scheduler` too for a dedicated singleton cron. Where each role runs is derived from which blocks you've added; see [Where each role runs](/reference/manifest#where-each-role-runs) and [Scaling](/guide/scaling).
 :::
 
 ## Inertia SSR

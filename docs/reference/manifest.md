@@ -308,16 +308,17 @@ Declaring `tasks.web` makes the app a Fargate web service. Omit `tasks` entirely
 
 ### Where each role runs
 
-Every app runs three roles — **web** (Octane), the **queue worker**, and the **scheduler** (cron + `schedule:run`). There's no opt-out; the only choice is *where* each runs. The queue worker and the scheduler bundle into the web container by default, and you extract one into its own ECS service by adding a top-level [`tasks.queue`](#tasks-queue) / [`tasks.scheduler`](#tasks-scheduler) block. Bundling is derived from that presence — there are no `tasks.web.queue` / `tasks.web.scheduler` flags. The scheduler cascades onto the standalone queue if there is one (no point running a separate one-task service for cron when the queue is already a managed tier):
+Every app runs three roles — **web** (Octane), the **queue worker**, and the **scheduler** (cron + `schedule:run`). There's no opt-out; the only choice is *where* each runs. By default all three share the one web container — the cheap single-task floor.
 
-| Manifest | web container | queue container | scheduler container |
+To run web in isolation, **extract the worker tier**: add a top-level [`tasks.queue`](#tasks-queue) block and the queue worker *and* the scheduler move out to their own service, leaving web as pure Octane. Add [`tasks.scheduler`](#tasks-scheduler) as well to give cron its own pinned-singleton task. Placement is derived from which blocks are present — there are no `tasks.web.queue` / `tasks.web.scheduler` flags.
+
+| Manifest | web container | worker container | scheduler container |
 | --- | --- | --- | --- |
 | `web` only | web + queue + scheduler | — | — |
 | `web` + `queue` | web | queue + scheduler | — |
-| `web` + `scheduler` | web + queue | — | scheduler |
 | `web` + `queue` + `scheduler` | web | queue | scheduler |
 
-When the queue hosts the scheduler (the `web` + `queue` row), the queue can't scale to zero — cron would stop when it idled — so its floor is pinned at `min: 1` (an explicit `tasks.queue.min: 0` there is rejected).
+The scheduler rides the worker container (the `web` + `queue` row) rather than getting its own task — there's no point paying for a separate one-task service for cron when the queue is already a managed tier. Because cron then runs on the autoscaling queue, guard scheduled tasks with `->onOneServer()`, or add `tasks.scheduler` for a true singleton. A queue that hosts the scheduler can't scale to zero — cron would stop when it idled — so its floor is pinned at `min: 1` (an explicit `tasks.queue.min: 0` there is rejected).
 
 | Key | Default | Description |
 |---|---|---|

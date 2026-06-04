@@ -8,7 +8,7 @@ By default an app runs as **one Fargate task** doing everything — Octane plus 
 | **queue** | backlog-per-task, **scales to zero** | top-level `tasks.queue` |
 | **scheduler** | never — pinned singleton (exactly one task) | top-level `tasks.scheduler` |
 
-Extraction is additive and per-workload: keep the queue bundled but give the scheduler its own service, or any mix. Bundling is derived from presence — there are no `tasks.web.queue` / `tasks.web.scheduler` flags; each workload rides the web container until a top-level `tasks.queue` / `tasks.scheduler` block extracts it. One wrinkle: with only the queue extracted, the scheduler rides that queue container (see [the scheduler](#the-scheduler)).
+Extraction is opt-in by presence — there are no `tasks.web.queue` / `tasks.web.scheduler` flags. Add a top-level `tasks.queue` block to peel the **worker tier** (the queue worker *and* the scheduler) out of web, leaving web as pure Octane; add `tasks.scheduler` as well to give cron its own pinned-singleton task (see [the scheduler](#the-scheduler)).
 
 You can scale the web (and queue) service two ways:
 
