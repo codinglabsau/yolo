@@ -347,6 +347,22 @@ class Manifest
         ]));
     }
 
+    /**
+     * The service group a one-off deploy/management task (the `deploy:` hooks,
+     * e.g. migrations) templates its task definition on: a dedicated scheduler if
+     * extracted, else a standalone queue, else web. Mirrors `yolo run`'s
+     * scheduler → queue → web fallback — management work lands on the least
+     * request-facing service that exists, and web (always present) is the floor.
+     */
+    public static function deployGroup(): ServerGroup
+    {
+        return match (true) {
+            static::hasStandaloneScheduler() => ServerGroup::SCHEDULER,
+            static::hasStandaloneQueue() => ServerGroup::QUEUE,
+            default => ServerGroup::WEB,
+        };
+    }
+
     public static function apex(): string
     {
         if (static::isMultitenanted()) {
