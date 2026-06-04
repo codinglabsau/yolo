@@ -117,7 +117,7 @@ That makes the choice of *where* the queue lives a latency decision:
 | Standalone, `min: 0` | **~$0** | ~30–60s cold start from idle | bursty, latency-tolerant async |
 | Standalone, `min: 1+` | one always-on task | instant, then autoscales | high-volume, always-busy |
 
-For multi-tenant apps, a single queue service works the app's default queue; per-tenant queue fan-out composes with [LPX-601](https://linear.app/codinglabsau/issue/LPX-601) and isn't covered here.
+For multi-tenant apps, a single queue service works the app's default queue; per-tenant queue fan-out is on the roadmap and isn't covered here.
 
 ## The scheduler
 
