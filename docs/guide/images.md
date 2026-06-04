@@ -11,7 +11,8 @@ You own a small `Dockerfile`; YOLO generates the moving parts (entrypoint, proce
 ```dockerfile
 FROM dunglas/frankenphp:1-php8.4-alpine
 
-RUN apk add --no-cache git supervisor \
+# nodejs is the runtime for Inertia SSR (tasks.web.ssr); drop it if you don't use SSR.
+RUN apk add --no-cache git supervisor nodejs \
     && install-php-extensions intl pcntl bcmath redis pdo_mysql opcache excimer
 
 WORKDIR /app
@@ -93,7 +94,7 @@ Set [`tasks.web.ssr: true`](/reference/manifest#tasks-web) to server-render your
 
 Two things are on you:
 
-1. **A Node runtime in your image.** YOLO owns the entrypoint and supervisord config but not the Dockerfile, so add Node yourself — e.g. `RUN apk add --no-cache nodejs` on the default Alpine base. When `ssr` is on, `yolo build` checks the Dockerfile for a Node runtime and asks for confirmation if it can't find one (a warning only — it never blocks a non-interactive CI build).
+1. **A Node runtime in your image.** The scaffolded Dockerfile already installs `nodejs`, so SSR works out of the box. If you've slimmed it out (or moved to a base image without Node), add it back — `yolo build` checks the Dockerfile for a Node runtime when `ssr` is on and asks for confirmation if it can't find one (a warning only — it never blocks a non-interactive CI build).
 2. **An SSR bundle from your build.** Your `npm run build` must emit the SSR bundle (`bootstrap/ssr/`) — that's standard [Inertia SSR](https://inertiajs.com/server-side-rendering) setup in your `vite.config.js`. The bundle is copied into the image automatically (it isn't excluded by `.dockerignore` or the build's `node_modules` cleanup).
 
 If the SSR process is down, Inertia falls back to client-side rendering, so the app keeps serving — the ALB health check stays on PHP's `/up` and isn't coupled to SSR. supervisord restarts a crashed renderer automatically.

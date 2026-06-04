@@ -6,7 +6,8 @@
 # argument; each ECS task definition passes its own, so one image serves all.
 FROM dunglas/frankenphp:1-php8.4-alpine
 
-RUN apk add --no-cache git supervisor \
+# nodejs is the runtime for Inertia SSR (tasks.web.ssr); drop it if you don't use SSR.
+RUN apk add --no-cache git supervisor nodejs \
     && install-php-extensions intl pcntl bcmath redis pdo_mysql opcache excimer
 
 WORKDIR /app
