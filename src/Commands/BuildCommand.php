@@ -23,6 +23,7 @@ class BuildCommand extends SteppedCommand
     ];
 
     protected array $fargateSteps = [
+        Steps\Build\Fargate\CheckOctaneInstalledStep::class,
         Steps\Build\Fargate\CheckSsrRuntimeStep::class,
         Steps\Build\Fargate\GenerateEntrypointScriptStep::class,
         Steps\Build\Fargate\GenerateSupervisorConfigStep::class,
