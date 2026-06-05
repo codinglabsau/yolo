@@ -1,6 +1,7 @@
 <?php
 
 use Aws\Result;
+use Dotenv\Dotenv;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Steps\Build\ConfigureEnvAndVersionStep;
 
@@ -49,6 +50,12 @@ it('always points ASSET_URL at the CloudFront distribution, versioned per build'
 
     expect($env)->toContain('APP_VERSION=26.21.5.0611');
     expect($env)->toContain('ASSET_URL=https://d123abc.cloudfront.net/builds/26.21.5.0611');
+    // VITE_ASSET_URL references ASSET_URL (the stock `VITE_APP_NAME="${APP_NAME}"`
+    // idiom); written as a reference, it must resolve to the same versioned prefix
+    // when phpdotenv parses the file — which is exactly how Vite's env is built.
+    expect($env)->toContain('VITE_ASSET_URL=${ASSET_URL}');
+    expect(Dotenv::parse($env)['VITE_ASSET_URL'])
+        ->toBe('https://d123abc.cloudfront.net/builds/26.21.5.0611');
 });
 
 it('injects AWS_BUCKET from the manifest when the .env does not define it', function () {

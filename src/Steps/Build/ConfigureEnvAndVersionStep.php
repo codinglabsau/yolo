@@ -42,8 +42,12 @@ class ConfigureEnvAndVersionStep implements Step
         // Assets always live in S3 behind the YOLO-provisioned CloudFront
         // distribution. ASSET_URL points app-generated asset URLs at it,
         // versioned per build so each deploy's hashed bundle sits under its
-        // own prefix and old builds keep resolving.
+        // own prefix and old builds keep resolving. VITE_ASSET_URL references
+        // it (the stock Laravel `VITE_APP_NAME="${APP_NAME}"` idiom) so the same
+        // prefix reaches Vite's import.meta.env — phpdotenv resolves the
+        // reference both in the build step's parse and at container runtime.
         $values['ASSET_URL'] = sprintf('https://%s/builds/%s', (new AssetDistribution())->domain(), $appVersion);
+        $values['VITE_ASSET_URL'] = '${ASSET_URL}';
 
         // Fargate-sane defaults injected only when the consumer's .env doesn't
         // already set them — the app "just works" with zero config but can still
