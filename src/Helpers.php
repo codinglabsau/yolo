@@ -44,6 +44,25 @@ class Helpers
             && ! str_ends_with($version, '-dev');
     }
 
+    /**
+     * Render an elapsed-seconds count as a compact "45s" / "3m" / "12m 30s" so a
+     * long-running heartbeat or a deployment timer reads naturally past the minute
+     * mark. Shared by the stepped-command runner and the status dashboard.
+     */
+    public static function humaniseElapsed(int $seconds): string
+    {
+        if ($seconds < 60) {
+            return sprintf('%ds', $seconds);
+        }
+
+        $minutes = intdiv($seconds, 60);
+        $remainder = $seconds % 60;
+
+        return $remainder === 0
+            ? sprintf('%dm', $minutes)
+            : sprintf('%dm %ds', $minutes, $remainder);
+    }
+
     public static function keyedEnvName(string $key): ?string
     {
         $environment = strtoupper(static::environment());

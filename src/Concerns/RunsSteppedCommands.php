@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Concerns;
 use Codinglabs\Yolo\Change;
 use Illuminate\Support\Str;
 use Laravel\Prompts\Prompt;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Laravel\Prompts\Progress;
 use Codinglabs\Yolo\WaitReporter;
@@ -79,12 +80,6 @@ trait RunsSteppedCommands
             }
 
             info(sprintf('In sync — %s has no pending changes.', $environment));
-
-            return SymfonyCommand::SUCCESS;
-        }
-
-        if ($this->option('dry-run')) {
-            info(sprintf('Dry run — no changes applied to %s.', $environment));
 
             return SymfonyCommand::SUCCESS;
         }
@@ -282,7 +277,7 @@ trait RunsSteppedCommands
             $progress->label($label)->hint($step->patienceMessage())->render();
 
             WaitReporter::using(fn () => $progress->label($label)
-                ->hint(sprintf('%s · %s elapsed', $step->patienceMessage(), static::humaniseElapsed(time() - $started)))
+                ->hint(sprintf('%s · %s elapsed', $step->patienceMessage(), Helpers::humaniseElapsed(time() - $started)))
                 ->render());
         } else {
             $progress?->label($label)
@@ -578,24 +573,6 @@ trait RunsSteppedCommands
         }
 
         return [$only => $tenants[$only]];
-    }
-
-    /**
-     * Render an elapsed-seconds count as a compact "45s" / "3m" / "12m 30s" so
-     * a LongRunning step's heartbeat reads naturally past the one-minute mark.
-     */
-    protected static function humaniseElapsed(int $seconds): string
-    {
-        if ($seconds < 60) {
-            return sprintf('%ds', $seconds);
-        }
-
-        $minutes = intdiv($seconds, 60);
-        $remainder = $seconds % 60;
-
-        return $remainder === 0
-            ? sprintf('%dm', $minutes)
-            : sprintf('%dm %ds', $minutes, $remainder);
     }
 
     protected static function renderStatus(StepResult|string $status): string

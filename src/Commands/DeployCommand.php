@@ -4,12 +4,15 @@ namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Steps;
 use Symfony\Component\Console\Input\InputOption;
+use Codinglabs\Yolo\Concerns\RendersServiceStatus;
 use Symfony\Component\Console\Input\InputArgument;
 
 use function Laravel\Prompts\intro;
 
 class DeployCommand extends SteppedCommand
 {
+    use RendersServiceStatus;
+
     protected array $steps = [
         Steps\Deploy\PushAssetsToS3Step::class,
         Steps\Deploy\RegisterTaskDefinitionRevisionStep::class,
@@ -41,6 +44,27 @@ class DeployCommand extends SteppedCommand
 
         intro("Deploying app version: {$this->option('app-version')}");
 
-        return parent::handle();
+        $result = parent::handle();
+
+        if ($result === self::SUCCESS) {
+            $this->renderDeploymentSummary();
+        }
+
+        return $result;
+    }
+
+    /**
+     * Recap what's now running once the rollout has settled — the same summary
+     * table and CloudWatch dashboard link `yolo status` shows, minus the live
+     * deployment/load panels (the deploy just finished, so there's nothing in
+     * flight and load hasn't built up yet).
+     */
+    protected function renderDeploymentSummary(): void
+    {
+        intro('Deployment summary');
+
+        foreach ($this->statusLines(static::gatherServiceStatuses(withLoad: false), time(), deployments: false, load: false) as $line) {
+            $this->output->writeln($line);
+        }
     }
 }

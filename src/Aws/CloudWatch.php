@@ -36,4 +36,38 @@ class CloudWatch
 
         return json_decode($body, true);
     }
+
+    /**
+     * The single most-recent datapoint for one metric/statistic over a lookback
+     * window — used by `yolo status` to read current load (ECS CPU/memory, ALB
+     * request rate / response time). Returns null when the metric has no data in
+     * the window (a brand-new or idle service) or the read fails, so the caller
+     * renders a "—" rather than a hard error.
+     *
+     * @param  array<int, array{Name: string, Value: string}>  $dimensions
+     */
+    public static function metricStatistic(string $namespace, string $metric, array $dimensions, string $stat, int $period = 300, int $lookback = 900): ?float
+    {
+        try {
+            $datapoints = Aws::cloudWatch()->getMetricStatistics([
+                'Namespace' => $namespace,
+                'MetricName' => $metric,
+                'Dimensions' => $dimensions,
+                'StartTime' => gmdate('Y-m-d\TH:i:s\Z', time() - $lookback),
+                'EndTime' => gmdate('Y-m-d\TH:i:s\Z', time()),
+                'Period' => $period,
+                'Statistics' => [$stat],
+            ])['Datapoints'] ?? [];
+        } catch (AwsException) {
+            return null;
+        }
+
+        if ($datapoints === []) {
+            return null;
+        }
+
+        usort($datapoints, fn ($a, $b) => $b['Timestamp'] <=> $a['Timestamp']);
+
+        return isset($datapoints[0][$stat]) ? (float) $datapoints[0][$stat] : null;
+    }
 }

@@ -78,6 +78,27 @@ class Dashboard
         return Helpers::keyedResourceName('dashboard');
     }
 
+    /**
+     * Best-effort AWS Console deep link to this dashboard, from its name + the
+     * env region. `yolo status` surfaces it so an operator can jump from the
+     * terminal summary to the full graphed dashboard; null when no region is set.
+     */
+    public function consoleUrl(): ?string
+    {
+        $region = (string) Manifest::get('region');
+
+        if ($region === '') {
+            return null;
+        }
+
+        return sprintf(
+            'https://%s.console.aws.amazon.com/cloudwatch/home?region=%s#dashboards/dashboard/%s',
+            $region,
+            $region,
+            $this->name(),
+        );
+    }
+
     public function exists(): bool
     {
         try {

@@ -274,3 +274,16 @@ it('rewrites a drifted dashboard on apply and only reports it on a dry-run', fun
     expect((new SyncCloudWatchDashboardStep())(['dry-run' => false]))->toBe(StepResult::SYNCED);
     expect(collect($captured)->pluck('name'))->toContain('PutDashboard');
 });
+
+it('builds a console deep link from its name and the env region', function () {
+    writeManifest(['region' => 'ap-southeast-2']);
+
+    expect((new Dashboard())->consoleUrl())
+        ->toBe('https://ap-southeast-2.console.aws.amazon.com/cloudwatch/home?region=ap-southeast-2#dashboards/dashboard/yolo-testing-my-app-dashboard');
+});
+
+it('returns no console link when the env declares no region', function () {
+    writeManifest([]);
+
+    expect((new Dashboard())->consoleUrl())->toBeNull();
+});

@@ -95,6 +95,27 @@ class ApplicationAutoScaling
     }
 
     /**
+     * Every scaling policy (full body) registered on an ECS service resource id —
+     * an empty list when none are (or the target is gone). `yolo status` reads
+     * these to summarise what each service scales on (CPU target, request count,
+     * queue backlog) in one describe.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function scalingPolicies(string $resourceId): array
+    {
+        try {
+            return Aws::applicationAutoScaling()->describeScalingPolicies([
+                'ServiceNamespace' => self::SERVICE_NAMESPACE,
+                'ResourceId' => $resourceId,
+                'ScalableDimension' => self::SCALABLE_DIMENSION,
+            ])['ScalingPolicies'];
+        } catch (AwsException) {
+            return [];
+        }
+    }
+
+    /**
      * Delete a target-tracking scaling policy. Application Auto Scaling cascades
      * the delete to the scale-out / scale-in CloudWatch alarms it generated for
      * the policy, so this removes the policy and its alarms in one call.

@@ -230,19 +230,6 @@ it('expands the skipped section to per-resource names under -v', function () {
         ->toContain('ivs event bridge target');
 });
 
-it('dry-run renders the plan and stops — no apply, no results table, no completion line', function () {
-    $output = runScopesCapture(
-        ['environment' => [RunScopesChangeStep::class]],
-        ['--no-progress' => true, '--dry-run' => true],
-    );
-
-    expect($output)
-        ->toContain('Pending changes')
-        ->toContain('idle_timeout')
-        ->toContain('Dry run')
-        ->not->toContain('Synced testing'); // no apply ran
-});
-
 it('--check exits non-zero on drift and never applies', function () {
     [$output, $exitCode] = runScopesResult(
         ['environment' => [RunScopesChangeStep::class]],

@@ -59,10 +59,12 @@ All commands extend `Command` (base) or, for multi-step work, `SteppedCommand` /
 - **`SteppedCommand`** — runs an ordered `$steps` array of `Step` classes with progress tracking and status reporting
   (via the `RunsSteppedCommands` concern).
 - **`SyncSteppedCommand`** — a `SteppedCommand` whose steps are declared as scope-labelled `domains()`. Adds the
-  `--dry-run`, `--force`, `--no-progress`, and `--tenant=<id>` options and an `environment` argument.
+  `--check`, `--force`, `--no-progress`, and `--tenant=<id>` options and an `environment` argument. There is no
+  `--dry-run`: sync is always approve-before-apply (it prints the full plan before its confirm gate, so declining is
+  the preview), and `--check` is the non-interactive plan-only/fail-on-drift form for CI.
 
-The full command set: `init`, `env:pull`, `env:push`, `build`, `deploy`, `run`, and the scope-grouped `sync` / `audit`
-verbs below.
+The full command set: `init`, `env:pull`, `env:push`, `build`, `deploy`, `status`, `run`, `scale`, and the
+scope-grouped `sync` / `audit` verbs below.
 
 ### Sync is scope-first (`sync` / `sync:account` / `sync:environment` / `sync:app`)
 
@@ -159,8 +161,9 @@ Interfaces a step implements to declare its execution context:
 
 Orchestration traits (per-service AWS interaction now lives in `src/Aws/*`, not here): `RunsSteppedCommands` (step
 execution + progress UI), `SynchronisesResource` (create-or-sync), `RegistersAws` (env-aware client registration),
-`SyncsRecordSets`, `ResolvesDatabases`, `DetectsSubdomains`, `ChecksIfCommandsShouldBeRunning`, `HasAfterCallbacks`,
-`ParsesOnlyOption`.
+`RendersServiceStatus` (gathers + renders the live `status` dashboard and the end-of-deploy recap, shared by
+`StatusCommand` and `DeployCommand`), `SyncsRecordSets`, `ResolvesDatabases`, `DetectsSubdomains`,
+`ChecksIfCommandsShouldBeRunning`, `HasAfterCallbacks`, `ParsesOnlyOption`.
 
 ### Configuration & helpers
 
@@ -195,7 +198,14 @@ image, and push it.
 `yolo deploy` (`DeployCommand`) runs `build` first, then: push built assets to S3 → register a new ECS task-definition
 revision → run deploy hooks (migrate, etc.) as a one-off `ecs:RunTask` (`ExecuteDeployStepsStep`) → update the ECS
 service → `WaitForDeploymentHealthyStep` (the ECS deployment circuit breaker fast-fails and auto-rolls-back on a
-broken deploy) → UPSERT the Route 53 record(s) once healthy.
+broken deploy) → UPSERT the Route 53 record(s) once healthy. Once the rollout settles it prints an end-of-deploy
+recap — the per-group summary table + CloudWatch dashboard link from the `RendersServiceStatus` concern.
+
+`yolo status` (`StatusCommand`) is the read-only live dashboard built on the same `RendersServiceStatus` concern: per
+group (web/queue/scheduler) it reads ECS, Application Auto Scaling and CloudWatch to show what's running, the task
+spec, running/desired counts, scaling bounds + policies, current load against the CPU target, and a progress panel
+for any in-flight rollout, plus a deep link to the app's CloudWatch dashboard. It polls and redraws until quit;
+`--snapshot` (and any non-interactive shell) renders one frame.
 
 The container runs **supervisord** as its process tree: FrankenPHP for web, queue workers, and a busybox `crond`
 driving `schedule:run` (the scheduler is cron, not `schedule:work`). The entrypoint supervises the CMD and traps
