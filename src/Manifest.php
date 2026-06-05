@@ -34,6 +34,7 @@ class Manifest
         'sqs.depth-alarm-threshold', 'sqs.depth-alarm-period', 'sqs.depth-alarm-evaluation-periods',
         'cache.store',
         'session.driver',
+        'task-role-policies',
         // Each task group has a fixed, known shape, so every key is listed
         // explicitly: an unrecognised key under tasks.web / tasks.queue /
         // tasks.scheduler hard-fails rather than being silently accepted by a
@@ -43,7 +44,6 @@ class Manifest
         'tasks.web.port', 'tasks.web.cpu', 'tasks.web.memory', 'tasks.web.platform',
         'tasks.web.enable-execute-command', 'tasks.web.shutdown-grace-period',
         'tasks.web.log-retention', 'tasks.web.log-group',
-        'tasks.web.execution-role', 'tasks.web.task-role',
         'tasks.web.ssr', 'tasks.web.ssr.*',
         'tasks.web.health-check.*', 'tasks.web.autoscaling.*',
         'tasks.queue',
@@ -368,6 +368,35 @@ class Manifest
         $default = static::schedulerHost() === ServerGroup::QUEUE ? 1 : 0;
 
         return Helpers::validateNonNegativeInt(static::get('tasks.queue.min', $default), 'tasks.queue.min');
+    }
+
+    /**
+     * Additional IAM policy ARNs to attach to this app's ECS task role, declared
+     * under the top-level `task-role-policies` list. The role is per-app, so these
+     * grant only this app's containers and never reach another app. Each entry must
+     * be a customer- or AWS-managed IAM policy ARN; a malformed value hard-fails the
+     * plan rather than silently dropping the grant.
+     *
+     * @return array<int, string>
+     */
+    public static function taskRolePolicies(): array
+    {
+        $policies = static::get('task-role-policies', []);
+
+        if (! is_array($policies) || ! array_is_list($policies)) {
+            throw new IntegrityCheckException('task-role-policies must be a list of IAM policy ARNs.');
+        }
+
+        foreach ($policies as $arn) {
+            if (! is_string($arn) || ! preg_match('#^arn:aws:iam::(aws|\d{12}):policy/.+#', $arn)) {
+                throw new IntegrityCheckException(sprintf(
+                    'task-role-policies entries must be IAM policy ARNs (got %s).',
+                    json_encode($arn),
+                ));
+            }
+        }
+
+        return $policies;
     }
 
     /**

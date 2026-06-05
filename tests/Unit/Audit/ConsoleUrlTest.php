@@ -40,8 +40,8 @@ it('builds a deep link for each supported service', function (string $arn, strin
         'https://s3.console.aws.amazon.com/s3/buckets/yolo-production-codinglabs-assets',
     ],
     'iam role (region-less, basename)' => [
-        'arn:aws:iam::111:role/yolo-production-ecs-task-role',
-        'https://console.aws.amazon.com/iam/home#/roles/details/yolo-production-ecs-task-role',
+        'arn:aws:iam::111:role/yolo-production-codinglabs-ecs-task-role',
+        'https://console.aws.amazon.com/iam/home#/roles/details/yolo-production-codinglabs-ecs-task-role',
     ],
     'route53 hosted zone' => [
         'arn:aws:route53:::hostedzone/Z123ABC',

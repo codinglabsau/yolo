@@ -36,10 +36,10 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 Steps\Sync\Environment\SyncPublicSubnetsAssociationToRouteTableStep::class,
                 Steps\Sync\Environment\SyncLoadBalancerSecurityGroupStep::class,
                 Steps\Sync\Environment\SyncSnsAlarmTopicStep::class,
-                // shared IAM (task + execution roles)
-                Steps\Sync\Environment\SyncEcsTaskPolicyStep::class,
-                Steps\Sync\Environment\SyncEcsTaskRoleStep::class,
-                Steps\Sync\Environment\AttachEcsTaskRolePoliciesStep::class,
+                // shared IAM — the ECS execution role (ECR pull + log write) is
+                // generic and identical for every app, so it stays env-shared. The
+                // task role is per-app (sync:app) so each app's runtime grants stay
+                // its own.
                 Steps\Sync\Environment\SyncEcsExecutionRoleStep::class,
                 Steps\Sync\Environment\AttachEcsExecutionRolePoliciesStep::class,
                 // ALB log bucket — provisioned before the load balancer so the

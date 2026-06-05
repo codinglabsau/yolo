@@ -5,7 +5,7 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 ## Conventions
 
 - **`<environment>`** — almost every command takes a required `environment` argument naming a key under `environments` in your `yolo.yml` (e.g. `production`, `staging`).
-- **AWS authentication** — outside CI, YOLO reads a named AWS profile from `YOLO_<ENVIRONMENT>_AWS_PROFILE` in your local `.env`. Before any AWS call it verifies (via STS) that the profile resolves to the `account-id` declared in the manifest. The `default` profile is rejected. In CI it falls back to the AWS SDK default credential chain (OIDC, SSO, static keys).
+- **AWS authentication** — outside CI, YOLO reads a named AWS profile from `YOLO_<ENVIRONMENT>_AWS_PROFILE` in your local `.env`. Before any AWS call it verifies (via STS) that the profile resolves to the `account-id` declared in the manifest. The `default` profile is rejected. In CI it falls back to the AWS SDK default credential chain (GitHub OIDC, SSO).
 - **Required manifest keys** — every command except `init` checks that `name`, `region`, and `account-id` are declared, and fails fast if not.
 
 ## Commands at a glance
@@ -244,7 +244,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **account**.
 
 ## `yolo sync:environment`
 
-Sync the environment-shared (environment-tier) resources — VPC, subnets, internet gateway and routes, the load balancer security group, the ALB and its `:80` listener, the SNS alarm topic, and the shared ECS task & execution IAM roles.
+Sync the environment-shared (environment-tier) resources — VPC, subnets, internet gateway and routes, the load balancer security group, the ALB and its `:80` listener, the SNS alarm topic, and the shared ECS execution IAM role.
 
 ```bash
 yolo sync:environment <environment> [--dry-run] [--check] [--force] [--no-progress] [--tenant=<id>]
@@ -256,7 +256,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **environment**. These 
 
 ## `yolo sync:app`
 
-Sync a single application's resources for the given environment — S3 buckets, app IAM (deployer role/policy, MediaConvert role for IVS), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, SQS queues, a CloudWatch dashboard, target-tracking autoscaling (when configured), and — for a solo app — its hosted zone and ACM certificate. For web apps it also provisions the shared [Valkey cache](/guide/provisioning#cache-and-sessions) (`cache.store`, default-on); sessions ride the same cluster by default ([`session.driver: redis`](/guide/provisioning#cache-and-sessions)), so they need no resources of their own.
+Sync a single application's resources for the given environment — S3 buckets, app IAM (deployer role/policy, the per-app ECS task role plus any [`task-role-policies`](/reference/manifest#task-role-policies), MediaConvert role for IVS), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, SQS queues, a CloudWatch dashboard, target-tracking autoscaling (when configured), and — for a solo app — its hosted zone and ACM certificate. For web apps it also provisions the shared [Valkey cache](/guide/provisioning#cache-and-sessions) (`cache.store`, default-on); sessions ride the same cluster by default ([`session.driver: redis`](/guide/provisioning#cache-and-sessions)), so they need no resources of their own.
 
 ```bash
 yolo sync:app <environment> [--dry-run] [--check] [--force] [--no-progress] [--tenant=<id>]

@@ -27,12 +27,24 @@ it('describes the ECS task policy with the four ssmmessages exec permissions', f
     ]);
 });
 
-it('grants SQS access scoped to this environment\'s YOLO queues', function () {
+it('grants SQS access scoped to this app\'s own queues only', function () {
     $statement = (new EcsTaskPolicy())->document()['Statement'][1];
 
     expect($statement['Effect'])->toBe('Allow');
-    expect($statement['Resource'])->toBe('arn:aws:sqs:ap-southeast-2:111111111111:yolo-testing-*');
+    // The solo queue (exact) plus landlord/per-tenant queues (prefix) — never a
+    // sibling app's, which the old env-wide `yolo-testing-*` grant leaked.
+    expect($statement['Resource'])->toBe([
+        'arn:aws:sqs:ap-southeast-2:111111111111:yolo-testing-my-app',
+        'arn:aws:sqs:ap-southeast-2:111111111111:yolo-testing-my-app-*',
+    ]);
     expect($statement['Action'])->toContain('sqs:ReceiveMessage', 'sqs:DeleteMessage', 'sqs:SendMessage', 'sqs:ChangeMessageVisibility');
+});
+
+it('scopes the task role and policy to this app (carrying the yolo:app owner tag)', function () {
+    expect((new EcsTaskRole())->name())->toBe('yolo-testing-my-app-ecs-task-role');
+    expect((new EcsTaskPolicy())->name())->toBe('yolo-testing-my-app-ecs-task-policy');
+    expect((new EcsTaskRole())->tags())->toMatchArray(['yolo:scope' => 'app', 'yolo:app' => 'my-app']);
+    expect((new EcsTaskPolicy())->tags())->toMatchArray(['yolo:scope' => 'app', 'yolo:app' => 'my-app']);
 });
 
 it('grants SES send scoped to this region\'s verified identities', function () {
@@ -56,5 +68,41 @@ it('trusts the ecs-tasks service in the ECS task assume role policy', function (
                 'Action' => 'sts:AssumeRole',
             ],
         ],
+    ]);
+});
+
+it('grants no S3 access when the manifest declares no data bucket', function () {
+    $resources = collect((new EcsTaskPolicy())->document()['Statement'])->pluck('Resource')->flatten();
+
+    expect($resources->filter(fn ($arn) => str_starts_with($arn, 'arn:aws:s3:::')))->toBeEmpty();
+});
+
+it('grants read+write on the declared data bucket, scoped to that bucket only', function () {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'bucket' => 'my-app-uploads',
+    ]);
+
+    $statements = (new EcsTaskPolicy())->document()['Statement'];
+
+    // The three baseline statements (ssmmessages, SQS, SES) plus the two bucket ones.
+    expect($statements)->toHaveCount(5);
+
+    $object = collect($statements)->firstWhere('Resource', 'arn:aws:s3:::my-app-uploads/*');
+    expect($object['Effect'])->toBe('Allow');
+    expect($object['Action'])->toEqualCanonicalizing([
+        's3:GetObject',
+        's3:PutObject',
+        's3:DeleteObject',
+        's3:AbortMultipartUpload',
+        's3:ListMultipartUploadParts',
+    ]);
+
+    $bucket = collect($statements)->firstWhere('Resource', 'arn:aws:s3:::my-app-uploads');
+    expect($bucket['Effect'])->toBe('Allow');
+    expect($bucket['Action'])->toEqualCanonicalizing([
+        's3:ListBucket',
+        's3:ListBucketMultipartUploads',
+        's3:GetBucketLocation',
     ]);
 });

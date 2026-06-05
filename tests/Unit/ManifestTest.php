@@ -127,6 +127,47 @@ describe('cache + session defaults', function () {
     });
 });
 
+describe('task-role-policies', function () {
+    it('defaults to no additional policies', function () {
+        writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
+
+        expect(Manifest::taskRolePolicies())->toBe([]);
+    });
+
+    it('returns the declared customer- and AWS-managed policy ARNs', function () {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'task-role-policies' => [
+                'arn:aws:iam::111111111111:policy/my-policy',
+                'arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess',
+            ],
+        ]);
+
+        expect(Manifest::taskRolePolicies())->toBe([
+            'arn:aws:iam::111111111111:policy/my-policy',
+            'arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess',
+        ]);
+    });
+
+    it('hard-fails when an entry is not an IAM policy ARN', function () {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'task-role-policies' => ['arn:aws:iam::111111111111:role/not-a-policy'],
+        ]);
+
+        expect(fn () => Manifest::taskRolePolicies())->toThrow(IntegrityCheckException::class);
+    });
+
+    it('hard-fails when the value is not a list', function () {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'task-role-policies' => ['policy' => 'arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess'],
+        ]);
+
+        expect(fn () => Manifest::taskRolePolicies())->toThrow(IntegrityCheckException::class);
+    });
+});
+
 describe('ivsEnabled', function () {
     it('is false when ivs is absent', function () {
         writeManifest([]);

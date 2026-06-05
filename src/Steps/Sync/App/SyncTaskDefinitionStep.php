@@ -111,15 +111,11 @@ class SyncTaskDefinitionStep implements Step
 
     protected static function taskRoleArn(): string
     {
-        return Manifest::has('tasks.web.task-role')
-            ? Manifest::get('tasks.web.task-role')
-            : (new EcsTaskRole())->arn();
+        return (new EcsTaskRole())->arn();
     }
 
     protected static function executionRoleArn(): string
     {
-        return Manifest::has('tasks.web.execution-role')
-            ? Manifest::get('tasks.web.execution-role')
-            : (new EcsExecutionRole())->arn();
+        return (new EcsExecutionRole())->arn();
     }
 }

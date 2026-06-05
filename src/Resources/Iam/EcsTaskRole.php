@@ -11,10 +11,13 @@ use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * YOLO-managed IAM role assumed by ECS tasks. Trust policy lets ecs-tasks.amazonaws.com
- * call sts:AssumeRole. Permission policies attached separately by
- * AttachEcsTaskRolePoliciesStep — convention is to attach the YOLO ECS task policy
- * (ssmmessages:* for ECS Exec) plus any per-app additions.
+ * YOLO-managed IAM role assumed by this app's ECS tasks (web, queue and
+ * scheduler all share the one app role). App-scoped so each app gets its own
+ * role — additional permissions an app grants (via `task-role-policies`) can't
+ * bleed into any other app. Trust policy lets ecs-tasks.amazonaws.com call
+ * sts:AssumeRole. Permission policies are attached separately by
+ * AttachEcsTaskRolePoliciesStep: the YOLO baseline task policy (ECS Exec + this
+ * app's SQS/SES) plus any manifest-declared additions.
  */
 class EcsTaskRole implements Resource
 {
@@ -27,7 +30,7 @@ class EcsTaskRole implements Resource
 
     public function scope(): Scope
     {
-        return Scope::Env;
+        return Scope::App;
     }
 
     public function exists(): bool
@@ -64,7 +67,7 @@ class EcsTaskRole implements Resource
      */
     public function description(): string
     {
-        return 'YOLO managed ECS task role - shared default across all apps in this environment';
+        return 'YOLO managed ECS task role - the runtime identity for this app\'s containers';
     }
 
     public function synchroniseTags(bool $apply): array

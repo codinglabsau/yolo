@@ -95,32 +95,15 @@ it('widens UpdateService scope to the standalone queue and scheduler services wh
     );
 });
 
-it('scopes PassRole to the task and execution roles, passed only to ECS tasks', function () {
+it('scopes PassRole to the per-app task role and shared execution role, passed only to ECS tasks', function () {
     $statement = statementFor((new DeployerPolicy())->document(), 'iam:PassRole');
 
     expect($statement['Resource'])->toBe([
-        'arn:aws:iam::111111111111:role/yolo-testing-ecs-task-role',
+        'arn:aws:iam::111111111111:role/yolo-testing-my-app-ecs-task-role',
         'arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role',
     ]);
     expect($statement['Condition'])->toBe([
         'StringEquals' => ['iam:PassedToService' => 'ecs-tasks.amazonaws.com'],
-    ]);
-});
-
-it('honours manifest task-role and execution-role overrides for PassRole', function () {
-    writeManifest([
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [
-            'task-role' => 'arn:aws:iam::111111111111:role/custom-task',
-            'execution-role' => 'arn:aws:iam::111111111111:role/custom-exec',
-        ]],
-    ]);
-
-    $statement = statementFor((new DeployerPolicy())->document(), 'iam:PassRole');
-
-    expect($statement['Resource'])->toBe([
-        'arn:aws:iam::111111111111:role/custom-task',
-        'arn:aws:iam::111111111111:role/custom-exec',
     ]);
 });
 

@@ -1,6 +1,6 @@
 # CI/CD
 
-Deploy from CI with short-lived, **keyless** credentials — no `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in your repo secrets. YOLO provisions a GitHub Actions OIDC trust and a tightly-scoped deployer role; your workflow assumes that role at runtime.
+Deploy from CI with short-lived, **keyless** credentials via GitHub OIDC. YOLO provisions a GitHub Actions OIDC trust and a tightly-scoped deployer role; your workflow assumes that role at runtime — nothing to store in your repo.
 
 ## Declare the ref each environment deploys from
 
@@ -96,8 +96,7 @@ See the [`sync` reference](/reference/commands#sync-options) for the full option
 
 ## Other auth methods
 
-The default credential chain means all three auth methods work with no extra config:
+The default credential chain means both auth methods work with no extra config:
 
 - **OIDC** (above) — recommended.
 - **AWS IAM Identity Center (SSO)**.
-- **Legacy long-lived static access keys** — still work, but YOLO emits a warning nudging you toward OIDC.
