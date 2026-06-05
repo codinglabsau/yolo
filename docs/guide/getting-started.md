@@ -79,19 +79,13 @@ YOLO shows a diff of what's changing and asks for confirmation before uploading.
 
 ## 5. Provision your infrastructure
 
-This is the big one — `yolo sync` creates the VPC, load balancer, ECS cluster, IAM roles, S3 buckets, certificate, and DNS for your app. **Preview it first** with `--dry-run`:
-
-```bash
-yolo sync production --dry-run
-```
-
-You'll see a plan grouped by scope (account → environment → app) showing exactly what would be created or changed. Nothing is touched. When it looks right, run it for real:
+This is the big one — `yolo sync` creates the VPC, load balancer, ECS cluster, IAM roles, S3 buckets, certificate, and DNS for your app:
 
 ```bash
 yolo sync production
 ```
 
-YOLO shows the same plan, asks you to confirm, then applies it. The first sync provisions a fair amount and can take several minutes (ACM certificate validation and load balancer provisioning are the slow parts). It's safe to re-run any time — a second `sync` on an unchanged manifest reports "already in sync" and does nothing.
+YOLO **always shows the plan before it touches anything** — a diff grouped by scope (account → environment → app) of exactly what would be created or changed — then asks you to confirm. So to preview, just run it and read the plan; decline (or Ctrl-C) if it's not what you expected, confirm when it looks right. The first sync provisions a fair amount and can take several minutes (ACM certificate validation and load balancer provisioning are the slow parts). It's safe to re-run any time — a second `sync` on an unchanged manifest reports "already in sync" and does nothing.
 
 See [Provisioning](/guide/provisioning) for what each scope creates and how the plan/confirm/apply flow works.
 

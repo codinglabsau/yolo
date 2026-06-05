@@ -62,7 +62,7 @@ Pair `tag: 'v*'` with a GitHub protected-tag ruleset (only maintainers may cut `
 
 `yolo deploy` ships your code; `yolo sync --check` guards the infrastructure behind it. Run it in CI to fail a pipeline the moment your live AWS resources drift from `yolo.yml` — someone hand-edited a resource in the console, or a manifest change merged without anyone running `yolo sync`.
 
-`--check` runs the same read-only plan pass as [`--dry-run`](/guide/provisioning) and prints the same diff, but **never applies** and exits non-zero when there are pending changes:
+`--check` runs the same read-only [plan pass](/guide/provisioning#plan-confirm-apply) `sync` always shows before its confirm, and prints the same diff, but **never applies** and exits non-zero when there are pending changes:
 
 | Exit code | Meaning |
 |---|---|

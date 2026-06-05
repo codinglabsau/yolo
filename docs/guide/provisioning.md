@@ -38,25 +38,17 @@ Several apps can share one environment's VPC and load balancer. Because `sync:ap
 2. **Confirm** — you're shown the plan and asked to approve. If nothing has drifted, it short-circuits with **"Already in sync"** and exits without touching anything.
 3. **Apply** — only the changed steps run.
 
-### Preview with `--dry-run`
-
-To see the plan without the confirm/apply step at all:
-
-```bash
-yolo sync production --dry-run
-```
-
-This computes and prints the full diff but makes no changes. It's the safe way to see what a `sync` would do before you commit — always dry-run first against an account you care about.
+The plan is **always** shown before the confirm, so there's no separate preview mode — to see what a `sync` would do, just run it and read the plan, then decline (or Ctrl-C) instead of confirming. Nothing is written until you approve.
 
 ### Gate CI on drift with `--check`
 
-`--check` is the machine-readable counterpart to `--dry-run`. It runs the same plan pass and prints the same diff, but never applies and **exits non-zero when the environment has drifted** (and `0` when it's already in sync):
+`--check` runs the same read-only plan pass and prints the same diff, but never applies and **exits non-zero when the environment has drifted** (and `0` when it's already in sync):
 
 ```bash
 yolo sync production --check
 ```
 
-Wire it into CI to fail a pipeline the moment infrastructure drifts from the manifest — someone hand-edited a resource, or a `sync` was never run after a manifest change. A non-zero exit also covers a dry-run that errored (bad credentials, an AWS API failure, an invalid manifest); in every case CI should stop and a human should look at the printed plan.
+Wire it into CI to fail a pipeline the moment infrastructure drifts from the manifest — someone hand-edited a resource, or a `sync` was never run after a manifest change. A non-zero exit also covers a plan that errored (bad credentials, an AWS API failure, an invalid manifest); in every case CI should stop and a human should look at the printed plan.
 
 ### Skip the prompt with `--force`
 

@@ -17,6 +17,7 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | [`env:push <env>`](#yolo-env-push) | Upload the environment's `.env` to S3 (with diff) |
 | [`build <env>`](#yolo-build) | Build and push the container image |
 | [`deploy <env>`](#yolo-deploy) | Build, then roll out a zero-downtime deploy |
+| [`status <env>`](#yolo-status) | Live dashboard of services, load, scaling and any in-progress deploy |
 | [`run <env>`](#yolo-run) | Open a shell / run a command in a running container |
 | [`scale <env> [count]`](#yolo-scale) | Adjust the web service's task count out of band |
 | [`sync <env>`](#yolo-sync) | Provision all resources (account → environment → app) |
@@ -128,6 +129,36 @@ yolo deploy <environment> [--app-version=<tag>] [--group=<groups>] [--no-progres
 
 After building, `deploy` pushes assets to S3, registers a new task-definition revision **for each service group** (web plus any standalone queue/scheduler), runs `deploy` hooks as a one-off task, rolls each ECS service onto its new revision, waits for the web service to go healthy (the deployment circuit breaker auto-rolls-back on failure), then UPSERTs Route 53 records. It always waits for the rollout to stabilise — there is no opt-out flag. `--group` narrows the rollout to a subset of services (the shared image is built either way); a deploy that omits `web` skips the ALB health wait, relying on the circuit breaker.
 
+Once the rollout settles, `deploy` prints a recap — the same per-group summary table and CloudWatch dashboard link [`status`](#yolo-status) shows — so you can see what's now running and the new revision of each service.
+
+---
+
+## `yolo status`
+
+Show a live dashboard of the app's running state for an environment — what each service group is running, its current load, scaling configuration, and any deploy in progress.
+
+```bash
+yolo status <environment> [--snapshot]
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `environment` | yes | The environment name |
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--snapshot` | flag | off | Render one frame and exit instead of running the live dashboard. |
+
+The dashboard has three panels, read live from ECS, Application Auto Scaling and CloudWatch:
+
+- **Deployment in progress** (only when a rollout is mid-flight) — a progress bar of new-revision tasks per rolling group, its rollout state, the revision, and how long it's been running.
+- **Services** — one row per group (web / queue / scheduler) with the task spec (vCPU/memory/launch type), running/desired task count, scaling bounds + policies (`1–4 auto (cpu 65%, req 1200)`, or `fixed` / `singleton`), and the deployed revision + app version.
+- **Load** (last 5 min) — ECS CPU/memory per group, shown against the CPU scaling target so headroom is obvious, plus the web service's ALB request rate and response time.
+
+Below the panels is a clickable deep link to the app's CloudWatch dashboard for the full metrics view.
+
+By default it **polls and redraws until you quit** (Ctrl-C), picking up any deploy that starts while it's open — so it doubles as a live deploy watch. `--snapshot` (and any non-interactive shell) renders a single frame and exits instead, returning a non-zero exit code if a deployment is currently failed.
+
 ---
 
 ## `yolo run`
@@ -207,7 +238,7 @@ yolo scale production                            # prompt for a fixed count
 Sync **all** resources for the given environment, orchestrating the three scopes in dependency order: account → environment → app.
 
 ```bash
-yolo sync <environment> [--dry-run] [--check] [--force] [--no-progress] [--tenant=<id>]
+yolo sync <environment> [--check] [--force] [--no-progress] [--tenant=<id>]
 ```
 
 | Argument | Required | Description |
@@ -218,13 +249,14 @@ yolo sync <environment> [--dry-run] [--check] [--force] [--no-progress] [--tenan
 
 | Option | Short | Value | Description |
 |---|---|---|---|
-| `--dry-run` | | flag | Show what would change without applying it. |
 | `--check` | | flag | Plan only and exit non-zero if the environment has drifted — never applies. Intended as a CI gate. |
 | `--force` | `-f` | flag | Skip the confirmation prompt. |
 | `--no-progress` | | flag | Hide the live progress output. |
 | `--tenant` | | string | Limit per-tenant steps to a single tenant id. |
 
-`--check` is the machine-readable form of `--dry-run`: it runs the same plan pass and prints the same diff, but never applies and returns a non-zero exit code when there are pending changes (and `0` when the environment is already in sync). Run `yolo sync <env> --check` in CI to fail a pipeline on drifted or unsynced infrastructure. A non-zero exit also covers a dry-run that errored (bad credentials, AWS API failure, invalid manifest) — either way, CI should stop and a human should look.
+`sync` is always **approve-before-apply**: it runs a read-only plan pass, prints the full diff (Will create / Pending changes / Skipping), then asks you to confirm before writing anything — so you always see exactly what will change first, and declining (or Ctrl-C) is the preview. `--force` skips that confirm for unattended applies.
+
+`--check` is the machine-readable form of that plan pass: it prints the same diff, never applies, and returns a non-zero exit code when there are pending changes (and `0` when the environment is already in sync). Run `yolo sync <env> --check` in CI to fail a pipeline on drifted or unsynced infrastructure. A non-zero exit also covers a plan that errored (bad credentials, AWS API failure, invalid manifest) — either way, CI should stop and a human should look.
 
 These four options are shared by every `sync` command below. See [Provisioning](/guide/provisioning) for the plan/confirm/apply flow.
 
@@ -235,7 +267,7 @@ These four options are shared by every `sync` command below. See [Provisioning](
 Sync the account-global resources (shared across every environment) — the GitHub OIDC identity provider.
 
 ```bash
-yolo sync:account <environment> [--dry-run] [--check] [--force] [--no-progress] [--tenant=<id>]
+yolo sync:account <environment> [--check] [--force] [--no-progress] [--tenant=<id>]
 ```
 
 Arguments and options as [`sync`](#sync-options). Scope: **account**.
@@ -247,7 +279,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **account**.
 Sync the environment-shared (environment-tier) resources — VPC, subnets, internet gateway and routes, the load balancer security group, the ALB and its `:80` listener, the SNS alarm topic, and the shared ECS execution IAM role.
 
 ```bash
-yolo sync:environment <environment> [--dry-run] [--check] [--force] [--no-progress] [--tenant=<id>]
+yolo sync:environment <environment> [--check] [--force] [--no-progress] [--tenant=<id>]
 ```
 
 Arguments and options as [`sync`](#sync-options). Scope: **environment**. These resources are shared by every app in the environment; apps attach to them but never mutate them.
@@ -259,7 +291,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **environment**. These 
 Sync a single application's resources for the given environment — S3 buckets, app IAM (deployer role/policy, the per-app ECS task role plus any [`task-role-policies`](/reference/manifest#task-role-policies), MediaConvert role for IVS), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, SQS queues, a CloudWatch dashboard, target-tracking autoscaling (when configured), and — for a solo app — its hosted zone and ACM certificate. For web apps it also provisions the shared [Valkey cache](/guide/provisioning#cache-and-sessions) (`cache.store`, default-on); sessions ride the same cluster by default ([`session.driver: redis`](/guide/provisioning#cache-and-sessions)), so they need no resources of their own.
 
 ```bash
-yolo sync:app <environment> [--dry-run] [--check] [--force] [--no-progress] [--tenant=<id>]
+yolo sync:app <environment> [--check] [--force] [--no-progress] [--tenant=<id>]
 ```
 
 Arguments and options as [`sync`](#sync-options). Scope: **app**.

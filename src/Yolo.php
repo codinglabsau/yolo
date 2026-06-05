@@ -22,6 +22,9 @@ class Yolo
         // Deploy
         Commands\DeployCommand::class,
 
+        // Status
+        Commands\StatusCommand::class,
+
         // Exec
         Commands\RunCommand::class,
 

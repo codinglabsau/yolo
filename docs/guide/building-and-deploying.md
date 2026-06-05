@@ -19,6 +19,9 @@ yolo deploy production
 5. **Update the service** — points the ECS service at the new revision and starts the rolling deployment.
 6. **Wait for healthy** — polls until the new tasks pass their health checks.
 7. **Point DNS** — UPSERTs the Route 53 record(s) once the deployment is healthy.
+8. **Recap** — prints a summary of what's now running (each service's task spec, count, scaling, and new revision) plus a link to the app's CloudWatch dashboard — the same view [`yolo status`](/reference/commands#yolo-status) shows.
+
+To watch a rollout as it happens, or check what's running at any time, run [`yolo status <env>`](/reference/commands#yolo-status) — a live dashboard of services, load, scaling, and any in-progress deploy.
 
 ## The build
 
