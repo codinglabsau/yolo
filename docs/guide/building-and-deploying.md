@@ -30,7 +30,7 @@ To watch a rollout as it happens, or check what's running at any time, run [`yol
 1. Purge the build directory and stage a clean copy of your app.
 2. Pull `.env.<environment>` from S3 and stamp in `APP_VERSION` (and `ASSET_URL`, mirrored into `VITE_ASSET_URL` for Vite, if a CDN is configured).
 3. Run your manifest's `build` hooks (`composer install`, `npm run build`, …). With [Inertia SSR](/guide/images#inertia-ssr) enabled, this is also where `npm run build` produces the SSR bundle that gets baked into the image.
-4. Generate the entrypoint and supervisord config (see [The Container Image](/guide/images)). When `tasks.web.ssr` is on, this is where YOLO checks your Dockerfile for the Node runtime SSR needs.
+4. Generate the entrypoint and supervisord config (see [The Container Image](/guide/images)). Two preflight checks gate this step. First, YOLO **hard-fails the build** if `laravel/octane` isn't in your committed `composer.lock` production requirements — the web role runs `octane:start`, so a missing (or `require-dev`-only) octane would crash-loop the container on boot. Second, when `tasks.web.ssr` is on, it warns if your Dockerfile has no Node runtime for the SSR process.
 5. Log in to ECR, build the Docker image, and push it.
 
 The image-building steps (4–5) only run when your manifest declares `tasks` — a headless app with no web task still builds its source artefact.
