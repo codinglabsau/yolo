@@ -28,7 +28,7 @@ class SyncTaskSecurityGroupStep implements Step
         $result = $this->syncResource($securityGroup, $options);
 
         if ($securityGroup->exists()) {
-            $this->ensureLoadBalancerIngressRule($securityGroup->arn(), Arr::get($options, 'dry-run'));
+            $this->ensureLoadBalancerIngressRule($securityGroup->arn(), (bool) Arr::get($options, 'dry-run'));
         }
 
         return $result;
