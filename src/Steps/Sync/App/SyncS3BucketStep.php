@@ -2,14 +2,16 @@
 
 namespace Codinglabs\Yolo\Steps\Sync\App;
 
-use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\S3\S3Bucket;
+use Codinglabs\Yolo\Concerns\SynchronisesResource;
 
 class SyncS3BucketStep implements Step
 {
+    use SynchronisesResource;
+
     public function __invoke(array $options): StepResult
     {
         // The app data bucket is optional. Skip when the manifest doesn't define
@@ -19,20 +21,10 @@ class SyncS3BucketStep implements Step
             return StepResult::SKIPPED;
         }
 
-        $bucket = new S3Bucket();
-
-        // Existing app buckets are left untouched — BPA and tags are applied only
-        // at create, never reconciled (see S3Bucket).
-        if ($bucket->exists()) {
-            return StepResult::SYNCED;
-        }
-
-        if (Arr::get($options, 'dry-run')) {
-            return StepResult::WOULD_CREATE;
-        }
-
-        $bucket->create();
-
-        return StepResult::CREATED;
+        // Create-or-sync: an existing bucket has its CORS (browser-upload ruleset)
+        // and tags reconciled; Block Public Access stays create-only (it lives in
+        // S3Bucket::create(), never in the sync path), so a live public bucket is
+        // never flipped under foot.
+        return $this->syncResource(new S3Bucket(), $options);
     }
 }

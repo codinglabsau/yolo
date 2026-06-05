@@ -181,6 +181,85 @@ it('does not flip public access on an existing app bucket', function () {
     expect(array_column($captured, 'name'))->not->toContain('PutPublicAccessBlock');
 });
 
+it('applies the browser-upload CORS to a newly created app bucket', function () {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
+    ]);
+
+    $captured = [];
+
+    bindMockS3Client([
+        'HeadBucket' => [s3NotFound(), new Result(['@metadata' => ['statusCode' => 200]])],
+        'CreateBucket' => new Result(),
+        'PutBucketTagging' => new Result(),
+        'PutPublicAccessBlock' => new Result(),
+        'PutBucketCors' => new Result(),
+    ], $captured);
+
+    expect((new SyncS3BucketStep())([]))->toBe(StepResult::CREATED);
+    expect(array_column($captured, 'name'))
+        ->toContain('PutPublicAccessBlock')   // BPA still applied at create
+        ->toContain('PutBucketCors');
+});
+
+it('reconciles CORS onto an existing app bucket without flipping public access', function () {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
+    ]);
+
+    $captured = [];
+
+    bindMockS3Client([
+        'HeadBucket' => new Result(),       // exists
+        'GetBucketCors' => new Result([]),  // no CORS yet → drift
+    ], $captured);
+
+    expect((new SyncS3BucketStep())([]))->toBe(StepResult::SYNCED);
+    expect(array_column($captured, 'name'))
+        ->toContain('PutBucketCors')
+        ->not->toContain('PutPublicAccessBlock');   // BPA stays create-only
+});
+
+it('reports CORS drift but writes nothing on a dry-run of an existing app bucket', function () {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
+    ]);
+
+    $captured = [];
+
+    bindMockS3Client([
+        'HeadBucket' => new Result(),       // exists
+        'GetBucketCors' => new Result([]),  // drift
+    ], $captured);
+
+    expect((new SyncS3BucketStep())(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC);
+    expect(array_column($captured, 'name'))
+        ->not->toContain('PutBucketCors')
+        ->not->toContain('PutPublicAccessBlock')
+        ->not->toContain('PutBucketTagging');
+});
+
+it('writes no CORS when an existing app bucket already matches the managed ruleset', function () {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
+    ]);
+
+    $captured = [];
+
+    bindMockS3Client([
+        'HeadBucket' => new Result(),   // exists
+        'GetBucketCors' => new Result(['CORSRules' => [[
+            'AllowedOrigins' => ['*'],
+            'AllowedMethods' => ['GET', 'PUT', 'HEAD'],
+            'AllowedHeaders' => ['*'],
+            'MaxAgeSeconds' => 3600,
+        ]]]),
+    ], $captured);
+
+    expect((new SyncS3BucketStep())([]))->toBe(StepResult::SYNCED);
+    expect(array_column($captured, 'name'))->not->toContain('PutBucketCors');
+});
+
 it('never puts a bucket policy on the artefact bucket (log-delivery moved to S3LoadBalancerLogs)', function () {
     // The artefacts bucket previously doubled as the ALB access-log destination,
     // which forced its policy to grant logdelivery.elasticloadbalancing.amazonaws.com

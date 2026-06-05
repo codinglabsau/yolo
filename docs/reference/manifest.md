@@ -213,7 +213,7 @@ These live directly under an environment and provision or configure the app's AW
 
 ### `bucket`
 
-Name of an app S3 bucket for application storage. Injected into the container as `AWS_BUCKET`, and this app's [ECS task role](#task-role-policies) is automatically granted read+write on it (object get/put/delete + multipart, plus bucket listing) — so the container reaches its bucket through the role. The grant is scoped to this one bucket. YOLO creates the bucket (Block Public Access on) when it doesn't already exist; an existing bucket (e.g. one adopted from another platform) is left untouched but still gets the role grant.
+Name of an app S3 bucket for application storage. Injected into the container as `AWS_BUCKET`, and this app's [ECS task role](#task-role-policies) is automatically granted read+write on it (object get/put/delete + multipart, plus bucket listing) — so the container reaches its bucket through the role. The grant is scoped to this one bucket. YOLO creates the bucket (Block Public Access on) when it doesn't already exist. On every sync it reconciles the bucket's CORS — a permissive ruleset (origins `*`, methods `GET`/`PUT`/`HEAD`) that lets the browser PUT directly to the bucket via a presigned URL — together with its `yolo:*` tags, surfacing any change in the plan and `--check`. The presigned URL (auth + same-origin), not CORS, is the access gate. Block Public Access is applied at create only and is never reconciled onto an existing bucket, so an adopted bucket (e.g. one carried over from another platform) keeps serving any public objects unchanged.
 
 ### `alb`
 
