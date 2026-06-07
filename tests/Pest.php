@@ -14,6 +14,7 @@ use Aws\CloudWatch\CloudWatchClient;
 use Aws\ElastiCache\ElastiCacheClient;
 use Aws\ApplicationAutoScaling\ApplicationAutoScalingClient;
 use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
+use Aws\ResourceGroupsTaggingAPI\ResourceGroupsTaggingAPIClient;
 
 /*
 |--------------------------------------------------------------------------
@@ -430,6 +431,41 @@ function bindRoutedElbV2Client(array $byCommand, array &$captured): void
 
     Helpers::app()->instance('elasticLoadBalancingV2', new ElasticLoadBalancingV2Client([
         'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+}
+
+/**
+ * Bind a mock Tagging API client under the given container key — 'resourceGroupsTaggingApi'
+ * for the regional pass or 'resourceGroupsTaggingApiGlobal' for the us-east-1 pass. GetResources
+ * returns the supplied pages in order, the last repeating once the queue is exhausted, so a
+ * single-page array covers the common case and a multi-page array exercises PaginationToken
+ * following.
+ *
+ * @param  array<int, Result>  $pages
+ */
+function bindMockResourceGroupsTaggingApiClient(string $binding, array $pages): void
+{
+    $mock = new class($pages) extends MockHandler
+    {
+        private int $cursor = 0;
+
+        /** @param  array<int, Result>  $pages */
+        public function __construct(protected array $pages) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            $index = min($this->cursor, count($this->pages) - 1);
+            $this->cursor++;
+
+            return Create::promiseFor($this->pages[$index]);
+        }
+    };
+
+    Helpers::app()->instance($binding, new ResourceGroupsTaggingAPIClient([
+        'region' => 'us-east-1',
         'version' => 'latest',
         'credentials' => false,
         'handler' => $mock,

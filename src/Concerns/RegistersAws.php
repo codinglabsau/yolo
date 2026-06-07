@@ -59,6 +59,9 @@ trait RegistersAws
         Helpers::app()->singleton('iam', fn () => new IamClient($arguments));
         Helpers::app()->singleton('rds', fn () => new RdsClient($arguments));
         Helpers::app()->singleton('resourceGroupsTaggingApi', fn () => new ResourceGroupsTaggingAPIClient($arguments));
+        // The Tagging API is regional; global-service resources (IAM, CloudFront, Route 53) are only
+        // returned by a us-east-1 query, so the audit needs a second client pinned there to see them.
+        Helpers::app()->singleton('resourceGroupsTaggingApiGlobal', fn () => new ResourceGroupsTaggingAPIClient([...$arguments, 'region' => 'us-east-1']));
         Helpers::app()->singleton('route53', fn () => new Route53Client($arguments));
         Helpers::app()->singleton('s3', fn () => new S3Client($arguments));
         Helpers::app()->singleton('sns', fn () => new SnsClient($arguments));
