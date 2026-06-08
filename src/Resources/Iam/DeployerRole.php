@@ -11,6 +11,7 @@ use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
+use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
@@ -24,9 +25,10 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * repo + ref) and its permissions (the app's ECR repo, buckets, cluster, service)
  * are app-specific, so unlike the shared ECS execution role it can't be shared.
  */
-class DeployerRole implements Resource
+class DeployerRole implements Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
+    use SynchronisesAssumeRolePolicy;
 
     public function name(): string
     {
@@ -78,18 +80,6 @@ class DeployerRole implements Resource
     public function synchroniseTags(bool $apply): array
     {
         return Aws::synchroniseIamRoleTags($this->name(), $this->tags(), $apply);
-    }
-
-    /**
-     * Trust-policy drift (e.g. the manifest repository/branch changed) is
-     * reconciled by replacing the assume-role policy document.
-     */
-    public function synchroniseAssumeRolePolicy(): void
-    {
-        Aws::iam()->updateAssumeRolePolicy([
-            'RoleName' => $this->name(),
-            'PolicyDocument' => json_encode($this->assumeRolePolicyDocument()),
-        ]);
     }
 
     public function assumeRolePolicyDocument(): array

@@ -3,17 +3,21 @@
 namespace Codinglabs\Yolo\Steps\Sync\App;
 
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Change;
 use Illuminate\Support\Arr;
+use Codinglabs\Yolo\Aws\Ecs;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\ShutdownTimings;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\ServerGroup;
+use Codinglabs\Yolo\Concerns\RecordsChanges;
 use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Resources\Iam\EcsTaskRole;
 use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
 use Codinglabs\Yolo\Resources\Iam\EcsExecutionRole;
 use Codinglabs\Yolo\Resources\CloudWatchLogs\TaskLogGroup;
+use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * Registers the web service's task definition. Standalone queue/scheduler
@@ -25,15 +29,94 @@ use Codinglabs\Yolo\Resources\CloudWatchLogs\TaskLogGroup;
  */
 class SyncTaskDefinitionStep implements Step
 {
+    use RecordsChanges;
+
     public function __invoke(array $options): StepResult
     {
-        if (Arr::get($options, 'dry-run')) {
+        $dryRun = (bool) Arr::get($options, 'dry-run');
+
+        try {
+            $desired = static::payload($this->group());
+        } catch (ResourceDoesNotExistException $e) {
+            // The roles / ECR the payload resolves aren't provisioned yet (a
+            // greenfield plan pass) — so the task definition can't exist either.
+            // Report it pending on the plan; on apply the deps exist (registered
+            // earlier in scope order) so a genuine miss is a hard fail.
+            if ($dryRun) {
+                $this->recordChange(Change::make('task definition', 'absent', 'new revision'));
+
+                return StepResult::WOULD_SYNC;
+            }
+
+            throw $e;
+        }
+
+        $live = $this->liveTaskDefinition($desired['family']);
+
+        // The registered revision already renders the desired payload — nothing to
+        // do, so the step is pruned before apply and a clean app reports "Already
+        // in sync" instead of registering a no-op revision every time (LPX-646).
+        if ($live !== null && $this->matchesDesired(Arr::except($desired, ['tags']), $live)) {
+            return StepResult::SYNCED;
+        }
+
+        $this->recordChange(Change::make(
+            'task definition',
+            $live === null ? 'absent' : 'revision ' . ($live['revision'] ?? '?'),
+            'new revision',
+        ));
+
+        if ($dryRun) {
             return StepResult::WOULD_SYNC;
         }
 
-        Aws::ecs()->registerTaskDefinition(static::payload($this->group()));
+        Aws::ecs()->registerTaskDefinition($desired);
 
         return StepResult::SYNCED;
+    }
+
+    /**
+     * The latest active revision of the family, or null when none is registered
+     * yet (a first sync).
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function liveTaskDefinition(string $family): ?array
+    {
+        try {
+            return Ecs::taskDefinition($family);
+        } catch (ResourceDoesNotExistException) {
+            return null;
+        }
+    }
+
+    /**
+     * Whether every attribute YOLO sets in the desired payload is present and equal
+     * in the live revision. A subset check (not equality) because AWS enriches a
+     * registered task definition with derived fields (revision, status, ARNs,
+     * container defaults) we don't manage — comparing the whole document would read
+     * all of that as phantom drift and re-register on every sync.
+     *
+     * @param  array<string, mixed>  $desired
+     * @param  array<string, mixed>  $live
+     */
+    protected function matchesDesired(array $desired, array $live): bool
+    {
+        foreach ($desired as $key => $value) {
+            if (! array_key_exists($key, $live)) {
+                return false;
+            }
+
+            if (is_array($value)) {
+                if (! is_array($live[$key]) || ! $this->matchesDesired($value, $live[$key])) {
+                    return false;
+                }
+            } elseif ((string) $value !== (string) $live[$key]) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

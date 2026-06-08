@@ -2,7 +2,6 @@
 
 namespace Codinglabs\Yolo\Steps\Sync\App;
 
-use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -19,13 +18,7 @@ class SyncMediaConvertRoleStep implements Step
             return StepResult::SKIPPED;
         }
 
-        $role = new MediaConvertRole();
-
-        // Trust-policy drift reconciled by replacing the assume-role policy.
-        if ($role->exists() && ! Arr::get($options, 'dry-run')) {
-            $role->synchroniseAssumeRolePolicy();
-        }
-
-        return $this->syncResource($role, $options);
+        // Trust-policy drift rides through SynchronisesConfiguration on the role.
+        return $this->syncResource(new MediaConvertRole(), $options);
     }
 }

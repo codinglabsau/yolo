@@ -2,7 +2,6 @@
 
 namespace Codinglabs\Yolo\Steps\Sync\App;
 
-use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -19,14 +18,9 @@ class SyncDeployerRoleStep implements Step
             return StepResult::SKIPPED;
         }
 
-        $role = new DeployerRole();
-
-        // Trust-policy drift (the manifest repository/branch changed) reconciled
-        // by replacing the assume-role policy.
-        if ($role->exists() && ! Arr::get($options, 'dry-run')) {
-            $role->synchroniseAssumeRolePolicy();
-        }
-
-        return $this->syncResource($role, $options);
+        // Trust-policy drift (the manifest repository/branch/tag changed) rides
+        // through SynchronisesConfiguration on the role, so it's recorded in the
+        // plan pass and survives the only-pending-steps filter into apply.
+        return $this->syncResource(new DeployerRole(), $options);
     }
 }

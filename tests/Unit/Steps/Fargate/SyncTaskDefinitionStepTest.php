@@ -1,6 +1,9 @@
 <?php
 
+use Aws\Result;
+use Illuminate\Support\Arr;
 use Codinglabs\Yolo\ShutdownTimings;
+use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Steps\Sync\App\SyncTaskDefinitionStep;
 
@@ -128,4 +131,70 @@ it('tags the task definition with the environment', function () {
     $payload = SyncTaskDefinitionStep::payload();
 
     expect($payload['tags'])->toContain(['key' => 'yolo:environment', 'value' => 'testing']);
+});
+
+/** A live revision rendering the desired payload, plus AWS-derived enrichment. */
+function liveTaskDefinition(array $overrides = []): array
+{
+    return array_merge(
+        Arr::except(SyncTaskDefinitionStep::payload(), ['tags']),
+        ['revision' => 7, 'status' => 'ACTIVE', 'taskDefinitionArn' => 'arn:aws:ecs:ap-southeast-2:111111111111:task-definition/yolo-testing-my-app-web:7'],
+        $overrides,
+    );
+}
+
+it('is in sync when the registered revision already renders the desired payload', function () {
+    // The acceptance criterion: a no-op sync must not register a fresh revision —
+    // it records no change, gets pruned before apply, and lets the sync report
+    // "Already in sync".
+    $captured = [];
+    bindRoutedEcsClient([
+        'DescribeTaskDefinition' => new Result(['taskDefinition' => liveTaskDefinition()]),
+    ], $captured);
+
+    $step = new SyncTaskDefinitionStep();
+    expect($step(['dry-run' => true]))->toBe(StepResult::SYNCED);
+    expect($step->changes())->toBeEmpty();
+    expect(array_column($captured, 'name'))->not->toContain('RegisterTaskDefinition');
+});
+
+it('records drift on the plan pass and registers a new revision on apply', function () {
+    // A drifted attribute (here the CPU sizing) the live revision no longer matches.
+    $drifted = liveTaskDefinition(['cpu' => '9999']);
+
+    $captured = [];
+    bindRoutedEcsClient([
+        'DescribeTaskDefinition' => new Result(['taskDefinition' => $drifted]),
+    ], $captured);
+
+    $plan = new SyncTaskDefinitionStep();
+    expect($plan(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC);
+    expect($plan->changes())->not->toBeEmpty();
+    expect(array_column($captured, 'name'))->not->toContain('RegisterTaskDefinition');
+
+    $captured = [];
+    bindRoutedEcsClient([
+        'DescribeTaskDefinition' => new Result(['taskDefinition' => $drifted]),
+    ], $captured);
+
+    expect((new SyncTaskDefinitionStep())([]))->toBe(StepResult::SYNCED);
+    expect(array_column($captured, 'name'))->toContain('RegisterTaskDefinition');
+});
+
+it('ignores AWS-derived enrichment fields when diffing (no phantom drift)', function () {
+    // The live revision carries fields YOLO never sets (revision, status, ARN, and
+    // container-level defaults). These must not read as drift.
+    $live = liveTaskDefinition();
+    $live['containerDefinitions'][0]['mountPoints'] = [];
+    $live['containerDefinitions'][0]['volumesFrom'] = [];
+    $live['containerDefinitions'][0]['environment'] = [];
+    $live['requiresAttributes'] = [['name' => 'ecs.capability.execution-role-awslogs']];
+
+    $captured = [];
+    bindRoutedEcsClient([
+        'DescribeTaskDefinition' => new Result(['taskDefinition' => $live]),
+    ], $captured);
+
+    expect((new SyncTaskDefinitionStep())([]))->toBe(StepResult::SYNCED);
+    expect(array_column($captured, 'name'))->not->toContain('RegisterTaskDefinition');
 });

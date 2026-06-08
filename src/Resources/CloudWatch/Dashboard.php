@@ -28,12 +28,12 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * distribution, its S3 buckets and its log groups — plus the RDS database it
  * connects to (derived deterministically from DB_HOST in the app's env file).
  *
- * Like QueueAlarm this is a standalone reconciler, NOT a Resource: a dashboard
- * carries no meaningful tags (CloudWatch only tags alarms / Contributor Insights
- * rules) and PutDashboard is a pure upsert with no create/update split. Unlike
- * the blind QueueAlarm step it is dry-run honest — it reads the live body, diffs
- * it against the desired body (key-order-independent) and only writes on drift,
- * so `sync --dry-run` reports exactly when the dashboard would change.
+ * A standalone reconciler, NOT a Resource: a dashboard carries no meaningful tags
+ * (CloudWatch only tags alarms / Contributor Insights rules) and PutDashboard is a
+ * pure upsert with no create/update split. It is dry-run honest — it reads the
+ * live body, diffs it against the desired body (key-order-independent) and only
+ * writes on drift, so `sync --dry-run` reports exactly when the dashboard would
+ * change.
  *
  * The widget body is built from a resolved context: names are derived (ECS, SQS,
  * S3, log groups), the RDS identifier comes from the env file, and the three
