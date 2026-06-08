@@ -32,7 +32,7 @@ class PublicSubnet implements Resource
     public static function ids(): array
     {
         return collect(array_keys(PublicSubnets::cases()))
-            ->map(fn (int $index) => (new self($index))->arn())
+            ->map(fn (int $index): string => (new self($index))->arn())
             ->all();
     }
 

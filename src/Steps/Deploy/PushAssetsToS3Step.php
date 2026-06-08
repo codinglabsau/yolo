@@ -35,7 +35,7 @@ class PushAssetsToS3Step implements Step
         protected $filesystem = new Filesystem()
     ) {}
 
-    public function __invoke(): StepResult
+    public function __invoke(array $options = []): StepResult
     {
         $appVersion = $this->filesystem->get(Paths::version());
         $public = Paths::build('public');
@@ -79,13 +79,13 @@ class PushAssetsToS3Step implements Step
         );
 
         foreach ($files as $path) {
-            $segments = explode('/', substr($path, strlen($root) + 1));
+            $segments = explode('/', substr((string) $path, strlen($root) + 1));
 
-            if (collect($segments)->contains(fn (string $segment) => str_starts_with($segment, '.'))) {
+            if (collect($segments)->contains(fn (string $segment): bool => str_starts_with($segment, '.'))) {
                 continue;
             }
 
-            if (str_ends_with($path, '.map')) {
+            if (str_ends_with((string) $path, '.map')) {
                 continue;
             }
 

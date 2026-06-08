@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Audit\Audit;
@@ -13,6 +15,7 @@ use Codinglabs\Yolo\Audit\Audit;
  */
 class AuditEnvironmentCommand extends AbstractAuditCommand
 {
+    #[\Override]
     protected function configure(): void
     {
         parent::configure();

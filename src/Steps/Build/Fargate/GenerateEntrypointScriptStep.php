@@ -46,7 +46,7 @@ class GenerateEntrypointScriptStep implements Step
         protected $filesystem = new Filesystem()
     ) {}
 
-    public function __invoke(): StepResult
+    public function __invoke(array $options = []): StepResult
     {
         $deployAll = Manifest::get('deploy-all', []);
 
@@ -245,7 +245,7 @@ SH, ShutdownTimings::schedulerGrace());
         $pad = str_repeat(' ', $spaces);
 
         return implode("\n", array_map(
-            fn (string $line) => $line === '' ? '' : $pad . $line,
+            fn (string $line): string => $line === '' ? '' : $pad . $line,
             explode("\n", rtrim($block, "\n")),
         )) . "\n";
     }

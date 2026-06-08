@@ -78,7 +78,7 @@ class Aws
     public static function tagsRequiringSync(array $expected, array $current): array
     {
         return collect($expected)
-            ->filter(fn ($value, $key) => ($current[$key] ?? null) !== $value)
+            ->filter(fn ($value, $key): bool => ($current[$key] ?? null) !== $value)
             ->all();
     }
 
@@ -91,7 +91,7 @@ class Aws
     {
         if (array_is_list($tags)) {
             return collect($tags)
-                ->mapWithKeys(fn (array $tag) => [
+                ->mapWithKeys(fn (array $tag): array => [
                     ($tag['Key'] ?? $tag['key']) => ($tag['Value'] ?? $tag['value']),
                 ])
                 ->all();
@@ -135,7 +135,7 @@ class Aws
      *
      * @param  array<string, string>  $expected  tags the resource expects (Name, yolo:scope, yolo:app, …)
      * @param  callable(): array  $read  closure returning the current tag list/map from AWS
-     * @param  callable(array<string, string>, array<string, string>): void  $write  closure invoked with ($missing, $current) on apply
+     * @param  callable(array<string, string>, array<string, string>): mixed  $write  closure invoked with ($missing, $current) on apply (its return is ignored)
      * @return array<string, string> missing tag keys (always returned, also when apply=false)
      */
     public static function reconcileTags(array $expected, callable $read, callable $write, bool $apply): array
@@ -512,7 +512,7 @@ class Aws
     protected static function keyValueTags(array $tags): array
     {
         return collect($tags)
-            ->map(fn ($value, $key) => ['Key' => $key, 'Value' => $value])
+            ->map(fn ($value, $key): array => ['Key' => $key, 'Value' => $value])
             ->values()
             ->all();
     }
@@ -524,7 +524,7 @@ class Aws
     protected static function lowerKeyValueTags(array $tags): array
     {
         return collect($tags)
-            ->map(fn ($value, $key) => ['key' => $key, 'value' => $value])
+            ->map(fn ($value, $key): array => ['key' => $key, 'value' => $value])
             ->values()
             ->all();
     }

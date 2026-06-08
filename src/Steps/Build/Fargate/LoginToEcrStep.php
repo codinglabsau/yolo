@@ -12,10 +12,10 @@ class LoginToEcrStep implements Step
 {
     public function __construct(protected string $environment) {}
 
-    public function __invoke(): StepResult
+    public function __invoke(array $options = []): StepResult
     {
         $token = Aws::ecr()->getAuthorizationToken()['authorizationData'][0];
-        [, $password] = explode(':', base64_decode($token['authorizationToken']), 2);
+        [, $password] = explode(':', base64_decode((string) $token['authorizationToken']), 2);
 
         $process = new Process(
             command: [

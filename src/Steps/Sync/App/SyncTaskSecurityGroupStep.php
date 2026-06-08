@@ -39,7 +39,7 @@ class SyncTaskSecurityGroupStep implements Step
     {
         $rules = Ec2::securityGroupRules($groupId, SecurityGroupRule::ECS_TASK_LB_INGRESS_RULE->value);
 
-        if (! empty($rules)) {
+        if ($rules !== []) {
             return;
         }
 

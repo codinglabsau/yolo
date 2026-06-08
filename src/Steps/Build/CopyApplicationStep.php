@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Steps\Build;
 
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Contracts\Step;
+use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
 use Symfony\Component\Process\Process;
 
@@ -14,7 +15,7 @@ class CopyApplicationStep implements Step
         protected $filesystem = new Filesystem()
     ) {}
 
-    public function __invoke(): void
+    public function __invoke(array $options = []): StepResult
     {
         $this->ensureBuildDirectoryExists();
 
@@ -54,8 +55,8 @@ class CopyApplicationStep implements Step
             command: [
                 'rsync',
                 '-avq',
-                ...array_map(fn ($item) => "--include=$item", $include),
-                ...array_map(fn ($item) => "--exclude=$item", $exclude),
+                ...array_map(fn ($item): string => "--include=$item", $include),
+                ...array_map(fn (string $item): string => "--exclude=$item", $exclude),
                 '.',
                 Paths::build(),
             ],
@@ -65,6 +66,8 @@ class CopyApplicationStep implements Step
         );
 
         $process->mustRun();
+
+        return StepResult::SUCCESS;
     }
 
     protected function ensureBuildDirectoryExists(): void

@@ -17,7 +17,7 @@ namespace Codinglabs\Yolo;
 class WaitReporter
 {
     /** @var (callable(): void)|null */
-    protected static $reporter = null;
+    protected static $reporter;
 
     public static function using(?callable $reporter): void
     {

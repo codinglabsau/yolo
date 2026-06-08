@@ -28,8 +28,8 @@ trait ReconcilesBucketHardening
         $current = S3::publicAccessBlock($this->name());
 
         $changes = collect($desired)
-            ->filter(fn (bool $value, string $key) => ($current[$key] ?? null) !== $value)
-            ->map(fn (bool $value, string $key) => Change::make("block-public-access.$key", $current[$key] ?? null, $value))
+            ->filter(fn (bool $value, string $key): bool => ($current[$key] ?? null) !== $value)
+            ->map(fn (bool $value, string $key): Change => Change::make("block-public-access.$key", $current[$key] ?? null, $value))
             ->values()
             ->all();
 

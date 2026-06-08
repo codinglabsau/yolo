@@ -5,7 +5,7 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncDefaultRouteStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncPublicSubnetsAssociationToRouteTableStep;
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 });
 
@@ -30,17 +30,17 @@ function publicSubnetResults(): array
 
 // ── Default route ────────────────────────────────────────────────────────────
 
-it('honours the reconciler contract for the default route', function () {
+it('honours the reconciler contract for the default route', function (): void {
     assertSyncStepReconciles(
-        makeStep: fn () => new SyncDefaultRouteStep(),
-        bindInSync: function (array &$captured) {
+        makeStep: fn (): SyncDefaultRouteStep => new SyncDefaultRouteStep(),
+        bindInSync: function (array &$captured): void {
             bindMockEc2Client([
                 'DescribeRouteTables' => routeTableResult(routes: [
                     ['DestinationCidrBlock' => '0.0.0.0/0', 'GatewayId' => 'igw-123'],
                 ]),
             ], $captured);
         },
-        bindDrifted: function (array &$captured) {
+        bindDrifted: function (array &$captured): void {
             bindMockEc2Client([
                 'DescribeRouteTables' => routeTableResult(routes: [
                     ['DestinationCidrBlock' => '10.0.0.0/16', 'GatewayId' => 'local'],
@@ -52,7 +52,7 @@ it('honours the reconciler contract for the default route', function () {
     );
 });
 
-it('creates the default route pointed at the internet gateway and route table', function () {
+it('creates the default route pointed at the internet gateway and route table', function (): void {
     $captured = [];
     bindMockEc2Client([
         'DescribeRouteTables' => routeTableResult(routes: [
@@ -73,10 +73,10 @@ it('creates the default route pointed at the internet gateway and route table', 
 
 // ── Public subnet associations ───────────────────────────────────────────────
 
-it('honours the reconciler contract for the public subnet associations', function () {
+it('honours the reconciler contract for the public subnet associations', function (): void {
     assertSyncStepReconciles(
-        makeStep: fn () => new SyncPublicSubnetsAssociationToRouteTableStep(),
-        bindInSync: function (array &$captured) {
+        makeStep: fn (): SyncPublicSubnetsAssociationToRouteTableStep => new SyncPublicSubnetsAssociationToRouteTableStep(),
+        bindInSync: function (array &$captured): void {
             bindMockEc2Client([
                 'DescribeRouteTables' => routeTableResult(associations: [
                     ['Main' => true],
@@ -87,7 +87,7 @@ it('honours the reconciler contract for the public subnet associations', functio
                 'DescribeSubnets' => publicSubnetResults(),
             ], $captured);
         },
-        bindDrifted: function (array &$captured) {
+        bindDrifted: function (array &$captured): void {
             bindMockEc2Client([
                 'DescribeRouteTables' => routeTableResult(associations: [['Main' => true]]),
                 'DescribeSubnets' => publicSubnetResults(),
@@ -97,7 +97,7 @@ it('honours the reconciler contract for the public subnet associations', functio
     );
 });
 
-it('associates only the public subnets that are not yet attached', function () {
+it('associates only the public subnets that are not yet attached', function (): void {
     $captured = [];
     bindMockEc2Client([
         // subnet-a is already associated (plus the main association); b and c are not.

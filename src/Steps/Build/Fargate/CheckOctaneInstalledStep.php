@@ -36,7 +36,7 @@ class CheckOctaneInstalledStep implements Step
         protected Filesystem $filesystem = new Filesystem()
     ) {}
 
-    public function __invoke(): StepResult
+    public function __invoke(array $options = []): StepResult
     {
         // Only the web role launches octane:start; a worker-only app never does.
         if (! Manifest::has('tasks.web')) {
@@ -68,6 +68,6 @@ class CheckOctaneInstalledStep implements Step
     {
         $packages = json_decode($lock, true)['packages'] ?? [];
 
-        return collect($packages)->contains(fn (array $package) => ($package['name'] ?? null) === 'laravel/octane');
+        return collect($packages)->contains(fn (array $package): bool => ($package['name'] ?? null) === 'laravel/octane');
     }
 }

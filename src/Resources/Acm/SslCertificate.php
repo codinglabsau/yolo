@@ -62,15 +62,15 @@ class SslCertificate
         } while (
             ! array_key_exists('DomainValidationOptions', $certificate) ||
             ! collect($certificate['DomainValidationOptions'])
-                ->every(fn (array $option) => array_key_exists('ResourceRecord', $option))
+                ->every(fn (array $option): bool => array_key_exists('ResourceRecord', $option))
         );
 
         Aws::route53()->changeResourceRecordSets([
             'ChangeBatch' => [
                 'Changes' => collect($certificate['DomainValidationOptions'])
-                    ->filter(fn (array $option) => $option['ValidationMethod'] === 'DNS'
-                        && ! str_starts_with($option['ValidationDomain'], '*'))
-                    ->map(fn (array $option) => [
+                    ->filter(fn (array $option): bool => $option['ValidationMethod'] === 'DNS'
+                        && ! str_starts_with((string) $option['ValidationDomain'], '*'))
+                    ->map(fn (array $option): array => [
                         'Action' => 'UPSERT',
                         'ResourceRecordSet' => [
                             'Name' => $option['ResourceRecord']['Name'],

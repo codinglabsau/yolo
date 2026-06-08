@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Codinglabs\Yolo\Resources;
 
 use Codinglabs\Yolo\Enums\Scope;

@@ -3,14 +3,16 @@
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Steps\Build\Fargate\GenerateEntrypointScriptStep;
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => []],
     ]);
 
-    is_file(Paths::build('.yolo-entrypoint.sh')) && unlink(Paths::build('.yolo-entrypoint.sh'));
+    if (is_file(Paths::build('.yolo-entrypoint.sh'))) {
+        unlink(Paths::build('.yolo-entrypoint.sh'));
+    }
 });
 
 function generatedEntrypointScript(): string
@@ -20,7 +22,7 @@ function generatedEntrypointScript(): string
     return file_get_contents(Paths::build('.yolo-entrypoint.sh'));
 }
 
-it('starts with a shebang and fails fast through the deploy-all hooks', function () {
+it('starts with a shebang and fails fast through the deploy-all hooks', function (): void {
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
@@ -35,7 +37,7 @@ it('starts with a shebang and fails fast through the deploy-all hooks', function
     expect($script)->toContain("php artisan migrate --force\nphp artisan config:cache\n");
 });
 
-it('supervises a known role so SIGTERM can be trapped and drained', function () {
+it('supervises a known role so SIGTERM can be trapped and drained', function (): void {
     $script = generatedEntrypointScript();
 
     expect($script)->toContain('$cmd &');
@@ -44,7 +46,7 @@ it('supervises a known role so SIGTERM can be trapped and drained', function () 
     expect($script)->toContain('wait "$child"');
 });
 
-it('dispatches the web role to supervisord and bundles the scheduler drain for a plain web app', function () {
+it('dispatches the web role to supervisord and bundles the scheduler drain for a plain web app', function (): void {
     $script = generatedEntrypointScript();
 
     expect($script)->toContain("web)       cmd='supervisord -c /etc/supervisord.conf -n'");
@@ -56,7 +58,7 @@ it('dispatches the web role to supervisord and bundles the scheduler drain for a
     expect($script)->toContain("pgrep -f 'artisan schedule:run'");
 });
 
-it('execs an unknown command directly instead of booting the web server', function () {
+it('execs an unknown command directly instead of booting the web server', function (): void {
     $script = generatedEntrypointScript();
 
     // A one-off ecs:RunTask passes its command (e.g. `sh -c "…migrate…"`) as args
@@ -66,7 +68,7 @@ it('execs an unknown command directly instead of booting the web server', functi
     expect($script)->not->toContain("*)         cmd='supervisord");
 });
 
-it('runs a standalone queue under supervisord when it co-hosts the scheduler', function () {
+it('runs a standalone queue under supervisord when it co-hosts the scheduler', function (): void {
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
@@ -83,7 +85,7 @@ it('runs a standalone queue under supervisord when it co-hosts the scheduler', f
     expect($script)->not->toContain('scheduler) cmd=');
 });
 
-it('runs a standalone queue as a single worker process when the scheduler is its own service', function () {
+it('runs a standalone queue as a single worker process when the scheduler is its own service', function (): void {
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
@@ -98,7 +100,7 @@ it('runs a standalone queue as a single worker process when the scheduler is its
     expect($script)->toContain("scheduler) cmd='crond");
 });
 
-it('adds a scheduler branch running cron when the scheduler is its own service', function () {
+it('adds a scheduler branch running cron when the scheduler is its own service', function (): void {
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
@@ -114,7 +116,7 @@ it('adds a scheduler branch running cron when the scheduler is its own service',
     expect($script)->not->toContain('queue)     cmd=');
 });
 
-it('drains for the web shutdown-grace-period before forwarding the stop', function () {
+it('drains for the web shutdown-grace-period before forwarding the stop', function (): void {
     // Extract the scheduler so the web drain is the plain ALB-window sleep.
     writeManifest([
         'apex' => 'example.com',
@@ -125,7 +127,7 @@ it('drains for the web shutdown-grace-period before forwarding the stop', functi
     expect(generatedEntrypointScript())->toContain("sleep 10\n");
 });
 
-it('tracks the manifest web shutdown-grace-period for the drain duration', function () {
+it('tracks the manifest web shutdown-grace-period for the drain duration', function (): void {
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
@@ -135,7 +137,7 @@ it('tracks the manifest web shutdown-grace-period for the drain duration', funct
     expect(generatedEntrypointScript())->toContain("sleep 45\n");
 });
 
-it('omits the ALB drain window when headless — no target to drain', function () {
+it('omits the ALB drain window when headless — no target to drain', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['shutdown-grace-period' => 45], 'scheduler' => []],
@@ -150,7 +152,7 @@ it('omits the ALB drain window when headless — no target to drain', function (
     expect($script)->toContain('kill -TERM "$child"');
 });
 
-it('forwards SIGTERM to the child and waits for a clean shutdown', function () {
+it('forwards SIGTERM to the child and waits for a clean shutdown', function (): void {
     $script = generatedEntrypointScript();
 
     expect($script)->toContain('kill -TERM "$child"');

@@ -89,12 +89,12 @@ function runScopesResult(array $scopes, array $options = [], int $verbosity = Bu
     return [$output->fetch(), $exitCode];
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     Helpers::app()->instance('runningInAws', false);
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 });
 
-it('plans (scopes + skipping) before applying, ending with the results table', function () {
+it('plans (scopes + skipping) before applying, ending with the results table', function (): void {
     $output = runScopesCapture([
         'environment' => [RunScopesFakeStep::class, RunScopesFakeStep::class],
         'app' => [
@@ -121,7 +121,7 @@ it('plans (scopes + skipping) before applying, ending with the results table', f
     expect(strpos($output, 'Will sync'))->toBeLessThan(strpos($output, 'Synced testing'));
 });
 
-it('auto-proceeds without a prompt when non-interactive', function () {
+it('auto-proceeds without a prompt when non-interactive', function (): void {
     // No exception / no hang means confirmGate short-circuited on !isInteractive.
     $output = runScopesCapture(
         ['environment' => [RunScopesFakeStep::class]],
@@ -131,7 +131,7 @@ it('auto-proceeds without a prompt when non-interactive', function () {
     expect($output)->toContain('Synced testing');
 });
 
-it('shows every pending attribute change before the confirm gate, even on a real run', function () {
+it('shows every pending attribute change before the confirm gate, even on a real run', function (): void {
     $output = runScopesCapture(
         ['environment' => [RunScopesChangeStep::class]],
         ['--no-progress' => true],
@@ -149,7 +149,7 @@ it('shows every pending attribute change before the confirm gate, even on a real
     expect(strpos($output, 'Pending changes'))->toBeLessThan(strpos($output, 'Synced testing'));
 });
 
-it('omits the changes section entirely when nothing drifted', function () {
+it('omits the changes section entirely when nothing drifted', function (): void {
     $output = runScopesCapture(
         ['environment' => [RunScopesFakeStep::class]],
         ['--no-progress' => true],
@@ -160,7 +160,7 @@ it('omits the changes section entirely when nothing drifted', function () {
         ->not->toContain('Changes applied');
 });
 
-it('names brand-new resources under Will create, before the confirm gate', function () {
+it('names brand-new resources under Will create, before the confirm gate', function (): void {
     $output = runScopesCapture(
         ['app' => [RunScopesFakeStep::class]],
         ['--no-progress' => true],
@@ -178,7 +178,7 @@ it('names brand-new resources under Will create, before the confirm gate', funct
     expect(strpos($output, 'Will create'))->toBeLessThan(strpos($output, 'Synced testing'));
 });
 
-it('separates brand-new resources (Will create) from drift on existing ones (Pending changes)', function () {
+it('separates brand-new resources (Will create) from drift on existing ones (Pending changes)', function (): void {
     $output = runScopesCapture(
         ['app' => [RunScopesFakeStep::class, RunScopesChangeStep::class]],
         ['--no-progress' => true],
@@ -194,7 +194,7 @@ it('separates brand-new resources (Will create) from drift on existing ones (Pen
     expect(strpos($output, 'Will create'))->toBeLessThan(strpos($output, 'Pending changes'));
 });
 
-it('shows the skipped concept summary at normal verbosity but hides per-resource names', function () {
+it('shows the skipped concept summary at normal verbosity but hides per-resource names', function (): void {
     $output = runScopesCapture([
         'app' => [
             Steps\Sync\App\SyncIvsCloudWatchLogGroupStep::class,
@@ -211,7 +211,7 @@ it('shows the skipped concept summary at normal verbosity but hides per-resource
         ->not->toContain('ivs event bridge rule');
 });
 
-it('expands the skipped section to per-resource names under -v', function () {
+it('expands the skipped section to per-resource names under -v', function (): void {
     $output = runScopesCapture([
         'app' => [
             Steps\Sync\App\SyncIvsCloudWatchLogGroupStep::class,
@@ -230,7 +230,7 @@ it('expands the skipped section to per-resource names under -v', function () {
         ->toContain('ivs event bridge target');
 });
 
-it('--check exits non-zero on drift and never applies', function () {
+it('--check exits non-zero on drift and never applies', function (): void {
     [$output, $exitCode] = runScopesResult(
         ['environment' => [RunScopesChangeStep::class]],
         ['--no-progress' => true, '--check' => true],
@@ -244,7 +244,7 @@ it('--check exits non-zero on drift and never applies', function () {
         ->not->toContain('Synced testing'); // gate only — no apply ran
 });
 
-it('--check exits zero when the environment is already in sync', function () {
+it('--check exits zero when the environment is already in sync', function (): void {
     [$output, $exitCode] = runScopesResult(
         ['environment' => [RunScopesCleanStep::class, RunScopesCleanStep::class]],
         ['--no-progress' => true, '--check' => true],
@@ -257,7 +257,7 @@ it('--check exits zero when the environment is already in sync', function () {
         ->not->toContain('Synced testing');
 });
 
-it('skips the apply pass when nothing drifted — no confirm, no results table', function () {
+it('skips the apply pass when nothing drifted — no confirm, no results table', function (): void {
     $output = runScopesCapture(
         ['environment' => [RunScopesCleanStep::class, RunScopesCleanStep::class]],
         ['--no-progress' => true],
@@ -269,7 +269,7 @@ it('skips the apply pass when nothing drifted — no confirm, no results table',
         ->not->toContain('Synced testing'); // apply never ran
 });
 
-it('apply pass runs only the pending steps — clean steps are dropped from the results table', function () {
+it('apply pass runs only the pending steps — clean steps are dropped from the results table', function (): void {
     $output = runScopesCapture(
         ['environment' => [RunScopesCleanStep::class, RunScopesChangeStep::class, RunScopesCleanStep::class]],
         ['--no-progress' => true],

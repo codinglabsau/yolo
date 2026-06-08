@@ -18,7 +18,7 @@ function bindMockEcsClient(MockHandler $mock): void
     ]));
 }
 
-it('translates an AwsException to ResourceDoesNotExistException for service', function () {
+it('translates an AwsException to ResourceDoesNotExistException for service', function (): void {
     $mock = new MockHandler();
     $mock->append(new AwsException(
         'Cluster not found.',
@@ -31,7 +31,7 @@ it('translates an AwsException to ResourceDoesNotExistException for service', fu
     Ecs::service('yolo-testing-my-app', 'yolo-testing-my-app-web');
 })->throws(ResourceDoesNotExistException::class, 'Could not find ECS service');
 
-it('translates an AwsException to ResourceDoesNotExistException for taskDefinition', function () {
+it('translates an AwsException to ResourceDoesNotExistException for taskDefinition', function (): void {
     $mock = new MockHandler();
     $mock->append(new AwsException(
         'Task definition family not found.',

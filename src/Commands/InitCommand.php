@@ -25,10 +25,8 @@ class InitCommand extends Command
 
     public function handle(): void
     {
-        if (Manifest::exists()) {
-            if (! confirm('A yolo.yml manifest already exists in the current directory. Do you want to overwrite it?', default: false)) {
-                return;
-            }
+        if (Manifest::exists() && ! confirm('A yolo.yml manifest already exists in the current directory. Do you want to overwrite it?', default: false)) {
+            return;
         }
 
         intro('Initialising yolo.yml');
@@ -78,8 +76,9 @@ class InitCommand extends Command
                 'php artisan migrate --force',
             ]);
         }
+        $s3Bucket = text('What is the name of the S3 bucket used for app storage?', placeholder: 'Leave blank to skip');
 
-        if ($s3Bucket = text('What is the name of the S3 bucket used for app storage?', placeholder: 'Leave blank to skip')) {
+        if ($s3Bucket !== '' && $s3Bucket !== '0') {
             Manifest::put('bucket', $s3Bucket);
         }
     }
@@ -120,15 +119,13 @@ class InitCommand extends Command
 
         note("The AWS Session Manager plugin isn't installed — `yolo run` needs it to open a shell or run one-off commands in a running container.");
 
-        if (PHP_OS_FAMILY === 'Darwin' && $this->input->isInteractive() && (new ExecutableFinder())->find('brew')) {
-            if (confirm('Install it now with Homebrew? (you may be prompted for your password)', default: true)) {
-                (new Process(['brew', 'install', '--cask', 'session-manager-plugin']))
-                    ->setTty(Process::isTtySupported())
-                    ->setTimeout(null)
-                    ->run();
+        if (PHP_OS_FAMILY === 'Darwin' && $this->input->isInteractive() && (new ExecutableFinder())->find('brew') && confirm('Install it now with Homebrew? (you may be prompted for your password)', default: true)) {
+            (new Process(['brew', 'install', '--cask', 'session-manager-plugin']))
+                ->setTty(Process::isTtySupported())
+                ->setTimeout(null)
+                ->run();
 
-                return;
-            }
+            return;
         }
 
         warning('Install it before using `yolo run`: https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html');

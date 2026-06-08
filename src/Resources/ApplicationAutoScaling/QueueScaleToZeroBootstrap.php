@@ -31,7 +31,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  */
 class QueueScaleToZeroBootstrap
 {
-    private const COOLDOWN = 60;
+    private const int COOLDOWN = 60;
 
     public function policyName(): string
     {

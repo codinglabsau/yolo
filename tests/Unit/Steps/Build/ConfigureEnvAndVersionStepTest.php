@@ -9,17 +9,25 @@ function rebuildEnvFixture(array $config): void
 {
     writeManifest($config);
 
-    is_dir(Paths::build()) || mkdir(Paths::build(), 0755, true);
-    file_exists(Paths::build('.env.testing')) && unlink(Paths::build('.env.testing'));
+    if (! is_dir(Paths::build())) {
+        mkdir(Paths::build(), 0755, true);
+    }
+    if (file_exists(Paths::build('.env.testing'))) {
+        unlink(Paths::build('.env.testing'));
+    }
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 
-    is_dir(Paths::build()) || mkdir(Paths::build(), 0755, true);
-    file_exists(Paths::build('.env.testing')) && unlink(Paths::build('.env.testing'));
+    if (! is_dir(Paths::build())) {
+        mkdir(Paths::build(), 0755, true);
+    }
+    if (file_exists(Paths::build('.env.testing'))) {
+        unlink(Paths::build('.env.testing'));
+    }
 
     bindMockCloudFrontClient([
         [
@@ -43,7 +51,7 @@ beforeEach(function () {
     ], $captured);
 });
 
-it('always points ASSET_URL at the CloudFront distribution, versioned per build', function () {
+it('always points ASSET_URL at the CloudFront distribution, versioned per build', function (): void {
     (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
 
     $env = file_get_contents(Paths::build('.env.testing'));
@@ -58,33 +66,41 @@ it('always points ASSET_URL at the CloudFront distribution, versioned per build'
         ->toBe('https://d123abc.cloudfront.net/builds/26.21.5.0611');
 });
 
-it('injects AWS_BUCKET from the manifest when the .env does not define it', function () {
+it('injects AWS_BUCKET from the manifest when the .env does not define it', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
     ]);
 
-    is_dir(Paths::build()) || mkdir(Paths::build(), 0755, true);
-    file_exists(Paths::build('.env.testing')) && unlink(Paths::build('.env.testing'));
+    if (! is_dir(Paths::build())) {
+        mkdir(Paths::build(), 0755, true);
+    }
+    if (file_exists(Paths::build('.env.testing'))) {
+        unlink(Paths::build('.env.testing'));
+    }
 
     (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
 
     expect(file_get_contents(Paths::build('.env.testing')))->toContain('AWS_BUCKET=my-app-bucket');
 });
 
-it('does not inject AWS_BUCKET when the manifest does not define one', function () {
+it('does not inject AWS_BUCKET when the manifest does not define one', function (): void {
     (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
 
     expect(file_get_contents(Paths::build('.env.testing')))->not->toContain('AWS_BUCKET=');
 });
 
-it('wires the SQS connection for every web app (the worker always runs somewhere)', function () {
+it('wires the SQS connection for every web app (the worker always runs somewhere)', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => []],
     ]);
 
-    is_dir(Paths::build()) || mkdir(Paths::build(), 0755, true);
-    file_exists(Paths::build('.env.testing')) && unlink(Paths::build('.env.testing'));
+    if (! is_dir(Paths::build())) {
+        mkdir(Paths::build(), 0755, true);
+    }
+    if (file_exists(Paths::build('.env.testing'))) {
+        unlink(Paths::build('.env.testing'));
+    }
 
     (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
 
@@ -96,7 +112,7 @@ it('wires the SQS connection for every web app (the worker always runs somewhere
     expect($env)->toContain('SQS_QUEUE=yolo-testing-my-app');
 });
 
-it('forces QUEUE_CONNECTION=sync for a non-web app (no worker to consume)', function () {
+it('forces QUEUE_CONNECTION=sync for a non-web app (no worker to consume)', function (): void {
     // No tasks.web → no container, so no queue worker; routing to SQS would dead-end.
     (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
 
@@ -109,7 +125,7 @@ it('forces QUEUE_CONNECTION=sync for a non-web app (no worker to consume)', func
     expect($env)->toContain('AWS_DEFAULT_REGION=ap-southeast-2');
 });
 
-it('respects a QUEUE_CONNECTION already set in the .env', function () {
+it('respects a QUEUE_CONNECTION already set in the .env', function (): void {
     file_put_contents(Paths::build('.env.testing'), "QUEUE_CONNECTION=redis\n");
 
     (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
@@ -121,15 +137,19 @@ it('respects a QUEUE_CONNECTION already set in the .env', function () {
     expect($env)->not->toContain('QUEUE_CONNECTION=sync');
 });
 
-it('does not pin SQS_QUEUE for a multitenant app (worker resolves it per tenant)', function () {
+it('does not pin SQS_QUEUE for a multitenant app (worker resolves it per tenant)', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => []],
         'tenants' => ['acme' => ['domain' => 'acme.test']],
     ]);
 
-    is_dir(Paths::build()) || mkdir(Paths::build(), 0755, true);
-    file_exists(Paths::build('.env.testing')) && unlink(Paths::build('.env.testing'));
+    if (! is_dir(Paths::build())) {
+        mkdir(Paths::build(), 0755, true);
+    }
+    if (file_exists(Paths::build('.env.testing'))) {
+        unlink(Paths::build('.env.testing'));
+    }
 
     (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
 
@@ -139,12 +159,14 @@ it('does not pin SQS_QUEUE for a multitenant app (worker resolves it per tenant)
     expect($env)->not->toContain('SQS_QUEUE=');
 });
 
-it('respects an AWS_BUCKET already set in the .env', function () {
+it('respects an AWS_BUCKET already set in the .env', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
     ]);
 
-    is_dir(Paths::build()) || mkdir(Paths::build(), 0755, true);
+    if (! is_dir(Paths::build())) {
+        mkdir(Paths::build(), 0755, true);
+    }
     file_put_contents(Paths::build('.env.testing'), "AWS_BUCKET=custom-bucket\n");
 
     (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
@@ -155,7 +177,7 @@ it('respects an AWS_BUCKET already set in the .env', function () {
     expect($env)->not->toContain('AWS_BUCKET=my-app-bucket');
 });
 
-it('wires the redis cache env to the Valkey cluster when cache.store is redis', function () {
+it('wires the redis cache env to the Valkey cluster when cache.store is redis', function (): void {
     rebuildEnvFixture([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'cache' => ['store' => 'redis'],
     ]);
@@ -180,7 +202,7 @@ it('wires the redis cache env to the Valkey cluster when cache.store is redis', 
     expect($env)->toContain('REDIS_PREFIX=yolo-testing-my-app_');
 });
 
-it('does not wire cache or session for a non-web app (no tasks.web)', function () {
+it('does not wire cache or session for a non-web app (no tasks.web)', function (): void {
     (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
 
     $env = file_get_contents(Paths::build('.env.testing'));
@@ -190,7 +212,7 @@ it('does not wire cache or session for a non-web app (no tasks.web)', function (
     expect($env)->not->toContain('SESSION_DRIVER=');
 });
 
-it('defaults a web app to the shared redis cache and redis sessions when neither is set', function () {
+it('defaults a web app to the shared redis cache and redis sessions when neither is set', function (): void {
     rebuildEnvFixture([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => []],
@@ -209,7 +231,7 @@ it('defaults a web app to the shared redis cache and redis sessions when neither
     expect($env)->not->toContain('SESSION_CONNECTION');
 });
 
-it('does not inject OCTANE_SERVER — the app owns it (seeded by yolo init)', function () {
+it('does not inject OCTANE_SERVER — the app owns it (seeded by yolo init)', function (): void {
     rebuildEnvFixture([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => []],
@@ -220,7 +242,7 @@ it('does not inject OCTANE_SERVER — the app owns it (seeded by yolo init)', fu
     expect(file_get_contents(Paths::build('.env.testing')))->not->toContain('OCTANE_SERVER');
 });
 
-it('pins SESSION_DRIVER from the manifest', function () {
+it('pins SESSION_DRIVER from the manifest', function (): void {
     rebuildEnvFixture([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'session' => ['driver' => 'database'],
@@ -233,13 +255,13 @@ it('pins SESSION_DRIVER from the manifest', function () {
     expect($env)->toContain('SESSION_DRIVER=database');
 });
 
-it('does not pin SESSION_DRIVER when the manifest does not select one', function () {
+it('does not pin SESSION_DRIVER when the manifest does not select one', function (): void {
     (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
 
     expect(file_get_contents(Paths::build('.env.testing')))->not->toContain('SESSION_DRIVER=');
 });
 
-it('enables Inertia SSR when tasks.web.ssr is on', function () {
+it('enables Inertia SSR when tasks.web.ssr is on', function (): void {
     rebuildEnvFixture([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['ssr' => true]],
@@ -250,7 +272,7 @@ it('enables Inertia SSR when tasks.web.ssr is on', function () {
     expect(file_get_contents(Paths::build('.env.testing')))->toContain('INERTIA_SSR_ENABLED=true');
 });
 
-it('does not enable Inertia SSR when tasks.web.ssr is off', function () {
+it('does not enable Inertia SSR when tasks.web.ssr is off', function (): void {
     rebuildEnvFixture([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => []],
@@ -261,7 +283,7 @@ it('does not enable Inertia SSR when tasks.web.ssr is off', function () {
     expect(file_get_contents(Paths::build('.env.testing')))->not->toContain('INERTIA_SSR_ENABLED');
 });
 
-it('respects an INERTIA_SSR_ENABLED already set in the .env', function () {
+it('respects an INERTIA_SSR_ENABLED already set in the .env', function (): void {
     rebuildEnvFixture([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['ssr' => true]],
@@ -277,7 +299,7 @@ it('respects an INERTIA_SSR_ENABLED already set in the .env', function () {
     expect($env)->not->toContain('INERTIA_SSR_ENABLED=true');
 });
 
-it('respects a SESSION_DRIVER already set in the .env', function () {
+it('respects a SESSION_DRIVER already set in the .env', function (): void {
     rebuildEnvFixture([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'session' => ['driver' => 'database'],

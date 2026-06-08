@@ -20,7 +20,7 @@ use Codinglabs\Yolo\Steps\Sync\App\Tenant\SyncSslCertificateStep as TenantSslCer
  * bypasses the change machinery fails this test until it's either fixed or
  * consciously added here with a justification.
  */
-it('every sync step can record drift into the plan, or is an explicit exemption', function () {
+it('every sync step can record drift into the plan, or is an explicit exemption', function (): void {
     // Existence/state-diff steps: they check live state first and return SYNCED
     // (without writing) when already provisioned, so a clean sync stays quiet.
     $existenceDiff = [
@@ -55,7 +55,7 @@ it('every sync step can record drift into the plan, or is an explicit exemption'
             continue;
         }
 
-        $relative = substr($file->getPathname(), strlen($root) + 1);
+        $relative = substr((string) $file->getPathname(), strlen($root) + 1);
         $class = 'Codinglabs\\Yolo\\' . str_replace(['/', '.php'], ['\\', ''], $relative);
 
         if (! class_exists($class)) {
@@ -63,8 +63,10 @@ it('every sync step can record drift into the plan, or is an explicit exemption'
         }
 
         $reflection = new ReflectionClass($class);
-
-        if ($reflection->isAbstract() || in_array($class, $exempt, true)) {
+        if ($reflection->isAbstract()) {
+            continue;
+        }
+        if (in_array($class, $exempt, true)) {
             continue;
         }
 

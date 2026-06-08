@@ -35,7 +35,7 @@ trait SynchronisesPolicyDocument
 
         $currentVersion = IamClient::policyVersion($policy['Arn'], $policy['DefaultVersionId']);
 
-        if (urldecode($currentVersion['Document']) === $desired) {
+        if (urldecode((string) $currentVersion['Document']) === $desired) {
             return [];
         }
 
@@ -69,8 +69,8 @@ trait SynchronisesPolicyDocument
         }
 
         $versions
-            ->reject(fn (array $version) => $version['IsDefaultVersion'])
-            ->sortBy(fn (array $version) => (string) $version['CreateDate'])
+            ->reject(fn (array $version): mixed => $version['IsDefaultVersion'])
+            ->sortBy(fn (array $version): string => (string) $version['CreateDate'])
             ->take($versions->count() - 4)
             ->each(fn (array $version) => Aws::iam()->deletePolicyVersion([
                 'PolicyArn' => $policyArn,

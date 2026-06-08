@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Codinglabs\Yolo\Steps\Sync\App\SyncScalableTargetStep;
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',
@@ -14,14 +14,14 @@ beforeEach(function () {
     ]);
 });
 
-it('skips when the ECS service does not exist yet', function () {
+it('skips when the ECS service does not exist yet', function (): void {
     $captured = [];
     bindRoutedEcsClient(['DescribeServices' => new Result(['services' => []])], $captured);
 
     expect((new SyncScalableTargetStep())([]))->toBe(StepResult::SKIPPED);
 });
 
-it('would-create the target on a dry-run without registering', function () {
+it('would-create the target on a dry-run without registering', function (): void {
     $ecs = [];
     $aa = [];
     bindRoutedEcsClient(['DescribeServices' => new Result(['services' => [['status' => 'ACTIVE', 'serviceArn' => 'arn']]])], $ecs);
@@ -31,7 +31,7 @@ it('would-create the target on a dry-run without registering', function () {
     expect(collect($aa)->pluck('name'))->not->toContain('RegisterScalableTarget');
 });
 
-it('creates the target when applying and the service exists', function () {
+it('creates the target when applying and the service exists', function (): void {
     $ecs = [];
     $aa = [];
     bindRoutedEcsClient(['DescribeServices' => new Result(['services' => [['status' => 'ACTIVE', 'serviceArn' => 'arn']]])], $ecs);
@@ -44,7 +44,7 @@ it('creates the target when applying and the service exists', function () {
     expect(collect($aa)->pluck('name'))->toContain('RegisterScalableTarget');
 });
 
-it('refuses to reduce live bounds under --force', function () {
+it('refuses to reduce live bounds under --force', function (): void {
     Prompt::setOutput(new BufferedOutput());
 
     $ecs = [];
@@ -57,7 +57,7 @@ it('refuses to reduce live bounds under --force', function () {
     expect(collect($aa)->pluck('name'))->not->toContain('RegisterScalableTarget');
 });
 
-it('reduces live bounds when run attended (no force)', function () {
+it('reduces live bounds when run attended (no force)', function (): void {
     $ecs = [];
     $aa = [];
     bindRoutedEcsClient(['DescribeServices' => new Result(['services' => [['status' => 'ACTIVE', 'serviceArn' => 'arn']]])], $ecs);
@@ -70,7 +70,7 @@ it('reduces live bounds when run attended (no force)', function () {
     expect(collect($aa)->firstWhere('name', 'RegisterScalableTarget')['args'])->toMatchArray(['MinCapacity' => 2, 'MaxCapacity' => 6]);
 });
 
-it('deregisters the target when the autoscaling block is removed', function () {
+it('deregisters the target when the autoscaling block is removed', function (): void {
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',
@@ -89,7 +89,7 @@ it('deregisters the target when the autoscaling block is removed', function () {
     expect(collect($aa)->pluck('name'))->toContain('DeregisterScalableTarget');
 });
 
-it('would-deregister on a dry-run without deregistering', function () {
+it('would-deregister on a dry-run without deregistering', function (): void {
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',
@@ -108,7 +108,7 @@ it('would-deregister on a dry-run without deregistering', function () {
     expect(collect($aa)->pluck('name'))->not->toContain('DeregisterScalableTarget');
 });
 
-it('skips when autoscaling is removed and no target is registered', function () {
+it('skips when autoscaling is removed and no target is registered', function (): void {
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',

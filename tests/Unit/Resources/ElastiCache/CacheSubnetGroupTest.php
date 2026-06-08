@@ -4,13 +4,13 @@ use Aws\Result;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\ElastiCache\CacheSubnetGroup;
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'cache' => ['store' => 'redis'],
     ]);
 });
 
-it('is env-scoped and named without the app segment', function () {
+it('is env-scoped and named without the app segment', function (): void {
     $resource = new CacheSubnetGroup();
 
     expect($resource->scope())->toBe(Scope::Env);
@@ -22,7 +22,7 @@ it('is env-scoped and named without the app segment', function () {
     expect($resource->tags())->not->toHaveKey('yolo:app');
 });
 
-it('creates the subnet group across every VPC subnet', function () {
+it('creates the subnet group across every VPC subnet', function (): void {
     $ec2 = [];
     $captured = [];
 

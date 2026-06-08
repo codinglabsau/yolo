@@ -33,9 +33,9 @@ class QueueBacklogPolicy
     // The queue scales out fast (backlog hurts) and in slowly (avoid flapping a
     // cold-starting worker). Hardcoded — the backlog-per-task target is the tuning
     // lever; expose cooldowns only if a real need emerges.
-    private const SCALE_OUT_COOLDOWN = 60;
+    private const int SCALE_OUT_COOLDOWN = 60;
 
-    private const SCALE_IN_COOLDOWN = 120;
+    private const int SCALE_IN_COOLDOWN = 120;
 
     public function policyName(): string
     {

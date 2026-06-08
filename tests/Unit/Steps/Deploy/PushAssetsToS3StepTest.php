@@ -4,8 +4,8 @@ use Aws\Command;
 use Symfony\Component\Filesystem\Filesystem;
 use Codinglabs\Yolo\Steps\Deploy\PushAssetsToS3Step;
 
-afterEach(function () {
-    if (isset($this->root) && is_dir($this->root)) {
+afterEach(function (): void {
+    if (property_exists($this, 'root') && $this->root !== null && is_dir($this->root)) {
         (new Filesystem())->remove($this->root);
     }
 });
@@ -16,7 +16,9 @@ function seedPublic(array $files): string
 
     foreach ($files as $relative) {
         $path = "$root/$relative";
-        is_dir($directory = dirname($path)) || mkdir($directory, 0777, true);
+        if (! is_dir($directory = dirname($path))) {
+            mkdir($directory, 0777, true);
+        }
         file_put_contents($path, 'x');
     }
 
@@ -26,7 +28,7 @@ function seedPublic(array $files): string
 function uploadKeys(string $root): array
 {
     $keys = array_map(
-        fn (string $path) => substr($path, strlen($root) + 1),
+        fn (string $path): string => substr($path, strlen($root) + 1),
         iterator_to_array(PushAssetsToS3Step::uploadableFiles($root), false),
     );
 
@@ -35,7 +37,7 @@ function uploadKeys(string $root): array
     return $keys;
 }
 
-it('uploads ordinary assets across the whole public/ tree', function () {
+it('uploads ordinary assets across the whole public/ tree', function (): void {
     $this->root = seedPublic([
         'build/assets/app-abc123.js',
         'build/assets/app-abc123.css',
@@ -53,7 +55,7 @@ it('uploads ordinary assets across the whole public/ tree', function () {
     ]);
 });
 
-it('never ships dotfiles, dot-directories or source maps to the public CDN', function () {
+it('never ships dotfiles, dot-directories or source maps to the public CDN', function (): void {
     $this->root = seedPublic([
         '.env',
         '.htaccess',
@@ -70,7 +72,7 @@ it('never ships dotfiles, dot-directories or source maps to the public CDN', fun
     ]);
 });
 
-it('stamps the immutable cache-control onto uploaded objects', function () {
+it('stamps the immutable cache-control onto uploaded objects', function (): void {
     $put = new Command('PutObject');
     PushAssetsToS3Step::applyCacheControl($put);
 
@@ -82,7 +84,7 @@ it('stamps the immutable cache-control onto uploaded objects', function () {
     expect($multipart['CacheControl'])->toBe('public, max-age=31536000, immutable');
 });
 
-it('leaves non-upload commands untouched', function () {
+it('leaves non-upload commands untouched', function (): void {
     $get = new Command('GetObject');
     PushAssetsToS3Step::applyCacheControl($get);
 

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Codinglabs\Yolo\Audit\Arn;
 use Codinglabs\Yolo\Audit\ConsoleUrl;
 
@@ -8,7 +10,7 @@ function consoleUrl(string $arn): ?string
     return ConsoleUrl::for(Arn::parse($arn));
 }
 
-it('builds a deep link for each supported service', function (string $arn, string $expected) {
+it('builds a deep link for each supported service', function (string $arn, string $expected): void {
     expect(consoleUrl($arn))->toBe($expected);
 })->with([
     'ecs service' => [
@@ -53,16 +55,16 @@ it('builds a deep link for each supported service', function (string $arn, strin
     ],
 ]);
 
-it('applies the CloudWatch console encoding to a log-group name and strips the describe-ARN suffix', function () {
+it('applies the CloudWatch console encoding to a log-group name and strips the describe-ARN suffix', function (): void {
     expect(consoleUrl('arn:aws:logs:ap-southeast-2:111:log-group:/aws/ivs/yolo-x:*'))
         ->toBe('https://ap-southeast-2.console.aws.amazon.com/cloudwatch/home?region=ap-southeast-2#logsV2:log-groups/log-group/$252Faws$252Fivs$252Fyolo-x');
 });
 
-it('returns null for an unsupported service', function () {
+it('returns null for an unsupported service', function (): void {
     expect(consoleUrl('arn:aws:kms:ap-southeast-2:111:key/abc-123'))->toBeNull();
 });
 
-it('returns null for an unparseable or missing ARN', function () {
+it('returns null for an unparseable or missing ARN', function (): void {
     expect(ConsoleUrl::for(null))->toBeNull()
         ->and(consoleUrl('not-an-arn'))->toBeNull();
 });

@@ -2,6 +2,8 @@
 /build
 .php-cs-fixer.cache
 .phpunit.result.cache
+.rector.cache
+coverage.xml
 composer.lock
 .env
 .claude/settings.local.json

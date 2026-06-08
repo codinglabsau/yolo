@@ -5,18 +5,18 @@ use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\ElastiCache\CacheCluster;
 use Codinglabs\Yolo\Resources\ElastiCache\CacheParameterGroup;
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'cache' => ['store' => 'redis'],
     ]);
 });
 
-it('is env-scoped', function () {
+it('is env-scoped', function (): void {
     expect((new CacheParameterGroup())->scope())->toBe(Scope::Env);
     expect((new CacheParameterGroup())->name())->toBe('yolo-testing-cache-parameter-group');
 });
 
-it('creates the parameter group on the pinned family and sets allkeys-lru', function () {
+it('creates the parameter group on the pinned family and sets allkeys-lru', function (): void {
     $captured = [];
 
     bindMockElastiCacheClient([

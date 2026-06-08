@@ -53,7 +53,7 @@ function widgetTitles(array $body): array
 /** @param  array{widgets: array<int, array<string, mixed>>}  $body */
 function findWidget(array $body, string $title): ?array
 {
-    return collect($body['widgets'])->first(fn (array $widget) => ($widget['properties']['title'] ?? null) === $title);
+    return collect($body['widgets'])->first(fn (array $widget): bool => ($widget['properties']['title'] ?? null) === $title);
 }
 
 /** Bind an S3 client whose GetObject always returns the given env body. */
@@ -79,15 +79,15 @@ function bindDashboardEnv(string $body): void
     ]));
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest(['region' => 'ap-southeast-2', 'account-id' => '111111111111']);
 });
 
-it('names the dashboard per app + environment', function () {
+it('names the dashboard per app + environment', function (): void {
     expect((new Dashboard())->name())->toBe('yolo-testing-my-app-dashboard');
 });
 
-it('maps an Aurora endpoint to a cluster target, an instance endpoint to an instance target', function () {
+it('maps an Aurora endpoint to a cluster target, an instance endpoint to an instance target', function (): void {
     expect(Dashboard::rdsTarget('my-cluster.cluster-cabc123.ap-southeast-2.rds.amazonaws.com'))
         ->toBe(['identifier' => 'my-cluster', 'cluster' => true]);
 
@@ -95,14 +95,14 @@ it('maps an Aurora endpoint to a cluster target, an instance endpoint to an inst
         ->toBe(['identifier' => 'my-db', 'cluster' => false]);
 });
 
-it('returns no RDS target for a non-RDS, proxy or absent host', function () {
+it('returns no RDS target for a non-RDS, proxy or absent host', function (): void {
     expect(Dashboard::rdsTarget(null))->toBeNull();
     expect(Dashboard::rdsTarget('127.0.0.1'))->toBeNull();
     expect(Dashboard::rdsTarget('db.internal.example.com'))->toBeNull();
     expect(Dashboard::rdsTarget('my-proxy.proxy-cabc.ap-southeast-2.rds.amazonaws.com'))->toBeNull();
 });
 
-it('parses the CloudWatch dimension suffix out of ELB ARNs', function () {
+it('parses the CloudWatch dimension suffix out of ELB ARNs', function (): void {
     expect(Dashboard::loadBalancerDimension('arn:aws:elasticloadbalancing:ap-southeast-2:111111111111:loadbalancer/app/yolo-testing/abc123'))
         ->toBe('app/yolo-testing/abc123');
 
@@ -110,7 +110,7 @@ it('parses the CloudWatch dimension suffix out of ELB ARNs', function () {
         ->toBe('targetgroup/yolo-testing-my-app/def456');
 });
 
-it('builds every section for a full web app', function () {
+it('builds every section for a full web app', function (): void {
     $body = Dashboard::body(dashboardContext());
 
     expect(widgetTitles($body))->toContain('# Web', '# Queue', '# Database', '# CDN & storage', '# Logs');
@@ -125,7 +125,7 @@ it('builds every section for a full web app', function () {
         ->toContain('AWS/RDS', 'DBClusterIdentifier', 'my-cluster', 'Role', 'WRITER');
 });
 
-it('charts ALB target health off both the target-group and load-balancer dimensions', function () {
+it('charts ALB target health off both the target-group and load-balancer dimensions', function (): void {
     $health = findWidget(Dashboard::body(dashboardContext()), 'Target health');
 
     expect($health['properties']['metrics'][0])
@@ -136,7 +136,7 @@ it('charts ALB target health off both the target-group and load-balancer dimensi
     expect($health['properties']['annotations']['horizontal'][0]['value'])->toBe(1);
 });
 
-it('omits the target-health panel when the target group is not resolved yet', function () {
+it('omits the target-health panel when the target group is not resolved yet', function (): void {
     $body = Dashboard::body(dashboardContext(['targetGroupSuffix' => null]));
 
     expect(findWidget($body, 'Target health'))->toBeNull();
@@ -144,7 +144,7 @@ it('omits the target-health panel when the target group is not resolved yet', fu
     expect(findWidget($body, '5xx error rate')['x'])->toBe(0);
 });
 
-it('expresses the 5xx error rate as a percentage of requests with a 1% SLO line', function () {
+it('expresses the 5xx error rate as a percentage of requests with a 1% SLO line', function (): void {
     $rate = findWidget(Dashboard::body(dashboardContext()), '5xx error rate');
 
     expect($rate['properties']['metrics'][0][0]['expression'])->toBe('(m1 + m2) / m3 * 100');
@@ -153,18 +153,18 @@ it('expresses the 5xx error rate as a percentage of requests with a 1% SLO line'
     expect($rate['x'])->toBe(12); // sits beside target health when the target group exists
 });
 
-it('charts RDS read and write latency with p90 alongside the average', function () {
+it('charts RDS read and write latency with p90 alongside the average', function (): void {
     $latency = findWidget(Dashboard::body(dashboardContext()), 'RDS read/write latency');
 
     $metrics = collect($latency['properties']['metrics']);
 
     expect($metrics)->toHaveCount(4);
-    expect($metrics->map(fn ($m) => $m[1])->all())->toBe(['ReadLatency', 'ReadLatency', 'WriteLatency', 'WriteLatency']);
-    expect($metrics->filter(fn ($m) => (end($m)['stat'] ?? null) === 'p90'))->toHaveCount(2);
+    expect($metrics->map(fn ($m): mixed => $m[1])->all())->toBe(['ReadLatency', 'ReadLatency', 'WriteLatency', 'WriteLatency']);
+    expect($metrics->filter(fn ($m): bool => (end($m)['stat'] ?? null) === 'p90'))->toHaveCount(2);
     expect($latency['properties']['metrics'][0])->toContain('AWS/RDS', 'DBClusterIdentifier', 'my-cluster', 'Role', 'WRITER');
 });
 
-it('charts the CloudFront cache hit rate, and omits it with the rest of the CDN panels until the distribution exists', function () {
+it('charts the CloudFront cache hit rate, and omits it with the rest of the CDN panels until the distribution exists', function (): void {
     $hitRate = findWidget(Dashboard::body(dashboardContext()), 'Asset CDN — cache hit rate');
 
     expect($hitRate['properties']['region'])->toBe('us-east-1');
@@ -173,21 +173,21 @@ it('charts the CloudFront cache hit rate, and omits it with the rest of the CDN 
     expect(findWidget(Dashboard::body(dashboardContext(['distributionId' => null])), 'Asset CDN — cache hit rate'))->toBeNull();
 });
 
-it('queries CloudFront in us-east-1 with the Global region dimension', function () {
+it('queries CloudFront in us-east-1 with the Global region dimension', function (): void {
     $requests = findWidget(Dashboard::body(dashboardContext()), 'Asset CDN — requests');
 
     expect($requests['properties']['region'])->toBe('us-east-1');
     expect($requests['properties']['metrics'][0])->toContain('AWS/CloudFront', 'Global', 'E123ABCDEF');
 });
 
-it('annotates queue depth with the same threshold the alarm uses', function () {
+it('annotates queue depth with the same threshold the alarm uses', function (): void {
     $depth = findWidget(Dashboard::body(dashboardContext(['depthThreshold' => 250])), 'Queue depth');
 
     expect($depth['properties']['annotations']['horizontal'][0]['value'])->toBe(250);
     expect($depth['properties']['metrics'][0])->toContain('AWS/SQS', 'ApproximateNumberOfMessagesVisible');
 });
 
-it('renders one queue series per tenant plus the landlord', function () {
+it('renders one queue series per tenant plus the landlord', function (): void {
     $body = Dashboard::body(dashboardContext([
         'queues' => ['yolo-testing-my-app-landlord', 'yolo-testing-my-app-acme', 'yolo-testing-my-app-globex'],
     ]));
@@ -195,18 +195,18 @@ it('renders one queue series per tenant plus the landlord', function () {
     $depth = findWidget($body, 'Queue depth');
 
     expect($depth['properties']['metrics'])->toHaveCount(3);
-    expect(collect($depth['properties']['metrics'])->map(fn ($m) => end($m)['label'])->all())
+    expect(collect($depth['properties']['metrics'])->map(fn ($m): mixed => end($m)['label'])->all())
         ->toBe(['landlord', 'acme', 'globex']);
 });
 
-it('omits the CloudFront panels until the distribution exists', function () {
+it('omits the CloudFront panels until the distribution exists', function (): void {
     $body = Dashboard::body(dashboardContext(['distributionId' => null]));
 
     expect(findWidget($body, 'Asset CDN — requests'))->toBeNull();
     expect(findWidget($body, 'S3 storage size'))->not->toBeNull();
 });
 
-it('drops the web, database and log sections for a headless app with no env DB', function () {
+it('drops the web, database and log sections for a headless app with no env DB', function (): void {
     $body = Dashboard::body(dashboardContext([
         'web' => false,
         'clusterName' => null,
@@ -222,14 +222,14 @@ it('drops the web, database and log sections for a headless app with no env DB',
     expect(widgetTitles($body))->not->toContain('# Web', '# Database', '# Logs');
 });
 
-it('adds an IVS logs panel when IVS logging is enabled', function () {
+it('adds an IVS logs panel when IVS logging is enabled', function (): void {
     $ivs = findWidget(Dashboard::body(dashboardContext(['ivsLogGroup' => '/aws/ivs/testing-my-app'])), 'IVS logs');
 
     expect($ivs['type'])->toBe('log');
     expect($ivs['properties']['query'])->toContain("SOURCE '/aws/ivs/testing-my-app'");
 });
 
-it('creates the dashboard when it does not exist (apply) and reports WOULD_CREATE on a dry-run', function () {
+it('creates the dashboard when it does not exist (apply) and reports WOULD_CREATE on a dry-run', function (): void {
     bindDashboardEnv("APP_ENV=production\n");
 
     $captured = [];
@@ -245,7 +245,7 @@ it('creates the dashboard when it does not exist (apply) and reports WOULD_CREAT
     expect(collect($captured)->pluck('name'))->toContain('PutDashboard');
 });
 
-it('makes no write when the live body already matches', function () {
+it('makes no write when the live body already matches', function (): void {
     bindDashboardEnv("APP_ENV=production\n");
 
     $desired = Dashboard::body((new Dashboard())->resolveContext());
@@ -259,7 +259,7 @@ it('makes no write when the live body already matches', function () {
     expect(collect($captured)->pluck('name'))->not->toContain('PutDashboard');
 });
 
-it('rewrites a drifted dashboard on apply and only reports it on a dry-run', function () {
+it('rewrites a drifted dashboard on apply and only reports it on a dry-run', function (): void {
     bindDashboardEnv("APP_ENV=production\n");
 
     $captured = [];
@@ -275,14 +275,14 @@ it('rewrites a drifted dashboard on apply and only reports it on a dry-run', fun
     expect(collect($captured)->pluck('name'))->toContain('PutDashboard');
 });
 
-it('builds a console deep link from its name and the env region', function () {
+it('builds a console deep link from its name and the env region', function (): void {
     writeManifest(['region' => 'ap-southeast-2']);
 
     expect((new Dashboard())->consoleUrl())
         ->toBe('https://ap-southeast-2.console.aws.amazon.com/cloudwatch/home?region=ap-southeast-2#dashboards/dashboard/yolo-testing-my-app-dashboard');
 });
 
-it('returns no console link when the env declares no region', function () {
+it('returns no console link when the env declares no region', function (): void {
     writeManifest([]);
 
     expect((new Dashboard())->consoleUrl())->toBeNull();

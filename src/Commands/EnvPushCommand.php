@@ -56,7 +56,7 @@ class EnvPushCommand extends Command
             if ($differences->isNotEmpty()) {
                 table(
                     ['Key', 'Current Value', 'New Value'],
-                    $differences->map(fn ($key) => [
+                    $differences->map(fn ($key): array => [
                         $key,
                         $oldContents[$key] ?? null,
                         $newContents[$key] ?? null,
@@ -74,7 +74,7 @@ class EnvPushCommand extends Command
 
                 return;
             }
-        } catch (S3Exception $e) {
+        } catch (S3Exception) {
             warning("$filename does not exist in the artefacts bucket.");
         }
 

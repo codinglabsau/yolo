@@ -28,6 +28,7 @@ class SyncAppCommand extends SyncSteppedCommand
             ->setDescription('Sync a single application\'s resources for the given environment');
     }
 
+    #[\Override]
     public function handle(): int
     {
         if ($advisory = static::schedulerAdvisory()) {

@@ -1,15 +1,17 @@
 <?php
 
+declare(strict_types=1);
+
 use Codinglabs\Yolo\Steps\Build\Fargate\BuildDockerImageStep;
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => []],
     ]);
 });
 
-it('builds with inline cache seeded from the last pushed image', function () {
+it('builds with inline cache seeded from the last pushed image', function (): void {
     $repository = '111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/yolo-testing-my-app';
 
     $command = BuildDockerImageStep::command('26.21.5.0900', $repository);
@@ -23,7 +25,7 @@ it('builds with inline cache seeded from the last pushed image', function () {
     expect($command)->toContain("$repository:latest");
 });
 
-it('respects the manifest platform override', function () {
+it('respects the manifest platform override', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['platform' => 'linux/arm64']],

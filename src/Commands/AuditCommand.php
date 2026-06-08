@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Codinglabs\Yolo\Commands;
 
 /**
@@ -10,6 +12,7 @@ namespace Codinglabs\Yolo\Commands;
  */
 class AuditCommand extends AbstractAuditCommand
 {
+    #[\Override]
     protected function configure(): void
     {
         parent::configure();

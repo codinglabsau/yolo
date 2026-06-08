@@ -36,12 +36,22 @@ deployments.
 # Run a specific test
 ./vendor/bin/pest --filter "test name"
 
-# Static analysis (parallel workers may need more than the 128M default memory limit)
-./vendor/bin/phpstan analyse
+# Coverage gate — CI enforces this on the 8.4 job (needs a driver: pcov or xdebug)
+./vendor/bin/pest --coverage --min=63
+
+# Static analysis — PHPStan runs at level 5 (config in phpstan.neon)
+./vendor/bin/phpstan analyse --memory-limit=1G
+
+# Automated refactoring — semantic only; check with --dry-run, drop the flag to apply
+./vendor/bin/rector process --dry-run
 
 # Code formatting
 ./vendor/bin/pint
 ```
+
+Quality stack runs **Rector → Pint → PHPStan**: Rector owns semantic transforms, Pint owns
+formatting (the two never overlap), PHPStan gates. All three are CI gates on `analyse.yml`;
+the Rector check is a blocking `--dry-run`, so apply any Rector suggestion locally before pushing.
 
 ## Architecture
 
@@ -162,7 +172,7 @@ Interfaces a step implements to declare its execution context:
 Orchestration traits (per-service AWS interaction now lives in `src/Aws/*`, not here): `RunsSteppedCommands` (step
 execution + progress UI), `SynchronisesResource` (create-or-sync), `RegistersAws` (env-aware client registration),
 `RendersServiceStatus` (gathers + renders the live `status` dashboard and the end-of-deploy recap, shared by
-`StatusCommand` and `DeployCommand`), `SyncsRecordSets`, `ResolvesDatabases`, `DetectsSubdomains`,
+`StatusCommand` and `DeployCommand`), `SyncsRecordSets`, `DetectsSubdomains`,
 `ChecksIfCommandsShouldBeRunning`, `HasAfterCallbacks`, `ParsesOnlyOption`.
 
 ### Configuration & helpers

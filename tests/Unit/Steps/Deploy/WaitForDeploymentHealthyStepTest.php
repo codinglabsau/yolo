@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Codinglabs\Yolo\Steps\Deploy\WaitForDeploymentHealthyStep;
 
 function task(string $revision, string $ip): array
@@ -23,7 +25,7 @@ function target(string $ip, string $state): array
 const NEW_REV = 'arn:aws:ecs:ap-southeast-2:111:task-definition/yolo-production-codinglabs-web:9';
 const OLD_REV = 'arn:aws:ecs:ap-southeast-2:111:task-definition/yolo-production-codinglabs-web:8';
 
-it('is healthy when every new-revision task has a healthy target', function () {
+it('is healthy when every new-revision task has a healthy target', function (): void {
     $healthy = WaitForDeploymentHealthyStep::newTasksAreHealthy(
         tasks: [task(NEW_REV, '10.0.0.5')],
         newRevision: NEW_REV,
@@ -34,7 +36,7 @@ it('is healthy when every new-revision task has a healthy target', function () {
     expect($healthy)->toBeTrue();
 });
 
-it('is not healthy while the new task is still in initial state', function () {
+it('is not healthy while the new task is still in initial state', function (): void {
     $healthy = WaitForDeploymentHealthyStep::newTasksAreHealthy(
         tasks: [task(NEW_REV, '10.0.0.5')],
         newRevision: NEW_REV,
@@ -45,7 +47,7 @@ it('is not healthy while the new task is still in initial state', function () {
     expect($healthy)->toBeFalse();
 });
 
-it('ignores the old draining task and the target it leaves healthy', function () {
+it('ignores the old draining task and the target it leaves healthy', function (): void {
     // Old task still healthy, new task not yet healthy → must not report healthy
     // (this is the trap with counting total healthy targets).
     $healthy = WaitForDeploymentHealthyStep::newTasksAreHealthy(
@@ -58,7 +60,7 @@ it('ignores the old draining task and the target it leaves healthy', function ()
     expect($healthy)->toBeFalse();
 });
 
-it('is not healthy until the new task is even running', function () {
+it('is not healthy until the new task is even running', function (): void {
     $healthy = WaitForDeploymentHealthyStep::newTasksAreHealthy(
         tasks: [task(OLD_REV, '10.0.0.4')],
         newRevision: NEW_REV,

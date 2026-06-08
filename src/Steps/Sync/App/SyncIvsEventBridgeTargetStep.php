@@ -25,7 +25,7 @@ class SyncIvsEventBridgeTargetStep implements ExecutesIvsStep
 
             $existingTarget = collect(Aws::eventBridge()->listTargetsByRule([
                 'Rule' => $ruleName,
-            ])['Targets'])->first(fn ($target) => $target['Id'] === 'ivs-cloudwatch-logs');
+            ])['Targets'])->first(fn ($target): bool => $target['Id'] === 'ivs-cloudwatch-logs');
 
             if ($existingTarget && $existingTarget['Arn'] === $expectedArn) {
                 return StepResult::SYNCED;

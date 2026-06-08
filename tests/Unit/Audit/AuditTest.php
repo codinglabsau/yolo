@@ -9,11 +9,11 @@ function auditResource(string $arn, array $tags = []): array
 {
     return [
         'ResourceARN' => $arn,
-        'Tags' => collect($tags)->map(fn ($value, $key) => ['Key' => $key, 'Value' => $value])->values()->all(),
+        'Tags' => collect($tags)->map(fn ($value, $key): array => ['Key' => $key, 'Value' => $value])->values()->all(),
     ];
 }
 
-it('derives live app names from cluster ARNs by the yolo-{env}-{app} convention', function () {
+it('derives live app names from cluster ARNs by the yolo-{env}-{app} convention', function (): void {
     $apps = Audit::appsFromClusters([
         'arn:aws:ecs:ap-southeast-2:111:cluster/yolo-production-codinglabs',
         'arn:aws:ecs:ap-southeast-2:111:cluster/yolo-production-ghost',
@@ -25,7 +25,7 @@ it('derives live app names from cluster ARNs by the yolo-{env}-{app} convention'
     expect($apps)->toBe(['codinglabs', 'ghost']);
 });
 
-it('classifies resources as ok or unexpected with a reason', function () {
+it('classifies resources as ok or unexpected with a reason', function (): void {
     $report = Audit::classify([
         auditResource('arn:aws:ecs:ap-southeast-2:111:service/yolo-production-codinglabs/web', ['yolo:app' => 'codinglabs', 'yolo:scope' => 'app', 'Name' => 'yolo-production-codinglabs-web']),
         auditResource('arn:aws:s3:::yolo-production-codinglabs-assets', ['yolo:app' => 'codinglabs', 'yolo:scope' => 'app', 'Name' => 'yolo-production-codinglabs-assets']),
@@ -56,7 +56,7 @@ it('classifies resources as ok or unexpected with a reason', function () {
         ->and($byArn['arn:aws:ssm:ap-southeast-2:111:parameter/yolo/production/background-work-strategy']['reason'])->toBe(Audit::REASON_NO_OWNER);
 });
 
-it('flags a YOLO-owned resource of an unmanaged service as unexpected', function () {
+it('flags a YOLO-owned resource of an unmanaged service as unexpected', function (): void {
     $report = Audit::classify([
         // The DynamoDB sessions table left behind after DynamoDB support was
         // removed: still tagged for a LIVE app, so the ownership test alone would
@@ -81,7 +81,7 @@ it('flags a YOLO-owned resource of an unmanaged service as unexpected', function
         ->and($byArn['arn:aws:dynamodb:ap-southeast-2:111:table/hand-rolled']['reason'])->toBe(Audit::REASON_NO_OWNER);
 });
 
-it('reports the unmanaged-service reason ahead of dead-app when the owning app is gone', function () {
+it('reports the unmanaged-service reason ahead of dead-app when the owning app is gone', function (): void {
     $report = Audit::classify([
         auditResource('arn:aws:dynamodb:ap-southeast-2:111:table/yolo-production-ghost-sessions', ['yolo:app' => 'ghost', 'yolo:scope' => 'app']),
     ], liveApps: ['codinglabs']);
@@ -91,7 +91,7 @@ it('reports the unmanaged-service reason ahead of dead-app when the owning app i
         ->and($report['resources'][0]['reason'])->toBe(Audit::REASON_UNMANAGED_SERVICE);
 });
 
-it('flags a yolo:app pointing at a dead app as unexpected (app cluster gone)', function () {
+it('flags a yolo:app pointing at a dead app as unexpected (app cluster gone)', function (): void {
     $report = Audit::classify([
         auditResource('arn:aws:ecr:ap-southeast-2:111:repository/yolo-production-ghost', ['yolo:app' => 'ghost', 'yolo:scope' => 'app']),
     ], liveApps: ['codinglabs']);
@@ -101,7 +101,7 @@ it('flags a yolo:app pointing at a dead app as unexpected (app cluster gone)', f
         ->and($report['resources'][0]['reason'])->toBe(Audit::REASON_DEAD_APP);
 });
 
-it('assigns an ownership scope from the yolo:scope tag, defaulting unowned resources to env', function () {
+it('assigns an ownership scope from the yolo:scope tag, defaulting unowned resources to env', function (): void {
     $report = Audit::classify([
         // explicit yolo:scope tags (stamped by sync on everything it creates) map
         // straight through — including the account-global OIDC provider
@@ -120,7 +120,7 @@ it('assigns an ownership scope from the yolo:scope tag, defaulting unowned resou
         ->and($byArn['arn:aws:elasticloadbalancing:ap-southeast-2:111:loadbalancer/app/yolo-production/abc']['scope'])->toBe('env');
 });
 
-it('orders rows by scope (account → env → app), then unexpected-first within a scope', function () {
+it('orders rows by scope (account → env → app), then unexpected-first within a scope', function (): void {
     $rows = [
         ['scope' => 'app', 'status' => 'ok', 'reason' => null, 'app' => 'codinglabs', 'name' => 'web'],
         ['scope' => 'env', 'status' => 'unexpected', 'reason' => Audit::REASON_NO_OWNER, 'app' => null, 'name' => 'vpc'],
@@ -129,7 +129,7 @@ it('orders rows by scope (account → env → app), then unexpected-first within
         ['scope' => 'env', 'status' => 'unexpected', 'reason' => Audit::REASON_NO_OWNER, 'app' => null, 'name' => 'alb'],
     ];
 
-    $ordered = collect($rows)->sortBy(fn (array $resource) => Audit::orderKey($resource))->values();
+    $ordered = collect($rows)->sortBy(fn (array $resource): string => Audit::orderKey($resource))->values();
 
     expect($ordered->pluck('name')->all())->toBe(['oidc', 'alb', 'vpc', 'repo', 'web']);
     // account first, then env (alb before vpc by name), then app (the unexpected
@@ -137,7 +137,7 @@ it('orders rows by scope (account → env → app), then unexpected-first within
     expect($ordered->pluck('scope')->all())->toBe(['account', 'env', 'env', 'app', 'app']);
 });
 
-it('derives a readable type and name for each resource', function () {
+it('derives a readable type and name for each resource', function (): void {
     $report = Audit::classify([
         auditResource('arn:aws:ecs:ap-southeast-2:111:service/yolo-production-codinglabs/web', ['Name' => 'yolo-production-codinglabs-web']),
         auditResource('arn:aws:s3:::yolo-production-codinglabs-assets'), // no tags at all
@@ -153,7 +153,7 @@ it('derives a readable type and name for each resource', function () {
     expect($byArn['arn:aws:s3:::yolo-production-codinglabs-assets']['name'])->toBe('yolo-production-codinglabs-assets');
 });
 
-it('returns zero counts and no resources for an empty inventory', function () {
+it('returns zero counts and no resources for an empty inventory', function (): void {
     $report = Audit::classify([], liveApps: ['codinglabs']);
 
     expect($report['resources'])->toBe([])

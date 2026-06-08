@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Codinglabs\Yolo\Concerns;
 
 use Codinglabs\Yolo\Manifest;
@@ -26,7 +28,7 @@ trait ResolvesServerGroups
             return $available;
         }
 
-        return array_map(function (string $value) use ($available) {
+        return array_map(function (string $value) use ($available): ServerGroup {
             $group = ServerGroup::tryFrom(trim($value));
 
             if ($group === null || ! in_array($group, $available, true)) {

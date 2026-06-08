@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Codinglabs\Yolo\Resources\S3;
 
 use Codinglabs\Yolo\Aws;

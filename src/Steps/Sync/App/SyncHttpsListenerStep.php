@@ -58,6 +58,6 @@ class SyncHttpsListenerStep implements ExecutesWebStep
         $listener = ElbV2::listenerOnPort((new LoadBalancer())->arn(), 443);
 
         return collect($listener['Certificates'] ?? [])
-            ->contains(fn (array $cert) => $cert['CertificateArn'] === $certificate['CertificateArn']);
+            ->contains(fn (array $cert): bool => $cert['CertificateArn'] === $certificate['CertificateArn']);
     }
 }

@@ -39,7 +39,7 @@ class SyncRdsSecurityGroupStep implements Step
         if ($securityGroup->exists() && $this->reconcileTaskIngressRule($securityGroup->arn(), 3306, $description, $dryRun) && $dryRun && $result === StepResult::SYNCED) {
             // The group already exists but the ingress rule is missing, so a
             // dry-run has a pending change to report rather than a clean SYNCED.
-            $result = StepResult::WOULD_SYNC;
+            return StepResult::WOULD_SYNC;
         }
 
         return $result;

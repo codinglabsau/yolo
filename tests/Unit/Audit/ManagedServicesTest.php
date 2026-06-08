@@ -11,9 +11,9 @@ use Codinglabs\Yolo\Audit\Audit;
  * precisely what makes the leftover resources surface. This test keeps the
  * catalogue and the directories in lockstep so the invariant can't rot.
  */
-it('catalogues exactly the src/Resources service directories', function () {
+it('catalogues exactly the src/Resources service directories', function (): void {
     $directories = collect(glob(dirname(__DIR__, 3) . '/src/Resources/*', GLOB_ONLYDIR))
-        ->map(fn (string $path) => basename($path))
+        ->map(fn (string $path): string => basename($path))
         ->sort()
         ->values()
         ->all();
@@ -26,7 +26,7 @@ it('catalogues exactly the src/Resources service directories', function () {
     expect($catalogued)->toBe($directories);
 });
 
-it('exposes the managed ARN services as the catalogue values', function () {
+it('exposes the managed ARN services as the catalogue values', function (): void {
     expect(Audit::managedServices())
         ->toBe(array_values(Audit::SERVICE_BY_RESOURCE_GROUP))
         ->toContain('ecs', 'elasticloadbalancing', 's3', 'logs');

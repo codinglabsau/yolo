@@ -7,6 +7,7 @@ use Symfony\Component\Console\Input\InputArgument;
 
 abstract class SyncSteppedCommand extends SteppedCommand
 {
+    #[\Override]
     public function handle(): int
     {
         return $this->runScopes($this->argument('environment'), $this->scopes());

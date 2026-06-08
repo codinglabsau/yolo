@@ -34,13 +34,13 @@ function bindExistingLoadBalancerSgMissingScope(array &$captured): void
     ], $captured);
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 });
 
-it('creates the load balancer security group and authorises HTTP/HTTPS when absent', function () {
+it('creates the load balancer security group and authorises HTTP/HTTPS when absent', function (): void {
     $captured = [];
 
     bindMockEc2Client([
@@ -61,7 +61,7 @@ it('creates the load balancer security group and authorises HTTP/HTTPS when abse
     expect(collect($captured)->where('name', 'AuthorizeSecurityGroupIngress'))->toHaveCount(2);
 });
 
-it('stamps the missing yolo:scope tag on an existing security group when applying', function () {
+it('stamps the missing yolo:scope tag on an existing security group when applying', function (): void {
     // Regression guard: this branch used to call synchroniseTags() with no
     // argument, which threw ArgumentCountError once #59 made $apply required —
     // so the env-scope marker never landed and the group stayed `rogue`.
@@ -81,7 +81,7 @@ it('stamps the missing yolo:scope tag on an existing security group when applyin
         ->not->toContain('ModifySecurityGroupRules');
 });
 
-it('surfaces the missing yolo:scope tag as a plan-time change without writing during a dry-run', function () {
+it('surfaces the missing yolo:scope tag as a plan-time change without writing during a dry-run', function (): void {
     // Tag drift alone must mark the step WOULD_SYNC so the apply pass isn't
     // dropped by the only-pending-steps filter (#57) — the rules are clean here,
     // so the WOULD_SYNC can only come from the tag.

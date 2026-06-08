@@ -12,12 +12,12 @@ const EXTRA_POLICY = 'arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess';
 function attachedPolicies(array $arns): Result
 {
     return new Result(['AttachedPolicies' => array_map(
-        fn (string $arn) => ['PolicyName' => basename($arn), 'PolicyArn' => $arn],
+        fn (string $arn): array => ['PolicyName' => basename($arn), 'PolicyArn' => $arn],
         $arns,
     )]);
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => []],
@@ -25,7 +25,7 @@ beforeEach(function () {
     ]);
 });
 
-it('attaches the baseline policy plus the manifest-declared policies', function () {
+it('attaches the baseline policy plus the manifest-declared policies', function (): void {
     $captured = [];
     bindRoutedIamClient(['ListAttachedRolePolicies' => attachedPolicies([])], $captured);
 
@@ -37,7 +37,7 @@ it('attaches the baseline policy plus the manifest-declared policies', function 
     expect(array_column($captured, 'name'))->not->toContain('DetachRolePolicy');
 });
 
-it('reports synced and touches nothing when the attachments already match', function () {
+it('reports synced and touches nothing when the attachments already match', function (): void {
     $captured = [];
     bindRoutedIamClient([
         'ListAttachedRolePolicies' => attachedPolicies([BASELINE_POLICY, EXTRA_POLICY]),
@@ -49,7 +49,7 @@ it('reports synced and touches nothing when the attachments already match', func
         ->not->toContain('DetachRolePolicy');
 });
 
-it('detaches a policy dropped from the manifest, never the baseline', function () {
+it('detaches a policy dropped from the manifest, never the baseline', function (): void {
     // The manifest no longer lists EXTRA_POLICY, but it's still attached — reconcile
     // must detach it (and leave the baseline alone).
     writeManifest([
@@ -69,7 +69,7 @@ it('detaches a policy dropped from the manifest, never the baseline', function (
     expect(array_column($captured, 'name'))->not->toContain('AttachRolePolicy');
 });
 
-it('plans attach + detach on a dry-run without writing IAM', function () {
+it('plans attach + detach on a dry-run without writing IAM', function (): void {
     // Baseline missing (needs attach) and a stale policy attached (needs detach).
     $captured = [];
     bindRoutedIamClient([

@@ -42,18 +42,18 @@ function bindRecordingCloudFrontClient(array $byCommand): object
     return $recorder;
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 });
 
-it('names + tags per app + environment', function () {
+it('names + tags per app + environment', function (): void {
     expect((new AssetDistribution())->name())->toBe('yolo-testing-my-app-assets');
     expect((new AssetDistribution())->tags())->toBe(['Name' => 'yolo-testing-my-app-assets', 'yolo:scope' => 'app', 'yolo:app' => 'my-app']);
 });
 
-it('resolves its domain from the distribution matching its comment', function () {
+it('resolves its domain from the distribution matching its comment', function (): void {
     bindMockCloudFrontClient([
         [
             'Comment' => 'yolo-testing-my-app-assets',
@@ -68,7 +68,7 @@ it('resolves its domain from the distribution matching its comment', function ()
     expect((new AssetDistribution())->arn())->toBe('arn:aws:cloudfront::111111111111:distribution/E123');
 });
 
-it('reports not-exists when no distribution matches its comment', function () {
+it('reports not-exists when no distribution matches its comment', function (): void {
     bindMockCloudFrontClient([
         ['Comment' => 'yolo-testing-other-app-assets', 'DomainName' => 'd999.cloudfront.net', 'ARN' => 'arn:...', 'Id' => 'E999'],
     ]);
@@ -76,7 +76,7 @@ it('reports not-exists when no distribution matches its comment', function () {
     expect((new AssetDistribution())->exists())->toBeFalse();
 });
 
-it('reconciles the managed cache-behaviour policy fields', function () {
+it('reconciles the managed cache-behaviour policy fields', function (): void {
     $behaviour = AssetDistribution::reconcilableBehaviour('rhp-resolved-id');
 
     // CORS is served by a static Access-Control-Allow-Origin: * on the
@@ -90,7 +90,7 @@ it('reconciles the managed cache-behaviour policy fields', function () {
     expect($behaviour['Compress'])->toBeTrue();
 });
 
-it('sees no drift when the live behaviour already carries the managed fields', function () {
+it('sees no drift when the live behaviour already carries the managed fields', function (): void {
     // Realistic post-sync shape: CloudFront's GetDistributionConfig omits
     // OriginRequestPolicyId from the response when no policy is attached, even
     // though UpdateDistribution wrote it as ''. Filter must treat absent ↔ ''
@@ -108,7 +108,7 @@ it('sees no drift when the live behaviour already carries the managed fields', f
     expect(AssetDistribution::behaviourDrift($live, AssetDistribution::reconcilableBehaviour('rhp-resolved-id')))->toBe([]);
 });
 
-it('sees drift on a distribution still using the Origin-keyed cache policy', function () {
+it('sees drift on a distribution still using the Origin-keyed cache policy', function (): void {
     // Shape of the live CL distribution before the fix: custom Origin-in-key
     // cache policy, CORS-S3Origin origin-request policy forwarding Origin, no
     // response-headers policy. Reconciling must flip all three.
@@ -128,7 +128,7 @@ it('sees drift on a distribution still using the Origin-keyed cache policy', fun
         ->toEqualCanonicalizing(['CachePolicyId', 'OriginRequestPolicyId', 'ResponseHeadersPolicyId']);
 });
 
-it('pins every tracked 5xx to a zero error-caching TTL', function () {
+it('pins every tracked 5xx to a zero error-caching TTL', function (): void {
     $errors = AssetDistribution::customErrorResponses();
 
     expect($errors['Quantity'])->toBe(4);
@@ -142,7 +142,7 @@ it('pins every tracked 5xx to a zero error-caching TTL', function () {
     expect(collect($errors['Items'])->pluck('ResponseCode')->unique()->all())->toBe(['']);
 });
 
-it('creates the response-headers policy with CorsConfig (not CustomHeadersConfig — AWS rejects ACAO there)', function () {
+it('creates the response-headers policy with CorsConfig (not CustomHeadersConfig — AWS rejects ACAO there)', function (): void {
     // No existing policy by name → fall through to CreateResponseHeadersPolicy.
     $recorder = bindRecordingCloudFrontClient([
         'ListResponseHeadersPolicies' => new Result(['ResponseHeadersPolicyList' => ['Items' => []]]),
@@ -177,7 +177,7 @@ it('creates the response-headers policy with CorsConfig (not CustomHeadersConfig
     expect($config['CorsConfig']['OriginOverride'])->toBeTrue();
 });
 
-it('reuses an existing response-headers policy by name (no Create call)', function () {
+it('reuses an existing response-headers policy by name (no Create call)', function (): void {
     $recorder = bindRecordingCloudFrontClient([
         'ListResponseHeadersPolicies' => new Result(['ResponseHeadersPolicyList' => [
             'Items' => [
@@ -196,7 +196,7 @@ it('reuses an existing response-headers policy by name (no Create call)', functi
     expect(collect($recorder->calls)->pluck('name'))->not->toContain('CreateResponseHeadersPolicy');
 });
 
-it('detects error-caching drift', function () {
+it('detects error-caching drift', function (): void {
     // Unset → CloudFront's ~10s default caches a transient 5xx → drift.
     expect(AssetDistribution::errorCachingDrift([]))->not->toBeNull();
 

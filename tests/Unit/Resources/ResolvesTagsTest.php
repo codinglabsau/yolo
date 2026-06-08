@@ -45,7 +45,7 @@ function fakeResource(Scope $scope, string $name): Resource
     };
 }
 
-it('stamps yolo:scope and yolo:app on an app-scoped resource', function () {
+it('stamps yolo:scope and yolo:app on an app-scoped resource', function (): void {
     expect(fakeResource(Scope::App, 'yolo-testing-my-app-thing')->tags())->toBe([
         'Name' => 'yolo-testing-my-app-thing',
         'yolo:scope' => 'app',
@@ -53,7 +53,7 @@ it('stamps yolo:scope and yolo:app on an app-scoped resource', function () {
     ]);
 });
 
-it('stamps yolo:scope and omits yolo:app on env- and account-scoped resources', function (Scope $scope, string $expectedScope) {
+it('stamps yolo:scope and omits yolo:app on env- and account-scoped resources', function (Scope $scope, string $expectedScope): void {
     expect(fakeResource($scope, 'yolo-testing-shared-thing')->tags())->toBe([
         'Name' => 'yolo-testing-shared-thing',
         'yolo:scope' => $expectedScope,

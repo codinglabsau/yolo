@@ -3,14 +3,14 @@
 use Aws\Result;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\QueueScaleToZeroBootstrap;
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => [], 'queue' => ['min' => 0]],
     ]);
 });
 
-it('reports both pieces as pending on a dry-run without writing', function () {
+it('reports both pieces as pending on a dry-run without writing', function (): void {
     $aa = [];
     $cw = [];
     bindMockApplicationAutoScalingClient(['DescribeScalingPolicies' => new Result(['ScalingPolicies' => []])], $aa);
@@ -23,7 +23,7 @@ it('reports both pieces as pending on a dry-run without writing', function () {
     expect(collect($cw)->pluck('name'))->not->toContain('PutMetricAlarm');
 });
 
-it('sets the queue to exactly one task when a message arrives at zero', function () {
+it('sets the queue to exactly one task when a message arrives at zero', function (): void {
     $alarmArn = 'arn:aws:cloudwatch:ap-southeast-2:111111111111:alarm:yolo-testing-my-app-queue-has-messages';
     $policyArn = 'arn:aws:autoscaling:ap-southeast-2:111111111111:scalingPolicy:x:resource/ecs/service/yolo-testing-my-app/yolo-testing-my-app-queue:policyName/bootstrap';
 

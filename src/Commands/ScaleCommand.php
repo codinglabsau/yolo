@@ -54,7 +54,7 @@ class ScaleCommand extends Command
 
     public function handle(): void
     {
-        if (($group = $this->resolveGroup()) === null) {
+        if (! ($group = $this->resolveGroup()) instanceof ServerGroup) {
             return;
         }
 
@@ -239,7 +239,7 @@ class ScaleCommand extends Command
         return (int) text(
             label: 'Desired number of tasks',
             default: (string) $default,
-            validate: fn (string $value) => ctype_digit($value) ? null : 'Enter a whole number of tasks.',
+            validate: fn (string $value): ?string => ctype_digit($value) ? null : 'Enter a whole number of tasks.',
         );
     }
 }

@@ -16,7 +16,7 @@ class Ecr
             ])['repositories'];
         } catch (AwsException $e) {
             if ($e->getAwsErrorCode() === 'RepositoryNotFoundException') {
-                throw new ResourceDoesNotExistException("Could not find ECR repository $name");
+                throw new ResourceDoesNotExistException("Could not find ECR repository $name", $e->getCode(), $e);
             }
 
             throw $e;

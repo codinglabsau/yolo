@@ -20,13 +20,13 @@ function writeRawManifest(array $manifest): void
     Helpers::app()->instance('environment', 'testing');
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     $buffer = new BufferedOutput();
     Prompt::setOutput($buffer);
     test()->promptOutput = $buffer;
 });
 
-it('returns true for a manifest declaring name, region, and account-id', function () {
+it('returns true for a manifest declaring name, region, and account-id', function (): void {
     writeManifest([
         'account-id' => '848509375702', 'region' => 'ap-southeast-2',
     ]);
@@ -34,7 +34,7 @@ it('returns true for a manifest declaring name, region, and account-id', functio
     expect(invokeManifestIntegrity())->toBeTrue();
 });
 
-it('bails when the top-level name is missing', function () {
+it('bails when the top-level name is missing', function (): void {
     writeRawManifest([
         'environments' => [
             'testing' => [
@@ -48,7 +48,7 @@ it('bails when the top-level name is missing', function () {
     expect(test()->promptOutput->fetch())->toContain('`name`');
 });
 
-it('bails when region is missing', function () {
+it('bails when region is missing', function (): void {
     writeManifest([
         'account-id' => '848509375702',
     ]);
@@ -58,7 +58,7 @@ it('bails when region is missing', function () {
     expect(test()->promptOutput->fetch())->toContain('region');
 });
 
-it('bails when account-id is missing', function () {
+it('bails when account-id is missing', function (): void {
     writeManifest([
         'region' => 'ap-southeast-2',
     ]);
@@ -68,7 +68,7 @@ it('bails when account-id is missing', function () {
     expect(test()->promptOutput->fetch())->toContain('account-id');
 });
 
-it('bails on an unknown environment key', function () {
+it('bails on an unknown environment key', function (): void {
     writeManifest([
         'account-id' => '848509375702', 'region' => 'ap-southeast-2',
         'flavour' => 'spicy',
@@ -78,7 +78,7 @@ it('bails on an unknown environment key', function () {
     expect(test()->promptOutput->fetch())->toContain('flavour');
 });
 
-it('bails on a legacy aws.* namespaced manifest with the fully-qualified key path and a docs link', function () {
+it('bails on a legacy aws.* namespaced manifest with the fully-qualified key path and a docs link', function (): void {
     writeManifest([
         'aws' => ['account-id' => '848509375702', 'region' => 'ap-southeast-2'],
     ]);
@@ -90,7 +90,7 @@ it('bails on a legacy aws.* namespaced manifest with the fully-qualified key pat
     expect($output)->toContain('codinglabsau.github.io/yolo/reference/manifest');
 });
 
-it('bails on a key at the wrong level (cache.store under a misplaced parent)', function () {
+it('bails on a key at the wrong level (cache.store under a misplaced parent)', function (): void {
     writeManifest([
         'account-id' => '848509375702', 'region' => 'ap-southeast-2',
         'cache' => ['store' => 'redis', 'driver' => 'redis'],
@@ -100,7 +100,7 @@ it('bails on a key at the wrong level (cache.store under a misplaced parent)', f
     expect(test()->promptOutput->fetch())->toContain('cache.driver');
 });
 
-it('accepts a supported session.driver', function () {
+it('accepts a supported session.driver', function (): void {
     writeManifest([
         'account-id' => '848509375702', 'region' => 'ap-southeast-2',
         'session' => ['driver' => 'database'],
@@ -109,7 +109,7 @@ it('accepts a supported session.driver', function () {
     expect(invokeManifestIntegrity())->toBeTrue();
 });
 
-it('bails on an unknown session.driver', function () {
+it('bails on an unknown session.driver', function (): void {
     writeManifest([
         'account-id' => '848509375702', 'region' => 'ap-southeast-2',
         'session' => ['driver' => 'mysql'],
@@ -119,7 +119,7 @@ it('bails on an unknown session.driver', function () {
     expect(test()->promptOutput->fetch())->toContain('session.driver');
 });
 
-it('bails when session.driver is redis but cache.store is off', function () {
+it('bails when session.driver is redis but cache.store is off', function (): void {
     writeManifest([
         'account-id' => '848509375702', 'region' => 'ap-southeast-2',
         'session' => ['driver' => 'redis'],
@@ -129,7 +129,7 @@ it('bails when session.driver is redis but cache.store is off', function () {
     expect(test()->promptOutput->fetch())->toContain('cache.store');
 });
 
-it('accepts session.driver redis when cache.store is redis', function () {
+it('accepts session.driver redis when cache.store is redis', function (): void {
     writeManifest([
         'account-id' => '848509375702', 'region' => 'ap-southeast-2', 'cache' => ['store' => 'redis'],
         'session' => ['driver' => 'redis'],
@@ -138,7 +138,7 @@ it('accepts session.driver redis when cache.store is redis', function () {
     expect(invokeManifestIntegrity())->toBeTrue();
 });
 
-it('accepts the known shape of every task group', function () {
+it('accepts the known shape of every task group', function (): void {
     writeManifest([
         'account-id' => '848509375702', 'region' => 'ap-southeast-2',
         'tasks' => [
@@ -162,7 +162,7 @@ it('accepts the known shape of every task group', function () {
     expect(invokeManifestIntegrity())->toBeTrue();
 });
 
-it('bails on an unrecognised key inside a task group', function () {
+it('bails on an unrecognised key inside a task group', function (): void {
     writeManifest([
         'account-id' => '848509375702', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['nonsense' => true]],
@@ -172,7 +172,7 @@ it('bails on an unrecognised key inside a task group', function () {
     expect(test()->promptOutput->fetch())->toContain('tasks.web.nonsense');
 });
 
-it('bails when the scheduler rides a queue explicitly set to scale to zero', function () {
+it('bails when the scheduler rides a queue explicitly set to scale to zero', function (): void {
     writeManifest([
         'account-id' => '848509375702', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => [], 'queue' => ['min' => 0]],
@@ -185,7 +185,7 @@ it('bails when the scheduler rides a queue explicitly set to scale to zero', fun
     expect($output)->toContain('tasks.scheduler');
 });
 
-it('accepts a scheduler-hosting queue with a standing floor of one', function () {
+it('accepts a scheduler-hosting queue with a standing floor of one', function (): void {
     writeManifest([
         'account-id' => '848509375702', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => [], 'queue' => ['min' => 1]],
@@ -194,7 +194,7 @@ it('accepts a scheduler-hosting queue with a standing floor of one', function ()
     expect(invokeManifestIntegrity())->toBeTrue();
 });
 
-it('accepts a scheduler-hosting queue with no explicit floor (defaults to one)', function () {
+it('accepts a scheduler-hosting queue with no explicit floor (defaults to one)', function (): void {
     writeManifest([
         'account-id' => '848509375702', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => [], 'queue' => []],
@@ -203,7 +203,7 @@ it('accepts a scheduler-hosting queue with no explicit floor (defaults to one)',
     expect(invokeManifestIntegrity())->toBeTrue();
 });
 
-it('accepts a scale-to-zero queue when the scheduler is its own service', function () {
+it('accepts a scale-to-zero queue when the scheduler is its own service', function (): void {
     writeManifest([
         'account-id' => '848509375702', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => [], 'queue' => ['min' => 0], 'scheduler' => []],
@@ -212,7 +212,7 @@ it('accepts a scale-to-zero queue when the scheduler is its own service', functi
     expect(invokeManifestIntegrity())->toBeTrue();
 });
 
-it('accepts a task-role-policies list', function () {
+it('accepts a task-role-policies list', function (): void {
     writeManifest([
         'account-id' => '848509375702', 'region' => 'ap-southeast-2',
         'task-role-policies' => ['arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess'],

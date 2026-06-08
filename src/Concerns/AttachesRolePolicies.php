@@ -27,7 +27,7 @@ trait AttachesRolePolicies
 
         $missing = array_values(array_filter(
             $desiredArns,
-            fn (string $arn) => ! $attached->contains($arn),
+            fn (string $arn): bool => ! $attached->contains($arn),
         ));
 
         if ($missing === []) {
@@ -69,11 +69,11 @@ trait AttachesRolePolicies
 
         $missing = array_values(array_filter(
             $desiredArns,
-            fn (string $arn) => ! $attached->contains($arn),
+            fn (string $arn): bool => ! $attached->contains($arn),
         ));
 
         $extra = $attached
-            ->reject(fn (string $arn) => in_array($arn, $desiredArns, true))
+            ->reject(fn (string $arn): bool => in_array($arn, $desiredArns, true))
             ->values()
             ->all();
 

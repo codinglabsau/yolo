@@ -10,7 +10,7 @@ use Codinglabs\Yolo\Steps\Sync\App\AttachDeployerRolePoliciesStep;
 
 // The suite runs in GitHub Actions (GITHUB_REPOSITORY set). Clear it after each
 // test; provisioning tests pin the repo via an explicit env-level `repository`.
-afterEach(function () {
+afterEach(function (): void {
     putenv('GITHUB_REPOSITORY');
     unset($_ENV['GITHUB_REPOSITORY'], $_SERVER['GITHUB_REPOSITORY']);
 });
@@ -79,7 +79,7 @@ function manifestWithoutRepository(): void
     unset($_ENV['GITHUB_REPOSITORY'], $_SERVER['GITHUB_REPOSITORY']);
 }
 
-it('skips every deployer step when no GitHub repository is resolvable', function () {
+it('skips every deployer step when no GitHub repository is resolvable', function (): void {
     manifestWithoutRepository();
 
     $captured = [];
@@ -93,7 +93,7 @@ it('skips every deployer step when no GitHub repository is resolvable', function
     expect($captured)->toBeEmpty();
 });
 
-it('creates the OIDC provider when absent', function () {
+it('creates the OIDC provider when absent', function (): void {
     manifestWithDeployer();
 
     $captured = [];
@@ -105,7 +105,7 @@ it('creates the OIDC provider when absent', function () {
     expect(array_column($captured, 'name'))->toContain('CreateOpenIDConnectProvider');
 });
 
-it('reports the OIDC provider as synced when it already exists', function () {
+it('reports the OIDC provider as synced when it already exists', function (): void {
     manifestWithDeployer();
 
     $captured = [];
@@ -121,7 +121,7 @@ it('reports the OIDC provider as synced when it already exists', function () {
     expect(array_column($captured, 'name'))->not->toContain('CreateOpenIDConnectProvider');
 });
 
-it('would-create the OIDC provider on a dry-run without calling create', function () {
+it('would-create the OIDC provider on a dry-run without calling create', function (): void {
     manifestWithDeployer();
 
     $captured = [];
@@ -133,7 +133,7 @@ it('would-create the OIDC provider on a dry-run without calling create', functio
     expect(array_column($captured, 'name'))->not->toContain('CreateOpenIDConnectProvider');
 });
 
-it('creates the deployer policy when absent', function () {
+it('creates the deployer policy when absent', function (): void {
     manifestWithDeployer();
 
     $captured = [];
@@ -148,7 +148,7 @@ it('creates the deployer policy when absent', function () {
     expect($create['args']['PolicyName'])->toBe('yolo-testing-my-app-deployer-policy');
 });
 
-it('creates the deployer role with the OIDC trust policy when absent', function () {
+it('creates the deployer role with the OIDC trust policy when absent', function (): void {
     manifestWithDeployer();
 
     $captured = [];
@@ -164,7 +164,7 @@ it('creates the deployer role with the OIDC trust policy when absent', function 
     expect($create['args']['AssumeRolePolicyDocument'])->toContain('sts:AssumeRoleWithWebIdentity');
 });
 
-it('would-sync the policy attachment on a dry-run without attaching', function () {
+it('would-sync the policy attachment on a dry-run without attaching', function (): void {
     manifestWithDeployer();
 
     $captured = [];
@@ -176,7 +176,7 @@ it('would-sync the policy attachment on a dry-run without attaching', function (
     expect(array_column($captured, 'name'))->not->toContain('AttachRolePolicy');
 });
 
-it('reports the policy attachment as synced when it is already attached', function () {
+it('reports the policy attachment as synced when it is already attached', function (): void {
     manifestWithDeployer();
 
     $captured = [];
@@ -190,7 +190,7 @@ it('reports the policy attachment as synced when it is already attached', functi
     expect(array_column($captured, 'name'))->not->toContain('AttachRolePolicy');
 });
 
-it('attaches the deployer policy to the deployer role', function () {
+it('attaches the deployer policy to the deployer role', function (): void {
     manifestWithDeployer();
 
     $captured = [];
@@ -205,7 +205,7 @@ it('attaches the deployer policy to the deployer role', function () {
     expect($attach['args']['PolicyArn'])->toBe('arn:aws:iam::111111111111:policy/yolo-testing-my-app-deployer-policy');
 });
 
-it('does not create a new policy version when the deployer document is unchanged', function () {
+it('does not create a new policy version when the deployer document is unchanged', function (): void {
     manifestWithDeployer();
 
     $document = json_encode((new DeployerPolicy())->document());
@@ -220,7 +220,7 @@ it('does not create a new policy version when the deployer document is unchanged
     expect(array_column($captured, 'name'))->not->toContain('CreatePolicyVersion');
 });
 
-it('reconciles the deployer policy by creating a new default version when it drifts', function () {
+it('reconciles the deployer policy by creating a new default version when it drifts', function (): void {
     manifestWithDeployer();
 
     $captured = [];
@@ -237,7 +237,7 @@ it('reconciles the deployer policy by creating a new default version when it dri
     expect($version['args']['SetAsDefault'])->toBeTrue();
 });
 
-it('reconciles the deployer role trust policy when the env ref changes', function () {
+it('reconciles the deployer role trust policy when the env ref changes', function (): void {
     manifestWithDeployer(['branch' => 'release']);
 
     $captured = [];
@@ -250,11 +250,11 @@ it('reconciles the deployer role trust policy when the env ref changes', functio
     $update = collect($captured)->firstWhere('name', 'UpdateAssumeRolePolicy');
     expect($update)->not->toBeNull();
 
-    $sub = json_decode($update['args']['PolicyDocument'], true)['Statement'][0]['Condition']['StringLike']['token.actions.githubusercontent.com:sub'];
+    $sub = json_decode((string) $update['args']['PolicyDocument'], true)['Statement'][0]['Condition']['StringLike']['token.actions.githubusercontent.com:sub'];
     expect($sub)->toBe('repo:my-org/my-repo:ref:refs/heads/release');
 });
 
-it('records deployer trust drift on the plan pass so the step survives the prune', function () {
+it('records deployer trust drift on the plan pass so the step survives the prune', function (): void {
     // Regression (the convict `tag: true` OIDC failure): the trust rewrite used to
     // happen only under `! dry-run` and recorded no Change, so the plan pass saw a
     // clean step, the only-pending-steps filter pruned it before apply, and a
@@ -272,7 +272,7 @@ it('records deployer trust drift on the plan pass so the step survives the prune
     $step = new SyncDeployerRoleStep();
     expect($step(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC);
 
-    $trustChange = collect($step->changes())->first(fn ($change) => str_contains($change->attribute, 'trust'));
+    $trustChange = collect($step->changes())->first(fn ($change): bool => str_contains((string) $change->attribute, 'trust'));
     expect($trustChange)->not->toBeNull();
     // The diff must read live → desired, not desired → desired (guards the trait
     // method being shadowed by DeployerRole's own subjectClaim()).
@@ -283,7 +283,7 @@ it('records deployer trust drift on the plan pass so the step survives the prune
     expect(array_column($captured, 'name'))->not->toContain('UpdateAssumeRolePolicy');
 });
 
-it('records no trust change when the deployer trust already matches', function () {
+it('records no trust change when the deployer trust already matches', function (): void {
     // The other half of the regression: an in-sync trust must produce no pending
     // entry, otherwise every sync re-stamps it and the confirm gate never clears.
     manifestWithDeployer();
@@ -303,12 +303,12 @@ it('records no trust change when the deployer trust already matches', function (
     $step = new SyncDeployerRoleStep();
     expect($step([]))->toBe(StepResult::SYNCED);
 
-    $trustChanges = collect($step->changes())->filter(fn ($change) => str_contains($change->attribute, 'trust'));
+    $trustChanges = collect($step->changes())->filter(fn ($change): bool => str_contains((string) $change->attribute, 'trust'));
     expect($trustChanges)->toBeEmpty();
     expect(array_column($captured, 'name'))->not->toContain('UpdateAssumeRolePolicy');
 });
 
-it('never mutates IAM on a dry-run against existing deployer resources', function () {
+it('never mutates IAM on a dry-run against existing deployer resources', function (): void {
     manifestWithDeployer();
 
     // Pre-stamp the expected YOLO tags on the mocked existing policy + role so
@@ -353,7 +353,7 @@ it('never mutates IAM on a dry-run against existing deployer resources', functio
         ->not->toContain('TagRole');
 });
 
-it('flags deployer document drift during the plan pass without creating a version', function () {
+it('flags deployer document drift during the plan pass without creating a version', function (): void {
     manifestWithDeployer();
 
     $captured = [];
@@ -372,7 +372,7 @@ it('flags deployer document drift during the plan pass without creating a versio
     expect(array_column($captured, 'name'))->not->toContain('CreatePolicyVersion');
 });
 
-it('prunes the oldest non-default version when the policy is at the 5-version limit before re-versioning', function () {
+it('prunes the oldest non-default version when the policy is at the 5-version limit before re-versioning', function (): void {
     manifestWithDeployer();
 
     $captured = [];

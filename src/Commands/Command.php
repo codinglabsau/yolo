@@ -29,7 +29,7 @@ abstract class Command extends SymfonyCommand
     {
         Helpers::app()->instance('input', $this->input = $input);
         Helpers::app()->instance('output', $this->output = $output);
-        Helpers::app()->singleton('runningInAws', fn () => static::detectAwsEnvironment());
+        Helpers::app()->singleton('runningInAws', fn (): bool => static::detectAwsEnvironment());
 
         // bail if command should not be running
         if (! $this->shouldBeRunning($this)) {
@@ -60,7 +60,7 @@ abstract class Command extends SymfonyCommand
         Helpers::app()->instance('environment', $this->argument('environment'));
 
         if (static::requiresAwsProfile() && ! Helpers::keyedEnv('AWS_PROFILE')) {
-            error(sprintf('You need to specify YOLO_%s_AWS_PROFILE in your .env file before proceeding', strtoupper(Helpers::environment())));
+            error(sprintf('You need to specify YOLO_%s_AWS_PROFILE in your .env file before proceeding', strtoupper((string) Helpers::environment())));
 
             return 1;
         }
@@ -237,7 +237,7 @@ abstract class Command extends SymfonyCommand
             error(sprintf(
                 'AWS account mismatch: manifest declares %s, YOLO_%s_AWS_PROFILE resolves to %s. Check .env.',
                 Aws::accountId(),
-                strtoupper(Helpers::environment()),
+                strtoupper((string) Helpers::environment()),
                 $actual,
             ));
 
@@ -247,12 +247,12 @@ abstract class Command extends SymfonyCommand
         return true;
     }
 
-    protected function argument($key)
+    protected function argument(string $key)
     {
         return $this->input->getArgument($key);
     }
 
-    protected function option($key)
+    protected function option(string $key)
     {
         return $this->input->getOption($key);
     }

@@ -43,13 +43,13 @@ function bindRecordingS3Client(array $byCommand = []): object
     return $recorder;
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 });
 
-it('is env-scoped and named yolo-{env}-alb-logs', function () {
+it('is env-scoped and named yolo-{env}-alb-logs', function (): void {
     $bucket = new S3LoadBalancerLogs();
 
     expect($bucket->name())->toBe('yolo-testing-alb-logs')
@@ -58,7 +58,7 @@ it('is env-scoped and named yolo-{env}-alb-logs', function () {
         ->and($bucket->tags())->toBe(['Name' => 'yolo-testing-alb-logs', 'yolo:scope' => 'env']);
 });
 
-it('reconciles BPA + versioning + the log-delivery policy when none of them match', function () {
+it('reconciles BPA + versioning + the log-delivery policy when none of them match', function (): void {
     $recorder = bindRecordingS3Client();
 
     $changes = (new S3LoadBalancerLogs())->synchroniseConfiguration();
@@ -76,14 +76,14 @@ it('reconciles BPA + versioning + the log-delivery policy when none of them matc
         ->toContain('bucket-policy');
 });
 
-it('grants ELB access-log delivery to the log-delivery service principal over the whole bucket', function () {
+it('grants ELB access-log delivery to the log-delivery service principal over the whole bucket', function (): void {
     $recorder = bindRecordingS3Client();
 
     (new S3LoadBalancerLogs())->synchroniseConfiguration();
 
     $put = collect($recorder->calls)->firstWhere('name', 'PutBucketPolicy');
 
-    $statement = json_decode($put['args']['Policy'], true)['Statement'][0];
+    $statement = json_decode((string) $put['args']['Policy'], true)['Statement'][0];
 
     expect($statement['Effect'])->toBe('Allow')
         ->and($statement['Principal'])->toBe(['Service' => 'logdelivery.elasticloadbalancing.amazonaws.com'])
@@ -95,7 +95,7 @@ it('grants ELB access-log delivery to the log-delivery service principal over th
         ->toBe('arn:aws:elasticloadbalancing:ap-southeast-2:111111111111:loadbalancer/*');
 });
 
-it('computes the diff without writing under apply:false', function () {
+it('computes the diff without writing under apply:false', function (): void {
     $recorder = bindRecordingS3Client();
 
     $changes = (new S3LoadBalancerLogs())->synchroniseConfiguration(apply: false);
@@ -110,7 +110,7 @@ it('computes the diff without writing under apply:false', function () {
         ->not->toContain('PutBucketPolicy');
 });
 
-it('does not rewrite a policy that already matches', function () {
+it('does not rewrite a policy that already matches', function (): void {
     // Bind a recorder whose GetBucketPolicy returns the exact desired document,
     // so the diff sees no drift and the apply pass skips the write.
     $resource = new S3LoadBalancerLogs();

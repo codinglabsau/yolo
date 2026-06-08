@@ -65,7 +65,7 @@ class Helpers
 
     public static function keyedEnvName(string $key): ?string
     {
-        $environment = strtoupper(static::environment());
+        $environment = strtoupper((string) static::environment());
 
         return "YOLO_{$environment}_$key";
     }
@@ -239,8 +239,8 @@ class Helpers
      * recursively; list order is preserved (it can be meaningful). Either side
      * may be null (no document present).
      *
-     * @param  array<string, mixed>|null  $a
-     * @param  array<string, mixed>|null  $b
+     * @param  array<mixed>|null  $a
+     * @param  array<mixed>|null  $b
      */
     public static function documentsEqual(?array $a, ?array $b): bool
     {
@@ -282,12 +282,10 @@ class Helpers
                     // recursive comparison failed or not an array
                     return true;
                 }
-            } else {
+            } elseif ($value !== $actual[$key]) {
                 // compare the values directly
-                if ($value !== $actual[$key]) {
-                    // values do not match
-                    return true;
-                }
+                // values do not match
+                return true;
             }
         }
 

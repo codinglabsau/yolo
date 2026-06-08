@@ -14,13 +14,13 @@ function describeTaskAndLoadBalancerGroups(): Result
     ]);
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 });
 
-it('authorises the load-balancer ingress rule on the apply pass when the dry-run key is absent', function () {
+it('authorises the load-balancer ingress rule on the apply pass when the dry-run key is absent', function (): void {
     // Regression: the apply pass flows the raw input options through, which no
     // longer carry a `dry-run` key (the option was dropped). The step must coerce
     // the absent flag to false rather than handing null to a bool-typed param.
@@ -47,7 +47,7 @@ it('authorises the load-balancer ingress rule on the apply pass when the dry-run
     expect(array_column($captured, 'name'))->not->toContain('RevokeSecurityGroupIngress');
 });
 
-it('does not authorise again when a matching load-balancer ingress rule already exists', function () {
+it('does not authorise again when a matching load-balancer ingress rule already exists', function (): void {
     $captured = [];
 
     bindMockEc2Client([
@@ -74,12 +74,12 @@ it('does not authorise again when a matching load-balancer ingress rule already 
     // The matching rule is already authorised, so the ingress reconcile records
     // nothing — otherwise every sync would surface phantom ingress drift.
     $ingressChanges = collect($step->changes())->filter(
-        fn ($change) => str_contains($change->attribute, 'ingress')
+        fn ($change): bool => str_contains((string) $change->attribute, 'ingress')
     );
     expect($ingressChanges)->toBeEmpty();
 });
 
-it('treats a manifest-specified task security group as custom-managed', function () {
+it('treats a manifest-specified task security group as custom-managed', function (): void {
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',
@@ -96,7 +96,7 @@ it('treats a manifest-specified task security group as custom-managed', function
     expect(array_column($captured, 'name'))->not->toContain('AuthorizeSecurityGroupIngress');
 });
 
-it('does not authorise during a dry-run', function () {
+it('does not authorise during a dry-run', function (): void {
     $captured = [];
 
     bindMockEc2Client([
@@ -109,7 +109,7 @@ it('does not authorise during a dry-run', function () {
     expect(array_column($captured, 'name'))->not->toContain('AuthorizeSecurityGroupIngress');
 });
 
-it('records a pending change on the plan pass when the rule is absent so the step survives the prune', function () {
+it('records a pending change on the plan pass when the rule is absent so the step survives the prune', function (): void {
     // Regression: the rule was written at create-time but recorded no Change on the
     // plan (dry-run) pass, so the runner's pending filter pruned the step before apply.
     // A task SG that exists without the rule (a create interrupted mid-flight) could

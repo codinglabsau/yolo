@@ -38,7 +38,7 @@ environments:
           max: 6
 YAML;
 
-it('updates an existing scalar and preserves comments, blank lines, ordering and spacing', function () use ($richManifest) {
+it('updates an existing scalar and preserves comments, blank lines, ordering and spacing', function () use ($richManifest): void {
     writeFormattedManifest($richManifest);
 
     Manifest::put('tasks.web.autoscaling.min', 3);
@@ -50,7 +50,7 @@ it('updates an existing scalar and preserves comments, blank lines, ordering and
     expect(file_get_contents(Paths::manifest()))->toBe($expected);
 });
 
-it('changes exactly one line', function () use ($richManifest) {
+it('changes exactly one line', function () use ($richManifest): void {
     writeFormattedManifest($richManifest);
 
     Manifest::put('tasks.web.autoscaling.max', 10);
@@ -63,7 +63,7 @@ it('changes exactly one line', function () use ($richManifest) {
     expect($differing->all())->toBe([12 => '          max: 10']);
 });
 
-it('inserts a missing key as the first child of its existing parent block', function () {
+it('inserts a missing key as the first child of its existing parent block', function (): void {
     writeFormattedManifest(<<<'YAML'
 name: my-app
 
@@ -80,7 +80,7 @@ YAML);
     expect(file_get_contents(Paths::manifest()))->toContain("        autoscaling:\n          min: 3\n          max: 6");
 });
 
-it('round-trips the inserted value through the manifest reader', function () {
+it('round-trips the inserted value through the manifest reader', function (): void {
     writeFormattedManifest(<<<'YAML'
 name: my-app
 
@@ -98,7 +98,7 @@ YAML);
     expect(Manifest::get('tasks.web.autoscaling.max'))->toBe(6);
 });
 
-it('quotes a string value only when it needs it', function () {
+it('quotes a string value only when it needs it', function (): void {
     writeFormattedManifest(<<<'YAML'
 name: my-app
 

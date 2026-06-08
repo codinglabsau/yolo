@@ -42,36 +42,36 @@ function bindRecordingAssetS3Client(array $byCommand): object
     return $recorder;
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 });
 
-it('names the asset bucket per app + environment', function () {
+it('names the asset bucket per app + environment', function (): void {
     expect((new AssetBucket())->name())->toBe('yolo-testing-my-app-assets');
 });
 
-it('derives the bucket ARN from the name', function () {
+it('derives the bucket ARN from the name', function (): void {
     expect((new AssetBucket())->arn())->toBe('arn:aws:s3:::yolo-testing-my-app-assets');
 });
 
-it('tags the bucket with its name and app owner', function () {
+it('tags the bucket with its name and app owner', function (): void {
     expect((new AssetBucket())->tags())->toBe(['Name' => 'yolo-testing-my-app-assets', 'yolo:scope' => 'app', 'yolo:app' => 'my-app']);
 });
 
-it('enforces the bucket CORS configuration through sync', function () {
+it('enforces the bucket CORS configuration through sync', function (): void {
     expect(new AssetBucket())->toBeInstanceOf(SynchronisesConfiguration::class);
 });
 
-it('returns no change and writes nothing when the bucket already has no CORS', function () {
+it('returns no change and writes nothing when the bucket already has no CORS', function (): void {
     $recorder = bindRecordingAssetS3Client(['GetBucketCors' => new Result([])]);
 
     expect((new AssetBucket())->synchroniseConfiguration())->toBe([]);
     expect($recorder->calls)->not->toContain('DeleteBucketCors');
 });
 
-it('returns a cors change and deletes the config when one is present', function () {
+it('returns a cors change and deletes the config when one is present', function (): void {
     $recorder = bindRecordingAssetS3Client([
         'GetBucketCors' => new Result(['CORSRules' => [['AllowedMethods' => ['GET'], 'AllowedOrigins' => ['*']]]]),
     ]);
@@ -84,7 +84,7 @@ it('returns a cors change and deletes the config when one is present', function 
     expect($recorder->calls)->toContain('DeleteBucketCors');
 });
 
-it('reports the cors removal without writing under apply:false', function () {
+it('reports the cors removal without writing under apply:false', function (): void {
     $recorder = bindRecordingAssetS3Client([
         'GetBucketCors' => new Result(['CORSRules' => [['AllowedMethods' => ['GET'], 'AllowedOrigins' => ['*']]]]),
     ]);

@@ -68,7 +68,7 @@ trait RunsSteppedCommands
 
         $this->printPlan($plan, $skipped);
 
-        $pending = $plan->filter(fn (array $entry) => static::planEntryHasWork($entry))->values();
+        $pending = $plan->filter(fn (array $entry): bool => static::planEntryHasWork($entry))->values();
 
         // --check is a CI gate: plan only, never apply, and exit non-zero when
         // the environment has drifted so a pipeline can fail on unsynced infra.
@@ -98,7 +98,7 @@ trait RunsSteppedCommands
 
         // Apply pass only over the pending entries — the plan-clean steps are
         // already verified in sync and don't need a second Describe* + tag re-put.
-        $applyPlan = $pending->map(fn (array $entry) => [
+        $applyPlan = $pending->map(fn (array $entry): array => [
             'scope' => $entry['scope'],
             'step' => $entry['step'],
         ])->values();
@@ -127,9 +127,7 @@ trait RunsSteppedCommands
      */
     protected static function planEntryHasWork(array $entry): bool
     {
-        return $entry['status'] === StepResult::WOULD_CREATE
-            || $entry['status'] === StepResult::WOULD_SYNC
-            || $entry['status'] === StepResult::WOULD_DELETE
+        return in_array($entry['status'], [StepResult::WOULD_CREATE, StepResult::WOULD_SYNC, StepResult::WOULD_DELETE], true)
             || $entry['changes'] !== [];
     }
 
@@ -174,7 +172,7 @@ trait RunsSteppedCommands
     {
         $this->output->writeln('  <options=bold>Will sync</>');
 
-        $plan->groupBy('scope')->each(function (Collection $entries, string $scope) {
+        $plan->groupBy('scope')->each(function (Collection $entries, string $scope): void {
             $this->output->writeln(sprintf('  <fg=green>✔</> %s <fg=gray>(%d)</>', $scope, $entries->count()));
         });
 
@@ -224,7 +222,7 @@ trait RunsSteppedCommands
             ? $this->input->getOptions()
             : [...$this->input->getOptions(), 'dry-run' => true];
 
-        $ran = $plan->values()->map(function (array $entry, int $i) use ($progress, $now, $multiScope, $options) {
+        $ran = $plan->values()->map(function (array $entry, int $i) use ($progress, $now, $multiScope, $options): array {
             $step = $entry['step'];
 
             $label = $multiScope
@@ -251,7 +249,7 @@ trait RunsSteppedCommands
      */
     protected function resetRecordedChanges(Collection $planned): void
     {
-        $planned->each(function (array $entry) {
+        $planned->each(function (array $entry): void {
             if (method_exists($entry['step'], 'resetChanges')) {
                 $entry['step']->resetChanges();
             }
@@ -273,7 +271,7 @@ trait RunsSteppedCommands
         // message up front and tick an elapsed-time heartbeat on every waiter
         // poll (the one moment control returns to us mid-wait) so the bar keeps
         // moving. Plain steps keep the original elapsed-since-start hint.
-        if ($step instanceof LongRunning && $progress !== null) {
+        if ($step instanceof LongRunning && $progress instanceof Progress) {
             $progress->label($label)->hint($step->patienceMessage())->render();
 
             WaitReporter::using(fn () => $progress->label($label)
@@ -286,17 +284,9 @@ trait RunsSteppedCommands
         }
 
         try {
-            $status = $step->__invoke($options, $this);
+            $status = $step->__invoke($options);
         } finally {
             WaitReporter::clear();
-        }
-
-        // Build steps return void, and HasSubSteps steps return their sub-step
-        // array (load-bearing for expandStep) — neither is a StepResult. Steps
-        // signal failure by throwing, so a step that returned at all succeeded:
-        // render it as such rather than handing renderStatus a non-StepResult.
-        if (! $status instanceof StepResult && ! is_string($status)) {
-            $status = StepResult::SUCCESS;
         }
 
         $progress?->advance();
@@ -325,8 +315,8 @@ trait RunsSteppedCommands
 
         $lastScope = null;
 
-        $rows = $ran->map(function (array $result) use (&$lastScope, $multiScope) {
-            $row = [$result['index']];
+        $rows = $ran->map(function (array $result) use (&$lastScope, $multiScope): array {
+            $row = [(string) $result['index']];
 
             if ($multiScope) {
                 $row[] = $result['scope'] === $lastScope ? '' : $result['scope'];
@@ -364,7 +354,7 @@ trait RunsSteppedCommands
      */
     protected function renderWillCreate(Collection $plan, bool $multiScope): void
     {
-        $creating = $plan->filter(fn (array $entry) => $entry['status'] === StepResult::WOULD_CREATE);
+        $creating = $plan->filter(fn (array $entry): bool => $entry['status'] === StepResult::WOULD_CREATE);
 
         if ($creating->isEmpty()) {
             return;
@@ -373,7 +363,7 @@ trait RunsSteppedCommands
         $this->output->writeln('');
         $this->output->writeln('  <options=bold>Will create</>');
 
-        $creating->each(function (array $entry) use ($multiScope) {
+        $creating->each(function (array $entry) use ($multiScope): void {
             $this->output->writeln(sprintf('  <fg=green>+</> %s', static::planEntryLabel($entry, $multiScope)));
         });
     }
@@ -389,7 +379,7 @@ trait RunsSteppedCommands
      */
     protected function renderPendingChanges(Collection $plan, bool $multiScope): void
     {
-        $withChanges = $plan->filter(fn (array $entry) => $entry['changes'] !== []);
+        $withChanges = $plan->filter(fn (array $entry): bool => $entry['changes'] !== []);
 
         if ($withChanges->isEmpty()) {
             return;
@@ -398,7 +388,7 @@ trait RunsSteppedCommands
         $this->output->writeln('');
         $this->output->writeln('  <options=bold>Pending changes</>');
 
-        $withChanges->each(function (array $entry) use ($multiScope) {
+        $withChanges->each(function (array $entry) use ($multiScope): void {
             $this->output->writeln(sprintf('  <fg=cyan>%s</>', static::planEntryLabel($entry, $multiScope)));
 
             foreach ($entry['changes'] as $change) {
@@ -444,8 +434,8 @@ trait RunsSteppedCommands
         $this->output->writeln('  <options=bold>Skipping</>');
 
         $skipped
-            ->groupBy(fn (array $entry) => $entry['scope'] . '|' . $entry['reason'])
-            ->each(function (Collection $group) use ($verbose) {
+            ->groupBy(fn (array $entry): string => $entry['scope'] . '|' . $entry['reason'])
+            ->each(function (Collection $group) use ($verbose): void {
                 $first = $group->first();
 
                 $this->output->writeln(sprintf(
@@ -489,7 +479,7 @@ trait RunsSteppedCommands
 
         $options = $this->input->getOptions();
 
-        $output = $steps->map(function (Step $step, int $i) use ($progress, $now, $options) {
+        $output = $steps->map(function (Step $step, int $i) use ($progress, $now, $options): array {
             ['status' => $status, 'elapsed' => $elapsed] = $this->invokeStep($step, $progress, static::normaliseStep($step), $now, $options);
 
             return [
@@ -504,7 +494,7 @@ trait RunsSteppedCommands
 
         table(
             ['Step', 'Description', 'Status', 'Elapsed'],
-            $output->map(fn ($step) => [
+            $output->map(fn ($step): array => [
                 $step[0],
                 $step[1],
                 $step[2],
@@ -530,17 +520,20 @@ trait RunsSteppedCommands
     protected function expandStep(Step $step, string $environment): array
     {
         if ($step instanceof HasSubSteps) {
-            return collect($step->__invoke())
-                ->map(fn (string $subStepName) => match (true) {
+            $subSteps = array_map(
+                fn (string $subStepName): Step => match (true) {
                     $step instanceof RunsOnBuild => new ExecuteBuildCommandStep($environment, $subStepName),
-                })
-                ->prepend($step)
-                ->all();
+                    default => throw new \LogicException('Sub-steps are only supported for build steps.'),
+                },
+                $step->subSteps(),
+            );
+
+            return [$step, ...$subSteps];
         }
 
         if ($step instanceof ExecutesTenantStep) {
             return collect($this->tenantsToExpand())
-                ->map(function (array $config, string $tenantId) use ($step) {
+                ->map(function (array $config, string $tenantId) use ($step): ExecutesTenantStep {
                     $clone = clone $step;
 
                     $clone->setTenantId($tenantId)
@@ -594,22 +587,24 @@ trait RunsSteppedCommands
             // red
             StepResult::MANIFEST_INVALID => '<fg=red>MANIFEST INVALID</>',
             StepResult::TIMEOUT => '<fg=red>TIMEOUT</>',
-            default => is_string($status) ? $status : '',
+            default => $status,
         };
     }
 
     protected static function normaliseStep(Step $step, $pad = false, $bold = false, $arrow = false): string
     {
+        $tenantPrefix = $step instanceof ExecutesTenantStep ? "[{$step->tenantId()}] " : '';
+
         $name = match (true) {
             $step instanceof ExecutesCommandStep => Str::of($step->name())
                 ->when($arrow, fn (Stringable $string) => $string->prepend($arrow ? ' ➡ ' : '')),
-            default => Str::of(get_class($step))
+            default => Str::of($step::class)
                 ->classBasename()
                 ->replaceLast('Step', '')
                 ->headline()
                 ->lower()
                 ->ucfirst()
-                ->when($step instanceof ExecutesTenantStep, fn (Stringable $string) => $string->prepend('[' . $step->tenantId() . '] '))
+                ->when($step instanceof ExecutesTenantStep, fn (Stringable $string) => $string->prepend($tenantPrefix))
                 ->when($bold && ! $step instanceof ExecutesTenantStep, fn (Stringable $string) => $string->wrap(before: '<options=bold>', after: '</>'))
         };
 

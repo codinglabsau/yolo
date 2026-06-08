@@ -6,22 +6,22 @@ class Paths
 {
     public static function base($path = null): string
     {
-        return BASE_PATH . ($path ? '/' . ltrim($path, '/') : '');
+        return BASE_PATH . ($path ? '/' . ltrim((string) $path, '/') : '');
     }
 
     public static function yolo($path = null): string
     {
-        return static::base('/.yolo' . ($path ? '/' . ltrim($path, '/') : ''));
+        return static::base('/.yolo' . ($path ? '/' . ltrim((string) $path, '/') : ''));
     }
 
     public static function build($path = null): string
     {
-        return static::yolo('build' . ($path ? '/' . ltrim($path, '/') : ''));
+        return static::yolo('build' . ($path ? '/' . ltrim((string) $path, '/') : ''));
     }
 
     public static function stubs($path = null): string
     {
-        return __DIR__ . '/../stubs' . ($path ? '/' . ltrim($path, '/') : '');
+        return __DIR__ . '/../stubs' . ($path ? '/' . ltrim((string) $path, '/') : '');
     }
 
     public static function buildAssets(): string
@@ -85,7 +85,7 @@ class Paths
 
     public static function s3Artefacts(string $appVersion, $path = null): string
     {
-        return 'artefacts/' . $appVersion . ($path ? '/' . ltrim($path, '/') : '');
+        return 'artefacts/' . $appVersion . ($path ? '/' . ltrim((string) $path, '/') : '');
     }
 
     protected static function versionedBuildAssets(string $appVersion): string

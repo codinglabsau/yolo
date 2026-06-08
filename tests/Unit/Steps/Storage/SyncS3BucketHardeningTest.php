@@ -66,13 +66,13 @@ function s3NotFound(): S3Exception
     ]);
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 });
 
-it('locks down and versions a newly created artefact bucket', function () {
+it('locks down and versions a newly created artefact bucket', function (): void {
     $captured = [];
 
     bindMockS3Client([
@@ -104,7 +104,7 @@ it('locks down and versions a newly created artefact bucket', function () {
     expect($versioning['args']['VersioningConfiguration']['Status'])->toBe('Enabled');
 });
 
-it('reconciles BPA, versioning and the yolo:app tag onto an existing artefact bucket', function () {
+it('reconciles BPA, versioning and the yolo:app tag onto an existing artefact bucket', function (): void {
     $captured = [];
 
     bindMockS3Client([
@@ -126,12 +126,12 @@ it('reconciles BPA, versioning and the yolo:app tag onto an existing artefact bu
     // explicit tag sync that lets `yolo audit` attribute the bucket to its app.
     $tagging = collect($captured)->firstWhere('name', 'PutBucketTagging');
     $tags = collect($tagging['args']['Tagging']['TagSet'])
-        ->mapWithKeys(fn (array $tag) => [$tag['Key'] => $tag['Value']]);
+        ->mapWithKeys(fn (array $tag): array => [$tag['Key'] => $tag['Value']]);
 
     expect($tags['yolo:app'])->toBe('my-app');
 });
 
-it('reports drift but does not mutate the artefact bucket during a dry-run', function () {
+it('reports drift but does not mutate the artefact bucket during a dry-run', function (): void {
     $captured = [];
 
     bindMockS3Client([
@@ -148,7 +148,7 @@ it('reports drift but does not mutate the artefact bucket during a dry-run', fun
         ->not->toContain('PutBucketPolicy');
 });
 
-it('blocks public access on a newly created app bucket', function () {
+it('blocks public access on a newly created app bucket', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
     ]);
@@ -166,7 +166,7 @@ it('blocks public access on a newly created app bucket', function () {
     expect(array_column($captured, 'name'))->toContain('PutPublicAccessBlock');
 });
 
-it('does not flip public access on an existing app bucket', function () {
+it('does not flip public access on an existing app bucket', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
     ]);
@@ -181,7 +181,7 @@ it('does not flip public access on an existing app bucket', function () {
     expect(array_column($captured, 'name'))->not->toContain('PutPublicAccessBlock');
 });
 
-it('applies the browser-upload CORS to a newly created app bucket', function () {
+it('applies the browser-upload CORS to a newly created app bucket', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
     ]);
@@ -202,7 +202,7 @@ it('applies the browser-upload CORS to a newly created app bucket', function () 
         ->toContain('PutBucketCors');
 });
 
-it('reconciles CORS onto an existing app bucket without flipping public access', function () {
+it('reconciles CORS onto an existing app bucket without flipping public access', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
     ]);
@@ -220,7 +220,7 @@ it('reconciles CORS onto an existing app bucket without flipping public access',
         ->not->toContain('PutPublicAccessBlock');   // BPA stays create-only
 });
 
-it('reports CORS drift but writes nothing on a dry-run of an existing app bucket', function () {
+it('reports CORS drift but writes nothing on a dry-run of an existing app bucket', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
     ]);
@@ -239,7 +239,7 @@ it('reports CORS drift but writes nothing on a dry-run of an existing app bucket
         ->not->toContain('PutBucketTagging');
 });
 
-it('writes no CORS when an existing app bucket already matches the managed ruleset', function () {
+it('writes no CORS when an existing app bucket already matches the managed ruleset', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
     ]);
@@ -260,7 +260,7 @@ it('writes no CORS when an existing app bucket already matches the managed rules
     expect(array_column($captured, 'name'))->not->toContain('PutBucketCors');
 });
 
-it('never puts a bucket policy on the artefact bucket (log-delivery moved to S3LoadBalancerLogs)', function () {
+it('never puts a bucket policy on the artefact bucket (log-delivery moved to S3LoadBalancerLogs)', function (): void {
     // The artefacts bucket previously doubled as the ALB access-log destination,
     // which forced its policy to grant logdelivery.elasticloadbalancing.amazonaws.com
     // — but that put env-scoped policy logic on an app-scoped bucket and

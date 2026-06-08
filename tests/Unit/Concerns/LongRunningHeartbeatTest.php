@@ -55,7 +55,7 @@ function longRunningStep(): LongRunning
 
 afterEach(fn () => WaitReporter::clear());
 
-it('renders the patience message and an elapsed heartbeat on each poll', function () {
+it('renders the patience message and an elapsed heartbeat on each poll', function (): void {
     $progress = quietProgress();
 
     invokeStepWithProgress(longRunningStep(), $progress);
@@ -65,7 +65,7 @@ it('renders the patience message and an elapsed heartbeat on each poll', functio
         ->toContain('elapsed');
 });
 
-it('clears the reporter after the step so a later poll cannot redraw a finished bar', function () {
+it('clears the reporter after the step so a later poll cannot redraw a finished bar', function (): void {
     $progress = quietProgress();
 
     invokeStepWithProgress(longRunningStep(), $progress);

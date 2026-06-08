@@ -29,13 +29,13 @@ function invokeAccountGuard(): bool
     return $method->invoke($command);
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     $buffer = new BufferedOutput();
     Prompt::setOutput($buffer);
     test()->promptOutput = $buffer;
 });
 
-it('returns true when the manifest account matches the resolved STS account', function () {
+it('returns true when the manifest account matches the resolved STS account', function (): void {
     writeManifest([
         'account-id' => '848509375702', 'region' => 'ap-southeast-2',
     ]);
@@ -45,7 +45,7 @@ it('returns true when the manifest account matches the resolved STS account', fu
     expect(invokeAccountGuard())->toBeTrue();
 });
 
-it('returns false and surfaces both account IDs + env var name on mismatch', function () {
+it('returns false and surfaces both account IDs + env var name on mismatch', function (): void {
     writeManifest([
         'account-id' => '848509375702', 'region' => 'ap-southeast-2',
     ]);

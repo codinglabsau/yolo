@@ -43,31 +43,31 @@ trait RegistersAws
         ];
 
         // register all required AWS clients
-        Helpers::app()->singleton('acm', fn () => new AcmClient($arguments));
-        Helpers::app()->singleton('applicationAutoScaling', fn () => new ApplicationAutoScalingClient($arguments));
-        Helpers::app()->singleton('codeDeploy', fn () => new CodeDeployClient($arguments));
-        Helpers::app()->singleton('cloudWatch', fn () => new CloudWatchClient($arguments));
-        Helpers::app()->singleton('cloudWatchLogs', fn () => new CloudWatchLogsClient($arguments));
+        Helpers::app()->singleton('acm', fn (): AcmClient => new AcmClient($arguments));
+        Helpers::app()->singleton('applicationAutoScaling', fn (): ApplicationAutoScalingClient => new ApplicationAutoScalingClient($arguments));
+        Helpers::app()->singleton('codeDeploy', fn (): CodeDeployClient => new CodeDeployClient($arguments));
+        Helpers::app()->singleton('cloudWatch', fn (): CloudWatchClient => new CloudWatchClient($arguments));
+        Helpers::app()->singleton('cloudWatchLogs', fn (): CloudWatchLogsClient => new CloudWatchLogsClient($arguments));
         // CloudFront is a global service — its control-plane API only lives in us-east-1.
-        Helpers::app()->singleton('cloudFront', fn () => new CloudFrontClient([...$arguments, 'region' => 'us-east-1']));
-        Helpers::app()->singleton('ec2', fn () => new Ec2Client($arguments));
-        Helpers::app()->singleton('elastiCache', fn () => new ElastiCacheClient($arguments));
-        Helpers::app()->singleton('ecr', fn () => new EcrClient($arguments));
-        Helpers::app()->singleton('ecs', fn () => new EcsClient($arguments));
-        Helpers::app()->singleton('eventBridge', fn () => new EventBridgeClient($arguments));
-        Helpers::app()->singleton('elasticLoadBalancingV2', fn () => new ElasticLoadBalancingV2Client($arguments));
-        Helpers::app()->singleton('iam', fn () => new IamClient($arguments));
-        Helpers::app()->singleton('rds', fn () => new RdsClient($arguments));
-        Helpers::app()->singleton('resourceGroupsTaggingApi', fn () => new ResourceGroupsTaggingAPIClient($arguments));
+        Helpers::app()->singleton('cloudFront', fn (): CloudFrontClient => new CloudFrontClient([...$arguments, 'region' => 'us-east-1']));
+        Helpers::app()->singleton('ec2', fn (): Ec2Client => new Ec2Client($arguments));
+        Helpers::app()->singleton('elastiCache', fn (): ElastiCacheClient => new ElastiCacheClient($arguments));
+        Helpers::app()->singleton('ecr', fn (): EcrClient => new EcrClient($arguments));
+        Helpers::app()->singleton('ecs', fn (): EcsClient => new EcsClient($arguments));
+        Helpers::app()->singleton('eventBridge', fn (): EventBridgeClient => new EventBridgeClient($arguments));
+        Helpers::app()->singleton('elasticLoadBalancingV2', fn (): ElasticLoadBalancingV2Client => new ElasticLoadBalancingV2Client($arguments));
+        Helpers::app()->singleton('iam', fn (): IamClient => new IamClient($arguments));
+        Helpers::app()->singleton('rds', fn (): RdsClient => new RdsClient($arguments));
+        Helpers::app()->singleton('resourceGroupsTaggingApi', fn (): ResourceGroupsTaggingAPIClient => new ResourceGroupsTaggingAPIClient($arguments));
         // The Tagging API is regional; global-service resources (IAM, CloudFront, Route 53) are only
         // returned by a us-east-1 query, so the audit needs a second client pinned there to see them.
-        Helpers::app()->singleton('resourceGroupsTaggingApiGlobal', fn () => new ResourceGroupsTaggingAPIClient([...$arguments, 'region' => 'us-east-1']));
-        Helpers::app()->singleton('route53', fn () => new Route53Client($arguments));
-        Helpers::app()->singleton('s3', fn () => new S3Client($arguments));
-        Helpers::app()->singleton('sns', fn () => new SnsClient($arguments));
-        Helpers::app()->singleton('sqs', fn () => new SqsClient($arguments));
-        Helpers::app()->singleton('ssm', fn () => new SsmClient($arguments));
-        Helpers::app()->singleton('sts', fn () => new StsClient($arguments));
+        Helpers::app()->singleton('resourceGroupsTaggingApiGlobal', fn (): ResourceGroupsTaggingAPIClient => new ResourceGroupsTaggingAPIClient([...$arguments, 'region' => 'us-east-1']));
+        Helpers::app()->singleton('route53', fn (): Route53Client => new Route53Client($arguments));
+        Helpers::app()->singleton('s3', fn (): S3Client => new S3Client($arguments));
+        Helpers::app()->singleton('sns', fn (): SnsClient => new SnsClient($arguments));
+        Helpers::app()->singleton('sqs', fn (): SqsClient => new SqsClient($arguments));
+        Helpers::app()->singleton('ssm', fn (): SsmClient => new SsmClient($arguments));
+        Helpers::app()->singleton('sts', fn (): StsClient => new StsClient($arguments));
     }
 
     protected static function awsCredentials(): callable|array|null
@@ -145,7 +145,7 @@ trait RegistersAws
                 ->get('http://169.254.169.254/latest/meta-data/instance-id');
 
             return true;
-        } catch (ConnectException $e) {
+        } catch (ConnectException) {
         }
 
         return false;

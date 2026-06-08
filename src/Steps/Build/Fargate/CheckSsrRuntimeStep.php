@@ -33,7 +33,7 @@ class CheckSsrRuntimeStep implements Step
         protected Filesystem $filesystem = new Filesystem()
     ) {}
 
-    public function __invoke(): StepResult
+    public function __invoke(array $options = []): StepResult
     {
         if (! Manifest::bundles('ssr')) {
             return StepResult::SKIPPED;

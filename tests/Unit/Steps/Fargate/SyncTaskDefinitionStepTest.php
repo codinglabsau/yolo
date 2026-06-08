@@ -7,7 +7,7 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Steps\Sync\App\SyncTaskDefinitionStep;
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => [
@@ -27,7 +27,7 @@ beforeEach(function () {
     ]);
 });
 
-it('renders a Fargate-compatible task definition payload', function () {
+it('renders a Fargate-compatible task definition payload', function (): void {
     $payload = SyncTaskDefinitionStep::payload();
 
     expect($payload['family'])->toBe('yolo-testing-my-app-web');
@@ -39,7 +39,7 @@ it('renders a Fargate-compatible task definition payload', function () {
     expect($payload['taskRoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-my-app-ecs-task-role');
 });
 
-it('renders web container with manifest port', function () {
+it('renders web container with manifest port', function (): void {
     $payload = SyncTaskDefinitionStep::payload();
 
     expect($payload['containerDefinitions'])->toHaveCount(1);
@@ -51,21 +51,21 @@ it('renders web container with manifest port', function () {
     ]);
 });
 
-it('defaults image to the app ECR repository when not overridden', function () {
+it('defaults image to the app ECR repository when not overridden', function (): void {
     $payload = SyncTaskDefinitionStep::payload();
 
     expect($payload['containerDefinitions'][0]['image'])
         ->toBe('111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/my-app:latest');
 });
 
-it('pins image to the supplied tag when one is passed', function () {
+it('pins image to the supplied tag when one is passed', function (): void {
     $payload = SyncTaskDefinitionStep::payload(imageTag: '26.21.2.1500');
 
     expect($payload['containerDefinitions'][0]['image'])
         ->toBe('111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/my-app:26.21.2.1500');
 });
 
-it('names the container after the role and passes it as the command', function () {
+it('names the container after the role and passes it as the command', function (): void {
     $payload = SyncTaskDefinitionStep::payload(ServerGroup::QUEUE);
 
     expect($payload['family'])->toBe('yolo-testing-my-app-queue');
@@ -73,12 +73,12 @@ it('names the container after the role and passes it as the command', function (
     expect($payload['containerDefinitions'][0]['command'])->toBe(['queue']);
 });
 
-it('maps no port for a headless worker group (queue/scheduler)', function () {
+it('maps no port for a headless worker group (queue/scheduler)', function (): void {
     expect(SyncTaskDefinitionStep::payload(ServerGroup::SCHEDULER)['containerDefinitions'][0])
         ->not->toHaveKey('portMappings');
 });
 
-it('sizes queue and scheduler smaller by default than web', function () {
+it('sizes queue and scheduler smaller by default than web', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
@@ -95,7 +95,7 @@ it('sizes queue and scheduler smaller by default than web', function () {
     expect($queue['memory'])->toBe('512');
 });
 
-it('falls back to defaults when manifest omits task config', function () {
+it('falls back to defaults when manifest omits task config', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
@@ -114,12 +114,12 @@ it('falls back to defaults when manifest omits task config', function () {
     expect($payload['executionRoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role');
 });
 
-it('wires the container stop timeout to the shutdown-timings resolver', function () {
+it('wires the container stop timeout to the shutdown-timings resolver', function (): void {
     expect(SyncTaskDefinitionStep::payload()['containerDefinitions'][0]['stopTimeout'])
         ->toBe(ShutdownTimings::stopTimeoutFor(ServerGroup::WEB));
 });
 
-it('enables init process in the web container for proper PID 1 signal handling', function () {
+it('enables init process in the web container for proper PID 1 signal handling', function (): void {
     $payload = SyncTaskDefinitionStep::payload();
 
     expect($payload['containerDefinitions'][0]['linuxParameters'])->toBe([
@@ -127,7 +127,7 @@ it('enables init process in the web container for proper PID 1 signal handling',
     ]);
 });
 
-it('tags the task definition with the environment', function () {
+it('tags the task definition with the environment', function (): void {
     $payload = SyncTaskDefinitionStep::payload();
 
     expect($payload['tags'])->toContain(['key' => 'yolo:environment', 'value' => 'testing']);
@@ -143,7 +143,7 @@ function liveTaskDefinition(array $overrides = []): array
     );
 }
 
-it('is in sync when the registered revision already renders the desired payload', function () {
+it('is in sync when the registered revision already renders the desired payload', function (): void {
     // The acceptance criterion: a no-op sync must not register a fresh revision —
     // it records no change, gets pruned before apply, and lets the sync report
     // "Already in sync".
@@ -158,7 +158,7 @@ it('is in sync when the registered revision already renders the desired payload'
     expect(array_column($captured, 'name'))->not->toContain('RegisterTaskDefinition');
 });
 
-it('records drift on the plan pass and registers a new revision on apply', function () {
+it('records drift on the plan pass and registers a new revision on apply', function (): void {
     // A drifted attribute (here the CPU sizing) the live revision no longer matches.
     $drifted = liveTaskDefinition(['cpu' => '9999']);
 
@@ -181,7 +181,7 @@ it('records drift on the plan pass and registers a new revision on apply', funct
     expect(array_column($captured, 'name'))->toContain('RegisterTaskDefinition');
 });
 
-it('ignores AWS-derived enrichment fields when diffing (no phantom drift)', function () {
+it('ignores AWS-derived enrichment fields when diffing (no phantom drift)', function (): void {
     // The live revision carries fields YOLO never sets (revision, status, ARN, and
     // container-level defaults). These must not read as drift.
     $live = liveTaskDefinition();

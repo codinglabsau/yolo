@@ -43,7 +43,7 @@ class RunCommand extends Command
         // the first group that has a running task. Each group is its own ECS
         // service now, so a lookup that misses just falls through to the next.
         $groups = ($group = $this->option('group'))
-            ? array_map('trim', explode(',', $group))
+            ? array_map(trim(...), explode(',', (string) $group))
             : ['scheduler', 'queue', 'web'];
 
         $fanOut = (bool) $group;
@@ -99,7 +99,7 @@ class RunCommand extends Command
             $process->setTty(true);
         }
 
-        return $process->run(fn ($type, $buffer) => $this->output->write($buffer));
+        return $process->run(fn ($type, string|iterable $buffer) => $this->output->write($buffer));
     }
 
     /**

@@ -34,7 +34,7 @@ class GenerateSupervisorConfigStep implements Step
         protected $filesystem = new Filesystem()
     ) {}
 
-    public function __invoke(): StepResult
+    public function __invoke(array $options = []): StepResult
     {
         // The web container always runs supervisord (octane + whatever it hosts).
         $this->writeConfig('docker/supervisord.conf', ServerGroup::WEB);

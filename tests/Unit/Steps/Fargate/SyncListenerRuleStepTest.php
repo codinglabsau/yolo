@@ -1,10 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 use Codinglabs\Yolo\Resources\ElbV2\ListenerRule;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
-describe('routedHosts', function () {
-    it('routes apex + www.apex when domain matches apex', function () {
+describe('routedHosts', function (): void {
+    it('routes apex + www.apex when domain matches apex', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'domain' => 'codinglabs.com.au',
@@ -14,7 +16,7 @@ describe('routedHosts', function () {
             ->toBe(['codinglabs.com.au', 'www.codinglabs.com.au']);
     });
 
-    it('routes apex + www.apex when only apex is set', function () {
+    it('routes apex + www.apex when only apex is set', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'apex' => 'codinglabs.com.au',
@@ -24,7 +26,7 @@ describe('routedHosts', function () {
             ->toBe(['codinglabs.com.au', 'www.codinglabs.com.au']);
     });
 
-    it('routes only the literal domain when apex and domain differ', function () {
+    it('routes only the literal domain when apex and domain differ', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'apex' => 'codinglabs.com.au',
@@ -35,7 +37,7 @@ describe('routedHosts', function () {
             ->toBe(['fargate.codinglabs.com.au']);
     });
 
-    it('routes only the literal domain for tenant-style subdomains (apex ≠ domain)', function () {
+    it('routes only the literal domain for tenant-style subdomains (apex ≠ domain)', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'apex' => 'liveplatforms.net',
@@ -47,21 +49,21 @@ describe('routedHosts', function () {
     });
 });
 
-it('returns a priority within the 1000-49999 range', function () {
+it('returns a priority within the 1000-49999 range', function (): void {
     $priority = ListenerRule::nextAvailablePriority('my-app', []);
 
     expect($priority)->toBeGreaterThanOrEqual(1000)
         ->and($priority)->toBeLessThanOrEqual(49999);
 });
 
-it('returns a deterministic priority for the same name when no collisions', function () {
+it('returns a deterministic priority for the same name when no collisions', function (): void {
     $first = ListenerRule::nextAvailablePriority('my-app', []);
     $second = ListenerRule::nextAvailablePriority('my-app', []);
 
     expect($first)->toBe($second);
 });
 
-it('walks past collisions and stays within range', function () {
+it('walks past collisions and stays within range', function (): void {
     $base = ListenerRule::nextAvailablePriority('my-app', []);
 
     $next = ListenerRule::nextAvailablePriority('my-app', [$base]);
@@ -71,7 +73,7 @@ it('walks past collisions and stays within range', function () {
         ->and($next)->toBeLessThanOrEqual(49999);
 });
 
-it('wraps from the ceiling back to the floor on collision', function () {
+it('wraps from the ceiling back to the floor on collision', function (): void {
     $used = range(49000, 49999);
 
     $priority = ListenerRule::nextAvailablePriority('app-that-hashes-high', $used);
@@ -80,13 +82,13 @@ it('wraps from the ceiling back to the floor on collision', function () {
         ->and($priority)->toBeGreaterThanOrEqual(1000);
 });
 
-it('throws when the priority space is fully exhausted', function () {
+it('throws when the priority space is fully exhausted', function (): void {
     $used = range(1000, 49999);
 
     ListenerRule::nextAvailablePriority('my-app', $used);
 })->throws(IntegrityCheckException::class, 'priority space (1000-49999) exhausted');
 
-it('never returns a priority below the 1000 floor', function () {
+it('never returns a priority below the 1000 floor', function (): void {
     // Walk every name that crc32-hashes near the ceiling and assert no floor escape.
     foreach (range(0, 50) as $i) {
         $priority = ListenerRule::nextAvailablePriority("app-$i", []);

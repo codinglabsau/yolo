@@ -3,18 +3,18 @@
 use Aws\Result;
 use Codinglabs\Yolo\Resources\Iam\GithubOidcProvider;
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 });
 
-it('derives the provider ARN from the account id and the GitHub URL', function () {
+it('derives the provider ARN from the account id and the GitHub URL', function (): void {
     expect((new GithubOidcProvider())->arn())
         ->toBe('arn:aws:iam::111111111111:oidc-provider/token.actions.githubusercontent.com');
 });
 
-it('creates the provider with the sts audience and pinned thumbprints', function () {
+it('creates the provider with the sts audience and pinned thumbprints', function (): void {
     $captured = [];
 
     bindRoutedIamClient([], $captured);
@@ -36,7 +36,7 @@ it('creates the provider with the sts audience and pinned thumbprints', function
     ]);
 });
 
-it('reports the provider as existing when the ARN is in the account list', function () {
+it('reports the provider as existing when the ARN is in the account list', function (): void {
     $captured = [];
 
     bindRoutedIamClient([
@@ -50,7 +50,7 @@ it('reports the provider as existing when the ARN is in the account list', funct
     expect((new GithubOidcProvider())->exists())->toBeTrue();
 });
 
-it('reports the provider as absent when the list is empty', function () {
+it('reports the provider as absent when the list is empty', function (): void {
     $captured = [];
 
     bindRoutedIamClient([

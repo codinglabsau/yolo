@@ -34,7 +34,7 @@ trait AuthorisesTaskIngress
         }
 
         $alreadyAuthorised = collect(Ec2::securityGroupRules($groupId))->contains(
-            fn (array $rule) => ! ($rule['IsEgress'] ?? false)
+            fn (array $rule): bool => ! ($rule['IsEgress'] ?? false)
                 && ($rule['IpProtocol'] ?? null) === 'tcp'
                 && ($rule['FromPort'] ?? null) === $port
                 && ($rule['ReferencedGroupInfo']['GroupId'] ?? null) === $taskSecurityGroupId

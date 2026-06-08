@@ -4,13 +4,13 @@ use Aws\Result;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\ElastiCache\CacheCluster;
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'cache' => ['store' => 'redis'],
     ]);
 });
 
-it('is env-scoped and shared (no app segment, no yolo:app tag)', function () {
+it('is env-scoped and shared (no app segment, no yolo:app tag)', function (): void {
     $resource = new CacheCluster();
 
     expect($resource->scope())->toBe(Scope::Env);
@@ -18,7 +18,7 @@ it('is env-scoped and shared (no app segment, no yolo:app tag)', function () {
     expect($resource->tags())->not->toHaveKey('yolo:app');
 });
 
-it('creates a single-node Valkey replication group locked to the cache SG', function () {
+it('creates a single-node Valkey replication group locked to the cache SG', function (): void {
     $ec2 = [];
     $captured = [];
 
@@ -54,7 +54,7 @@ it('creates a single-node Valkey replication group locked to the cache SG', func
     expect($call['args']['SecurityGroupIds'])->toBe(['sg-cache1']);
 });
 
-it('reads the primary endpoint address', function () {
+it('reads the primary endpoint address', function (): void {
     $captured = [];
 
     bindMockElastiCacheClient([

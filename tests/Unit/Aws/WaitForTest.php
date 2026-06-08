@@ -8,7 +8,7 @@ beforeEach(fn () => writeManifest(['account-id' => '111111111111', 'region' => '
 
 afterEach(fn () => WaitReporter::clear());
 
-it('completes once the waiter reaches its success state and ticks the reporter each poll', function () {
+it('completes once the waiter reaches its success state and ticks the reporter each poll', function (): void {
     $captured = [];
 
     bindMockElastiCacheClient([
@@ -18,7 +18,7 @@ it('completes once the waiter reaches its success state and ticks the reporter e
     ], $captured);
 
     $ticks = 0;
-    WaitReporter::using(function () use (&$ticks) {
+    WaitReporter::using(function () use (&$ticks): void {
         $ticks++;
     });
 
@@ -32,7 +32,7 @@ it('completes once the waiter reaches its success state and ticks the reporter e
     expect(array_column($captured, 'name'))->toContain('DescribeReplicationGroups');
 });
 
-it('honours the timeout by capping attempts (timeout/interval) rather than the SDK default', function () {
+it('honours the timeout by capping attempts (timeout/interval) rather than the SDK default', function (): void {
     $captured = [];
 
     // Never becomes available → the waiter must give up at our computed cap.

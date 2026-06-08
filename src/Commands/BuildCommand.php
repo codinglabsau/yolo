@@ -42,6 +42,7 @@ class BuildCommand extends SteppedCommand
             ->setDescription('Prepare a build of the application for deployment');
     }
 
+    #[\Override]
     public function handle(): int
     {
         $appVersion = $this->option('app-version') ?? Carbon::now(Manifest::timezone())->format('y.W.N.Hi');

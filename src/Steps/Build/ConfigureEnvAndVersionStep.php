@@ -9,6 +9,7 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Contracts\Step;
+use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
 use Codinglabs\Yolo\Resources\ElastiCache\CacheCluster;
 use Codinglabs\Yolo\Resources\CloudFront\AssetDistribution;
@@ -20,7 +21,7 @@ class ConfigureEnvAndVersionStep implements Step
         protected $filesystem = new Filesystem()
     ) {}
 
-    public function __invoke(array $options): void
+    public function __invoke(array $options = []): StepResult
     {
         $appVersion = Arr::get($options, 'app-version');
         $envPath = Paths::build(".env.$this->environment");
@@ -118,6 +119,8 @@ class ConfigureEnvAndVersionStep implements Step
         }
 
         $this->filesystem->append($envPath, $this->generateValues($values));
+
+        return StepResult::SUCCESS;
     }
 
     protected function envDefines(string $path, string $key): bool
@@ -126,7 +129,7 @@ class ConfigureEnvAndVersionStep implements Step
             return false;
         }
 
-        return preg_match('/^' . preg_quote($key, '/') . '=/m', $this->filesystem->get($path)) === 1;
+        return preg_match('/^' . preg_quote($key, '/') . '=/m', (string) $this->filesystem->get($path)) === 1;
     }
 
     protected function generateValues(array $values): string

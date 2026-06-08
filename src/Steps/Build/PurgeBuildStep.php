@@ -14,7 +14,7 @@ class PurgeBuildStep implements Step
         protected $filesystem = new Filesystem()
     ) {}
 
-    public function __invoke(): StepResult
+    public function __invoke(array $options = []): StepResult
     {
         $this->filesystem->deleteDirectory(Paths::yolo());
 

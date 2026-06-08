@@ -2,7 +2,7 @@
 
 use Codinglabs\Yolo\Helpers;
 
-it('treats tagged releases (including pre-releases) as releases', function (string $version) {
+it('treats tagged releases (including pre-releases) as releases', function (string $version): void {
     expect(Helpers::isReleaseVersion($version))->toBeTrue();
 })->with([
     '1.0.0',
@@ -11,7 +11,7 @@ it('treats tagged releases (including pre-releases) as releases', function (stri
     '0.4.0',
 ]);
 
-it('treats branch and dev pins as non-releases', function (string $version) {
+it('treats branch and dev pins as non-releases', function (string $version): void {
     expect(Helpers::isReleaseVersion($version))->toBeFalse();
 })->with([
     'dev-main',
@@ -20,7 +20,7 @@ it('treats branch and dev pins as non-releases', function (string $version) {
     'unknown',
 ]);
 
-it('reports the installed package version', function () {
+it('reports the installed package version', function (): void {
     // Resolves the real installed version of the root package; we only assert it
     // is a non-empty string (the value differs between a tagged install and a
     // dev-* branch pin), since the fence's behaviour keys off isReleaseVersion().

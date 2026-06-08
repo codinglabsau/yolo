@@ -14,12 +14,12 @@ namespace Codinglabs\Yolo;
  * a Change directly with their own semantic from/to labels (e.g. 'absent' →
  * 'managed') rather than dumping a JSON blob.
  */
-final class Change
+final readonly class Change
 {
     public function __construct(
-        public readonly string $attribute,
-        public readonly ?string $from,
-        public readonly ?string $to,
+        public string $attribute,
+        public ?string $from,
+        public ?string $to,
     ) {}
 
     public static function make(string $attribute, mixed $from, mixed $to): self
