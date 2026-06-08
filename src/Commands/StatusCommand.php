@@ -52,11 +52,11 @@ class StatusCommand extends Command
 
             register_shutdown_function($restore);
             pcntl_async_signals(true);
-            pcntl_signal(SIGINT, function () use ($restore) {
+            pcntl_signal(SIGINT, function () use ($restore): void {
                 $restore();
                 exit(130);
             });
-            pcntl_signal(SIGTERM, function () use ($restore) {
+            pcntl_signal(SIGTERM, function () use ($restore): void {
                 $restore();
                 exit(143);
             });

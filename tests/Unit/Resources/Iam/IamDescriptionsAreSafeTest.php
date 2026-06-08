@@ -19,30 +19,30 @@ use Codinglabs\Yolo\Resources\Iam\MediaConvertRole;
  */
 const IAM_DESCRIPTION_PATTERN = '/^[\x{0009}\x{000A}\x{000D}\x{0020}-\x{007E}\x{00A1}-\x{00FF}]*$/u';
 
-it('EcsTaskRole description is safe for the IAM API', function () {
+it('EcsTaskRole description is safe for the IAM API', function (): void {
     expect((new EcsTaskRole())->description())->toMatch(IAM_DESCRIPTION_PATTERN);
 });
 
-it('EcsTaskPolicy description is safe for the IAM API', function () {
+it('EcsTaskPolicy description is safe for the IAM API', function (): void {
     expect((new EcsTaskPolicy())->description())->toMatch(IAM_DESCRIPTION_PATTERN);
 });
 
-it('EcsExecutionRole description is safe for the IAM API', function () {
+it('EcsExecutionRole description is safe for the IAM API', function (): void {
     expect((new EcsExecutionRole())->description())->toMatch(IAM_DESCRIPTION_PATTERN);
 });
 
-it('MediaConvertRole description is safe for the IAM API', function () {
+it('MediaConvertRole description is safe for the IAM API', function (): void {
     expect((new MediaConvertRole())->description())->toMatch(IAM_DESCRIPTION_PATTERN);
 });
 
-it('DeployerRole description is safe for the IAM API', function () {
+it('DeployerRole description is safe for the IAM API', function (): void {
     expect((new DeployerRole())->description())->toMatch(IAM_DESCRIPTION_PATTERN);
 });
 
-it('DeployerPolicy description is safe for the IAM API', function () {
+it('DeployerPolicy description is safe for the IAM API', function (): void {
     expect((new DeployerPolicy())->description())->toMatch(IAM_DESCRIPTION_PATTERN);
 });
 
-it('rejects an em dash so the regex actually catches the original bug', function () {
+it('rejects an em dash so the regex actually catches the original bug', function (): void {
     expect('YOLO managed ECS task role — shared default')->not->toMatch(IAM_DESCRIPTION_PATTERN);
 });

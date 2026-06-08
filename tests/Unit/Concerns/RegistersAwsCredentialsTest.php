@@ -25,7 +25,7 @@ function credentialsProxy(): object
     };
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
@@ -35,7 +35,7 @@ beforeEach(function () {
     Helpers::app()->instance('runningInAws', false);
 });
 
-afterEach(function () {
+afterEach(function (): void {
     putenv('CI');
     unset($_ENV['CI'], $_SERVER['CI']);
 });
@@ -49,7 +49,7 @@ function setEnv(array $values): void
     }
 }
 
-it('defers to the SDK default credential chain in CI', function () {
+it('defers to the SDK default credential chain in CI', function (): void {
     // The SDK's own providers resolve whatever the runner exported (GitHub OIDC
     // / SSO), so YOLO returns null and stays out of it.
     setEnv(['CI' => 'true']);
@@ -57,7 +57,7 @@ it('defers to the SDK default credential chain in CI', function () {
     expect(credentialsProxy()::credentials())->toBeNull();
 });
 
-it('requires an AWS profile for a genuinely local run', function () {
+it('requires an AWS profile for a genuinely local run', function (): void {
     // beforeEach binds runningInAws=false; ensure CI is unset so this is "local".
     putenv('CI');
     unset($_ENV['CI'], $_SERVER['CI']);
@@ -65,13 +65,13 @@ it('requires an AWS profile for a genuinely local run', function () {
     expect(credentialsProxy()::requiresProfile())->toBeTrue();
 });
 
-it('does not require an AWS profile in CI', function () {
+it('does not require an AWS profile in CI', function (): void {
     setEnv(['CI' => 'true']);
 
     expect(credentialsProxy()::requiresProfile())->toBeFalse();
 });
 
-it('does not require an AWS profile on AWS', function () {
+it('does not require an AWS profile on AWS', function (): void {
     Helpers::app()->instance('runningInAws', true);
 
     expect(credentialsProxy()::requiresProfile())->toBeFalse();

@@ -1,10 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 use Codinglabs\Yolo\WaitReporter;
 
 afterEach(fn () => WaitReporter::clear());
 
-it('is a no-op when no reporter is registered', function () {
+it('is a no-op when no reporter is registered', function (): void {
     // Nothing registered → poll() must not throw (the common case: a waiter
     // running outside a LongRunning step).
     WaitReporter::poll();
@@ -12,9 +14,9 @@ it('is a no-op when no reporter is registered', function () {
     expect(true)->toBeTrue();
 });
 
-it('invokes the registered reporter on poll', function () {
+it('invokes the registered reporter on poll', function (): void {
     $calls = 0;
-    WaitReporter::using(function () use (&$calls) {
+    WaitReporter::using(function () use (&$calls): void {
         $calls++;
     });
 
@@ -24,9 +26,9 @@ it('invokes the registered reporter on poll', function () {
     expect($calls)->toBe(2);
 });
 
-it('stops calling the reporter once cleared', function () {
+it('stops calling the reporter once cleared', function (): void {
     $calls = 0;
-    WaitReporter::using(function () use (&$calls) {
+    WaitReporter::using(function () use (&$calls): void {
         $calls++;
     });
 

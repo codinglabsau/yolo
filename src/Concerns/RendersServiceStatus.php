@@ -39,7 +39,7 @@ trait RendersServiceStatus
     protected static function gatherServiceStatuses(bool $withLoad = true): array
     {
         return array_map(
-            fn (ServerGroup $group) => static::gatherServiceStatus($group, $withLoad),
+            fn (ServerGroup $group): array => static::gatherServiceStatus($group, $withLoad),
             Manifest::serverGroups(),
         );
     }
@@ -128,7 +128,7 @@ trait RendersServiceStatus
         }
 
         $policies = array_values(array_filter(array_map(
-            fn (array $policy) => static::policyView($policy),
+            static::policyView(...),
             ApplicationAutoScaling::scalingPolicies(ScalableTarget::resourceId($group)),
         )));
 
@@ -339,7 +339,7 @@ trait RendersServiceStatus
 
         $bounds = sprintf('%d–%d auto', $scaling['min'], $scaling['max']);
 
-        $policies = array_map(fn (array $policy) => static::policyLabel($policy), $scaling['policies']);
+        $policies = array_map(static::policyLabel(...), $scaling['policies']);
 
         return $policies === [] ? $bounds : sprintf('%s (%s)', $bounds, implode(', ', $policies));
     }
@@ -441,7 +441,7 @@ trait RendersServiceStatus
     {
         return array_values(array_filter(
             $statuses,
-            fn (array $status) => ($status['rolloutState'] ?? null) === 'IN_PROGRESS',
+            fn (array $status): bool => ($status['rolloutState'] ?? null) === 'IN_PROGRESS',
         ));
     }
 
@@ -511,9 +511,7 @@ trait RendersServiceStatus
             $lines = [...$lines, ...$this->loadLines($statuses)];
         }
 
-        $lines = [...$lines, ...$this->dashboardLink()];
-
-        return $lines;
+        return [...$lines, ...$this->dashboardLink()];
     }
 
     /**

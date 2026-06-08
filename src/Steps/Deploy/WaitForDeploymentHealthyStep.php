@@ -63,7 +63,7 @@ class WaitForDeploymentHealthyStep implements Step
 
             $taskArns = Ecs::runningTasks($cluster, $service);
 
-            $tasks = empty($taskArns)
+            $tasks = $taskArns === []
                 ? []
                 : Aws::ecs()->describeTasks(['cluster' => $cluster, 'tasks' => $taskArns])['tasks'];
 
@@ -92,7 +92,7 @@ class WaitForDeploymentHealthyStep implements Step
     public static function newTasksAreHealthy(array $tasks, string $newRevision, int $desiredCount, array $targetHealth): bool
     {
         $newTaskIps = collect($tasks)
-            ->filter(fn (array $task) => ($task['taskDefinitionArn'] ?? null) === $newRevision)
+            ->filter(fn (array $task): bool => ($task['taskDefinitionArn'] ?? null) === $newRevision)
             ->map(fn (array $task) => data_get(
                 collect($task['attachments'] ?? [])
                     ->flatMap(fn (array $attachment) => $attachment['details'] ?? [])
@@ -107,7 +107,7 @@ class WaitForDeploymentHealthyStep implements Step
         }
 
         $healthyIps = collect($targetHealth)
-            ->filter(fn (array $target) => data_get($target, 'TargetHealth.State') === 'healthy')
+            ->filter(fn (array $target): bool => data_get($target, 'TargetHealth.State') === 'healthy')
             ->map(fn (array $target) => data_get($target, 'Target.Id'));
 
         return $newTaskIps->every(fn (string $ip) => $healthyIps->contains($ip));

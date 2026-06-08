@@ -34,6 +34,7 @@ class DeployCommand extends SteppedCommand
             ->setDescription('Build, push, and deploy the application');
     }
 
+    #[\Override]
     public function handle(): int
     {
         $build = (new BuildCommand())->execute($this->input, $this->output);

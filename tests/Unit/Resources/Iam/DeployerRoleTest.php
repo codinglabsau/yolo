@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 // The suite runs inside GitHub Actions (GITHUB_REPOSITORY set). Most tests pin
 // the repo via an explicit env-level `repository` so inference is deterministic;
 // clear GITHUB_REPOSITORY after each test so the env / unresolvable cases are too.
-afterEach(function () {
+afterEach(function (): void {
     putenv('GITHUB_REPOSITORY');
     unset($_ENV['GITHUB_REPOSITORY'], $_SERVER['GITHUB_REPOSITORY']);
 });
@@ -27,13 +27,13 @@ function deployerSubjectFor(array $environment): string
     return (new DeployerRole())->assumeRolePolicyDocument()['Statement'][0]['Condition']['StringLike']['token.actions.githubusercontent.com:sub'];
 }
 
-it('names the deployer role per app and environment', function () {
+it('names the deployer role per app and environment', function (): void {
     deployerManifest();
 
     expect((new DeployerRole())->name())->toBe('yolo-testing-my-app-deployer');
 });
 
-it('federates to the GitHub OIDC provider scoped to the repo and branch', function () {
+it('federates to the GitHub OIDC provider scoped to the repo and branch', function (): void {
     deployerManifest(['branch' => 'release']);
 
     expect((new DeployerRole())->assumeRolePolicyDocument())->toBe([
@@ -56,28 +56,28 @@ it('federates to the GitHub OIDC provider scoped to the repo and branch', functi
     ]);
 });
 
-it('defaults to the main branch when no ref is set', function () {
+it('defaults to the main branch when no ref is set', function (): void {
     expect(deployerSubjectFor([]))->toBe('repo:my-org/my-repo:ref:refs/heads/main');
 });
 
-it('scopes the trust to a branch (staging)', function () {
+it('scopes the trust to a branch (staging)', function (): void {
     expect(deployerSubjectFor(['branch' => 'develop']))->toBe('repo:my-org/my-repo:ref:refs/heads/develop');
 });
 
-it('scopes the trust to a tag pattern (production)', function () {
+it('scopes the trust to a tag pattern (production)', function (): void {
     expect(deployerSubjectFor(['tag' => 'v*']))->toBe('repo:my-org/my-repo:ref:refs/tags/v*');
 });
 
-it('treats tag: true as any tag', function () {
+it('treats tag: true as any tag', function (): void {
     expect(deployerSubjectFor(['tag' => true]))->toBe('repo:my-org/my-repo:ref:refs/tags/*');
 });
 
-it('throws when both a branch and a tag are set', function () {
-    expect(fn () => deployerSubjectFor(['branch' => 'main', 'tag' => 'v*']))
+it('throws when both a branch and a tag are set', function (): void {
+    expect(fn (): string => deployerSubjectFor(['branch' => 'main', 'tag' => 'v*']))
         ->toThrow(IntegrityCheckException::class);
 });
 
-it('infers the repository from GITHUB_REPOSITORY when the manifest omits it', function () {
+it('infers the repository from GITHUB_REPOSITORY when the manifest omits it', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
@@ -91,7 +91,7 @@ it('infers the repository from GITHUB_REPOSITORY when the manifest omits it', fu
         ->toBe('repo:codinglabsau/codinglabs:ref:refs/heads/main');
 });
 
-it('throws when the repository cannot be resolved', function () {
+it('throws when the repository cannot be resolved', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
@@ -101,6 +101,6 @@ it('throws when the repository cannot be resolved', function () {
     putenv('GITHUB_REPOSITORY');
     unset($_ENV['GITHUB_REPOSITORY'], $_SERVER['GITHUB_REPOSITORY']);
 
-    expect(fn () => (new DeployerRole())->assumeRolePolicyDocument())
+    expect(fn (): array => (new DeployerRole())->assumeRolePolicyDocument())
         ->toThrow(IntegrityCheckException::class);
 });

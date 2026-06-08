@@ -35,24 +35,24 @@ function invokeScale(array $arguments = [], array $options = [], string $environ
     $command->handle();
 }
 
-it('is named scale', function () {
+it('is named scale', function (): void {
     expect((new ScaleCommand())->getName())->toBe('scale');
 });
 
-it('is registered in the application', function () {
+it('is registered in the application', function (): void {
     $commands = (new ReflectionClass(Yolo::class))->getDefaultProperties()['commands'];
 
     expect($commands)->toContain(ScaleCommand::class);
 });
 
-it('shows desired count current → new for a fixed service', function () {
+it('shows desired count current → new for a fixed service', function (): void {
     expect(ScaleCommand::desiredCountRows(currentDesired: 1, running: 1, new: 3))->toBe([
         ['Desired count', '1', '3'],
         ['Running', '1', '—'],
     ]);
 });
 
-it('shows min/max and an autoscaling-managed desired count for the bounds path', function () {
+it('shows min/max and an autoscaling-managed desired count for the bounds path', function (): void {
     expect(ScaleCommand::boundsRows(live: ['min' => 1, 'max' => 6], newMin: 3, newMax: 10))->toBe([
         ['Min capacity', '1', '3'],
         ['Max capacity', '6', '10'],
@@ -60,11 +60,11 @@ it('shows min/max and an autoscaling-managed desired count for the bounds path',
     ]);
 });
 
-it('errors on --scheduler without touching AWS', function () {
+it('errors on --scheduler without touching AWS', function (): void {
     invokeScale(options: ['scheduler' => true]);
 })->throwsNoExceptions();
 
-it('queue: writes tasks.queue bounds and registers, allowing a zero floor', function () {
+it('queue: writes tasks.queue bounds and registers, allowing a zero floor', function (): void {
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',
@@ -88,7 +88,7 @@ it('queue: writes tasks.queue bounds and registers, allowing a zero floor', func
     expect(Manifest::get('tasks.queue.max'))->toBe(20);
 });
 
-it('queue: rejects a fixed desired count (always autoscaling-managed)', function () {
+it('queue: rejects a fixed desired count (always autoscaling-managed)', function (): void {
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',
@@ -105,7 +105,7 @@ it('queue: rejects a fixed desired count (always autoscaling-managed)', function
     expect(collect($ecs)->pluck('name'))->not->toContain('UpdateService');
 });
 
-it('fixed: sets the ECS desired count directly when no scalable target exists', function () {
+it('fixed: sets the ECS desired count directly when no scalable target exists', function (): void {
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',
@@ -126,7 +126,7 @@ it('fixed: sets the ECS desired count directly when no scalable target exists', 
     expect(collect($aa)->pluck('name'))->not->toContain('RegisterScalableTarget');
 });
 
-it('bounds: writes the manifest and registers when raising', function () {
+it('bounds: writes the manifest and registers when raising', function (): void {
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',
@@ -148,7 +148,7 @@ it('bounds: writes the manifest and registers when raising', function () {
     expect(Manifest::get('tasks.web.autoscaling.max'))->toBe(10);
 });
 
-it('bounds: does not reduce without confirmation', function () {
+it('bounds: does not reduce without confirmation', function (): void {
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',
@@ -167,7 +167,7 @@ it('bounds: does not reduce without confirmation', function () {
     expect(Manifest::get('tasks.web.autoscaling.min'))->toBe(5);
 });
 
-it('rejects a desired count on an autoscaling-managed service', function () {
+it('rejects a desired count on an autoscaling-managed service', function (): void {
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',

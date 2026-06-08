@@ -2,7 +2,7 @@
 
 use Codinglabs\Yolo\Audit\Arn;
 
-it('parses an EC2 instance ARN', function () {
+it('parses an EC2 instance ARN', function (): void {
     $arn = Arn::parse('arn:aws:ec2:ap-southeast-2:111122223333:instance/i-0abc123');
 
     expect($arn->service)->toBe('ec2')
@@ -12,14 +12,14 @@ it('parses an EC2 instance ARN', function () {
         ->and($arn->resourceId)->toBe('i-0abc123');
 });
 
-it('parses a launch template ARN', function () {
+it('parses a launch template ARN', function (): void {
     $arn = Arn::parse('arn:aws:ec2:ap-southeast-2:111122223333:launch-template/lt-0abc');
 
     expect($arn->resourceType)->toBe('launch-template')
         ->and($arn->resourceId)->toBe('lt-0abc');
 });
 
-it('parses an Auto Scaling group ARN with colons inside the resource segment', function () {
+it('parses an Auto Scaling group ARN with colons inside the resource segment', function (): void {
     $arn = Arn::parse('arn:aws:autoscaling:ap-southeast-2:111122223333:autoScalingGroup:uuid-123:autoScalingGroupName/yolo-production-web');
 
     expect($arn->service)->toBe('autoscaling')
@@ -27,7 +27,7 @@ it('parses an Auto Scaling group ARN with colons inside the resource segment', f
         ->and($arn->resourceId)->toBe('uuid-123:autoScalingGroupName/yolo-production-web');
 });
 
-it('parses a CodeDeploy deployment group ARN', function () {
+it('parses a CodeDeploy deployment group ARN', function (): void {
     $arn = Arn::parse('arn:aws:codedeploy:ap-southeast-2:111122223333:deploymentgroup:my-app/my-group');
 
     expect($arn->service)->toBe('codedeploy')
@@ -35,7 +35,7 @@ it('parses a CodeDeploy deployment group ARN', function () {
         ->and($arn->resourceId)->toBe('my-app/my-group');
 });
 
-it('parses an ELBv2 target group ARN', function () {
+it('parses an ELBv2 target group ARN', function (): void {
     $arn = Arn::parse('arn:aws:elasticloadbalancing:ap-southeast-2:111122223333:targetgroup/yolo-production-app/abc123');
 
     expect($arn->service)->toBe('elasticloadbalancing')
@@ -43,14 +43,14 @@ it('parses an ELBv2 target group ARN', function () {
         ->and($arn->resourceId)->toBe('yolo-production-app/abc123');
 });
 
-it('parses an ELBv2 application load balancer ARN', function () {
+it('parses an ELBv2 application load balancer ARN', function (): void {
     $arn = Arn::parse('arn:aws:elasticloadbalancing:ap-southeast-2:111122223333:loadbalancer/app/yolo-production/abc123');
 
     expect($arn->resourceType)->toBe('loadbalancer')
         ->and($arn->resourceId)->toBe('app/yolo-production/abc123');
 });
 
-it('parses an ARN whose resource segment is a bare id (no type)', function () {
+it('parses an ARN whose resource segment is a bare id (no type)', function (): void {
     $arn = Arn::parse('arn:aws:s3:::my-bucket');
 
     expect($arn->service)->toBe('s3')
@@ -58,7 +58,7 @@ it('parses an ARN whose resource segment is a bare id (no type)', function () {
         ->and($arn->resourceId)->toBe('my-bucket');
 });
 
-it('returns null for a non-ARN string', function () {
+it('returns null for a non-ARN string', function (): void {
     expect(Arn::parse('not-an-arn'))->toBeNull()
         ->and(Arn::parse('arn:aws:ec2:incomplete'))->toBeNull();
 });

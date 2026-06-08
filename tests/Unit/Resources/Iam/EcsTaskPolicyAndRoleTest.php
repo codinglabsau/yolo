@@ -3,13 +3,13 @@
 use Codinglabs\Yolo\Resources\Iam\EcsTaskRole;
 use Codinglabs\Yolo\Resources\Iam\EcsTaskPolicy;
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 });
 
-it('describes the ECS task policy with the four ssmmessages exec permissions', function () {
+it('describes the ECS task policy with the four ssmmessages exec permissions', function (): void {
     $document = (new EcsTaskPolicy())->document();
 
     expect($document['Version'])->toBe('2012-10-17');
@@ -27,7 +27,7 @@ it('describes the ECS task policy with the four ssmmessages exec permissions', f
     ]);
 });
 
-it('grants SQS access scoped to this app\'s own queues only', function () {
+it('grants SQS access scoped to this app\'s own queues only', function (): void {
     $statement = (new EcsTaskPolicy())->document()['Statement'][1];
 
     expect($statement['Effect'])->toBe('Allow');
@@ -40,14 +40,14 @@ it('grants SQS access scoped to this app\'s own queues only', function () {
     expect($statement['Action'])->toContain('sqs:ReceiveMessage', 'sqs:DeleteMessage', 'sqs:SendMessage', 'sqs:ChangeMessageVisibility');
 });
 
-it('scopes the task role and policy to this app (carrying the yolo:app owner tag)', function () {
+it('scopes the task role and policy to this app (carrying the yolo:app owner tag)', function (): void {
     expect((new EcsTaskRole())->name())->toBe('yolo-testing-my-app-ecs-task-role');
     expect((new EcsTaskPolicy())->name())->toBe('yolo-testing-my-app-ecs-task-policy');
     expect((new EcsTaskRole())->tags())->toMatchArray(['yolo:scope' => 'app', 'yolo:app' => 'my-app']);
     expect((new EcsTaskPolicy())->tags())->toMatchArray(['yolo:scope' => 'app', 'yolo:app' => 'my-app']);
 });
 
-it('grants SES send scoped to this region\'s verified identities', function () {
+it('grants SES send scoped to this region\'s verified identities', function (): void {
     $statement = (new EcsTaskPolicy())->document()['Statement'][2];
 
     expect($statement['Effect'])->toBe('Allow');
@@ -58,7 +58,7 @@ it('grants SES send scoped to this region\'s verified identities', function () {
     ]);
 });
 
-it('trusts the ecs-tasks service in the ECS task assume role policy', function () {
+it('trusts the ecs-tasks service in the ECS task assume role policy', function (): void {
     expect((new EcsTaskRole())->assumeRolePolicyDocument())->toBe([
         'Version' => '2012-10-17',
         'Statement' => [
@@ -71,13 +71,13 @@ it('trusts the ecs-tasks service in the ECS task assume role policy', function (
     ]);
 });
 
-it('grants no S3 access when the manifest declares no data bucket', function () {
+it('grants no S3 access when the manifest declares no data bucket', function (): void {
     $resources = collect((new EcsTaskPolicy())->document()['Statement'])->pluck('Resource')->flatten();
 
-    expect($resources->filter(fn ($arn) => str_starts_with($arn, 'arn:aws:s3:::')))->toBeEmpty();
+    expect($resources->filter(fn ($arn): bool => str_starts_with((string) $arn, 'arn:aws:s3:::')))->toBeEmpty();
 });
 
-it('grants read+write on the declared data bucket, scoped to that bucket only', function () {
+it('grants read+write on the declared data bucket, scoped to that bucket only', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'bucket' => 'my-app-uploads',

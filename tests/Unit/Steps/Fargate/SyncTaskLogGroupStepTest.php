@@ -39,14 +39,14 @@ function bindMockCloudWatchLogsClient(array $byCommand, array &$captured): void
     ]));
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['log-group' => '/yolo/my-app']],
     ]);
 });
 
-it('strips the stream wildcard `:*` suffix before calling the CloudWatch Logs tag APIs', function () {
+it('strips the stream wildcard `:*` suffix before calling the CloudWatch Logs tag APIs', function (): void {
     $captured = [];
 
     bindMockCloudWatchLogsClient([
@@ -68,7 +68,7 @@ it('strips the stream wildcard `:*` suffix before calling the CloudWatch Logs ta
 
     $tagCalls = array_values(array_filter(
         $captured,
-        fn (array $call) => in_array($call['name'], ['ListTagsForResource', 'TagResource'], true),
+        fn (array $call): bool => in_array($call['name'], ['ListTagsForResource', 'TagResource'], true),
     ));
 
     expect($tagCalls)->not->toBeEmpty();
@@ -80,7 +80,7 @@ it('strips the stream wildcard `:*` suffix before calling the CloudWatch Logs ta
     }
 });
 
-it('reads tags during a dry-run for plan-time drift but never writes', function () {
+it('reads tags during a dry-run for plan-time drift but never writes', function (): void {
     // The plan pass needs to know whether tag sync would change anything (so
     // the apply-pending filter from PR #57 doesn't drop a step with tag drift),
     // so ListTagsForResource is expected — but TagResource (the write) is not.

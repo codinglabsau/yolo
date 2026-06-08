@@ -133,7 +133,7 @@ function bindMockIamClient(array $roles): void
 {
     $result = new Result([
         'Roles' => collect($roles)
-            ->map(fn (string $arn, string $name) => ['RoleName' => $name, 'Arn' => $arn])
+            ->map(fn (string $arn, string $name): array => ['RoleName' => $name, 'Arn' => $arn])
             ->values()
             ->all(),
         'IsTruncated' => false,

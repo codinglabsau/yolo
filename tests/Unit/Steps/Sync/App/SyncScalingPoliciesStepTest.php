@@ -25,7 +25,7 @@ function matchingCpuPolicy(string $name): array
     ];
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',
@@ -33,20 +33,20 @@ beforeEach(function () {
     ]);
 });
 
-it('composes only the CPU policy when no request-count target is set', function () {
+it('composes only the CPU policy when no request-count target is set', function (): void {
     $policies = SyncScalingPoliciesStep::policies();
 
     expect($policies)->toHaveCount(1);
 });
 
-it('skips when the ECS service does not exist yet', function () {
+it('skips when the ECS service does not exist yet', function (): void {
     $captured = [];
     bindRoutedEcsClient(['DescribeServices' => new Result(['services' => []])], $captured);
 
     expect((new SyncScalingPoliciesStep())([]))->toBe(StepResult::SKIPPED);
 });
 
-it('would-create the CPU policy on a dry-run without putting it', function () {
+it('would-create the CPU policy on a dry-run without putting it', function (): void {
     $ecs = [];
     $aa = [];
     bindRoutedEcsClient(['DescribeServices' => new Result(['services' => [['status' => 'ACTIVE', 'serviceArn' => 'arn']]])], $ecs);
@@ -56,7 +56,7 @@ it('would-create the CPU policy on a dry-run without putting it', function () {
     expect(collect($aa)->pluck('name'))->not->toContain('PutScalingPolicy');
 });
 
-it('creates the CPU policy when applying', function () {
+it('creates the CPU policy when applying', function (): void {
     $ecs = [];
     $aa = [];
     bindRoutedEcsClient(['DescribeServices' => new Result(['services' => [['status' => 'ACTIVE', 'serviceArn' => 'arn']]])], $ecs);
@@ -69,7 +69,7 @@ it('creates the CPU policy when applying', function () {
     expect(collect($aa)->pluck('name'))->toContain('PutScalingPolicy');
 });
 
-it('builds the {alb-suffix}/{tg-suffix} ResourceLabel from the live ALB and target group', function () {
+it('builds the {alb-suffix}/{tg-suffix} ResourceLabel from the live ALB and target group', function (): void {
     $elb = [];
     bindRoutedElbV2Client([
         'DescribeLoadBalancers' => new Result(['LoadBalancers' => [['LoadBalancerName' => 'yolo-testing', 'LoadBalancerArn' => 'arn:aws:elasticloadbalancing:ap-southeast-2:111111111111:loadbalancer/app/yolo-testing/abc123']]]),
@@ -79,7 +79,7 @@ it('builds the {alb-suffix}/{tg-suffix} ResourceLabel from the live ALB and targ
     expect(SyncScalingPoliciesStep::resourceLabel())->toBe('app/yolo-testing/abc123/targetgroup/yolo-testing-my-app/def456');
 });
 
-it('composes both the CPU and request-count policies when request-count is set and the ALB/TG resolve', function () {
+it('composes both the CPU and request-count policies when request-count is set and the ALB/TG resolve', function (): void {
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',
@@ -95,7 +95,7 @@ it('composes both the CPU and request-count policies when request-count is set a
     expect(SyncScalingPoliciesStep::policies())->toHaveCount(2);
 });
 
-it('defers the request-count policy when the ALB/TG are not resolvable yet', function () {
+it('defers the request-count policy when the ALB/TG are not resolvable yet', function (): void {
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',
@@ -112,7 +112,7 @@ it('defers the request-count policy when the ALB/TG are not resolvable yet', fun
     expect(SyncScalingPoliciesStep::policies())->toHaveCount(1); // CPU only — request-count deferred to next sync
 });
 
-it('puts the request-count policy with its ResourceLabel when applying', function () {
+it('puts the request-count policy with its ResourceLabel when applying', function (): void {
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',
@@ -137,15 +137,15 @@ it('puts the request-count policy with its ResourceLabel when applying', functio
     $puts = collect($aa)->where('name', 'PutScalingPolicy');
     expect($puts)->toHaveCount(2);
 
-    $metrics = $puts->map(fn ($call) => $call['args']['TargetTrackingScalingPolicyConfiguration']['PredefinedMetricSpecification']['PredefinedMetricType']);
+    $metrics = $puts->map(fn ($call): mixed => $call['args']['TargetTrackingScalingPolicyConfiguration']['PredefinedMetricSpecification']['PredefinedMetricType']);
     expect($metrics)->toContain('ECSServiceAverageCPUUtilization', 'ALBRequestCountPerTarget');
 
-    $requestCount = $puts->first(fn ($call) => $call['args']['TargetTrackingScalingPolicyConfiguration']['PredefinedMetricSpecification']['PredefinedMetricType'] === 'ALBRequestCountPerTarget');
+    $requestCount = $puts->first(fn ($call): bool => $call['args']['TargetTrackingScalingPolicyConfiguration']['PredefinedMetricSpecification']['PredefinedMetricType'] === 'ALBRequestCountPerTarget');
     expect($requestCount['args']['TargetTrackingScalingPolicyConfiguration']['PredefinedMetricSpecification']['ResourceLabel'])
         ->toBe('app/yolo-testing/abc123/targetgroup/yolo-testing-my-app/def456');
 });
 
-it('skips entirely when autoscaling is removed from the manifest', function () {
+it('skips entirely when autoscaling is removed from the manifest', function (): void {
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',
@@ -159,7 +159,7 @@ it('skips entirely when autoscaling is removed from the manifest', function () {
     expect($aa)->toBeEmpty();
 });
 
-it('prunes a live policy the manifest no longer wants (request-count removed)', function () {
+it('prunes a live policy the manifest no longer wants (request-count removed)', function (): void {
     // beforeEach manifest has the autoscaling block but no request-count → CPU is
     // the only desired policy, so a live request-count policy is an orphan.
     $cpu = Helpers::keyedResourceName('cpu-scaling-policy');
@@ -180,7 +180,7 @@ it('prunes a live policy the manifest no longer wants (request-count removed)', 
     expect($delete['args']['PolicyName'])->toBe($requestCount);
 });
 
-it('would-prune on a dry-run without deleting', function () {
+it('would-prune on a dry-run without deleting', function (): void {
     $cpu = Helpers::keyedResourceName('cpu-scaling-policy');
     $requestCount = Helpers::keyedResourceName('request-count-scaling-policy');
 
@@ -196,7 +196,7 @@ it('would-prune on a dry-run without deleting', function () {
     expect(collect($aa)->pluck('name'))->not->toContain('DeleteScalingPolicy');
 });
 
-it('does not prune the request-count policy when it is only deferred (ALB/TG unresolved)', function () {
+it('does not prune the request-count policy when it is only deferred (ALB/TG unresolved)', function (): void {
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',

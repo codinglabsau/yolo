@@ -1,10 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Resources\Ecs\EcsService;
 
-describe('serviceNeedsUpdate', function () {
-    beforeEach(function () {
+describe('serviceNeedsUpdate', function (): void {
+    beforeEach(function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'domain' => 'codinglabs.com.au',
@@ -12,7 +14,7 @@ describe('serviceNeedsUpdate', function () {
         ]);
     });
 
-    it('is false when grace period and exec flag match', function () {
+    it('is false when grace period and exec flag match', function (): void {
         expect(EcsService::serviceNeedsUpdate(
             service: ['enableExecuteCommand' => true, 'healthCheckGracePeriodSeconds' => 60],
             gracePeriod: 60,
@@ -20,7 +22,7 @@ describe('serviceNeedsUpdate', function () {
         ))->toBeFalse();
     });
 
-    it('is true when the grace period diverges', function () {
+    it('is true when the grace period diverges', function (): void {
         expect(EcsService::serviceNeedsUpdate(
             service: ['enableExecuteCommand' => true, 'healthCheckGracePeriodSeconds' => 120],
             gracePeriod: 60,
@@ -28,7 +30,7 @@ describe('serviceNeedsUpdate', function () {
         ))->toBeTrue();
     });
 
-    it('is true when the exec-command flag diverges (so manifest toggles take effect on sync)', function () {
+    it('is true when the exec-command flag diverges (so manifest toggles take effect on sync)', function (): void {
         expect(EcsService::serviceNeedsUpdate(
             service: ['enableExecuteCommand' => false, 'healthCheckGracePeriodSeconds' => 60],
             gracePeriod: 60,
@@ -36,7 +38,7 @@ describe('serviceNeedsUpdate', function () {
         ))->toBeTrue();
     });
 
-    it('does NOT reconcile desiredCount — capacity is owned by ops, not the manifest', function () {
+    it('does NOT reconcile desiredCount — capacity is owned by ops, not the manifest', function (): void {
         // A manual scale (or autoscaling) to 5 must not trip an update.
         expect(EcsService::serviceNeedsUpdate(
             service: ['desiredCount' => 5, 'enableExecuteCommand' => true, 'healthCheckGracePeriodSeconds' => 60],
@@ -45,7 +47,7 @@ describe('serviceNeedsUpdate', function () {
         ))->toBeFalse();
     });
 
-    it('treats missing healthCheckGracePeriodSeconds as the manifest default (no churn against older services)', function () {
+    it('treats missing healthCheckGracePeriodSeconds as the manifest default (no churn against older services)', function (): void {
         expect(EcsService::serviceNeedsUpdate(
             service: ['enableExecuteCommand' => true],
             gracePeriod: 60,
@@ -54,15 +56,15 @@ describe('serviceNeedsUpdate', function () {
     });
 });
 
-describe('serviceNeedsUpdate when headless', function () {
-    beforeEach(function () {
+describe('serviceNeedsUpdate when headless', function (): void {
+    beforeEach(function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'tasks' => ['web' => []],
         ]);
     });
 
-    it('ignores grace period drift for headless services (no ALB to reconcile against)', function () {
+    it('ignores grace period drift for headless services (no ALB to reconcile against)', function (): void {
         expect(EcsService::serviceNeedsUpdate(
             service: ['enableExecuteCommand' => true, 'healthCheckGracePeriodSeconds' => 9999],
             gracePeriod: 60,
@@ -71,7 +73,7 @@ describe('serviceNeedsUpdate when headless', function () {
         ))->toBeFalse();
     });
 
-    it('still reconciles the exec flag for headless services', function () {
+    it('still reconciles the exec flag for headless services', function (): void {
         expect(EcsService::serviceNeedsUpdate(
             service: ['enableExecuteCommand' => false],
             gracePeriod: 60,
@@ -80,8 +82,8 @@ describe('serviceNeedsUpdate when headless', function () {
     });
 });
 
-describe('updatePayload', function () {
-    it('omits healthCheckGracePeriodSeconds when headless', function () {
+describe('updatePayload', function (): void {
+    it('omits healthCheckGracePeriodSeconds when headless', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'tasks' => ['web' => []],
@@ -94,7 +96,7 @@ describe('updatePayload', function () {
         expect($payload)->not->toHaveKey('healthCheckGracePeriodSeconds');
     });
 
-    it('includes healthCheckGracePeriodSeconds when not headless', function () {
+    it('includes healthCheckGracePeriodSeconds when not headless', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'domain' => 'codinglabs.com.au',
@@ -104,7 +106,7 @@ describe('updatePayload', function () {
         expect((new EcsService())->updatePayload()['healthCheckGracePeriodSeconds'])->toBe(60);
     });
 
-    it('reconciles the exec-command flag', function () {
+    it('reconciles the exec-command flag', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'tasks' => ['web' => ['enable-execute-command' => true]],
@@ -113,7 +115,7 @@ describe('updatePayload', function () {
         expect((new EcsService())->updatePayload()['enableExecuteCommand'])->toBeTrue();
     });
 
-    it('never includes desiredCount — capacity is set once at create, never reset on update', function () {
+    it('never includes desiredCount — capacity is set once at create, never reset on update', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'tasks' => ['web' => []],
@@ -123,27 +125,27 @@ describe('updatePayload', function () {
     });
 });
 
-describe('deploymentConfiguration', function () {
-    beforeEach(function () {
+describe('deploymentConfiguration', function (): void {
+    beforeEach(function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
         ]);
     });
 
-    it('enables the circuit breaker with rollback so a failed rollout self-reverts', function () {
+    it('enables the circuit breaker with rollback so a failed rollout self-reverts', function (): void {
         expect((new EcsService())->deploymentConfiguration()['deploymentCircuitBreaker'])
             ->toBe(['enable' => true, 'rollback' => true]);
     });
 
-    it('keeps one-at-a-time rolling capacity for web (100% min healthy, 200% max)', function () {
+    it('keeps one-at-a-time rolling capacity for web (100% min healthy, 200% max)', function (): void {
         $config = (new EcsService(ServerGroup::WEB))->deploymentConfiguration();
 
         expect($config['minimumHealthyPercent'])->toBe(100);
         expect($config['maximumPercent'])->toBe(200);
     });
 
-    it('deploys the scheduler stop-then-start (0% min healthy, 100% max) so a rollout never runs two crons', function () {
+    it('deploys the scheduler stop-then-start (0% min healthy, 100% max) so a rollout never runs two crons', function (): void {
         $config = (new EcsService(ServerGroup::SCHEDULER))->deploymentConfiguration();
 
         expect($config['minimumHealthyPercent'])->toBe(0);

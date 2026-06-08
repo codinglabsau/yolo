@@ -14,13 +14,13 @@ function describeCacheAndTaskGroups(): Result
     ]);
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'cache' => ['store' => 'redis'],
     ]);
 });
 
-it('skips when cache.store is not redis', function () {
+it('skips when cache.store is not redis', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
@@ -28,7 +28,7 @@ it('skips when cache.store is not redis', function () {
     expect((new SyncCacheSecurityGroupStep())([]))->toBe(StepResult::SKIPPED);
 });
 
-it('creates the cache security group and authorises 6379 from the task SG', function () {
+it('creates the cache security group and authorises 6379 from the task SG', function (): void {
     $captured = [];
 
     bindMockEc2Client([
@@ -49,7 +49,7 @@ it('creates the cache security group and authorises 6379 from the task SG', func
     expect($names)->not->toContain('RevokeSecurityGroupIngress');
 });
 
-it('additively authorises 6379 from the task SG on an existing cache SG', function () {
+it('additively authorises 6379 from the task SG on an existing cache SG', function (): void {
     $captured = [];
 
     bindMockEc2Client([
@@ -70,7 +70,7 @@ it('additively authorises 6379 from the task SG on an existing cache SG', functi
     expect(array_column($captured, 'name'))->not->toContain('RevokeSecurityGroupIngress');
 });
 
-it('does not authorise again when a matching 6379 rule already exists', function () {
+it('does not authorise again when a matching 6379 rule already exists', function (): void {
     $captured = [];
 
     bindMockEc2Client([
@@ -91,7 +91,7 @@ it('does not authorise again when a matching 6379 rule already exists', function
     expect(array_column($captured, 'name'))->not->toContain('AuthorizeSecurityGroupIngress');
 });
 
-it('does not authorise during a dry-run', function () {
+it('does not authorise during a dry-run', function (): void {
     $captured = [];
 
     bindMockEc2Client([

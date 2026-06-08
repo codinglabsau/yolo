@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Steps;
 use Dotenv\Dotenv;
 use Codinglabs\Yolo\Paths;
 use Illuminate\Support\Str;
+use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
 use Symfony\Component\Process\Process;
 use Codinglabs\Yolo\Contracts\RunsOnBuild;
@@ -14,7 +15,7 @@ class ExecuteBuildCommandStep implements ExecutesCommandStep, RunsOnBuild
 {
     public function __construct(protected string $environment, protected string $command, protected $filesystem = new Filesystem()) {}
 
-    public function __invoke(): void
+    public function __invoke(array $options = []): StepResult
     {
         // parse the AWS .env version, extracting some env values and overloading
         // and VITE_* keys so 'vite build' works as expected. This is preferred
@@ -27,7 +28,7 @@ class ExecuteBuildCommandStep implements ExecutesCommandStep, RunsOnBuild
             cwd: Paths::build(),
             env: [
                 ...collect($dotenv)
-                    ->filter(fn ($value, $key) => in_array($key, [
+                    ->filter(fn ($value, $key): bool => in_array($key, [
                         'APP_ENV', // for npm
                         'ASSET_URL', // for vite
                     ]) || Str::startsWith($key, 'VITE_'))
@@ -40,6 +41,8 @@ class ExecuteBuildCommandStep implements ExecutesCommandStep, RunsOnBuild
         );
 
         $process->mustRun();
+
+        return StepResult::SUCCESS;
     }
 
     public function name(): string

@@ -37,10 +37,10 @@ function bindServiceRoleTrust(string $roleName, array $liveTrust, array &$captur
 
 function trustChangesFor(object $step): Collection
 {
-    return collect($step->changes())->filter(fn ($change) => str_contains($change->attribute, 'trust'));
+    return collect($step->changes())->filter(fn ($change): bool => str_contains((string) $change->attribute, 'trust'));
 }
 
-it('records trust drift on the plan pass and rewrites it on apply', function (string $resourceClass, string $stepClass, array $manifestExtra) {
+it('records trust drift on the plan pass and rewrites it on apply', function (string $resourceClass, string $stepClass, array $manifestExtra): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', ...$manifestExtra]);
 
     $resource = new $resourceClass();
@@ -67,7 +67,7 @@ it('records trust drift on the plan pass and rewrites it on apply', function (st
     expect(array_column($captured, 'name'))->toContain('UpdateAssumeRolePolicy');
 })->with('serviceRoles');
 
-it('records no trust change and never rewrites when the trust already matches', function (string $resourceClass, string $stepClass, array $manifestExtra) {
+it('records no trust change and never rewrites when the trust already matches', function (string $resourceClass, string $stepClass, array $manifestExtra): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', ...$manifestExtra]);
 
     $resource = new $resourceClass();

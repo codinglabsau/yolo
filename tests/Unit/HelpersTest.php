@@ -1,109 +1,111 @@
 <?php
 
+declare(strict_types=1);
+
 use Codinglabs\Yolo\Helpers;
 
-describe('keyedResourceName', function () {
-    it('generates exclusive name without suffix', function () {
+describe('keyedResourceName', function (): void {
+    it('generates exclusive name without suffix', function (): void {
         expect(Helpers::keyedResourceName())
             ->toBe('yolo-testing-my-app');
     });
 
-    it('generates exclusive name with suffix', function () {
+    it('generates exclusive name with suffix', function (): void {
         expect(Helpers::keyedResourceName('web'))
             ->toBe('yolo-testing-my-app-web');
     });
 
-    it('generates non-exclusive name without suffix', function () {
+    it('generates non-exclusive name without suffix', function (): void {
         expect(Helpers::keyedResourceName(exclusive: false))
             ->toBe('yolo-testing');
     });
 
-    it('generates non-exclusive name with suffix', function () {
+    it('generates non-exclusive name with suffix', function (): void {
         expect(Helpers::keyedResourceName('ivs-eventbridge-policy', exclusive: false))
             ->toBe('yolo-testing-ivs-eventbridge-policy');
     });
 
-    it('supports custom separator', function () {
+    it('supports custom separator', function (): void {
         expect(Helpers::keyedResourceName('queue', seperator: '/'))
             ->toBe('yolo/testing/my-app/queue');
     });
 });
 
-describe('parseGithubRepository', function () {
-    it('parses the ssh remote form', function () {
+describe('parseGithubRepository', function (): void {
+    it('parses the ssh remote form', function (): void {
         expect(Helpers::parseGithubRepository('git@github.com:codinglabsau/codinglabs.git'))
             ->toBe('codinglabsau/codinglabs');
     });
 
-    it('parses the https remote form', function () {
+    it('parses the https remote form', function (): void {
         expect(Helpers::parseGithubRepository('https://github.com/codinglabsau/codinglabs.git'))
             ->toBe('codinglabsau/codinglabs');
     });
 
-    it('parses without the trailing .git', function () {
+    it('parses without the trailing .git', function (): void {
         expect(Helpers::parseGithubRepository('https://github.com/codinglabsau/codinglabs'))
             ->toBe('codinglabsau/codinglabs');
     });
 
-    it('parses the ssh:// scheme form', function () {
+    it('parses the ssh:// scheme form', function (): void {
         expect(Helpers::parseGithubRepository('ssh://git@github.com/codinglabsau/codinglabs.git'))
             ->toBe('codinglabsau/codinglabs');
     });
 
-    it('returns null for a non-GitHub remote', function () {
+    it('returns null for a non-GitHub remote', function (): void {
         expect(Helpers::parseGithubRepository('git@gitlab.com:codinglabsau/codinglabs.git'))
             ->toBeNull();
     });
 
-    it('returns null for a null url', function () {
+    it('returns null for a null url', function (): void {
         expect(Helpers::parseGithubRepository(null))->toBeNull();
     });
 });
 
-describe('keyedEnvName', function () {
-    it('formats environment variable name', function () {
+describe('keyedEnvName', function (): void {
+    it('formats environment variable name', function (): void {
         expect(Helpers::keyedEnvName('DB_HOST'))
             ->toBe('YOLO_TESTING_DB_HOST');
     });
 });
 
-describe('payloadHasDifferences', function () {
-    it('returns false for identical payloads', function () {
+describe('payloadHasDifferences', function (): void {
+    it('returns false for identical payloads', function (): void {
         $payload = ['key' => 'value', 'nested' => ['a' => 1]];
 
         expect(Helpers::payloadHasDifferences($payload, $payload))
             ->toBeFalse();
     });
 
-    it('detects missing keys', function () {
+    it('detects missing keys', function (): void {
         expect(Helpers::payloadHasDifferences(
             ['key' => 'value', 'extra' => 'data'],
             ['key' => 'value'],
         ))->toBeTrue();
     });
 
-    it('detects value changes', function () {
+    it('detects value changes', function (): void {
         expect(Helpers::payloadHasDifferences(
             ['key' => 'new'],
             ['key' => 'old'],
         ))->toBeTrue();
     });
 
-    it('detects nested differences', function () {
+    it('detects nested differences', function (): void {
         expect(Helpers::payloadHasDifferences(
             ['nested' => ['a' => 1, 'b' => 2]],
             ['nested' => ['a' => 1, 'b' => 3]],
         ))->toBeTrue();
     });
 
-    it('ignores extra keys in actual', function () {
+    it('ignores extra keys in actual', function (): void {
         expect(Helpers::payloadHasDifferences(
             ['key' => 'value'],
             ['key' => 'value', 'extra' => 'ignored'],
         ))->toBeFalse();
     });
 
-    it('detects type mismatches in nested values', function () {
+    it('detects type mismatches in nested values', function (): void {
         expect(Helpers::payloadHasDifferences(
             ['key' => ['a' => 1]],
             ['key' => 'not-an-array'],

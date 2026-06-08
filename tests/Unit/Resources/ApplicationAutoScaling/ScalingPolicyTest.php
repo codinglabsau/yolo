@@ -3,7 +3,7 @@
 use Aws\Result;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\ScalingPolicy;
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',
@@ -11,7 +11,7 @@ beforeEach(function () {
     ]);
 });
 
-it('builds a predefined CPU target-tracking configuration', function () {
+it('builds a predefined CPU target-tracking configuration', function (): void {
     expect((new ScalingPolicy('p', 'ECSServiceAverageCPUUtilization', 65.0))->configuration())->toBe([
         'TargetValue' => 65.0,
         'PredefinedMetricSpecification' => ['PredefinedMetricType' => 'ECSServiceAverageCPUUtilization'],
@@ -20,7 +20,7 @@ it('builds a predefined CPU target-tracking configuration', function () {
     ]);
 });
 
-it('includes the resource label only for request-count policies', function () {
+it('includes the resource label only for request-count policies', function (): void {
     $config = (new ScalingPolicy('p', 'ALBRequestCountPerTarget', 1000.0, 'app/x/1/targetgroup/y/2'))->configuration();
 
     expect($config['PredefinedMetricSpecification'])->toBe([
@@ -29,13 +29,13 @@ it('includes the resource label only for request-count policies', function () {
     ]);
 });
 
-it('reports every comparable field as drift when the policy is absent', function () {
+it('reports every comparable field as drift when the policy is absent', function (): void {
     // target, metric, scale-out and scale-in cooldowns drift; the resource label
     // is null on both sides for a CPU policy, so it is not a change.
     expect((new ScalingPolicy('p', 'ECSServiceAverageCPUUtilization', 65.0))->drift(null))->toHaveCount(4);
 });
 
-it('reports no drift when the live policy already matches', function () {
+it('reports no drift when the live policy already matches', function (): void {
     $live = ['TargetTrackingScalingPolicyConfiguration' => [
         'TargetValue' => 65.0,
         'PredefinedMetricSpecification' => ['PredefinedMetricType' => 'ECSServiceAverageCPUUtilization'],
@@ -46,7 +46,7 @@ it('reports no drift when the live policy already matches', function () {
     expect((new ScalingPolicy('p', 'ECSServiceAverageCPUUtilization', 65.0))->drift($live))->toBe([]);
 });
 
-it('puts the policy when it drifts and captures the configuration', function () {
+it('puts the policy when it drifts and captures the configuration', function (): void {
     $captured = [];
     bindMockApplicationAutoScalingClient([
         'DescribeScalingPolicies' => new Result(['ScalingPolicies' => []]),
@@ -70,7 +70,7 @@ it('puts the policy when it drifts and captures the configuration', function () 
     expect($put['args']['TargetTrackingScalingPolicyConfiguration']['TargetValue'])->toBe(65.0);
 });
 
-it('does not put when the live policy already matches', function () {
+it('does not put when the live policy already matches', function (): void {
     $captured = [];
     bindMockApplicationAutoScalingClient([
         'DescribeScalingPolicies' => new Result(['ScalingPolicies' => [

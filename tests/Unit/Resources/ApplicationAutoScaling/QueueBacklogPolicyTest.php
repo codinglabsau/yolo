@@ -3,14 +3,14 @@
 use Aws\Result;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\QueueBacklogPolicy;
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => [], 'queue' => []],
     ]);
 });
 
-it('tracks backlog-per-task with metric math dividing visible messages by running tasks', function () {
+it('tracks backlog-per-task with metric math dividing visible messages by running tasks', function (): void {
     $config = (new QueueBacklogPolicy())->configuration();
 
     expect($config['TargetValue'])->toBe(100.0);
@@ -30,7 +30,7 @@ it('tracks backlog-per-task with metric math dividing visible messages by runnin
     ]);
 });
 
-it('reads the backlog-per-task target from the manifest', function () {
+it('reads the backlog-per-task target from the manifest', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => [], 'queue' => ['backlog-per-task' => 40]],
@@ -39,7 +39,7 @@ it('reads the backlog-per-task target from the manifest', function () {
     expect((new QueueBacklogPolicy())->configuration()['TargetValue'])->toBe(40.0);
 });
 
-it('upserts the target-tracking policy onto the queue scalable target when absent', function () {
+it('upserts the target-tracking policy onto the queue scalable target when absent', function (): void {
     $captured = [];
     bindMockApplicationAutoScalingClient([
         'DescribeScalingPolicies' => new Result(['ScalingPolicies' => []]),
@@ -57,7 +57,7 @@ it('upserts the target-tracking policy onto the queue scalable target when absen
     ]);
 });
 
-it('reports drift without writing on a dry-run', function () {
+it('reports drift without writing on a dry-run', function (): void {
     $captured = [];
     bindMockApplicationAutoScalingClient([
         'DescribeScalingPolicies' => new Result(['ScalingPolicies' => []]),

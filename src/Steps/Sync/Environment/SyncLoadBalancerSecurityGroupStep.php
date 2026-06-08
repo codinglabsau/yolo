@@ -65,7 +65,7 @@ class SyncLoadBalancerSecurityGroupStep implements Step
 
             $liveRules = Ec2::securityGroupRules($groupId, $tag);
 
-            if (empty($liveRules)) {
+            if ($liveRules === []) {
                 $drifted = true;
                 $this->recordChange(Change::make($label, null, 'authorised'));
 
@@ -111,8 +111,8 @@ class SyncLoadBalancerSecurityGroupStep implements Step
     protected function expectedRules(): array
     {
         return [
-            SecurityGroupRule::LOAD_BALANCER_HTTP_RULE->value => fn (string $groupId) => static::publicRule($groupId, 80, 'Allow HTTP from anywhere', SecurityGroupRule::LOAD_BALANCER_HTTP_RULE),
-            SecurityGroupRule::LOAD_BALANCER_HTTPS_RULE->value => fn (string $groupId) => static::publicRule($groupId, 443, 'Allow HTTPS from anywhere', SecurityGroupRule::LOAD_BALANCER_HTTPS_RULE),
+            SecurityGroupRule::LOAD_BALANCER_HTTP_RULE->value => fn (string $groupId): array => static::publicRule($groupId, 80, 'Allow HTTP from anywhere', SecurityGroupRule::LOAD_BALANCER_HTTP_RULE),
+            SecurityGroupRule::LOAD_BALANCER_HTTPS_RULE->value => fn (string $groupId): array => static::publicRule($groupId, 443, 'Allow HTTPS from anywhere', SecurityGroupRule::LOAD_BALANCER_HTTPS_RULE),
         ];
     }
 

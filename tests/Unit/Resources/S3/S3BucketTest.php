@@ -59,21 +59,21 @@ function managedAppBucketCors(): array
     ]];
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
     ]);
 });
 
-it('names the app bucket from the manifest bucket key', function () {
+it('names the app bucket from the manifest bucket key', function (): void {
     expect((new S3Bucket())->name())->toBe('my-app-bucket');
 });
 
-it('reconciles the bucket CORS through sync', function () {
+it('reconciles the bucket CORS through sync', function (): void {
     expect(new S3Bucket())->toBeInstanceOf(SynchronisesConfiguration::class);
 });
 
-it('applies the managed CORS ruleset when the bucket has none', function () {
+it('applies the managed CORS ruleset when the bucket has none', function (): void {
     $recorder = bindRecordingAppBucketS3Client(['GetBucketCors' => new Result([])]);
 
     $changes = (new S3Bucket())->synchroniseConfiguration();
@@ -87,14 +87,14 @@ it('applies the managed CORS ruleset when the bucket has none', function () {
     expect($put['args']['CORSConfiguration']['CORSRules'])->toBe(managedAppBucketCors());
 });
 
-it('reports the CORS drift without writing under apply:false', function () {
+it('reports the CORS drift without writing under apply:false', function (): void {
     $recorder = bindRecordingAppBucketS3Client(['GetBucketCors' => new Result([])]);
 
     expect((new S3Bucket())->synchroniseConfiguration(apply: false))->toHaveCount(1);
     expect(array_column($recorder->captured, 'name'))->not->toContain('PutBucketCors');
 });
 
-it('writes nothing when the live CORS already matches the managed ruleset', function () {
+it('writes nothing when the live CORS already matches the managed ruleset', function (): void {
     // Guards the ExposeHeaders-omission gotcha: the desired ruleset must round-trip
     // through GetBucketCors with no phantom drift.
     $recorder = bindRecordingAppBucketS3Client([
@@ -105,7 +105,7 @@ it('writes nothing when the live CORS already matches the managed ruleset', func
     expect(array_column($recorder->captured, 'name'))->not->toContain('PutBucketCors');
 });
 
-it('overwrites a Vapor-style CORS config with the managed ruleset', function () {
+it('overwrites a Vapor-style CORS config with the managed ruleset', function (): void {
     // Vapor's default lacks HEAD and MaxAgeSeconds, so YOLO takes ownership.
     $recorder = bindRecordingAppBucketS3Client([
         'GetBucketCors' => new Result(['CORSRules' => [[

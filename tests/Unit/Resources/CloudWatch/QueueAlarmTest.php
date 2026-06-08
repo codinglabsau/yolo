@@ -65,12 +65,12 @@ function syncedAlarmTags(): array
     ];
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest(['region' => 'ap-southeast-2', 'account-id' => '111111111111']);
     bindAlarmTopic();
 });
 
-it('creates the alarm when it does not yet exist', function () {
+it('creates the alarm when it does not yet exist', function (): void {
     $captured = [];
     bindMockCloudWatchClient([
         'DescribeAlarms' => new Result(['MetricAlarms' => []]),
@@ -85,7 +85,7 @@ it('creates the alarm when it does not yet exist', function () {
     expect($put['args'])->toHaveKey('Tags');
 });
 
-it('records config drift on the plan pass and re-puts the alarm on apply', function () {
+it('records config drift on the plan pass and re-puts the alarm on apply', function (): void {
     $captured = [];
     bindMockCloudWatchClient([
         // Live threshold has drifted from the desired 100.
@@ -110,7 +110,7 @@ it('records config drift on the plan pass and re-puts the alarm on apply', funct
     expect(array_column($captured, 'name'))->toContain('PutMetricAlarm');
 });
 
-it('heals an alarm that was disabled in the console', function () {
+it('heals an alarm that was disabled in the console', function (): void {
     $captured = [];
     bindMockCloudWatchClient([
         'DescribeAlarms' => new Result(['MetricAlarms' => [inSyncQueueAlarm(['ActionsEnabled' => false])]]),
@@ -123,7 +123,7 @@ it('heals an alarm that was disabled in the console', function () {
     expect(array_column($captured, 'name'))->not->toContain('PutMetricAlarm');
 });
 
-it('records no change and never re-puts when the alarm is already in sync', function () {
+it('records no change and never re-puts when the alarm is already in sync', function (): void {
     // The acceptance criterion: a clean alarm produces no pending entry, so a
     // no-op `yolo sync` can short-circuit to "Already in sync" instead of forever
     // tripping the confirm gate.
@@ -141,7 +141,7 @@ it('records no change and never re-puts when the alarm is already in sync', func
         ->not->toContain('TagResource');
 });
 
-it('back-fills missing ownership tags without re-putting an in-sync alarm', function () {
+it('back-fills missing ownership tags without re-putting an in-sync alarm', function (): void {
     // PutMetricAlarm can't tag an existing alarm, so tag drift is healed via
     // TagResource — and an alarm whose config is in sync is not needlessly re-put.
     $captured = [];
@@ -156,7 +156,7 @@ it('back-fills missing ownership tags without re-putting an in-sync alarm', func
     expect($tag)->not->toBeNull();
     expect($tag['args']['ResourceARN'])->toBe('arn:aws:cloudwatch:ap-southeast-2:111111111111:alarm:yolo-testing-my-app-queue-depth-alarm');
 
-    $tags = collect($tag['args']['Tags'])->mapWithKeys(fn ($t) => [$t['Key'] => $t['Value']]);
+    $tags = collect($tag['args']['Tags'])->mapWithKeys(fn ($t): array => [$t['Key'] => $t['Value']]);
     expect($tags)->toMatchArray([
         'yolo:environment' => 'testing',
         'yolo:scope' => 'app',

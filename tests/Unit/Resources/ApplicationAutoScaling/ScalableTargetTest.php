@@ -4,7 +4,7 @@ use Aws\Result;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\ScalableTarget;
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',
@@ -12,11 +12,11 @@ beforeEach(function () {
     ]);
 });
 
-it('builds the ECS service resource id', function () {
+it('builds the ECS service resource id', function (): void {
     expect(ScalableTarget::resourceId())->toBe('service/yolo-testing-my-app/yolo-testing-my-app-web');
 });
 
-it('reports the target absent when none is registered', function () {
+it('reports the target absent when none is registered', function (): void {
     $captured = [];
     bindMockApplicationAutoScalingClient([
         'DescribeScalableTargets' => new Result(['ScalableTargets' => []]),
@@ -26,7 +26,7 @@ it('reports the target absent when none is registered', function () {
     expect((new ScalableTarget())->current())->toBeNull();
 });
 
-it('registers the target with the manifest min/max when absent', function () {
+it('registers the target with the manifest min/max when absent', function (): void {
     $captured = [];
     bindMockApplicationAutoScalingClient([
         'DescribeScalableTargets' => new Result(['ScalableTargets' => []]),
@@ -48,7 +48,7 @@ it('registers the target with the manifest min/max when absent', function () {
     ]);
 });
 
-it('does not register when the live min/max already match', function () {
+it('does not register when the live min/max already match', function (): void {
     $captured = [];
     bindMockApplicationAutoScalingClient([
         'DescribeScalableTargets' => new Result(['ScalableTargets' => [
@@ -62,7 +62,7 @@ it('does not register when the live min/max already match', function () {
     expect(collect($captured)->pluck('name'))->not->toContain('RegisterScalableTarget');
 });
 
-it('reports drift but does not register on a dry-run', function () {
+it('reports drift but does not register on a dry-run', function (): void {
     $captured = [];
     bindMockApplicationAutoScalingClient([
         'DescribeScalableTargets' => new Result(['ScalableTargets' => [
@@ -77,7 +77,7 @@ it('reports drift but does not register on a dry-run', function () {
     expect(collect($captured)->pluck('name'))->not->toContain('RegisterScalableTarget');
 });
 
-it('builds the queue service resource id and defaults its floor to zero when the scheduler is extracted', function () {
+it('builds the queue service resource id and defaults its floor to zero when the scheduler is extracted', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
@@ -88,7 +88,7 @@ it('builds the queue service resource id and defaults its floor to zero when the
     expect((new ScalableTarget(ServerGroup::QUEUE))->max())->toBe(10);
 });
 
-it('floors the queue at one task when it also hosts the scheduler', function () {
+it('floors the queue at one task when it also hosts the scheduler', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => [], 'queue' => []],
@@ -99,7 +99,7 @@ it('floors the queue at one task when it also hosts the scheduler', function () 
     expect((new ScalableTarget(ServerGroup::QUEUE))->min())->toBe(1);
 });
 
-it('registers the queue target with a zero floor (scale to zero)', function () {
+it('registers the queue target with a zero floor (scale to zero)', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => [], 'queue' => ['min' => 0, 'max' => 20], 'scheduler' => []],
@@ -120,7 +120,7 @@ it('registers the queue target with a zero floor (scale to zero)', function () {
     ]);
 });
 
-it('deregisters the target with the fixed namespace and dimension', function () {
+it('deregisters the target with the fixed namespace and dimension', function (): void {
     $captured = [];
     bindMockApplicationAutoScalingClient(['DeregisterScalableTarget' => new Result([])], $captured);
 

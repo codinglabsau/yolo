@@ -2,6 +2,13 @@
   <img src="art/logo.png" alt="YOLO" height="80">
 </p>
 
+<p align="center">
+  <a href="https://github.com/codinglabsau/yolo/actions/workflows/test.yml"><img src="https://github.com/codinglabsau/yolo/actions/workflows/test.yml/badge.svg" alt="Tests"></a>
+  <a href="https://github.com/codinglabsau/yolo/actions/workflows/test.yml"><img src="https://img.shields.io/badge/coverage-%E2%89%A563%25-yellow" alt="Coverage (enforced minimum)"></a>
+  <a href="https://github.com/codinglabsau/yolo/actions/workflows/analyse.yml"><img src="https://img.shields.io/badge/PHPStan-level%205-brightgreen" alt="PHPStan level 5"></a>
+  <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
+</p>
+
 # YOLO
 
 YOLO deploys Laravel applications to AWS Fargate.

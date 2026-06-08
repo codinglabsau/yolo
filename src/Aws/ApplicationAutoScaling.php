@@ -91,7 +91,7 @@ class ApplicationAutoScaling
             return [];
         }
 
-        return array_map(fn ($policy) => $policy['PolicyName'], $policies);
+        return array_map(fn (array $policy) => $policy['PolicyName'], $policies);
     }
 
     /**

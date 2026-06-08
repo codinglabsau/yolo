@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Codinglabs\Yolo\Steps\Sync\App;
 
 use Illuminate\Support\Arr;

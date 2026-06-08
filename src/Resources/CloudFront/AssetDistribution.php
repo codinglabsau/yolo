@@ -117,7 +117,7 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
                 'DistributionConfig' => $this->distributionConfig($bucket, $oacId, $responseHeadersPolicyId),
                 'Tags' => [
                     'Items' => collect(Aws::expectedTags($this->tags()))
-                        ->map(fn ($value, $key) => ['Key' => $key, 'Value' => $value])
+                        ->map(fn ($value, $key): array => ['Key' => $key, 'Value' => $value])
                         ->values()
                         ->all(),
                 ],
@@ -156,7 +156,7 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
 
         $changes = static::behaviourDrift($behaviour, $desired);
 
-        if ($errorChange = static::errorCachingDrift((array) ($config['CustomErrorResponses'] ?? []))) {
+        if (($errorChange = static::errorCachingDrift((array) ($config['CustomErrorResponses'] ?? []))) instanceof Change) {
             $changes[] = $errorChange;
         }
 
@@ -212,7 +212,7 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
     {
         return [
             'Quantity' => count(static::ERROR_CODES_NOT_CACHED),
-            'Items' => array_map(fn (int $code) => [
+            'Items' => array_map(fn (int $code): array => [
                 'ErrorCode' => $code,
                 'ResponsePagePath' => '',
                 'ResponseCode' => '',
@@ -235,8 +235,8 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
     public static function behaviourDrift(array $behaviour, array $desired): array
     {
         return collect($desired)
-            ->filter(fn (mixed $value, string $key) => ($behaviour[$key] ?? '') !== $value)
-            ->map(fn (mixed $value, string $key) => Change::make($key, $behaviour[$key] ?? null, $value))
+            ->filter(fn (mixed $value, string $key): bool => ($behaviour[$key] ?? '') !== $value)
+            ->map(fn (mixed $value, string $key): Change => Change::make($key, $behaviour[$key] ?? null, $value))
             ->values()
             ->all();
     }
@@ -251,10 +251,10 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
     public static function errorCachingDrift(array $live): ?Change
     {
         $cached = collect($live['Items'] ?? [])
-            ->mapWithKeys(fn (array $item) => [(int) $item['ErrorCode'] => (int) $item['ErrorCachingMinTTL']]);
+            ->mapWithKeys(fn (array $item): array => [(int) $item['ErrorCode'] => (int) $item['ErrorCachingMinTTL']]);
 
         $pinned = collect(static::ERROR_CODES_NOT_CACHED)
-            ->every(fn (int $code) => $cached->get($code) === 0);
+            ->every(fn (int $code): bool => $cached->get($code) === 0);
 
         if ($pinned) {
             return null;

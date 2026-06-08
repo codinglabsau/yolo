@@ -21,7 +21,7 @@ class ExecuteDeployStepsStep implements LongRunning
         return 'Running deploy tasks (migrations, etc.) — this can take a few minutes';
     }
 
-    public function __invoke(): StepResult
+    public function __invoke(array $options = []): StepResult
     {
         $commands = Manifest::get('deploy', []);
 

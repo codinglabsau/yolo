@@ -9,6 +9,9 @@ on:
       - main
     types: [ opened, synchronize, reopened, ready_for_review ]
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -41,3 +44,26 @@ jobs:
 
       - name: Execute tests
         run: vendor/bin/pest --parallel --stop-on-failure
+
+  coverage:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-22.04
+
+    name: Coverage
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: zip, sqlite3
+          coverage: pcov
+
+      - name: Install composer dependencies
+        run: composer install --no-cache --no-ansi --no-interaction --no-progress
+
+      - name: Enforce coverage threshold
+        run: vendor/bin/pest --coverage --min=63

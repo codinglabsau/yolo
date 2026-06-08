@@ -55,20 +55,20 @@ function liveIvsRule(array $overrides = []): array
     ], $overrides);
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'ivs' => true,
     ]);
 });
 
-it('returns no change and does not put the rule when it already matches', function () {
+it('returns no change and does not put the rule when it already matches', function (): void {
     $recorder = bindRecordingEventBridgeClient(liveIvsRule());
 
     expect((new IvsEventBridgeRule())->synchroniseConfiguration())->toBe([]);
     expect($recorder->calls)->not->toContain('PutRule');
 });
 
-it('detects a state drift and re-puts the rule', function () {
+it('detects a state drift and re-puts the rule', function (): void {
     $recorder = bindRecordingEventBridgeClient(liveIvsRule(['State' => 'DISABLED']));
 
     $changes = (new IvsEventBridgeRule())->synchroniseConfiguration();
@@ -80,7 +80,7 @@ it('detects a state drift and re-puts the rule', function () {
     expect($recorder->calls)->toContain('PutRule');
 });
 
-it('ignores event-pattern key ordering but detects a real pattern change', function () {
+it('ignores event-pattern key ordering but detects a real pattern change', function (): void {
     // Same pattern, no drift.
     $recorder = bindRecordingEventBridgeClient(liveIvsRule(['EventPattern' => json_encode(['source' => ['aws.ivs']])]));
     expect((new IvsEventBridgeRule())->synchroniseConfiguration())->toBe([]);
@@ -90,7 +90,7 @@ it('ignores event-pattern key ordering but detects a real pattern change', funct
     expect(collect((new IvsEventBridgeRule())->synchroniseConfiguration())->pluck('attribute'))->toContain('event-pattern');
 });
 
-it('computes the diff without writing under apply:false', function () {
+it('computes the diff without writing under apply:false', function (): void {
     $recorder = bindRecordingEventBridgeClient(liveIvsRule(['State' => 'DISABLED']));
 
     expect((new IvsEventBridgeRule())->synchroniseConfiguration(apply: false))->toHaveCount(1);

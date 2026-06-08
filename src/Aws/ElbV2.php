@@ -29,7 +29,7 @@ class ElbV2
             ])['TargetGroups'];
         } catch (AwsException $e) {
             if ($e->getAwsErrorCode() === 'TargetGroupNotFound') {
-                throw new ResourceDoesNotExistException("Could not find target group $name");
+                throw new ResourceDoesNotExistException("Could not find target group $name", $e->getCode(), $e);
             }
 
             throw $e;

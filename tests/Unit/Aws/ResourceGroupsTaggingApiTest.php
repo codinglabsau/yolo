@@ -13,7 +13,7 @@ function rgtMapping(string $arn, array $tags = []): array
 {
     return [
         'ResourceARN' => $arn,
-        'Tags' => collect($tags)->map(fn ($value, $key) => ['Key' => $key, 'Value' => $value])->values()->all(),
+        'Tags' => collect($tags)->map(fn ($value, $key): array => ['Key' => $key, 'Value' => $value])->values()->all(),
     ];
 }
 
@@ -25,7 +25,7 @@ function rgtPage(array $mappings, string $token = ''): Result
     return new Result(['ResourceTagMappingList' => $mappings, 'PaginationToken' => $token]);
 }
 
-it('merges the regional and us-east-1 passes so global resources appear', function () {
+it('merges the regional and us-east-1 passes so global resources appear', function (): void {
     bindMockResourceGroupsTaggingApiClient('resourceGroupsTaggingApi', [
         rgtPage([rgtMapping('arn:aws:ecs:ap-southeast-2:111:service/yolo-production-codinglabs/web')]),
     ]);
@@ -41,7 +41,7 @@ it('merges the regional and us-east-1 passes so global resources appear', functi
         ->and($arns)->toContain('arn:aws:iam::111:role/yolo-production-codinglabs-task-role');
 });
 
-it('dedupes by ARN when both passes return the same resource (us-east-1 environment)', function () {
+it('dedupes by ARN when both passes return the same resource (us-east-1 environment)', function (): void {
     $role = rgtMapping('arn:aws:iam::111:role/yolo-production-codinglabs-task-role', ['yolo:scope' => 'app']);
 
     bindMockResourceGroupsTaggingApiClient('resourceGroupsTaggingApi', [rgtPage([$role])]);
@@ -54,7 +54,7 @@ it('dedupes by ARN when both passes return the same resource (us-east-1 environm
     expect($resources)->toHaveCount(1);
 });
 
-it('follows the PaginationToken to the end on each pass', function () {
+it('follows the PaginationToken to the end on each pass', function (): void {
     bindMockResourceGroupsTaggingApiClient('resourceGroupsTaggingApi', [
         rgtPage([rgtMapping('arn:aws:s3:::yolo-production-a')], token: 'next'),
         rgtPage([rgtMapping('arn:aws:s3:::yolo-production-b')]),
@@ -71,7 +71,7 @@ it('follows the PaginationToken to the end on each pass', function () {
     ]);
 });
 
-it('surfaces global resources through classification — IAM role ok, removed-service global resource unexpected', function () {
+it('surfaces global resources through classification — IAM role ok, removed-service global resource unexpected', function (): void {
     bindMockResourceGroupsTaggingApiClient('resourceGroupsTaggingApi', [rgtPage([])]);
     bindMockResourceGroupsTaggingApiClient('resourceGroupsTaggingApiGlobal', [
         rgtPage([

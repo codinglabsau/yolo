@@ -57,7 +57,7 @@ trait SynchronisesAssumeRolePolicy
      */
     protected function liveAssumeRolePolicyDocument(): array
     {
-        return json_decode(rawurldecode(IamClient::role($this->name())['AssumeRolePolicyDocument']), associative: true);
+        return json_decode(rawurldecode((string) IamClient::role($this->name())['AssumeRolePolicyDocument']), associative: true);
     }
 
     /**
@@ -93,7 +93,7 @@ trait SynchronisesAssumeRolePolicy
     {
         foreach ($document['Statement'] ?? [] as $statement) {
             foreach ($statement['Condition']['StringLike'] ?? [] as $key => $value) {
-                if (str_ends_with($key, ':sub')) {
+                if (str_ends_with((string) $key, ':sub')) {
                     return is_array($value) ? implode(',', $value) : $value;
                 }
             }

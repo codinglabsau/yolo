@@ -9,6 +9,9 @@ on:
       - main
     types: [ opened, synchronize, reopened, ready_for_review ]
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -37,8 +40,11 @@ jobs:
       - name: Install composer dependencies
         run: composer install --no-cache --no-ansi --no-interaction --no-progress
 
-      - name: Code sniff
+      - name: Pint check
         run: vendor/bin/pint --test
 
-      - name: Code analysis
+      - name: PHPStan check
         run: vendor/bin/phpstan analyse --memory-limit=1G
+
+      - name: Rector check
+        run: vendor/bin/rector process --dry-run --no-progress-bar --memory-limit=1G

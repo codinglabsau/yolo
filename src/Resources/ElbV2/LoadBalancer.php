@@ -111,8 +111,8 @@ class LoadBalancer implements Resource, SynchronisesConfiguration
         $desired = $this->desiredAttributes();
 
         $changes = collect($desired)
-            ->filter(fn (string $value, string $key) => ($current[$key] ?? null) !== $value)
-            ->map(fn (string $value, string $key) => Change::make($key, $current[$key] ?? null, $value))
+            ->filter(fn (string $value, string $key): bool => ($current[$key] ?? null) !== $value)
+            ->map(fn (string $value, string $key): Change => Change::make($key, $current[$key] ?? null, $value))
             ->values()
             ->all();
 
@@ -123,7 +123,7 @@ class LoadBalancer implements Resource, SynchronisesConfiguration
         Aws::elasticLoadBalancingV2()->modifyLoadBalancerAttributes([
             'LoadBalancerArn' => $arn,
             'Attributes' => collect($desired)
-                ->map(fn (string $value, string $key) => ['Key' => $key, 'Value' => $value])
+                ->map(fn (string $value, string $key): array => ['Key' => $key, 'Value' => $value])
                 ->values()
                 ->all(),
         ]);
@@ -141,7 +141,7 @@ class LoadBalancer implements Resource, SynchronisesConfiguration
                 'LoadBalancerArn' => $arn,
             ])['Attributes']
         )
-            ->mapWithKeys(fn (array $attribute) => [$attribute['Key'] => $attribute['Value']])
+            ->mapWithKeys(fn (array $attribute): array => [$attribute['Key'] => $attribute['Value']])
             ->all();
     }
 

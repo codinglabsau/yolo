@@ -33,7 +33,7 @@ function bindRecordingCloudWatchLogsClient(?int $retentionInDays, array $resourc
                     'logGroupName' => '/aws/ivs/yolo-testing-my-app',
                     'arn' => 'arn:aws:logs:ap-southeast-2:111111111111:log-group:/aws/ivs/yolo-testing-my-app',
                     'retentionInDays' => $this->retentionInDays,
-                ], fn ($value) => $value !== null)]]),
+                ], fn (int|string|null $value): bool => $value !== null)]]),
                 'DescribeResourcePolicies' => new Result(['resourcePolicies' => $this->resourcePolicies]),
                 default => new Result([]),
             });
@@ -50,13 +50,13 @@ function bindRecordingCloudWatchLogsClient(?int $retentionInDays, array $resourc
     return $recorder;
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'ivs' => true,
     ]);
 });
 
-it('reconciles retention and the eventbridge resource policy when both have drifted', function () {
+it('reconciles retention and the eventbridge resource policy when both have drifted', function (): void {
     $recorder = bindRecordingCloudWatchLogsClient(retentionInDays: 7, resourcePolicies: []);
 
     $attributes = collect((new IvsLogGroup())->synchroniseConfiguration())->pluck('attribute');
@@ -65,7 +65,7 @@ it('reconciles retention and the eventbridge resource policy when both have drif
     expect($recorder->calls)->toContain('PutRetentionPolicy')->toContain('PutResourcePolicy');
 });
 
-it('does not touch retention when it already matches the manifest default', function () {
+it('does not touch retention when it already matches the manifest default', function (): void {
     // Retention matches (14), but the resource policy is absent — proving retention
     // is diffed (not blindly re-put) while the missing policy is still reported.
     $recorder = bindRecordingCloudWatchLogsClient(retentionInDays: 14, resourcePolicies: []);
@@ -76,7 +76,7 @@ it('does not touch retention when it already matches the manifest default', func
     expect($recorder->calls)->not->toContain('PutRetentionPolicy');
 });
 
-it('computes the diff without writing under apply:false', function () {
+it('computes the diff without writing under apply:false', function (): void {
     $recorder = bindRecordingCloudWatchLogsClient(retentionInDays: 7, resourcePolicies: []);
 
     expect((new IvsLogGroup())->synchroniseConfiguration(apply: false))->not->toBeEmpty();

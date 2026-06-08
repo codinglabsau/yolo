@@ -93,7 +93,7 @@ class Manifest
 
         $unknown = array_values(array_filter(
             array_keys($manifest),
-            fn (string $key) => ! in_array($key, static::ALLOWED_ROOT_KEYS, true),
+            fn (string $key): bool => ! in_array($key, static::ALLOWED_ROOT_KEYS, true),
         ));
 
         $prefix = sprintf('environments.%s.', Helpers::environment());
@@ -232,7 +232,7 @@ class Manifest
             }
 
             $stack[] = [$indent, $matches[2]];
-            $currentPath = array_map(fn (array $entry) => $entry[1], $stack);
+            $currentPath = array_map(fn (array $entry): string => $entry[1], $stack);
 
             if ($currentPath === $path) {
                 // Update in place: keep indent + key, the exact post-colon spacing
@@ -248,7 +248,7 @@ class Manifest
             // `queue: {}` / `queue: []` — would be corrupted by splicing a block
             // child beneath it, so leave parentLine null and let put() fall back to
             // a full re-dump (which renders it as a proper block).
-            if ($currentPath === $parentPath && trim(preg_replace('/#.*$/', '', $matches[3])) === '') {
+            if ($currentPath === $parentPath && trim((string) preg_replace('/#.*$/', '', $matches[3])) === '') {
                 $parentLine = $index;
                 $parentIndent = $indent;
             }
@@ -455,7 +455,7 @@ class Manifest
 
         $apex = static::get('apex', static::get('domain'));
 
-        if (str_starts_with($apex, 'www.')) {
+        if (str_starts_with((string) $apex, 'www.')) {
             return throw new IntegrityCheckException(sprintf("The apex record %s cannot start with 'www'.", $apex));
         }
 
@@ -475,33 +475,38 @@ class Manifest
 
         // Read raw — tenants() normaliser TypeErrors on a headless tenant.
         return collect(static::get('tenants', []))
-            ->every(fn (array $config) => ! isset($config['apex']) && ! isset($config['domain']));
+            ->every(fn (array $config): bool => ! isset($config['apex']) && ! isset($config['domain']));
     }
 
     public static function ivsEnabled(): bool
     {
-        return static::get('ivs') === true
-            || static::get('ivs.logging') === true;
+        if (static::get('ivs') === true) {
+            return true;
+        }
+
+        return static::get('ivs.logging') === true;
     }
 
     /**
-     * @return array<int, array{
-     *     domain: string,
-     *     apex: string,
-     *     www: bool
-     * }>
+     * @return array<string, array<string, mixed>>
      */
     public static function tenants(): array
     {
-        return collect(static::get('tenants'))
-            ->mapWithKeys(function (array $config, string $tenantId) {
-                $config['apex'] = $config['apex'] ?? ($config['domain'] ?? null);
+        /** @var array<string, array<string, mixed>> $configured */
+        $configured = static::get('tenants') ?? [];
 
-                if ($config['apex'] !== null && str_starts_with($config['apex'], 'www.')) {
-                    return throw new IntegrityCheckException(sprintf("The apex record %s cannot start with 'www'.", $config['apex']));
-                }
+        $tenants = [];
 
-                return [$tenantId => $config];
-            })->toArray();
+        foreach ($configured as $tenantId => $config) {
+            $config['apex'] ??= $config['domain'] ?? null;
+
+            if ($config['apex'] !== null && str_starts_with($config['apex'], 'www.')) {
+                throw new IntegrityCheckException(sprintf("The apex record %s cannot start with 'www'.", $config['apex']));
+            }
+
+            $tenants[$tenantId] = $config;
+        }
+
+        return $tenants;
     }
 }

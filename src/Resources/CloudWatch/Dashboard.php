@@ -169,8 +169,8 @@ class Dashboard
             'web' => $web,
             'clusterName' => $web ? (new EcsCluster())->name() : null,
             'serviceName' => $web ? (new EcsService())->name() : null,
-            'albSuffix' => $web ? static::tryResolve(fn () => static::loadBalancerDimension((new LoadBalancer())->arn())) : null,
-            'targetGroupSuffix' => $web ? static::tryResolve(fn () => static::targetGroupDimension((new TargetGroup())->arn())) : null,
+            'albSuffix' => $web ? static::tryResolve(fn (): string => static::loadBalancerDimension((new LoadBalancer())->arn())) : null,
+            'targetGroupSuffix' => $web ? static::tryResolve(fn (): string => static::targetGroupDimension((new TargetGroup())->arn())) : null,
             'distributionId' => $web ? static::tryResolve(fn () => CloudFront::distributionByComment((new AssetDistribution())->name())['Id']) : null,
             'queuePrefix' => Helpers::keyedResourceName() . '-',
             'queues' => static::queueNames(),
@@ -205,7 +205,7 @@ class Dashboard
         if (Manifest::isMultitenanted()) {
             return [
                 Helpers::keyedResourceName('landlord'),
-                ...collect(Manifest::tenants())->keys()->map(fn (string $id) => Helpers::keyedResourceName($id))->all(),
+                ...collect(Manifest::tenants())->keys()->map(fn (string $id): string => Helpers::keyedResourceName($id))->all(),
             ];
         }
 
@@ -535,7 +535,7 @@ class Dashboard
         $queues = $context['queues'];
 
         $series = fn (string $metric) => collect($queues)
-            ->map(fn (string $queue) => ['AWS/SQS', $metric, 'QueueName', $queue, ['label' => static::queueLabel($queue, $context['queuePrefix'])]])
+            ->map(fn (string $queue): array => ['AWS/SQS', $metric, 'QueueName', $queue, ['label' => static::queueLabel($queue, $context['queuePrefix'])]])
             ->all();
 
         // No dedicated dead-letter-queue depth panel: the Queue resource provisions
@@ -594,7 +594,7 @@ class Dashboard
         $region = $context['region'];
         $rds = $context['rds'];
 
-        $metric = fn (string $name, array $options = []) => ['AWS/RDS', $name, ...static::rdsDimensions($rds), $options];
+        $metric = fn (string $name, array $options = []): array => ['AWS/RDS', $name, ...static::rdsDimensions($rds), $options];
 
         $widgets = [static::header($y, '# Database')];
         $y++;
@@ -751,7 +751,7 @@ class Dashboard
             'period' => 86400,
             'stat' => 'Average',
             'metrics' => collect($buckets)
-                ->map(fn (string $bucket) => ['AWS/S3', 'BucketSizeBytes', 'BucketName', $bucket, 'StorageType', 'StandardStorage', ['label' => $bucket]])
+                ->map(fn (string $bucket): array => ['AWS/S3', 'BucketSizeBytes', 'BucketName', $bucket, 'StorageType', 'StandardStorage', ['label' => $bucket]])
                 ->all(),
         ]);
 
@@ -763,7 +763,7 @@ class Dashboard
             'period' => 86400,
             'stat' => 'Average',
             'metrics' => collect($buckets)
-                ->map(fn (string $bucket) => ['AWS/S3', 'NumberOfObjects', 'BucketName', $bucket, 'StorageType', 'AllStorageTypes', ['label' => $bucket]])
+                ->map(fn (string $bucket): array => ['AWS/S3', 'NumberOfObjects', 'BucketName', $bucket, 'StorageType', 'AllStorageTypes', ['label' => $bucket]])
                 ->all(),
         ]);
         $y += 6;

@@ -72,7 +72,7 @@ class FakeConfigResource implements Resource, SynchronisesConfiguration
     }
 }
 
-it('reports a clean existing resource as SYNCED with no recorded changes', function () {
+it('reports a clean existing resource as SYNCED with no recorded changes', function (): void {
     $resource = new FakeConfigResource(present: true);
     $step = new SyncFakeResourceStep($resource);
 
@@ -82,7 +82,7 @@ it('reports a clean existing resource as SYNCED with no recorded changes', funct
     expect($resource->configAppliedWith)->toBeTrue();
 });
 
-it('reports SYNCED and records the changes a real sync applied to a config-drifted resource', function () {
+it('reports SYNCED and records the changes a real sync applied to a config-drifted resource', function (): void {
     $change = Change::make('flag', false, true);
     $resource = new FakeConfigResource(present: true, configChanges: [$change]);
     $step = new SyncFakeResourceStep($resource);
@@ -92,7 +92,7 @@ it('reports SYNCED and records the changes a real sync applied to a config-drift
     expect($resource->configAppliedWith)->toBeTrue();
 });
 
-it('records missing tags as Changes so tag drift survives the apply-pending filter', function () {
+it('records missing tags as Changes so tag drift survives the apply-pending filter', function (): void {
     // The bug the new shape fixes: previously, a resource missing yolo:scope=env
     // returned a clean SYNCED at plan time (synchroniseTags was a no-op void),
     // so PR #57's "only-pending-steps" filter dropped it from apply, so the tag
@@ -108,7 +108,7 @@ it('records missing tags as Changes so tag drift survives the apply-pending filt
     expect($resource->tagsAppliedWith)->toBeFalse();
 });
 
-it('reports WOULD_SYNC and records changes without applying them on a dry-run', function () {
+it('reports WOULD_SYNC and records changes without applying them on a dry-run', function (): void {
     $change = Change::make('flag', false, true);
     $resource = new FakeConfigResource(present: true, configChanges: [$change]);
     $step = new SyncFakeResourceStep($resource);
@@ -120,7 +120,7 @@ it('reports WOULD_SYNC and records changes without applying them on a dry-run', 
     expect($resource->tagsAppliedWith)->toBeFalse();
 });
 
-it('would-create an absent resource on a dry-run and creates it for real', function () {
+it('would-create an absent resource on a dry-run and creates it for real', function (): void {
     expect((new SyncFakeResourceStep(new FakeConfigResource(present: false)))(['dry-run' => true]))
         ->toBe(StepResult::WOULD_CREATE);
 

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Codinglabs\Yolo\Steps\Sync\App\Tenant;
 
 use Codinglabs\Yolo\Helpers;

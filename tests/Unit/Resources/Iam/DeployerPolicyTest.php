@@ -8,24 +8,24 @@ use Codinglabs\Yolo\Resources\Iam\DeployerPolicy;
 function statementFor(array $document, string $action): array
 {
     return collect($document['Statement'])
-        ->first(fn (array $statement) => in_array($action, (array) $statement['Action'], true));
+        ->first(fn (array $statement): bool => in_array($action, (array) $statement['Action'], true));
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => []],
     ]);
 });
 
-it('scopes the ECR push statement to this app\'s repository', function () {
+it('scopes the ECR push statement to this app\'s repository', function (): void {
     $statement = statementFor((new DeployerPolicy())->document(), 'ecr:PutImage');
 
     expect($statement['Resource'])->toBe('arn:aws:ecr:ap-southeast-2:111111111111:repository/my-app');
     expect($statement['Action'])->toContain('ecr:InitiateLayerUpload', 'ecr:UploadLayerPart', 'ecr:CompleteLayerUpload');
 });
 
-it('grants RegisterTaskDefinition and the unscopeable describes on *', function () {
+it('grants RegisterTaskDefinition and the unscopeable describes on *', function (): void {
     $statement = statementFor((new DeployerPolicy())->document(), 'ecs:RegisterTaskDefinition');
 
     expect($statement['Resource'])->toBe('*');
@@ -38,7 +38,7 @@ it('grants RegisterTaskDefinition and the unscopeable describes on *', function 
     );
 });
 
-it('grants CloudFront ListDistributions on * so the build can resolve the asset distribution', function () {
+it('grants CloudFront ListDistributions on * so the build can resolve the asset distribution', function (): void {
     $statement = statementFor((new DeployerPolicy())->document(), 'cloudfront:ListDistributions');
 
     // CloudFront has no name-based lookup, so the build scans the account list
@@ -46,7 +46,7 @@ it('grants CloudFront ListDistributions on * so the build can resolve the asset 
     expect($statement['Resource'])->toBe('*');
 });
 
-it('grants iam:ListRoles on * so the task definition can resolve the task and execution role ARNs', function () {
+it('grants iam:ListRoles on * so the task definition can resolve the task and execution role ARNs', function (): void {
     $statement = statementFor((new DeployerPolicy())->document(), 'iam:ListRoles');
 
     // The task-definition payload resolves the task + execution role ARNs by
@@ -55,7 +55,7 @@ it('grants iam:ListRoles on * so the task definition can resolve the task and ex
     expect($statement['Resource'])->toBe('*');
 });
 
-it('grants ecs:TagResource gated to the RegisterTaskDefinition create action', function () {
+it('grants ecs:TagResource gated to the RegisterTaskDefinition create action', function (): void {
     $statement = statementFor((new DeployerPolicy())->document(), 'ecs:TagResource');
 
     // The task-def payload registers with tags, which triggers a separate
@@ -67,7 +67,7 @@ it('grants ecs:TagResource gated to the RegisterTaskDefinition create action', f
     ]);
 });
 
-it('scopes UpdateService and RunTask to this app\'s cluster resources', function () {
+it('scopes UpdateService and RunTask to this app\'s cluster resources', function (): void {
     $statement = statementFor((new DeployerPolicy())->document(), 'ecs:UpdateService');
 
     expect($statement['Resource'])->toEqualCanonicalizing([
@@ -79,7 +79,7 @@ it('scopes UpdateService and RunTask to this app\'s cluster resources', function
     expect($statement['Action'])->toContain('ecs:RunTask', 'ecs:DescribeServices');
 });
 
-it('widens UpdateService scope to the standalone queue and scheduler services when extracted', function () {
+it('widens UpdateService scope to the standalone queue and scheduler services when extracted', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
@@ -95,7 +95,7 @@ it('widens UpdateService scope to the standalone queue and scheduler services wh
     );
 });
 
-it('scopes PassRole to the per-app task role and shared execution role, passed only to ECS tasks', function () {
+it('scopes PassRole to the per-app task role and shared execution role, passed only to ECS tasks', function (): void {
     $statement = statementFor((new DeployerPolicy())->document(), 'iam:PassRole');
 
     expect($statement['Resource'])->toBe([
@@ -107,7 +107,7 @@ it('scopes PassRole to the per-app task role and shared execution role, passed o
     ]);
 });
 
-it('grants S3 object and bucket access on the asset and artefacts buckets', function () {
+it('grants S3 object and bucket access on the asset and artefacts buckets', function (): void {
     $document = (new DeployerPolicy())->document();
 
     $objects = statementFor($document, 's3:PutObject');
@@ -123,7 +123,7 @@ it('grants S3 object and bucket access on the asset and artefacts buckets', func
     ]);
 });
 
-it('grants elasticache:DescribeReplicationGroups on * when the app uses the redis cache store', function () {
+it('grants elasticache:DescribeReplicationGroups on * when the app uses the redis cache store', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'cache' => ['store' => 'redis'],
@@ -137,27 +137,27 @@ it('grants elasticache:DescribeReplicationGroups on * when the app uses the redi
     expect($statement['Resource'])->toBe('*');
 });
 
-it('omits elasticache permissions when the app opts out of the shared Valkey cache', function () {
+it('omits elasticache permissions when the app opts out of the shared Valkey cache', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'cache' => ['store' => 'file'],
     ]);
 
     $actions = collect((new DeployerPolicy())->document()['Statement'])
-        ->flatMap(fn (array $statement) => (array) $statement['Action']);
+        ->flatMap(fn (array $statement): array => (array) $statement['Action']);
 
     expect($actions)->not->toContain('elasticache:DescribeReplicationGroups');
 });
 
-it('omits Route 53 permissions for a headless app with no domain', function () {
+it('omits Route 53 permissions for a headless app with no domain', function (): void {
     $document = (new DeployerPolicy())->document();
 
-    $actions = collect($document['Statement'])->flatMap(fn (array $statement) => (array) $statement['Action']);
+    $actions = collect($document['Statement'])->flatMap(fn (array $statement): array => (array) $statement['Action']);
 
     expect($actions)->not->toContain('route53:ChangeResourceRecordSets');
 });
 
-it('grants Route 53 record changes scoped to the hosted-zone resource type when a domain is set', function () {
+it('grants Route 53 record changes scoped to the hosted-zone resource type when a domain is set', function (): void {
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
@@ -174,7 +174,7 @@ it('grants Route 53 record changes scoped to the hosted-zone resource type when 
         ->toBe('arn:aws:route53:::change/*');
 });
 
-it('includes Route 53 statements for a subdomain canary (domain only, no apex)', function () {
+it('includes Route 53 statements for a subdomain canary (domain only, no apex)', function (): void {
     writeManifest([
         'domain' => 'fargate.example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',

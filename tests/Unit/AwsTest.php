@@ -7,8 +7,8 @@ use Aws\CommandInterface;
 use Codinglabs\Yolo\Helpers;
 use Aws\CloudWatchLogs\CloudWatchLogsClient;
 
-describe('tags', function () {
-    it('generates key-value tag format by default', function () {
+describe('tags', function (): void {
+    it('generates key-value tag format by default', function (): void {
         $result = Aws::tags(['Name' => 'my-resource']);
 
         expect($result)->toHaveKey('Tags');
@@ -18,7 +18,7 @@ describe('tags', function () {
         );
     });
 
-    it('generates associative tag format when flagged', function () {
+    it('generates associative tag format when flagged', function (): void {
         $result = Aws::tags(['Name' => 'my-resource'], wrap: 'tags', associative: true);
 
         expect($result)->toBe([
@@ -29,14 +29,14 @@ describe('tags', function () {
         ]);
     });
 
-    it('supports custom wrap key', function () {
+    it('supports custom wrap key', function (): void {
         $result = Aws::tags(['Name' => 'test'], wrap: 'TagSet');
 
         expect($result)->toHaveKey('TagSet');
         expect($result)->not->toHaveKey('Tags');
     });
 
-    it('always includes environment tag', function () {
+    it('always includes environment tag', function (): void {
         $result = Aws::tags(associative: true);
 
         expect($result['Tags'])->toBe([
@@ -45,8 +45,8 @@ describe('tags', function () {
     });
 });
 
-describe('publicAccessBlockConfiguration', function () {
-    it('returns all four Block Public Access protections enabled', function () {
+describe('publicAccessBlockConfiguration', function (): void {
+    it('returns all four Block Public Access protections enabled', function (): void {
         expect(Aws::publicAccessBlockConfiguration())->toBe([
             'BlockPublicAcls' => true,
             'IgnorePublicAcls' => true,
@@ -56,12 +56,12 @@ describe('publicAccessBlockConfiguration', function () {
     });
 });
 
-describe('expectedTags', function () {
-    it('returns associative map including environment by default', function () {
+describe('expectedTags', function (): void {
+    it('returns associative map including environment by default', function (): void {
         expect(Aws::expectedTags())->toBe(['yolo:environment' => 'testing']);
     });
 
-    it('merges supplied tags over the defaults', function () {
+    it('merges supplied tags over the defaults', function (): void {
         expect(Aws::expectedTags(['Name' => 'foo']))->toBe([
             'yolo:environment' => 'testing',
             'Name' => 'foo',
@@ -69,8 +69,8 @@ describe('expectedTags', function () {
     });
 });
 
-describe('flattenTags', function () {
-    it('normalises upper-case Key/Value pairs to associative', function () {
+describe('flattenTags', function (): void {
+    it('normalises upper-case Key/Value pairs to associative', function (): void {
         expect(Aws::flattenTags([
             ['Key' => 'yolo:environment', 'Value' => 'production'],
             ['Key' => 'Name', 'Value' => 'my-app'],
@@ -80,36 +80,36 @@ describe('flattenTags', function () {
         ]);
     });
 
-    it('normalises lower-case key/value pairs to associative', function () {
+    it('normalises lower-case key/value pairs to associative', function (): void {
         expect(Aws::flattenTags([
             ['key' => 'yolo:environment', 'value' => 'production'],
         ]))->toBe(['yolo:environment' => 'production']);
     });
 
-    it('returns an already-associative map unchanged', function () {
+    it('returns an already-associative map unchanged', function (): void {
         expect(Aws::flattenTags(['Name' => 'foo']))->toBe(['Name' => 'foo']);
     });
 
-    it('returns an empty list as an empty array', function () {
+    it('returns an empty list as an empty array', function (): void {
         expect(Aws::flattenTags([]))->toBe([]);
     });
 });
 
-describe('synchroniseCloudWatchLogsTags', function () {
-    it('strips the stream wildcard `:*` suffix before calling the CloudWatch Logs tag APIs', function () {
+describe('synchroniseCloudWatchLogsTags', function (): void {
+    it('strips the stream wildcard `:*` suffix before calling the CloudWatch Logs tag APIs', function (): void {
         $captured = [];
 
         Helpers::app()->instance('cloudWatchLogs', new CloudWatchLogsClient([
             'region' => 'ap-southeast-2',
             'version' => 'latest',
             'credentials' => false,
-            'handler' => tap(new MockHandler(), function (MockHandler $mock) use (&$captured) {
-                $mock->append(function (CommandInterface $cmd) use (&$captured) {
+            'handler' => tap(new MockHandler(), function (MockHandler $mock) use (&$captured): void {
+                $mock->append(function (CommandInterface $cmd) use (&$captured): Result {
                     $captured[] = ['name' => $cmd->getName(), 'args' => $cmd->toArray()];
 
                     return new Result(['tags' => []]);
                 });
-                $mock->append(function (CommandInterface $cmd) use (&$captured) {
+                $mock->append(function (CommandInterface $cmd) use (&$captured): Result {
                     $captured[] = ['name' => $cmd->getName(), 'args' => $cmd->toArray()];
 
                     return new Result([]);
@@ -131,29 +131,29 @@ describe('synchroniseCloudWatchLogsTags', function () {
     });
 });
 
-describe('tagsRequiringSync', function () {
-    it('returns tags missing from the current set', function () {
+describe('tagsRequiringSync', function (): void {
+    it('returns tags missing from the current set', function (): void {
         expect(Aws::tagsRequiringSync(
             expected: ['yolo:environment' => 'production', 'Name' => 'foo'],
             current: ['yolo:environment' => 'production'],
         ))->toBe(['Name' => 'foo']);
     });
 
-    it('returns tags whose values have drifted', function () {
+    it('returns tags whose values have drifted', function (): void {
         expect(Aws::tagsRequiringSync(
             expected: ['Name' => 'new-name'],
             current: ['Name' => 'old-name'],
         ))->toBe(['Name' => 'new-name']);
     });
 
-    it('returns empty when current is a superset of expected', function () {
+    it('returns empty when current is a superset of expected', function (): void {
         expect(Aws::tagsRequiringSync(
             expected: ['Name' => 'foo'],
             current: ['Name' => 'foo', 'manual:owner' => 'steve'],
         ))->toBe([]);
     });
 
-    it('does not surface tags only present in current — reconciliation is additive', function () {
+    it('does not surface tags only present in current — reconciliation is additive', function (): void {
         $result = Aws::tagsRequiringSync(
             expected: ['Name' => 'foo'],
             current: ['Name' => 'foo', 'manual:owner' => 'steve', 'cost-center' => 'eng'],

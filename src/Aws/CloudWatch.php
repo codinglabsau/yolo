@@ -34,7 +34,7 @@ class CloudWatch
             throw new ResourceDoesNotExistException("Could not find CloudWatch dashboard $name");
         }
 
-        return json_decode($body, true);
+        return json_decode((string) $body, true);
     }
 
     /**
@@ -66,7 +66,7 @@ class CloudWatch
             return null;
         }
 
-        usort($datapoints, fn ($a, $b) => $b['Timestamp'] <=> $a['Timestamp']);
+        usort($datapoints, fn (array $a, array $b): int => $b['Timestamp'] <=> $a['Timestamp']);
 
         return isset($datapoints[0][$stat]) ? (float) $datapoints[0][$stat] : null;
     }

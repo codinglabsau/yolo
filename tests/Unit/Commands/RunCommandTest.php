@@ -1,8 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 use Codinglabs\Yolo\Commands\RunCommand;
 
-it('builds the execute-command invocation with a profile', function () {
+it('builds the execute-command invocation with a profile', function (): void {
     $args = RunCommand::executeCommandArgs(
         cluster: 'yolo-production-codinglabs',
         task: 'arn:aws:ecs:ap-southeast-2:111:task/abc',
@@ -24,7 +26,7 @@ it('builds the execute-command invocation with a profile', function () {
     ]);
 });
 
-it('targets the container named after the service group', function () {
+it('targets the container named after the service group', function (): void {
     $args = RunCommand::executeCommandArgs(
         cluster: 'yolo-production-codinglabs',
         task: 'task-arn',
@@ -37,7 +39,7 @@ it('targets the container named after the service group', function () {
     expect($args)->toContain('--container', 'queue');
 });
 
-it('omits --profile when none is configured (e.g. running on AWS)', function () {
+it('omits --profile when none is configured (e.g. running on AWS)', function (): void {
     $args = RunCommand::executeCommandArgs(
         cluster: 'yolo-production-codinglabs',
         task: 'task-arn',

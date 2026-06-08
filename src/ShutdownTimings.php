@@ -22,31 +22,31 @@ use Codinglabs\Yolo\Enums\ServerGroup;
  *       queue:
  *         shutdown-grace-period: 90     # standalone queue worker — let a long job finish
  */
-class ShutdownTimings
+final class ShutdownTimings
 {
     // Queue jobs routinely outlast an ALB drain, so the worker defaults to a
     // longer window than the web process to finish the in-flight job on shutdown.
-    public const QUEUE_DEFAULT_GRACE = 70;
+    public const int QUEUE_DEFAULT_GRACE = 70;
 
     // The web process's graceful-stop window when not set in the manifest.
-    private const WEB_DEFAULT_GRACE = 10;
+    private const int WEB_DEFAULT_GRACE = 10;
 
     // A standalone scheduler's graceful-stop window: long enough to let an
     // in-flight schedule:run tick finish. A scheduled command that routinely
     // outlasts this belongs on the queue, not the cron tick.
-    private const SCHEDULER_DEFAULT_GRACE = 10;
+    private const int SCHEDULER_DEFAULT_GRACE = 10;
 
     // The bundled SSR renderer's graceful-stop window. A render is sub-second and
     // stateless (Inertia falls back to client-side rendering if it's gone), so it
     // only needs a moment to finish an in-flight render before SIGKILL.
-    private const SSR_DEFAULT_GRACE = 5;
+    private const int SSR_DEFAULT_GRACE = 5;
 
     // Headroom between the longest graceful stop and ECS's SIGKILL so a process
     // draining right up to its window isn't cut off at the wire.
-    private const STOP_TIMEOUT_BUFFER = 5;
+    private const int STOP_TIMEOUT_BUFFER = 5;
 
     // Fargate hard-caps the container stopTimeout at 120s.
-    private const MAX_STOP_TIMEOUT = 120;
+    private const int MAX_STOP_TIMEOUT = 120;
 
     /**
      * The web (octane) process's graceful-stop window. Octane is behind the ALB,
@@ -55,7 +55,7 @@ class ShutdownTimings
      */
     public static function webGrace(): int
     {
-        return (int) Manifest::get('tasks.web.shutdown-grace-period', static::WEB_DEFAULT_GRACE);
+        return (int) Manifest::get('tasks.web.shutdown-grace-period', self::WEB_DEFAULT_GRACE);
     }
 
     /**
@@ -65,7 +65,7 @@ class ShutdownTimings
      */
     public static function drain(): int
     {
-        return Manifest::isHeadless() ? 0 : static::webGrace();
+        return Manifest::isHeadless() ? 0 : self::webGrace();
     }
 
     /**
@@ -76,7 +76,7 @@ class ShutdownTimings
      */
     public static function queueGrace(): int
     {
-        return (int) Manifest::get('tasks.queue.shutdown-grace-period', static::QUEUE_DEFAULT_GRACE);
+        return (int) Manifest::get('tasks.queue.shutdown-grace-period', self::QUEUE_DEFAULT_GRACE);
     }
 
     /**
@@ -86,7 +86,7 @@ class ShutdownTimings
      */
     public static function schedulerGrace(): int
     {
-        return (int) Manifest::get('tasks.scheduler.shutdown-grace-period', static::SCHEDULER_DEFAULT_GRACE);
+        return (int) Manifest::get('tasks.scheduler.shutdown-grace-period', self::SCHEDULER_DEFAULT_GRACE);
     }
 
     /**
@@ -97,7 +97,7 @@ class ShutdownTimings
     {
         $value = Manifest::get('tasks.web.ssr');
 
-        return is_array($value) ? (int) ($value['shutdown-grace-period'] ?? static::SSR_DEFAULT_GRACE) : static::SSR_DEFAULT_GRACE;
+        return is_array($value) ? (int) ($value['shutdown-grace-period'] ?? self::SSR_DEFAULT_GRACE) : self::SSR_DEFAULT_GRACE;
     }
 
     /**
@@ -114,21 +114,21 @@ class ShutdownTimings
     {
         $graces = match ($group) {
             ServerGroup::WEB => [
-                'octane' => static::webGrace(),
-                'ssr' => Manifest::bundles('ssr') ? static::ssrGrace() : null,
-                'scheduler' => Manifest::schedulerHost() === ServerGroup::WEB ? static::schedulerGrace() : null,
-                'queue' => Manifest::queueHost() === ServerGroup::WEB ? static::queueGrace() : null,
+                'octane' => self::webGrace(),
+                'ssr' => Manifest::bundles('ssr') ? self::ssrGrace() : null,
+                'scheduler' => Manifest::schedulerHost() === ServerGroup::WEB ? self::schedulerGrace() : null,
+                'queue' => Manifest::queueHost() === ServerGroup::WEB ? self::queueGrace() : null,
             ],
             ServerGroup::QUEUE => [
-                'scheduler' => Manifest::schedulerHost() === ServerGroup::QUEUE ? static::schedulerGrace() : null,
-                'queue' => static::queueGrace(),
+                'scheduler' => Manifest::schedulerHost() === ServerGroup::QUEUE ? self::schedulerGrace() : null,
+                'queue' => self::queueGrace(),
             ],
             ServerGroup::SCHEDULER => [
-                'scheduler' => static::schedulerGrace(),
+                'scheduler' => self::schedulerGrace(),
             ],
         };
 
-        return array_filter($graces, fn (?int $grace) => $grace !== null);
+        return array_filter($graces, fn (?int $grace): bool => $grace !== null);
     }
 
     /**
@@ -142,8 +142,8 @@ class ShutdownTimings
      */
     public static function stopTimeoutFor(ServerGroup $group): int
     {
-        $graces = static::programGraces($group);
-        $drainWindow = $group === ServerGroup::WEB ? static::drain() : 0;
+        $graces = self::programGraces($group);
+        $drainWindow = $group === ServerGroup::WEB ? self::drain() : 0;
 
         if (isset($graces['scheduler'])) {
             $rest = array_diff_key($graces, ['scheduler' => 0]);
@@ -152,6 +152,6 @@ class ShutdownTimings
             $total = $drainWindow + max($graces);
         }
 
-        return min($total + static::STOP_TIMEOUT_BUFFER, static::MAX_STOP_TIMEOUT);
+        return min($total + self::STOP_TIMEOUT_BUFFER, self::MAX_STOP_TIMEOUT);
     }
 }

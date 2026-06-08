@@ -14,13 +14,13 @@ function describeRdsAndTaskGroups(): Result
     ]);
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 });
 
-it('creates the RDS security group and adds the task-SG ingress rule when absent', function () {
+it('creates the RDS security group and adds the task-SG ingress rule when absent', function (): void {
     $captured = [];
 
     bindMockEc2Client([
@@ -42,7 +42,7 @@ it('creates the RDS security group and adds the task-SG ingress rule when absent
     expect($names)->not->toContain('RevokeSecurityGroupIngress');
 });
 
-it('additively authorises 3306 from the task security group on an existing RDS SG', function () {
+it('additively authorises 3306 from the task security group on an existing RDS SG', function (): void {
     $captured = [];
 
     bindMockEc2Client([
@@ -66,7 +66,7 @@ it('additively authorises 3306 from the task security group on an existing RDS S
     expect(array_column($captured, 'name'))->not->toContain('RevokeSecurityGroupIngress');
 });
 
-it('does not authorise again when a matching task-SG rule already exists', function () {
+it('does not authorise again when a matching task-SG rule already exists', function (): void {
     $captured = [];
 
     bindMockEc2Client([
@@ -92,7 +92,7 @@ it('does not authorise again when a matching task-SG rule already exists', funct
         ->not->toContain('RevokeSecurityGroupIngress');
 });
 
-it('treats a manifest-specified RDS security group as custom-managed', function () {
+it('treats a manifest-specified RDS security group as custom-managed', function (): void {
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',
@@ -109,7 +109,7 @@ it('treats a manifest-specified RDS security group as custom-managed', function 
     expect(array_column($captured, 'name'))->not->toContain('AuthorizeSecurityGroupIngress');
 });
 
-it('does not authorise during a dry-run', function () {
+it('does not authorise during a dry-run', function (): void {
     $captured = [];
 
     bindMockEc2Client([

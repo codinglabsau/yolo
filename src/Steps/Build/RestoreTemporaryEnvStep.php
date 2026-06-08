@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Steps\Build;
 
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Contracts\Step;
+use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
 
 class RestoreTemporaryEnvStep implements Step
@@ -13,7 +14,7 @@ class RestoreTemporaryEnvStep implements Step
         protected $filesystem = new Filesystem()
     ) {}
 
-    public function __invoke(): void
+    public function __invoke(array $options = []): StepResult
     {
         // Once the build process is complete, move the .env into it's
         // final place to be added to the build artefact for deploy.
@@ -21,5 +22,7 @@ class RestoreTemporaryEnvStep implements Step
             Paths::build(".env.$this->environment.tmp"),
             Paths::build('.env'),
         );
+
+        return StepResult::SUCCESS;
     }
 }

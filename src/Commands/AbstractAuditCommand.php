@@ -74,8 +74,8 @@ abstract class AbstractAuditCommand extends Command
         $prefix = "yolo-$environment-";
 
         $liveClusters = collect(Ecs::clusterArns())
-            ->filter(fn (string $arn) => str_starts_with(Arn::parse($arn)?->resourceId ?? '', $prefix))
-            ->filter(fn (string $arn) => Ecs::clusterRunningTasks($arn) !== [])
+            ->filter(fn (string $arn): bool => str_starts_with(Arn::parse($arn)->resourceId ?? '', $prefix))
+            ->filter(fn (string $arn): bool => Ecs::clusterRunningTasks($arn) !== [])
             ->all();
 
         return Audit::appsFromClusters($liveClusters, $environment);
@@ -108,7 +108,7 @@ abstract class AbstractAuditCommand extends Command
 
         table(
             ['Scope', 'Status', 'Type', 'Name', 'App', 'Reason'],
-            $rows->map(fn (array $resource) => [
+            $rows->map(fn (array $resource): array => [
                 static::scopeLabel($resource['scope']),
                 static::statusLabel($resource['status']),
                 $resource['type'],
@@ -141,9 +141,9 @@ abstract class AbstractAuditCommand extends Command
     protected function filtered(array $resources)
     {
         return collect($resources)
-            ->filter(fn (array $resource) => $this->includes($resource))
+            ->filter(fn (array $resource): bool => $this->includes($resource))
             ->when($this->option('unexpected'), fn ($rows) => $rows->where('status', Audit::STATUS_UNEXPECTED))
-            ->sortBy(fn (array $resource) => Audit::orderKey($resource))
+            ->sortBy(fn (array $resource): string => Audit::orderKey($resource))
             ->values();
     }
 

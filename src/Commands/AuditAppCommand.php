@@ -13,6 +13,7 @@ use Symfony\Component\Console\Input\InputArgument;
  */
 class AuditAppCommand extends AbstractAuditCommand
 {
+    #[\Override]
     protected function configure(): void
     {
         parent::configure();

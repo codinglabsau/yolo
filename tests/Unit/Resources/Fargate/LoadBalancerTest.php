@@ -62,7 +62,7 @@ function modifiedAttributes(array $calls): array
     $modify = collect($calls)->firstWhere('name', 'ModifyLoadBalancerAttributes');
 
     return collect($modify['args']['Attributes'])
-        ->mapWithKeys(fn (array $attribute) => [$attribute['Key'] => $attribute['Value']])
+        ->mapWithKeys(fn (array $attribute): array => [$attribute['Key'] => $attribute['Value']])
         ->all();
 }
 
@@ -88,18 +88,18 @@ function syncedLoadBalancerAttributes(array $overrides = []): array
     ], $overrides);
 
     return collect($attributes)
-        ->map(fn (string $value, string $key) => ['Key' => $key, 'Value' => $value])
+        ->map(fn (string $value, string $key): array => ['Key' => $key, 'Value' => $value])
         ->values()
         ->all();
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 });
 
-it('pins the full hardened attribute shape', function () {
+it('pins the full hardened attribute shape', function (): void {
     // Hardcoded sensible defaults — the argument shape create + sync both push
     // through modifyLoadBalancerAttributes. Deletion protection is always on.
     expect((new LoadBalancer())->desiredAttributes())->toBe([
@@ -113,7 +113,7 @@ it('pins the full hardened attribute shape', function () {
     ]);
 });
 
-it('makes no write when every managed attribute already matches', function () {
+it('makes no write when every managed attribute already matches', function (): void {
     $recorder = bindRecordingLoadBalancerClient(syncedLoadBalancerAttributes());
 
     (new LoadBalancer())->synchroniseConfiguration();
@@ -121,7 +121,7 @@ it('makes no write when every managed attribute already matches', function () {
     expect(collect($recorder->calls)->pluck('name'))->not->toContain('ModifyLoadBalancerAttributes');
 });
 
-it('modifies the load balancer when a managed attribute has drifted', function () {
+it('modifies the load balancer when a managed attribute has drifted', function (): void {
     $recorder = bindRecordingLoadBalancerClient(
         syncedLoadBalancerAttributes(['routing.http.drop_invalid_header_fields.enabled' => 'false'])
     );
@@ -132,7 +132,7 @@ it('modifies the load balancer when a managed attribute has drifted', function (
     expect(modifiedAttributes($recorder->calls)['routing.http.drop_invalid_header_fields.enabled'])->toBe('true');
 });
 
-it('returns the drifted attribute as a current → desired change', function () {
+it('returns the drifted attribute as a current → desired change', function (): void {
     bindRecordingLoadBalancerClient(syncedLoadBalancerAttributes(['idle_timeout.timeout_seconds' => '30']));
 
     $changes = (new LoadBalancer())->synchroniseConfiguration();
@@ -143,13 +143,13 @@ it('returns the drifted attribute as a current → desired change', function () 
     expect($changes[0]->to)->toBe('60');
 });
 
-it('returns no changes when every managed attribute matches', function () {
+it('returns no changes when every managed attribute matches', function (): void {
     bindRecordingLoadBalancerClient(syncedLoadBalancerAttributes());
 
     expect((new LoadBalancer())->synchroniseConfiguration())->toBe([]);
 });
 
-it('computes the diff without writing under apply:false', function () {
+it('computes the diff without writing under apply:false', function (): void {
     $recorder = bindRecordingLoadBalancerClient(syncedLoadBalancerAttributes(['routing.http2.enabled' => 'false']));
 
     $changes = (new LoadBalancer())->synchroniseConfiguration(apply: false);

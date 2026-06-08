@@ -18,7 +18,7 @@ class ConsoleUrl
 {
     public static function for(?Arn $arn): ?string
     {
-        if ($arn === null) {
+        if (! $arn instanceof Arn) {
             return null;
         }
 

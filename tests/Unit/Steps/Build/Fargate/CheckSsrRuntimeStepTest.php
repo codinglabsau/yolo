@@ -11,7 +11,7 @@ use Codinglabs\Yolo\Steps\Build\Fargate\CheckSsrRuntimeStep;
  * Node runtime returns its default (true) and the build proceeds — exactly the
  * behaviour of the deploy GHA. The warning is swallowed by the buffered output.
  */
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['ssr' => true]],
@@ -21,11 +21,13 @@ beforeEach(function () {
     Prompt::setOutput(new BufferedOutput());
 });
 
-afterEach(function () {
-    is_file(Paths::base('Dockerfile')) && unlink(Paths::base('Dockerfile'));
+afterEach(function (): void {
+    if (is_file(Paths::base('Dockerfile'))) {
+        unlink(Paths::base('Dockerfile'));
+    }
 });
 
-it('skips without reading the Dockerfile when ssr is off', function () {
+it('skips without reading the Dockerfile when ssr is off', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => []],
@@ -35,7 +37,7 @@ it('skips without reading the Dockerfile when ssr is off', function () {
     expect((new CheckSsrRuntimeStep('testing'))())->toBe(StepResult::SKIPPED);
 });
 
-it('passes when the Dockerfile installs a Node runtime', function (string $dockerfile) {
+it('passes when the Dockerfile installs a Node runtime', function (string $dockerfile): void {
     file_put_contents(Paths::base('Dockerfile'), $dockerfile);
 
     expect((new CheckSsrRuntimeStep('testing'))())->toBe(StepResult::SUCCESS);
@@ -46,7 +48,7 @@ it('passes when the Dockerfile installs a Node runtime', function (string $docke
     'COPY --from=node' => ["FROM dunglas/frankenphp:1-php8.4-alpine\nCOPY --from=node:22 /usr/local/bin/node /usr/local/bin/node\n"],
 ]);
 
-it('proceeds (non-interactively) when no Node runtime is detected', function () {
+it('proceeds (non-interactively) when no Node runtime is detected', function (): void {
     file_put_contents(Paths::base('Dockerfile'), "FROM dunglas/frankenphp:1-php8.4-alpine\nRUN apk add --no-cache git supervisor\n");
 
     // Warn-and-confirm: in a non-interactive build the confirm auto-approves, so
@@ -54,7 +56,7 @@ it('proceeds (non-interactively) when no Node runtime is detected', function () 
     expect((new CheckSsrRuntimeStep('testing'))())->toBe(StepResult::SUCCESS);
 });
 
-it('proceeds when the Dockerfile is missing entirely', function () {
+it('proceeds when the Dockerfile is missing entirely', function (): void {
     // The missing-Dockerfile error belongs to the image build, not this guard.
     expect((new CheckSsrRuntimeStep('testing'))())->toBe(StepResult::SUCCESS);
 });

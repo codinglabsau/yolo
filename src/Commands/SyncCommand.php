@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Codinglabs\Yolo\Commands;
 
 use function Laravel\Prompts\warning;
@@ -13,6 +15,7 @@ class SyncCommand extends SyncSteppedCommand
             ->setDescription('Sync all resources for the given environment (account → environment → app)');
     }
 
+    #[\Override]
     public function handle(): int
     {
         // The orchestrating `sync` composes SyncAppCommand's scopes but not its

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Codinglabs\Yolo\Resources\ApplicationAutoScaling;
 
 use Codinglabs\Yolo\Aws;
@@ -78,7 +80,7 @@ class ScalingPolicy
             'PredefinedMetricSpecification' => array_filter([
                 'PredefinedMetricType' => $this->metricType,
                 'ResourceLabel' => $this->resourceLabel,
-            ], fn ($value) => $value !== null),
+            ], fn (?string $value): bool => $value !== null),
             'ScaleOutCooldown' => static::scaleOutCooldown(),
             'ScaleInCooldown' => static::scaleInCooldown(),
         ];

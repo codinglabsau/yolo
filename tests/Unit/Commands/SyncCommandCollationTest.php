@@ -12,7 +12,7 @@ use Codinglabs\Yolo\Commands\SyncSteppedCommand;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
-beforeEach(function () {
+beforeEach(function (): void {
     Helpers::app()->instance('runningInAws', false);
 });
 
@@ -51,13 +51,13 @@ class CollationFakeTenantStep extends TenantStep
     }
 }
 
-it('orchestrates the three scopes in order — account → environment → app', function () {
+it('orchestrates the three scopes in order — account → environment → app', function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 
     expect(array_keys((new SyncCommand())->scopes()))->toBe(['account', 'environment', 'app']);
 });
 
-it('folds the Fargate + CDN steps into the app scope when a web task is declared', function () {
+it('folds the Fargate + CDN steps into the app scope when a web task is declared', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'domain' => 'codinglabs.com.au',
@@ -70,7 +70,7 @@ it('folds the Fargate + CDN steps into the app scope when a web task is declared
         ->and($appSteps)->toContain(Steps\Sync\App\SyncAssetDistributionStep::class);
 });
 
-it('omits the Fargate + CDN steps from a solo app with no web task', function () {
+it('omits the Fargate + CDN steps from a solo app with no web task', function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 
     $appSteps = (new SyncCommand())->scopes()['app'];
@@ -79,7 +79,7 @@ it('omits the Fargate + CDN steps from a solo app with no web task', function ()
         ->and($appSteps)->toContain(Steps\Sync\App\Solo\SyncHostedZoneStep::class);
 });
 
-it('swaps the Solo steps for Landlord + Tenant steps on a multi-tenant app', function () {
+it('swaps the Solo steps for Landlord + Tenant steps on a multi-tenant app', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tenants' => ['alpha' => []],
@@ -92,7 +92,7 @@ it('swaps the Solo steps for Landlord + Tenant steps on a multi-tenant app', fun
         ->and($appSteps)->not->toContain(Steps\Sync\App\Solo\SyncHostedZoneStep::class);
 });
 
-it('provisions the ALB log bucket before the load balancer in the environment scope', function () {
+it('provisions the ALB log bucket before the load balancer in the environment scope', function (): void {
     // `SyncLoadBalancerStep` writes `access_logs.s3.bucket`, which AWS validates
     // against the bucket's log-delivery policy at attribute-write time. The bucket
     // (S3LoadBalancerLogs) MUST therefore be provisioned first within the same
@@ -109,7 +109,7 @@ it('provisions the ALB log bucket before the load balancer in the environment sc
         ->and($logBucket)->toBeLessThan($loadBalancer);
 });
 
-it('keys each scope distinctly so no scope is dropped on merge', function () {
+it('keys each scope distinctly so no scope is dropped on merge', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'domain' => 'codinglabs.com.au',
@@ -122,7 +122,7 @@ it('keys each scope distinctly so no scope is dropped on merge', function () {
         ->and($scopes)->toEqual(array_unique($scopes));
 });
 
-it('groups the three skipped IVS steps under a single determination', function () {
+it('groups the three skipped IVS steps under a single determination', function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 
     [$plan, $skipped] = collate(['app' => ivsSteps()]);
@@ -130,12 +130,12 @@ it('groups the three skipped IVS steps under a single determination', function (
     expect($plan)->toHaveCount(0);
     expect($skipped)->toHaveCount(3);
 
-    expect($skipped->groupBy(fn (array $entry) => $entry['scope'] . '|' . $entry['reason']))
+    expect($skipped->groupBy(fn (array $entry): string => $entry['scope'] . '|' . $entry['reason']))
         ->toHaveCount(1);
     expect($skipped->first()['reason'])->toBe('ivs not enabled in manifest');
 });
 
-it('plans the IVS steps when ivs is enabled', function () {
+it('plans the IVS steps when ivs is enabled', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'ivs' => true,
     ]);
@@ -146,7 +146,7 @@ it('plans the IVS steps when ivs is enabled', function () {
     expect($skipped)->toHaveCount(0);
 });
 
-it('fans a per-tenant step out across every tenant by default', function () {
+it('fans a per-tenant step out across every tenant by default', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tenants' => ['alpha' => [], 'beta' => []],
@@ -157,7 +157,7 @@ it('fans a per-tenant step out across every tenant by default', function () {
     expect($plan->pluck('step')->map->tenantId()->all())->toBe(['alpha', 'beta']);
 });
 
-it('narrows the per-tenant fan-out to a single tenant with --tenant', function () {
+it('narrows the per-tenant fan-out to a single tenant with --tenant', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tenants' => ['alpha' => [], 'beta' => []],
@@ -169,7 +169,7 @@ it('narrows the per-tenant fan-out to a single tenant with --tenant', function (
     expect($plan->first()['step']->tenantId())->toBe('alpha');
 });
 
-it('errors on an unknown --tenant id', function () {
+it('errors on an unknown --tenant id', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tenants' => ['alpha' => []],

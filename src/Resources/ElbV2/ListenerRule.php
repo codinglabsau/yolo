@@ -100,8 +100,8 @@ class ListenerRule implements Resource
     protected function priority(): int
     {
         $usedPriorities = collect(ElbV2::rules($this->httpsListenerArn))
-            ->filter(fn (array $rule) => $rule['Priority'] !== 'default')
-            ->map(fn (array $rule) => (int) $rule['Priority'])
+            ->filter(fn (array $rule): bool => $rule['Priority'] !== 'default')
+            ->map(fn (array $rule): int => (int) $rule['Priority'])
             ->all();
 
         return static::nextAvailablePriority($this->name(), $usedPriorities);

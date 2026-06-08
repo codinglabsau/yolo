@@ -19,7 +19,7 @@ class Audit
 
     public const SCOPE_TAG = 'yolo:scope';
 
-    private const NAME_TAG = 'Name';
+    private const string NAME_TAG = 'Name';
 
     public const STATUS_OK = 'ok';
 
@@ -100,7 +100,7 @@ class Audit
      *
      * @var array<string, array<int, string>>
      */
-    private const IGNORED_TYPES = [
+    private const array IGNORED_TYPES = [
         'ecs' => ['task-definition', 'task'],
     ];
 
@@ -117,9 +117,9 @@ class Audit
         $prefix = "yolo-$environment-";
 
         return collect($clusterArns)
-            ->map(fn (string $arn) => Arn::parse($arn)?->resourceId)
-            ->filter(fn (?string $name) => $name !== null && str_starts_with($name, $prefix) && strlen($name) > strlen($prefix))
-            ->map(fn (string $name) => substr($name, strlen($prefix)))
+            ->map(fn (string $arn): ?string => Arn::parse($arn)?->resourceId)
+            ->filter(fn (?string $name): bool => $name !== null && str_starts_with($name, $prefix) && strlen($name) > strlen($prefix))
+            ->map(fn (string $name): string => substr($name, strlen($prefix)))
             ->unique()
             ->values()
             ->all();
@@ -162,8 +162,8 @@ class Audit
         $managedServices = self::managedServices();
 
         $resources = collect($taggedResources)
-            ->reject(fn (array $resource) => static::isIgnored(Arn::parse($resource['ResourceARN'])))
-            ->map(function (array $resource) use ($liveApps, $managedServices) {
+            ->reject(fn (array $resource): bool => static::isIgnored(Arn::parse($resource['ResourceARN'])))
+            ->map(function (array $resource) use ($liveApps, $managedServices): array {
                 $tags = Aws::flattenTags($resource['Tags'] ?? []);
                 $app = $tags[self::APP_TAG] ?? null;
                 $scopeTag = $tags[self::SCOPE_TAG] ?? null;
@@ -171,7 +171,7 @@ class Audit
 
                 $sharedScope = in_array($scopeTag, [self::SCOPE_ENV, self::SCOPE_ACCOUNT], true);
                 $owned = $app !== null || $sharedScope;
-                $managedService = $parsed !== null && in_array($parsed->service, $managedServices, true);
+                $managedService = $parsed instanceof Arn && in_array($parsed->service, $managedServices, true);
 
                 [$status, $reason] = match (true) {
                     ! $owned => [self::STATUS_UNEXPECTED, self::REASON_NO_OWNER],
@@ -184,7 +184,7 @@ class Audit
                     'arn' => $resource['ResourceARN'],
                     'scope' => static::scope($tags),
                     'type' => static::type($parsed),
-                    'name' => $tags[self::NAME_TAG] ?? $parsed?->resourceId ?? $resource['ResourceARN'],
+                    'name' => $tags[self::NAME_TAG] ?? $parsed->resourceId ?? $resource['ResourceARN'],
                     'app' => $app,
                     'status' => $status,
                     'reason' => $reason,
@@ -249,12 +249,12 @@ class Audit
      */
     protected static function isIgnored(?Arn $arn): bool
     {
-        return $arn !== null && in_array($arn->resourceType, self::IGNORED_TYPES[$arn->service] ?? [], true);
+        return $arn instanceof Arn && in_array($arn->resourceType, self::IGNORED_TYPES[$arn->service] ?? [], true);
     }
 
     protected static function type(?Arn $arn): string
     {
-        if ($arn === null) {
+        if (! $arn instanceof Arn) {
             return '?';
         }
 

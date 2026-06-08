@@ -3,15 +3,21 @@
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Steps\Build\Fargate\GenerateSupervisorConfigStep;
 
-beforeEach(function () {
+beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => []],
     ]);
 
-    is_file(Paths::build('docker/supervisord.conf')) && unlink(Paths::build('docker/supervisord.conf'));
-    is_file(Paths::build('docker/supervisord.queue.conf')) && unlink(Paths::build('docker/supervisord.queue.conf'));
-    is_file(Paths::build('docker/crontabs/www-data')) && unlink(Paths::build('docker/crontabs/www-data'));
+    if (is_file(Paths::build('docker/supervisord.conf'))) {
+        unlink(Paths::build('docker/supervisord.conf'));
+    }
+    if (is_file(Paths::build('docker/supervisord.queue.conf'))) {
+        unlink(Paths::build('docker/supervisord.queue.conf'));
+    }
+    if (is_file(Paths::build('docker/crontabs/www-data'))) {
+        unlink(Paths::build('docker/crontabs/www-data'));
+    }
 });
 
 function generatedSupervisorConfig(): string
@@ -21,7 +27,7 @@ function generatedSupervisorConfig(): string
     return file_get_contents(Paths::build('docker/supervisord.conf'));
 }
 
-it('always runs octane on the manifest port', function () {
+it('always runs octane on the manifest port', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['port' => 9000]],
@@ -33,11 +39,11 @@ it('always runs octane on the manifest port', function () {
     expect($config)->toContain('command=php artisan octane:start --host=0.0.0.0 --port=9000');
 });
 
-it('defaults the octane port to 8000', function () {
+it('defaults the octane port to 8000', function (): void {
     expect(generatedSupervisorConfig())->toContain('--port=8000');
 });
 
-it('bundles octane, the scheduler and the queue worker into the web config for a plain web app', function () {
+it('bundles octane, the scheduler and the queue worker into the web config for a plain web app', function (): void {
     $config = generatedSupervisorConfig();
 
     expect($config)->toContain('[program:octane]');
@@ -49,7 +55,7 @@ it('bundles octane, the scheduler and the queue worker into the web config for a
     expect($config)->toContain('command=php artisan queue:work --tries=3 --max-time=3600');
 });
 
-it('runs octane alone in the web config when both queue and scheduler are extracted', function () {
+it('runs octane alone in the web config when both queue and scheduler are extracted', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
@@ -62,7 +68,7 @@ it('runs octane alone in the web config when both queue and scheduler are extrac
     expect($config)->not->toContain('[program:queue]');
 });
 
-it('drops the scheduler from the web config when it has its own service, keeping the bundled queue', function () {
+it('drops the scheduler from the web config when it has its own service, keeping the bundled queue', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => [], 'scheduler' => []],
@@ -75,7 +81,7 @@ it('drops the scheduler from the web config when it has its own service, keeping
     expect($config)->not->toContain('[program:scheduler]');
 });
 
-it('writes a second supervisord config for a standalone queue that hosts the scheduler', function () {
+it('writes a second supervisord config for a standalone queue that hosts the scheduler', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => [], 'queue' => []],
@@ -96,7 +102,7 @@ it('writes a second supervisord config for a standalone queue that hosts the sch
     expect($queue)->not->toContain('[program:octane]');
 });
 
-it('writes no queue supervisord config when the standalone queue is a single process', function () {
+it('writes no queue supervisord config when the standalone queue is a single process', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
@@ -108,7 +114,7 @@ it('writes no queue supervisord config when the standalone queue is a single pro
     expect(is_file(Paths::build('docker/supervisord.queue.conf')))->toBeFalse();
 });
 
-it('writes a crontab firing schedule:run each minute (the scheduler always runs somewhere)', function () {
+it('writes a crontab firing schedule:run each minute (the scheduler always runs somewhere)', function (): void {
     (new GenerateSupervisorConfigStep('testing'))();
 
     $crontab = file_get_contents(Paths::build('docker/crontabs/www-data'));
@@ -117,7 +123,7 @@ it('writes a crontab firing schedule:run each minute (the scheduler always runs 
     expect($crontab)->toContain('php artisan schedule:run');
 });
 
-it('uses the web shutdown-grace-period for octanes stop wait', function () {
+it('uses the web shutdown-grace-period for octanes stop wait', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['shutdown-grace-period' => 25], 'queue' => [], 'scheduler' => []],
@@ -128,7 +134,7 @@ it('uses the web shutdown-grace-period for octanes stop wait', function () {
     expect(generatedSupervisorConfig())->toContain('stopwaitsecs=25');
 });
 
-it('honours a standalone queue shutdown-grace-period override', function () {
+it('honours a standalone queue shutdown-grace-period override', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => [], 'queue' => ['shutdown-grace-period' => 90], 'scheduler' => []],
@@ -141,7 +147,7 @@ it('honours a standalone queue shutdown-grace-period override', function () {
     expect(is_file(Paths::build('docker/supervisord.queue.conf')))->toBeFalse();
 });
 
-it('runs the inertia ssr renderer when tasks.web.ssr is enabled', function () {
+it('runs the inertia ssr renderer when tasks.web.ssr is enabled', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['ssr' => true]],
@@ -155,6 +161,6 @@ it('runs the inertia ssr renderer when tasks.web.ssr is enabled', function () {
     expect($config)->toContain('stopwaitsecs=5');
 });
 
-it('does not run the ssr renderer by default', function () {
+it('does not run the ssr renderer by default', function (): void {
     expect(generatedSupervisorConfig())->not->toContain('[program:ssr]');
 });
