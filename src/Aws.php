@@ -644,6 +644,15 @@ class Aws
         return Helpers::app('resourceGroupsTaggingApi');
     }
 
+    /**
+     * A Tagging API client pinned to us-east-1 — the only region that surfaces
+     * global-service resources (IAM, CloudFront, Route 53) to the audit.
+     */
+    public static function resourceGroupsTaggingApiGlobal(): ResourceGroupsTaggingAPIClient
+    {
+        return Helpers::app('resourceGroupsTaggingApiGlobal');
+    }
+
     public static function route53(): Route53Client
     {
         return Helpers::app('route53');
