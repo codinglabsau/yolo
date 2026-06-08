@@ -11,6 +11,7 @@ use GuzzleHttp\Promise\Create;
 use Symfony\Component\Yaml\Yaml;
 use Aws\CloudFront\CloudFrontClient;
 use Aws\CloudWatch\CloudWatchClient;
+use Codinglabs\Yolo\Enums\StepResult;
 use Aws\ElastiCache\ElastiCacheClient;
 use Aws\ApplicationAutoScaling\ApplicationAutoScalingClient;
 use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
@@ -78,6 +79,47 @@ function writeManifest(array $config, string $environment = 'testing'): void
     ], 10, 2));
 
     Helpers::app()->instance('environment', $environment);
+}
+
+/**
+ * Assert a sync step honours the reconciler contract that the LPX-646 / #95 class
+ * of bug violated: its plan-pass status and recorded changes must reflect ACTUAL
+ * drift, and it must never write on the plan pass. This is the shared standard —
+ * every sync step that mutates AWS should carry one of these:
+ *
+ *   in-sync ⇒ SYNCED, no recorded Change, and no $writeCommand on either pass
+ *   drifted ⇒ WOULD_SYNC + a recorded Change on the plan (no write), $writeCommand on apply
+ *
+ * $makeStep returns a fresh step instance; $bindInSync / $bindDrifted bind the AWS
+ * mocks for each state (each receives the &$captured call log by reference).
+ */
+function assertSyncStepReconciles(Closure $makeStep, Closure $bindInSync, Closure $bindDrifted, string $writeCommand): void
+{
+    // In sync: the plan is clean (status + changes), and neither pass writes.
+    $captured = [];
+    $bindInSync($captured);
+    $planned = $makeStep();
+    expect($planned(['dry-run' => true]))->toBe(StepResult::SYNCED);
+    expect($planned->changes())->toBeEmpty();
+    expect(array_column($captured, 'name'))->not->toContain($writeCommand);
+
+    $captured = [];
+    $bindInSync($captured);
+    expect($makeStep()([]))->toBe(StepResult::SYNCED);
+    expect(array_column($captured, 'name'))->not->toContain($writeCommand);
+
+    // Drifted: the plan records the drift but writes nothing; apply writes.
+    $captured = [];
+    $bindDrifted($captured);
+    $planned = $makeStep();
+    expect($planned(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC);
+    expect($planned->changes())->not->toBeEmpty();
+    expect(array_column($captured, 'name'))->not->toContain($writeCommand);
+
+    $captured = [];
+    $bindDrifted($captured);
+    $makeStep()([]);
+    expect(array_column($captured, 'name'))->toContain($writeCommand);
 }
 
 /**
