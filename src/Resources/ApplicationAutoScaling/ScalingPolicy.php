@@ -10,11 +10,11 @@ use Codinglabs\Yolo\Aws\ApplicationAutoScaling;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * A target-tracking scaling policy on the web service's scalable target. Like
- * QueueAlarm this is a constructor-configured reconciler shared by the
- * request-count and CPU policies — PutScalingPolicy is a pure upsert, so there's
- * no create/update split. Dry-run honest: it reads the live policy, diffs the
- * comparable fields and only writes on drift.
+ * A target-tracking scaling policy on the web service's scalable target. A
+ * constructor-configured reconciler shared by the request-count and CPU policies —
+ * PutScalingPolicy is a pure upsert, so there's no create/update split. Dry-run
+ * honest: it reads the live policy, diffs the comparable fields and only writes on
+ * drift.
  *
  * Both policies attach to the same {@see ScalableTarget}. App Auto Scaling takes
  * the max desired count across every policy, so scale-out always wins and the two

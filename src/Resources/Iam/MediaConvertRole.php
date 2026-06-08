@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Resources\ResolvesTags;
+use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
@@ -15,9 +16,10 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * EcsTaskRole, but app-exclusive (one per app) so it carries the yolo:app owner
  * tag. Permission policies are attached separately by AttachMediaConvertRolePoliciesStep.
  */
-class MediaConvertRole implements Resource
+class MediaConvertRole implements Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
+    use SynchronisesAssumeRolePolicy;
 
     public function name(): string
     {
@@ -67,14 +69,6 @@ class MediaConvertRole implements Resource
     public function synchroniseTags(bool $apply): array
     {
         return Aws::synchroniseIamRoleTags($this->name(), $this->tags(), $apply);
-    }
-
-    public function synchroniseAssumeRolePolicy(): void
-    {
-        Aws::iam()->updateAssumeRolePolicy([
-            'RoleName' => $this->name(),
-            'PolicyDocument' => json_encode($this->assumeRolePolicyDocument()),
-        ]);
     }
 
     public function assumeRolePolicyDocument(): array

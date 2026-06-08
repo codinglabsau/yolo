@@ -19,7 +19,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * target's from `tasks.queue.min/max` (a standalone queue is always autoscaled,
  * and its floor may be 0 — scale to zero).
  *
- * Like QueueAlarm / Dashboard this is a standalone reconciler, NOT a Resource:
+ * Like Dashboard this is a standalone reconciler, NOT a Resource:
  * App Auto Scaling targets aren't RGT-taggable (so they carry none of the
  * ownership tags the Resource contract reconciles, and stay invisible to
  * `yolo audit`) and RegisterScalableTarget is a pure upsert with no create/update

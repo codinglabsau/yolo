@@ -151,9 +151,9 @@ class EcsService implements Resource
             'cluster' => (new EcsCluster())->name(),
             'serviceName' => $this->name(),
             // The task definition family is the service name — SyncTaskDefinitionStep
-            // registers the family from this same value. TaskDef doesn't fit the Resource
-            // shape (re-registered every sync, no exists/create distinction), so the family
-            // is the service name rather than its own Resource.
+            // registers the family from this same value. TaskDef isn't modelled as a
+            // Resource (no taggable ARN to own; it's reconciled diff-first against the
+            // latest revision), so the family is the service name rather than its own Resource.
             'taskDefinition' => $this->name(),
             // Capacity isn't a manifest concern — start at the group's floor and let
             // ops scale it (console / `yolo scale` / autoscaling); never reconciled.

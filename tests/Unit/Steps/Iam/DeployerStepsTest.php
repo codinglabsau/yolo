@@ -24,12 +24,35 @@ function existingDeployerPolicy(): array
     ];
 }
 
-function existingDeployerRole(): array
+function existingDeployerRole(?string $trustSubject = null): array
 {
     return [
         'RoleName' => 'yolo-testing-my-app-deployer',
         'Arn' => 'arn:aws:iam::111111111111:role/yolo-testing-my-app-deployer',
+        // IAM returns the live trust URL-encoded on the role record. Default to the
+        // main-branch trust so a default (main) manifest reads as in-sync and a
+        // branch/tag manifest reads as drifted.
+        'AssumeRolePolicyDocument' => deployerTrustDocument($trustSubject ?? 'repo:my-org/my-repo:ref:refs/heads/main'),
     ];
+}
+
+/** A URL-encoded OIDC trust document scoped to the given `sub` claim. */
+function deployerTrustDocument(string $subject): string
+{
+    return rawurlencode(json_encode([
+        'Version' => '2012-10-17',
+        'Statement' => [
+            [
+                'Effect' => 'Allow',
+                'Principal' => ['Federated' => 'arn:aws:iam::111111111111:oidc-provider/token.actions.githubusercontent.com'],
+                'Action' => 'sts:AssumeRoleWithWebIdentity',
+                'Condition' => [
+                    'StringEquals' => ['token.actions.githubusercontent.com:aud' => 'sts.amazonaws.com'],
+                    'StringLike' => ['token.actions.githubusercontent.com:sub' => $subject],
+                ],
+            ],
+        ],
+    ]));
 }
 
 /** A manifest with a resolvable GitHub repository — the deployer provisions. */
@@ -229,6 +252,60 @@ it('reconciles the deployer role trust policy when the env ref changes', functio
 
     $sub = json_decode($update['args']['PolicyDocument'], true)['Statement'][0]['Condition']['StringLike']['token.actions.githubusercontent.com:sub'];
     expect($sub)->toBe('repo:my-org/my-repo:ref:refs/heads/release');
+});
+
+it('records deployer trust drift on the plan pass so the step survives the prune', function () {
+    // Regression (the convict `tag: true` OIDC failure): the trust rewrite used to
+    // happen only under `! dry-run` and recorded no Change, so the plan pass saw a
+    // clean step, the only-pending-steps filter pruned it before apply, and a
+    // role created on `main` could never be self-healed to `refs/tags/*`. The drift
+    // must be recorded on the plan (dry-run) pass — without writing — so the step
+    // survives the prune.
+    manifestWithDeployer(['tag' => true]);
+
+    $captured = [];
+    bindRoutedIamClient([
+        // Live trust still pinned to the old main-branch ref.
+        'ListRoles' => new Result(['Roles' => [existingDeployerRole('repo:my-org/my-repo:ref:refs/heads/main')]]),
+    ], $captured);
+
+    $step = new SyncDeployerRoleStep();
+    expect($step(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC);
+
+    $trustChange = collect($step->changes())->first(fn ($change) => str_contains($change->attribute, 'trust'));
+    expect($trustChange)->not->toBeNull();
+    // The diff must read live → desired, not desired → desired (guards the trait
+    // method being shadowed by DeployerRole's own subjectClaim()).
+    expect($trustChange->from)->toBe('repo:my-org/my-repo:ref:refs/heads/main');
+    expect($trustChange->to)->toBe('repo:my-org/my-repo:ref:refs/tags/*');
+
+    // Plan pass computes only — it must never rewrite the trust.
+    expect(array_column($captured, 'name'))->not->toContain('UpdateAssumeRolePolicy');
+});
+
+it('records no trust change when the deployer trust already matches', function () {
+    // The other half of the regression: an in-sync trust must produce no pending
+    // entry, otherwise every sync re-stamps it and the confirm gate never clears.
+    manifestWithDeployer();
+
+    $captured = [];
+    bindRoutedIamClient([
+        // Live trust already on the default main ref — matches the rendered desired.
+        'ListRoles' => new Result(['Roles' => [existingDeployerRole()]]),
+        'ListRoleTags' => new Result(['Tags' => [
+            ['Key' => 'Name', 'Value' => 'yolo-testing-my-app-deployer'],
+            ['Key' => 'yolo:scope', 'Value' => 'app'],
+            ['Key' => 'yolo:app', 'Value' => 'my-app'],
+            ['Key' => 'yolo:environment', 'Value' => 'testing'],
+        ]]),
+    ], $captured);
+
+    $step = new SyncDeployerRoleStep();
+    expect($step([]))->toBe(StepResult::SYNCED);
+
+    $trustChanges = collect($step->changes())->filter(fn ($change) => str_contains($change->attribute, 'trust'));
+    expect($trustChanges)->toBeEmpty();
+    expect(array_column($captured, 'name'))->not->toContain('UpdateAssumeRolePolicy');
 });
 
 it('never mutates IAM on a dry-run against existing deployer resources', function () {

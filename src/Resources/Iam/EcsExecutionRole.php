@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Resources\ResolvesTags;
+use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
@@ -20,9 +21,10 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * Replaces the previous reliance on the AWS-convention `ecsTaskExecutionRole`,
  * which AWS does not auto-create — green-field accounts never had it.
  */
-class EcsExecutionRole implements Resource
+class EcsExecutionRole implements Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
+    use SynchronisesAssumeRolePolicy;
 
     public function name(): string
     {
@@ -74,17 +76,6 @@ class EcsExecutionRole implements Resource
     public function synchroniseTags(bool $apply): array
     {
         return Aws::synchroniseIamRoleTags($this->name(), $this->tags(), $apply);
-    }
-
-    /**
-     * Trust-policy drift is reconciled by replacing the assume-role policy document.
-     */
-    public function synchroniseAssumeRolePolicy(): void
-    {
-        Aws::iam()->updateAssumeRolePolicy([
-            'RoleName' => $this->name(),
-            'PolicyDocument' => json_encode($this->assumeRolePolicyDocument()),
-        ]);
     }
 
     public function assumeRolePolicyDocument(): array
