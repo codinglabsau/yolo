@@ -105,8 +105,8 @@ class QueueScaleToZeroBootstrap
         ]);
 
         // PutMetricAlarm ignores Tags when updating an existing alarm, so reconcile
-        // the ownership markers explicitly (as QueueAlarm does) — so the alarm reads
-        // as `ok` in yolo audit rather than `rogue`.
+        // the ownership markers explicitly (TagResource works on an existing alarm) —
+        // so the alarm reads as `ok` in yolo audit rather than `rogue`.
         Aws::synchroniseCloudWatchTags(
             CloudWatch::alarm($this->alarmName())['AlarmArn'],
             $this->tags(),

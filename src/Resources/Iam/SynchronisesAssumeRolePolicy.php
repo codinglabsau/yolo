@@ -57,7 +57,7 @@ trait SynchronisesAssumeRolePolicy
      */
     protected function liveAssumeRolePolicyDocument(): array
     {
-        return json_decode(urldecode(IamClient::role($this->name())['AssumeRolePolicyDocument']), associative: true);
+        return json_decode(rawurldecode(IamClient::role($this->name())['AssumeRolePolicyDocument']), associative: true);
     }
 
     /**
@@ -77,7 +77,7 @@ trait SynchronisesAssumeRolePolicy
             return Change::make('trust sub', $liveSubject, $desiredSubject);
         }
 
-        return new Change('trust-policy', 'drifted', 'reconciled');
+        return Change::make('trust-policy', 'drifted', 'reconciled');
     }
 
     /**

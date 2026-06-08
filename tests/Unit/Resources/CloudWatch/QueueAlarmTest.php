@@ -42,6 +42,7 @@ function inSyncQueueAlarm(array $overrides = []): array
     return array_merge([
         'AlarmName' => 'yolo-testing-my-app-queue-depth-alarm',
         'AlarmArn' => 'arn:aws:cloudwatch:ap-southeast-2:111111111111:alarm:yolo-testing-my-app-queue-depth-alarm',
+        'ActionsEnabled' => true,
         'ComparisonOperator' => 'GreaterThanThreshold',
         'EvaluationPeriods' => 3,
         'Period' => 300,
@@ -107,6 +108,19 @@ it('records config drift on the plan pass and re-puts the alarm on apply', funct
 
     expect((new SyncQueueAlarmStep())([]))->toBe(StepResult::SYNCED);
     expect(array_column($captured, 'name'))->toContain('PutMetricAlarm');
+});
+
+it('heals an alarm that was disabled in the console', function () {
+    $captured = [];
+    bindMockCloudWatchClient([
+        'DescribeAlarms' => new Result(['MetricAlarms' => [inSyncQueueAlarm(['ActionsEnabled' => false])]]),
+        'ListTagsForResource' => new Result(['Tags' => syncedAlarmTags()]),
+    ], $captured);
+
+    $plan = new SyncQueueAlarmStep();
+    expect($plan(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC);
+    expect(collect($plan->changes())->pluck('attribute'))->toContain('actions-enabled');
+    expect(array_column($captured, 'name'))->not->toContain('PutMetricAlarm');
 });
 
 it('records no change and never re-puts when the alarm is already in sync', function () {

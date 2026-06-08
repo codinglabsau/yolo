@@ -108,6 +108,10 @@ class QueueAlarm implements Resource, SynchronisesConfiguration
         $topicArn = (new SnsAlarmTopic())->arn();
 
         $attributes = [
+            // ActionsEnabled is reconciled so an alarm toggled off in the console heals
+            // back on; the alarm's metric/namespace/dimensions are hardcoded constants
+            // keyed to the queue, so they can't drift on a YOLO-managed alarm.
+            'actions-enabled' => [true, $live['ActionsEnabled'] ?? null],
             'comparison-operator' => ['GreaterThanThreshold', $live['ComparisonOperator'] ?? null],
             'evaluation-periods' => [(int) Manifest::get('sqs.depth-alarm-evaluation-periods', 3), isset($live['EvaluationPeriods']) ? (int) $live['EvaluationPeriods'] : null],
             'period' => [(int) Manifest::get('sqs.depth-alarm-period', 300), isset($live['Period']) ? (int) $live['Period'] : null],

@@ -138,8 +138,9 @@ class SyncTaskDefinitionStep implements Step
         $image = (new EcrRepository())->uri() . ':' . ($imageTag ?? 'latest');
 
         // The family is the service name — EcsService points its `taskDefinition`
-        // at the same value, so they stay in lockstep. The task definition isn't its
-        // own Resource (re-registered every sync — no exists/create distinction).
+        // at the same value, so they stay in lockstep. The task definition isn't
+        // modelled as a Resource (no taggable ARN to own); SyncTaskDefinitionStep
+        // reconciles it diff-first against the latest registered revision.
         $family = (new EcsService($group))->name();
 
         // ECS's SIGTERM-to-SIGKILL ceiling. Derived from the same source as the
