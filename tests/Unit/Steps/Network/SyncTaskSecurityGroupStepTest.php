@@ -64,11 +64,19 @@ it('does not authorise again when a matching load-balancer ingress rule already 
         ]]),
     ], $captured);
 
-    (new SyncTaskSecurityGroupStep())([]);
+    $step = new SyncTaskSecurityGroupStep();
+    $step([]);
 
     expect(array_column($captured, 'name'))
         ->not->toContain('AuthorizeSecurityGroupIngress')
         ->not->toContain('RevokeSecurityGroupIngress');
+
+    // The matching rule is already authorised, so the ingress reconcile records
+    // nothing — otherwise every sync would surface phantom ingress drift.
+    $ingressChanges = collect($step->changes())->filter(
+        fn ($change) => str_contains($change->attribute, 'ingress')
+    );
+    expect($ingressChanges)->toBeEmpty();
 });
 
 it('treats a manifest-specified task security group as custom-managed', function () {
@@ -99,4 +107,23 @@ it('does not authorise during a dry-run', function () {
     (new SyncTaskSecurityGroupStep())(['dry-run' => true]);
 
     expect(array_column($captured, 'name'))->not->toContain('AuthorizeSecurityGroupIngress');
+});
+
+it('records a pending change on the plan pass when the rule is absent so the step survives the prune', function () {
+    // Regression: the rule was written at create-time but recorded no Change on the
+    // plan (dry-run) pass, so the runner's pending filter pruned the step before apply.
+    // A task SG that exists without the rule (a create interrupted mid-flight) could
+    // therefore never be self-healed by a later sync. The change must be recorded
+    // regardless of --dry-run, mirroring AuthorisesTaskIngress.
+    $captured = [];
+
+    bindMockEc2Client([
+        'DescribeSecurityGroups' => describeTaskAndLoadBalancerGroups(),
+        'DescribeSecurityGroupRules' => new Result(['SecurityGroupRules' => []]),
+    ], $captured);
+
+    $step = new SyncTaskSecurityGroupStep();
+    $step(['dry-run' => true]);
+
+    expect($step->changes())->not->toBeEmpty();
 });

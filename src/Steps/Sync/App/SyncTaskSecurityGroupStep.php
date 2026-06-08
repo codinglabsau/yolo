@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Steps\Sync\App;
 
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Change;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Manifest;
@@ -38,11 +39,21 @@ class SyncTaskSecurityGroupStep implements Step
     {
         $rules = Ec2::securityGroupRules($groupId, SecurityGroupRule::ECS_TASK_LB_INGRESS_RULE->value);
 
-        if (! empty($rules) || $dryRun) {
+        if (! empty($rules)) {
             return;
         }
 
         $port = (int) Manifest::get('tasks.web.port', 8000);
+
+        // Record the missing rule before the dry-run guard (mirroring AuthorisesTaskIngress)
+        // so the plan pass flags this step pending. Without it a SG that exists but lacks
+        // the rule — e.g. a create interrupted mid-flight — records no change, gets pruned
+        // before apply, and can never be self-healed by a later sync.
+        $this->recordChange(Change::make("ingress {$port}/tcp from load balancer security group", null, 'authorised'));
+
+        if ($dryRun) {
+            return;
+        }
 
         Aws::ec2()->authorizeSecurityGroupIngress([
             'GroupId' => $groupId,
