@@ -34,6 +34,7 @@ class SyncTaskDefinitionStep implements Step
     public function __invoke(array $options): StepResult
     {
         $dryRun = (bool) Arr::get($options, 'dry-run');
+        $live = $this->liveTaskDefinition((new EcsService($this->group()))->name());
 
         try {
             $desired = static::payload($this->group());
@@ -51,7 +52,16 @@ class SyncTaskDefinitionStep implements Step
             throw $e;
         }
 
-        $live = $this->liveTaskDefinition($desired['family']);
+        // Which image runs is `yolo deploy`'s call, not sync's. Deploy pins the app
+        // version (repo:<version>); sync would otherwise render repo:latest and so
+        // re-register a throwaway revision on every run after a deploy (the image
+        // tag is the only field that differs) — and that revision, if ever adopted,
+        // would swap the running image to :latest. So preserve the live revision's
+        // image: a no-op deploy→sync renders an identical document, and a genuine
+        // infra-field change still re-registers carrying the deployed image.
+        if ($live !== null && isset($live['containerDefinitions'][0]['image'])) {
+            $desired['containerDefinitions'][0]['image'] = $live['containerDefinitions'][0]['image'];
+        }
 
         // The registered revision already renders the desired payload — nothing to
         // do, so the step is pruned before apply and a clean app reports "Already

@@ -198,3 +198,41 @@ it('ignores AWS-derived enrichment fields when diffing (no phantom drift)', func
     expect((new SyncTaskDefinitionStep())([]))->toBe(StepResult::SYNCED);
     expect(array_column($captured, 'name'))->not->toContain('RegisterTaskDefinition');
 });
+
+it('does not re-register when only the image tag differs (deploy pinned a version)', function (): void {
+    // deploy registers the revision with a versioned image (repo:<version>); sync
+    // must reuse that image instead of rendering repo:latest, so a no-op deploy→sync
+    // is in sync rather than churning a throwaway revision on every run.
+    $live = liveTaskDefinition();
+    $live['containerDefinitions'][0]['image'] = '111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/my-app:26.21.2.1500';
+
+    $captured = [];
+    bindRoutedEcsClient([
+        'DescribeTaskDefinition' => new Result(['taskDefinition' => $live]),
+    ], $captured);
+
+    $step = new SyncTaskDefinitionStep();
+    expect($step(['dry-run' => true]))->toBe(StepResult::SYNCED);
+    expect($step->changes())->toBeEmpty();
+    expect(array_column($captured, 'name'))->not->toContain('RegisterTaskDefinition');
+});
+
+it('preserves the deployed image when re-registering for a genuine infra change', function (): void {
+    // A real field drifted (cpu) AND the live revision runs a deployed version — the
+    // new revision must carry that deployed image, never silently swap to :latest.
+    $live = liveTaskDefinition(['cpu' => '9999']);
+    $live['containerDefinitions'][0]['image'] = '111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/my-app:26.21.2.1500';
+
+    $captured = [];
+    bindRoutedEcsClient([
+        'DescribeTaskDefinition' => new Result(['taskDefinition' => $live]),
+    ], $captured);
+
+    expect((new SyncTaskDefinitionStep())([]))->toBe(StepResult::SYNCED);
+
+    $register = collect($captured)->firstWhere('name', 'RegisterTaskDefinition');
+    expect($register)->not->toBeNull()
+        ->and($register['args']['cpu'])->toBe('1024')
+        ->and($register['args']['containerDefinitions'][0]['image'])
+        ->toBe('111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/my-app:26.21.2.1500');
+});
