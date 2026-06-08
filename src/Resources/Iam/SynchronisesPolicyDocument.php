@@ -25,17 +25,25 @@ use Codinglabs\Yolo\Aws\Iam as IamClient;
  */
 trait SynchronisesPolicyDocument
 {
+    use CanonicalisesPolicyDocuments;
+
     /**
      * @return array<int, Change>
      */
     public function synchroniseConfiguration(bool $apply = true): array
     {
         $policy = IamClient::policy($this->name());
-        $desired = json_encode($this->document());
+        $desired = $this->document();
 
         $currentVersion = IamClient::policyVersion($policy['Arn'], $policy['DefaultVersionId']);
+        $live = json_decode(urldecode((string) $currentVersion['Document']), associative: true);
 
-        if (urldecode((string) $currentVersion['Document']) === $desired) {
+        // Canonical compare, not a naive json_encode string match: IAM round-trips
+        // the document with reordered keys/statements and collapses single-element
+        // Action/Condition lists to scalars, which a string compare reads as drift —
+        // re-versioning on every sync and burning the 5-version cap (LPX-670). Shared
+        // with SynchronisesAssumeRolePolicy via CanonicalisesPolicyDocuments.
+        if ($this->policyDocumentsMatch($live, $desired)) {
             return [];
         }
 
@@ -44,7 +52,7 @@ trait SynchronisesPolicyDocument
 
             Aws::iam()->createPolicyVersion([
                 'PolicyArn' => $policy['Arn'],
-                'PolicyDocument' => $desired,
+                'PolicyDocument' => json_encode($desired),
                 'SetAsDefault' => true,
             ]);
         }

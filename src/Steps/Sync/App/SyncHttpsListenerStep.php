@@ -3,13 +3,13 @@
 namespace Codinglabs\Yolo\Steps\Sync\App;
 
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Change;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Aws\Acm;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\ElbV2;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\ExecutesWebStep;
-use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Resources\ElbV2\HttpsListener;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -37,7 +37,14 @@ class SyncHttpsListenerStep implements ExecutesWebStep
         $listener = new HttpsListener($certificate);
 
         // Cert-attachment is orchestration, not part of the resource's identity.
+        // The app's SNI cert lives in the listener's certificate list
+        // (DescribeListenerCertificates), not its single default cert — so checking
+        // the default-only list read this as missing on every sync for any app that
+        // wasn't the listener's creator. Record the change before the dry-run guard
+        // so it shows in the plan and survives to apply.
         if ($listener->exists() && ! static::hasCertificate($listener->arn(), $certificate)) {
+            $this->recordChange(Change::make('listener certificate', 'absent', 'attached'));
+
             if (Arr::get($options, 'dry-run')) {
                 return StepResult::WOULD_SYNC;
             }
@@ -55,9 +62,12 @@ class SyncHttpsListenerStep implements ExecutesWebStep
 
     protected static function hasCertificate(string $listenerArn, array $certificate): bool
     {
-        $listener = ElbV2::listenerOnPort((new LoadBalancer())->arn(), 443);
+        try {
+            ElbV2::listenerCertificate($listenerArn, $certificate['CertificateArn']);
 
-        return collect($listener['Certificates'] ?? [])
-            ->contains(fn (array $cert): bool => $cert['CertificateArn'] === $certificate['CertificateArn']);
+            return true;
+        } catch (ResourceDoesNotExistException) {
+            return false;
+        }
     }
 }

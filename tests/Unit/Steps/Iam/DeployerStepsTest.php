@@ -220,6 +220,42 @@ it('does not create a new policy version when the deployer document is unchanged
     expect(array_column($captured, 'name'))->not->toContain('CreatePolicyVersion');
 });
 
+it('does not re-version the deployer policy when IAM returns the same document reordered (canonical compare)', function (): void {
+    // IAM round-trips a managed policy with reordered top-level keys, reordered
+    // statements, and single-element Action lists collapsed to bare scalars. The
+    // old naive json_encode string compare read all of that as drift and created a
+    // fresh version on every sync (LPX-670); the canonical compare must see it as
+    // in-sync and write nothing.
+    manifestWithDeployer();
+
+    $desired = (new DeployerPolicy())->document();
+
+    $reordered = [
+        // Top-level key order flipped (Statement before Version) and the statement
+        // list reversed — both order-only changes IAM is free to make on read-back.
+        'Statement' => collect(array_reverse($desired['Statement']))
+            ->map(function (array $statement): array {
+                // Collapse any single-element Action list to a scalar, as IAM does.
+                if (is_array($statement['Action']) && count($statement['Action']) === 1) {
+                    $statement['Action'] = $statement['Action'][0];
+                }
+
+                return $statement;
+            })
+            ->all(),
+        'Version' => $desired['Version'],
+    ];
+
+    $captured = [];
+    bindRoutedIamClient([
+        'ListPolicies' => new Result(['Policies' => [existingDeployerPolicy()]]),
+        'GetPolicyVersion' => new Result(['PolicyVersion' => ['Document' => rawurlencode(json_encode($reordered))]]),
+    ], $captured);
+
+    expect((new SyncDeployerPolicyStep())([]))->toBe(StepResult::SYNCED);
+    expect(array_column($captured, 'name'))->not->toContain('CreatePolicyVersion');
+});
+
 it('reconciles the deployer policy by creating a new default version when it drifts', function (): void {
     manifestWithDeployer();
 
