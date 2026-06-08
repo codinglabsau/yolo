@@ -113,9 +113,9 @@ function bindIssuedAcmCertificate(string $domain, string $certificateArn, string
     $mock = new class($domain, $certificateArn, $status) extends MockHandler
     {
         public function __construct(
-            private string $domain,
-            private string $certificateArn,
-            private string $status,
+            private readonly string $domain,
+            private readonly string $certificateArn,
+            private readonly string $status,
         ) {}
 
         public function __invoke(CommandInterface $cmd, $request)
