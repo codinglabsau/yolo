@@ -81,4 +81,47 @@ class ElbV2
 
         throw new ResourceDoesNotExistException("Could not find listener certificate on listener $listenerArn");
     }
+
+    /**
+     * The listener rule carrying the given `Name` tag, or null. Rules have no
+     * native name, so identity lives in the Name tag — read here in tag-batches of
+     * 20 (the DescribeTags ARN limit). Matching by Name (not by the hosts a rule
+     * routes) is what keeps a domain change scoped to this app's own rule and
+     * never a sibling host's.
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function ruleByName(string $listenerArn, string $name): ?array
+    {
+        $rules = array_values(array_filter(
+            static::rules($listenerArn),
+            fn (array $rule): bool => $rule['Priority'] !== 'default',
+        ));
+
+        if ($rules === []) {
+            return null;
+        }
+
+        $nameByArn = [];
+
+        foreach (array_chunk(array_column($rules, 'RuleArn'), 20) as $chunk) {
+            foreach (Aws::elasticLoadBalancingV2()->describeTags(['ResourceArns' => $chunk])['TagDescriptions'] as $description) {
+                $nameByArn[$description['ResourceArn']] = collect($description['Tags'] ?? [])
+                    ->firstWhere('Key', 'Name')['Value'] ?? null;
+            }
+        }
+
+        foreach ($rules as $rule) {
+            if (($nameByArn[$rule['RuleArn']] ?? null) === $name) {
+                return $rule;
+            }
+        }
+
+        return null;
+    }
+
+    public static function deleteRule(string $ruleArn): void
+    {
+        Aws::elasticLoadBalancingV2()->deleteRule(['RuleArn' => $ruleArn]);
+    }
 }

@@ -14,11 +14,20 @@ YOLO provisions an ACM certificate, attaches it to the load balancer's HTTPS lis
 
 ## Apex and `www`
 
-When your `domain` is the apex (e.g. `codinglabs.com.au`), YOLO points **both** the apex and the `www.` subdomain at the load balancer — both host headers are served by the app. You don't configure `www` separately.
+`domain` is the **canonical host** — the single host your app is served on. When it's one half of the apex/`www` pair, YOLO serves the canonical host and **301-redirects the other half** to it (preserving path and query). The redirect is issued by the load balancer, before the request reaches a container.
+
+You choose the canonical host simply by which one you set as `domain`:
 
 ```yaml
-domain: codinglabs.com.au   # serves codinglabs.com.au and www.codinglabs.com.au
+domain: codinglabs.com.au       # serves the apex; www.codinglabs.com.au → 301 → codinglabs.com.au
 ```
+
+```yaml
+apex: example.com
+domain: www.example.com         # serves www; example.com → 301 → www.example.com
+```
+
+Both halves resolve to the load balancer (so the redirect can catch the non-canonical one), and the certificate already covers both (`apex` + the `*.apex` wildcard). You don't configure `www` separately — there's nothing to toggle.
 
 The apex record cannot itself start with `www.` — YOLO rejects that as a manifest integrity error.
 
@@ -31,7 +40,7 @@ apex: codinglabs.com.au
 domain: app.codinglabs.com.au
 ```
 
-`apex` tells YOLO which Route 53 hosted zone to write into; `domain` is where the app is served. If you omit `apex`, it defaults to `domain`.
+`apex` tells YOLO which Route 53 hosted zone to write into; `domain` is where the app is served. If you omit `apex`, it defaults to `domain`. A bare subdomain like this is served on its own — it's not one half of the apex/`www` pair, so no redirect is set up.
 
 ## Headless apps
 

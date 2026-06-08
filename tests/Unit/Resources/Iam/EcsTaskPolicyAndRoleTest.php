@@ -92,7 +92,9 @@ it('grants read+write on the declared data bucket, scoped to that bucket only', 
     expect($object['Effect'])->toBe('Allow');
     expect($object['Action'])->toEqualCanonicalizing([
         's3:GetObject',
+        's3:GetObjectAcl',
         's3:PutObject',
+        's3:PutObjectAcl',
         's3:DeleteObject',
         's3:AbortMultipartUpload',
         's3:ListMultipartUploadParts',

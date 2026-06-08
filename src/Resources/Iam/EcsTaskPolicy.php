@@ -145,8 +145,8 @@ class EcsTaskPolicy implements Resource, SynchronisesConfiguration
 
     /**
      * Read+write on the declared application data bucket: object get/put/delete
-     * (plus multipart for large uploads) on `…/*`, and bucket-level listing +
-     * location on the bucket itself.
+     * and ACL get/set (plus multipart for large uploads) on `…/*`, and
+     * bucket-level listing + location on the bucket itself.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -160,7 +160,9 @@ class EcsTaskPolicy implements Resource, SynchronisesConfiguration
                 'Resource' => $bucketArn . '/*',
                 'Action' => [
                     's3:GetObject',
+                    's3:GetObjectAcl',
                     's3:PutObject',
+                    's3:PutObjectAcl',
                     's3:DeleteObject',
                     's3:AbortMultipartUpload',
                     's3:ListMultipartUploadParts',

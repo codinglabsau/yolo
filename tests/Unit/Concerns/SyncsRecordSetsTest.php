@@ -97,7 +97,7 @@ it('upserts both the apex and www alias records for an apex domain', function ()
         ->and($change['args']['HostedZoneId'])->toBe('ZONE1');
 });
 
-it('derives the www record from an explicit www domain', function (): void {
+it('upserts both records for a www-canonical domain (www served, apex redirects)', function (): void {
     $elb = [];
     bindAlbLookup($elb);
 
@@ -108,8 +108,11 @@ it('derives the www record from an explicit www domain', function (): void {
 
     $changes = collect($r53)->firstWhere('name', 'ChangeResourceRecordSets')['args']['ChangeBatch']['Changes'];
 
+    // Both halves resolve to the ALB; the canonical (www) is served and the apex
+    // sibling is 301-redirected by the listener rule.
     expect($changes)->toHaveCount(2)
-        ->and($changes[1]['ResourceRecordSet']['Name'])->toBe('www.codinglabs.com.au');
+        ->and(collect($changes)->pluck('ResourceRecordSet.Name')->all())
+        ->toEqualCanonicalizing(['www.codinglabs.com.au', 'codinglabs.com.au']);
 });
 
 it('upserts a single alias record for a subdomain', function (): void {

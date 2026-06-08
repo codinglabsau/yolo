@@ -6,12 +6,12 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\ElbV2;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\ExecutesWebStep;
-use Codinglabs\Yolo\Resources\ElbV2\ListenerRule;
 use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
+use Codinglabs\Yolo\Resources\ElbV2\ForwardListenerRule;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class SyncListenerRuleStep implements ExecutesWebStep
+class SyncForwardRuleStep implements ExecutesWebStep
 {
     use SynchronisesResource;
 
@@ -28,6 +28,6 @@ class SyncListenerRuleStep implements ExecutesWebStep
             return StepResult::SKIPPED;
         }
 
-        return $this->syncResource(new ListenerRule($listener['ListenerArn']), $options);
+        return $this->syncResource(new ForwardListenerRule($listener['ListenerArn']), $options);
     }
 }
