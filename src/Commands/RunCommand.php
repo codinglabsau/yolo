@@ -13,7 +13,6 @@ use Symfony\Component\Console\Input\InputArgument;
 
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\error;
-use function Laravel\Prompts\warning;
 
 class RunCommand extends Command
 {
@@ -82,7 +81,13 @@ class RunCommand extends Command
         }
 
         if ($ran === 0) {
-            warning(sprintf('No running tasks in: %s', implode(', ', $groups)));
+            // A one-off that lands on no task ran nowhere — fail loudly so a
+            // scripted `yolo run … --command "php artisan migrate --force"` can't
+            // report success (exit 0) having done nothing. Mirrors the interactive
+            // path above, which already fails when there's no task to attach to.
+            error(sprintf('No running tasks in: %s', implode(', ', $groups)));
+
+            return self::FAILURE;
         }
 
         return self::SUCCESS;

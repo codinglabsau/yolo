@@ -1,62 +1,57 @@
 <?php
 
-use Codinglabs\Yolo\Paths;
-use Laravel\Prompts\Prompt;
 use Codinglabs\Yolo\Enums\StepResult;
-use Symfony\Component\Console\Output\BufferedOutput;
 use Codinglabs\Yolo\Steps\Build\Fargate\CheckSsrRuntimeStep;
 
-/**
- * The guard runs non-interactively here, so the confirm() that fires on a missing
- * Node runtime returns its default (true) and the build proceeds — exactly the
- * behaviour of the deploy GHA. The warning is swallowed by the buffered output.
- */
 beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['ssr' => true]],
     ]);
-
-    Prompt::interactive(false);
-    Prompt::setOutput(new BufferedOutput());
 });
 
-afterEach(function (): void {
-    if (is_file(Paths::base('Dockerfile'))) {
-        unlink(Paths::base('Dockerfile'));
-    }
-});
-
-it('skips without reading the Dockerfile when ssr is off', function (): void {
+it('skips without probing the image when ssr is off', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => []],
     ]);
 
-    // No Dockerfile on disk — proof the step short-circuits before touching it.
-    expect((new CheckSsrRuntimeStep('testing'))())->toBe(StepResult::SKIPPED);
+    // A probe that throws proves the step short-circuits before running the image.
+    $step = new CheckSsrRuntimeStep('testing', probe: function (): void {
+        throw new RuntimeException('probe should not run when ssr is off');
+    });
+
+    expect($step(['app-version' => '26.24.1.1200']))->toBe(StepResult::SKIPPED);
 });
 
-it('passes when the Dockerfile installs a Node runtime', function (string $dockerfile): void {
-    file_put_contents(Paths::base('Dockerfile'), $dockerfile);
+it('passes when the built image has a node runtime', function (): void {
+    $step = new CheckSsrRuntimeStep('testing', probe: fn (): true => true);
 
-    expect((new CheckSsrRuntimeStep('testing'))())->toBe(StepResult::SUCCESS);
-})->with([
-    'apk nodejs' => ["FROM dunglas/frankenphp:1-php8.4-alpine\nRUN apk add --no-cache nodejs npm\n"],
-    'apt nodejs' => ["FROM dunglas/frankenphp:1-php8.4\nRUN apt-get install -y nodejs\n"],
-    'FROM node stage' => ["FROM node:22-alpine AS assets\nFROM dunglas/frankenphp:1-php8.4-alpine\n"],
-    'COPY --from=node' => ["FROM dunglas/frankenphp:1-php8.4-alpine\nCOPY --from=node:22 /usr/local/bin/node /usr/local/bin/node\n"],
-]);
-
-it('proceeds (non-interactively) when no Node runtime is detected', function (): void {
-    file_put_contents(Paths::base('Dockerfile'), "FROM dunglas/frankenphp:1-php8.4-alpine\nRUN apk add --no-cache git supervisor\n");
-
-    // Warn-and-confirm: in a non-interactive build the confirm auto-approves, so
-    // the build is never blocked by the heuristic.
-    expect((new CheckSsrRuntimeStep('testing'))())->toBe(StepResult::SUCCESS);
+    expect($step(['app-version' => '26.24.1.1200']))->toBe(StepResult::SUCCESS);
 });
 
-it('proceeds when the Dockerfile is missing entirely', function (): void {
-    // The missing-Dockerfile error belongs to the image build, not this guard.
-    expect((new CheckSsrRuntimeStep('testing'))())->toBe(StepResult::SUCCESS);
+it('hard-fails when the built image has no node runtime', function (): void {
+    $step = new CheckSsrRuntimeStep('testing', probe: fn (): false => false);
+
+    expect(fn (): StepResult => $step(['app-version' => '26.24.1.1200']))
+        ->toThrow(RuntimeException::class, 'no Node runtime');
+});
+
+it('probes the built image tag', function (): void {
+    $image = null;
+    $step = new CheckSsrRuntimeStep('testing', probe: function (string $tag) use (&$image): true {
+        $image = $tag;
+
+        return true;
+    });
+
+    $step(['app-version' => '26.24.1.1200']);
+
+    expect($image)->toEndWith('/my-app:26.24.1.1200');
+});
+
+it('builds a docker probe that checks node on the image PATH', function (): void {
+    expect(CheckSsrRuntimeStep::command('repo:26.24.1.1200'))->toBe([
+        'docker', 'run', '--rm', '--entrypoint', 'sh', 'repo:26.24.1.1200', '-c', 'command -v node',
+    ]);
 });

@@ -70,6 +70,15 @@ For your image to work with YOLO, the Dockerfile must:
 4. **Expose the web port**, and make sure it matches `tasks.web.port` in your manifest (default `8000`). The ALB health-checks this port at `/up` (Laravel's built-in [health route](https://laravel.com/docs/deployment#the-health-route)) — override the path or timing via [`tasks.web.health-check.*`](/reference/manifest#tasks-web-health-check).
 5. Have **`supervisor`** installed (the default Dockerfile installs it via `apk add`).
 
+## Runtime checks
+
+`yolo build` runs two preflights so a deploy can't ship an image that won't run:
+
+- **Octane** — *before* the build, it reads `composer.lock` and fails if `laravel/octane` isn't in the production requirements, since the web role runs `octane:start`.
+- **SSR (Node)** — when [`tasks.web.ssr`](/reference/manifest#tasks-web) is on, it runs the freshly-built image and fails if `node` isn't on the `PATH`. Running the image (rather than grepping the Dockerfile) sees the resolved base image and multi-stage `COPY --from` layers too, so there are no false negatives. This one matters because a missing SSR runtime is otherwise **silent** — Inertia falls back to client-side rendering and the web tier stays healthy on `/up`, so the deploy goes green with SSR quietly off.
+
+YOLO doesn't assert the image's base runtime (e.g. that PHP is present) — Docker makes that the app's to swap, and a genuinely missing PHP runtime already fails loudly when `octane:start` crash-loops and the deployment rolls back.
+
 ## Processes in the container
 
 Every app runs three roles — web, the queue worker, and the scheduler — and by default they all share the one web container:
@@ -95,7 +104,7 @@ Set [`tasks.web.ssr: true`](/reference/manifest#tasks-web) to server-render your
 
 Two things are on you:
 
-1. **A Node runtime in your image.** The scaffolded Dockerfile already installs `nodejs`, so SSR works out of the box. If you've slimmed it out (or moved to a base image without Node), add it back — `yolo build` checks the Dockerfile for a Node runtime when `ssr` is on and asks for confirmation if it can't find one (a warning only — it never blocks a non-interactive CI build).
+1. **A Node runtime in your image.** The scaffolded Dockerfile already installs `nodejs`, so SSR works out of the box. If you've slimmed it out (or moved to a base image without Node), add it back — after building the image `yolo build` runs it and checks `node` is on the `PATH` when `ssr` is on, and **hard-fails the build** if it's missing (see [Runtime checks](#runtime-checks)).
 2. **An SSR bundle from your build.** Your `npm run build` must emit the SSR bundle (`bootstrap/ssr/`) — that's standard [Inertia SSR](https://inertiajs.com/server-side-rendering) setup in your `vite.config.js`. The bundle is copied into the image automatically (it isn't excluded by `.dockerignore` or the build's `node_modules` cleanup).
 
 If the SSR process is down, Inertia falls back to client-side rendering, so the app keeps serving — the ALB health check stays on PHP's `/up` and isn't coupled to SSR. supervisord restarts a crashed renderer automatically.
