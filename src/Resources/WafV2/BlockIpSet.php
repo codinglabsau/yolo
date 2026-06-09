@@ -19,6 +19,6 @@ class BlockIpSet extends IpSet
 
     protected function description(): string
     {
-        return 'YOLO WAF block list (human-managed, never reconciled)';
+        return 'YOLO WAF block list - operator-managed, never reconciled';
     }
 }

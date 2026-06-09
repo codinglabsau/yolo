@@ -58,6 +58,21 @@ it('creates the set when it is absent', function (): void {
     expect(array_column($captured, 'name'))->toContain('CreateIPSet');
 });
 
+it('uses descriptions WAFv2 will accept', function (): void {
+    // WAFv2's description field is regex-constrained server-side (no em-dashes,
+    // parentheses, etc.). The SDK doesn't validate it client-side and MockHandler
+    // can't, so a bad description only fails against real AWS — guard the wire value.
+    $pattern = '/^[\w+=:#@\/\-,.][\w+=:#@\/\-,.\s]+[\w+=:#@\/\-,.]$/';
+
+    foreach ([new AllowIpSet(), new BlockIpSet()] as $ipSet) {
+        $captured = [];
+        bindRoutedWafV2Client(['CreateIPSet' => new Result([])], $captured);
+        $ipSet->create();
+
+        expect(collect($captured)->firstWhere('name', 'CreateIPSet')['args']['Description'])->toMatch($pattern);
+    }
+});
+
 it('creates the block set when it is absent', function (): void {
     $captured = [];
     bindRoutedWafV2Client([

@@ -19,6 +19,6 @@ class AllowIpSet extends IpSet
 
     protected function description(): string
     {
-        return 'YOLO WAF allow list — known-good IPs (human-managed, never reconciled)';
+        return 'YOLO WAF allow list - known-good IPs, operator-managed, never reconciled';
     }
 }

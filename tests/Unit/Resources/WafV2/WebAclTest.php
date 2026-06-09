@@ -71,6 +71,9 @@ it('creates the web ACL with an allow default action and the full rule skeleton'
         ->toContain('CN', 'RU', 'KP', 'IR', 'BD');
 
     expect($create['args']['Tags'])->toContain(['Key' => 'yolo:scope', 'Value' => 'env']);
+
+    // WAFv2's description field is regex-constrained server-side (no em-dashes etc.).
+    expect($create['args']['Description'])->toMatch('/^[\w+=:#@\/\-,.][\w+=:#@\/\-,.\s]+[\w+=:#@\/\-,.]$/');
 });
 
 it('seeds the country block but never reconciles it — operator owns it after create', function (): void {
