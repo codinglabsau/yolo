@@ -556,3 +556,58 @@ function bindRoutedWafV2Client(array $byCommand, array &$captured): void
         'handler' => $mock,
     ]));
 }
+
+/**
+ * Shared WAF fixtures — defined here (not in a single test file) so every Pest
+ * worker has them under `--parallel`, where each test file runs in isolation.
+ */
+function wafIpSetsResult(): Result
+{
+    return new Result(['IPSets' => [
+        ['Name' => 'yolo-testing-waf-allow', 'Id' => 'allow-id', 'LockToken' => 'lt-allow', 'ARN' => 'arn:aws:wafv2:ap-southeast-2:111:regional/ipset/yolo-testing-waf-allow/allow-id'],
+        ['Name' => 'yolo-testing-waf-block', 'Id' => 'block-id', 'LockToken' => 'lt-block', 'ARN' => 'arn:aws:wafv2:ap-southeast-2:111:regional/ipset/yolo-testing-waf-block/block-id'],
+    ]]);
+}
+
+function wafWebAclsResult(): Result
+{
+    return new Result(['WebACLs' => [
+        ['Name' => 'yolo-testing-waf', 'Id' => 'acl-id', 'LockToken' => 'lt-acl', 'ARN' => 'arn:aws:wafv2:ap-southeast-2:111:regional/webacl/yolo-testing-waf/acl-id'],
+    ]]);
+}
+
+function wafWebAclTagsResult(): Result
+{
+    return new Result(['TagInfoForResource' => ['TagList' => [
+        ['Key' => 'Name', 'Value' => 'yolo-testing-waf'],
+        ['Key' => 'yolo:scope', 'Value' => 'env'],
+        ['Key' => 'yolo:environment', 'Value' => 'testing'],
+    ]]]);
+}
+
+/**
+ * A live GetWebACL response wrapping the given rules + default action.
+ *
+ * @param  array<int, array<string, mixed>>  $rules
+ * @param  array<string, mixed>  $defaultAction
+ */
+function liveWebAclResult(array $rules, array $defaultAction = ['Allow' => []]): Result
+{
+    return new Result([
+        'WebACL' => ['Rules' => $rules, 'DefaultAction' => $defaultAction],
+        'LockToken' => 'lt-acl',
+    ]);
+}
+
+/**
+ * The WebAcl resource's own desired rules, resolved against the mocked IP sets.
+ *
+ * @return array<int, array<string, mixed>>
+ */
+function desiredWafRules(): array
+{
+    $captured = [];
+    bindRoutedWafV2Client(['ListIPSets' => wafIpSetsResult()], $captured);
+
+    return (new Codinglabs\Yolo\Resources\WafV2\WebAcl())->desiredRules();
+}

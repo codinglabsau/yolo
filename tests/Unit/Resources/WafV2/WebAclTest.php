@@ -7,48 +7,6 @@ beforeEach(function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 });
 
-function wafIpSetsResult(): Result
-{
-    return new Result(['IPSets' => [
-        ['Name' => 'yolo-testing-waf-allow', 'Id' => 'allow-id', 'LockToken' => 'lt-allow', 'ARN' => 'arn:aws:wafv2:ap-southeast-2:111:regional/ipset/yolo-testing-waf-allow/allow-id'],
-        ['Name' => 'yolo-testing-waf-block', 'Id' => 'block-id', 'LockToken' => 'lt-block', 'ARN' => 'arn:aws:wafv2:ap-southeast-2:111:regional/ipset/yolo-testing-waf-block/block-id'],
-    ]]);
-}
-
-function wafWebAclsResult(): Result
-{
-    return new Result(['WebACLs' => [
-        ['Name' => 'yolo-testing-waf', 'Id' => 'acl-id', 'LockToken' => 'lt-acl', 'ARN' => 'arn:aws:wafv2:ap-southeast-2:111:regional/webacl/yolo-testing-waf/acl-id'],
-    ]]);
-}
-
-function wafWebAclTagsResult(): Result
-{
-    return new Result(['TagInfoForResource' => ['TagList' => [
-        ['Key' => 'Name', 'Value' => 'yolo-testing-waf'],
-        ['Key' => 'yolo:scope', 'Value' => 'env'],
-        ['Key' => 'yolo:environment', 'Value' => 'testing'],
-    ]]]);
-}
-
-/** A live GetWebACL response wrapping the given rules + default action. */
-function liveWebAclResult(array $rules, array $defaultAction = ['Allow' => []]): Result
-{
-    return new Result([
-        'WebACL' => ['Rules' => $rules, 'DefaultAction' => $defaultAction],
-        'LockToken' => 'lt-acl',
-    ]);
-}
-
-/** The resource's own desired rules, resolved against the mocked IP sets. */
-function desiredWafRules(): array
-{
-    $captured = [];
-    bindRoutedWafV2Client(['ListIPSets' => wafIpSetsResult()], $captured);
-
-    return (new WebAcl())->desiredRules();
-}
-
 it('is named for the environment scope', function (): void {
     expect((new WebAcl())->name())->toBe('yolo-testing-waf');
 });
