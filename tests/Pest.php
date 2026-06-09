@@ -6,6 +6,7 @@ use Aws\Ec2\Ec2Client;
 use Aws\Ecs\EcsClient;
 use Aws\Iam\IamClient;
 use Aws\CommandInterface;
+use Aws\WAFV2\WAFV2Client;
 use Codinglabs\Yolo\Helpers;
 use GuzzleHttp\Promise\Create;
 use Symfony\Component\Yaml\Yaml;
@@ -13,6 +14,7 @@ use Aws\CloudFront\CloudFrontClient;
 use Aws\CloudWatch\CloudWatchClient;
 use Codinglabs\Yolo\Enums\StepResult;
 use Aws\ElastiCache\ElastiCacheClient;
+use Codinglabs\Yolo\Resources\WafV2\WebAcl;
 use Aws\ApplicationAutoScaling\ApplicationAutoScalingClient;
 use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
 use Aws\ResourceGroupsTaggingAPI\ResourceGroupsTaggingAPIClient;
@@ -512,4 +514,101 @@ function bindMockResourceGroupsTaggingApiClient(string $binding, array $pages): 
         'credentials' => false,
         'handler' => $mock,
     ]));
+}
+
+/**
+ * Bind a mock WAFv2 client with command-routed responses, capturing every call.
+ * A command's value may be a single Result (repeated) or an array of Results used
+ * as a queue (the last entry repeats once exhausted). Mirrors bindMockEc2Client.
+ *
+ * @param  array<string, Result|array<int, Result>>  $byCommand
+ * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+ */
+function bindRoutedWafV2Client(array $byCommand, array &$captured): void
+{
+    $mock = new class($byCommand, $captured) extends MockHandler
+    {
+        /** @var array<string, int> */
+        private array $cursors = [];
+
+        public function __construct(protected array $byCommand, protected array &$captured) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            $name = $cmd->getName();
+            $this->captured[] = ['name' => $name, 'args' => $cmd->toArray()];
+
+            $entry = $this->byCommand[$name] ?? new Result();
+
+            if (is_array($entry)) {
+                $index = min($this->cursors[$name] ?? 0, count($entry) - 1);
+                $this->cursors[$name] = $index + 1;
+                $entry = $entry[$index];
+            }
+
+            return Create::promiseFor($entry);
+        }
+    };
+
+    Helpers::app()->instance('wafV2', new WAFV2Client([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+}
+
+/**
+ * Shared WAF fixtures — defined here (not in a single test file) so every Pest
+ * worker has them under `--parallel`, where each test file runs in isolation.
+ */
+function wafIpSetsResult(): Result
+{
+    return new Result(['IPSets' => [
+        ['Name' => 'yolo-testing-waf-allow', 'Id' => 'allow-id', 'LockToken' => 'lt-allow', 'ARN' => 'arn:aws:wafv2:ap-southeast-2:111:regional/ipset/yolo-testing-waf-allow/allow-id'],
+        ['Name' => 'yolo-testing-waf-block', 'Id' => 'block-id', 'LockToken' => 'lt-block', 'ARN' => 'arn:aws:wafv2:ap-southeast-2:111:regional/ipset/yolo-testing-waf-block/block-id'],
+    ]]);
+}
+
+function wafWebAclsResult(): Result
+{
+    return new Result(['WebACLs' => [
+        ['Name' => 'yolo-testing-waf', 'Id' => 'acl-id', 'LockToken' => 'lt-acl', 'ARN' => 'arn:aws:wafv2:ap-southeast-2:111:regional/webacl/yolo-testing-waf/acl-id'],
+    ]]);
+}
+
+function wafWebAclTagsResult(): Result
+{
+    return new Result(['TagInfoForResource' => ['TagList' => [
+        ['Key' => 'Name', 'Value' => 'yolo-testing-waf'],
+        ['Key' => 'yolo:scope', 'Value' => 'env'],
+        ['Key' => 'yolo:environment', 'Value' => 'testing'],
+    ]]]);
+}
+
+/**
+ * A live GetWebACL response wrapping the given rules + default action.
+ *
+ * @param  array<int, array<string, mixed>>  $rules
+ * @param  array<string, mixed>  $defaultAction
+ */
+function liveWebAclResult(array $rules, array $defaultAction = ['Allow' => []]): Result
+{
+    return new Result([
+        'WebACL' => ['Rules' => $rules, 'DefaultAction' => $defaultAction],
+        'LockToken' => 'lt-acl',
+    ]);
+}
+
+/**
+ * The WebAcl resource's own desired rules, resolved against the mocked IP sets.
+ *
+ * @return array<int, array<string, mixed>>
+ */
+function desiredWafRules(): array
+{
+    $captured = [];
+    bindRoutedWafV2Client(['ListIPSets' => wafIpSetsResult()], $captured);
+
+    return (new WebAcl())->desiredRules();
 }

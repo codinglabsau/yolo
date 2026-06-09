@@ -79,6 +79,7 @@ class Audit
         'S3' => 's3',
         'Sns' => 'sns',
         'Sqs' => 'sqs',
+        'WafV2' => 'wafv2',
     ];
 
     /**

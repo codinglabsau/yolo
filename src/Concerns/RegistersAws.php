@@ -15,6 +15,7 @@ use Aws\Ssm\SsmClient;
 use Aws\Sts\StsClient;
 use GuzzleHttp\Client;
 use Codinglabs\Yolo\Aws;
+use Aws\WAFV2\WAFV2Client;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Aws\Route53\Route53Client;
@@ -68,6 +69,7 @@ trait RegistersAws
         Helpers::app()->singleton('sqs', fn (): SqsClient => new SqsClient($arguments));
         Helpers::app()->singleton('ssm', fn (): SsmClient => new SsmClient($arguments));
         Helpers::app()->singleton('sts', fn (): StsClient => new StsClient($arguments));
+        Helpers::app()->singleton('wafV2', fn (): WAFV2Client => new WAFV2Client($arguments));
     }
 
     protected static function awsCredentials(): callable|array|null

@@ -13,7 +13,7 @@ YOLO groups every resource by **ownership scope** — the blast radius if it cha
 | Command | Scope | Blast radius | Provisions |
 |---|---|---|---|
 | `yolo sync:account <env>` | **Account** | the whole AWS account | GitHub OIDC provider |
-| `yolo sync:environment <env>` | **Environment** | every app in the environment | VPC, subnets, internet gateway & routes, RDS security group, SNS alarm topic, the shared ECS execution IAM role, the ALB and its `:80`/`:443` listeners |
+| `yolo sync:environment <env>` | **Environment** | every app in the environment | VPC, subnets, internet gateway & routes, RDS security group, SNS alarm topic, the shared ECS execution IAM role, the ALB and its `:80`/`:443` listeners, the [WAF](#web-application-firewall) fronting the ALB |
 | `yolo sync:app <env>` | **App** | one app | S3 buckets, app IAM (deployer role/policy, the per-app ECS task role + any [`task-role-policies`](/reference/manifest#task-role-policies)), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, hosted zone & ACM certificate, SQS queues, CloudWatch dashboard — plus, for web apps, the shared [Valkey cache](#cache-and-sessions) (default-on; opt out via `cache.store`). Sessions ride the same Valkey cluster by default, so they need no provisioning of their own |
 
 The bare `yolo sync` runs all three **in dependency order** — account, then environment, then app:
@@ -29,6 +29,18 @@ The shared **Valkey cache** is env-scoped but bootstrapped from `sync:app` by ex
 ::: tip Why scopes matter
 Several apps can share one environment's VPC and load balancer. Because `sync:app` only attaches and never mutates, deploying app B can't break app A's networking. When you're iterating on one app, `sync:app` is faster than a full `sync` — the account and environment tiers rarely change.
 :::
+
+## Web application firewall
+
+Every environment with a load balancer gets a managed [AWS WAF](https://docs.aws.amazon.com/waf/latest/developerguide/what-is-aws-waf.html) web ACL on its ALB — automatically, with no manifest key. It's compulsory infrastructure, like the ALB itself: one web ACL protects every app sharing the load balancer.
+
+YOLO owns the **policy** — a baseline of AWS-managed protections, a per-IP rate limit, and a high-risk-country block — and reconciles it on every sync. You own the **operational lists**:
+
+- The **allow** and **block IP sets** are seeded empty for you to fill (known-good IPs to allow; abusive sources to block). Their contents are **create-only** — an entry you add in the console survives every subsequent `sync`.
+- The **country block** is seeded with a sensible default and is likewise yours to re-scope; it's **seed-only**, so your edits stick.
+- Any **rule you add by hand** is preserved too — YOLO only ever rewrites the rules it owns.
+
+Tune the rest in the AWS console; YOLO won't undo it.
 
 ## Plan, confirm, apply
 

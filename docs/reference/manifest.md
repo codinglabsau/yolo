@@ -241,6 +241,10 @@ ivs:
 
 MediaConvert role ARN for video transcoding workloads (used with IVS).
 
+::: tip No `waf` key
+The [web application firewall](/guide/provisioning#web-application-firewall) is a **compulsory** environment resource — every environment with a load balancer gets one automatically, so there's nothing to configure here. Day-to-day tuning happens in its allow/block IP sets, not the manifest.
+:::
+
 ### `task-role-policies`
 
 Extra IAM policy ARNs to attach to this app's ECS **task role** — the runtime identity its containers (web, queue and scheduler) assume. YOLO gives every app its own task role, so these grants reach only this app and never another. This is how you let your container call an AWS service YOLO doesn't wire for you (an extra S3 bucket, DynamoDB, Bedrock, …): the role carries the access, so the app authenticates as itself with no credentials to manage.
