@@ -10,10 +10,12 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
 
 /**
- * The web role runs `php artisan octane:start` (see ProcessCommands::octane) — a
+ * The web role runs `php artisan octane:start` (see ProcessCommands::web) — a
  * command that only exists when laravel/octane is installed. Without it the web
  * container crash-loops on boot and the deploy circuit breaker rolls back ~20min
- * later, so this preflight catches it before the image is even built.
+ * later, so this preflight catches it before the image is even built. It's skipped
+ * when `tasks.web.octane: false`, where the web tier runs FrankenPHP classic mode
+ * and needs no octane package.
  *
  * It reads composer.lock's `packages` array — the production dependency set, i.e.
  * exactly what a `--no-dev` install ships into the image. That's deliberately not
@@ -38,8 +40,11 @@ class CheckOctaneInstalledStep implements Step
 
     public function __invoke(array $options = []): StepResult
     {
-        // Only the web role launches octane:start; a worker-only app never does.
-        if (! Manifest::has('tasks.web')) {
+        // Only the web role launches octane:start, and only when it runs Octane: a
+        // worker-only app has no web role, and an app that opts out with
+        // `tasks.web.octane: false` runs FrankenPHP classic mode, which needs no
+        // octane package — so neither requires this check.
+        if (! Manifest::has('tasks.web') || ! Manifest::usesOctane()) {
             return StepResult::SKIPPED;
         }
 

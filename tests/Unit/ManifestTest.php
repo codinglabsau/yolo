@@ -129,6 +129,35 @@ describe('cache + session defaults', function (): void {
     });
 });
 
+describe('octane', function (): void {
+    it('defaults to running octane when tasks.web.octane is unset', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => []],
+        ]);
+
+        expect(Manifest::usesOctane())->toBeTrue();
+    });
+
+    it('opts out of octane when tasks.web.octane is false', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => ['octane' => false]],
+        ]);
+
+        expect(Manifest::usesOctane())->toBeFalse();
+    });
+
+    it('rejects a non-boolean octane flag', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => ['octane' => 'sometimes']],
+        ]);
+
+        expect(fn (): bool => Manifest::usesOctane())->toThrow(IntegrityCheckException::class);
+    });
+});
+
 describe('task-role-policies', function (): void {
     it('defaults to no additional policies', function (): void {
         writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);

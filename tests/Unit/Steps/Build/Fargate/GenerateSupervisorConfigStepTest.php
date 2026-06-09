@@ -27,7 +27,7 @@ function generatedSupervisorConfig(): string
     return file_get_contents(Paths::build('docker/supervisord.conf'));
 }
 
-it('always runs octane on the manifest port', function (): void {
+it('runs octane on the manifest port by default', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['port' => 9000]],
@@ -35,7 +35,7 @@ it('always runs octane on the manifest port', function (): void {
 
     $config = generatedSupervisorConfig();
 
-    expect($config)->toContain('[program:octane]');
+    expect($config)->toContain('[program:web]');
     expect($config)->toContain('command=php artisan octane:start --host=0.0.0.0 --port=9000');
 });
 
@@ -43,10 +43,24 @@ it('defaults the octane port to 8000', function (): void {
     expect(generatedSupervisorConfig())->toContain('--port=8000');
 });
 
+it('runs frankenphp classic mode on the manifest port when tasks.web.octane is false', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['octane' => false, 'port' => 9000]],
+    ]);
+
+    $config = generatedSupervisorConfig();
+
+    // Same web program slot, classic-mode command — no octane:start, no worker boot.
+    expect($config)->toContain('[program:web]');
+    expect($config)->toContain('command=frankenphp php-server --listen 0.0.0.0:9000 --root public/');
+    expect($config)->not->toContain('octane:start');
+});
+
 it('bundles octane, the scheduler and the queue worker into the web config for a plain web app', function (): void {
     $config = generatedSupervisorConfig();
 
-    expect($config)->toContain('[program:octane]');
+    expect($config)->toContain('[program:web]');
     expect($config)->toContain('[program:scheduler]');
     // The scheduler runs as cron, not a schedule:work daemon.
     expect($config)->toContain('command=crond -f -d 8 -c /app/docker/crontabs');
@@ -63,7 +77,7 @@ it('runs octane alone in the web config when both queue and scheduler are extrac
 
     $config = generatedSupervisorConfig();
 
-    expect($config)->toContain('[program:octane]');
+    expect($config)->toContain('[program:web]');
     expect($config)->not->toContain('[program:scheduler]');
     expect($config)->not->toContain('[program:queue]');
 });
@@ -76,7 +90,7 @@ it('drops the scheduler from the web config when it has its own service, keeping
 
     $config = generatedSupervisorConfig();
 
-    expect($config)->toContain('[program:octane]');
+    expect($config)->toContain('[program:web]');
     expect($config)->toContain('[program:queue]');
     expect($config)->not->toContain('[program:scheduler]');
 });
@@ -91,7 +105,7 @@ it('writes a second supervisord config for a standalone queue that hosts the sch
 
     // Web container: octane only (queue + scheduler extracted onto the queue).
     $web = file_get_contents(Paths::build('docker/supervisord.conf'));
-    expect($web)->toContain('[program:octane]');
+    expect($web)->toContain('[program:web]');
     expect($web)->not->toContain('[program:queue]');
     expect($web)->not->toContain('[program:scheduler]');
 
@@ -99,7 +113,7 @@ it('writes a second supervisord config for a standalone queue that hosts the sch
     $queue = file_get_contents(Paths::build('docker/supervisord.queue.conf'));
     expect($queue)->toContain('[program:queue]');
     expect($queue)->toContain('[program:scheduler]');
-    expect($queue)->not->toContain('[program:octane]');
+    expect($queue)->not->toContain('[program:web]');
 });
 
 it('writes no queue supervisord config when the standalone queue is a single process', function (): void {

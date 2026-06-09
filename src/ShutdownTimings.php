@@ -102,11 +102,13 @@ final class ShutdownTimings
 
     /**
      * The supervisord programs that run in a given container => each one's
-     * graceful-stop window. Placement is by task presence, not flags: octane and
-     * (when enabled) ssr are always web; the queue worker and the scheduler ride
-     * whichever container hosts them (Manifest::queueHost / schedulerHost). Every
-     * app runs all three roles somewhere, so a plain web app's web container runs
-     * octane + queue + scheduler.
+     * graceful-stop window. Placement is by task presence, not flags: the web
+     * server and (when enabled) ssr are always web; the queue worker and the
+     * scheduler ride whichever container hosts them (Manifest::queueHost /
+     * schedulerHost). Every app runs all three roles somewhere, so a plain web
+     * app's web container runs web + queue + scheduler. The `web` program is
+     * Octane by default, or FrankenPHP classic mode when tasks.web.octane is off
+     * (ProcessCommands::web) — its grace is the same either way.
      *
      * @return array<string, int>
      */
@@ -114,7 +116,7 @@ final class ShutdownTimings
     {
         $graces = match ($group) {
             ServerGroup::WEB => [
-                'octane' => self::webGrace(),
+                'web' => self::webGrace(),
                 'ssr' => Manifest::bundles('ssr') ? self::ssrGrace() : null,
                 'scheduler' => Manifest::schedulerHost() === ServerGroup::WEB ? self::schedulerGrace() : null,
                 'queue' => Manifest::queueHost() === ServerGroup::WEB ? self::queueGrace() : null,

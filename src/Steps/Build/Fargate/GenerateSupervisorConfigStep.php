@@ -14,11 +14,11 @@ use Codinglabs\Yolo\Enums\ServerGroup;
 /**
  * Generates each container's supervisord.conf into the build context from the
  * manifest — the same way GenerateEntrypointScriptStep generates the entrypoint,
- * so the running processes can't drift from the manifest and the octane port
+ * so the running processes can't drift from the manifest and the web port
  * always matches tasks.web.port (the same value the target group health-checks).
  *
  * Which program runs where is derived from task presence (Manifest::queueHost /
- * schedulerHost), not flags. The web container always runs octane (plus the SSR
+ * schedulerHost), not flags. The web container always runs the web server (plus the SSR
  * renderer when tasks.web.ssr is on, and the queue worker / scheduler unless
  * they've been extracted). A standalone queue that also hosts the scheduler runs
  * two processes (queue:work + crond), so it gets its own supervisord.queue.conf; a
@@ -36,7 +36,7 @@ class GenerateSupervisorConfigStep implements Step
 
     public function __invoke(array $options = []): StepResult
     {
-        // The web container always runs supervisord (octane + whatever it hosts).
+        // The web container always runs supervisord (the web server + whatever it hosts).
         $this->writeConfig('docker/supervisord.conf', ServerGroup::WEB);
 
         // A standalone queue only needs supervisord when it co-hosts the scheduler
@@ -70,13 +70,15 @@ class GenerateSupervisorConfigStep implements Step
         // One block per program present in this container, in a stable order. Stop
         // waits come from ShutdownTimings so a program's graceful-stop window matches
         // the container stopTimeout derived from the same source.
-        //  - octane    the web server (web container only)
-        //  - ssr       Inertia's Node renderer beside octane; autorestart brings it
-        //              back if it crashes, and Inertia renders client-side while it's down
+        //  - web       the web server — Octane (FrankenPHP worker mode) by default,
+        //              or FrankenPHP classic mode when tasks.web.octane is off
+        //              (ProcessCommands::web); web container only
+        //  - ssr       Inertia's Node renderer beside the web server; autorestart brings
+        //              it back if it crashes, and Inertia renders client-side while it's down
         //  - scheduler busybox crond firing an ephemeral schedule:run each minute (not a
         //              schedule:work daemon — the trigger halts cleanly on shutdown)
         //  - queue     queue:work, with a longer stop wait so an in-flight job can finish
-        foreach (['octane', 'ssr', 'scheduler', 'queue'] as $program) {
+        foreach (['web', 'ssr', 'scheduler', 'queue'] as $program) {
             if (isset($graces[$program])) {
                 $blocks[] = $this->program($program, ProcessCommands::{$program}(), stopwaitsecs: $graces[$program]);
             }

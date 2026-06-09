@@ -40,6 +40,16 @@ it('skips without reading composer.lock for a worker-only app', function (): voi
     expect((new CheckOctaneInstalledStep('testing'))())->toBe(StepResult::SKIPPED);
 });
 
+it('skips when tasks.web.octane is false (classic mode needs no octane package)', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['octane' => false]],
+    ]);
+
+    // No composer.lock on disk — the opt-out short-circuits before touching it.
+    expect((new CheckOctaneInstalledStep('testing'))())->toBe(StepResult::SKIPPED);
+});
+
 it('passes when laravel/octane is in the production packages', function (): void {
     writeComposerLock(['laravel/framework', 'laravel/octane']);
 
