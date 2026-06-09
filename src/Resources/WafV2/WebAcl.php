@@ -43,7 +43,7 @@ class WebAcl implements Resource, SynchronisesConfiguration
      * @var array<int, string>
      */
     private const array BANNED_COUNTRIES = [
-        'CN', 'GH', 'KP', 'LB', 'NG', 'RU', 'BD', 'NP', 'IQ', 'IR', 'CI', 'BO',
+        'CN', 'GH', 'KP', 'LB', 'NG', 'RU', 'BD', 'NP', 'IQ', 'IR', 'CI',
     ];
 
     private const string ALLOW_RULE = 'yolo-allow-ips';
