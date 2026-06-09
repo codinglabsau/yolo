@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Aws;
 
 use Codinglabs\Yolo\Aws;
+use Aws\Exception\AwsException;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
@@ -19,6 +20,41 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 class WafV2
 {
     public const SCOPE = 'REGIONAL';
+
+    /**
+     * Run a WAFv2 mutation that references another WAF entity (a web ACL that
+     * references freshly-created IP sets, an association onto a freshly-created
+     * web ACL), retrying on WAFUnavailableEntityException.
+     *
+     * WAFv2 is eventually consistent: a just-created IP set or web ACL isn't
+     * immediately referenceable, so the first call can fail with "couldn't
+     * retrieve the resource" even though everything is correct. AWS's documented
+     * remedy is to retry; the entity becomes referenceable within a few seconds.
+     * Any other error (or exhausting the attempts) propagates unchanged.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $operation
+     * @return T
+     */
+    public static function retryWhileUnavailable(callable $operation, int $maxAttempts = 5, int $sleepSeconds = 5): mixed
+    {
+        $attempt = 0;
+
+        while (true) {
+            try {
+                return $operation();
+            } catch (AwsException $exception) {
+                $attempt++;
+
+                if ($attempt >= $maxAttempts || $exception->getAwsErrorCode() !== 'WAFUnavailableEntityException') {
+                    throw $exception;
+                }
+
+                sleep($sleepSeconds);
+            }
+        }
+    }
 
     /**
      * The WebACL summary {Name, Id, ARN, LockToken} for the given name.

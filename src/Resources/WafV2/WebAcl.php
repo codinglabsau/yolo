@@ -82,7 +82,9 @@ class WebAcl implements Resource, SynchronisesConfiguration
 
     public function create(): void
     {
-        Aws::wafV2()->createWebACL([
+        // Retry on eventual consistency: the rules reference the allow/block IP
+        // sets created moments earlier, which WAFv2 may not yet have propagated.
+        WafV2::retryWhileUnavailable(fn () => Aws::wafV2()->createWebACL([
             'Name' => $this->name(),
             'Scope' => WafV2::SCOPE,
             'Description' => 'YOLO managed WAF for the environment load balancer',
@@ -90,7 +92,7 @@ class WebAcl implements Resource, SynchronisesConfiguration
             'Rules' => $this->creationRules(),
             'VisibilityConfig' => $this->visibilityConfig($this->name()),
             ...Aws::tags($this->tags()),
-        ]);
+        ]));
     }
 
     /**
@@ -165,7 +167,7 @@ class WebAcl implements Resource, SynchronisesConfiguration
             return $changes;
         }
 
-        Aws::wafV2()->updateWebACL([
+        WafV2::retryWhileUnavailable(fn () => Aws::wafV2()->updateWebACL([
             'Name' => $this->name(),
             'Scope' => WafV2::SCOPE,
             'Id' => $summary['Id'],
@@ -173,7 +175,7 @@ class WebAcl implements Resource, SynchronisesConfiguration
             'DefaultAction' => $this->defaultAction(),
             'Rules' => [...$this->preservedRules($liveRules), ...$this->desiredRules()],
             'VisibilityConfig' => $this->visibilityConfig($this->name()),
-        ]);
+        ]));
 
         return $changes;
     }

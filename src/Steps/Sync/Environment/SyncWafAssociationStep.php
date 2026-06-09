@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Steps\Sync\Environment;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Change;
 use Illuminate\Support\Arr;
+use Codinglabs\Yolo\Aws\WafV2;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\WafV2\WebAcl;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
@@ -55,10 +56,12 @@ class SyncWafAssociationStep implements ExecutesWebStep
             return StepResult::WOULD_SYNC;
         }
 
-        Aws::wafV2()->associateWebACL([
+        // Retry on eventual consistency: a just-created web ACL isn't immediately
+        // associable, so the first attempt can report it as unavailable.
+        WafV2::retryWhileUnavailable(fn () => Aws::wafV2()->associateWebACL([
             'WebACLArn' => $webAclArn,
             'ResourceArn' => $loadBalancerArn,
-        ]);
+        ]));
 
         return StepResult::SYNCED;
     }
