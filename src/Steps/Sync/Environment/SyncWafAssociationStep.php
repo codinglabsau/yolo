@@ -25,8 +25,21 @@ class SyncWafAssociationStep implements ExecutesWebStep
 
     public function __invoke(array $options): StepResult
     {
+        $webAcl = new WebAcl();
+
+        // On the plan pass the web ACL may not exist yet: its create step also runs
+        // dry-run, so it reports WOULD_CREATE without provisioning, and a WAFv2 ARN
+        // can't be resolved offline (the Id is AWS-assigned). Report the association
+        // as pending without touching AWS — on apply the create step has already run,
+        // so the ACL exists by the time the association step is reached.
+        if (! $webAcl->exists()) {
+            $this->recordChange(Change::make('web-acl-association', null, $webAcl->name()));
+
+            return StepResult::WOULD_SYNC;
+        }
+
         $loadBalancerArn = (new LoadBalancer())->arn();
-        $webAclArn = (new WebAcl())->arn();
+        $webAclArn = $webAcl->arn();
 
         $current = Aws::wafV2()->getWebACLForResource([
             'ResourceArn' => $loadBalancerArn,

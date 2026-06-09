@@ -1,6 +1,7 @@
 <?php
 
 use Aws\Result;
+use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncWafWebAclStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncWafAssociationStep;
 
@@ -82,4 +83,21 @@ it('points the load balancer at the web ACL when unassociated', function (): voi
 
     expect($associate['args']['WebACLArn'])->toBe(WAF_WEBACL_ARN)
         ->and($associate['args']['ResourceArn'])->toBe('arn:aws:elasticloadbalancing:ap-southeast-2:111:loadbalancer/app/yolo-testing/abc');
+});
+
+it('reports a pending association without touching AWS when the web ACL does not exist yet', function (): void {
+    // First-ever sync, plan pass: the web ACL's create step also ran dry-run, so it
+    // isn't provisioned. The association step must not try to resolve its ARN (which
+    // would throw — WAFv2 ARNs aren't computable offline); it reports a pending
+    // association instead. Regression for the plan-pass crash on a fresh environment.
+    $captured = [];
+    bindRoutedWafV2Client(['ListWebACLs' => new Result(['WebACLs' => []])], $captured);
+
+    $step = new SyncWafAssociationStep();
+
+    expect($step(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC);
+    expect($step->changes())->not->toBeEmpty();
+    expect(array_column($captured, 'name'))
+        ->not->toContain('GetWebACLForResource')
+        ->not->toContain('AssociateWebACL');
 });
