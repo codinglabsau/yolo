@@ -50,6 +50,7 @@ The default skeleton, in priority order:
 | Known bad inputs | Block | Low false-positive; auto-evolves. |
 | Core rule set (CRS) | **Count** | Ships in Count so a new AWS signature can't start blocking live traffic unannounced — promote to Block once you've watched the metrics. |
 | SQL injection | **Count** | Same Count-first treatment. |
+| PHP application | **Count** | PHP/Laravel-targeted; same Count-first treatment. |
 | Rate limit | Block | ~2000 requests / 5 min **per source IP**. |
 
 The managed groups are referenced **unversioned**, so AWS's signature and IP-reputation updates roll in automatically — the WAF improves over time without a YOLO change. The IP sets are **create-only**: an IP you add in the console survives every subsequent `sync`. A rule you add by hand (matched by name) is preserved too — YOLO only ever rewrites the rules it owns.

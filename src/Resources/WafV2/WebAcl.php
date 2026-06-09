@@ -164,8 +164,8 @@ class WebAcl implements Resource, SynchronisesConfiguration
     /**
      * AWS managed rule groups, referenced unversioned so they track the latest
      * signatures. The low-false-positive groups override to None (the group's own
-     * Block actions apply); CRS and SQLi override to Count so they observe without
-     * blocking until an operator promotes them.
+     * Block actions apply); the broad content groups (CRS, SQLi, PHP) override to
+     * Count so they observe without blocking until an operator promotes them.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -176,6 +176,7 @@ class WebAcl implements Resource, SynchronisesConfiguration
             ['name' => 'AWSManagedRulesKnownBadInputsRuleSet', 'priority' => 11, 'override' => 'None'],
             ['name' => 'AWSManagedRulesCommonRuleSet', 'priority' => 12, 'override' => 'Count'],
             ['name' => 'AWSManagedRulesSQLiRuleSet', 'priority' => 13, 'override' => 'Count'],
+            ['name' => 'AWSManagedRulesPHPRuleSet', 'priority' => 14, 'override' => 'Count'],
         ];
 
         return array_map(fn (array $group): array => [

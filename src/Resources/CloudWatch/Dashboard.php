@@ -592,6 +592,7 @@ class Dashboard
                 $series('BlockedRequests', 'yolo-rate-limit', ['label' => 'Rate limit', 'color' => static::PURPLE]),
                 $series('CountedRequests', 'AWS-AWSManagedRulesCommonRuleSet', ['label' => 'CRS (count)', 'color' => static::ORANGE]),
                 $series('CountedRequests', 'AWS-AWSManagedRulesSQLiRuleSet', ['label' => 'SQLi (count)']),
+                $series('CountedRequests', 'AWS-AWSManagedRulesPHPRuleSet', ['label' => 'PHP (count)']),
             ],
         ]);
         $y += 6;
