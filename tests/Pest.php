@@ -14,6 +14,7 @@ use Aws\CloudFront\CloudFrontClient;
 use Aws\CloudWatch\CloudWatchClient;
 use Codinglabs\Yolo\Enums\StepResult;
 use Aws\ElastiCache\ElastiCacheClient;
+use Codinglabs\Yolo\Resources\WafV2\WebAcl;
 use Aws\ApplicationAutoScaling\ApplicationAutoScalingClient;
 use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
 use Aws\ResourceGroupsTaggingAPI\ResourceGroupsTaggingAPIClient;
@@ -609,5 +610,5 @@ function desiredWafRules(): array
     $captured = [];
     bindRoutedWafV2Client(['ListIPSets' => wafIpSetsResult()], $captured);
 
-    return (new Codinglabs\Yolo\Resources\WafV2\WebAcl())->desiredRules();
+    return (new WebAcl())->desiredRules();
 }
