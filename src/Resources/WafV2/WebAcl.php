@@ -207,9 +207,10 @@ class WebAcl implements Resource, SynchronisesConfiguration
 
     /**
      * AWS managed rule groups, referenced unversioned so they track the latest
-     * signatures. The low-false-positive groups override to None (the group's own
-     * Block actions apply); the broad content groups (CRS, SQLi, PHP) override to
-     * Count so they observe without blocking until an operator promotes them.
+     * signatures. The targeted, low-false-positive groups override to None (the
+     * group's own Block actions apply); only the broad Core Rule Set overrides to
+     * Count, so a new AWS signature can't start blocking live traffic unannounced
+     * — promote it to Block (override None) once its metrics look clean.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -219,8 +220,8 @@ class WebAcl implements Resource, SynchronisesConfiguration
             ['name' => 'AWSManagedRulesAmazonIpReputationList', 'priority' => 10, 'override' => 'None'],
             ['name' => 'AWSManagedRulesKnownBadInputsRuleSet', 'priority' => 11, 'override' => 'None'],
             ['name' => 'AWSManagedRulesCommonRuleSet', 'priority' => 12, 'override' => 'Count'],
-            ['name' => 'AWSManagedRulesSQLiRuleSet', 'priority' => 13, 'override' => 'Count'],
-            ['name' => 'AWSManagedRulesPHPRuleSet', 'priority' => 14, 'override' => 'Count'],
+            ['name' => 'AWSManagedRulesSQLiRuleSet', 'priority' => 13, 'override' => 'None'],
+            ['name' => 'AWSManagedRulesPHPRuleSet', 'priority' => 14, 'override' => 'None'],
         ];
 
         return array_map(fn (array $group): array => [

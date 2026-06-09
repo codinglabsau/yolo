@@ -49,9 +49,9 @@ The default skeleton, in priority order:
 | Country block | Block | Seeded with a default high-risk list (CN, RU, KP, IR, BD, …) as a starting point — **seed-only**, so re-scope it per app and sync won't revert you. |
 | Amazon IP reputation list | Block | Low false-positive; auto-evolves. |
 | Known bad inputs | Block | Low false-positive; auto-evolves. |
-| Core rule set (CRS) | **Count** | Ships in Count so a new AWS signature can't start blocking live traffic unannounced — promote to Block once you've watched the metrics. |
-| SQL injection | **Count** | Same Count-first treatment. |
-| PHP application | **Count** | PHP/Laravel-targeted; same Count-first treatment. |
+| Core rule set (CRS) | **Count** | The one broad group — ships in Count so a new AWS signature can't start blocking live traffic unannounced. Promote to Block once you've watched the metrics. |
+| SQL injection | Block | Targeted SQLi signatures; low false-positive, so it blocks outright. |
+| PHP application | Block | PHP/Laravel exploit signatures; blocks outright. |
 | Rate limit (DoS) | Block | **200 requests / 1 min** per source IP. |
 
 The managed groups are referenced **unversioned**, so AWS's signature and IP-reputation updates roll in automatically — the WAF improves over time without a YOLO change. The IP sets are **create-only**: an IP you add in the console survives every subsequent `sync`. The country block is **seed-only** in the same spirit — laid down once with a sensible default list, then yours to re-scope. And a rule you add by hand (matched by name) is preserved too — YOLO only ever rewrites the rules it owns.

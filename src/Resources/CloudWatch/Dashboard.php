@@ -542,8 +542,8 @@ class Dashboard
      */
     /**
      * The WAF panels: overall allow/block/count posture, and a by-rule breakdown
-     * that's the promote-decision view — the Count-mode managed groups (CRS, SQLi)
-     * surface here as "would block" before you flip them to Block. WebACL metrics
+     * that's the promote-decision view — the Count-mode group (the broad CRS)
+     * surfaces here as "would block" before you flip it to Block. WebACL metrics
      * are env-shared, dimensioned on the ACL name + region + rule.
      *
      * @param  array<string, mixed>  $context
@@ -575,9 +575,9 @@ class Dashboard
             ],
         ]);
 
-        // Rule names mirror WebAcl's skeleton. The first three Block; the managed
-        // CRS/SQLi groups ship in Count, so they're charted as CountedRequests —
-        // climbing counts are the signal to promote them to Block.
+        // Rule names mirror WebAcl's skeleton. Everything blocks except the broad
+        // CRS, which ships in Count and is charted as CountedRequests — a climbing
+        // count is the signal it's safe to promote to Block.
         $widgets[] = static::metric(12, $y, 12, 6, [
             'title' => 'Blocked / counted by rule',
             'region' => $region,
@@ -590,10 +590,10 @@ class Dashboard
                 $series('BlockedRequests', 'yolo-banned-countries', ['label' => 'Geo block', 'color' => static::BLUE]),
                 $series('BlockedRequests', 'AWS-AWSManagedRulesAmazonIpReputationList', ['label' => 'IP reputation']),
                 $series('BlockedRequests', 'AWS-AWSManagedRulesKnownBadInputsRuleSet', ['label' => 'Known bad inputs']),
+                $series('BlockedRequests', 'AWS-AWSManagedRulesSQLiRuleSet', ['label' => 'SQLi']),
+                $series('BlockedRequests', 'AWS-AWSManagedRulesPHPRuleSet', ['label' => 'PHP']),
                 $series('BlockedRequests', 'yolo-rate-limit', ['label' => 'Rate limit', 'color' => static::PURPLE]),
                 $series('CountedRequests', 'AWS-AWSManagedRulesCommonRuleSet', ['label' => 'CRS (count)', 'color' => static::ORANGE]),
-                $series('CountedRequests', 'AWS-AWSManagedRulesSQLiRuleSet', ['label' => 'SQLi (count)']),
-                $series('CountedRequests', 'AWS-AWSManagedRulesPHPRuleSet', ['label' => 'PHP (count)']),
             ],
         ]);
         $y += 6;

@@ -41,11 +41,11 @@ it('creates the web ACL with an allow default action and the full rule skeleton'
         'yolo-rate-limit',
     ]);
 
-    // The broad content groups ship in Count; the low-false-positive ones block.
+    // Only the broad CRS ships in Count; the targeted groups block outright.
     $byName = collect($create['args']['Rules'])->keyBy('Name');
     expect($byName['AWS-AWSManagedRulesCommonRuleSet']['OverrideAction'])->toBe(['Count' => []])
-        ->and($byName['AWS-AWSManagedRulesSQLiRuleSet']['OverrideAction'])->toBe(['Count' => []])
-        ->and($byName['AWS-AWSManagedRulesPHPRuleSet']['OverrideAction'])->toBe(['Count' => []])
+        ->and($byName['AWS-AWSManagedRulesSQLiRuleSet']['OverrideAction'])->toBe(['None' => []])
+        ->and($byName['AWS-AWSManagedRulesPHPRuleSet']['OverrideAction'])->toBe(['None' => []])
         ->and($byName['AWS-AWSManagedRulesAmazonIpReputationList']['OverrideAction'])->toBe(['None' => []])
         ->and($byName['AWS-AWSManagedRulesKnownBadInputsRuleSet']['OverrideAction'])->toBe(['None' => []]);
 
