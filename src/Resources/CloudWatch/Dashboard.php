@@ -587,6 +587,7 @@ class Dashboard
             'stat' => 'Sum',
             'metrics' => [
                 $series('BlockedRequests', 'yolo-block-ips', ['label' => 'Block list', 'color' => static::RED]),
+                $series('BlockedRequests', 'yolo-banned-countries', ['label' => 'Geo block', 'color' => static::BLUE]),
                 $series('BlockedRequests', 'AWS-AWSManagedRulesAmazonIpReputationList', ['label' => 'IP reputation']),
                 $series('BlockedRequests', 'AWS-AWSManagedRulesKnownBadInputsRuleSet', ['label' => 'Known bad inputs']),
                 $series('BlockedRequests', 'yolo-rate-limit', ['label' => 'Rate limit', 'color' => static::PURPLE]),

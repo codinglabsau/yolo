@@ -28,9 +28,11 @@ it('creates the web ACL with an allow default action and the full rule skeleton'
 
     $ruleNames = array_column($create['args']['Rules'], 'Name');
 
+    // Priority order: allow, block, country block, managed groups, rate limit.
     expect($ruleNames)->toBe([
         'yolo-allow-ips',
         'yolo-block-ips',
+        'yolo-banned-countries',
         'AWS-AWSManagedRulesAmazonIpReputationList',
         'AWS-AWSManagedRulesKnownBadInputsRuleSet',
         'AWS-AWSManagedRulesCommonRuleSet',
@@ -51,7 +53,43 @@ it('creates the web ACL with an allow default action and the full rule skeleton'
     expect($byName['AWS-AWSManagedRulesCommonRuleSet']['Statement']['ManagedRuleGroupStatement'])
         ->not->toHaveKey('Version');
 
+    // DoS rate limit: 200 requests per rolling 1-minute window, per source IP.
+    expect($byName['yolo-rate-limit']['Action'])->toBe(['Block' => []])
+        ->and($byName['yolo-rate-limit']['Statement']['RateBasedStatement'])
+        ->toMatchArray(['Limit' => 200, 'AggregateKeyType' => 'IP', 'EvaluationWindowSec' => 60]);
+
+    // Country block seeded with the default high-risk list, action Block.
+    expect($byName['yolo-banned-countries']['Action'])->toBe(['Block' => []])
+        ->and($byName['yolo-banned-countries']['Statement']['GeoMatchStatement']['CountryCodes'])
+        ->toContain('CN', 'RU', 'KP', 'IR', 'BD');
+
     expect($create['args']['Tags'])->toContain(['Key' => 'yolo:scope', 'Value' => 'env']);
+});
+
+it('seeds the country block but never reconciles it — operator owns it after create', function (): void {
+    // Live ACL where an operator has re-scoped the country block to a single country.
+    $operatorTuned = [
+        ...desiredWafRules(),
+        [
+            'Name' => 'yolo-banned-countries',
+            'Priority' => 2,
+            'Action' => ['Block' => []],
+            'Statement' => ['GeoMatchStatement' => ['CountryCodes' => ['CN']]],
+            'VisibilityConfig' => ['SampledRequestsEnabled' => true, 'CloudWatchMetricsEnabled' => true, 'MetricName' => 'yolo-banned-countries'],
+        ],
+    ];
+
+    $captured = [];
+    bindRoutedWafV2Client([
+        'ListIPSets' => wafIpSetsResult(),
+        'ListWebACLs' => wafWebAclsResult(),
+        'GetWebACL' => liveWebAclResult($operatorTuned),
+    ], $captured);
+
+    // No drift: the country rule isn't YOLO-owned, so its re-scoping is invisible
+    // to reconcile and never rewritten.
+    expect((new WebAcl())->synchroniseConfiguration())->toBe([]);
+    expect(array_column($captured, 'name'))->not->toContain('UpdateWebACL');
 });
 
 it('reports exists from the live web ACL list', function (): void {

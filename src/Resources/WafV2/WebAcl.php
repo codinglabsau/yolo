@@ -30,14 +30,29 @@ class WebAcl implements Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
 
-    /** Per-IP request ceiling over the rolling 5-minute window. */
-    private const int RATE_LIMIT = 2000;
+    /** Per-IP request ceiling, evaluated over a rolling 1-minute window. */
+    private const int RATE_LIMIT = 200;
+
+    private const int RATE_WINDOW_SECONDS = 60;
+
+    /**
+     * High-risk geographies blocked by default — a hardcoded starting point an
+     * operator fine-tunes per app. Seeded once on create and then operator-owned
+     * (see seededRules()), so edits survive every sync.
+     *
+     * @var array<int, string>
+     */
+    private const array BANNED_COUNTRIES = [
+        'CN', 'GH', 'KP', 'LB', 'NG', 'RU', 'BD', 'NP', 'IQ', 'IR', 'CI', 'BO',
+    ];
 
     private const string ALLOW_RULE = 'yolo-allow-ips';
 
     private const string BLOCK_RULE = 'yolo-block-ips';
 
     private const string RATE_RULE = 'yolo-rate-limit';
+
+    private const string COUNTRY_RULE = 'yolo-banned-countries';
 
     public function name(): string
     {
@@ -72,10 +87,39 @@ class WebAcl implements Resource, SynchronisesConfiguration
             'Scope' => WafV2::SCOPE,
             'Description' => 'YOLO managed WAF for the environment load balancer',
             'DefaultAction' => $this->defaultAction(),
-            'Rules' => $this->desiredRules(),
+            'Rules' => $this->creationRules(),
             'VisibilityConfig' => $this->visibilityConfig($this->name()),
             ...Aws::tags($this->tags()),
         ]);
+    }
+
+    /**
+     * The full rule set written at create time, priority-ordered: the reconciled
+     * skeleton plus the seed-only rules (the country block) that are operator-owned
+     * thereafter. Reconcile (synchroniseConfiguration) only ever touches
+     * desiredRules(), so the seeds are laid down once and then left alone.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    protected function creationRules(): array
+    {
+        return collect([...$this->desiredRules(), ...$this->seededRules()])
+            ->sortBy('Priority')
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Rules YOLO seeds once on create and never reconciles — a hardcoded starting
+     * point the operator then owns (like the empty allow/block IP sets, but for a
+     * rule whose content can't live in a separate resource). The country block
+     * lives here so an operator can re-scope it without sync reverting them.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    protected function seededRules(): array
+    {
+        return [$this->bannedCountriesRule()];
     }
 
     public function synchroniseTags(bool $apply): array
@@ -222,9 +266,30 @@ class WebAcl implements Resource, SynchronisesConfiguration
                 'RateBasedStatement' => [
                     'Limit' => self::RATE_LIMIT,
                     'AggregateKeyType' => 'IP',
+                    'EvaluationWindowSec' => self::RATE_WINDOW_SECONDS,
                 ],
             ],
             'VisibilityConfig' => $this->visibilityConfig(self::RATE_RULE),
+        ];
+    }
+
+    /**
+     * The default country block (seed-only — see seededRules()). Action Block, a
+     * geo-match on the hardcoded high-risk list; the operator re-scopes the
+     * countries afterwards and sync never reverts them.
+     *
+     * @return array<string, mixed>
+     */
+    protected function bannedCountriesRule(): array
+    {
+        return [
+            'Name' => self::COUNTRY_RULE,
+            'Priority' => 2,
+            'Action' => ['Block' => []],
+            'Statement' => [
+                'GeoMatchStatement' => ['CountryCodes' => self::BANNED_COUNTRIES],
+            ],
+            'VisibilityConfig' => $this->visibilityConfig(self::COUNTRY_RULE),
         ];
     }
 
