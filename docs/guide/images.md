@@ -74,7 +74,7 @@ For your image to work with YOLO, the Dockerfile must:
 
 `yolo build` runs two preflights so a deploy can't ship an image that won't run:
 
-- **Octane** — *before* the build, it reads `composer.lock` and fails if `laravel/octane` isn't in the production requirements, since the web role runs `octane:start`.
+- **Octane** — *before* the build, it reads `composer.lock` and fails if `laravel/octane` isn't in the production requirements, since the web role runs `octane:start`. Skipped when [`tasks.web.octane: false`](/reference/manifest#tasks-web): classic mode runs `frankenphp php-server` and needs no octane package.
 - **SSR (Node)** — when [`tasks.web.ssr`](/reference/manifest#tasks-web) is on, it runs the freshly-built image and fails if `node` isn't on the `PATH`. Running the image (rather than grepping the Dockerfile) sees the resolved base image and multi-stage `COPY --from` layers too, so there are no false negatives. This one matters because a missing SSR runtime is otherwise **silent** — Inertia falls back to client-side rendering and the web tier stays healthy on `/up`, so the deploy goes green with SSR quietly off.
 
 YOLO doesn't assert the image's base runtime (e.g. that PHP is present) — Docker makes that the app's to swap, and a genuinely missing PHP runtime already fails loudly when `octane:start` crash-loops and the deployment rolls back.
@@ -89,13 +89,13 @@ tasks:
     port: 8000
 ```
 
-- **Web** always runs — `php artisan octane:start` serving Laravel Octane. `octane:start` boots whichever server your app's `OCTANE_SERVER` names; `yolo init` seeds `OCTANE_SERVER=frankenphp` in your `.env` to match the scaffolded Dockerfile. The server is an app concern, not infrastructure YOLO injects — to run a different Octane server, change the base image **and** `OCTANE_SERVER` together.
+- **Web** always runs the web server. By default that's `php artisan octane:start` serving Laravel Octane: `octane:start` boots whichever server your app's `OCTANE_SERVER` names; `yolo init` seeds `OCTANE_SERVER=frankenphp` in your `.env` to match the scaffolded Dockerfile. The server is an app concern, not infrastructure YOLO injects — to run a different Octane server, change the base image **and** `OCTANE_SERVER` together. Set [`tasks.web.octane: false`](/reference/manifest#tasks-web) to run FrankenPHP in **classic mode** (`frankenphp php-server`) instead — per-request boot, no resident app — for an app that isn't Octane-safe yet; the `frankenphp` binary ships in the base image independent of `laravel/octane`, so it serves even with no octane package.
 - **The queue worker** runs `queue:work`, bundled in the web container until you extract it.
 - **The scheduler** runs a busybox `crond` that fires `php artisan schedule:run` every minute, bundled until you extract it. (YOLO uses cron, not `schedule:work`, so the scheduler survives `SIGTERM` cleanly.)
 - **`ssr: true`** adds Inertia's SSR renderer — see [Inertia SSR](#inertia-ssr) below.
 
 ::: tip Independent task groups
-Run web in isolation by extracting the **worker tier**: add a top-level `tasks.queue` block and the queue worker and scheduler move to their own service, leaving web as pure Octane. Add `tasks.scheduler` too for a dedicated singleton cron. Where each role runs is derived from which blocks you've added; see [Where each role runs](/reference/manifest#where-each-role-runs) and [Scaling](/guide/scaling).
+Run web in isolation by extracting the **worker tier**: add a top-level `tasks.queue` block and the queue worker and scheduler move to their own service, leaving the web container running just the web server. Add `tasks.scheduler` too for a dedicated singleton cron. Where each role runs is derived from which blocks you've added; see [Where each role runs](/reference/manifest#where-each-role-runs) and [Scaling](/guide/scaling).
 :::
 
 ## Inertia SSR

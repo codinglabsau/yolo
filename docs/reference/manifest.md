@@ -323,9 +323,9 @@ Declaring `tasks.web` makes the app a Fargate web service. Omit `tasks` entirely
 
 ### Where each role runs
 
-Every app runs three roles — **web** (Octane), the **queue worker**, and the **scheduler** (cron + `schedule:run`). There's no opt-out; the only choice is *where* each runs. By default all three share the one web container — the cheap single-task floor.
+Every app runs three roles — **web**, the **queue worker**, and the **scheduler** (cron + `schedule:run`). The web tier runs Octane (FrankenPHP worker mode) by default; set [`tasks.web.octane: false`](#tasks-web) to run FrankenPHP in classic mode instead (per-request boot, no resident app). The queue worker and scheduler have no opt-out — the only choice is *where* each runs. By default all three share the one web container — the cheap single-task floor.
 
-To run web in isolation, **extract the worker tier**: add a top-level [`tasks.queue`](#tasks-queue) block and the queue worker *and* the scheduler move out to their own service, leaving web as pure Octane. Add [`tasks.scheduler`](#tasks-scheduler) as well to give cron its own pinned-singleton task. Placement is derived from which blocks are present — there are no `tasks.web.queue` / `tasks.web.scheduler` flags.
+To run web in isolation, **extract the worker tier**: add a top-level [`tasks.queue`](#tasks-queue) block and the queue worker *and* the scheduler move out to their own service, leaving the web container running just the web server. Add [`tasks.scheduler`](#tasks-scheduler) as well to give cron its own pinned-singleton task. Placement is derived from which blocks are present — there are no `tasks.web.queue` / `tasks.web.scheduler` flags.
 
 | Manifest | web container | worker container | scheduler container |
 | --- | --- | --- | --- |
@@ -337,6 +337,7 @@ The scheduler rides the worker container (the `web` + `queue` row) rather than g
 
 | Key | Default | Description |
 |---|---|---|
+| `tasks.web.octane` | `true` | Run the web tier on Octane (FrankenPHP **worker mode**) via `octane:start`. Set `false` to run FrankenPHP in **classic mode** (`frankenphp php-server` — per-request boot, no resident app) for an app that isn't Octane-safe yet. Same image and port either way; only the launch command differs, and the build's [Octane preflight](/guide/building-and-deploying) is skipped (classic mode needs no `laravel/octane`). |
 | `tasks.web.port` | `8000` | Container port. Must match the Dockerfile's exposed port and the health check. |
 | `tasks.web.cpu` | `'512'` | Fargate CPU units. |
 | `tasks.web.memory` | `'1024'` | Fargate memory (MB). |
@@ -352,7 +353,7 @@ YOLO manages the ECS task and execution roles for you — the task role is per-a
 
 ALB target-group health check. The path defaults to Laravel's built-in [`/up` health route](https://laravel.com/docs/deployment#the-health-route), which returns `200` only once the framework boots without exceptions (and `500` otherwise) — so a broken boot fails the check. Requests to it also dispatch Laravel's `Illuminate\Foundation\Events\DiagnosingHealth` event, so you can add a listener that checks your database or cache and throws to mark the app unhealthy.
 
-The other defaults are tuned to avoid false-positive failures on a Laravel/Octane app under load: when the FrankenPHP worker pool is saturated the `/up` probe answers slowly (6–7s) rather than failing, so the timeout sits at `8`s — a slow-but-alive task stays in service — with a roomier `5`-failure unhealthy threshold for cushion. A genuine deadlock (no response / 30s+) still trips within ~a minute. Capacity is [autoscaling](/guide/scaling)'s job, not the health check's. Override any field per app if you need to:
+The other defaults are tuned to avoid false-positive failures on a Laravel/Octane app under load: when the FrankenPHP worker pool is saturated the `/up` probe answers slowly (6–7s) rather than failing, so the timeout sits at `8`s — a slow-but-alive task stays in service — with a roomier `5`-failure unhealthy threshold for cushion. A genuine deadlock (no response / 30s+) still trips within ~a minute. Capacity is [autoscaling](/guide/scaling)'s job, not the health check's. (An app on classic mode — [`tasks.web.octane: false`](#tasks-web) — boots per request rather than saturating a worker pool, so its latency shape differs, but the same generous defaults apply.) Override any field per app if you need to:
 
 | Key | Default | Description |
 |---|---|---|

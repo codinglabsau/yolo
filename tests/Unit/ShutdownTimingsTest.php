@@ -7,7 +7,7 @@ use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 beforeEach(function (): void {
-    // A plain web app: the web container bundles all three roles (octane + queue +
+    // A plain web app: the web container bundles all three roles (web + queue +
     // scheduler), since neither queue nor scheduler is extracted.
     writeManifest([
         'apex' => 'example.com',
@@ -39,28 +39,28 @@ it('skips the drain entirely when headless (no ALB to drain)', function (): void
     expect(ShutdownTimings::drain())->toBe(0);
 });
 
-it('bundles octane, scheduler and queue into the web container for a plain web app', function (): void {
-    expect(ShutdownTimings::programGraces())->toBe(['octane' => 10, 'scheduler' => 10, 'queue' => 70]);
+it('bundles the web server, scheduler and queue worker into the web container for a plain web app', function (): void {
+    expect(ShutdownTimings::programGraces())->toBe(['web' => 10, 'scheduler' => 10, 'queue' => 70]);
 });
 
-it('runs octane alone in the web container when both queue and scheduler are extracted', function (): void {
+it('runs the web server alone in the web container when both queue and scheduler are extracted', function (): void {
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
     ]);
 
-    expect(ShutdownTimings::programGraces(ServerGroup::WEB))->toBe(['octane' => 10]);
+    expect(ShutdownTimings::programGraces(ServerGroup::WEB))->toBe(['web' => 10]);
 });
 
-it('tracks the web shutdown-grace-period for octane; the bundled scheduler keeps its own default', function (): void {
+it('tracks the web shutdown-grace-period for the web server; the bundled scheduler keeps its own default', function (): void {
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['shutdown-grace-period' => 20]],
     ]);
 
-    expect(ShutdownTimings::programGraces(ServerGroup::WEB))->toBe(['octane' => 20, 'scheduler' => 10, 'queue' => 70]);
+    expect(ShutdownTimings::programGraces(ServerGroup::WEB))->toBe(['web' => 20, 'scheduler' => 10, 'queue' => 70]);
 });
 
 it('runs the scheduler and queue worker together in a standalone queue container', function (): void {
@@ -71,9 +71,9 @@ it('runs the scheduler and queue worker together in a standalone queue container
     ]);
 
     // Queue extracted, scheduler not — so the scheduler rides the queue container,
-    // and the web container is left with octane alone.
+    // and the web container is left with the web server alone.
     expect(ShutdownTimings::programGraces(ServerGroup::QUEUE))->toBe(['scheduler' => 10, 'queue' => 70]);
-    expect(ShutdownTimings::programGraces(ServerGroup::WEB))->toBe(['octane' => 10]);
+    expect(ShutdownTimings::programGraces(ServerGroup::WEB))->toBe(['web' => 10]);
 });
 
 it('runs the queue worker alone in its container when the scheduler is its own service', function (): void {
@@ -104,7 +104,7 @@ it('bundles the ssr renderer into the web container when tasks.web.ssr is on', f
         'tasks' => ['web' => ['ssr' => true]],
     ]);
 
-    expect(ShutdownTimings::programGraces(ServerGroup::WEB))->toBe(['octane' => 10, 'ssr' => 5, 'scheduler' => 10, 'queue' => 70]);
+    expect(ShutdownTimings::programGraces(ServerGroup::WEB))->toBe(['web' => 10, 'ssr' => 5, 'scheduler' => 10, 'queue' => 70]);
 });
 
 it('honours an ssr shutdown-grace-period override via the object form', function (): void {
@@ -114,12 +114,12 @@ it('honours an ssr shutdown-grace-period override via the object form', function
         'tasks' => ['web' => ['ssr' => ['shutdown-grace-period' => 12]]],
     ]);
 
-    expect(ShutdownTimings::programGraces(ServerGroup::WEB))->toBe(['octane' => 10, 'ssr' => 12, 'scheduler' => 10, 'queue' => 70]);
+    expect(ShutdownTimings::programGraces(ServerGroup::WEB))->toBe(['web' => 10, 'ssr' => 12, 'scheduler' => 10, 'queue' => 70]);
 });
 
 it('sizes the web stop timeout around the drain, the scheduler wait and the slowest bundled program', function (): void {
     // scheduler drains first within max(drain 10, scheduler 10), then supervisord
-    // stops octane + queue in parallel for max(10, 70); plus the 5s buffer.
+    // stops web + queue in parallel for max(10, 70); plus the 5s buffer.
     expect(ShutdownTimings::stopTimeoutFor(ServerGroup::WEB))->toBe(85);
 });
 
@@ -129,7 +129,7 @@ it('drops the ALB drain window from the web stop timeout when headless', functio
         'tasks' => ['web' => []],
     ]);
 
-    // no drain window: max(0, scheduler 10) + max(octane 10, queue 70) + 5 buffer.
+    // no drain window: max(0, scheduler 10) + max(web 10, queue 70) + 5 buffer.
     expect(ShutdownTimings::stopTimeoutFor(ServerGroup::WEB))->toBe(85);
 });
 

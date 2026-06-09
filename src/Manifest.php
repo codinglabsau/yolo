@@ -41,6 +41,7 @@ class Manifest
         // wildcard. health-check / autoscaling / the ssr object form are the only
         // nested subtrees.
         'tasks.web',
+        'tasks.web.octane',
         'tasks.web.port', 'tasks.web.cpu', 'tasks.web.memory', 'tasks.web.platform',
         'tasks.web.enable-execute-command', 'tasks.web.shutdown-grace-period',
         'tasks.web.log-retention', 'tasks.web.log-group',
@@ -328,6 +329,20 @@ class Manifest
         $value = static::get("tasks.web.$program", false);
 
         return is_array($value) || Helpers::validateStrictBool($value, "tasks.web.$program");
+    }
+
+    /**
+     * Whether the web tier runs Octane (FrankenPHP worker mode) — the default.
+     * Set `tasks.web.octane: false` to run FrankenPHP in classic mode instead
+     * (per-request boot, no resident app), for an app that isn't Octane-safe yet
+     * — e.g. a migration onto Fargate that predates an Octane-readiness pass. Same
+     * image and port either way; only the web launch command differs (see
+     * ProcessCommands::web). Goes through strict bool validation so a typo can't
+     * silently flip the web server.
+     */
+    public static function usesOctane(): bool
+    {
+        return Helpers::validateStrictBool(static::get('tasks.web.octane', true), 'tasks.web.octane');
     }
 
     /**

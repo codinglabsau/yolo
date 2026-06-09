@@ -16,8 +16,8 @@ use Codinglabs\Yolo\Enums\ServerGroup;
  * every workload — the ECS task definition passes the role (web | queue |
  * scheduler) as the container command, and the entrypoint dispatches on it:
  *
- *  - web       → supervisord (octane + any bundled queue/scheduler/ssr), drained
- *                behind the ALB so a deploy doesn't 502. The default role.
+ *  - web       → supervisord (the web server + any bundled queue/scheduler/ssr),
+ *                drained behind the ALB so a deploy doesn't 502. The default role.
  *  - queue     → the standalone queue worker. queue:work alone finishes its
  *                in-flight job on SIGTERM, so the generic supervise-and-forward is
  *                the whole drain; when it also hosts the scheduler (no dedicated
