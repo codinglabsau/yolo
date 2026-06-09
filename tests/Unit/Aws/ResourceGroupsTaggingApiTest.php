@@ -79,11 +79,11 @@ it('surfaces global resources through classification — IAM role ok, removed-se
             rgtMapping('arn:aws:iam::111:role/yolo-production-codinglabs-task-role', [
                 'yolo:app' => 'codinglabs', 'yolo:scope' => 'app', 'Name' => 'yolo-production-codinglabs-task-role',
             ]),
-            // A YOLO-owned global resource of a service YOLO no longer provisions
-            // (a us-east-1 WAFv2 web ACL) — the global analogue of the DynamoDB
-            // sessions orphan: owned by a live app, but no Resources/ class, so a
-            // sync would never recreate it → unexpected, service no longer provisioned.
-            rgtMapping('arn:aws:wafv2:us-east-1:111:global/webacl/yolo-production-codinglabs/abc', [
+            // A YOLO-owned global resource of a service YOLO doesn't provision
+            // (a Global Accelerator) — the global analogue of the DynamoDB sessions
+            // orphan: owned by a live app, but no Resources/ class, so a sync would
+            // never recreate it → unexpected, service no longer provisioned.
+            rgtMapping('arn:aws:globalaccelerator::111:accelerator/yolo-production-codinglabs', [
                 'yolo:app' => 'codinglabs', 'yolo:scope' => 'app', 'Name' => 'yolo-production-codinglabs',
             ]),
         ]),
@@ -97,6 +97,6 @@ it('surfaces global resources through classification — IAM role ok, removed-se
     $byArn = collect($report['resources'])->keyBy('arn');
 
     expect($byArn['arn:aws:iam::111:role/yolo-production-codinglabs-task-role']['status'])->toBe('ok')
-        ->and($byArn['arn:aws:wafv2:us-east-1:111:global/webacl/yolo-production-codinglabs/abc']['status'])->toBe('unexpected')
-        ->and($byArn['arn:aws:wafv2:us-east-1:111:global/webacl/yolo-production-codinglabs/abc']['reason'])->toBe(Audit::REASON_UNMANAGED_SERVICE);
+        ->and($byArn['arn:aws:globalaccelerator::111:accelerator/yolo-production-codinglabs']['status'])->toBe('unexpected')
+        ->and($byArn['arn:aws:globalaccelerator::111:accelerator/yolo-production-codinglabs']['reason'])->toBe(Audit::REASON_UNMANAGED_SERVICE);
 });

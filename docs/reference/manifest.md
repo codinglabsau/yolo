@@ -49,6 +49,9 @@ environments:
     #   log-retention-days: 30   # default: 14 — CloudWatch retention
     # mediaconvert: arn:aws:iam::123456789012:role/MediaConvertRole   # transcoding role ARN (used with IVS)
 
+    # --- Security ---
+    # waf: true                  # front the env load balancer with a managed WAF web ACL (env-scoped, off by default)
+
     # --- Extra IAM for this app's task role (per-app; never reaches another app) ---
     # task-role-policies:
     #   - arn:aws:iam::123456789012:policy/my-app-extra-access
@@ -240,6 +243,36 @@ ivs:
 ### `mediaconvert`
 
 MediaConvert role ARN for video transcoding workloads (used with IVS).
+
+### `waf`
+
+Fronts the environment load balancer with a YOLO-managed [AWS WAF](https://docs.aws.amazon.com/waf/latest/developerguide/what-is-aws-waf.html) web ACL. Set to `true`:
+
+```yaml
+waf: true
+```
+
+It's **environment scoped** — one web ACL protects every app sharing the ALB — so it's written by [`yolo sync:environment`](/reference/commands#yolo-sync-environment), not `sync:app`. Off by default; provisioning is purely additive once on.
+
+YOLO owns the **policy skeleton** and reconciles it on every sync; you own the **list contents**, which sync never touches:
+
+| YOLO reconciles (declarative) | You manage (console, never reconciled) |
+| --- | --- |
+| Default action (`Allow`), the allow/block rule wiring, the AWS managed rule groups and their actions, the per-IP rate limit | The CIDRs inside the allow / block IP sets, and any rule you add by hand |
+
+The default skeleton, in priority order:
+
+| Rule | Action | Notes |
+| --- | --- | --- |
+| Allow IP set | Allow | Seeded **empty** — add known-good IPs (e.g. crawler ranges a managed group might false-positive). |
+| Block IP set | Block | Seeded **empty** — the lever for shutting down an abusive source mid-incident. |
+| Amazon IP reputation list | Block | Low false-positive; auto-evolves. |
+| Known bad inputs | Block | Low false-positive; auto-evolves. |
+| Core rule set (CRS) | **Count** | Ships in Count so a new AWS signature can't start blocking live traffic unannounced — promote to Block once you've watched the metrics. |
+| SQL injection | **Count** | Same Count-first treatment. |
+| Rate limit | Block | ~2000 requests / 5 min **per source IP**. |
+
+The managed groups are referenced **unversioned**, so AWS's signature and IP-reputation updates roll in automatically — the WAF gets better over time without a YOLO change. The IP sets are **create-only**: an IP you add in the console survives every subsequent `sync`. A rule you add by hand (matched by name) is preserved too — YOLO only ever rewrites the rules it owns. `waf` needs a web/ALB environment; it has no effect on a headless app.
 
 ### `task-role-policies`
 

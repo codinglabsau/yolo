@@ -13,6 +13,7 @@ use Aws\Sns\SnsClient;
 use Aws\Sqs\SqsClient;
 use Aws\Ssm\SsmClient;
 use Aws\Sts\StsClient;
+use Aws\WAFV2\WAFV2Client;
 use Aws\AwsClientInterface;
 use Illuminate\Support\Str;
 use Aws\Route53\Route53Client;
@@ -506,6 +507,25 @@ class Aws
     }
 
     /**
+     * Synchronise tags on a WAFv2 resource (web ACL, IP set), addressed by its
+     * ARN. WAFv2 nests the live tags under TagInfoForResource.TagList.
+     *
+     * @return array<string, string>
+     */
+    public static function synchroniseWafV2Tags(string $arn, array $tags, bool $apply): array
+    {
+        return static::reconcileTags(
+            $tags,
+            fn () => static::wafV2()->listTagsForResource(['ResourceARN' => $arn])['TagInfoForResource']['TagList'] ?? [],
+            fn (array $missing) => static::wafV2()->tagResource([
+                'ResourceARN' => $arn,
+                'Tags' => static::keyValueTags($missing),
+            ]),
+            $apply,
+        );
+    }
+
+    /**
      * The standard upper-case `[{Key, Value}]` tag-list shape most AWS tagging
      * APIs accept on write, built from an associative {key => value} map.
      */
@@ -681,5 +701,10 @@ class Aws
     public static function sts(): StsClient
     {
         return Helpers::app('sts');
+    }
+
+    public static function wafV2(): WAFV2Client
+    {
+        return Helpers::app('wafV2');
     }
 }

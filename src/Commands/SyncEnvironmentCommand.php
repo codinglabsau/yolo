@@ -52,6 +52,13 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 // load balancer + :80 listener
                 Steps\Sync\Environment\SyncLoadBalancerStep::class,
                 Steps\Sync\Environment\SyncHttpListenerStep::class,
+                // WAF (opt-in via `waf: true`) — the IP sets are referenced by the
+                // web ACL's rules, so they're created first; the ACL is then bound
+                // to the load balancer. Inert unless the manifest enables it.
+                Steps\Sync\Environment\SyncWafAllowIpSetStep::class,
+                Steps\Sync\Environment\SyncWafBlockIpSetStep::class,
+                Steps\Sync\Environment\SyncWafWebAclStep::class,
+                Steps\Sync\Environment\SyncWafAssociationStep::class,
             ],
         ];
     }

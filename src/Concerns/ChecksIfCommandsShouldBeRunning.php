@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Commands\Command;
 use Codinglabs\Yolo\Contracts\RunsOnAws;
 use Codinglabs\Yolo\Contracts\ExecutesIvsStep;
+use Codinglabs\Yolo\Contracts\ExecutesWafStep;
 use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Contracts\ExecutesSoloStep;
 use Codinglabs\Yolo\Contracts\ExecutesMultitenancyStep;
@@ -38,6 +39,10 @@ trait ChecksIfCommandsShouldBeRunning
 
         if ($instance instanceof ExecutesIvsStep && ! Manifest::ivsEnabled()) {
             return 'ivs not enabled in manifest';
+        }
+
+        if ($instance instanceof ExecutesWafStep && ! Manifest::wafEnabled()) {
+            return 'waf not enabled in manifest';
         }
 
         if (Aws::runningInAws()) {

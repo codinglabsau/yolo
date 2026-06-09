@@ -5,6 +5,7 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Commands\SyncCommand;
 use Codinglabs\Yolo\Contracts\ExecutesIvsStep;
+use Codinglabs\Yolo\Contracts\ExecutesWafStep;
 use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Contracts\ExecutesSoloStep;
 use Codinglabs\Yolo\Contracts\ExecutesMultitenancyStep;
@@ -90,6 +91,27 @@ it('runs IVS steps when ivs is enabled', function (): void {
     ]);
 
     expect(skipReasonFor(new class() implements ExecutesIvsStep
+    {
+        use FakeStepInvoke;
+    }))->toBeNull();
+});
+
+it('skips WAF steps when waf is not enabled', function (): void {
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
+
+    expect(skipReasonFor(new class() implements ExecutesWafStep
+    {
+        use FakeStepInvoke;
+    }))
+        ->toBe('waf not enabled in manifest');
+});
+
+it('runs WAF steps when waf is enabled', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'waf' => true,
+    ]);
+
+    expect(skipReasonFor(new class() implements ExecutesWafStep
     {
         use FakeStepInvoke;
     }))->toBeNull();

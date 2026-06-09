@@ -6,6 +6,7 @@ use Aws\Ec2\Ec2Client;
 use Aws\Ecs\EcsClient;
 use Aws\Iam\IamClient;
 use Aws\CommandInterface;
+use Aws\WAFV2\WAFV2Client;
 use Codinglabs\Yolo\Helpers;
 use GuzzleHttp\Promise\Create;
 use Symfony\Component\Yaml\Yaml;
@@ -508,6 +509,48 @@ function bindMockResourceGroupsTaggingApiClient(string $binding, array $pages): 
 
     Helpers::app()->instance($binding, new ResourceGroupsTaggingAPIClient([
         'region' => 'us-east-1',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+}
+
+/**
+ * Bind a mock WAFv2 client with command-routed responses, capturing every call.
+ * A command's value may be a single Result (repeated) or an array of Results used
+ * as a queue (the last entry repeats once exhausted). Mirrors bindMockEc2Client.
+ *
+ * @param  array<string, Result|array<int, Result>>  $byCommand
+ * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+ */
+function bindRoutedWafV2Client(array $byCommand, array &$captured): void
+{
+    $mock = new class($byCommand, $captured) extends MockHandler
+    {
+        /** @var array<string, int> */
+        private array $cursors = [];
+
+        public function __construct(protected array $byCommand, protected array &$captured) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            $name = $cmd->getName();
+            $this->captured[] = ['name' => $name, 'args' => $cmd->toArray()];
+
+            $entry = $this->byCommand[$name] ?? new Result();
+
+            if (is_array($entry)) {
+                $index = min($this->cursors[$name] ?? 0, count($entry) - 1);
+                $this->cursors[$name] = $index + 1;
+                $entry = $entry[$index];
+            }
+
+            return Create::promiseFor($entry);
+        }
+    };
+
+    Helpers::app()->instance('wafV2', new WAFV2Client([
+        'region' => 'ap-southeast-2',
         'version' => 'latest',
         'credentials' => false,
         'handler' => $mock,
