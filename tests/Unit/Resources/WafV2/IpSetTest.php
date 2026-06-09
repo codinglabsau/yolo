@@ -86,3 +86,27 @@ it('never reconciles IP set contents on an existing set — only tags', function
         ->not->toContain('UpdateIPSet')
         ->not->toContain('CreateIPSet');
 });
+
+it('honours the reconciler contract (tag drift) for the IP set step', function (): void {
+    // Contents are create-only, so the IP set's only reconcile axis is its tags:
+    // in-sync ⇒ SYNCED, no write; a missing tag ⇒ WOULD_SYNC on the plan, TagResource on apply.
+    assertSyncStepReconciles(
+        makeStep: fn (): SyncWafAllowIpSetStep => new SyncWafAllowIpSetStep(),
+        bindInSync: function (array &$captured): void {
+            bindRoutedWafV2Client([
+                'ListIPSets' => allowIpSetListResult(),
+                'ListTagsForResource' => allowIpSetTagsResult(),
+            ], $captured);
+        },
+        bindDrifted: function (array &$captured): void {
+            bindRoutedWafV2Client([
+                'ListIPSets' => allowIpSetListResult(),
+                'ListTagsForResource' => new Result(['TagInfoForResource' => ['TagList' => [
+                    ['Key' => 'Name', 'Value' => 'yolo-testing-waf-allow'],
+                ]]]),
+                'TagResource' => new Result([]),
+            ], $captured);
+        },
+        writeCommand: 'TagResource',
+    );
+});
