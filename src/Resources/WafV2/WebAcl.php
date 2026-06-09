@@ -207,35 +207,52 @@ class WebAcl implements Resource, SynchronisesConfiguration
 
     /**
      * AWS managed rule groups, referenced unversioned so they track the latest
-     * signatures. The targeted, low-false-positive groups override to None (the
-     * group's own Block actions apply); only the broad Core Rule Set overrides to
-     * Count, so a new AWS signature can't start blocking live traffic unannounced
-     * — promote it to Block (override None) once its metrics look clean.
+     * signatures. Every group blocks (override None — the group's own Block actions
+     * apply), with one carve-out: the Core Rule Set's SizeRestrictions_BODY sub-rule
+     * is dropped to Count, because its 8 KB request-body cap would block legitimate
+     * large POSTs that don't go direct-to-S3 — a universal false-positive we'd
+     * rather observe than enforce. Per-sub-rule action overrides are declared here.
      *
      * @return array<int, array<string, mixed>>
      */
     protected function managedGroupRules(): array
     {
         $groups = [
-            ['name' => 'AWSManagedRulesAmazonIpReputationList', 'priority' => 10, 'override' => 'None'],
-            ['name' => 'AWSManagedRulesKnownBadInputsRuleSet', 'priority' => 11, 'override' => 'None'],
-            ['name' => 'AWSManagedRulesCommonRuleSet', 'priority' => 12, 'override' => 'Count'],
-            ['name' => 'AWSManagedRulesSQLiRuleSet', 'priority' => 13, 'override' => 'None'],
-            ['name' => 'AWSManagedRulesPHPRuleSet', 'priority' => 14, 'override' => 'None'],
+            ['name' => 'AWSManagedRulesAmazonIpReputationList', 'priority' => 10],
+            ['name' => 'AWSManagedRulesKnownBadInputsRuleSet', 'priority' => 11],
+            ['name' => 'AWSManagedRulesCommonRuleSet', 'priority' => 12, 'ruleOverrides' => ['SizeRestrictions_BODY' => 'Count']],
+            ['name' => 'AWSManagedRulesSQLiRuleSet', 'priority' => 13],
+            ['name' => 'AWSManagedRulesPHPRuleSet', 'priority' => 14],
         ];
 
         return array_map(fn (array $group): array => [
             'Name' => 'AWS-' . $group['name'],
             'Priority' => $group['priority'],
-            'OverrideAction' => [$group['override'] => []],
+            'OverrideAction' => ['None' => []],
             'Statement' => [
-                'ManagedRuleGroupStatement' => [
+                'ManagedRuleGroupStatement' => array_filter([
                     'VendorName' => 'AWS',
                     'Name' => $group['name'],
-                ],
+                    'RuleActionOverrides' => $this->ruleActionOverrides($group['ruleOverrides'] ?? []),
+                ]),
             ],
             'VisibilityConfig' => $this->visibilityConfig('AWS-' . $group['name']),
         ], $groups);
+    }
+
+    /**
+     * Translate a [sub-rule => action] map into the WAFv2 RuleActionOverrides shape.
+     * Empty when a group has no carve-outs (dropped by array_filter on the caller).
+     *
+     * @param  array<string, string>  $overrides
+     * @return array<int, array<string, mixed>>
+     */
+    protected function ruleActionOverrides(array $overrides): array
+    {
+        return collect($overrides)
+            ->map(fn (string $action, string $name): array => ['Name' => $name, 'ActionToUse' => [$action => []]])
+            ->values()
+            ->all();
     }
 
     /**

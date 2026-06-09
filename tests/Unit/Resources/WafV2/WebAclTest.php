@@ -41,13 +41,20 @@ it('creates the web ACL with an allow default action and the full rule skeleton'
         'yolo-rate-limit',
     ]);
 
-    // Only the broad CRS ships in Count; the targeted groups block outright.
+    // Every managed group blocks (override None).
     $byName = collect($create['args']['Rules'])->keyBy('Name');
-    expect($byName['AWS-AWSManagedRulesCommonRuleSet']['OverrideAction'])->toBe(['Count' => []])
+    expect($byName['AWS-AWSManagedRulesCommonRuleSet']['OverrideAction'])->toBe(['None' => []])
         ->and($byName['AWS-AWSManagedRulesSQLiRuleSet']['OverrideAction'])->toBe(['None' => []])
         ->and($byName['AWS-AWSManagedRulesPHPRuleSet']['OverrideAction'])->toBe(['None' => []])
         ->and($byName['AWS-AWSManagedRulesAmazonIpReputationList']['OverrideAction'])->toBe(['None' => []])
         ->and($byName['AWS-AWSManagedRulesKnownBadInputsRuleSet']['OverrideAction'])->toBe(['None' => []]);
+
+    // CRS blocks, but its 8 KB body-size sub-rule is carved out to Count so large
+    // legit POSTs aren't blocked; the other groups carry no overrides.
+    expect($byName['AWS-AWSManagedRulesCommonRuleSet']['Statement']['ManagedRuleGroupStatement']['RuleActionOverrides'])
+        ->toBe([['Name' => 'SizeRestrictions_BODY', 'ActionToUse' => ['Count' => []]]]);
+    expect($byName['AWS-AWSManagedRulesSQLiRuleSet']['Statement']['ManagedRuleGroupStatement'])
+        ->not->toHaveKey('RuleActionOverrides');
 
     // Managed groups are referenced unversioned so they track the latest signatures.
     expect($byName['AWS-AWSManagedRulesCommonRuleSet']['Statement']['ManagedRuleGroupStatement'])

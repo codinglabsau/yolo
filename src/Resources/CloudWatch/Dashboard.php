@@ -541,10 +541,10 @@ class Dashboard
      * @return array{0: array<int, array<string, mixed>>, 1: int}
      */
     /**
-     * The WAF panels: overall allow/block/count posture, and a by-rule breakdown
-     * that's the promote-decision view — the Count-mode group (the broad CRS)
-     * surfaces here as "would block" before you flip it to Block. WebACL metrics
-     * are env-shared, dimensioned on the ACL name + region + rule.
+     * The WAF panels: overall allow/block/count posture, and a per-rule blocked
+     * breakdown showing where blocks come from. The disposition panel's Counted
+     * series picks up anything left in Count (the Core Rule Set's body-size
+     * carve-out). WebACL metrics are env-shared, dimensioned on ACL + region + rule.
      *
      * @param  array<string, mixed>  $context
      * @return array{0: array<int, array<string, mixed>>, 1: int}
@@ -575,11 +575,10 @@ class Dashboard
             ],
         ]);
 
-        // Rule names mirror WebAcl's skeleton. Everything blocks except the broad
-        // CRS, which ships in Count and is charted as CountedRequests — a climbing
-        // count is the signal it's safe to promote to Block.
+        // Rule names mirror WebAcl's skeleton — every group blocks, so each is
+        // charted as BlockedRequests showing where blocks originate.
         $widgets[] = static::metric(12, $y, 12, 6, [
-            'title' => 'Blocked / counted by rule',
+            'title' => 'Blocked by rule',
             'region' => $region,
             'view' => 'timeSeries',
             'stacked' => true,
@@ -590,10 +589,10 @@ class Dashboard
                 $series('BlockedRequests', 'yolo-banned-countries', ['label' => 'Geo block', 'color' => static::BLUE]),
                 $series('BlockedRequests', 'AWS-AWSManagedRulesAmazonIpReputationList', ['label' => 'IP reputation']),
                 $series('BlockedRequests', 'AWS-AWSManagedRulesKnownBadInputsRuleSet', ['label' => 'Known bad inputs']),
+                $series('BlockedRequests', 'AWS-AWSManagedRulesCommonRuleSet', ['label' => 'CRS', 'color' => static::ORANGE]),
                 $series('BlockedRequests', 'AWS-AWSManagedRulesSQLiRuleSet', ['label' => 'SQLi']),
                 $series('BlockedRequests', 'AWS-AWSManagedRulesPHPRuleSet', ['label' => 'PHP']),
                 $series('BlockedRequests', 'yolo-rate-limit', ['label' => 'Rate limit', 'color' => static::PURPLE]),
-                $series('CountedRequests', 'AWS-AWSManagedRulesCommonRuleSet', ['label' => 'CRS (count)', 'color' => static::ORANGE]),
             ],
         ]);
         $y += 6;

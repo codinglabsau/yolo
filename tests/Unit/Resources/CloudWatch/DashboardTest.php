@@ -245,7 +245,7 @@ it('adds WAF panels dimensioned on the env web ACL when it exists', function ():
     // [namespace, metric, WebACL, <name>, Region, <region>, Rule, ALL, {options}]
     expect($metric)->toContain('AWS/WAFV2', 'yolo-testing-waf', 'ap-southeast-2', 'ALL');
 
-    $byRule = findWidget($body, 'Blocked / counted by rule');
+    $byRule = findWidget($body, 'Blocked by rule');
     expect(collect($byRule['properties']['metrics'])->pluck(7))
         ->toContain('yolo-block-ips', 'yolo-rate-limit', 'AWS-AWSManagedRulesCommonRuleSet');
 });

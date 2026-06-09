@@ -32,29 +32,15 @@ Several apps can share one environment's VPC and load balancer. Because `sync:ap
 
 ## Web application firewall
 
-Every environment with a load balancer gets a regional [AWS WAF](https://docs.aws.amazon.com/waf/latest/developerguide/what-is-aws-waf.html) web ACL on its ALB — automatically, with no manifest key. It's compulsory infrastructure, like the ALB itself: one web ACL protects every app sharing the load balancer, and there's no reason for an app to opt out (an app with genuinely incompatible needs belongs on its own load balancer or account).
+Every environment with a load balancer gets a managed [AWS WAF](https://docs.aws.amazon.com/waf/latest/developerguide/what-is-aws-waf.html) web ACL on its ALB — automatically, with no manifest key. It's compulsory infrastructure, like the ALB itself: one web ACL protects every app sharing the load balancer.
 
-YOLO owns the **policy skeleton** and reconciles it on every sync; you own the **list contents**, which sync never touches:
+YOLO owns the **policy** — a baseline of AWS-managed protections, a per-IP rate limit, and a high-risk-country block — and reconciles it on every sync. You own the **operational lists**:
 
-| YOLO reconciles (declarative) | You manage (console, never reconciled) |
-| --- | --- |
-| Default action (`Allow`), the allow/block rule wiring, the AWS managed rule groups and their actions, the per-IP rate limit | The CIDRs inside the allow / block IP sets, and any rule you add by hand |
+- The **allow** and **block IP sets** are seeded empty for you to fill (known-good IPs to allow; abusive sources to block). Their contents are **create-only** — an entry you add in the console survives every subsequent `sync`.
+- The **country block** is seeded with a sensible default and is likewise yours to re-scope; it's **seed-only**, so your edits stick.
+- Any **rule you add by hand** is preserved too — YOLO only ever rewrites the rules it owns.
 
-The default skeleton, in priority order:
-
-| Rule | Action | Notes |
-| --- | --- | --- |
-| Allow IP set | Allow | Seeded **empty** — add known-good IPs (e.g. crawler ranges a managed group might false-positive). |
-| Block IP set | Block | Seeded **empty** — the lever for shutting down an abusive source mid-incident. |
-| Country block | Block | Seeded with a default high-risk list (CN, RU, KP, IR, BD, …) as a starting point — **seed-only**, so re-scope it per app and sync won't revert you. |
-| Amazon IP reputation list | Block | Low false-positive; auto-evolves. |
-| Known bad inputs | Block | Low false-positive; auto-evolves. |
-| Core rule set (CRS) | **Count** | The one broad group — ships in Count so a new AWS signature can't start blocking live traffic unannounced. Promote to Block once you've watched the metrics. |
-| SQL injection | Block | Targeted SQLi signatures; low false-positive, so it blocks outright. |
-| PHP application | Block | PHP/Laravel exploit signatures; blocks outright. |
-| Rate limit (DoS) | Block | **200 requests / 1 min** per source IP. |
-
-The managed groups are referenced **unversioned**, so AWS's signature and IP-reputation updates roll in automatically — the WAF improves over time without a YOLO change. The IP sets are **create-only**: an IP you add in the console survives every subsequent `sync`. The country block is **seed-only** in the same spirit — laid down once with a sensible default list, then yours to re-scope. And a rule you add by hand (matched by name) is preserved too — YOLO only ever rewrites the rules it owns.
+Tune the rest in the AWS console; YOLO won't undo it.
 
 ## Plan, confirm, apply
 
