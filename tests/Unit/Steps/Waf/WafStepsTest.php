@@ -5,9 +5,7 @@ use Codinglabs\Yolo\Steps\Sync\Environment\SyncWafWebAclStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncWafAssociationStep;
 
 beforeEach(function (): void {
-    writeManifest([
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'waf' => true,
-    ]);
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 });
 
 const WAF_WEBACL_ARN = 'arn:aws:wafv2:ap-southeast-2:111:regional/webacl/yolo-testing-waf/acl-id';

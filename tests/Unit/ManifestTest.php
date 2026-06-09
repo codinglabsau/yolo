@@ -208,32 +208,6 @@ describe('ivsEnabled', function (): void {
     });
 });
 
-describe('wafEnabled', function (): void {
-    it('is false when waf is absent', function (): void {
-        writeManifest([]);
-
-        expect(Manifest::wafEnabled())->toBeFalse();
-    });
-
-    it('is true when waf is enabled', function (): void {
-        writeManifest(['waf' => true]);
-
-        expect(Manifest::wafEnabled())->toBeTrue();
-    });
-
-    it('is false when waf is explicitly false', function (): void {
-        writeManifest(['waf' => false]);
-
-        expect(Manifest::wafEnabled())->toBeFalse();
-    });
-
-    it('is an accepted environment key', function (): void {
-        writeManifest(['waf' => true]);
-
-        expect(Manifest::unknownKeys())->not->toContain('environments.testing.waf');
-    });
-});
-
 describe('apex', function (): void {
     it('returns the apex domain', function (): void {
         writeManifest(['domain' => 'example.com']);

@@ -29,7 +29,6 @@ class Manifest
         'mediaconvert', 'public-subnets',
         'internet-gateway', 'route-table', 'vpc',
         'ivs', 'ivs.logging', 'ivs.log-retention-days',
-        'waf',
         'rds.subnet', 'rds.security-group',
         'ecs.security-group',
         'sqs.depth-alarm-threshold', 'sqs.depth-alarm-period', 'sqs.depth-alarm-evaluation-periods',
@@ -486,16 +485,6 @@ class Manifest
         }
 
         return static::get('ivs.logging') === true;
-    }
-
-    /**
-     * Whether the environment ALB is fronted by a YOLO-managed WAF web ACL. Env
-     * scoped, so one `waf: true` provisions a single ACL shared by every app on
-     * the load balancer.
-     */
-    public static function wafEnabled(): bool
-    {
-        return static::get('waf') === true;
     }
 
     /**

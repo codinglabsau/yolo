@@ -4,10 +4,10 @@ namespace Codinglabs\Yolo\Steps\Sync\Environment;
 
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\WafV2\WebAcl;
-use Codinglabs\Yolo\Contracts\ExecutesWafStep;
+use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
 
-class SyncWafWebAclStep implements ExecutesWafStep
+class SyncWafWebAclStep implements ExecutesWebStep
 {
     use SynchronisesResource;
 

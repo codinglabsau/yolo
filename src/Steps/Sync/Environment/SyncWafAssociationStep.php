@@ -8,7 +8,7 @@ use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\WafV2\WebAcl;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
-use Codinglabs\Yolo\Contracts\ExecutesWafStep;
+use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
 
 /**
@@ -19,7 +19,7 @@ use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
  * (re)pointed at ours. The change is recorded before the dry-run guard so a
  * drifted association is reported on the plan and survives to the apply pass.
  */
-class SyncWafAssociationStep implements ExecutesWafStep
+class SyncWafAssociationStep implements ExecutesWebStep
 {
     use RecordsChanges;
 

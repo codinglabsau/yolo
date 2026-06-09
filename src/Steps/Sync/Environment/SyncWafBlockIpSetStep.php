@@ -3,11 +3,11 @@
 namespace Codinglabs\Yolo\Steps\Sync\Environment;
 
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Contracts\ExecutesWafStep;
+use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Resources\WafV2\BlockIpSet;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
 
-class SyncWafBlockIpSetStep implements ExecutesWafStep
+class SyncWafBlockIpSetStep implements ExecutesWebStep
 {
     use SynchronisesResource;
 
