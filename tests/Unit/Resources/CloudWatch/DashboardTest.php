@@ -36,6 +36,7 @@ function dashboardContext(array $overrides = []): array
         'buckets' => ['yolo-testing-my-app-artefacts', 'yolo-testing-my-app-assets'],
         'taskLogGroup' => '/yolo/testing-my-app',
         'ivsLogGroup' => null,
+        'wafWebAcl' => null,
         'depthThreshold' => 100,
     ], $overrides);
 }
@@ -227,6 +228,26 @@ it('adds an IVS logs panel when IVS logging is enabled', function (): void {
 
     expect($ivs['type'])->toBe('log');
     expect($ivs['properties']['query'])->toContain("SOURCE '/aws/ivs/testing-my-app'");
+});
+
+it('omits the WAF panels until the web ACL exists', function (): void {
+    expect(widgetTitles(Dashboard::body(dashboardContext())))->not->toContain('# WAF');
+});
+
+it('adds WAF panels dimensioned on the env web ACL when it exists', function (): void {
+    $body = Dashboard::body(dashboardContext(['wafWebAcl' => 'yolo-testing-waf']));
+
+    expect(widgetTitles($body))->toContain('# WAF');
+
+    $requests = findWidget($body, 'Request disposition');
+    $metric = collect($requests['properties']['metrics'])->first(fn (array $m): bool => $m[1] === 'BlockedRequests');
+
+    // [namespace, metric, WebACL, <name>, Region, <region>, Rule, ALL, {options}]
+    expect($metric)->toContain('AWS/WAFV2', 'yolo-testing-waf', 'ap-southeast-2', 'ALL');
+
+    $byRule = findWidget($body, 'Blocked / counted by rule');
+    expect(collect($byRule['properties']['metrics'])->pluck(7))
+        ->toContain('yolo-block-ips', 'yolo-rate-limit', 'AWS-AWSManagedRulesCommonRuleSet');
 });
 
 it('creates the dashboard when it does not exist (apply) and reports WOULD_CREATE on a dry-run', function (): void {

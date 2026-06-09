@@ -9,8 +9,10 @@ use Codinglabs\Yolo\Change;
 use Illuminate\Support\Str;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Aws\WafV2;
 use Codinglabs\Yolo\Aws\CloudFront;
 use Codinglabs\Yolo\Aws\CloudWatch;
+use Codinglabs\Yolo\Resources\WafV2\WebAcl;
 use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
 use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Resources\S3\AssetBucket;
@@ -170,6 +172,10 @@ class Dashboard
             'clusterName' => $web ? (new EcsCluster())->name() : null,
             'serviceName' => $web ? (new EcsService())->name() : null,
             'albSuffix' => $web ? static::tryResolve(fn (): string => static::loadBalancerDimension((new LoadBalancer())->arn())) : null,
+            // The WAF is env-shared (one ACL fronts the ALB), so it's looked up live
+            // rather than derived from this app's manifest — the panel shows for any
+            // app behind the ALB, and is omitted until the ACL exists.
+            'wafWebAcl' => $web ? static::tryResolve(fn (): string => WafV2::webAcl((new WebAcl())->name())['Name']) : null,
             'targetGroupSuffix' => $web ? static::tryResolve(fn (): string => static::targetGroupDimension((new TargetGroup())->arn())) : null,
             'distributionId' => $web ? static::tryResolve(fn () => CloudFront::distributionByComment((new AssetDistribution())->name())['Id']) : null,
             'queuePrefix' => Helpers::keyedResourceName() . '-',
@@ -308,6 +314,11 @@ class Dashboard
 
         if ($context['web']) {
             [$section, $y] = static::webSection($context, $y);
+            $widgets = [...$widgets, ...$section];
+        }
+
+        if ($context['wafWebAcl'] !== null) {
+            [$section, $y] = static::wafSection($context, $y);
             $widgets = [...$widgets, ...$section];
         }
 
@@ -529,6 +540,65 @@ class Dashboard
      * @param  array<string, mixed>  $context
      * @return array{0: array<int, array<string, mixed>>, 1: int}
      */
+    /**
+     * The WAF panels: overall allow/block/count posture, and a by-rule breakdown
+     * that's the promote-decision view — the Count-mode managed groups (CRS, SQLi)
+     * surface here as "would block" before you flip them to Block. WebACL metrics
+     * are env-shared, dimensioned on the ACL name + region + rule.
+     *
+     * @param  array<string, mixed>  $context
+     * @return array{0: array<int, array<string, mixed>>, 1: int}
+     */
+    protected static function wafSection(array $context, int $y): array
+    {
+        $region = $context['region'];
+        $webAcl = $context['wafWebAcl'];
+
+        $series = fn (string $metric, string $rule, array $options): array => [
+            'AWS/WAFV2', $metric, 'WebACL', $webAcl, 'Region', $region, 'Rule', $rule, $options,
+        ];
+
+        $widgets = [static::header($y, '# WAF')];
+        $y++;
+
+        $widgets[] = static::metric(0, $y, 12, 6, [
+            'title' => 'Request disposition',
+            'region' => $region,
+            'view' => 'timeSeries',
+            'stacked' => false,
+            'period' => 60,
+            'stat' => 'Sum',
+            'metrics' => [
+                $series('AllowedRequests', 'ALL', ['label' => 'Allowed', 'color' => static::GREEN]),
+                $series('BlockedRequests', 'ALL', ['label' => 'Blocked', 'color' => static::RED]),
+                $series('CountedRequests', 'ALL', ['label' => 'Counted (would block)', 'color' => static::ORANGE]),
+            ],
+        ]);
+
+        // Rule names mirror WebAcl's skeleton. The first three Block; the managed
+        // CRS/SQLi groups ship in Count, so they're charted as CountedRequests —
+        // climbing counts are the signal to promote them to Block.
+        $widgets[] = static::metric(12, $y, 12, 6, [
+            'title' => 'Blocked / counted by rule',
+            'region' => $region,
+            'view' => 'timeSeries',
+            'stacked' => true,
+            'period' => 60,
+            'stat' => 'Sum',
+            'metrics' => [
+                $series('BlockedRequests', 'yolo-block-ips', ['label' => 'Block list', 'color' => static::RED]),
+                $series('BlockedRequests', 'AWS-AWSManagedRulesAmazonIpReputationList', ['label' => 'IP reputation']),
+                $series('BlockedRequests', 'AWS-AWSManagedRulesKnownBadInputsRuleSet', ['label' => 'Known bad inputs']),
+                $series('BlockedRequests', 'yolo-rate-limit', ['label' => 'Rate limit', 'color' => static::PURPLE]),
+                $series('CountedRequests', 'AWS-AWSManagedRulesCommonRuleSet', ['label' => 'CRS (count)', 'color' => static::ORANGE]),
+                $series('CountedRequests', 'AWS-AWSManagedRulesSQLiRuleSet', ['label' => 'SQLi (count)']),
+            ],
+        ]);
+        $y += 6;
+
+        return [$widgets, $y];
+    }
+
     protected static function queueSection(array $context, int $y): array
     {
         $region = $context['region'];
