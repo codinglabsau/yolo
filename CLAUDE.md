@@ -17,6 +17,9 @@ deployments.
 
 - Always format code with pint after making changes
 - Always run tests before pushing changes
+- **Any new/changed sync step or reconciler must survive the plan pass with nothing created yet** — work
+  through [the two-pass contract checklist](#the-two-pass-contract--read-this-before-writing-any-sync-step-or-reconciler)
+  before shipping; this exact crash class has shipped three times
 - **Update the docs when you change behaviour or the public surface.** Any change to a command's
   arguments/options, a manifest key (name, default, or semantics), the Dockerfile/entrypoint contract, the
   manifest-required keys, or the sync/audit scope model must update the matching page under `docs/` in the same
@@ -128,6 +131,37 @@ that axis belongs to Resources):
 A sync step is typically thin: it `use`s the `SynchronisesResource` trait and delegates to a `Resource`
 (e.g. `return $this->syncResource(new TargetGroup(), $options);`). Steps decide *when* to create/sync; Resources
 decide *what* the resource is.
+
+### The two-pass contract — read this before writing ANY sync step or reconciler
+
+`sync` runs every step **twice**: a **plan pass** (every step, dry, against live AWS, *before anything has been
+created*) and an **apply pass** (confirmed steps, in declaration order). The plan pass therefore runs on
+first-ever syncs and on migrations where resources have been renamed — i.e. **exactly when sibling resources
+don't exist yet**. The same crash class has shipped three times (a step eager-resolving a not-yet-created
+sibling's live state: the WAF web ACL ARN in `5ca02fe`, the asset bucket's OAC policy in `0d9fbe8`; plus the
+eventual-consistency cousin in `4899c76`). Checklist for any code that reads or writes live AWS state:
+
+1. **Walk the first-sync scenario by hand.** Before shipping, answer: *"what does every AWS read in this code
+   return when NOTHING exists yet — fresh account, fresh env, renamed sibling?"* If the answer is "it throws",
+   the plan pass is broken.
+2. **Never assume a sibling exists.** A reconcile may read another resource's live state (a bucket policy, an
+   ARN, an endpoint) only if absence is handled: report pending drift (a `Change` with a null `from` / a
+   `WOULD_*` result), never throw. The resource-exists gate in `syncResource()` only protects reads of *your
+   own* resource — sibling reads are on you.
+3. **Catch the full not-found set.** AWS uses distinct codes for "container missing" vs "attribute missing"
+   (`NoSuchBucket` vs `NoSuchBucketPolicy` vs `NoSuchLifecycleConfiguration`). The container-missing code only
+   surfaces on first syncs — which MockHandler tests never exercise — so enumerate it deliberately.
+4. **Expect write-time validation and eventual consistency on apply.** AWS validates some writes against
+   just-written siblings (`ModifyLoadBalancerAttributes` validates the log-bucket policy; WAF associations
+   resolve just-created entities) and the validation plane can lag the write by seconds. Where observed, use a
+   bounded retry (the `retryWhileUnavailable()` pattern).
+5. **MockHandler tests prove request *shape* only.** They cannot prove the server-side contract — error codes,
+   validation regexes, document normalisation on read-back — or the cross-resource ordering of a real first
+   sync. Note untested server-contract assumptions in the PR, and verify the first real sync converges (run it
+   twice; the second plan must be clean).
+6. **Record drift before any dry-run guard** so the plan and apply passes agree (the `assertReconcilerContract`
+   helper in `tests/Pest.php` pins this) — a step that returns early on the plan pass without recording is
+   pruned from the apply pass and never self-heals.
 
 ### Resources (`src/Resources/`)
 
