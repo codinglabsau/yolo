@@ -77,6 +77,25 @@ trait ManagesEnvironmentFiles
     }
 
     /**
+     * Offer to delete the local working copy after a successful push —
+     * defaulting to yes. The bucket is the source of truth the moment the
+     * upload lands; a copy left on disk only invites staleness, and for env
+     * files it's secrets sitting around for anything on the machine to read.
+     */
+    protected function confirmDeleteLocal(string $path, string $label): void
+    {
+        if (! file_exists($path)) {
+            return;
+        }
+
+        if (confirm(sprintf('Delete the local %s? The bucket holds the truth now.', $label), default: true)) {
+            unlink($path);
+
+            info(sprintf('Deleted local %s.', $label));
+        }
+    }
+
+    /**
      * Show a key-level current → new diff and ask before uploading.
      *
      * @param  array<string, mixed>  $current

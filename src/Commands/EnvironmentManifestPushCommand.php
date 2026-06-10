@@ -59,5 +59,7 @@ class EnvironmentManifestPushCommand extends Command
         }
 
         $this->upload(EnvManifest::filename(), (string) file_get_contents($path), EnvManifest::filename());
+
+        $this->confirmDeleteLocal($path, EnvManifest::filename());
     }
 }

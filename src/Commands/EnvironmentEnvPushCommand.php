@@ -50,5 +50,7 @@ class EnvironmentEnvPushCommand extends Command
         }
 
         $this->upload('.env', (string) file_get_contents($path), 'env-shared .env');
+
+        $this->confirmDeleteLocal($path, sprintf('.env.%s.shared', $environment));
     }
 }

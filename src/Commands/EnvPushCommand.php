@@ -90,5 +90,14 @@ class EnvPushCommand extends Command
         unlink(Paths::base($temporaryFilename));
 
         info('Uploaded successfully.');
+
+        // The bucket is the source of truth the moment the upload lands — a
+        // copy left on disk only invites staleness, and it's production
+        // secrets sitting around for anything on the machine to read.
+        if (confirm("Delete the local $filename? The bucket holds the truth now.", default: true)) {
+            unlink($path);
+
+            info("Deleted local $filename.");
+        }
     }
 }

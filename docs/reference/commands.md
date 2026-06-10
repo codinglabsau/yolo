@@ -88,7 +88,7 @@ yolo env:push <environment>
 
 **Options:** none
 
-Downloads the current remote file, shows a diff of changed keys, and asks for confirmation before uploading. If no remote file exists yet, it uploads without a diff.
+Downloads the current remote file, shows a diff of changed keys, and asks for confirmation before uploading. If no remote file exists yet, it uploads without a diff. After a successful upload it offers to **delete the local file (default: yes)** — the bucket holds the truth, and an env file left on disk is both a staleness risk and secrets sitting around for anything on the machine to read.
 
 ---
 
@@ -124,7 +124,7 @@ yolo environment:manifest:push <environment>
 
 **Options:** none
 
-Validates the local file against the manifest schema **before** anything touches the bucket — a misshapen manifest can never become the environment's declared truth — then shows a key-level diff against the remote and asks for confirmation. Apply the pushed declaration with [`sync:environment`](#yolo-sync-environment), from any app in the environment.
+Validates the local file against the manifest schema **before** anything touches the bucket — a misshapen manifest can never become the environment's declared truth — then shows a key-level diff against the remote and asks for confirmation. After uploading it offers to delete the local working copy (default: yes). Apply the pushed declaration with [`sync:environment`](#yolo-sync-environment), from any app in the environment.
 
 ---
 
@@ -146,7 +146,7 @@ yolo environment:env:pull <environment>
 
 ## `yolo environment:env:push`
 
-Upload the env-shared `.env` from `.env.<environment>.shared`, with a key-level diff and confirmation.
+Upload the env-shared `.env` from `.env.<environment>.shared`, with a key-level diff and confirmation. After uploading it offers to delete the local copy (default: yes).
 
 ```bash
 yolo environment:env:push <environment>
