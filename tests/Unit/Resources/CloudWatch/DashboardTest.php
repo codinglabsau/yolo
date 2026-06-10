@@ -33,7 +33,7 @@ function dashboardContext(array $overrides = []): array
         'queuePrefix' => 'yolo-testing-my-app-',
         'queues' => ['yolo-testing-my-app'],
         'rds' => ['identifier' => 'my-cluster', 'cluster' => true],
-        'buckets' => ['yolo-111111111111-testing-my-app-artefacts', 'yolo-111111111111-testing-my-app-assets'],
+        'buckets' => ['yolo-111111111111-testing-my-app-config', 'yolo-111111111111-testing-my-app-assets'],
         'taskLogGroup' => '/yolo/testing-my-app',
         'ivsLogGroup' => null,
         'wafWebAcl' => null,

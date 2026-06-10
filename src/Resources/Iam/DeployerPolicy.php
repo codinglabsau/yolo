@@ -110,7 +110,7 @@ class DeployerPolicy implements Resource, SynchronisesConfiguration
         }
 
         $assetBucketArn = sprintf('arn:aws:s3:::%s', (new AssetBucket())->name());
-        $artefactsBucketArn = sprintf('arn:aws:s3:::%s', Paths::s3ArtefactsBucket());
+        $configBucketArn = sprintf('arn:aws:s3:::%s', Paths::s3ConfigBucket());
 
         $statements = [
             [
@@ -210,11 +210,11 @@ class DeployerPolicy implements Resource, SynchronisesConfiguration
             ],
             [
                 // Pull the environment file (build) and push the public asset tree
-                // (deploy) — object operations on the artefacts + asset buckets.
+                // (deploy) — object operations on the config + asset buckets.
                 'Effect' => 'Allow',
                 'Resource' => [
                     sprintf('%s/*', $assetBucketArn),
-                    sprintf('%s/*', $artefactsBucketArn),
+                    sprintf('%s/*', $configBucketArn),
                 ],
                 'Action' => [
                     's3:GetObject',
@@ -228,7 +228,7 @@ class DeployerPolicy implements Resource, SynchronisesConfiguration
                 'Effect' => 'Allow',
                 'Resource' => [
                     $assetBucketArn,
-                    $artefactsBucketArn,
+                    $configBucketArn,
                 ],
                 'Action' => [
                     's3:ListBucket',

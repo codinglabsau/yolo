@@ -75,7 +75,7 @@ class EnvPushCommand extends Command
                 return;
             }
         } catch (S3Exception) {
-            warning("$filename does not exist in the artefacts bucket.");
+            warning("$filename does not exist in the config bucket.");
         }
 
         note("Uploading $filename...");
@@ -83,7 +83,7 @@ class EnvPushCommand extends Command
         Aws::s3()
             ->putObject([
                 'Body' => file_get_contents($path),
-                'Bucket' => Paths::s3ArtefactsBucket(),
+                'Bucket' => Paths::s3ConfigBucket(),
                 'Key' => $filename,
             ]);
 

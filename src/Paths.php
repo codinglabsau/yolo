@@ -44,23 +44,24 @@ class Paths
         return Manifest::get('bucket');
     }
 
-    public static function s3ArtefactsBucket(): string
+    public static function s3ConfigBucket(): string
     {
-        return Helpers::keyedBucketName('artefacts');
+        return Helpers::keyedBucketName('config');
     }
 
     /**
-     * Env-scoped general-purpose bucket shared by every app in the
-     * environment. Each env-tier object class lives under its own prefix —
-     * the shared ALB's access logs under `alb-logs/` today; future env-tier
-     * objects join as sibling prefixes rather than new buckets. It lives in
+     * Env-scoped bucket holding expiring telemetry, one prefix per log
+     * class — the shared ALB's access logs under `alb/` today; future log
+     * types (e.g. WAF) join as sibling prefixes rather than new buckets.
+     * Kept separate from the config buckets so secrets never share a bucket
+     * with an external write principal or an expiry lifecycle. It lives in
      * the env scope because its first occupant does: the shared ALB writes
      * its `access_logs.s3.bucket` attribute during the env sync, and the ELB
      * log-delivery bucket policy must already exist at that point — sync's
      * account → environment → app ordering guarantees it.
      */
-    public static function s3EnvironmentBucket(): string
+    public static function s3LogsBucket(): string
     {
-        return Helpers::keyedBucketName(exclusive: false);
+        return Helpers::keyedBucketName('logs', exclusive: false);
     }
 }

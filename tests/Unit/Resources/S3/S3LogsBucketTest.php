@@ -7,7 +7,7 @@ use Aws\CommandInterface;
 use Codinglabs\Yolo\Helpers;
 use GuzzleHttp\Promise\Create;
 use Codinglabs\Yolo\Enums\Scope;
-use Codinglabs\Yolo\Resources\S3\S3EnvironmentBucket;
+use Codinglabs\Yolo\Resources\S3\S3LogsBucket;
 
 /**
  * Bind an S3 client that records every command and returns the given responses
@@ -50,18 +50,18 @@ beforeEach(function (): void {
 });
 
 it('is env-scoped and named yolo-{account-id}-{env}', function (): void {
-    $bucket = new S3EnvironmentBucket();
+    $bucket = new S3LogsBucket();
 
-    expect($bucket->name())->toBe('yolo-111111111111-testing')
+    expect($bucket->name())->toBe('yolo-111111111111-testing-logs')
         ->and($bucket->scope())->toBe(Scope::Env)
         // env-scoped → yolo:scope=env, no yolo:app owner tag
-        ->and($bucket->tags())->toBe(['Name' => 'yolo-111111111111-testing', 'yolo:scope' => 'env']);
+        ->and($bucket->tags())->toBe(['Name' => 'yolo-111111111111-testing-logs', 'yolo:scope' => 'env']);
 });
 
 it('reconciles BPA + versioning + the log-delivery policy + the lifecycle when none of them match', function (): void {
     $recorder = bindRecordingS3Client();
 
-    $changes = (new S3EnvironmentBucket())->synchroniseConfiguration();
+    $changes = (new S3LogsBucket())->synchroniseConfiguration();
 
     $writes = collect($recorder->calls)->pluck('name')->all();
 
@@ -78,10 +78,10 @@ it('reconciles BPA + versioning + the log-delivery policy + the lifecycle when n
         ->toContain('lifecycle');
 });
 
-it('grants ELB access-log delivery to the log-delivery service principal over the alb-logs/ prefix only', function (): void {
+it('grants ELB access-log delivery to the log-delivery service principal over the alb/ prefix only', function (): void {
     $recorder = bindRecordingS3Client();
 
-    (new S3EnvironmentBucket())->synchroniseConfiguration();
+    (new S3LogsBucket())->synchroniseConfiguration();
 
     $put = collect($recorder->calls)->firstWhere('name', 'PutBucketPolicy');
 
@@ -90,24 +90,25 @@ it('grants ELB access-log delivery to the log-delivery service principal over th
     expect($statement['Effect'])->toBe('Allow')
         ->and($statement['Principal'])->toBe(['Service' => 'logdelivery.elasticloadbalancing.amazonaws.com'])
         ->and($statement['Action'])->toBe('s3:PutObject')
-        // shared bucket → the delivery principal can never write outside alb-logs/
-        ->and($statement['Resource'])->toBe('arn:aws:s3:::yolo-111111111111-testing/alb-logs/*')
+        // shared bucket → the delivery principal can never write outside alb/
+        ->and($statement['Resource'])->toBe('arn:aws:s3:::yolo-111111111111-testing-logs/alb/*')
         ->and($statement['Condition']['StringEquals']['aws:SourceAccount'])->toBe('111111111111')
         ->and($statement['Condition']['ArnLike']['aws:SourceArn'])
         ->toBe('arn:aws:elasticloadbalancing:ap-southeast-2:111111111111:loadbalancer/*');
 });
 
-it('scopes the expiry lifecycle to the alb-logs/ prefix', function (): void {
+it('expires the whole bucket after 90 days', function (): void {
     $recorder = bindRecordingS3Client();
 
-    (new S3EnvironmentBucket())->synchroniseConfiguration();
+    (new S3LogsBucket())->synchroniseConfiguration();
 
     $put = collect($recorder->calls)->firstWhere('name', 'PutBucketLifecycleConfiguration');
 
     $rule = $put['args']['LifecycleConfiguration']['Rules'][0];
 
-    // prefix-scoped so a future sibling prefix is never expired with the logs
-    expect($rule['Filter'])->toBe(['Prefix' => 'alb-logs/'])
+    // bucket-wide — only telemetry lives here, so any future log class
+    // inherits expiry by default
+    expect($rule['Filter'])->toBe(['Prefix' => ''])
         ->and($rule['Status'])->toBe('Enabled')
         ->and($rule['Expiration'])->toBe(['Days' => 90])
         ->and($rule['NoncurrentVersionExpiration'])->toBe(['NoncurrentDays' => 7])
@@ -117,7 +118,7 @@ it('scopes the expiry lifecycle to the alb-logs/ prefix', function (): void {
 it('computes the diff without writing under apply:false', function (): void {
     $recorder = bindRecordingS3Client();
 
-    $changes = (new S3EnvironmentBucket())->synchroniseConfiguration(apply: false);
+    $changes = (new S3LogsBucket())->synchroniseConfiguration(apply: false);
 
     // changes are recorded
     expect($changes)->not->toBeEmpty();
@@ -133,16 +134,16 @@ it('computes the diff without writing under apply:false', function (): void {
 it('does not rewrite a policy or lifecycle that already matches', function (): void {
     // Bind a recorder whose reads return the exact desired state, so the diff
     // sees no drift and the apply pass skips every write.
-    $resource = new S3EnvironmentBucket();
+    $resource = new S3LogsBucket();
     $desired = (new ReflectionMethod($resource, 'accessLogDeliveryPolicy'))->invoke($resource);
 
     $recorder = bindRecordingS3Client([
         'GetBucketPolicy' => new Result(['Policy' => json_encode($desired)]),
         'GetBucketLifecycleConfiguration' => new Result(['Rules' => [
             [
-                'ID' => 'expire-alb-logs',
+                'ID' => 'expire-logs',
                 'Status' => 'Enabled',
-                'Filter' => ['Prefix' => 'alb-logs/'],
+                'Filter' => ['Prefix' => ''],
                 'Expiration' => ['Days' => 90],
                 'NoncurrentVersionExpiration' => ['NoncurrentDays' => 7],
                 'AbortIncompleteMultipartUpload' => ['DaysAfterInitiation' => 7],

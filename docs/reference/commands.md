@@ -54,7 +54,7 @@ This is the only command that runs without an existing manifest.
 
 ## `yolo env:pull`
 
-Download the environment file for the given environment from the S3 artefacts bucket.
+Download the environment file for the given environment from the app's S3 config bucket.
 
 ```bash
 yolo env:pull <environment>
@@ -72,7 +72,7 @@ Writes `.env.<environment>` to your project root, overwriting any local copy.
 
 ## `yolo env:push`
 
-Upload the environment file for the given environment to the S3 artefacts bucket.
+Upload the environment file for the given environment to the app's S3 config bucket.
 
 ```bash
 yolo env:push <environment>

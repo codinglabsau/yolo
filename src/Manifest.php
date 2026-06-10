@@ -25,7 +25,7 @@ class Manifest
         'account-id', 'region',
         'domain', 'apex', 'branch', 'tag', 'repository',
         'tenants.*',
-        'bucket', 'alb', 'alb-logs-bucket', 'artefacts-bucket',
+        'bucket', 'alb',
         'mediaconvert', 'public-subnets',
         'internet-gateway', 'route-table', 'vpc',
         'ivs', 'ivs.logging', 'ivs.log-retention-days',

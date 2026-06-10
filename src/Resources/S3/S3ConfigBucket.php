@@ -19,14 +19,14 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
  * and versioning are reconciled onto it on every sync — both declarative,
  * idempotent puts. The yolo:app owner tag lets `yolo audit` attribute it.
  */
-class S3ArtefactBucket implements Resource, SynchronisesConfiguration
+class S3ConfigBucket implements Resource, SynchronisesConfiguration
 {
     use ReconcilesBucketHardening;
     use ResolvesTags;
 
     public function name(): string
     {
-        return Paths::s3ArtefactsBucket();
+        return Paths::s3ConfigBucket();
     }
 
     public function scope(): Scope

@@ -39,8 +39,8 @@ describe('keyedBucketName', function (): void {
     // S3 names are globally unique across every AWS account, so bucket names
     // carry the account id where other resource names don't.
     it('generates exclusive bucket name with suffix', function (): void {
-        expect(Helpers::keyedBucketName('artefacts'))
-            ->toBe('yolo-111111111111-testing-my-app-artefacts');
+        expect(Helpers::keyedBucketName('config'))
+            ->toBe('yolo-111111111111-testing-my-app-config');
     });
 
     it('generates exclusive bucket name without suffix', function (): void {

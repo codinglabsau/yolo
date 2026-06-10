@@ -11,7 +11,7 @@ use GuzzleHttp\Promise\Create;
 use Aws\S3\Exception\S3Exception;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Steps\Sync\App\SyncS3BucketStep;
-use Codinglabs\Yolo\Steps\Sync\App\SyncS3ArtefactBucketStep;
+use Codinglabs\Yolo\Steps\Sync\App\SyncS3ConfigBucketStep;
 
 /**
  * Bind a mock S3 client with command-routed responses. A command's value may be a
@@ -72,7 +72,7 @@ beforeEach(function (): void {
     ]);
 });
 
-it('locks down and versions a newly created artefact bucket', function (): void {
+it('locks down and versions a newly created config bucket', function (): void {
     $captured = [];
 
     bindMockS3Client([
@@ -85,7 +85,7 @@ it('locks down and versions a newly created artefact bucket', function (): void 
         'PutBucketVersioning' => new Result(),
     ], $captured);
 
-    expect((new SyncS3ArtefactBucketStep())([]))->toBe(StepResult::CREATED);
+    expect((new SyncS3ConfigBucketStep())([]))->toBe(StepResult::CREATED);
 
     $names = array_column($captured, 'name');
     expect($names)->toContain('CreateBucket')
@@ -104,7 +104,7 @@ it('locks down and versions a newly created artefact bucket', function (): void 
     expect($versioning['args']['VersioningConfiguration']['Status'])->toBe('Enabled');
 });
 
-it('reconciles BPA, versioning and the yolo:app tag onto an existing artefact bucket', function (): void {
+it('reconciles BPA, versioning and the yolo:app tag onto an existing config bucket', function (): void {
     $captured = [];
 
     bindMockS3Client([
@@ -114,7 +114,7 @@ it('reconciles BPA, versioning and the yolo:app tag onto an existing artefact bu
         'PutBucketTagging' => new Result(),
     ], $captured);
 
-    expect((new SyncS3ArtefactBucketStep())([]))->toBe(StepResult::SYNCED);
+    expect((new SyncS3ConfigBucketStep())([]))->toBe(StepResult::SYNCED);
 
     $names = array_column($captured, 'name');
     expect($names)->toContain('PutPublicAccessBlock')
@@ -131,7 +131,7 @@ it('reconciles BPA, versioning and the yolo:app tag onto an existing artefact bu
     expect($tags['yolo:app'])->toBe('my-app');
 });
 
-it('reports drift but does not mutate the artefact bucket during a dry-run', function (): void {
+it('reports drift but does not mutate the config bucket during a dry-run', function (): void {
     $captured = [];
 
     bindMockS3Client([
@@ -140,7 +140,7 @@ it('reports drift but does not mutate the artefact bucket during a dry-run', fun
 
     // The live config reads back empty here, so a dry-run sees drift (WOULD_SYNC)
     // but writes nothing.
-    expect((new SyncS3ArtefactBucketStep())(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC);
+    expect((new SyncS3ConfigBucketStep())(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC);
 
     $names = array_column($captured, 'name');
     expect($names)->not->toContain('PutPublicAccessBlock')
@@ -260,13 +260,13 @@ it('writes no CORS when an existing app bucket already matches the managed rules
     expect(array_column($captured, 'name'))->not->toContain('PutBucketCors');
 });
 
-it('never puts a bucket policy on the artefact bucket (log-delivery moved to S3EnvironmentBucket)', function (): void {
-    // The artefacts bucket previously doubled as the ALB access-log destination,
+it('never puts a bucket policy on the config bucket (log-delivery moved to S3LogsBucket)', function (): void {
+    // The config (then 'artefacts') bucket previously doubled as the ALB access-log destination,
     // which forced its policy to grant logdelivery.elasticloadbalancing.amazonaws.com
     // — but that put env-scoped policy logic on an app-scoped bucket and
     // collided with the account → environment → app sync order. The log
-    // destination now lives in env scope (S3EnvironmentBucket), so a synced
-    // artefacts bucket must NEVER call PutBucketPolicy.
+    // destination now lives in env scope (S3LogsBucket), so a synced
+    // config bucket must NEVER call PutBucketPolicy.
     $captured = [];
 
     bindMockS3Client([
@@ -277,6 +277,6 @@ it('never puts a bucket policy on the artefact bucket (log-delivery moved to S3E
         'PutBucketVersioning' => new Result(),
     ], $captured);
 
-    expect((new SyncS3ArtefactBucketStep())([]))->toBe(StepResult::CREATED);
+    expect((new SyncS3ConfigBucketStep())([]))->toBe(StepResult::CREATED);
     expect(array_column($captured, 'name'))->not->toContain('PutBucketPolicy');
 });

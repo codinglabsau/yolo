@@ -30,11 +30,11 @@ describe('s3 bucket names', function (): void {
         writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
     });
 
-    it('names the artefacts bucket per account + environment + app', function (): void {
-        expect(Paths::s3ArtefactsBucket())->toBe('yolo-111111111111-testing-my-app-artefacts');
+    it('names the app config bucket per account + environment + app', function (): void {
+        expect(Paths::s3ConfigBucket())->toBe('yolo-111111111111-testing-my-app-config');
     });
 
-    it('names the environment bucket per account + environment', function (): void {
-        expect(Paths::s3EnvironmentBucket())->toBe('yolo-111111111111-testing');
+    it('names the env logs bucket per account + environment', function (): void {
+        expect(Paths::s3LogsBucket())->toBe('yolo-111111111111-testing-logs');
     });
 });

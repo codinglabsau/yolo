@@ -9,7 +9,7 @@ use Codinglabs\Yolo\Resources\Resource;
 
 /**
  * Shared Block-Public-Access + versioning reconcilers for the private S3 buckets
- * that must stay locked down and recoverable (the artefacts and ALB-log buckets).
+ * that must stay locked down and recoverable (the config and logs buckets).
  * Each is read-compared-then-written, so a clean sync is a no-op and a dry-run
  * reports exactly what would change, returning the drift as Change[]. The host
  * resource supplies name() via the Resource contract.

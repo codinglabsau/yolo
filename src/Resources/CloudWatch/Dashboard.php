@@ -219,7 +219,7 @@ class Dashboard
     }
 
     /**
-     * The S3 buckets YOLO owns for the app: artefacts and assets always, plus the
+     * The S3 buckets YOLO owns for the app: config and assets always, plus the
      * optional application data bucket when bucket is configured.
      *
      * @return array<int, string>
@@ -227,14 +227,14 @@ class Dashboard
     protected static function bucketNames(): array
     {
         return collect([
-            Paths::s3ArtefactsBucket(),
+            Paths::s3ConfigBucket(),
             (new AssetBucket())->name(),
             Manifest::has('bucket') ? Paths::s3AppBucket() : null,
         ])->filter()->values()->all();
     }
 
     /**
-     * DB_HOST from the app's env file (stored in the artefacts bucket). Returns
+     * DB_HOST from the app's env file (stored in the config bucket). Returns
      * null when the env isn't there yet (pre-env:push) — the RDS section is then
      * simply omitted.
      */
@@ -242,7 +242,7 @@ class Dashboard
     {
         try {
             $body = Aws::s3()->getObject([
-                'Bucket' => Paths::s3ArtefactsBucket(),
+                'Bucket' => Paths::s3ConfigBucket(),
                 'Key' => sprintf('.env.%s', Helpers::environment()),
             ])['Body'];
 

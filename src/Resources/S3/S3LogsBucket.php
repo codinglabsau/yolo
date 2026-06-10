@@ -14,10 +14,12 @@ use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 
 /**
- * Env-scoped general-purpose bucket shared by every app in the environment.
- * Each env-tier object class lives under its own prefix — the shared ALB's
- * access logs under `alb-logs/` today; future env-tier objects join as
- * sibling prefixes rather than new buckets.
+ * Env-scoped bucket holding expiring telemetry, one prefix per log class —
+ * the shared ALB's access logs under `alb/` today; future log types (e.g.
+ * WAF) join as sibling prefixes rather than new buckets. Logs never share a
+ * bucket with config/secrets: this bucket carries an external write
+ * principal and a bucket-wide expiry, both of which secrets must never sit
+ * next to.
  *
  * Owns the ELB log-delivery bucket policy that `ModifyLoadBalancerAttributes`
  * validates when access logs are enabled on the load balancer — so the policy
@@ -37,20 +39,21 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
  *
  * Public-access-block (all four settings) and versioning are reconciled
  * declaratively; the bucket policy grants the `logdelivery.elasticloadbalancing.amazonaws.com`
- * service principal `s3:PutObject` over the `alb-logs/` prefix only, scoped
+ * service principal `s3:PutObject` over the `alb/` prefix only, scoped
  * to this account's load balancers via `aws:SourceAccount` and
- * `aws:SourceArn`. A prefix-scoped lifecycle rule expires the access logs —
- * append-only telemetry that would otherwise accumulate forever. No
- * `yolo:app` tag — env-scoped (ResolvesTags handles that automatically).
+ * `aws:SourceArn`. A bucket-wide lifecycle rule expires everything after 90
+ * days — the bucket holds only append-only telemetry, so any future log
+ * class inherits expiry by default. No `yolo:app` tag — env-scoped
+ * (ResolvesTags handles that automatically).
  */
-class S3EnvironmentBucket implements Resource, SynchronisesConfiguration
+class S3LogsBucket implements Resource, SynchronisesConfiguration
 {
     use ReconcilesBucketHardening;
     use ResolvesTags;
 
     public function name(): string
     {
-        return Paths::s3EnvironmentBucket();
+        return Paths::s3LogsBucket();
     }
 
     public function scope(): Scope
@@ -89,7 +92,7 @@ class S3EnvironmentBucket implements Resource, SynchronisesConfiguration
 
     /**
      * Reconcile Block Public Access, versioning, the ELB log-delivery policy
-     * and the access-log expiry lifecycle, each read-compared-then-written so
+     * and the log expiry lifecycle, each read-compared-then-written so
      * a clean sync is a no-op and a dry-run reports exactly what would change.
      * Returns the drifted attributes as Change[].
      */
@@ -99,7 +102,7 @@ class S3EnvironmentBucket implements Resource, SynchronisesConfiguration
             ...$this->reconcilePublicAccessBlock($apply),
             ...$this->reconcileVersioning($apply),
             ...$this->reconcileAccessLogDeliveryPolicy($apply),
-            ...$this->reconcileAccessLogLifecycle($apply),
+            ...$this->reconcileLogExpiryLifecycle($apply),
         ];
     }
 
@@ -109,10 +112,9 @@ class S3EnvironmentBucket implements Resource, SynchronisesConfiguration
      * SSE-S3-encrypted bucket; no customer-managed KMS key in play) rather
      * than a per-Region ELB account ID. `aws:SourceAccount` + `aws:SourceArn`
      * scope the grant to this account's load balancers, so the policy is
-     * never public and coexists with `BlockPublicPolicy`. The bucket is
-     * shared by multiple object classes, so the grant is prefix-scoped to
-     * `alb-logs/*` — the delivery principal can never write outside its
-     * namespace.
+     * never public and coexists with `BlockPublicPolicy`. The grant is
+     * prefix-scoped to `alb/*` — the delivery principal can never write
+     * outside its log class's namespace.
      *
      * @return array<int, Change>
      */
@@ -136,20 +138,20 @@ class S3EnvironmentBucket implements Resource, SynchronisesConfiguration
     }
 
     /**
-     * Expire ALB access logs after 90 days — with versioning on, noncurrent
-     * copies are swept shortly after, and abandoned multipart uploads are
-     * aborted. The rule is prefix-scoped so it can never touch a future
-     * sibling prefix.
+     * Expire everything after 90 days — the bucket holds only append-only
+     * telemetry, so the rule is bucket-wide and any future log class inherits
+     * expiry by default. With versioning on, noncurrent copies are swept
+     * shortly after, and abandoned multipart uploads are aborted.
      *
      * @return array<int, Change>
      */
-    protected function reconcileAccessLogLifecycle(bool $apply): array
+    protected function reconcileLogExpiryLifecycle(bool $apply): array
     {
         $desired = [
             [
-                'ID' => 'expire-alb-logs',
+                'ID' => 'expire-logs',
                 'Status' => 'Enabled',
-                'Filter' => ['Prefix' => 'alb-logs/'],
+                'Filter' => ['Prefix' => ''],
                 'Expiration' => ['Days' => 90],
                 'NoncurrentVersionExpiration' => ['NoncurrentDays' => 7],
                 'AbortIncompleteMultipartUpload' => ['DaysAfterInitiation' => 7],
@@ -169,7 +171,7 @@ class S3EnvironmentBucket implements Resource, SynchronisesConfiguration
             ]);
         }
 
-        return [Change::make('lifecycle', $current === null ? null : 'present', 'expire alb-logs/ after 90 days')];
+        return [Change::make('lifecycle', $current === null ? null : 'present', 'expire logs after 90 days')];
     }
 
     /**
@@ -187,7 +189,7 @@ class S3EnvironmentBucket implements Resource, SynchronisesConfiguration
                     'Effect' => 'Allow',
                     'Principal' => ['Service' => 'logdelivery.elasticloadbalancing.amazonaws.com'],
                     'Action' => 's3:PutObject',
-                    'Resource' => sprintf('arn:aws:s3:::%s/alb-logs/*', $this->name()),
+                    'Resource' => sprintf('arn:aws:s3:::%s/alb/*', $this->name()),
                     'Condition' => [
                         'StringEquals' => ['aws:SourceAccount' => $accountId],
                         'ArnLike' => [
