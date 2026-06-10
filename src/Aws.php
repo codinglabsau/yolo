@@ -304,24 +304,6 @@ class Aws
     }
 
     /**
-     * Synchronise tags on an ACM certificate, addressed by its ARN.
-     *
-     * @return array<string, string>
-     */
-    public static function synchroniseAcmTags(string $arn, array $tags, bool $apply): array
-    {
-        return static::reconcileTags(
-            $tags,
-            fn () => static::acm()->listTagsForCertificate(['CertificateArn' => $arn])['Tags'] ?? [],
-            fn (array $missing) => static::acm()->addTagsToCertificate([
-                'CertificateArn' => $arn,
-                'Tags' => static::keyValueTags($missing),
-            ]),
-            $apply,
-        );
-    }
-
-    /**
      * Synchronise tags on a Route 53 hosted zone. The zone Id comes back from
      * listHostedZones prefixed (`/hostedzone/Z123`); the tagging API wants the
      * bare id, and adds tags under `AddTags` rather than `Tags`.
