@@ -17,7 +17,6 @@ describe('has and get', function (): void {
         writeManifest([]);
 
         expect(Manifest::has('region'))->toBeFalse();
-        expect(Manifest::doesntHave('region'))->toBeTrue();
     });
 
     it('gets values with defaults', function (): void {

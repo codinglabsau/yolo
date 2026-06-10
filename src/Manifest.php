@@ -161,11 +161,6 @@ class Manifest
         return Arr::has(static::current()['environments'][Helpers::environment()], $key);
     }
 
-    public static function doesntHave(string $key): bool
-    {
-        return ! static::has($key);
-    }
-
     public static function get(string $key, $default = null): mixed
     {
         if (! static::has($key)) {
