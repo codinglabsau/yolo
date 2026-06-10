@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Helpers;
 use GuzzleHttp\Promise\Create;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\S3\S3LogsBucket;
+use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 /**
  * Bind an S3 client that records every command and returns the given responses
@@ -113,6 +114,29 @@ it('expires the whole bucket after 90 days', function (): void {
         ->and($rule['Expiration'])->toBe(['Days' => 90])
         ->and($rule['NoncurrentVersionExpiration'])->toBe(['NoncurrentDays' => 7])
         ->and($rule['AbortIncompleteMultipartUpload'])->toBe(['DaysAfterInitiation' => 7]);
+});
+
+it('refuses to apply the expiry lifecycle to anything that is not a -logs bucket', function (): void {
+    // The one write in YOLO that schedules data for deletion — if a naming
+    // refactor ever wires this reconcile to a config/assets/operator bucket,
+    // it must hard-fail the sync, never write, and never silently skip.
+    $recorder = bindRecordingS3Client();
+
+    $rogue = new class() extends S3LogsBucket
+    {
+        public function name(): string
+        {
+            return 'yolo-111111111111-testing-my-app-config';
+        }
+    };
+
+    $lifecycle = new ReflectionMethod($rogue, 'reconcileLogExpiryLifecycle');
+
+    expect(fn (): mixed => $lifecycle->invoke($rogue, true))
+        ->toThrow(IntegrityCheckException::class, 'yolo-111111111111-testing-my-app-config');
+
+    expect(collect($recorder->calls)->pluck('name'))
+        ->not->toContain('PutBucketLifecycleConfiguration');
 });
 
 it('computes the diff without writing under apply:false', function (): void {

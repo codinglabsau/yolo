@@ -11,6 +11,7 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\ResolvesTags;
+use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 
 /**
@@ -147,6 +148,20 @@ class S3LogsBucket implements Resource, SynchronisesConfiguration
      */
     protected function reconcileLogExpiryLifecycle(bool $apply): array
     {
+        // Paranoia gate: this is the one write in YOLO that schedules data
+        // for deletion, and a naming bug would be silent for 90 days. The
+        // class-based naming convention is the contract — a bucket's suffix
+        // declares its handling — so an expiry lifecycle may only ever land
+        // on a *-logs bucket. If a refactor wires this reconcile to anything
+        // else (the config or assets helpers, an operator-named bucket),
+        // hard-fail the sync rather than schedule that data for deletion.
+        if (! str_ends_with($this->name(), '-logs')) {
+            throw new IntegrityCheckException(sprintf(
+                'Refusing to apply the expiry lifecycle to "%s" — expiry only ever applies to a *-logs bucket.',
+                $this->name(),
+            ));
+        }
+
         $desired = [
             [
                 'ID' => 'expire-logs',
