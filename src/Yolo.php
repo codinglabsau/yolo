@@ -12,9 +12,16 @@ class Yolo
     protected array $commands = [
         Commands\InitCommand::class,
 
-        // Environments
+        // App env files
         Commands\EnvPullCommand::class,
         Commands\EnvPushCommand::class,
+
+        // Environment-shared artefacts (the env manifest + env-shared .env in
+        // the env config bucket)
+        Commands\EnvironmentManifestPullCommand::class,
+        Commands\EnvironmentManifestPushCommand::class,
+        Commands\EnvironmentEnvPullCommand::class,
+        Commands\EnvironmentEnvPushCommand::class,
 
         // Build
         Commands\BuildCommand::class,

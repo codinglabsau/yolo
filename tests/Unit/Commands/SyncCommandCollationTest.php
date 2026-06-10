@@ -32,7 +32,7 @@ function collate(array $scopes, ?SyncSteppedCommand $command = null, array $opti
     return (new ReflectionMethod($command, 'collateSteps'))->invoke($command, $scopes, 'testing');
 }
 
-/** The three IVS steps, skipped unless ivs is enabled. */
+/** The three IVS steps, skipped unless the ivs service is declared. */
 function ivsSteps(): array
 {
     return [
@@ -132,12 +132,12 @@ it('groups the three skipped IVS steps under a single determination', function (
 
     expect($skipped->groupBy(fn (array $entry): string => $entry['scope'] . '|' . $entry['reason']))
         ->toHaveCount(1);
-    expect($skipped->first()['reason'])->toBe('ivs not enabled in manifest');
+    expect($skipped->first()['reason'])->toBe('ivs not declared in manifest services');
 });
 
 it('plans the IVS steps when ivs is enabled', function (): void {
     writeManifest([
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'ivs' => true,
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'services' => ['ivs'],
     ]);
 
     [$plan, $skipped] = collate(['app' => ivsSteps()]);

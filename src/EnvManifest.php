@@ -85,7 +85,7 @@ class EnvManifest
 
     /**
      * Parse and validate manifest contents. Shared by current() (the S3 read)
-     * and env:push --shared (which validates the local working copy before
+     * and environment:manifest:push (which validates the local working copy before
      * uploading, so a misshapen manifest can't reach the bucket at all).
      *
      * @return array<string, mixed>

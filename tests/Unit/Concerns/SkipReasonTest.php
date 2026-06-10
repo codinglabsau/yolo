@@ -81,12 +81,12 @@ it('skips IVS steps when ivs is not enabled', function (): void {
     {
         use FakeStepInvoke;
     }))
-        ->toBe('ivs not enabled in manifest');
+        ->toBe('ivs not declared in manifest services');
 });
 
 it('runs IVS steps when ivs is enabled', function (): void {
     writeManifest([
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'ivs' => true,
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'services' => ['ivs'],
     ]);
 
     expect(skipReasonFor(new class() implements ExecutesIvsStep

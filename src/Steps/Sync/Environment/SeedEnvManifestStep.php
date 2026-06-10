@@ -16,7 +16,7 @@ use Codinglabs\Yolo\Concerns\RecordsChanges;
 /**
  * Seeds the env manifest into the env config bucket on the environment's first
  * sync — and never touches it again. The file is the operator's: every later
- * edit arrives via `env:push --shared`, so sync creating it once (seed-only,
+ * edit arrives via `environment:manifest:push`, so sync creating it once (seed-only,
  * the WAF IP-set semantics) is what keeps a single writer on each side.
  */
 class SeedEnvManifestStep implements Step

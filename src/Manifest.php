@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo;
 
 use Illuminate\Support\Arr;
 use Symfony\Component\Yaml\Yaml;
+use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
@@ -28,7 +29,7 @@ class Manifest
         'bucket', 'alb',
         'mediaconvert', 'public-subnets',
         'internet-gateway', 'route-table', 'vpc',
-        'ivs', 'ivs.logging', 'ivs.log-retention-days',
+        'services',
         'rds.subnet', 'rds.security-group',
         'ecs.security-group',
         'sqs.depth-alarm-threshold', 'sqs.depth-alarm-period', 'sqs.depth-alarm-evaluation-periods',
@@ -489,13 +490,25 @@ class Manifest
             ->every(fn (array $config): bool => ! isset($config['apex']) && ! isset($config['domain']));
     }
 
-    public static function ivsEnabled(): bool
+    /**
+     * The YOLO-provisioned services this app consumes — bare capability names
+     * (`services: [ivs]`). Service shape (sizing, versions, hosts) lives in the
+     * environment manifest, never here, so apps can't declare competing
+     * configuration for shared infrastructure. Entries are validated against
+     * the Service enum before any command runs (ensureServicesValid).
+     *
+     * @return array<int, string>
+     */
+    public static function services(): array
     {
-        if (static::get('ivs') === true) {
-            return true;
-        }
+        $services = static::get('services', []);
 
-        return static::get('ivs.logging') === true;
+        return is_array($services) && array_is_list($services) ? $services : [];
+    }
+
+    public static function usesService(Service $service): bool
+    {
+        return in_array($service->value, static::services(), true);
     }
 
     /**

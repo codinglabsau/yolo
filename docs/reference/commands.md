@@ -13,8 +13,12 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | Command | Purpose |
 |---|---|
 | [`init`](#yolo-init) | Scaffold `yolo.yml`, Dockerfile, and supporting files |
-| [`env:pull <env>`](#yolo-env-pull) | Download the environment's `.env` from S3 |
-| [`env:push <env>`](#yolo-env-push) | Upload the environment's `.env` to S3 (with diff) |
+| [`env:pull <env>`](#yolo-env-pull) | Download the app's `.env` from S3 |
+| [`env:push <env>`](#yolo-env-push) | Upload the app's `.env` to S3 (with diff) |
+| [`environment:manifest:pull <env>`](#yolo-environment-manifest-pull) | Download the environment manifest (`yolo-<env>.yml`) |
+| [`environment:manifest:push <env>`](#yolo-environment-manifest-push) | Validate and upload the environment manifest (with diff) |
+| [`environment:env:pull <env>`](#yolo-environment-env-pull) | Download the env-shared `.env` |
+| [`environment:env:push <env>`](#yolo-environment-env-push) | Upload the env-shared `.env` (with diff) |
 | [`build <env>`](#yolo-build) | Build and push the container image |
 | [`deploy <env>`](#yolo-deploy) | Build, then roll out a zero-downtime deploy |
 | [`status <env>`](#yolo-status) | Live dashboard of services, load, scaling and any in-progress deploy |
@@ -57,18 +61,16 @@ This is the only command that runs without an existing manifest.
 Download the environment file for the given environment from the app's S3 config bucket.
 
 ```bash
-yolo env:pull <environment> [--shared]
+yolo env:pull <environment>
 ```
 
 | Argument | Required | Description |
 |---|---|---|
 | `environment` | yes | The environment name |
 
-| Option | Value | Default | Description |
-|---|---|---|---|
-| `--shared` | flag | off | Pull the env-shared files instead of the app env file — the [env manifest](/reference/manifest#the-environment-manifest-yolo-environment-yml) to `yolo-<environment>.yml` and the env-shared `.env` to `.env.<environment>.shared` (both gitignored). |
+**Options:** none
 
-Without `--shared`, writes `.env.<environment>` to your project root, overwriting any local copy. With `--shared`, the env manifest must already exist (the environment's first `sync` seeds it); a missing env-shared `.env` is fine — it's created by your first push.
+Writes `.env.<environment>` to your project root, overwriting any local copy. (For the *environment's own* files — the env manifest and the env-shared `.env` — see the [`environment:*` commands](#yolo-environment-manifest-pull).)
 
 ---
 
@@ -77,18 +79,84 @@ Without `--shared`, writes `.env.<environment>` to your project root, overwritin
 Upload the environment file for the given environment to the app's S3 config bucket.
 
 ```bash
-yolo env:push <environment> [--shared]
+yolo env:push <environment>
 ```
 
 | Argument | Required | Description |
 |---|---|---|
 | `environment` | yes | The environment name |
 
-| Option | Value | Default | Description |
-|---|---|---|---|
-| `--shared` | flag | off | Push the env-shared files instead of the app env file — whichever of `yolo-<environment>.yml` and `.env.<environment>.shared` exist locally, each with its own key-level diff and confirmation. The env manifest is validated against its schema **before** upload, so a misshapen manifest can never reach the bucket. |
+**Options:** none
 
 Downloads the current remote file, shows a diff of changed keys, and asks for confirmation before uploading. If no remote file exists yet, it uploads without a diff.
+
+---
+
+## `yolo environment:manifest:pull`
+
+Download [the environment manifest](/reference/manifest#the-environment-manifest-yolo-environment-yml) — `yolo-<environment>.yml` — from the env config bucket to your project root (gitignored).
+
+```bash
+yolo environment:manifest:pull <environment>
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `environment` | yes | The environment name |
+
+**Options:** none
+
+The manifest must already exist — the environment's first `sync` seeds it. The local copy keeps the bucket's name (`yolo-production.yml` for production), so a pulled file can never be pushed at the wrong environment.
+
+---
+
+## `yolo environment:manifest:push`
+
+Upload the environment manifest to the env config bucket.
+
+```bash
+yolo environment:manifest:push <environment>
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `environment` | yes | The environment name |
+
+**Options:** none
+
+Validates the local file against the manifest schema **before** anything touches the bucket — a misshapen manifest can never become the environment's declared truth — then shows a key-level diff against the remote and asks for confirmation. Apply the pushed declaration with [`sync:environment`](#yolo-sync-environment), from any app in the environment.
+
+---
+
+## `yolo environment:env:pull`
+
+Download the env-shared `.env` — the environment-tier sibling of the app's env file, holding generated service secrets — to `.env.<environment>.shared` (gitignored).
+
+```bash
+yolo environment:env:pull <environment>
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `environment` | yes | The environment name |
+
+**Options:** none
+
+---
+
+## `yolo environment:env:push`
+
+Upload the env-shared `.env` from `.env.<environment>.shared`, with a key-level diff and confirmation.
+
+```bash
+yolo environment:env:push <environment>
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `environment` | yes | The environment name |
+
+**Options:** none
 
 ---
 

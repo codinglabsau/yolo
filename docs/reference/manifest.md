@@ -40,11 +40,8 @@ environments:
     # session:
     #   driver: redis            # default (sessions live on the Valkey cluster); database/cookie/file to change the session backend
 
-    # --- Media: Amazon IVS + MediaConvert ---
-    # ivs: true                  # enable IVS event logging; or expand for finer control:
-    # ivs:
-    #   logging: true
-    #   log-retention-days: 30   # default: 14 — CloudWatch retention
+    # --- YOLO-provisioned services this app consumes ---
+    # services: [ivs]            # bare capability names only — service shape lives in the environment manifest
     # mediaconvert: arn:aws:iam::123456789012:role/MediaConvertRole   # transcoding role ARN (used with IVS)
 
     # --- Extra IAM for this app's task role (per-app; never reaches another app) ---
@@ -217,15 +214,19 @@ Name of an app S3 bucket for application storage. Injected into the container as
 
 Name of the Application Load Balancer to use. Defaults to the per-environment shared `yolo-{env}` ALB.
 
-### `ivs`
+### `services`
 
-Enables IVS (Amazon Interactive Video Service) event logging. Set to `true`, or expand to a map for finer control:
+The YOLO-provisioned services this app consumes — a list of bare capability names:
 
 ```yaml
-ivs:
-  logging: true
-  log-retention-days: 30   # CloudWatch retention (default 14)
+services: [ivs]
 ```
+
+| Service | What opting in provisions |
+|---|---|
+| `ivs` | IVS (Amazon Interactive Video Service) event logging — a CloudWatch log group (14-day retention) and the EventBridge rule/target feeding it |
+
+An entry is a *consumption claim*, deliberately just a name: all service **shape** (sizing, versions, retention) is either hardcoded or belongs to [the environment manifest](#the-environment-manifest-yolo-environment-yml), never the app manifest — so two apps can never declare competing configuration for shared infrastructure. Unknown names, duplicate entries, or anything other than a flat list hard-fail validation.
 
 ### `mediaconvert`
 
@@ -457,7 +458,7 @@ Your manifest implies one of three modes:
 
 ## The environment manifest (`yolo-{environment}.yml`)
 
-`yolo.yml` declares what one **app** needs; the environment has a declaration of its own. `yolo-{environment}.yml` (e.g. `yolo-production.yml` — the environment is in the filename, so a pulled copy can never be pushed at the wrong environment) lives in the env config bucket (`yolo-{account-id}-{env}-config`), not in any app's repo — it's seeded by the environment's first `sync` and from then on owned by the operator, edited through [`env:pull --shared` / `env:push --shared`](/reference/commands#yolo-env-pull). Every `sync:environment` pulls it fresh from S3 and reconciles toward it, from any app repo, on any YOLO version.
+`yolo.yml` declares what one **app** needs; the environment has a declaration of its own. `yolo-{environment}.yml` (e.g. `yolo-production.yml` — the environment is in the filename, so a pulled copy can never be pushed at the wrong environment) lives in the env config bucket (`yolo-{account-id}-{env}-config`), not in any app's repo — it's seeded by the environment's first `sync` and from then on owned by the operator, edited through the [`environment:manifest:pull` / `environment:manifest:push`](/reference/commands#yolo-environment-manifest-pull) commands. Every `sync:environment` pulls it fresh from S3 and reconciles toward it, from any app repo, on any YOLO version.
 
 ```yaml
 domain: example.com.au   # the env's canonical domain for shared-service ingress
@@ -469,4 +470,4 @@ services: {}             # env-shared services — the extension point for what 
 | `domain` | The environment's canonical domain for shared-service hostnames (e.g. `search.{domain}`). Distinct from any app's `domain` — shared services are served on the *environment's* name, reachable from every app regardless of their own domains. |
 | `services` | Env-shared services provisioned by `sync:environment`. Ships empty; the first occupant is the shared search service. |
 
-Like `yolo.yml`, the file is validated against a strict allow-list — an unrecognised key hard-fails both `env:push --shared` (before upload) and any sync that reads it. See [The environment declaration](/guide/provisioning#the-environment-declaration) for the model.
+Like `yolo.yml`, the file is validated against a strict allow-list — an unrecognised key hard-fails both `environment:manifest:push` (before upload) and any sync that reads it. See [The environment declaration](/guide/provisioning#the-environment-declaration) for the model.

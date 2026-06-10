@@ -99,7 +99,7 @@ it('plans (scopes + skipping) before applying, ending with the results table', f
         'environment' => [RunScopesFakeStep::class, RunScopesFakeStep::class],
         'app' => [
             RunScopesFakeStep::class,
-            // the three IVS steps skip unless ivs is enabled
+            // the three IVS steps skip unless the ivs service is declared
             Steps\Sync\App\SyncIvsCloudWatchLogGroupStep::class,
             Steps\Sync\App\SyncIvsEventBridgeRuleStep::class,
             Steps\Sync\App\SyncIvsEventBridgeTargetStep::class,
@@ -112,7 +112,7 @@ it('plans (scopes + skipping) before applying, ending with the results table', f
         ->toContain('environment')
         ->toContain('app')
         ->toContain('Skipping')
-        ->toContain('ivs not enabled in manifest')
+        ->toContain('ivs not declared in manifest services')
         ->toContain('CREATED')
         ->toContain('Synced testing');
 
@@ -205,7 +205,7 @@ it('shows the skipped concept summary at normal verbosity but hides per-resource
 
     expect($output)
         ->toContain('Skipping')
-        ->toContain('ivs not enabled in manifest')
+        ->toContain('ivs not declared in manifest services')
         ->toContain('(3)')                            // concept-summary count
         ->not->toContain('ivs cloud watch log group') // per-resource detail hidden
         ->not->toContain('ivs event bridge rule');
@@ -224,7 +224,7 @@ it('expands the skipped section to per-resource names under -v', function (): vo
     // (normaliseStep lowercases everything past the first char)
     expect($output)
         ->toContain('Skipping')
-        ->toContain('ivs not enabled in manifest')
+        ->toContain('ivs not declared in manifest services')
         ->toContain('ivs cloud watch log group')
         ->toContain('ivs event bridge rule')
         ->toContain('ivs event bridge target');

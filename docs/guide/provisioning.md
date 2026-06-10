@@ -40,11 +40,13 @@ App manifests declare what each **app** needs. The environment-shared tier has a
 The edit flow mirrors app env files:
 
 ```bash
-yolo env:pull production --shared    # → yolo-production.yml + .env.production.shared (gitignored)
+yolo environment:manifest:pull production    # → yolo-production.yml (gitignored)
 # edit
-yolo env:push production --shared    # validated, key-level diff, confirm
-yolo sync:environment production     # from any app in the environment
+yolo environment:manifest:push production    # validated, key-level diff, confirm
+yolo sync:environment production             # from any app in the environment
 ```
+
+The env-shared `.env` moves the same way via `environment:env:pull` / `environment:env:push` (local copy `.env.production.shared`, gitignored).
 
 Because every `sync:environment` pulls the manifest fresh from S3 and converges toward it, the environment's desired state has a **single source of truth that outlives YOLO versions** — two apps pinned to different `codinglabsau/yolo` releases reconcile toward the same declared state instead of fighting over compiled-in defaults. Changing an env service's size is a file edit and a sync, not a delete-and-recreate.
 

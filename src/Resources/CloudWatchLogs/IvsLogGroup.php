@@ -77,9 +77,13 @@ class IvsLogGroup implements Resource, SynchronisesConfiguration
         ];
     }
 
+    /**
+     * Hardcoded — IVS events are debugging telemetry, and service opt-ins are
+     * bare capability names (`services: [ivs]`) with no per-app knobs.
+     */
     public function retentionDays(): int
     {
-        return (int) Manifest::get('ivs.log-retention-days', 14);
+        return 14;
     }
 
     /**

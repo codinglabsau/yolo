@@ -10,6 +10,7 @@ use Illuminate\Support\Str;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\WafV2;
+use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Aws\CloudFront;
 use Codinglabs\Yolo\Aws\CloudWatch;
 use Codinglabs\Yolo\Resources\WafV2\WebAcl;
@@ -183,7 +184,7 @@ class Dashboard
             'rds' => static::rdsTarget($this->databaseHost()),
             'buckets' => static::bucketNames(),
             'taskLogGroup' => $web ? (new TaskLogGroup())->name() : null,
-            'ivsLogGroup' => Manifest::ivsEnabled() ? (new IvsLogGroup())->name() : null,
+            'ivsLogGroup' => Manifest::usesService(Service::IVS) ? (new IvsLogGroup())->name() : null,
             'depthThreshold' => (int) Manifest::get('sqs.depth-alarm-threshold', 100),
         ];
     }

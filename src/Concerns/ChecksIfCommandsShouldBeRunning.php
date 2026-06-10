@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Concerns;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Commands\Command;
 use Codinglabs\Yolo\Contracts\RunsOnAws;
@@ -36,8 +37,8 @@ trait ChecksIfCommandsShouldBeRunning
             return 'headless app (no ALB / Route 53 / domain)';
         }
 
-        if ($instance instanceof ExecutesIvsStep && ! Manifest::ivsEnabled()) {
-            return 'ivs not enabled in manifest';
+        if ($instance instanceof ExecutesIvsStep && ! Manifest::usesService(Service::IVS)) {
+            return 'ivs not declared in manifest services';
         }
 
         if (Aws::runningInAws()) {
