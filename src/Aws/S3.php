@@ -80,7 +80,12 @@ class S3
 
     /**
      * The bucket's resource policy decoded to an array, or null when none is
-     * attached (AWS throws NoSuchBucketPolicy).
+     * attached (AWS throws NoSuchBucketPolicy) — or when the bucket itself
+     * doesn't exist yet (NoSuchBucket): the plan pass may read the policy of
+     * a sibling bucket the apply pass hasn't created yet (e.g. the asset
+     * distribution reading a renamed asset bucket on a migration's first
+     * sync), and a missing bucket means a missing policy. If the bucket
+     * genuinely never appears, the apply-phase put fails loudly.
      *
      * @return array<string, mixed>|null
      */
@@ -91,7 +96,7 @@ class S3
 
             return $policy === null ? null : json_decode((string) $policy, true);
         } catch (S3Exception $e) {
-            if ($e->getAwsErrorCode() === 'NoSuchBucketPolicy') {
+            if (in_array($e->getAwsErrorCode(), ['NoSuchBucketPolicy', 'NoSuchBucket'], true)) {
                 return null;
             }
 

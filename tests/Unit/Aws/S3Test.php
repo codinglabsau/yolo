@@ -56,6 +56,20 @@ it('rethrows lifecycle read failures that are not the missing-config case', func
     S3::lifecycleRules('yolo-111111111111-testing-logs');
 })->throws(S3Exception::class, 'Access Denied');
 
+it('reads the bucket policy as null when the bucket itself does not exist yet', function (): void {
+    // The plan pass can read the policy of a sibling bucket the apply pass
+    // hasn't created yet (asset distribution → renamed asset bucket on a
+    // migration's first sync) — that must read as "no policy", not crash
+    // the whole plan.
+    bindS3WrapperClient(fn ($cmd): PromiseInterface => Create::rejectionFor(new S3Exception(
+        'The specified bucket does not exist',
+        new Command('GetBucketPolicy'),
+        ['code' => 'NoSuchBucket'],
+    )));
+
+    expect(S3::bucketPolicy('yolo-111111111111-testing-my-app-assets'))->toBeNull();
+});
+
 it('returns the rules when a lifecycle configuration exists', function (): void {
     $rules = [['ID' => 'expire-logs', 'Status' => 'Enabled']];
 
