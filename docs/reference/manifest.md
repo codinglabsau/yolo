@@ -452,3 +452,21 @@ Your manifest implies one of three modes:
 | **Solo** | `domain`/`apex` set at the environment level | One app, one hosted zone + certificate, served on its domain. |
 | **Multi-tenant** | `tenants` set (no env-level `domain`/`apex`) | Per-tenant domains and queues; certs attach per tenant via SNI. |
 | **Headless** | no `domain`, `apex`, or tenant domains | No ALB attachment or DNS. Still deploys and processes queues/scheduled work. |
+
+---
+
+## The environment manifest (`yolo-env.yml`)
+
+`yolo.yml` declares what one **app** needs; the environment has a declaration of its own. `yolo-env.yml` lives in the env config bucket (`yolo-{account-id}-{env}-config`), not in any app's repo — it's seeded by the environment's first `sync` and from then on owned by the operator, edited through [`env:pull --shared` / `env:push --shared`](/reference/commands#yolo-env-pull). Every `sync:environment` pulls it fresh from S3 and reconciles toward it, from any app repo, on any YOLO version.
+
+```yaml
+domain: example.com.au   # the env's canonical domain for shared-service ingress
+services: {}             # env-shared services — the extension point for what sync:environment provisions
+```
+
+| Key | Purpose |
+|---|---|
+| `domain` | The environment's canonical domain for shared-service hostnames (e.g. `search.{domain}`). Distinct from any app's `domain` — shared services are served on the *environment's* name, reachable from every app regardless of their own domains. |
+| `services` | Env-shared services provisioned by `sync:environment`. Ships empty; the first occupant is the shared search service. |
+
+Like `yolo.yml`, the file is validated against a strict allow-list — an unrecognised key hard-fails both `env:push --shared` (before upload) and any sync that reads it. See [The environment declaration](/guide/provisioning#the-environment-declaration) for the model.

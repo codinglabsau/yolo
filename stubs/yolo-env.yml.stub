@@ -1,0 +1,17 @@
+# YOLO environment manifest — env-shared desired state, one per environment.
+# Every app in this environment converges on what's declared here:
+# sync:environment pulls this file fresh from S3 and reconciles toward it.
+#
+# Edit flow:
+#   yolo env:pull <environment> --shared
+#   (edit yolo-env.<environment>.yml)
+#   yolo env:push <environment> --shared
+#   yolo sync:environment <environment>   # from any app in the environment
+
+# The environment's canonical domain for shared-service ingress
+# (e.g. search.<domain>). Uncomment and set when the first shared
+# service with a public host is declared.
+# domain: example.com.au
+
+# Env-shared services provisioned by sync:environment. None declared yet.
+services: {}

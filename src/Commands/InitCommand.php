@@ -138,7 +138,9 @@ class InitCommand extends Command
                 Paths::base('.gitignore'),
                 '.yolo' . PHP_EOL .
                 '.env.staging' . PHP_EOL .
-                '.env.production' . PHP_EOL,
+                '.env.production' . PHP_EOL .
+                '.env.*.shared' . PHP_EOL .
+                'yolo-env.*.yml' . PHP_EOL,
                 FILE_APPEND
             );
         }

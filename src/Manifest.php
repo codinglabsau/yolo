@@ -111,12 +111,13 @@ class Manifest
     /**
      * Flatten an associative manifest node to leaf dot-paths. Lists and scalars
      * are leaves at their own key — we don't descend into list items or
-     * free-form values.
+     * free-form values. Public because EnvManifest validates its own schema
+     * with the same flattening.
      *
      * @param  array<string, mixed>  $node
      * @return array<int, string>
      */
-    protected static function flattenKeys(array $node, string $prefix = ''): array
+    public static function flattenKeys(array $node, string $prefix = ''): array
     {
         $paths = [];
 

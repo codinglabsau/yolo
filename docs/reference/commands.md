@@ -57,16 +57,18 @@ This is the only command that runs without an existing manifest.
 Download the environment file for the given environment from the app's S3 config bucket.
 
 ```bash
-yolo env:pull <environment>
+yolo env:pull <environment> [--shared]
 ```
 
 | Argument | Required | Description |
 |---|---|---|
 | `environment` | yes | The environment name |
 
-**Options:** none
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--shared` | flag | off | Pull the env-shared files instead of the app env file — the [env manifest](/reference/manifest#the-environment-manifest-yolo-env-yml) to `yolo-env.<environment>.yml` and the env-shared `.env` to `.env.<environment>.shared` (both gitignored). |
 
-Writes `.env.<environment>` to your project root, overwriting any local copy.
+Without `--shared`, writes `.env.<environment>` to your project root, overwriting any local copy. With `--shared`, the env manifest must already exist (the environment's first `sync` seeds it); a missing env-shared `.env` is fine — it's created by your first push.
 
 ---
 
@@ -75,14 +77,16 @@ Writes `.env.<environment>` to your project root, overwriting any local copy.
 Upload the environment file for the given environment to the app's S3 config bucket.
 
 ```bash
-yolo env:push <environment>
+yolo env:push <environment> [--shared]
 ```
 
 | Argument | Required | Description |
 |---|---|---|
 | `environment` | yes | The environment name |
 
-**Options:** none
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--shared` | flag | off | Push the env-shared files instead of the app env file — whichever of `yolo-env.<environment>.yml` and `.env.<environment>.shared` exist locally, each with its own key-level diff and confirmation. The env manifest is validated against its schema **before** upload, so a misshapen manifest can never reach the bucket. |
 
 Downloads the current remote file, shows a diff of changed keys, and asks for confirmation before uploading. If no remote file exists yet, it uploads without a diff.
 

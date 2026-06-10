@@ -59,4 +59,17 @@ class Paths
     {
         return Helpers::keyedBucketName('logs', exclusive: false);
     }
+
+    /**
+     * Env-scoped config bucket holding the environment's declaration — the env
+     * manifest (yolo-env.yml) and the env-shared `.env`. The env-tier sibling
+     * of the per-app config buckets, carrying the same secrets posture:
+     * no external write principals, no expiry lifecycle. Read access to this
+     * bucket is the permission that gates env-secret control — app deploys
+     * never need it.
+     */
+    public static function s3EnvConfigBucket(): string
+    {
+        return Helpers::keyedBucketName('config', exclusive: false);
+    }
 }
