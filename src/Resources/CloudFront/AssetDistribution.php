@@ -3,8 +3,10 @@
 namespace Codinglabs\Yolo\Resources\CloudFront;
 
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Aws\S3;
 use Codinglabs\Yolo\Change;
 use Illuminate\Support\Str;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Aws\CloudFront;
@@ -138,17 +140,22 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
      * config changes, so sync reconciles the fields we own: the cache-behaviour
      * policy IDs (swapping a distribution off the old Origin-keyed cache policy
      * onto CachingOptimized + the static-CORS response-headers policy), the
-     * 5xx error-caching rules, and the S3 origin — so a renamed asset bucket
-     * converges through sync (repoint + OAC read grant on the new bucket)
-     * instead of leaving the distribution serving from the orphaned old one.
-     * CloudFront updates trigger a full edge redeploy (~15 min), so
-     * updateDistribution only fires when a field has drifted, and the drifted
-     * fields are returned so sync can report each current → desired
-     * comparison. A dry-run ($apply false) never creates the response-headers
-     * policy and never calls updateDistribution.
+     * 5xx error-caching rules, the S3 origin — so a renamed asset bucket
+     * converges through sync instead of leaving the distribution serving from
+     * the orphaned old one — and the OAC read grant on the asset bucket,
+     * reconciled declaratively so a policy deleted out-of-band (or a sync that
+     * died between the policy write and the distribution update) self-heals on
+     * the next run instead of 403ing every asset while the plan reads clean.
+     * The grant is written *before* the distribution update so the origin is
+     * readable by the time any edge flips. CloudFront updates trigger a full
+     * edge redeploy (~15 min), so updateDistribution only fires when a
+     * distribution field has drifted, and the drifted fields are returned so
+     * sync can report each current → desired comparison. A dry-run ($apply
+     * false) never creates the response-headers policy and never writes.
      */
     public function synchroniseConfiguration(bool $apply = true): array
     {
+        $bucket = new AssetBucket();
         $distribution = CloudFront::distributionByComment($this->name());
 
         $response = Aws::cloudFront()->getDistributionConfig(['Id' => $distribution['Id']]);
@@ -157,37 +164,55 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
 
         $desired = static::reconcilableBehaviour($this->resolveResponseHeadersPolicyId($apply));
 
-        $changes = static::behaviourDrift($behaviour, $desired);
+        $distributionChanges = static::behaviourDrift($behaviour, $desired);
 
         if (($errorChange = static::errorCachingDrift((array) ($config['CustomErrorResponses'] ?? []))) instanceof Change) {
-            $changes[] = $errorChange;
+            $distributionChanges[] = $errorChange;
         }
 
         if (($originChange = static::originDrift((array) ($config['Origins'] ?? []))) instanceof Change) {
-            $changes[] = $originChange;
+            $distributionChanges[] = $originChange;
         }
+
+        $policyChange = $this->bucketPolicyDrift($bucket, $distribution['ARN']);
+
+        $changes = [...$distributionChanges, ...$policyChange instanceof Change ? [$policyChange] : []];
 
         if ($changes === [] || ! $apply) {
             return $changes;
         }
 
-        $config['DefaultCacheBehavior'] = array_merge($behaviour, $desired);
-        $config['CustomErrorResponses'] = static::customErrorResponses();
-        $config['Origins']['Items'][0]['DomainName'] = static::desiredOriginDomain();
+        if ($policyChange instanceof Change) {
+            $this->grantBucketAccess($bucket, $distribution['ARN']);
+        }
 
-        Aws::cloudFront()->updateDistribution([
-            'Id' => $distribution['Id'],
-            'DistributionConfig' => $config,
-            'IfMatch' => (string) $response['ETag'],
-        ]);
+        if ($distributionChanges !== []) {
+            $config['DefaultCacheBehavior'] = array_merge($behaviour, $desired);
+            $config['CustomErrorResponses'] = static::customErrorResponses();
+            $config['Origins']['Items'][0]['DomainName'] = static::desiredOriginDomain();
 
-        if ($originChange instanceof Change) {
-            // A repointed origin targets a bucket that has never carried this
-            // distribution's OAC read grant — grant it (idempotent put).
-            $this->grantBucketAccess(new AssetBucket(), $distribution['ARN']);
+            Aws::cloudFront()->updateDistribution([
+                'Id' => $distribution['Id'],
+                'DistributionConfig' => $config,
+                'IfMatch' => (string) $response['ETag'],
+            ]);
         }
 
         return $changes;
+    }
+
+    /**
+     * Drift check for the asset bucket's OAC read grant — the bucket policy
+     * must be exactly the single read statement for this distribution.
+     */
+    protected function bucketPolicyDrift(AssetBucket $bucket, string $distributionArn): ?Change
+    {
+        $current = S3::bucketPolicy($bucket->name());
+        $desired = static::oacReadPolicy($bucket, $distributionArn);
+
+        return Helpers::documentsEqual($current, $desired)
+            ? null
+            : Change::make('asset-bucket-policy', $current === null ? null : 'present', 'cloudfront-oac-read');
     }
 
     /**
@@ -422,19 +447,30 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
     {
         Aws::s3()->putBucketPolicy([
             'Bucket' => $bucket->name(),
-            'Policy' => json_encode([
-                'Version' => '2012-10-17',
-                'Statement' => [
-                    [
-                        'Sid' => 'AllowCloudFrontServicePrincipalReadOnly',
-                        'Effect' => 'Allow',
-                        'Principal' => ['Service' => 'cloudfront.amazonaws.com'],
-                        'Action' => 's3:GetObject',
-                        'Resource' => $bucket->arn() . '/*',
-                        'Condition' => ['StringEquals' => ['AWS:SourceArn' => $distributionArn]],
-                    ],
-                ],
-            ]),
+            'Policy' => json_encode(static::oacReadPolicy($bucket, $distributionArn)),
         ]);
+    }
+
+    /**
+     * Grant the distribution (and only it) read access to the bucket — the
+     * OAC service principal scoped to this distribution's ARN.
+     *
+     * @return array<string, mixed>
+     */
+    protected static function oacReadPolicy(AssetBucket $bucket, string $distributionArn): array
+    {
+        return [
+            'Version' => '2012-10-17',
+            'Statement' => [
+                [
+                    'Sid' => 'AllowCloudFrontServicePrincipalReadOnly',
+                    'Effect' => 'Allow',
+                    'Principal' => ['Service' => 'cloudfront.amazonaws.com'],
+                    'Action' => 's3:GetObject',
+                    'Resource' => $bucket->arn() . '/*',
+                    'Condition' => ['StringEquals' => ['AWS:SourceArn' => $distributionArn]],
+                ],
+            ],
+        ];
     }
 }
