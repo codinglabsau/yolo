@@ -109,7 +109,7 @@ it('sees no drift when the live behaviour already carries the managed fields', f
 });
 
 it('sees drift on a distribution still using the Origin-keyed cache policy', function (): void {
-    // Shape of the live CL distribution before the fix: custom Origin-in-key
+    // Shape of a live distribution from before the fix: custom Origin-in-key
     // cache policy, CORS-S3Origin origin-request policy forwarding Origin, no
     // response-headers policy. Reconciling must flip all three.
     $preFix = [
