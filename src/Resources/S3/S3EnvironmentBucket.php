@@ -14,12 +14,15 @@ use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 
 /**
- * Env-scoped bucket holding the shared ALB's access logs. Owns the ELB
- * log-delivery bucket policy that `ModifyLoadBalancerAttributes` validates
- * when access logs are enabled on the load balancer — so the policy needs
- * to be in place *before* `SyncLoadBalancerStep` runs.
+ * Env-scoped general-purpose bucket shared by every app in the environment.
+ * Each env-tier object class lives under its own prefix — the shared ALB's
+ * access logs under `alb-logs/` today; future env-tier objects join as
+ * sibling prefixes rather than new buckets.
  *
- * It lives in the env scope (not app) for two reasons:
+ * Owns the ELB log-delivery bucket policy that `ModifyLoadBalancerAttributes`
+ * validates when access logs are enabled on the load balancer — so the policy
+ * needs to be in place *before* `SyncLoadBalancerStep` runs. It lives in the
+ * env scope (not app) for two reasons:
  *
  *  1. **Ordering.** The shared `LoadBalancer` is env-scoped and writes its
  *     `access_logs.s3.bucket` attribute during the env scope's sync; an
@@ -34,18 +37,20 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
  *
  * Public-access-block (all four settings) and versioning are reconciled
  * declaratively; the bucket policy grants the `logdelivery.elasticloadbalancing.amazonaws.com`
- * service principal `s3:PutObject` over the whole bucket, scoped to this
- * account's load balancers via `aws:SourceAccount` and `aws:SourceArn`.
- * No `yolo:app` tag — env-scoped (ResolvesTags handles that automatically).
+ * service principal `s3:PutObject` over the `alb-logs/` prefix only, scoped
+ * to this account's load balancers via `aws:SourceAccount` and
+ * `aws:SourceArn`. A prefix-scoped lifecycle rule expires the access logs —
+ * append-only telemetry that would otherwise accumulate forever. No
+ * `yolo:app` tag — env-scoped (ResolvesTags handles that automatically).
  */
-class S3LoadBalancerLogs implements Resource, SynchronisesConfiguration
+class S3EnvironmentBucket implements Resource, SynchronisesConfiguration
 {
     use ReconcilesBucketHardening;
     use ResolvesTags;
 
     public function name(): string
     {
-        return Paths::s3LoadBalancerLogsBucket();
+        return Paths::s3EnvironmentBucket();
     }
 
     public function scope(): Scope
@@ -83,10 +88,10 @@ class S3LoadBalancerLogs implements Resource, SynchronisesConfiguration
     }
 
     /**
-     * Reconcile Block Public Access, versioning and the ELB log-delivery policy,
-     * each read-compared-then-written so a clean sync is a no-op and a dry-run
-     * reports exactly what would change. Returns the drifted attributes as
-     * Change[].
+     * Reconcile Block Public Access, versioning, the ELB log-delivery policy
+     * and the access-log expiry lifecycle, each read-compared-then-written so
+     * a clean sync is a no-op and a dry-run reports exactly what would change.
+     * Returns the drifted attributes as Change[].
      */
     public function synchroniseConfiguration(bool $apply = true): array
     {
@@ -94,6 +99,7 @@ class S3LoadBalancerLogs implements Resource, SynchronisesConfiguration
             ...$this->reconcilePublicAccessBlock($apply),
             ...$this->reconcileVersioning($apply),
             ...$this->reconcileAccessLogDeliveryPolicy($apply),
+            ...$this->reconcileAccessLogLifecycle($apply),
         ];
     }
 
@@ -104,8 +110,9 @@ class S3LoadBalancerLogs implements Resource, SynchronisesConfiguration
      * than a per-Region ELB account ID. `aws:SourceAccount` + `aws:SourceArn`
      * scope the grant to this account's load balancers, so the policy is
      * never public and coexists with `BlockPublicPolicy`. The bucket is
-     * dedicated to ALB logs, so `Resource: arn:aws:s3:::{bucket}/*` is
-     * the full grant — no prefix scoping needed.
+     * shared by multiple object classes, so the grant is prefix-scoped to
+     * `alb-logs/*` — the delivery principal can never write outside its
+     * namespace.
      *
      * @return array<int, Change>
      */
@@ -129,6 +136,43 @@ class S3LoadBalancerLogs implements Resource, SynchronisesConfiguration
     }
 
     /**
+     * Expire ALB access logs after 90 days — with versioning on, noncurrent
+     * copies are swept shortly after, and abandoned multipart uploads are
+     * aborted. The rule is prefix-scoped so it can never touch a future
+     * sibling prefix.
+     *
+     * @return array<int, Change>
+     */
+    protected function reconcileAccessLogLifecycle(bool $apply): array
+    {
+        $desired = [
+            [
+                'ID' => 'expire-alb-logs',
+                'Status' => 'Enabled',
+                'Filter' => ['Prefix' => 'alb-logs/'],
+                'Expiration' => ['Days' => 90],
+                'NoncurrentVersionExpiration' => ['NoncurrentDays' => 7],
+                'AbortIncompleteMultipartUpload' => ['DaysAfterInitiation' => 7],
+            ],
+        ];
+
+        $current = S3::lifecycleRules($this->name());
+
+        if (Helpers::documentsEqual($current, $desired)) {
+            return [];
+        }
+
+        if ($apply) {
+            Aws::s3()->putBucketLifecycleConfiguration([
+                'Bucket' => $this->name(),
+                'LifecycleConfiguration' => ['Rules' => $desired],
+            ]);
+        }
+
+        return [Change::make('lifecycle', $current === null ? null : 'present', 'expire alb-logs/ after 90 days')];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     protected function accessLogDeliveryPolicy(): array
@@ -143,7 +187,7 @@ class S3LoadBalancerLogs implements Resource, SynchronisesConfiguration
                     'Effect' => 'Allow',
                     'Principal' => ['Service' => 'logdelivery.elasticloadbalancing.amazonaws.com'],
                     'Action' => 's3:PutObject',
-                    'Resource' => sprintf('arn:aws:s3:::%s/*', $this->name()),
+                    'Resource' => sprintf('arn:aws:s3:::%s/alb-logs/*', $this->name()),
                     'Condition' => [
                         'StringEquals' => ['aws:SourceAccount' => $accountId],
                         'ArnLike' => [

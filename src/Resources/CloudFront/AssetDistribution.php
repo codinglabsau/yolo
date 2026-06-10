@@ -114,7 +114,7 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
 
         $distribution = Aws::cloudFront()->createDistributionWithTags([
             'DistributionConfigWithTags' => [
-                'DistributionConfig' => $this->distributionConfig($bucket, $oacId, $responseHeadersPolicyId),
+                'DistributionConfig' => $this->distributionConfig($oacId, $responseHeadersPolicyId),
                 'Tags' => [
                     'Items' => collect(Aws::expectedTags($this->tags()))
                         ->map(fn ($value, $key): array => ['Key' => $key, 'Value' => $value])
@@ -137,18 +137,21 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
      * Push managed config onto an existing distribution. Tags alone don't cover
      * config changes, so sync reconciles the fields we own: the cache-behaviour
      * policy IDs (swapping a distribution off the old Origin-keyed cache policy
-     * onto CachingOptimized + the static-CORS response-headers policy) and the
-     * 5xx error-caching rules. CloudFront updates trigger a full edge redeploy
-     * (~15 min), so updateDistribution only fires when a field has drifted, and
-     * the drifted fields are returned so sync can report each current → desired
+     * onto CachingOptimized + the static-CORS response-headers policy), the
+     * 5xx error-caching rules, and the S3 origin — so a renamed asset bucket
+     * converges through sync (repoint + OAC read grant on the new bucket)
+     * instead of leaving the distribution serving from the orphaned old one.
+     * CloudFront updates trigger a full edge redeploy (~15 min), so
+     * updateDistribution only fires when a field has drifted, and the drifted
+     * fields are returned so sync can report each current → desired
      * comparison. A dry-run ($apply false) never creates the response-headers
      * policy and never calls updateDistribution.
      */
     public function synchroniseConfiguration(bool $apply = true): array
     {
-        $id = CloudFront::distributionByComment($this->name())['Id'];
+        $distribution = CloudFront::distributionByComment($this->name());
 
-        $response = Aws::cloudFront()->getDistributionConfig(['Id' => $id]);
+        $response = Aws::cloudFront()->getDistributionConfig(['Id' => $distribution['Id']]);
         $config = (array) $response['DistributionConfig'];
         $behaviour = (array) $config['DefaultCacheBehavior'];
 
@@ -160,20 +163,55 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
             $changes[] = $errorChange;
         }
 
+        if (($originChange = static::originDrift((array) ($config['Origins'] ?? []))) instanceof Change) {
+            $changes[] = $originChange;
+        }
+
         if ($changes === [] || ! $apply) {
             return $changes;
         }
 
         $config['DefaultCacheBehavior'] = array_merge($behaviour, $desired);
         $config['CustomErrorResponses'] = static::customErrorResponses();
+        $config['Origins']['Items'][0]['DomainName'] = static::desiredOriginDomain();
 
         Aws::cloudFront()->updateDistribution([
-            'Id' => $id,
+            'Id' => $distribution['Id'],
             'DistributionConfig' => $config,
             'IfMatch' => (string) $response['ETag'],
         ]);
 
+        if ($originChange instanceof Change) {
+            // A repointed origin targets a bucket that has never carried this
+            // distribution's OAC read grant — grant it (idempotent put).
+            $this->grantBucketAccess(new AssetBucket(), $distribution['ARN']);
+        }
+
         return $changes;
+    }
+
+    /**
+     * The origin must point at the current asset bucket's regional endpoint;
+     * anything else (e.g. a distribution still on a pre-rename bucket name)
+     * is drift.
+     */
+    public static function originDrift(array $origins): ?Change
+    {
+        $current = (string) ($origins['Items'][0]['DomainName'] ?? '');
+        $desired = static::desiredOriginDomain();
+
+        return $current === $desired
+            ? null
+            : Change::make('origin', $current, $desired);
+    }
+
+    /**
+     * The regional S3 endpoint (required for OAC outside us-east-1) of the
+     * asset bucket.
+     */
+    public static function desiredOriginDomain(): string
+    {
+        return sprintf('%s.s3.%s.amazonaws.com', (new AssetBucket())->name(), Manifest::get('region'));
     }
 
     /**
@@ -346,7 +384,7 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
         }
     }
 
-    protected function distributionConfig(AssetBucket $bucket, string $originAccessControlId, string $responseHeadersPolicyId): array
+    protected function distributionConfig(string $originAccessControlId, string $responseHeadersPolicyId): array
     {
         return [
             'CallerReference' => (string) Str::uuid(),
@@ -358,8 +396,7 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
                 'Items' => [
                     [
                         'Id' => static::ORIGIN_ID,
-                        // Regional S3 endpoint is required for OAC outside us-east-1.
-                        'DomainName' => sprintf('%s.s3.%s.amazonaws.com', $bucket->name(), Manifest::get('region')),
+                        'DomainName' => static::desiredOriginDomain(),
                         'OriginAccessControlId' => $originAccessControlId,
                         'S3OriginConfig' => ['OriginAccessIdentity' => ''],
                     ],

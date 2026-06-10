@@ -23,26 +23,18 @@ describe('path building', function (): void {
     it('resolves manifest path', function (): void {
         expect(Paths::manifest())->toBe(BASE_PATH . '/yolo.yml');
     });
+});
 
-    it('resolves artefact path', function (): void {
-        expect(Paths::artefact())->toBe(BASE_PATH . '/.yolo/artefact.tar.gz');
+describe('s3 bucket names', function (): void {
+    beforeEach(function (): void {
+        writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
     });
 
-    it('builds s3 artefact paths', function (): void {
-        expect(Paths::s3Artefacts('v1.0'))
-            ->toBe('artefacts/v1.0');
-
-        expect(Paths::s3Artefacts('v1.0', 'app.tar.gz'))
-            ->toBe('artefacts/v1.0/app.tar.gz');
+    it('names the artefacts bucket per account + environment + app', function (): void {
+        expect(Paths::s3ArtefactsBucket())->toBe('yolo-111111111111-testing-my-app-artefacts');
     });
 
-    it('builds yolo dir for aws instances', function (): void {
-        expect(Paths::yoloDir())
-            ->toBe('/home/ubuntu/yolo/yolo-testing-my-app');
-    });
-
-    it('builds log dir for aws instances', function (): void {
-        expect(Paths::logDir())
-            ->toBe('/var/log/yolo/yolo-testing-my-app');
+    it('names the environment bucket per account + environment', function (): void {
+        expect(Paths::s3EnvironmentBucket())->toBe('yolo-111111111111-testing');
     });
 });

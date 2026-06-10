@@ -60,6 +60,25 @@ class S3
     }
 
     /**
+     * The bucket's lifecycle rules, or null when none are configured (AWS
+     * throws NoSuchLifecycleConfiguration).
+     *
+     * @return array<int, array<string, mixed>>|null
+     */
+    public static function lifecycleRules(string $bucket): ?array
+    {
+        try {
+            return Aws::s3()->getBucketLifecycleConfiguration(['Bucket' => $bucket])['Rules'] ?? null;
+        } catch (S3Exception $e) {
+            if ($e->getAwsErrorCode() === 'NoSuchLifecycleConfiguration') {
+                return null;
+            }
+
+            throw $e;
+        }
+    }
+
+    /**
      * The bucket's resource policy decoded to an array, or null when none is
      * attached (AWS throws NoSuchBucketPolicy).
      *

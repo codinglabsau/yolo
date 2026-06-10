@@ -49,15 +49,15 @@ beforeEach(function (): void {
 });
 
 it('names the asset bucket per app + environment', function (): void {
-    expect((new AssetBucket())->name())->toBe('yolo-testing-my-app-assets');
+    expect((new AssetBucket())->name())->toBe('yolo-111111111111-testing-my-app-assets');
 });
 
 it('derives the bucket ARN from the name', function (): void {
-    expect((new AssetBucket())->arn())->toBe('arn:aws:s3:::yolo-testing-my-app-assets');
+    expect((new AssetBucket())->arn())->toBe('arn:aws:s3:::yolo-111111111111-testing-my-app-assets');
 });
 
 it('tags the bucket with its name and app owner', function (): void {
-    expect((new AssetBucket())->tags())->toBe(['Name' => 'yolo-testing-my-app-assets', 'yolo:scope' => 'app', 'yolo:app' => 'my-app']);
+    expect((new AssetBucket())->tags())->toBe(['Name' => 'yolo-111111111111-testing-my-app-assets', 'yolo:scope' => 'app', 'yolo:app' => 'my-app']);
 });
 
 it('enforces the bucket CORS configuration through sync', function (): void {

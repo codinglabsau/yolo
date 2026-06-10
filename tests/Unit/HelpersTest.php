@@ -31,6 +31,34 @@ describe('keyedResourceName', function (): void {
     });
 });
 
+describe('keyedBucketName', function (): void {
+    beforeEach(function (): void {
+        writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
+    });
+
+    // S3 names are globally unique across every AWS account, so bucket names
+    // carry the account id where other resource names don't.
+    it('generates exclusive bucket name with suffix', function (): void {
+        expect(Helpers::keyedBucketName('artefacts'))
+            ->toBe('yolo-111111111111-testing-my-app-artefacts');
+    });
+
+    it('generates exclusive bucket name without suffix', function (): void {
+        expect(Helpers::keyedBucketName())
+            ->toBe('yolo-111111111111-testing-my-app');
+    });
+
+    it('generates non-exclusive bucket name without suffix', function (): void {
+        expect(Helpers::keyedBucketName(exclusive: false))
+            ->toBe('yolo-111111111111-testing');
+    });
+
+    it('generates non-exclusive bucket name with suffix', function (): void {
+        expect(Helpers::keyedBucketName('logs', exclusive: false))
+            ->toBe('yolo-111111111111-testing-logs');
+    });
+});
+
 describe('parseGithubRepository', function (): void {
     it('parses the ssh remote form', function (): void {
         expect(Helpers::parseGithubRepository('git@github.com:codinglabsau/codinglabs.git'))

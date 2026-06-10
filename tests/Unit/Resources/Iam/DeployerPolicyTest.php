@@ -112,14 +112,14 @@ it('grants S3 object and bucket access on the asset and artefacts buckets', func
 
     $objects = statementFor($document, 's3:PutObject');
     expect($objects['Resource'])->toBe([
-        'arn:aws:s3:::yolo-testing-my-app-assets/*',
-        'arn:aws:s3:::yolo-testing-my-app-artefacts/*',
+        'arn:aws:s3:::yolo-111111111111-testing-my-app-assets/*',
+        'arn:aws:s3:::yolo-111111111111-testing-my-app-artefacts/*',
     ]);
 
     $buckets = statementFor($document, 's3:ListBucket');
     expect($buckets['Resource'])->toBe([
-        'arn:aws:s3:::yolo-testing-my-app-assets',
-        'arn:aws:s3:::yolo-testing-my-app-artefacts',
+        'arn:aws:s3:::yolo-111111111111-testing-my-app-assets',
+        'arn:aws:s3:::yolo-111111111111-testing-my-app-artefacts',
     ]);
 });
 

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Codinglabs\Yolo\Resources\S3;
 
 use Codinglabs\Yolo\Aws;
@@ -11,9 +13,9 @@ use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 
 /**
- * Private, app-exclusive bucket holding the application's `.env` files and build
- * artefacts. Because it stores secrets it must never be publicly reachable and
- * its objects must be recoverable, so Block Public Access (all four settings)
+ * Private, app-exclusive bucket holding the application's `.env.{env}` files.
+ * Because it stores secrets it must never be publicly reachable and its
+ * objects must be recoverable, so Block Public Access (all four settings)
  * and versioning are reconciled onto it on every sync — both declarative,
  * idempotent puts. The yolo:app owner tag lets `yolo audit` attribute it.
  */

@@ -13,7 +13,7 @@ YOLO groups every resource by **ownership scope** — the blast radius if it cha
 | Command | Scope | Blast radius | Provisions |
 |---|---|---|---|
 | `yolo sync:account <env>` | **Account** | the whole AWS account | GitHub OIDC provider |
-| `yolo sync:environment <env>` | **Environment** | every app in the environment | VPC, subnets, internet gateway & routes, RDS security group, SNS alarm topic, the shared ECS execution IAM role, the ALB and its `:80`/`:443` listeners, the [WAF](#web-application-firewall) fronting the ALB |
+| `yolo sync:environment <env>` | **Environment** | every app in the environment | VPC, subnets, internet gateway & routes, RDS security group, SNS alarm topic, the shared ECS execution IAM role, the env S3 bucket (`yolo-{account-id}-{env}` — holds the shared ALB's access logs under `alb-logs/`, with a 90-day expiry), the ALB and its `:80`/`:443` listeners, the [WAF](#web-application-firewall) fronting the ALB |
 | `yolo sync:app <env>` | **App** | one app | S3 buckets, app IAM (deployer role/policy, the per-app ECS task role + any [`task-role-policies`](/reference/manifest#task-role-policies)), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, hosted zone & ACM certificate, SQS queues, CloudWatch dashboard — plus, for web apps, the shared [Valkey cache](#cache-and-sessions) (default-on; opt out via `cache.store`). Sessions ride the same Valkey cluster by default, so they need no provisioning of their own |
 
 The bare `yolo sync` runs all three **in dependency order** — account, then environment, then app:

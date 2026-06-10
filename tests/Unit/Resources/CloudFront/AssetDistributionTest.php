@@ -196,6 +196,23 @@ it('reuses an existing response-headers policy by name (no Create call)', functi
     expect(collect($recorder->calls)->pluck('name'))->not->toContain('CreateResponseHeadersPolicy');
 });
 
+it('detects origin drift against the current asset bucket name', function (): void {
+    // A distribution still pointing at a pre-rename bucket must drift, so a
+    // bucket rename converges through sync instead of half-applying.
+    $drift = AssetDistribution::originDrift(['Items' => [[
+        'DomainName' => 'yolo-testing-my-app-assets.s3.ap-southeast-2.amazonaws.com',
+    ]]]);
+
+    expect($drift)->not->toBeNull()
+        ->and($drift->attribute)->toBe('origin')
+        ->and($drift->to)->toBe('yolo-111111111111-testing-my-app-assets.s3.ap-southeast-2.amazonaws.com');
+
+    // Pointing at the current bucket's regional endpoint → in sync.
+    expect(AssetDistribution::originDrift(['Items' => [[
+        'DomainName' => 'yolo-111111111111-testing-my-app-assets.s3.ap-southeast-2.amazonaws.com',
+    ]]]))->toBeNull();
+});
+
 it('detects error-caching drift', function (): void {
     // Unset → CloudFront's ~10s default caches a transient 5xx → drift.
     expect(AssetDistribution::errorCachingDrift([]))->not->toBeNull();

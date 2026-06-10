@@ -32,9 +32,7 @@ environments:
 
     # --- App storage & shared infra names ---
     # bucket: my-app-bucket                          # app S3 bucket, injected as AWS_BUCKET
-    # artefacts-bucket: yolo-production-artefacts    # default: yolo-{env}-artefacts
     # alb: yolo-production                           # default: yolo-{env} — shared ALB to attach to
-    # alb-logs-bucket: yolo-production-alb-logs      # default: yolo-{env}-alb-logs
 
     # --- Cache & session (web apps default to these; uncomment only to override) ---
     # cache:
@@ -218,14 +216,6 @@ Name of an app S3 bucket for application storage. Injected into the container as
 ### `alb`
 
 Name of the Application Load Balancer to use. Defaults to the per-environment shared `yolo-{env}` ALB.
-
-### `artefacts-bucket`
-
-Bucket holding env files and build artefacts. Defaults to `yolo-{env}-artefacts`.
-
-### `alb-logs-bucket`
-
-Bucket for ALB access logs. Defaults to `yolo-{env}-alb-logs`.
 
 ### `ivs`
 

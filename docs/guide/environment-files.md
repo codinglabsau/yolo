@@ -45,4 +45,4 @@ This writes `.env.production` to your project root. Use it to review what's curr
 
 You don't reference the env file in your `deploy` command — it's automatic. During `yolo build`, YOLO retrieves `.env.<environment>` from S3, stamps in the build's `APP_VERSION` (and `ASSET_URL`, mirrored into `VITE_ASSET_URL` so Vite sees the same prefix, when a CDN is configured), and bakes it into the image as `/app/.env`. Your `build` hooks (e.g. `npm run build`) run against that environment, and the running container uses it directly.
 
-The bucket itself (`yolo-<env>-artefacts` by default) is provisioned by [`yolo sync`](/guide/provisioning). You can override its name with `artefacts-bucket` — see the [manifest reference](/reference/manifest#artefacts-bucket).
+The bucket itself (`yolo-{account-id}-{env}-{app}-artefacts`) is provisioned by [`yolo sync`](/guide/provisioning). Bucket names carry the AWS account id because S3 names are globally unique across every account — without it, the first account to claim a name owns it and every other account's sync fails.

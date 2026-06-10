@@ -96,6 +96,29 @@ class Helpers
             : sprintf("yolo$seperator%s", static::environment());
     }
 
+    /**
+     * S3 bucket names live in a single global namespace shared by every AWS
+     * account, so unlike other resource names they carry the account id as a
+     * discriminator — without it, whichever account creates yolo-{env}-… first
+     * owns the name globally and every other account 409s on CreateBucket.
+     * Exclusive → yolo-{account-id}-{env}-{app}[-{name}];
+     * shared → yolo-{account-id}-{env}[-{name}].
+     */
+    public static function keyedBucketName(string|BackedEnum|null $name = null, bool $exclusive = true): string
+    {
+        if ($name instanceof BackedEnum) {
+            $name = $name->value;
+        }
+
+        return implode('-', array_filter([
+            'yolo',
+            Aws::accountId(),
+            static::environment(),
+            $exclusive ? Manifest::name() : null,
+            $name,
+        ]));
+    }
+
     public static function manifestName(): string
     {
         return 'yolo.yml';
@@ -104,11 +127,6 @@ class Helpers
     public static function versionName(): string
     {
         return 'APP_VERSION';
-    }
-
-    public static function artefactName(): string
-    {
-        return 'artefact.tar.gz';
     }
 
     public static function environment(): ?string
