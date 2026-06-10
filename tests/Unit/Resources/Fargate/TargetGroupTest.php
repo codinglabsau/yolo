@@ -102,8 +102,8 @@ it('lets the manifest override each health-check field', function (): void {
 });
 
 it('reconciles a target group still on the old aggressive health-check defaults to the tolerant ones', function (): void {
-    // CL's live target group sits on the pre-tolerance values (5s timeout, 3
-    // unhealthy). A plain `yolo sync` must drag it onto the new defaults via
+    // A live target group from before the tolerance change sits on the old
+    // values (5s timeout, 3 unhealthy). A plain `yolo sync` must drag it onto the new defaults via
     // ModifyTargetGroup — the health check is reconciled, not create-only.
     $recorder = bindRecordingElbV2Client(
         liveTargetGroup(['HealthCheckTimeoutSeconds' => 5, 'UnhealthyThresholdCount' => 3]),

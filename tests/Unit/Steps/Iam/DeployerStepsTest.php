@@ -291,7 +291,7 @@ it('reconciles the deployer role trust policy when the env ref changes', functio
 });
 
 it('records deployer trust drift on the plan pass so the step survives the prune', function (): void {
-    // Regression (the convict `tag: true` OIDC failure): the trust rewrite used to
+    // Regression (a real `tag: true` OIDC failure): the trust rewrite used to
     // happen only under `! dry-run` and recorded no Change, so the plan pass saw a
     // clean step, the only-pending-steps filter pruned it before apply, and a
     // role created on `main` could never be self-healed to `refs/tags/*`. The drift

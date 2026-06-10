@@ -14,7 +14,7 @@ use Codinglabs\Yolo\Resources\Iam\MediaConvertRole;
  * with `ValidationError` at the API.
  *
  * Caught in the wild: a stray em dash in EcsTaskRole::description() killed a
- * green-field CL canary at sync:iam. This test guards every YOLO-authored IAM
+ * green-field sync on a fresh account at sync:iam. This test guards every YOLO-authored IAM
  * description against the same class of bug.
  */
 const IAM_DESCRIPTION_PATTERN = '/^[\x{0009}\x{000A}\x{000D}\x{0020}-\x{007E}\x{00A1}-\x{00FF}]*$/u';
