@@ -4,8 +4,8 @@ namespace Codinglabs\Yolo\Steps\Sync\App;
 
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Resources\S3\S3ConfigBucket;
+use Codinglabs\Yolo\Concerns\SynchronisesResource;
 
 class SyncS3ConfigBucketStep implements Step
 {
