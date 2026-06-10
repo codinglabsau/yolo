@@ -140,7 +140,9 @@ class InitCommand extends Command
                 '.env.staging' . PHP_EOL .
                 '.env.production' . PHP_EOL .
                 '.env.*.shared' . PHP_EOL .
-                'yolo-env.*.yml' . PHP_EOL,
+                // env-manifest working copies (yolo-production.yml etc.) — the
+                // dash means this never matches the app manifest yolo.yml
+                'yolo-*.yml' . PHP_EOL,
                 FILE_APPEND
             );
         }

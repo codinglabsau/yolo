@@ -10,10 +10,12 @@ use Aws\S3\Exception\S3Exception;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 /**
- * The environment manifest — env-shared desired state, one yolo-env.yml per
- * environment, stored in the env config bucket rather than any app's repo. The
- * app manifest declares what one app needs; this declares what the environment
- * provides (shared-service ingress domain, env services and their sizing).
+ * The environment manifest — env-shared desired state, one yolo-{environment}.yml
+ * per environment, stored in the env config bucket rather than any app's repo.
+ * The app manifest (yolo.yml) declares what one app needs; this declares what
+ * the environment provides (shared-service ingress domain, env services and
+ * their sizing). The environment is in the filename, so a pulled copy can never
+ * be pushed at the wrong environment.
  *
  * Every sync pulls it fresh from S3 and reconciles toward it, so any YOLO
  * version converges on the environment's own declared truth — the version-skew
@@ -23,7 +25,14 @@ use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
  */
 class EnvManifest
 {
-    public const FILENAME = 'yolo-env.yml';
+    /**
+     * The manifest's name in the bucket and on disk — yolo-{environment}.yml
+     * (yolo.yml = the app, yolo-production.yml = the production environment).
+     */
+    public static function filename(): string
+    {
+        return sprintf('yolo-%s.yml', Helpers::environment());
+    }
 
     /**
      * The complete set of valid env-manifest keys as dot-paths — the single
@@ -65,7 +74,7 @@ class EnvManifest
         try {
             $body = (string) Aws::s3()->getObject([
                 'Bucket' => Paths::s3EnvConfigBucket(),
-                'Key' => self::FILENAME,
+                'Key' => static::filename(),
             ])['Body'];
         } catch (S3Exception) {
             return static::$loaded = [];
@@ -86,7 +95,7 @@ class EnvManifest
         $manifest = Yaml::parse($contents) ?? [];
 
         if (! is_array($manifest)) {
-            throw new IntegrityCheckException(sprintf('%s must be a YAML map.', self::FILENAME));
+            throw new IntegrityCheckException(sprintf('%s must be a YAML map.', static::filename()));
         }
 
         $unknown = static::unknownKeys($manifest);
@@ -95,7 +104,7 @@ class EnvManifest
             throw new IntegrityCheckException(sprintf(
                 'Unrecognised %s in %s: %s.',
                 count($unknown) === 1 ? 'key' : 'keys',
-                self::FILENAME,
+                static::filename(),
                 implode(', ', $unknown),
             ));
         }
@@ -128,7 +137,7 @@ class EnvManifest
         try {
             Aws::s3()->headObject([
                 'Bucket' => Paths::s3EnvConfigBucket(),
-                'Key' => self::FILENAME,
+                'Key' => static::filename(),
             ]);
 
             return true;
@@ -143,16 +152,17 @@ class EnvManifest
      */
     public static function seedContents(): string
     {
-        return (string) file_get_contents(Paths::stubs('yolo-env.yml.stub'));
+        return (string) file_get_contents(Paths::stubs('yolo-environment.yml.stub'));
     }
 
     /**
-     * The local working-copy path the pull/push commands edit through —
-     * env-suffixed (one file per environment) and gitignored.
+     * The local working-copy path the pull/push commands edit through — the
+     * same yolo-{environment}.yml name as the bucket key (gitignored via
+     * yolo-*.yml, which never matches the dash-less app manifest yolo.yml).
      */
     public static function localPath(): string
     {
-        return Paths::base(sprintf('yolo-env.%s.yml', Helpers::environment()));
+        return Paths::base(static::filename());
     }
 
     /**

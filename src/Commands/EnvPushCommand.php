@@ -144,16 +144,16 @@ class EnvPushCommand extends Command
         $current = [];
 
         try {
-            $current = EnvManifest::parse($this->remote(EnvManifest::FILENAME));
+            $current = EnvManifest::parse($this->remote(EnvManifest::filename()));
         } catch (S3Exception) {
-            warning(sprintf('%s does not exist in the env config bucket yet.', EnvManifest::FILENAME));
+            warning(sprintf('%s does not exist in the env config bucket yet.', EnvManifest::filename()));
         }
 
-        if (! $this->confirmDifferences($this->dot($current), $this->dot($new), EnvManifest::FILENAME)) {
+        if (! $this->confirmDifferences($this->dot($current), $this->dot($new), EnvManifest::filename())) {
             return;
         }
 
-        $this->upload(EnvManifest::FILENAME, (string) file_get_contents($path));
+        $this->upload(EnvManifest::filename(), (string) file_get_contents($path));
     }
 
     protected function pushSharedEnv(string $path): void

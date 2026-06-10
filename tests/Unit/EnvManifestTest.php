@@ -34,7 +34,7 @@ it('reads the manifest fresh from the env config bucket and memoises it', functi
     $reads = collect($captured)->where('name', 'GetObject');
     expect($reads)->toHaveCount(1)
         ->and($reads->first()['args']['Bucket'])->toBe('yolo-111111111111-testing-config')
-        ->and($reads->first()['args']['Key'])->toBe('yolo-env.yml');
+        ->and($reads->first()['args']['Key'])->toBe('yolo-testing.yml');
 });
 
 it('treats a missing manifest as nothing declared', function (): void {
@@ -66,6 +66,7 @@ it('seeds contents that parse clean and pass validation', function (): void {
     expect(EnvManifest::parse(EnvManifest::seedContents()))->toBe(['services' => []]);
 });
 
-it('derives an env-suffixed gitignored local working copy path', function (): void {
-    expect(EnvManifest::localPath())->toEndWith('yolo-env.testing.yml');
+it('names the manifest after its environment, in the bucket and on disk', function (): void {
+    expect(EnvManifest::filename())->toBe('yolo-testing.yml')
+        ->and(EnvManifest::localPath())->toEndWith('/yolo-testing.yml');
 });

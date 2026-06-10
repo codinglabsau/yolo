@@ -455,9 +455,9 @@ Your manifest implies one of three modes:
 
 ---
 
-## The environment manifest (`yolo-env.yml`)
+## The environment manifest (`yolo-{environment}.yml`)
 
-`yolo.yml` declares what one **app** needs; the environment has a declaration of its own. `yolo-env.yml` lives in the env config bucket (`yolo-{account-id}-{env}-config`), not in any app's repo — it's seeded by the environment's first `sync` and from then on owned by the operator, edited through [`env:pull --shared` / `env:push --shared`](/reference/commands#yolo-env-pull). Every `sync:environment` pulls it fresh from S3 and reconciles toward it, from any app repo, on any YOLO version.
+`yolo.yml` declares what one **app** needs; the environment has a declaration of its own. `yolo-{environment}.yml` (e.g. `yolo-production.yml` — the environment is in the filename, so a pulled copy can never be pushed at the wrong environment) lives in the env config bucket (`yolo-{account-id}-{env}-config`), not in any app's repo — it's seeded by the environment's first `sync` and from then on owned by the operator, edited through [`env:pull --shared` / `env:push --shared`](/reference/commands#yolo-env-pull). Every `sync:environment` pulls it fresh from S3 and reconciles toward it, from any app repo, on any YOLO version.
 
 ```yaml
 domain: example.com.au   # the env's canonical domain for shared-service ingress

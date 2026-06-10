@@ -48,15 +48,17 @@ class EnvPullCommand extends Command
      * Pull the environment's own files from the env config bucket: the env
      * manifest (must exist — sync seeds it) and the env-shared .env (may not
      * exist yet — it's created by the first push or the first service that
-     * generates a secret). Local copies are env-suffixed and gitignored.
+     * generates a secret). Local copies are gitignored; the manifest keeps its
+     * bucket name (yolo-{environment}.yml), so a pulled copy can never be
+     * pushed at the wrong environment.
      */
     protected function pullShared(): void
     {
         $environment = Helpers::environment();
 
-        note(sprintf('Downloading %s...', EnvManifest::FILENAME));
+        note(sprintf('Downloading %s...', EnvManifest::filename()));
 
-        if (! $this->download(EnvManifest::FILENAME, EnvManifest::localPath())) {
+        if (! $this->download(EnvManifest::filename(), EnvManifest::localPath())) {
             error(sprintf(
                 'No env manifest found for %s — run `yolo sync:environment %s` to seed it first.',
                 $environment,

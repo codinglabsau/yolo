@@ -34,13 +34,13 @@ Several apps can share one environment's VPC and load balancer. Because `sync:ap
 
 App manifests declare what each **app** needs. The environment-shared tier has a declaration of its own: two files in the env config bucket (`yolo-{account-id}-{env}-config`), living in S3 rather than any app's repo precisely *because* they're shared — no single repo owns them, and every syncing app must see the same truth.
 
-- **`yolo-env.yml`** — [the env manifest](/reference/manifest#the-environment-manifest-yolo-env-yml): the environment's canonical service domain and its env-shared services. Seeded with defaults by the environment's first `sync` and **never touched by sync again** — every later edit is yours, made through the pull/push flow below.
+- **`yolo-{environment}.yml`** — [the env manifest](/reference/manifest#the-environment-manifest-yolo-environment-yml): the environment's canonical service domain and its env-shared services. `yolo.yml` is the app; `yolo-production.yml` is the production environment. Seeded with defaults by the environment's first `sync` and **never touched by sync again** — every later edit is yours, made through the pull/push flow below.
 - **`.env`** — the env-shared secrets channel, the environment-tier sibling of each app's `.env.{environment}`. It holds *generated* service secrets (created on demand by the services that need them) and anything an env-shared service should read at provision time.
 
 The edit flow mirrors app env files:
 
 ```bash
-yolo env:pull production --shared    # → yolo-env.production.yml + .env.production.shared (gitignored)
+yolo env:pull production --shared    # → yolo-production.yml + .env.production.shared (gitignored)
 # edit
 yolo env:push production --shared    # validated, key-level diff, confirm
 yolo sync:environment production     # from any app in the environment

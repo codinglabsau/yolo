@@ -32,7 +32,7 @@ class SeedEnvManifestStep implements Step
             return StepResult::SYNCED;
         }
 
-        $this->recordChange(Change::make(EnvManifest::FILENAME, 'absent', 'seeded'));
+        $this->recordChange(Change::make(EnvManifest::filename(), 'absent', 'seeded'));
 
         if (Arr::get($options, 'dry-run')) {
             return StepResult::WOULD_CREATE;
@@ -40,7 +40,7 @@ class SeedEnvManifestStep implements Step
 
         Aws::s3()->putObject([
             'Bucket' => Paths::s3EnvConfigBucket(),
-            'Key' => EnvManifest::FILENAME,
+            'Key' => EnvManifest::filename(),
             'Body' => EnvManifest::seedContents(),
         ]);
 
