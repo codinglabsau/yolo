@@ -108,3 +108,29 @@ it('grants read+write on the declared data bucket, scoped to that bucket only', 
         's3:GetBucketLocation',
     ]);
 });
+
+it('grants the task role IVS access when the app consumes the ivs service', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'services' => ['ivs'],
+    ]);
+
+    $statements = (new EcsTaskPolicy())->document()['Statement'];
+
+    expect($statements)->toHaveCount(4);
+
+    $ivs = collect($statements)->firstWhere('Action', ['ivs:*']);
+    expect($ivs['Effect'])->toBe('Allow');
+    // Channels/stream keys are created by the app at runtime — no stable
+    // ARNs to scope to, so the grant is service-wide.
+    expect($ivs['Resource'])->toBe('*');
+});
+
+it('grants no IVS access when the app does not consume the ivs service', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+    ]);
+
+    $actions = collect((new EcsTaskPolicy())->document()['Statement'])->pluck('Action')->flatten();
+
+    expect($actions)->not->toContain('ivs:*');
+});

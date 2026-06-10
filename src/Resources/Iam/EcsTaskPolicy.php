@@ -7,6 +7,7 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Enums\Scope;
+use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Resources\S3\S3Bucket;
@@ -135,6 +136,19 @@ class EcsTaskPolicy implements Resource, SynchronisesConfiguration
         // the per-app role means this can't reach another app's bucket.
         if (Manifest::has('bucket')) {
             $statements = [...$statements, ...$this->bucketStatements()];
+        }
+
+        // Consuming the ivs service (`services: [ivs]`) means the app drives IVS
+        // itself at runtime — channels, stream keys, streams are created on
+        // demand, so there are no stable resource ARNs to scope to and the
+        // grant is service-wide. The env-shared event-logging pipeline is the
+        // environment manifest's concern, not this role's.
+        if (Manifest::usesService(Service::IVS)) {
+            $statements[] = [
+                'Effect' => 'Allow',
+                'Resource' => '*',
+                'Action' => ['ivs:*'],
+            ];
         }
 
         return [

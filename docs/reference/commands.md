@@ -49,7 +49,7 @@ Interactive. Prompts for the app name, AWS account ID, region, and (unless multi
 - Writes `yolo.yml` from the stub.
 - Writes a default `Dockerfile` and `.dockerignore` (asks before overwriting existing ones).
 - Creates a starter `.env.production`.
-- Appends `.yolo`, `.env.staging`, and `.env.production` to `.gitignore`.
+- Appends `.yolo`, `.env.staging`, `.env.production`, and the env-shared working copies (`.env.*.shared`, `yolo-*.yml`) to `.gitignore`.
 - Offers to install the AWS Session Manager plugin (used by [`run`](#yolo-run)).
 
 This is the only command that runs without an existing manifest.
@@ -348,7 +348,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **account**.
 
 ## `yolo sync:environment`
 
-Sync the environment-shared (environment-tier) resources — VPC, subnets, internet gateway and routes, the load balancer security group, the ALB and its `:80` listener, the SNS alarm topic, the shared ECS execution IAM role, and the [WAF web ACL](/guide/provisioning#web-application-firewall) (with its allow/block IP sets) fronting the ALB.
+Sync the environment-shared (environment-tier) resources — VPC, subnets, internet gateway and routes, the load balancer security group, the env config bucket holding [the environment's declaration](/guide/provisioning#the-environment-declaration) (env manifest + env-shared `.env`, the manifest seeded once on first sync), the IVS event-logging pipeline when the env manifest declares `services.ivs`, the ALB and its `:80` listener, the SNS alarm topic, the shared ECS execution IAM role, and the [WAF web ACL](/guide/provisioning#web-application-firewall) (with its allow/block IP sets) fronting the ALB.
 
 ```bash
 yolo sync:environment <environment> [--check] [--force] [--no-progress] [--tenant=<id>]

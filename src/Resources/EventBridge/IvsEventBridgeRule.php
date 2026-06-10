@@ -14,8 +14,11 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * EventBridge rule that matches IVS state-change events and routes them to the
- * IvsLogGroup (via IvsEventBridgeTargetStep). putRule is an upsert, so rule
- * config is reconciled through synchroniseConfiguration on every existing sync.
+ * IvsLogGroup (via IvsEventBridgeTargetStep). Env-shared: the `source: aws.ivs`
+ * pattern matches every IVS event in the account/region, so the rule belongs to
+ * the environment — one pipeline, declared via the env manifest's
+ * `services.ivs`. putRule is an upsert, so rule config is reconciled through
+ * synchroniseConfiguration on every existing sync.
  */
 class IvsEventBridgeRule implements Resource, SynchronisesConfiguration
 {
@@ -28,7 +31,7 @@ class IvsEventBridgeRule implements Resource, SynchronisesConfiguration
 
     public function scope(): Scope
     {
-        return Scope::App;
+        return Scope::Env;
     }
 
     public function exists(): bool

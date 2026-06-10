@@ -47,8 +47,8 @@ function bindRecordingEventBridgeClient(array $rule): object
 function liveIvsRule(array $overrides = []): array
 {
     return array_merge([
-        'Name' => 'yolo-testing-my-app-ivs-state-change',
-        'Arn' => 'arn:aws:events:ap-southeast-2:111111111111:rule/yolo-testing-my-app-ivs-state-change',
+        'Name' => 'yolo-testing-ivs-state-change',
+        'Arn' => 'arn:aws:events:ap-southeast-2:111111111111:rule/yolo-testing-ivs-state-change',
         'EventPattern' => json_encode(['source' => ['aws.ivs']]),
         'State' => 'ENABLED',
         'Description' => 'YOLO managed IVS state change events',

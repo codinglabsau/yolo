@@ -222,11 +222,13 @@ The YOLO-provisioned services this app consumes — a list of bare capability na
 services: [ivs]
 ```
 
-| Service | What opting in provisions |
+| Service | What consuming it gives this app |
 |---|---|
-| `ivs` | IVS (Amazon Interactive Video Service) event logging — a CloudWatch log group (14-day retention) and the EventBridge rule/target feeding it |
+| `ivs` | The app's ECS task role is granted IVS access (`ivs:*` — channels and stream keys are created by the app at runtime, so there's nothing stable to scope to), and the app's CloudWatch dashboard gains the IVS logs panel |
 
 An entry is a *consumption claim*, deliberately just a name: all service **shape** (sizing, versions, retention) is either hardcoded or belongs to [the environment manifest](#the-environment-manifest-yolo-environment-yml), never the app manifest — so two apps can never declare competing configuration for shared infrastructure. Unknown names, duplicate entries, or anything other than a flat list hard-fail validation.
+
+The corresponding env-shared infrastructure is the environment manifest's side of the contract — e.g. the IVS event-logging pipeline (one `/aws/ivs/yolo-{env}` log group + EventBridge rule per environment, because the `aws.ivs` event stream is account-wide) is provisioned by `sync:environment` when `yolo-{environment}.yml` declares `services.ivs`. Defaulted framework backends ([`cache`](#cache), [`session`](#session)) deliberately stay separate keys — `services` is for opt-in capabilities only.
 
 ### `mediaconvert`
 
@@ -468,6 +470,6 @@ services: {}             # env-shared services — the extension point for what 
 | Key | Purpose |
 |---|---|
 | `domain` | The environment's canonical domain for shared-service hostnames (e.g. `search.{domain}`). Distinct from any app's `domain` — shared services are served on the *environment's* name, reachable from every app regardless of their own domains. |
-| `services` | Env-shared services provisioned by `sync:environment`. Ships empty; the first occupant is the shared search service. |
+| `services` | Env-shared services provisioned by `sync:environment`. `services.ivs: {}` enables the environment's IVS event-logging pipeline (the app-side counterpart is [`services: [ivs]`](#services) in `yolo.yml`). |
 
 Like `yolo.yml`, the file is validated against a strict allow-list — an unrecognised key hard-fails both `environment:manifest:push` (before upload) and any sync that reads it. See [The environment declaration](/guide/provisioning#the-environment-declaration) for the model.

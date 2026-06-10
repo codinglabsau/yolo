@@ -70,3 +70,7 @@ it('names the manifest after its environment, in the bucket and on disk', functi
     expect(EnvManifest::filename())->toBe('yolo-testing.yml')
         ->and(EnvManifest::localPath())->toEndWith('/yolo-testing.yml');
 });
+
+it('accepts a declared ivs service', function (): void {
+    expect(EnvManifest::parse("services:\n  ivs: {}\n"))->toBe(['services' => ['ivs' => []]]);
+});

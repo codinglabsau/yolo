@@ -1,20 +1,29 @@
 <?php
 
-namespace Codinglabs\Yolo\Steps\Sync\App;
+namespace Codinglabs\Yolo\Steps\Sync\Environment;
 
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
+use Codinglabs\Yolo\EnvManifest;
+use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Aws\EventBridge;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Contracts\ExecutesIvsStep;
 use Codinglabs\Yolo\Resources\CloudWatchLogs\IvsLogGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 use Codinglabs\Yolo\Resources\EventBridge\IvsEventBridgeRule;
 
-class SyncIvsEventBridgeTargetStep implements ExecutesIvsStep
+/**
+ * Points the env-shared IVS state-change rule at the env-shared IVS log group
+ * when the environment manifest declares the ivs service (`services.ivs`).
+ */
+class SyncIvsEventBridgeTargetStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
+        if (! EnvManifest::has('services.ivs')) {
+            return StepResult::SKIPPED;
+        }
+
         $ruleName = (new IvsEventBridgeRule())->name();
         $expectedArn = (new IvsLogGroup())->arn();
 

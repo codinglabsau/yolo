@@ -42,7 +42,7 @@ class EnvManifest
      *
      * @var array<int, string>
      */
-    protected const ALLOWED_KEYS = ['domain', 'services'];
+    protected const ALLOWED_KEYS = ['domain', 'services', 'services.ivs'];
 
     /** @var array<string, mixed>|null */
     protected static ?array $loaded = null;

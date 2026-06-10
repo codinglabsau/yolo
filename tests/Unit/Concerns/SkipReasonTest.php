@@ -4,7 +4,6 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Commands\SyncCommand;
-use Codinglabs\Yolo\Contracts\ExecutesIvsStep;
 use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Contracts\ExecutesSoloStep;
 use Codinglabs\Yolo\Contracts\ExecutesMultitenancyStep;
@@ -69,27 +68,6 @@ it('runs web steps when the app has a domain', function (): void {
     ]);
 
     expect(skipReasonFor(new class() implements ExecutesWebStep
-    {
-        use FakeStepInvoke;
-    }))->toBeNull();
-});
-
-it('skips IVS steps when ivs is not enabled', function (): void {
-    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
-
-    expect(skipReasonFor(new class() implements ExecutesIvsStep
-    {
-        use FakeStepInvoke;
-    }))
-        ->toBe('ivs not declared in manifest services');
-});
-
-it('runs IVS steps when ivs is enabled', function (): void {
-    writeManifest([
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'services' => ['ivs'],
-    ]);
-
-    expect(skipReasonFor(new class() implements ExecutesIvsStep
     {
         use FakeStepInvoke;
     }))->toBeNull();

@@ -15,9 +15,13 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * CloudWatch log group that receives IVS state-change events (delivered by the
- * IvsEventBridgeRule). The /aws/ivs/ prefix follows the AWS convention for
- * service log groups. Retention and the EventBridge-delivery resource policy
- * are reconciled on every sync.
+ * IvsEventBridgeRule). Env-shared, because the event stream is: the rule's
+ * `source: aws.ivs` pattern matches every IVS event in the account/region —
+ * channels are created by apps at runtime, so there's nothing stable to filter
+ * per app, and per-app pipelines would each capture every other app's events.
+ * One pipeline per environment is the honest shape. The /aws/ivs/ prefix
+ * follows the AWS convention for service log groups. Retention and the
+ * EventBridge-delivery resource policy are reconciled on every sync.
  */
 class IvsLogGroup implements Resource, SynchronisesConfiguration
 {
@@ -30,7 +34,7 @@ class IvsLogGroup implements Resource, SynchronisesConfiguration
 
     public function scope(): Scope
     {
-        return Scope::App;
+        return Scope::Env;
     }
 
     public function exists(): bool

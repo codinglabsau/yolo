@@ -99,10 +99,10 @@ it('plans (scopes + skipping) before applying, ending with the results table', f
         'environment' => [RunScopesFakeStep::class, RunScopesFakeStep::class],
         'app' => [
             RunScopesFakeStep::class,
-            // the three IVS steps skip unless the ivs service is declared
-            Steps\Sync\App\SyncIvsCloudWatchLogGroupStep::class,
-            Steps\Sync\App\SyncIvsEventBridgeRuleStep::class,
-            Steps\Sync\App\SyncIvsEventBridgeTargetStep::class,
+            // the three web ingress steps skip on a headless app (no domain)
+            Steps\Sync\App\SyncTargetGroupStep::class,
+            Steps\Sync\App\SyncForwardRuleStep::class,
+            Steps\Sync\App\SyncRedirectRuleStep::class,
         ],
     ], ['--no-progress' => true]);
 
@@ -112,7 +112,7 @@ it('plans (scopes + skipping) before applying, ending with the results table', f
         ->toContain('environment')
         ->toContain('app')
         ->toContain('Skipping')
-        ->toContain('ivs not declared in manifest services')
+        ->toContain('headless app (no ALB / Route 53 / domain)')
         ->toContain('CREATED')
         ->toContain('Synced testing');
 
@@ -197,26 +197,26 @@ it('separates brand-new resources (Will create) from drift on existing ones (Pen
 it('shows the skipped concept summary at normal verbosity but hides per-resource names', function (): void {
     $output = runScopesCapture([
         'app' => [
-            Steps\Sync\App\SyncIvsCloudWatchLogGroupStep::class,
-            Steps\Sync\App\SyncIvsEventBridgeRuleStep::class,
-            Steps\Sync\App\SyncIvsEventBridgeTargetStep::class,
+            Steps\Sync\App\SyncTargetGroupStep::class,
+            Steps\Sync\App\SyncForwardRuleStep::class,
+            Steps\Sync\App\SyncRedirectRuleStep::class,
         ],
     ], ['--no-progress' => true]);
 
     expect($output)
         ->toContain('Skipping')
-        ->toContain('ivs not declared in manifest services')
+        ->toContain('headless app (no ALB / Route 53 / domain)')
         ->toContain('(3)')                            // concept-summary count
-        ->not->toContain('ivs cloud watch log group') // per-resource detail hidden
-        ->not->toContain('ivs event bridge rule');
+        ->not->toContain('target group') // per-resource detail hidden
+        ->not->toContain('forward rule');
 });
 
 it('expands the skipped section to per-resource names under -v', function (): void {
     $output = runScopesCapture([
         'app' => [
-            Steps\Sync\App\SyncIvsCloudWatchLogGroupStep::class,
-            Steps\Sync\App\SyncIvsEventBridgeRuleStep::class,
-            Steps\Sync\App\SyncIvsEventBridgeTargetStep::class,
+            Steps\Sync\App\SyncTargetGroupStep::class,
+            Steps\Sync\App\SyncForwardRuleStep::class,
+            Steps\Sync\App\SyncRedirectRuleStep::class,
         ],
     ], ['--no-progress' => true], BufferedOutput::VERBOSITY_VERBOSE);
 
@@ -224,10 +224,10 @@ it('expands the skipped section to per-resource names under -v', function (): vo
     // (normaliseStep lowercases everything past the first char)
     expect($output)
         ->toContain('Skipping')
-        ->toContain('ivs not declared in manifest services')
-        ->toContain('ivs cloud watch log group')
-        ->toContain('ivs event bridge rule')
-        ->toContain('ivs event bridge target');
+        ->toContain('headless app (no ALB / Route 53 / domain)')
+        ->toContain('target group')
+        ->toContain('forward rule')
+        ->toContain('redirect rule');
 });
 
 it('renders command advisories under a Warnings heading, as part of the plan', function (): void {

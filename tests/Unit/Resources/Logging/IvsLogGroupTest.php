@@ -30,8 +30,8 @@ function bindRecordingCloudWatchLogsClient(?int $retentionInDays, array $resourc
 
             return Create::promiseFor(match ($cmd->getName()) {
                 'DescribeLogGroups' => new Result(['logGroups' => [array_filter([
-                    'logGroupName' => '/aws/ivs/yolo-testing-my-app',
-                    'arn' => 'arn:aws:logs:ap-southeast-2:111111111111:log-group:/aws/ivs/yolo-testing-my-app',
+                    'logGroupName' => '/aws/ivs/yolo-testing',
+                    'arn' => 'arn:aws:logs:ap-southeast-2:111111111111:log-group:/aws/ivs/yolo-testing',
                     'retentionInDays' => $this->retentionInDays,
                 ], fn (int|string|null $value): bool => $value !== null)]]),
                 'DescribeResourcePolicies' => new Result(['resourcePolicies' => $this->resourcePolicies]),
