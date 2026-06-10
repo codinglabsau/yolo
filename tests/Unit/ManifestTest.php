@@ -129,6 +129,27 @@ describe('cache + session defaults', function (): void {
     });
 });
 
+describe('scout driver', function (): void {
+    it('has no scout default — search is off unless declared', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => []],
+        ]);
+
+        expect(Manifest::scoutDriver())->toBeNull();
+    });
+
+    it('returns the declared scout driver', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => []],
+            'scout' => ['driver' => 'meilisearch'],
+        ]);
+
+        expect(Manifest::scoutDriver())->toBe('meilisearch');
+    });
+});
+
 describe('octane', function (): void {
     it('defaults to running octane when tasks.web.octane is unset', function (): void {
         writeManifest([

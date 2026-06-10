@@ -389,6 +389,29 @@ class Aws
     }
 
     /**
+     * Synchronise tags on an SSM parameter, addressed by its name. SSM tags via
+     * the generic AddTagsToResource with an explicit ResourceType.
+     *
+     * @return array<string, string>
+     */
+    public static function synchroniseSsmTags(string $name, array $tags, bool $apply): array
+    {
+        return static::reconcileTags(
+            $tags,
+            fn () => static::ssm()->listTagsForResource([
+                'ResourceType' => 'Parameter',
+                'ResourceId' => $name,
+            ])['TagList'] ?? [],
+            fn (array $missing) => static::ssm()->addTagsToResource([
+                'ResourceType' => 'Parameter',
+                'ResourceId' => $name,
+                'Tags' => static::keyValueTags($missing),
+            ]),
+            $apply,
+        );
+    }
+
+    /**
      * Synchronise tags on a CloudWatch alarm, addressed by its ARN.
      *
      * @return array<string, string>

@@ -45,7 +45,7 @@ class SyncTaskSecurityGroupStep implements Step
 
         $port = (int) Manifest::get('tasks.web.port', 8000);
 
-        // Record the missing rule before the dry-run guard (mirroring AuthorisesTaskIngress)
+        // Record the missing rule before the dry-run guard (mirroring AuthorisesIngress)
         // so the plan pass flags this step pending. Without it a SG that exists but lacks
         // the rule — e.g. a create interrupted mid-flight — records no change, gets pruned
         // before apply, and can never be self-healed by a later sync.

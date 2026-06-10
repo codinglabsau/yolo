@@ -261,6 +261,91 @@ it('does not pin SESSION_DRIVER when the manifest does not select one', function
     expect(file_get_contents(Paths::build('.env.testing')))->not->toContain('SESSION_DRIVER=');
 });
 
+it('wires the app to the shared Meilisearch when scout.driver is meilisearch', function (): void {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'codinglabs.com.au',
+        'tasks' => ['web' => []],
+        'scout' => ['driver' => 'meilisearch'],
+    ]);
+
+    $captured = [];
+    bindMockSsmClient([
+        'GetParameter' => new Result(['Parameter' => [
+            'Name' => 'yolo-testing-meilisearch-master-key',
+            'Value' => 'super-secret-master-key',
+        ]]),
+    ], $captured);
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('SCOUT_DRIVER=meilisearch');
+    // One host for browser and server-side indexing alike — the derived public
+    // search host, always covered by the app's {apex} + *.{apex} cert.
+    expect($env)->toContain('MEILISEARCH_HOST=https://search.codinglabs.com.au');
+    expect($env)->toContain('MEILISEARCH_KEY=super-secret-master-key');
+    expect($env)->toContain('SCOUT_PREFIX=yolo-testing-my-app_');
+
+    // The key is read decrypted from Parameter Store.
+    $get = collect($captured)->firstWhere('name', 'GetParameter');
+    expect($get['args']['WithDecryption'])->toBeTrue();
+});
+
+it('pins SCOUT_DRIVER only for an app-managed scout driver', function (): void {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => []],
+        'scout' => ['driver' => 'algolia'],
+    ]);
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('SCOUT_DRIVER=algolia');
+    expect($env)->not->toContain('MEILISEARCH_HOST');
+    expect($env)->not->toContain('MEILISEARCH_KEY');
+    expect($env)->not->toContain('SCOUT_PREFIX');
+});
+
+it('does not pin SCOUT_DRIVER when the manifest declares no scout driver', function (): void {
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    expect(file_get_contents(Paths::build('.env.testing')))->not->toContain('SCOUT_DRIVER=');
+});
+
+it('respects MEILISEARCH_HOST and MEILISEARCH_KEY already set in the .env', function (): void {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'codinglabs.com.au',
+        'tasks' => ['web' => []],
+        'scout' => ['driver' => 'meilisearch'],
+    ]);
+
+    file_put_contents(
+        Paths::build('.env.testing'),
+        "MEILISEARCH_HOST=https://my-own-host.example.com\nMEILISEARCH_KEY=my-own-key\n",
+    );
+
+    $captured = [];
+    bindMockSsmClient([
+        'GetParameter' => new Result(['Parameter' => [
+            'Name' => 'yolo-testing-meilisearch-master-key',
+            'Value' => 'super-secret-master-key',
+        ]]),
+    ], $captured);
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('MEILISEARCH_HOST=https://my-own-host.example.com');
+    expect($env)->not->toContain('MEILISEARCH_HOST=https://search.codinglabs.com.au');
+    expect($env)->not->toContain('MEILISEARCH_KEY=super-secret-master-key');
+});
+
 it('enables Inertia SSR when tasks.web.ssr is on', function (): void {
     rebuildEnvFixture([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',

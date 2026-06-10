@@ -14,7 +14,7 @@ YOLO groups every resource by **ownership scope** — the blast radius if it cha
 |---|---|---|---|
 | `yolo sync:account <env>` | **Account** | the whole AWS account | GitHub OIDC provider |
 | `yolo sync:environment <env>` | **Environment** | every app in the environment | VPC, subnets, internet gateway & routes, RDS security group, SNS alarm topic, the shared ECS execution IAM role, the ALB and its `:80`/`:443` listeners, the [WAF](#web-application-firewall) fronting the ALB |
-| `yolo sync:app <env>` | **App** | one app | S3 buckets, app IAM (deployer role/policy, the per-app ECS task role + any [`task-role-policies`](/reference/manifest#task-role-policies)), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, hosted zone & ACM certificate, SQS queues, CloudWatch dashboard — plus, for web apps, the shared [Valkey cache](#cache-and-sessions) (default-on; opt out via `cache.store`). Sessions ride the same Valkey cluster by default, so they need no provisioning of their own |
+| `yolo sync:app <env>` | **App** | one app | S3 buckets, app IAM (deployer role/policy, the per-app ECS task role + any [`task-role-policies`](/reference/manifest#task-role-policies)), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, hosted zone & ACM certificate, SQS queues, CloudWatch dashboard — plus, for web apps, the shared [Valkey cache](#cache-and-sessions) (default-on; opt out via `cache.store`) and the shared [Meilisearch service](#search) when `scout.driver: meilisearch` is declared. Sessions ride the same Valkey cluster by default, so they need no provisioning of their own |
 
 The bare `yolo sync` runs all three **in dependency order** — account, then environment, then app:
 
@@ -22,9 +22,9 @@ The bare `yolo sync` runs all three **in dependency order** — account, then en
 yolo sync production   # account → environment → app
 ```
 
-`sync:app` only *additively attaches* to shared infrastructure (its SNI certificate and listener rule on the environment's `:443` listener, its `3306` ingress rule on the shared RDS security group, its `6379` ingress rule on the shared cache security group). It never modifies the shared resource itself, so the environment tier stays the single writer.
+`sync:app` only *additively attaches* to shared infrastructure (its SNI certificate and listener rule on the environment's `:443` listener, its `3306` ingress rule on the shared RDS security group, its `6379` ingress rule on the shared cache security group, its `search.{apex}` listener rule onto the shared Meilisearch target group). It never modifies the shared resource itself, so the environment tier stays the single writer.
 
-The shared **Valkey cache** is env-scoped but bootstrapped from `sync:app` by exception (like the RDS security group), because its security group needs this app's task SG to authorise. The first web app to sync creates the cluster (cache defaults on); later apps find it and just wire their env. **Sessions reuse the same cluster** (on a separate logical database), so there's no extra session infrastructure to provision.
+The shared **Valkey cache** is env-scoped but bootstrapped from `sync:app` by exception (like the RDS security group), because its security group needs this app's task SG to authorise. The first web app to sync creates the cluster (cache defaults on); later apps find it and just wire their env. **Sessions reuse the same cluster** (on a separate logical database), so there's no extra session infrastructure to provision. The shared **Meilisearch service** rides the same bootstrap-from-app exception — the first app declaring [`scout.driver: meilisearch`](/reference/manifest#scout) creates it; see [Search](#search).
 
 ::: tip Why scopes matter
 Several apps can share one environment's VPC and load balancer. Because `sync:app` only attaches and never mutates, deploying app B can't break app A's networking. When you're iterating on one app, `sync:app` is faster than a full `sync` — the account and environment tiers rarely change.
@@ -125,6 +125,19 @@ The single cache node is a sound default — a node loss flushes the cache (it r
 ::: warning Failover isn't write-back
 Writes that land in the fallback store during an outage are **not** synced back to Valkey when it recovers, so it's a degradation cushion, not a replica. It also only covers the **cache** store — sessions on the redis driver still depend on the node being up, so for session HA add a Multi-AZ replica rather than relying on failover.
 :::
+
+## Search
+
+Declaring [`scout.driver: meilisearch`](/reference/manifest#scout) gives the environment a shared, self-hosted **Meilisearch** — one Fargate singleton running the pinned upstream image, shared by every app that declares it and isolated per app by a `SCOUT_PREFIX` on index names. It's the Valkey cache model applied to search: env-scoped compute bootstrapped from `sync:app`, frozen at create, tags-only on subsequent syncs — so apps pinned to different YOLO versions can never thrash it, and an engine upgrade is a deliberate operation rather than an implicit drift-fix (Meilisearch's on-disk index format is version-locked).
+
+What each app gets is its own **public ingress onto the shared instance**: a `search.{apex}` host rule on the env `:443` listener and a Route&nbsp;53 alias record. The host is derived from the apex — always one level under the app's existing `{apex}` + `*.{apex}` SAN certificate, so it's covered with no new cert — and capability-named, so a future engine swap doesn't change any app's config. Scout's server-side indexing uses the same public host the browser does: one host, one code path (the in-region hairpin through the ALB is irrelevant for async SQS indexing).
+
+Worth knowing:
+
+- **The index is a rebuildable cache.** It lives on the task's ephemeral storage; a replaced task starts empty and is refilled by `scout:import` from your database. Build search to fail soft (fall back to a DB query or a "search unavailable" state) during that window. On Fargate an EBS volume would be per-task and deleted with it — no more durable than ephemeral storage, just more moving parts — which is why there isn't one.
+- **Auth:** the env **master key** is injected as `MEILISEARCH_KEY` for MVP — acceptable while every app in the environment is yours. Don't ship it to browsers: derive a search-only key (or tenant token) app-side for any front-end client.
+- **The search host sits behind the env [WAF](#web-application-firewall)** — including its per-IP rate limit. Browser keystroke search sits well under it, but a very aggressive bulk reindex hammering the host from one task IP could brush against it; Scout's queued, chunked indexing in practice does not.
+- **Throttle reimports.** A full `scout:import` competes with live queries on the one node — run it through the queue at sensible concurrency rather than blasting it.
 
 ## Auditing what's deployed
 

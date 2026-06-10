@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Resources\ElbV2;
 
 use Codinglabs\Yolo\Change;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Resources\Resource;
 
 /**
  * Forwards the app's canonical host (`domain`) to its target group. This is the
@@ -22,11 +23,16 @@ class ForwardListenerRule extends ListenerRule
         return [Manifest::get('domain', Manifest::apex())];
     }
 
+    protected function targetGroup(): Resource
+    {
+        return new TargetGroup();
+    }
+
     protected function action(): array
     {
         return [
             'Type' => 'forward',
-            'TargetGroupArn' => (new TargetGroup())->arn(),
+            'TargetGroupArn' => $this->targetGroup()->arn(),
         ];
     }
 
@@ -36,7 +42,7 @@ class ForwardListenerRule extends ListenerRule
             ?? $liveAction['ForwardConfig']['TargetGroups'][0]['TargetGroupArn']
             ?? null;
 
-        if (($liveAction['Type'] ?? null) === 'forward' && $liveTargetGroup === (new TargetGroup())->arn()) {
+        if (($liveAction['Type'] ?? null) === 'forward' && $liveTargetGroup === $this->targetGroup()->arn()) {
             return null;
         }
 

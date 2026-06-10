@@ -14,6 +14,7 @@ use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
 use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Resources\S3\AssetBucket;
 use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
+use Codinglabs\Yolo\Resources\Ssm\MeilisearchMasterKey;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -256,6 +257,23 @@ class DeployerPolicy implements Resource, SynchronisesConfiguration
                 'Effect' => 'Allow',
                 'Resource' => '*',
                 'Action' => ['elasticache:DescribeReplicationGroups'],
+            ];
+        }
+
+        // When the app uses the shared Meilisearch (`scout.driver: meilisearch`),
+        // the build bakes MEILISEARCH_KEY by reading the master-key parameter
+        // (ConfigureEnvAndVersionStep -> MeilisearchMasterKey::value()), scoped
+        // to that one parameter.
+        if (Manifest::scoutDriver() === 'meilisearch') {
+            $statements[] = [
+                'Effect' => 'Allow',
+                'Resource' => sprintf(
+                    'arn:aws:ssm:%s:%s:parameter/%s',
+                    Manifest::get('region'),
+                    Aws::accountId(),
+                    (new MeilisearchMasterKey())->name(),
+                ),
+                'Action' => ['ssm:GetParameter'],
             ];
         }
 

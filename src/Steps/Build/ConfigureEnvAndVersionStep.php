@@ -12,6 +12,8 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
 use Codinglabs\Yolo\Resources\ElastiCache\CacheCluster;
+use Codinglabs\Yolo\Resources\ElbV2\SearchListenerRule;
+use Codinglabs\Yolo\Resources\Ssm\MeilisearchMasterKey;
 use Codinglabs\Yolo\Resources\CloudFront\AssetDistribution;
 
 class ConfigureEnvAndVersionStep implements Step
@@ -102,6 +104,22 @@ class ConfigureEnvAndVersionStep implements Step
         // (database/cookie/file) need no extra env here.
         if ($sessionDriver = Manifest::sessionDriver()) {
             $defaults['SESSION_DRIVER'] = $sessionDriver;
+        }
+
+        // Scout driver: off unless declared (Manifest::scoutDriver). Pin
+        // SCOUT_DRIVER; for meilisearch, point the app at the shared env service
+        // on its derived public host (one host for browser and server-side
+        // indexing alike), bake the master key (read live from Parameter Store —
+        // synced before deploy), and isolate this app's indexes on the shared
+        // instance with a per-app prefix — the cache REDIS_PREFIX idiom.
+        if ($scoutDriver = Manifest::scoutDriver()) {
+            $defaults['SCOUT_DRIVER'] = $scoutDriver;
+
+            if ($scoutDriver === 'meilisearch') {
+                $defaults['MEILISEARCH_HOST'] = 'https://' . SearchListenerRule::host();
+                $defaults['MEILISEARCH_KEY'] = (new MeilisearchMasterKey())->value();
+                $defaults['SCOUT_PREFIX'] = Helpers::keyedResourceName() . '_';
+            }
         }
 
         // Inertia SSR: when the web container bundles the SSR Node process

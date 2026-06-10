@@ -116,10 +116,24 @@ class SyncAppCommand extends SyncSteppedCommand
                         Steps\Sync\App\SyncCacheParameterGroupStep::class,
                         Steps\Sync\App\SyncCacheSecurityGroupStep::class,
                         Steps\Sync\App\SyncCacheClusterStep::class,
+                        // Meilisearch (gated on scout.driver) — env-shared like the
+                        // cache, bootstrapped from sync:app the same way; the service
+                        // step runs last in the sequence and depends on the rest.
+                        Steps\Sync\App\SyncMeilisearchMasterKeyStep::class,
+                        Steps\Sync\App\SyncMeilisearchLogGroupStep::class,
+                        Steps\Sync\App\SyncMeilisearchExecutionRoleStep::class,
+                        Steps\Sync\App\SyncMeilisearchSecurityGroupStep::class,
+                        Steps\Sync\App\SyncMeilisearchTargetGroupStep::class,
+                        Steps\Sync\App\SyncMeilisearchClusterStep::class,
+                        Steps\Sync\App\SyncMeilisearchServiceStep::class,
                         Steps\Sync\App\SyncTargetGroupStep::class,
                         Steps\Sync\App\SyncHttpsListenerStep::class,
                         Steps\Sync\App\SyncForwardRuleStep::class,
                         Steps\Sync\App\SyncRedirectRuleStep::class,
+                        // App-scoped search ingress (host rule + DNS record) onto the
+                        // shared Meilisearch target group — needs the HTTPS listener.
+                        Steps\Sync\App\SyncSearchRuleStep::class,
+                        Steps\Sync\App\SyncSearchRecordSetStep::class,
                         Steps\Sync\App\SyncTaskLogGroupStep::class,
                         Steps\Sync\App\SyncTaskDefinitionStep::class,
                         Steps\Sync\App\SyncEcsServiceStep::class,

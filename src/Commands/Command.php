@@ -92,6 +92,7 @@ abstract class Command extends SymfonyCommand
             && $this->ensureManifestKeyDeclared('account-id')
             && $this->ensureCacheStoreValid()
             && $this->ensureSessionDriverValid()
+            && $this->ensureScoutDriverValid()
             && $this->ensureSchedulerHostNotScaleToZero();
     }
 
@@ -194,6 +195,55 @@ abstract class Command extends SymfonyCommand
         // session driver is caught, not silently shipped pointing at no cluster.
         if (Manifest::sessionDriver() === 'redis' && Manifest::cacheStore() !== 'redis') {
             error('yolo.yml `session.driver: redis` needs the Valkey cache (`cache.store: redis`, the web-app default) — don\'t opt the cache out.');
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * `scout.driver` (no default — search is off unless declared). `meilisearch`
+     * provisions the shared env Meilisearch service, which is served on
+     * `search.{apex}` through the env ALB — so it needs a solo app with a domain
+     * and a web task. Multi-tenant apps are not supported yet: per-tenant search
+     * hosts vs one canonical host is an open call (deferred to LP). The other
+     * drivers are app-managed and provision nothing.
+     */
+    protected function ensureScoutDriverValid(): bool
+    {
+        $driver = Manifest::scoutDriver();
+
+        if ($driver === null) {
+            return true;
+        }
+
+        $allowed = ['meilisearch', 'algolia', 'database', 'collection'];
+
+        if (! in_array($driver, $allowed, true)) {
+            error(sprintf('yolo.yml `scout.driver` must be one of: %s (meilisearch provisions the shared env search service; the rest are app-managed).', implode(', ', $allowed)));
+
+            return false;
+        }
+
+        if ($driver !== 'meilisearch') {
+            return true;
+        }
+
+        if (Manifest::isMultitenanted()) {
+            error('yolo.yml `scout.driver: meilisearch` is not supported on multi-tenant apps yet — the per-tenant vs canonical search host model is still an open call.');
+
+            return false;
+        }
+
+        if (Manifest::isHeadless()) {
+            error('yolo.yml `scout.driver: meilisearch` needs a public domain — search is served on `search.{apex}` through the environment load balancer.');
+
+            return false;
+        }
+
+        if (Manifest::doesntHave('tasks.web')) {
+            error('yolo.yml `scout.driver: meilisearch` needs a web app (`tasks.web`) — the search host rides the app\'s ALB ingress.');
 
             return false;
         }

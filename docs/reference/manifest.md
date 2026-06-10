@@ -321,6 +321,29 @@ On a web app, omitting `session` gives you the `redis` default; set a driver to 
 
 ---
 
+## `scout.*`
+
+Declares the app's [Laravel Scout](https://laravel.com/docs/scout) search driver. **No default — search is off unless declared** (like `ivs`). `meilisearch` provisions a shared self-hosted **Meilisearch** service for the environment — one instance shared by every app that declares it, isolated by a per-app index prefix (the cache-cluster idiom). Every other supported driver (`algolia` / `database` / `collection`) is app-managed: YOLO pins `SCOUT_DRIVER` and provisions nothing.
+
+```yaml
+scout:
+  driver: meilisearch   # off by default; meilisearch | algolia | database | collection
+```
+
+`meilisearch` provisions, with hardcoded sensible defaults (no tuning knobs until a real need lands):
+
+- a Fargate singleton on the env-shared `yolo-{env}-services` cluster, running the pinned upstream `getmeili/meilisearch` image as-is (1 vCPU / 4&nbsp;GB, ~A$55/mo) — the version is a YOLO-source constant read **only at create**, so apps pinned to different YOLO versions can never thrash the shared instance, and an engine upgrade is a deliberate out-of-band operation (the on-disk index format is version-locked);
+- the index on the task's ephemeral storage (20&nbsp;GB) — **a rebuildable cache, not a source of truth**. A replaced task starts empty and is refilled by a Scout reimport (`scout:import`) from your database; build search to fail soft during that window;
+- a generated master key in an SSM SecureString parameter, injected into the task via ECS `secrets` — it never appears in a task definition or manifest;
+- a security group allowing ingress on `7700` **only** from the env load balancer — all traffic, browser and server-side alike, arrives through the ALB (and therefore through the [env WAF](/guide/provisioning#web-application-firewall));
+- per declaring app, the public ingress: a `search.{apex}` listener rule on the env `:443` listener and a Route&nbsp;53 alias record. The host is derived, capability-named (`search.`, not `meilisearch.`), and always covered by the app's existing `{apex}` + `*.{apex}` certificate — no new cert.
+
+With the `meilisearch` driver, the container env gets `SCOUT_DRIVER=meilisearch`, `MEILISEARCH_HOST=https://search.{apex}` (one host for browser search and server-side Scout indexing alike), `MEILISEARCH_KEY` (the env master key) and a per-app `SCOUT_PREFIX` — each only if your `.env` doesn't already set it.
+
+Requires a **solo web app with a public domain** — search is served through the ALB, so a headless app has nothing to attach it to, and multi-tenant apps aren't supported yet (per-tenant vs canonical search host is an open call). YOLO hard-fails on either. For MVP the injected key is the env-level **master** key — fine while every app in the env is yours; per-app scoped keys and browser tenant tokens are the production-proper follow-up.
+
+---
+
 ## `tasks.web.*`
 
 Declaring `tasks.web` makes the app a Fargate web service. Omit `tasks` entirely for a build-only / headless app with no container.

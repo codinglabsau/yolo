@@ -114,7 +114,7 @@ it('records a pending change on the plan pass when the rule is absent so the ste
     // plan (dry-run) pass, so the runner's pending filter pruned the step before apply.
     // A task SG that exists without the rule (a create interrupted mid-flight) could
     // therefore never be self-healed by a later sync. The change must be recorded
-    // regardless of --dry-run, mirroring AuthorisesTaskIngress.
+    // regardless of --dry-run, mirroring AuthorisesIngress.
     $captured = [];
 
     bindMockEc2Client([

@@ -11,6 +11,7 @@ enum Iam: string
     case ECS_TASK_ROLE = 'ecs-task-role';
     case ECS_TASK_POLICY = 'ecs-task-policy';
     case ECS_EXECUTION_ROLE = 'ecs-execution-role';
+    case MEILISEARCH_EXECUTION_ROLE = 'meilisearch-execution-role';
     case DEPLOYER_ROLE = 'deployer';
     case DEPLOYER_POLICY = 'deployer-policy';
 }

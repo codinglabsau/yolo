@@ -6,8 +6,8 @@ use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Concerns\AuthorisesIngress;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
-use Codinglabs\Yolo\Concerns\AuthorisesTaskIngress;
 use Codinglabs\Yolo\Resources\Ec2\RdsSecurityGroup;
 
 /**
@@ -16,11 +16,11 @@ use Codinglabs\Yolo\Resources\Ec2\RdsSecurityGroup;
  * rather than sync:environment, because the ingress source is the ECS task SG,
  * which sync:app creates — the RDS subnet group stays in sync:environment.
  *
- * The ingress rule is managed purely additively (see AuthorisesTaskIngress).
+ * The ingress rule is managed purely additively (see AuthorisesIngress).
  */
 class SyncRdsSecurityGroupStep implements Step
 {
-    use AuthorisesTaskIngress;
+    use AuthorisesIngress;
     use SynchronisesResource;
 
     public function __invoke(array $options): StepResult

@@ -34,6 +34,7 @@ class Manifest
         'sqs.depth-alarm-threshold', 'sqs.depth-alarm-period', 'sqs.depth-alarm-evaluation-periods',
         'cache.store',
         'session.driver',
+        'scout.driver',
         'task-role-policies',
         // Each task group has a fixed, known shape, so every key is listed
         // explicitly: an unrecognised key under tasks.web / tasks.queue /
@@ -312,6 +313,17 @@ class Manifest
     public static function sessionDriver(): ?string
     {
         return static::get('session.driver', static::has('tasks.web') ? 'redis' : null);
+    }
+
+    /**
+     * The app's Scout driver. No default — search is off unless declared (like
+     * `ivs`). `meilisearch` provisions the shared env Meilisearch service and
+     * wires the app to it; every other driver (`algolia` / `database` /
+     * `collection`) is app-managed and provisions nothing.
+     */
+    public static function scoutDriver(): ?string
+    {
+        return static::get('scout.driver');
     }
 
     /**

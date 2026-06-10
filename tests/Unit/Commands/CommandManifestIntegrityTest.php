@@ -138,6 +138,69 @@ it('accepts session.driver redis when cache.store is redis', function (): void {
     expect(invokeManifestIntegrity())->toBeTrue();
 });
 
+it('accepts scout.driver meilisearch on a solo web app with a domain', function (): void {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'domain' => 'codinglabs.com.au', 'tasks' => ['web' => []],
+        'scout' => ['driver' => 'meilisearch'],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+});
+
+it('accepts an app-managed scout.driver without a domain', function (): void {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'scout' => ['driver' => 'algolia'],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+});
+
+it('bails on an unknown scout.driver', function (): void {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'scout' => ['driver' => 'typesense'],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+    expect(test()->promptOutput->fetch())->toContain('scout.driver');
+});
+
+it('bails on scout.driver meilisearch for a headless app', function (): void {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => []],
+        'scout' => ['driver' => 'meilisearch'],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+    expect(test()->promptOutput->fetch())->toContain('search.{apex}');
+});
+
+it('bails on scout.driver meilisearch for a multi-tenant app', function (): void {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => []],
+        'tenants' => ['gr' => ['domain' => 'gr.example.com']],
+        'scout' => ['driver' => 'meilisearch'],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+    expect(test()->promptOutput->fetch())->toContain('multi-tenant');
+});
+
+it('bails on scout.driver meilisearch without a web task', function (): void {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'domain' => 'codinglabs.com.au',
+        'scout' => ['driver' => 'meilisearch'],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+    expect(test()->promptOutput->fetch())->toContain('tasks.web');
+});
+
 it('accepts the known shape of every task group', function (): void {
     writeManifest([
         'account-id' => '848509375702', 'region' => 'ap-southeast-2',
