@@ -85,7 +85,7 @@ allowed to write it:
 | Command | `Scope` | Blast radius | Examples |
 | --- | --- | --- | --- |
 | `sync:account` | `Account` | the whole AWS account | GitHub OIDC provider |
-| `sync:environment <env>` | `Env` | every app in the environment | VPC, subnets, IGW/routes, RDS SG, SNS topic, shared ECS execution role, ALB + `:80` and `:443` listeners |
+| `sync:environment <env>` | `Env` | every app in the environment | VPC, subnets, IGW/routes, RDS SG, SNS topic, shared ECS execution role, env logs bucket (ALB access logs under `alb/`), ALB + `:80` and `:443` listeners |
 | `sync:app <env>` | `App` | one app | Storage, app IAM (deployer + per-app ECS task role + `task-role-policies`), Fargate (cluster/service/task def), CDN, IVS, mode-aware Queue/DNS |
 
 `sync` orchestrates **account → environment → app** in dependency order. `sync:app` only depends on and *additively

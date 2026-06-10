@@ -107,19 +107,19 @@ it('scopes PassRole to the per-app task role and shared execution role, passed o
     ]);
 });
 
-it('grants S3 object and bucket access on the asset and artefacts buckets', function (): void {
+it('grants S3 object and bucket access on the asset and config buckets', function (): void {
     $document = (new DeployerPolicy())->document();
 
     $objects = statementFor($document, 's3:PutObject');
     expect($objects['Resource'])->toBe([
-        'arn:aws:s3:::yolo-testing-my-app-assets/*',
-        'arn:aws:s3:::yolo-testing-my-app-artefacts/*',
+        'arn:aws:s3:::yolo-111111111111-testing-my-app-assets/*',
+        'arn:aws:s3:::yolo-111111111111-testing-my-app-config/*',
     ]);
 
     $buckets = statementFor($document, 's3:ListBucket');
     expect($buckets['Resource'])->toBe([
-        'arn:aws:s3:::yolo-testing-my-app-assets',
-        'arn:aws:s3:::yolo-testing-my-app-artefacts',
+        'arn:aws:s3:::yolo-111111111111-testing-my-app-assets',
+        'arn:aws:s3:::yolo-111111111111-testing-my-app-config',
     ]);
 });
 

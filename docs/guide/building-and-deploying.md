@@ -33,7 +33,7 @@ To watch a rollout as it happens, or check what's running at any time, run [`yol
 4. Generate the entrypoint and supervisord config (see [The Container Image](/guide/images)). Two preflight checks gate this step. First, YOLO **hard-fails the build** if `laravel/octane` isn't in your committed `composer.lock` production requirements — the web role runs `octane:start`, so a missing (or `require-dev`-only) octane would crash-loop the container on boot. (This check is skipped when [`tasks.web.octane: false`](/reference/manifest#tasks-web), where the web tier runs FrankenPHP classic mode and needs no octane package.) Second, when `tasks.web.ssr` is on, it warns if your Dockerfile has no Node runtime for the SSR process.
 5. Log in to ECR, build the Docker image, and push it.
 
-The image-building steps (4–5) only run when your manifest declares `tasks` — a headless app with no web task still builds its source artefact.
+The image-building steps (4–5) only run when your manifest declares `tasks` — with none declared, the build stops after staging the build directory (env file baked, build hooks run) and no image is produced.
 
 ## Zero-downtime rollout
 

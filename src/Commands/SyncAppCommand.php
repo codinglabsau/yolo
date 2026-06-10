@@ -70,7 +70,7 @@ class SyncAppCommand extends SyncSteppedCommand
         return [
             'app' => [
                 // storage
-                Steps\Sync\App\SyncS3ArtefactBucketStep::class,
+                Steps\Sync\App\SyncS3ConfigBucketStep::class,
                 Steps\Sync\App\SyncS3BucketStep::class,
                 Steps\Sync\App\SyncS3AssetBucketStep::class,
                 // app IAM (deployer + MediaConvert)

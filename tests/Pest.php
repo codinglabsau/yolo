@@ -54,7 +54,7 @@ if (! defined('BASE_PATH')) {
 file_put_contents($tempDir . '/yolo.yml', Yaml::dump([
     'name' => 'my-app',
     'environments' => [
-        'testing' => [],
+        'testing' => ['account-id' => '111111111111'],
     ],
 ], 10, 2));
 

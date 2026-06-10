@@ -2,6 +2,7 @@
 
 use Aws\Result;
 use Aws\MockHandler;
+use Aws\S3\S3Client;
 use Aws\CommandInterface;
 use Codinglabs\Yolo\Helpers;
 use GuzzleHttp\Promise\Create;
@@ -194,6 +195,205 @@ it('reuses an existing response-headers policy by name (no Create call)', functi
 
     expect($id)->toBe('rhp-existing-id');
     expect(collect($recorder->calls)->pluck('name'))->not->toContain('CreateResponseHeadersPolicy');
+});
+
+/**
+ * Bind an S3 client that records every command and returns the given responses
+ * (looked up by command name; missing entries default to an empty Result, so
+ * GetBucketPolicy reads as "no policy attached").
+ *
+ * @param  array<string, Result>  $byCommand
+ */
+function bindAssetS3Recorder(array $byCommand = []): object
+{
+    $recorder = new class($byCommand) extends MockHandler
+    {
+        /** @var array<int, array{name: string, args: array<string, mixed>}> */
+        public array $calls = [];
+
+        public function __construct(public array $byCommand) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            $this->calls[] = ['name' => $cmd->getName(), 'args' => $cmd->toArray()];
+
+            return Create::promiseFor($this->byCommand[$cmd->getName()] ?? new Result());
+        }
+    };
+
+    Helpers::app()->instance('s3', new S3Client([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $recorder,
+    ]));
+
+    return $recorder;
+}
+
+/**
+ * A GetDistributionConfig result whose behaviour and error-caching are already
+ * in the desired state, so the only drift in play is the origin passed in.
+ */
+function syncedDistributionConfigResult(string $originDomain): Result
+{
+    return new Result([
+        'ETag' => 'etag-123',
+        'DistributionConfig' => [
+            'CallerReference' => 'ref-1',
+            'Comment' => 'yolo-testing-my-app-assets',
+            'Enabled' => true,
+            'Origins' => ['Quantity' => 1, 'Items' => [[
+                'Id' => 'asset-bucket',
+                'DomainName' => $originDomain,
+                'OriginAccessControlId' => 'oac-1',
+                'S3OriginConfig' => ['OriginAccessIdentity' => ''],
+            ]]],
+            'DefaultCacheBehavior' => [
+                'TargetOriginId' => 'asset-bucket',
+                'ViewerProtocolPolicy' => 'redirect-to-https',
+                'Compress' => true,
+                'CachePolicyId' => '658327ea-f89d-4fab-a63d-7e88639e58f6',
+                'ResponseHeadersPolicyId' => 'rhp-existing-id',
+                'MinTTL' => 0,
+            ],
+            'CustomErrorResponses' => ['Quantity' => 4, 'Items' => [
+                ['ErrorCode' => 500, 'ErrorCachingMinTTL' => 0, 'ResponsePagePath' => '', 'ResponseCode' => ''],
+                ['ErrorCode' => 502, 'ErrorCachingMinTTL' => 0, 'ResponsePagePath' => '', 'ResponseCode' => ''],
+                ['ErrorCode' => 503, 'ErrorCachingMinTTL' => 0, 'ResponsePagePath' => '', 'ResponseCode' => ''],
+                ['ErrorCode' => 504, 'ErrorCachingMinTTL' => 0, 'ResponsePagePath' => '', 'ResponseCode' => ''],
+            ]],
+        ],
+    ]);
+}
+
+/** The CloudFront mock set for a live distribution + resolvable headers policy. */
+function syncedDistributionMocks(string $originDomain): array
+{
+    return [
+        'ListDistributions' => new Result(['DistributionList' => ['Items' => [[
+            'Comment' => 'yolo-testing-my-app-assets',
+            'Id' => 'E123',
+            'ARN' => 'arn:aws:cloudfront::111111111111:distribution/E123',
+            'DomainName' => 'd123.cloudfront.net',
+        ]]]]),
+        'GetDistributionConfig' => syncedDistributionConfigResult($originDomain),
+        'ListResponseHeadersPolicies' => new Result(['ResponseHeadersPolicyList' => [
+            'Items' => [
+                ['ResponseHeadersPolicy' => [
+                    'Id' => 'rhp-existing-id',
+                    'ResponseHeadersPolicyConfig' => ['Name' => 'yolo-asset-headers'],
+                ]],
+            ],
+        ]]),
+    ];
+}
+
+/** The exact OAC read policy the distribution owns on the asset bucket. */
+function desiredOacReadPolicy(): array
+{
+    return [
+        'Version' => '2012-10-17',
+        'Statement' => [
+            [
+                'Sid' => 'AllowCloudFrontServicePrincipalReadOnly',
+                'Effect' => 'Allow',
+                'Principal' => ['Service' => 'cloudfront.amazonaws.com'],
+                'Action' => 's3:GetObject',
+                'Resource' => 'arn:aws:s3:::yolo-111111111111-testing-my-app-assets/*',
+                'Condition' => ['StringEquals' => ['AWS:SourceArn' => 'arn:aws:cloudfront::111111111111:distribution/E123']],
+            ],
+        ],
+    ];
+}
+
+it('repoints a drifted origin and grants the OAC read policy on the new bucket', function (): void {
+    $cloudFront = bindRecordingCloudFrontClient(
+        syncedDistributionMocks('yolo-testing-my-app-assets.s3.ap-southeast-2.amazonaws.com'),
+    );
+    $s3 = bindAssetS3Recorder();
+
+    $changes = (new AssetDistribution())->synchroniseConfiguration();
+
+    expect(collect($changes)->pluck('attribute')->all())
+        ->toEqualCanonicalizing(['origin', 'asset-bucket-policy']);
+
+    // the distribution update carries the repointed origin + the read ETag
+    $update = collect($cloudFront->calls)->firstWhere('name', 'UpdateDistribution');
+    expect($update['args']['DistributionConfig']['Origins']['Items'][0]['DomainName'])
+        ->toBe('yolo-111111111111-testing-my-app-assets.s3.ap-southeast-2.amazonaws.com')
+        ->and($update['args']['IfMatch'])->toBe('etag-123');
+
+    // the new bucket gets the OAC read grant, scoped to this distribution only
+    $put = collect($s3->calls)->firstWhere('name', 'PutBucketPolicy');
+    expect($put['args']['Bucket'])->toBe('yolo-111111111111-testing-my-app-assets')
+        ->and(json_decode((string) $put['args']['Policy'], true))->toBe(desiredOacReadPolicy());
+});
+
+it('does not rewrite the bucket policy when only a distribution field drifted', function (): void {
+    $cloudFront = bindRecordingCloudFrontClient(
+        syncedDistributionMocks('yolo-111111111111-testing-my-app-assets.s3.ap-southeast-2.amazonaws.com'),
+    );
+    // behaviour drift: stale cache policy on the live distribution
+    $config = $cloudFront->byCommand['GetDistributionConfig']->toArray();
+    $config['DistributionConfig']['DefaultCacheBehavior']['CachePolicyId'] = 'custom-old-id';
+    $cloudFront->byCommand['GetDistributionConfig'] = new Result($config);
+
+    $s3 = bindAssetS3Recorder([
+        'GetBucketPolicy' => new Result(['Policy' => json_encode(desiredOacReadPolicy())]),
+    ]);
+
+    $changes = (new AssetDistribution())->synchroniseConfiguration();
+
+    expect(collect($changes)->pluck('attribute')->all())->toBe(['CachePolicyId']);
+    expect(collect($cloudFront->calls)->pluck('name'))->toContain('UpdateDistribution');
+    expect(collect($s3->calls)->pluck('name'))->not->toContain('PutBucketPolicy');
+});
+
+it('heals a missing OAC grant without a needless distribution redeploy', function (): void {
+    // origin + behaviour all in the desired state; only the bucket policy is gone
+    $cloudFront = bindRecordingCloudFrontClient(
+        syncedDistributionMocks('yolo-111111111111-testing-my-app-assets.s3.ap-southeast-2.amazonaws.com'),
+    );
+    $s3 = bindAssetS3Recorder();
+
+    $changes = (new AssetDistribution())->synchroniseConfiguration();
+
+    expect(collect($changes)->pluck('attribute')->all())->toBe(['asset-bucket-policy']);
+    expect(collect($s3->calls)->pluck('name'))->toContain('PutBucketPolicy');
+    // a policy-only fix must never trigger a ~15 min edge redeploy
+    expect(collect($cloudFront->calls)->pluck('name'))->not->toContain('UpdateDistribution');
+});
+
+it('computes origin and policy drift without writing under apply:false', function (): void {
+    $cloudFront = bindRecordingCloudFrontClient(
+        syncedDistributionMocks('yolo-testing-my-app-assets.s3.ap-southeast-2.amazonaws.com'),
+    );
+    $s3 = bindAssetS3Recorder();
+
+    $changes = (new AssetDistribution())->synchroniseConfiguration(apply: false);
+
+    expect(collect($changes)->pluck('attribute')->all())
+        ->toEqualCanonicalizing(['origin', 'asset-bucket-policy']);
+    expect(collect($cloudFront->calls)->pluck('name'))->not->toContain('UpdateDistribution');
+    expect(collect($s3->calls)->pluck('name'))->not->toContain('PutBucketPolicy');
+});
+
+it('detects origin drift against the current asset bucket name', function (): void {
+    // A distribution still pointing at a pre-rename bucket must drift, so a
+    // bucket rename converges through sync instead of half-applying.
+    $drift = AssetDistribution::originDrift(['Items' => [[
+        'DomainName' => 'yolo-testing-my-app-assets.s3.ap-southeast-2.amazonaws.com',
+    ]]]);
+
+    expect($drift)->not->toBeNull()
+        ->and($drift->attribute)->toBe('origin')
+        ->and($drift->to)->toBe('yolo-111111111111-testing-my-app-assets.s3.ap-southeast-2.amazonaws.com');
+
+    // Pointing at the current bucket's regional endpoint → in sync.
+    expect(AssetDistribution::originDrift(['Items' => [[
+        'DomainName' => 'yolo-111111111111-testing-my-app-assets.s3.ap-southeast-2.amazonaws.com',
+    ]]]))->toBeNull();
 });
 
 it('detects error-caching drift', function (): void {

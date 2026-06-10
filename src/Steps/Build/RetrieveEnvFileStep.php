@@ -20,7 +20,7 @@ class RetrieveEnvFileStep implements Step
             : Paths::base($filename);
 
         Aws::s3()->getObject([
-            'Bucket' => Paths::s3ArtefactsBucket(),
+            'Bucket' => Paths::s3ConfigBucket(),
             'Key' => $filename,
             'SaveAs' => $path,
         ]);

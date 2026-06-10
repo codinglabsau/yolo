@@ -7,6 +7,7 @@ namespace Codinglabs\Yolo\Resources\S3;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\S3;
 use Codinglabs\Yolo\Change;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\ResolvesTags;
@@ -34,7 +35,7 @@ class AssetBucket implements Resource, SynchronisesConfiguration
 
     public function name(): string
     {
-        return $this->keyedName('assets');
+        return Helpers::keyedBucketName('assets');
     }
 
     public function scope(): Scope

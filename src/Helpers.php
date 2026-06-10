@@ -75,25 +75,44 @@ class Helpers
         return env(static::keyedEnvName($key));
     }
 
-    public static function keyedResourceName(string|BackedEnum|null $name = null, $exclusive = true, string $seperator = '-'): string
+    public static function keyedResourceName(string|BackedEnum|null $name = null, bool $exclusive = true): string
     {
         if ($name instanceof BackedEnum) {
             $name = $name->value;
         }
 
-        if ($exclusive) {
-            // exclusive resources are specific to the current application;
-            // e.g. yolo-production-<app-name> or yolo-production-<app-name>-<resource-name>
-            return $name
-                ? sprintf("yolo$seperator%s$seperator%s$seperator%s", static::environment(), Manifest::name(), $name)
-                : sprintf("yolo$seperator%s$seperator%s", static::environment(), Manifest::name());
+        return implode('-', array_filter([
+            'yolo',
+            static::environment(),
+            // exclusive resources are specific to the current application
+            // (yolo-{env}-{app}[-{name}]); non-exclusive resources are shared
+            // across the environment (yolo-{env}[-{name}]).
+            $exclusive ? Manifest::name() : null,
+            $name,
+        ]));
+    }
+
+    /**
+     * S3 bucket names live in a single global namespace shared by every AWS
+     * account, so unlike other resource names they carry the account id as a
+     * discriminator — without it, whichever account creates yolo-{env}-… first
+     * owns the name globally and every other account 409s on CreateBucket.
+     * Exclusive → yolo-{account-id}-{env}-{app}[-{name}];
+     * shared → yolo-{account-id}-{env}[-{name}].
+     */
+    public static function keyedBucketName(string|BackedEnum|null $name = null, bool $exclusive = true): string
+    {
+        if ($name instanceof BackedEnum) {
+            $name = $name->value;
         }
 
-        // non-exclusive resources are shared across multiple yolo applications on the same AWS account;
-        // e.g. yolo-production or yolo-production-<resource-name>
-        return $name
-            ? sprintf("yolo$seperator%s$seperator%s", static::environment(), $name)
-            : sprintf("yolo$seperator%s", static::environment());
+        return implode('-', array_filter([
+            'yolo',
+            Aws::accountId(),
+            static::environment(),
+            $exclusive ? Manifest::name() : null,
+            $name,
+        ]));
     }
 
     public static function manifestName(): string
@@ -104,11 +123,6 @@ class Helpers
     public static function versionName(): string
     {
         return 'APP_VERSION';
-    }
-
-    public static function artefactName(): string
-    {
-        return 'artefact.tar.gz';
     }
 
     public static function environment(): ?string

@@ -5,7 +5,6 @@ namespace Codinglabs\Yolo\Resources\ElbV2;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Change;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\ElbV2;
 use Codinglabs\Yolo\Enums\Scope;
@@ -74,9 +73,9 @@ class LoadBalancer implements Resource, SynchronisesConfiguration
 
         // A fresh ALB starts on AWS defaults (no deletion protection, access logs
         // off, invalid headers passed through); bring our hardened attributes onto
-        // it. The env-scoped ALB log bucket (S3LoadBalancerLogs) is provisioned
-        // earlier in the same scope, so enabling access logs validates against the
-        // log-delivery bucket policy that already exists.
+        // it. The env logs bucket (S3LogsBucket) is provisioned earlier in the
+        // same scope, so enabling access logs validates against the log-delivery
+        // bucket policy that already exists.
         $this->reconcileAttributes($arn, current: [], apply: true);
     }
 
@@ -164,7 +163,7 @@ class LoadBalancer implements Resource, SynchronisesConfiguration
         return [
             'deletion_protection.enabled' => 'true',
             'access_logs.s3.enabled' => 'true',
-            'access_logs.s3.bucket' => Paths::s3LoadBalancerLogsBucket(),
+            'access_logs.s3.bucket' => Paths::s3LogsBucket(),
             'access_logs.s3.prefix' => $this->accessLogsPrefix(),
             'routing.http.drop_invalid_header_fields.enabled' => 'true',
             'routing.http2.enabled' => 'true',
@@ -173,13 +172,14 @@ class LoadBalancer implements Resource, SynchronisesConfiguration
     }
 
     /**
-     * Access logs land under {env}/{name}/ in the env-scoped ALB log bucket,
-     * so logs from multiple ALBs (e.g. one shared, one app-specific) land in
-     * the same bucket cleanly separated by ALB name. AWS appends
-     * /AWSLogs/{account}/... beneath it.
+     * Access logs land under alb/{name}/ in the env logs bucket — `alb/` is
+     * the ALB log class's namespace (the delivery policy is scoped to it),
+     * and the ALB name beneath keeps multiple ALBs (e.g. one shared, one
+     * app-specific) cleanly separated. AWS appends /AWSLogs/{account}/...
+     * beneath it.
      */
     public function accessLogsPrefix(): string
     {
-        return sprintf('%s/%s', Helpers::environment(), $this->name());
+        return sprintf('alb/%s', $this->name());
     }
 }
