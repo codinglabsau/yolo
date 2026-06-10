@@ -75,25 +75,21 @@ class Helpers
         return env(static::keyedEnvName($key));
     }
 
-    public static function keyedResourceName(string|BackedEnum|null $name = null, $exclusive = true, string $seperator = '-'): string
+    public static function keyedResourceName(string|BackedEnum|null $name = null, bool $exclusive = true): string
     {
         if ($name instanceof BackedEnum) {
             $name = $name->value;
         }
 
-        if ($exclusive) {
-            // exclusive resources are specific to the current application;
-            // e.g. yolo-production-<app-name> or yolo-production-<app-name>-<resource-name>
-            return $name
-                ? sprintf("yolo$seperator%s$seperator%s$seperator%s", static::environment(), Manifest::name(), $name)
-                : sprintf("yolo$seperator%s$seperator%s", static::environment(), Manifest::name());
-        }
-
-        // non-exclusive resources are shared across multiple yolo applications on the same AWS account;
-        // e.g. yolo-production or yolo-production-<resource-name>
-        return $name
-            ? sprintf("yolo$seperator%s$seperator%s", static::environment(), $name)
-            : sprintf("yolo$seperator%s", static::environment());
+        return implode('-', array_filter([
+            'yolo',
+            static::environment(),
+            // exclusive resources are specific to the current application
+            // (yolo-{env}-{app}[-{name}]); non-exclusive resources are shared
+            // across the environment (yolo-{env}[-{name}]).
+            $exclusive ? Manifest::name() : null,
+            $name,
+        ]));
     }
 
     /**

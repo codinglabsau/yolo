@@ -11,7 +11,6 @@ use Aws\Iam\IamClient;
 use Aws\Rds\RdsClient;
 use Aws\Sns\SnsClient;
 use Aws\Sqs\SqsClient;
-use Aws\Ssm\SsmClient;
 use Aws\Sts\StsClient;
 use GuzzleHttp\Client;
 use Codinglabs\Yolo\Aws;
@@ -21,7 +20,6 @@ use Codinglabs\Yolo\Manifest;
 use Aws\Route53\Route53Client;
 use Aws\CloudFront\CloudFrontClient;
 use Aws\CloudWatch\CloudWatchClient;
-use Aws\CodeDeploy\CodeDeployClient;
 use Aws\ElastiCache\ElastiCacheClient;
 use Aws\EventBridge\EventBridgeClient;
 use Aws\Credentials\CredentialProvider;
@@ -46,7 +44,6 @@ trait RegistersAws
         // register all required AWS clients
         Helpers::app()->singleton('acm', fn (): AcmClient => new AcmClient($arguments));
         Helpers::app()->singleton('applicationAutoScaling', fn (): ApplicationAutoScalingClient => new ApplicationAutoScalingClient($arguments));
-        Helpers::app()->singleton('codeDeploy', fn (): CodeDeployClient => new CodeDeployClient($arguments));
         Helpers::app()->singleton('cloudWatch', fn (): CloudWatchClient => new CloudWatchClient($arguments));
         Helpers::app()->singleton('cloudWatchLogs', fn (): CloudWatchLogsClient => new CloudWatchLogsClient($arguments));
         // CloudFront is a global service — its control-plane API only lives in us-east-1.
@@ -67,7 +64,6 @@ trait RegistersAws
         Helpers::app()->singleton('s3', fn (): S3Client => new S3Client($arguments));
         Helpers::app()->singleton('sns', fn (): SnsClient => new SnsClient($arguments));
         Helpers::app()->singleton('sqs', fn (): SqsClient => new SqsClient($arguments));
-        Helpers::app()->singleton('ssm', fn (): SsmClient => new SsmClient($arguments));
         Helpers::app()->singleton('sts', fn (): StsClient => new StsClient($arguments));
         Helpers::app()->singleton('wafV2', fn (): WAFV2Client => new WAFV2Client($arguments));
     }

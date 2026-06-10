@@ -11,7 +11,6 @@ use Aws\Iam\IamClient;
 use Aws\Rds\RdsClient;
 use Aws\Sns\SnsClient;
 use Aws\Sqs\SqsClient;
-use Aws\Ssm\SsmClient;
 use Aws\Sts\StsClient;
 use Aws\WAFV2\WAFV2Client;
 use Aws\AwsClientInterface;
@@ -19,7 +18,6 @@ use Illuminate\Support\Str;
 use Aws\Route53\Route53Client;
 use Aws\CloudFront\CloudFrontClient;
 use Aws\CloudWatch\CloudWatchClient;
-use Aws\CodeDeploy\CodeDeployClient;
 use Aws\ElastiCache\ElastiCacheClient;
 use Aws\EventBridge\EventBridgeClient;
 use Aws\CloudWatchLogs\CloudWatchLogsClient;
@@ -614,11 +612,6 @@ class Aws
         return Helpers::app('cloudWatchLogs');
     }
 
-    public static function codeDeploy(): CodeDeployClient
-    {
-        return Helpers::app('codeDeploy');
-    }
-
     public static function ec2(): Ec2Client
     {
         return Helpers::app('ec2');
@@ -691,11 +684,6 @@ class Aws
     public static function sqs(): SqsClient
     {
         return Helpers::app('sqs');
-    }
-
-    public static function ssm(): SsmClient
-    {
-        return Helpers::app('ssm');
     }
 
     public static function sts(): StsClient

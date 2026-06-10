@@ -24,11 +24,6 @@ class Paths
         return __DIR__ . '/../stubs' . ($path ? '/' . ltrim((string) $path, '/') : '');
     }
 
-    public static function buildAssets(): string
-    {
-        return static::build('public/assets');
-    }
-
     public static function manifest(): string
     {
         return static::base(Helpers::manifestName());

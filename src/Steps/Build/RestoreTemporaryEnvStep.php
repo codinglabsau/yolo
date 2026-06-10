@@ -16,8 +16,8 @@ class RestoreTemporaryEnvStep implements Step
 
     public function __invoke(array $options = []): StepResult
     {
-        // Once the build process is complete, move the .env into it's
-        // final place to be added to the build artefact for deploy.
+        // Once the build hooks have run, move the .env into its final
+        // place so the Docker build bakes it into the image as /app/.env.
         $this->filesystem->move(
             Paths::build(".env.$this->environment.tmp"),
             Paths::build('.env'),

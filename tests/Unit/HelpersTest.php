@@ -25,10 +25,6 @@ describe('keyedResourceName', function (): void {
             ->toBe('yolo-testing-ivs-eventbridge-policy');
     });
 
-    it('supports custom separator', function (): void {
-        expect(Helpers::keyedResourceName('queue', seperator: '/'))
-            ->toBe('yolo/testing/my-app/queue');
-    });
 });
 
 describe('keyedBucketName', function (): void {

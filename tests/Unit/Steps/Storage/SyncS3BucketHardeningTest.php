@@ -260,13 +260,12 @@ it('writes no CORS when an existing app bucket already matches the managed rules
     expect(array_column($captured, 'name'))->not->toContain('PutBucketCors');
 });
 
-it('never puts a bucket policy on the config bucket (log-delivery moved to S3LogsBucket)', function (): void {
-    // The config (then 'artefacts') bucket previously doubled as the ALB access-log destination,
-    // which forced its policy to grant logdelivery.elasticloadbalancing.amazonaws.com
-    // — but that put env-scoped policy logic on an app-scoped bucket and
-    // collided with the account → environment → app sync order. The log
-    // destination now lives in env scope (S3LogsBucket), so a synced
-    // config bucket must NEVER call PutBucketPolicy.
+it('never puts a bucket policy on the config bucket (log-delivery belongs to S3LogsBucket)', function (): void {
+    // The config bucket holds secrets and must carry no external principals
+    // — the ELB log-delivery grant is env-scoped logic that belongs on the
+    // env logs bucket (S3LogsBucket), and putting it here would also collide
+    // with the account → environment → app sync order. A synced config
+    // bucket must NEVER call PutBucketPolicy.
     $captured = [];
 
     bindMockS3Client([
