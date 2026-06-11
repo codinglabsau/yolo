@@ -6,8 +6,6 @@ use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\ServerGroup;
 
-use function Laravel\Prompts\warning;
-
 /**
  * Writer of one app's resources within an environment. Blast radius: this app.
  * Mode-aware (solo vs multi-tenant) and `--tenant`-filterable for a single-tenant
@@ -29,13 +27,9 @@ class SyncAppCommand extends SyncSteppedCommand
     }
 
     #[\Override]
-    public function handle(): int
+    public function warnings(): array
     {
-        if ($advisory = static::schedulerAdvisory()) {
-            warning($advisory);
-        }
-
-        return parent::handle();
+        return array_filter([static::schedulerAdvisory()]);
     }
 
     /**
@@ -60,7 +54,7 @@ class SyncAppCommand extends SyncSteppedCommand
         }
 
         return sprintf(
-            'The scheduler is bundled into the autoscaling %s task — cron fires on every replica. Guard each scheduled task with ->onOneServer(), or extract the scheduler into its own tasks.scheduler service.',
+            'The scheduler is bundled into the autoscaling %s task. Use ->onOneServer() on scheduled tasks to avoid duplicate execution.',
             $host->value,
         );
     }

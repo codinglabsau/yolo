@@ -382,7 +382,7 @@ tasks:
 ```
 
 ::: warning Bundled scheduler
-A plain web app bundles the scheduler in the web container, so scaling to N tasks runs cron N times — every scheduled task would fire on each replica. Every scheduled task **must** use Laravel's `->onOneServer()`, or extract the scheduler into its own service ([`tasks.scheduler`](#tasks-scheduler)). `sync` prints a one-line advisory whenever the scheduler is bundled into an autoscaling host (the web task, or the standalone queue, which always autoscales). See [Scaling → the scheduler](/guide/scaling#the-scheduler).
+A plain web app bundles the scheduler in the web container, so scaling to N tasks runs cron N times — every scheduled task would fire on each replica. Every scheduled task **must** use Laravel's `->onOneServer()`, or extract the scheduler into its own service ([`tasks.scheduler`](#tasks-scheduler)). The `sync` plan lists an advisory under its **Warnings** section whenever the scheduler is bundled into an autoscaling host (the web task, or the standalone queue, which always autoscales). See [Scaling → the scheduler](/guide/scaling#the-scheduler).
 :::
 
 ---

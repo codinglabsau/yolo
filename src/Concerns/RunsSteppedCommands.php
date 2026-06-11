@@ -184,7 +184,41 @@ trait RunsSteppedCommands
 
         $this->renderSkipping($skipped);
 
+        $this->renderWarnings();
+
         $this->output->writeln('');
+    }
+
+    /**
+     * Command-level advisories rendered under the plan's Warnings heading —
+     * soft nudges (not gates) the operator should read before confirming.
+     * Commands override this; the default plan carries no warnings.
+     *
+     * @return array<int, string>
+     */
+    public function warnings(): array
+    {
+        return [];
+    }
+
+    /**
+     * Print the Warnings section — rendered last so the advisories sit right
+     * above the confirm gate.
+     */
+    protected function renderWarnings(): void
+    {
+        $warnings = $this->warnings();
+
+        if ($warnings === []) {
+            return;
+        }
+
+        $this->output->writeln('');
+        $this->output->writeln('  <options=bold>Warnings</>');
+
+        foreach ($warnings as $warning) {
+            $this->output->writeln(sprintf('  <fg=yellow>•</> %s', $warning));
+        }
     }
 
     protected function confirmGate(string $environment): bool
@@ -195,7 +229,6 @@ trait RunsSteppedCommands
 
         return confirm(
             label: sprintf('Apply these changes to %s?', $environment),
-            default: false,
         );
     }
 
