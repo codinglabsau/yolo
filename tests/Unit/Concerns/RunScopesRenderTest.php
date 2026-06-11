@@ -230,6 +230,37 @@ it('expands the skipped section to per-resource names under -v', function (): vo
         ->toContain('ivs event bridge target');
 });
 
+it('renders command advisories under a Warnings heading, as part of the plan', function (): void {
+    // An autoscaling web task that bundles the scheduler triggers the
+    // onOneServer advisory on SyncAppCommand, composed up into `sync`.
+    writeManifest([
+        'account-id' => '111111111111',
+        'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => ['max' => 4]]],
+    ]);
+
+    $output = runScopesCapture(
+        ['app' => [RunScopesFakeStep::class]],
+        ['--no-progress' => true],
+    );
+
+    expect($output)
+        ->toContain('Warnings')
+        ->toContain('onOneServer()');
+
+    // Warnings belong to the plan — rendered ahead of the apply/completion line.
+    expect(strpos($output, 'Warnings'))->toBeLessThan(strpos($output, 'Synced testing'));
+});
+
+it('omits the Warnings section when the command carries no advisories', function (): void {
+    $output = runScopesCapture(
+        ['app' => [RunScopesFakeStep::class]],
+        ['--no-progress' => true],
+    );
+
+    expect($output)->not->toContain('Warnings');
+});
+
 it('--check exits non-zero on drift and never applies', function (): void {
     [$output, $exitCode] = runScopesResult(
         ['environment' => [RunScopesChangeStep::class]],

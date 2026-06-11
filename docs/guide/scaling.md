@@ -147,5 +147,5 @@ tasks:
 YOLO pins it at exactly one task (never a scalable target) and deploys it **stop-then-start** (`minimumHealthyPercent: 0` / `maximumPercent: 100`) so a rollout stops the old cron before starting the new one — a deploy never briefly runs two schedulers (a missed cron minute is harmless; a double-run isn't). This removes the `onOneServer()` *requirement* entirely — it's genuinely a singleton now — though leaving `onOneServer()` on is harmless. The web tier then scales without any scheduler concern.
 
 ::: tip
-When the scheduler is bundled into a host that runs more than one task — an autoscaling web task, or the standalone queue (which always autoscales) — `yolo sync` prints a one-line advisory pointing at these two strategies. It's a nudge, not a gate — YOLO can't see inside your kernel to know whether you've used `onOneServer()`.
+When the scheduler is bundled into a host that runs more than one task — an autoscaling web task, or the standalone queue (which always autoscales) — `yolo sync` lists an advisory under the plan's **Warnings** section pointing at these two strategies. It's a nudge, not a gate — YOLO can't see inside your kernel to know whether you've used `onOneServer()`.
 :::

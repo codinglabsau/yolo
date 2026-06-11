@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Codinglabs\Yolo\Commands;
 
-use function Laravel\Prompts\warning;
-
 class SyncCommand extends SyncSteppedCommand
 {
     protected function configure(): void
@@ -15,17 +13,18 @@ class SyncCommand extends SyncSteppedCommand
             ->setDescription('Sync all resources for the given environment (account → environment → app)');
     }
 
+    /**
+     * The orchestrating `sync` composes the tier commands' scopes but not their
+     * handle(), so compose their plan warnings the same way.
+     */
     #[\Override]
-    public function handle(): int
+    public function warnings(): array
     {
-        // The orchestrating `sync` composes SyncAppCommand's scopes but not its
-        // handle(), so surface the app-level scheduler advisory here too — it's the
-        // command most people run.
-        if ($advisory = SyncAppCommand::schedulerAdvisory()) {
-            warning($advisory);
-        }
-
-        return parent::handle();
+        return [
+            ...(new SyncAccountCommand())->warnings(),
+            ...(new SyncEnvironmentCommand())->warnings(),
+            ...(new SyncAppCommand())->warnings(),
+        ];
     }
 
     /**
