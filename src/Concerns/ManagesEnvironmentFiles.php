@@ -6,6 +6,7 @@ namespace Codinglabs\Yolo\Concerns;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Aws\S3;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
 use Aws\S3\Exception\S3Exception;
@@ -24,35 +25,48 @@ use function Laravel\Prompts\confirm;
 trait ManagesEnvironmentFiles
 {
     /**
-     * The local working copy of the env-shared .env — env-suffixed (so copies
-     * for different environments coexist) and gitignored.
+     * The env-shared .env's name — identical in the bucket and on disk (the
+     * env manifest's same-name-both-sides rule), with the environment in the
+     * filename so a pulled copy can never be pushed at the wrong environment.
      */
-    protected function sharedEnvLocalPath(): string
+    protected function sharedEnvFilename(): string
     {
-        return Paths::base(sprintf('.env.%s.shared', Helpers::environment()));
+        return sprintf('.env.environment.%s', Helpers::environment());
     }
 
     /**
-     * Download one object from the env config bucket, cleaning up the partial
-     * file the SDK's SaveAs sink leaves behind when the object is missing.
+     * The local working copy of the env-shared .env — gitignored via
+     * .env.environment.*.
+     */
+    protected function sharedEnvLocalPath(): string
+    {
+        return Paths::base($this->sharedEnvFilename());
+    }
+
+    /**
+     * Download one object from the env config bucket. The body reaches
+     * $saveAs only on success — a failed read must never touch an existing
+     * working copy, which may hold unpushed operator edits. Absence reads as
+     * false; every other failure throws.
      */
     protected function download(string $key, string $saveAs): bool
     {
         try {
-            Aws::s3()->getObject([
+            $body = (string) Aws::s3()->getObject([
                 'Bucket' => Paths::s3EnvConfigBucket(),
                 'Key' => $key,
-                'SaveAs' => $saveAs,
-            ]);
-
-            return true;
-        } catch (S3Exception) {
-            if (file_exists($saveAs) && filesize($saveAs) === 0) {
-                unlink($saveAs);
+            ])['Body'];
+        } catch (S3Exception $e) {
+            if (S3::isNotFound($e)) {
+                return false;
             }
 
-            return false;
+            throw $e;
         }
+
+        file_put_contents($saveAs, $body);
+
+        return true;
     }
 
     protected function remote(string $key): string

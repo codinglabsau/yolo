@@ -21,7 +21,7 @@ class EnvironmentManifestPullCommand extends Command
         $this
             ->setName('environment:manifest:pull')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
-            ->setDescription('Download the environment manifest (yolo-{environment}.yml) from the env config bucket');
+            ->setDescription('Download the environment manifest (yolo-environment-{environment}.yml) from the env config bucket');
     }
 
     public function handle(): void

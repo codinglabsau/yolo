@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Paths;
 use Aws\S3\Exception\S3Exception;
 use Symfony\Component\Console\Input\InputArgument;
 use Codinglabs\Yolo\Steps\Build\RetrieveEnvFileStep;
+use Codinglabs\Yolo\Concerns\ManagesEnvironmentFiles;
 
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
@@ -18,6 +19,8 @@ use function Laravel\Prompts\warning;
 
 class EnvPushCommand extends Command
 {
+    use ManagesEnvironmentFiles;
+
     protected function configure(): void
     {
         $this
@@ -91,13 +94,6 @@ class EnvPushCommand extends Command
 
         info('Uploaded successfully.');
 
-        // The bucket is the source of truth the moment the upload lands — a
-        // copy left on disk only invites staleness, and it's production
-        // secrets sitting around for anything on the machine to read.
-        if (confirm("Delete the local $filename? The bucket holds the truth now.", default: true)) {
-            unlink($path);
-
-            info("Deleted local $filename.");
-        }
+        $this->confirmDeleteLocal($path, $filename);
     }
 }

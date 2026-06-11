@@ -41,8 +41,7 @@ environments:
     #   driver: redis            # default (sessions live on the Valkey cluster); database/cookie/file to change the session backend
 
     # --- YOLO-provisioned services this app consumes ---
-    # services: [ivs]            # bare capability names only — service shape lives in the environment manifest
-    # mediaconvert: arn:aws:iam::123456789012:role/MediaConvertRole   # transcoding role ARN (used with IVS)
+    # services: [ivs, mediaconvert]   # bare capability names only — service shape is hardcoded or lives in the environment manifest
 
     # --- Extra IAM for this app's task role (per-app; never reaches another app) ---
     # task-role-policies:
@@ -225,14 +224,11 @@ services: [ivs]
 | Service | What consuming it gives this app |
 |---|---|
 | `ivs` | The app's ECS task role is granted IVS access (`ivs:*` — channels and stream keys are created by the app at runtime, so there's nothing stable to scope to), and the app's CloudWatch dashboard gains the IVS logs panel |
+| `mediaconvert` | A per-app IAM role for AWS Elemental MediaConvert to assume is provisioned, and its computed ARN is baked into the build as `AWS_MEDIACONVERT_ROLE_ID`. App-side only — jobs run on the account's default on-demand queue, so there is no environment-manifest half |
 
-An entry is a *consumption claim*, deliberately just a name: all service **shape** (sizing, versions, retention) is either hardcoded or belongs to [the environment manifest](#the-environment-manifest-yolo-environment-yml), never the app manifest — so two apps can never declare competing configuration for shared infrastructure. Unknown names, duplicate entries, or anything other than a flat list hard-fail validation.
+An entry is a *consumption claim*, deliberately just a name: all service **shape** (sizing, versions, retention) is either hardcoded or belongs to [the environment manifest](#the-environment-manifest-yolo-environment-environment-yml), never the app manifest — so two apps can never declare competing configuration for shared infrastructure. Unknown names, duplicate entries, or anything other than a flat list hard-fail validation.
 
-The corresponding env-shared infrastructure is the environment manifest's side of the contract — e.g. the IVS event-logging pipeline (one `/aws/ivs/yolo-{env}` log group + EventBridge rule per environment, because the `aws.ivs` event stream is account-wide) is provisioned by `sync:environment` when `yolo-{environment}.yml` declares `services.ivs`. Defaulted framework backends ([`cache`](#cache), [`session`](#session)) deliberately stay separate keys — `services` is for opt-in capabilities only.
-
-### `mediaconvert`
-
-MediaConvert role ARN for video transcoding workloads (used with IVS).
+The corresponding env-shared infrastructure is the environment manifest's side of the contract — e.g. the IVS event-logging pipeline (one `/aws/ivs/yolo-{env}` log group + EventBridge rule per environment, because the `aws.ivs` event stream is account-wide) is provisioned by `sync:environment` when `yolo-environment-{environment}.yml` declares `services.ivs`. Defaulted framework backends ([`cache`](#cache), [`session`](#session)) deliberately stay separate keys — `services` is for opt-in capabilities only.
 
 ::: tip No `waf` key
 The [web application firewall](/guide/provisioning#web-application-firewall) is a **compulsory** environment resource — every environment with a load balancer gets one automatically, so there's nothing to configure here. Day-to-day tuning happens in its allow/block IP sets, not the manifest.
@@ -458,9 +454,9 @@ Your manifest implies one of three modes:
 
 ---
 
-## The environment manifest (`yolo-{environment}.yml`)
+## The environment manifest (`yolo-environment-{environment}.yml`)
 
-`yolo.yml` declares what one **app** needs; the environment has a declaration of its own. `yolo-{environment}.yml` (e.g. `yolo-production.yml` — the environment is in the filename, so a pulled copy can never be pushed at the wrong environment) lives in the env config bucket (`yolo-{account-id}-{env}-config`), not in any app's repo — it's seeded by the environment's first `sync` and from then on owned by the operator, edited through the [`environment:manifest:pull` / `environment:manifest:push`](/reference/commands#yolo-environment-manifest-pull) commands. Every `sync:environment` pulls it fresh from S3 and reconciles toward it, from any app repo, on any YOLO version.
+`yolo.yml` declares what one **app** needs; the environment has a declaration of its own. `yolo-environment-{environment}.yml` (e.g. `yolo-environment-production.yml` — the environment is in the filename, so a pulled copy can never be pushed at the wrong environment) lives in the env config bucket (`yolo-{account-id}-{env}-config`), not in any app's repo — it's seeded by the environment's first `sync` and from then on owned by the operator, edited through the [`environment:manifest:pull` / `environment:manifest:push`](/reference/commands#yolo-environment-manifest-pull) commands. Every `sync:environment` pulls it fresh from S3 and reconciles toward it, from any app repo.
 
 ```yaml
 domain: example.com.au   # the env's canonical domain for shared-service ingress
@@ -472,4 +468,4 @@ services: {}             # env-shared services — the extension point for what 
 | `domain` | The environment's canonical domain for shared-service hostnames (e.g. `search.{domain}`). Distinct from any app's `domain` — shared services are served on the *environment's* name, reachable from every app regardless of their own domains. |
 | `services` | Env-shared services provisioned by `sync:environment`. `services.ivs: {}` enables the environment's IVS event-logging pipeline (the app-side counterpart is [`services: [ivs]`](#services) in `yolo.yml`). |
 
-Like `yolo.yml`, the file is validated against a strict allow-list — an unrecognised key hard-fails both `environment:manifest:push` (before upload) and any sync that reads it. See [The environment declaration](/guide/provisioning#the-environment-declaration) for the model.
+Like `yolo.yml`, the file is validated against a strict allow-list — an unrecognised key hard-fails both `environment:manifest:push` (before upload) and any sync that reads it. The allow-list is compiled into each release, so adding a new env-manifest key means updating `codinglabsau/yolo` in the environment's app repos **before** pushing the key — an older binary hard-fails (with an upgrade hint) rather than silently ignoring declarations it doesn't know. See [The environment declaration](/guide/provisioning#the-environment-declaration) for the model.

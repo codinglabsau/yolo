@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Steps\Sync\App;
 
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
@@ -14,7 +15,7 @@ class SyncMediaConvertRoleStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::get('mediaconvert')) {
+        if (! Manifest::usesService(Service::MEDIA_CONVERT)) {
             return StepResult::SKIPPED;
         }
 

@@ -20,7 +20,7 @@ use Codinglabs\Yolo\Steps\Sync\Environment\SyncEcsExecutionRoleStep;
 dataset('serviceRoles', [
     'ecs task role' => [EcsTaskRole::class, SyncEcsTaskRoleStep::class, []],
     'ecs execution role' => [EcsExecutionRole::class, SyncEcsExecutionRoleStep::class, []],
-    'mediaconvert role' => [MediaConvertRole::class, SyncMediaConvertRoleStep::class, ['mediaconvert' => true]],
+    'mediaconvert role' => [MediaConvertRole::class, SyncMediaConvertRoleStep::class, ['services' => ['mediaconvert']]],
 ]);
 
 function bindServiceRoleTrust(string $roleName, array $liveTrust, array &$captured): void

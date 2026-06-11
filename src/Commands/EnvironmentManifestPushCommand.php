@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Codinglabs\Yolo\Commands;
 
+use Codinglabs\Yolo\Aws\S3;
 use Codinglabs\Yolo\EnvManifest;
 use Aws\S3\Exception\S3Exception;
 use Symfony\Component\Console\Input\InputArgument;
@@ -22,7 +23,7 @@ class EnvironmentManifestPushCommand extends Command
         $this
             ->setName('environment:manifest:push')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
-            ->setDescription('Upload the environment manifest (yolo-{environment}.yml) to the env config bucket');
+            ->setDescription('Upload the environment manifest (yolo-environment-{environment}.yml) to the env config bucket');
     }
 
     public function handle(): void
@@ -50,8 +51,19 @@ class EnvironmentManifestPushCommand extends Command
 
         try {
             $current = EnvManifest::parse($this->remote(EnvManifest::filename()));
-        } catch (S3Exception) {
+        } catch (S3Exception $e) {
+            if (! S3::isNotFound($e)) {
+                throw $e;
+            }
+
             warning(sprintf('%s does not exist in the env config bucket yet.', EnvManifest::filename()));
+        } catch (IntegrityCheckException $e) {
+            // The bucket copy carries keys this binary doesn't know — pushed
+            // by a newer YOLO release. Overwriting it from here would silently
+            // drop those declarations.
+            error($e->getMessage() . ' The bucket manifest was likely written by a newer YOLO release — update codinglabsau/yolo before pushing.');
+
+            return;
         }
 
         if (! $this->confirmDifferences($this->dot($current), $this->dot($new), EnvManifest::filename())) {

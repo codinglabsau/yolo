@@ -61,7 +61,7 @@ it('seeds the default manifest into the env config bucket on apply', function ()
     $put = collect($captured)->firstWhere('name', 'PutObject');
 
     expect($put['args']['Bucket'])->toBe('yolo-111111111111-testing-config')
-        ->and($put['args']['Key'])->toBe('yolo-testing.yml')
+        ->and($put['args']['Key'])->toBe('yolo-environment-testing.yml')
         ->and((string) $put['args']['Body'])->toBe(EnvManifest::seedContents());
 });
 

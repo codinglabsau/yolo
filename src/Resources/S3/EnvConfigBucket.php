@@ -14,7 +14,7 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 
 /**
  * Env-scoped config bucket holding the environment's declaration: the env
- * manifest (`yolo-env.yml`) and the env-shared `.env`. The env-tier sibling of
+ * manifest (`yolo-environment-{environment}.yml`) and the env-shared `.env`. The env-tier sibling of
  * the per-app config buckets — same secrets posture (Block Public Access and
  * versioning reconciled on every sync, no external write principals, no expiry
  * lifecycle). S3 read on this bucket is what gates env-secret control; app

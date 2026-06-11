@@ -34,7 +34,7 @@ it('reads the manifest fresh from the env config bucket and memoises it', functi
     $reads = collect($captured)->where('name', 'GetObject');
     expect($reads)->toHaveCount(1)
         ->and($reads->first()['args']['Bucket'])->toBe('yolo-111111111111-testing-config')
-        ->and($reads->first()['args']['Key'])->toBe('yolo-testing.yml');
+        ->and($reads->first()['args']['Key'])->toBe('yolo-environment-testing.yml');
 });
 
 it('treats a missing manifest as nothing declared', function (): void {
@@ -57,6 +57,45 @@ it('hard-fails on unrecognised manifest keys', function (): void {
         ->toThrow(IntegrityCheckException::class, 'flavour');
 });
 
+it('points an unrecognised remote key at a YOLO upgrade — the bucket manifest may be newer than this binary', function (): void {
+    $captured = [];
+    bindRoutedS3Client([
+        'GetObject' => new Result(['Body' => "flavour: spicy\n"]),
+    ], $captured);
+
+    expect(fn (): array => EnvManifest::current())
+        ->toThrow(IntegrityCheckException::class, 'newer YOLO release');
+});
+
+it('throws on a denied read rather than reporting the environment undeclared', function (): void {
+    $captured = [];
+    bindRoutedS3Client([
+        'GetObject' => new S3Exception('Access Denied', new Command('GetObject'), [
+            'code' => 'AccessDenied',
+            'response' => new Response(403),
+        ]),
+    ], $captured);
+
+    expect(fn (): array => EnvManifest::current())->toThrow(S3Exception::class);
+});
+
+it('throws on a denied head rather than reporting the manifest absent — the seed step must never overwrite on a misread', function (): void {
+    $captured = [];
+    bindRoutedS3Client([
+        'HeadObject' => new S3Exception('Access Denied', new Command('HeadObject'), [
+            'code' => 'AccessDenied',
+            'response' => new Response(403),
+        ]),
+    ], $captured);
+
+    expect(fn (): bool => EnvManifest::remoteExists())->toThrow(S3Exception::class);
+});
+
+it('rejects the app-side list shape under services — same key, opposite shapes', function (): void {
+    expect(fn (): array => EnvManifest::parse("services:\n  - ivs\n"))
+        ->toThrow(IntegrityCheckException::class, 'must be a map');
+});
+
 it('hard-fails when the manifest is not a YAML map', function (): void {
     expect(fn (): array => EnvManifest::parse('just a string'))
         ->toThrow(IntegrityCheckException::class, 'YAML map');
@@ -67,8 +106,8 @@ it('seeds contents that parse clean and pass validation', function (): void {
 });
 
 it('names the manifest after its environment, in the bucket and on disk', function (): void {
-    expect(EnvManifest::filename())->toBe('yolo-testing.yml')
-        ->and(EnvManifest::localPath())->toEndWith('/yolo-testing.yml');
+    expect(EnvManifest::filename())->toBe('yolo-environment-testing.yml')
+        ->and(EnvManifest::localPath())->toEndWith('/yolo-environment-testing.yml');
 });
 
 it('accepts a declared ivs service', function (): void {

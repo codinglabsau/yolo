@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo\Commands;
 
 use Dotenv\Dotenv;
+use Codinglabs\Yolo\Aws\S3;
 use Aws\S3\Exception\S3Exception;
 use Symfony\Component\Console\Input\InputArgument;
 use Codinglabs\Yolo\Concerns\ManagesEnvironmentFiles;
@@ -26,11 +27,10 @@ class EnvironmentEnvPushCommand extends Command
 
     public function handle(): void
     {
-        $environment = $this->argument('environment');
         $path = $this->sharedEnvLocalPath();
 
         if (! file_exists($path)) {
-            error(sprintf('Could not find .env.%s.shared', $environment));
+            error(sprintf('Could not find %s', $this->sharedEnvFilename()));
 
             return;
         }
@@ -38,8 +38,12 @@ class EnvironmentEnvPushCommand extends Command
         $current = [];
 
         try {
-            $current = Dotenv::parse($this->remote('.env'));
-        } catch (S3Exception) {
+            $current = Dotenv::parse($this->remote($this->sharedEnvFilename()));
+        } catch (S3Exception $e) {
+            if (! S3::isNotFound($e)) {
+                throw $e;
+            }
+
             warning('The env-shared .env does not exist in the env config bucket yet.');
         }
 
@@ -49,8 +53,8 @@ class EnvironmentEnvPushCommand extends Command
             return;
         }
 
-        $this->upload('.env', (string) file_get_contents($path), 'env-shared .env');
+        $this->upload($this->sharedEnvFilename(), (string) file_get_contents($path), 'env-shared .env');
 
-        $this->confirmDeleteLocal($path, sprintf('.env.%s.shared', $environment));
+        $this->confirmDeleteLocal($path, $this->sharedEnvFilename());
     }
 }

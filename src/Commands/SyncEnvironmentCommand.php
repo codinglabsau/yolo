@@ -45,7 +45,7 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 Steps\Sync\Environment\SyncEcsExecutionRoleStep::class,
                 Steps\Sync\Environment\AttachEcsExecutionRolePoliciesStep::class,
                 // env config bucket + the environment's declaration. The bucket
-                // holds the env manifest (yolo-{environment}.yml) and the env-shared .env;
+                // holds the env manifest (yolo-environment-{environment}.yml) and the env-shared .env;
                 // the manifest is seeded exactly once, then owned by the operator
                 // (edited via environment:manifest:push) — sync only ever converges
                 // toward it, never rewrites it.

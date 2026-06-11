@@ -4,7 +4,7 @@
 #
 # Edit flow:
 #   yolo environment:manifest:pull <environment>
-#   (edit yolo-<environment>.yml)
+#   (edit yolo-environment-<environment>.yml)
 #   yolo environment:manifest:push <environment>
 #   yolo sync:environment <environment>   # from any app in the environment
 #

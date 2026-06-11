@@ -29,9 +29,9 @@ class EnvironmentEnvPullCommand extends Command
 
         note('Downloading env-shared .env...');
 
-        if (! $this->download('.env', $this->sharedEnvLocalPath())) {
+        if (! $this->download($this->sharedEnvFilename(), $this->sharedEnvLocalPath())) {
             error(sprintf(
-                'No env-shared .env exists yet — create .env.%s.shared locally and push it with `yolo environment:env:push %s`.',
+                'No env-shared .env exists yet — create .env.environment.%s locally and push it with `yolo environment:env:push %s`.',
                 $environment,
                 $environment,
             ));

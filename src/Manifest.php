@@ -27,7 +27,7 @@ class Manifest
         'domain', 'apex', 'branch', 'tag', 'repository',
         'tenants.*',
         'bucket', 'alb',
-        'mediaconvert', 'public-subnets',
+        'public-subnets',
         'internet-gateway', 'route-table', 'vpc',
         'services',
         'rds.subnet', 'rds.security-group',

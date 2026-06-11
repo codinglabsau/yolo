@@ -199,6 +199,25 @@ it('bails on the removed ivs key — services: [ivs] replaced it', function (): 
     expect(test()->promptOutput->fetch())->toContain('ivs');
 });
 
+it('bails on the removed mediaconvert key — services: [mediaconvert] replaced it', function (): void {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'mediaconvert' => true,
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+    expect(test()->promptOutput->fetch())->toContain('mediaconvert');
+});
+
+it('accepts mediaconvert as a consumed service', function (): void {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'services' => ['ivs', 'mediaconvert'],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+});
+
 it('accepts the known shape of every task group', function (): void {
     writeManifest([
         'account-id' => '848509375702', 'region' => 'ap-southeast-2',

@@ -49,7 +49,7 @@ Interactive. Prompts for the app name, AWS account ID, region, and (unless multi
 - Writes `yolo.yml` from the stub.
 - Writes a default `Dockerfile` and `.dockerignore` (asks before overwriting existing ones).
 - Creates a starter `.env.production`.
-- Appends `.yolo`, `.env.staging`, `.env.production`, and the env-shared working copies (`.env.*.shared`, `yolo-*.yml`) to `.gitignore`.
+- Appends `.yolo`, `.env.staging`, `.env.production`, and the env-shared working copies (`.env.environment.*`, `yolo-environment-*.yml`) to `.gitignore`.
 - Offers to install the AWS Session Manager plugin (used by [`run`](#yolo-run)).
 
 This is the only command that runs without an existing manifest.
@@ -94,7 +94,7 @@ Downloads the current remote file, shows a diff of changed keys, and asks for co
 
 ## `yolo environment:manifest:pull`
 
-Download [the environment manifest](/reference/manifest#the-environment-manifest-yolo-environment-yml) — `yolo-<environment>.yml` — from the env config bucket to your project root (gitignored).
+Download [the environment manifest](/reference/manifest#the-environment-manifest-yolo-environment-environment-yml) — `yolo-environment-<environment>.yml` — from the env config bucket to your project root (gitignored).
 
 ```bash
 yolo environment:manifest:pull <environment>
@@ -106,7 +106,7 @@ yolo environment:manifest:pull <environment>
 
 **Options:** none
 
-The manifest must already exist — the environment's first `sync` seeds it. The local copy keeps the bucket's name (`yolo-production.yml` for production), so a pulled file can never be pushed at the wrong environment.
+The manifest must already exist — the environment's first `sync` seeds it. The local copy keeps the bucket's name (`yolo-environment-production.yml` for production), so a pulled file can never be pushed at the wrong environment.
 
 ---
 
@@ -130,7 +130,7 @@ Validates the local file against the manifest schema **before** anything touches
 
 ## `yolo environment:env:pull`
 
-Download the env-shared `.env` — the environment-tier sibling of the app's env file, holding generated service secrets — to `.env.<environment>.shared` (gitignored).
+Download the env-shared `.env` — the environment-tier sibling of the app's env file, holding generated service secrets — to `.env.environment.<environment>` (gitignored).
 
 ```bash
 yolo environment:env:pull <environment>
@@ -146,7 +146,7 @@ yolo environment:env:pull <environment>
 
 ## `yolo environment:env:push`
 
-Upload the env-shared `.env` from `.env.<environment>.shared`, with a key-level diff and confirmation. After uploading it offers to delete the local copy (default: yes).
+Upload the env-shared `.env` from `.env.environment.<environment>`, with a key-level diff and confirmation. After uploading it offers to delete the local copy (default: yes).
 
 ```bash
 yolo environment:env:push <environment>
