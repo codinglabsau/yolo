@@ -21,24 +21,32 @@ it('is env-backed with no runtime IAM — consumption is env injection only', fu
         ->and($definition->offerKeys())->toBe(['version', 'cpu', 'memory']);
 });
 
-it('requires version, cpu and memory in the offer', function (array $offer, string $needle): void {
+it('rejects a misshapen entry', function (array $offer, string $needle): void {
     expect(fn () => Service::TYPESENSE->definition()->validateOffer($offer, 'yolo-environment-testing.yml'))
         ->toThrow(IntegrityCheckException::class, $needle);
 })->with([
-    'empty offer' => [[], 'version'],
-    'missing cpu' => [['version' => '29.0', 'memory' => 1024], 'services.typesense.cpu'],
-    'missing memory' => [['version' => '29.0', 'cpu' => 256], 'services.typesense.memory'],
-    'non-int cpu' => [['version' => '29.0', 'cpu' => 'big', 'memory' => 1024], 'services.typesense.cpu'],
-    'blank version' => [['version' => ' ', 'cpu' => 256, 'memory' => 1024], 'version'],
+    'no version' => [[], 'version'],
+    'blank version' => [['version' => ' '], 'version'],
+    'non-numeric cpu' => [['version' => '29.0', 'cpu' => 'big'], 'services.typesense.cpu'],
+    'zero memory' => [['version' => '29.0', 'memory' => 0], 'services.typesense.memory'],
 ]);
 
-it('accepts a complete offer', function (): void {
-    Service::TYPESENSE->definition()->validateOffer(
-        ['version' => '29.0', 'cpu' => 256, 'memory' => 1024],
-        'yolo-environment-testing.yml',
-    );
+it('follows the tasks.* conventions — version required, sizing optional in either numeric style', function (array $offer): void {
+    Service::TYPESENSE->definition()->validateOffer($offer, 'yolo-environment-testing.yml');
 
     expect(true)->toBeTrue();
+})->with([
+    'version only (sizing defaults)' => [['version' => '29.0']],
+    'bare numerics' => [['version' => '29.0', 'cpu' => 256, 'memory' => 1024]],
+    'quoted numerics, tasks.web-style' => [['version' => '29.0', 'cpu' => '512', 'memory' => '2048']],
+]);
+
+it('defaults the per-node sizing to the seed shape', function (): void {
+    $captured = [];
+    bindServiceLifecycleWorld(['manifest' => "services:\n  typesense:\n    version: \"29.0\"\n"], $captured);
+
+    expect(Typesense::cpu())->toBe(256)
+        ->and(Typesense::memory())->toBe(1024);
 });
 
 it('declares three nodes with identical peer entries on stable DNS names', function (): void {
