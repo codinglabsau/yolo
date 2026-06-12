@@ -123,6 +123,26 @@ it('grants S3 object and bucket access on the asset and config buckets', functio
     ]);
 });
 
+it('grants object access on this app\'s claim file in the env config bucket, scoped to the object not the bucket', function (): void {
+    // PublishAppManifestStep reads then writes apps/{app}.yml in the env config
+    // bucket on every deploy. The grant must be scoped to exactly this app's
+    // claim object — never the bucket root — so the deployer can't reach the
+    // env-shared `.env` or env manifest that live in the same bucket.
+    $claimStatement = collect((new DeployerPolicy())->document()['Statement'])
+        ->first(fn (array $statement): bool => $statement['Resource'] === 'arn:aws:s3:::yolo-111111111111-testing-config/apps/my-app.yml');
+
+    expect($claimStatement)->not->toBeNull();
+    expect($claimStatement['Action'])->toBe(['s3:GetObject', 's3:PutObject']);
+
+    // The env config bucket root is never granted at the object or bucket level —
+    // that read is the permission gating env-secret control.
+    $allResources = collect((new DeployerPolicy())->document()['Statement'])
+        ->flatMap(fn (array $statement): array => (array) $statement['Resource']);
+
+    expect($allResources)->not->toContain('arn:aws:s3:::yolo-111111111111-testing-config');
+    expect($allResources)->not->toContain('arn:aws:s3:::yolo-111111111111-testing-config/*');
+});
+
 it('grants elasticache:DescribeReplicationGroups on * when the app uses the redis cache store', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',

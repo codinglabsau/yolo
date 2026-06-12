@@ -117,9 +117,9 @@ Tune the rest in the AWS console; YOLO won't undo it.
 
 `sync` never surprises you. It runs as a three-step flow:
 
-1. **Plan** — YOLO inspects live AWS state and computes what would change, rendering it grouped by scope. Brand-new resources are listed under **Will create** (one `+` line each); drift on existing resources is shown under **Pending changes** as per-attribute diffs (`current → desired`).
+1. **Plan** — YOLO inspects live AWS state and computes what would change, rendering it grouped by scope. Brand-new resources are listed under **Will create** (one `+` line each); drift on existing resources is shown under **Pending changes** as per-attribute diffs (`current → desired`). The plan is read-only, so it fans out across up to 8 worker processes — a full-environment plan takes seconds, not the better part of a minute. (No `pcntl`, or `YOLO_PLAN_SEQUENTIAL=1` set? It runs in-process with identical output.)
 2. **Confirm** — you're shown the plan and asked to approve. If nothing has drifted, it short-circuits with **"Already in sync"** and exits without touching anything.
-3. **Apply** — only the changed steps run.
+3. **Apply** — only the changed steps run, sequentially and in declaration order — once writes start, ordering is the dependency contract.
 
 The plan is **always** shown before the confirm, so there's no separate preview mode — to see what a `sync` would do, just run it and read the plan, then decline (or Ctrl-C) instead of confirming. Nothing is written until you approve.
 
