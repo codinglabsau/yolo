@@ -13,8 +13,12 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | Command | Purpose |
 |---|---|
 | [`init`](#yolo-init) | Scaffold `yolo.yml`, Dockerfile, and supporting files |
-| [`env:pull <env>`](#yolo-env-pull) | Download the environment's `.env` from S3 |
-| [`env:push <env>`](#yolo-env-push) | Upload the environment's `.env` to S3 (with diff) |
+| [`env:pull <env>`](#yolo-env-pull) | Download the app's `.env` from S3 |
+| [`env:push <env>`](#yolo-env-push) | Upload the app's `.env` to S3 (with diff) |
+| [`environment:manifest:pull <env>`](#yolo-environment-manifest-pull) | Download the environment manifest (`yolo-<env>.yml`) |
+| [`environment:manifest:push <env>`](#yolo-environment-manifest-push) | Validate and upload the environment manifest (with diff) |
+| [`environment:env:pull <env>`](#yolo-environment-env-pull) | Download the env-shared `.env` |
+| [`environment:env:push <env>`](#yolo-environment-env-push) | Upload the env-shared `.env` (with diff) |
 | [`build <env>`](#yolo-build) | Build and push the container image |
 | [`deploy <env>`](#yolo-deploy) | Build, then roll out a zero-downtime deploy |
 | [`status <env>`](#yolo-status) | Live dashboard of services, load, scaling and any in-progress deploy |
@@ -45,7 +49,7 @@ Interactive. Prompts for the app name, AWS account ID, region, and (unless multi
 - Writes `yolo.yml` from the stub.
 - Writes a default `Dockerfile` and `.dockerignore` (asks before overwriting existing ones).
 - Creates a starter `.env.production`.
-- Appends `.yolo`, `.env.staging`, and `.env.production` to `.gitignore`.
+- Appends `.yolo`, `.env.staging`, `.env.production`, and the env-shared working copies (`.env.environment.*`, `yolo-environment-*.yml`) to `.gitignore`.
 - Offers to install the AWS Session Manager plugin (used by [`run`](#yolo-run)).
 
 This is the only command that runs without an existing manifest.
@@ -66,7 +70,7 @@ yolo env:pull <environment>
 
 **Options:** none
 
-Writes `.env.<environment>` to your project root, overwriting any local copy.
+Writes `.env.<environment>` to your project root, overwriting any local copy. (For the *environment's own* files — the env manifest and the env-shared `.env` — see the [`environment:*` commands](#yolo-environment-manifest-pull).)
 
 ---
 
@@ -84,7 +88,75 @@ yolo env:push <environment>
 
 **Options:** none
 
-Downloads the current remote file, shows a diff of changed keys, and asks for confirmation before uploading. If no remote file exists yet, it uploads without a diff.
+Downloads the current remote file, shows a diff of changed keys, and asks for confirmation before uploading. If no remote file exists yet, it uploads without a diff. After a successful upload it offers to **delete the local file (default: yes)** — the bucket holds the truth, and an env file left on disk is both a staleness risk and secrets sitting around for anything on the machine to read.
+
+---
+
+## `yolo environment:manifest:pull`
+
+Download [the environment manifest](/reference/manifest#the-environment-manifest-yolo-environment-environment-yml) — `yolo-environment-<environment>.yml` — from the env config bucket to your project root (gitignored).
+
+```bash
+yolo environment:manifest:pull <environment>
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `environment` | yes | The environment name |
+
+**Options:** none
+
+The manifest must already exist — the environment's first `sync` seeds it. The local copy keeps the bucket's name (`yolo-environment-production.yml` for production), so a pulled file can never be pushed at the wrong environment.
+
+---
+
+## `yolo environment:manifest:push`
+
+Upload the environment manifest to the env config bucket.
+
+```bash
+yolo environment:manifest:push <environment>
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `environment` | yes | The environment name |
+
+**Options:** none
+
+Validates the local file against the manifest schema **before** anything touches the bucket — a misshapen manifest can never become the environment's declared truth — then shows a key-level diff against the remote and asks for confirmation. After uploading it offers to delete the local working copy (default: yes). Apply the pushed declaration with [`sync:environment`](#yolo-sync-environment), from any app in the environment.
+
+---
+
+## `yolo environment:env:pull`
+
+Download the env-shared `.env` — the environment-tier sibling of the app's env file, holding generated service secrets — to `.env.environment.<environment>` (gitignored).
+
+```bash
+yolo environment:env:pull <environment>
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `environment` | yes | The environment name |
+
+**Options:** none
+
+---
+
+## `yolo environment:env:push`
+
+Upload the env-shared `.env` from `.env.environment.<environment>`, with a key-level diff and confirmation. After uploading it offers to delete the local copy (default: yes).
+
+```bash
+yolo environment:env:push <environment>
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `environment` | yes | The environment name |
+
+**Options:** none
 
 ---
 
@@ -127,7 +199,7 @@ yolo deploy <environment> [--app-version=<tag>] [--group=<groups>] [--no-progres
 | `--group` | comma-separated | all the app runs | Service groups to roll (`web,queue,scheduler`). Defaults to every service the app runs. |
 | `--no-progress` | flag | off | Hide the live progress output. |
 
-After building, `deploy` pushes assets to S3, registers a new task-definition revision **for each service group** (web plus any standalone queue/scheduler), runs `deploy` hooks as a one-off task, rolls each ECS service onto its new revision, waits for the web service to go healthy (the deployment circuit breaker auto-rolls-back on failure), then UPSERTs Route 53 records. It always waits for the rollout to stabilise — there is no opt-out flag. `--group` narrows the rollout to a subset of services (the shared image is built either way); a deploy that omits `web` skips the ALB health wait, relying on the circuit breaker.
+After building, `deploy` republishes the app's claim file (`apps/{app}.yml` in the env config bucket — see [the environment declaration](/guide/provisioning#the-environment-declaration)), pushes assets to S3, registers a new task-definition revision **for each service group** (web plus any standalone queue/scheduler), runs `deploy` hooks as a one-off task, rolls each ECS service onto its new revision, waits for the web service to go healthy (the deployment circuit breaker auto-rolls-back on failure), then UPSERTs Route 53 records. It always waits for the rollout to stabilise — there is no opt-out flag. `--group` narrows the rollout to a subset of services (the shared image is built either way); a deploy that omits `web` skips the ALB health wait, relying on the circuit breaker.
 
 Once the rollout settles, `deploy` prints a recap — the same per-group summary table and CloudWatch dashboard link [`status`](#yolo-status) shows — so you can see what's now running and the new revision of each service.
 
@@ -276,7 +348,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **account**.
 
 ## `yolo sync:environment`
 
-Sync the environment-shared (environment-tier) resources — VPC, subnets, internet gateway and routes, the load balancer security group, the ALB and its `:80` listener, the SNS alarm topic, the shared ECS execution IAM role, and the [WAF web ACL](/guide/provisioning#web-application-firewall) (with its allow/block IP sets) fronting the ALB.
+Sync the environment-shared (environment-tier) resources — VPC, subnets, internet gateway and routes, the load balancer security group, the env config bucket holding [the environment's declaration](/guide/provisioning#the-environment-declaration) (env manifest + env-shared `.env`, the manifest seeded once on first sync), the IVS event-logging pipeline when the env manifest declares `services.ivs`, the ALB and its `:80` listener, the SNS alarm topic, the shared ECS execution IAM role, and the [WAF web ACL](/guide/provisioning#web-application-firewall) (with its allow/block IP sets) fronting the ALB.
 
 ```bash
 yolo sync:environment <environment> [--check] [--force] [--no-progress] [--tenant=<id>]
@@ -288,7 +360,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **environment**. These 
 
 ## `yolo sync:app`
 
-Sync a single application's resources for the given environment — S3 buckets, app IAM (deployer role/policy, the per-app ECS task role plus any [`task-role-policies`](/reference/manifest#task-role-policies), MediaConvert role for IVS), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, SQS queues, a CloudWatch dashboard, target-tracking autoscaling (when configured), and — for a solo app — its hosted zone and ACM certificate. For web apps it also provisions the shared [Valkey cache](/guide/provisioning#cache-and-sessions) (`cache.store`, default-on); sessions ride the same cluster by default ([`session.driver: redis`](/guide/provisioning#cache-and-sessions)), so they need no resources of their own.
+Sync a single application's resources for the given environment — S3 buckets, the app's published claim file (`apps/{app}.yml` in the env config bucket), app IAM (deployer role/policy, the per-app ECS task role plus any [`task-role-policies`](/reference/manifest#task-role-policies), and the MediaConvert role when the app consumes the [`mediaconvert` service](/reference/manifest#services)), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, SQS queues, a CloudWatch dashboard, target-tracking autoscaling (when configured), and — for a solo app — its hosted zone and ACM certificate. For web apps it also provisions the shared [Valkey cache](/guide/provisioning#cache-and-sessions) (`cache.store`, default-on); sessions ride the same cluster by default ([`session.driver: redis`](/guide/provisioning#cache-and-sessions)), so they need no resources of their own.
 
 ```bash
 yolo sync:app <environment> [--check] [--force] [--no-progress] [--tenant=<id>]
@@ -300,7 +372,7 @@ The step set is mode-aware: a multi-tenant app fans out landlord + per-tenant qu
 
 Some environment-tier resources are bootstrapped here by exception — the RDS security group (because its real purpose is this app's task-SG ingress), the HTTPS `:443` listener (because its creation needs this app's certificate), and the shared Valkey cache when `cache.store` is set (its security group needs this app's task SG to authorise). All are created-if-missing and never mutated, so the environment tier remains their single writer.
 
-A per-app **CloudWatch dashboard** (`yolo-<env>-<app>-dashboard`) is generated last, so every resource it charts already exists. It panels the ECS service (CPU/memory/tasks), the ALB (target health, requests, latency, slow-request bands, error counts and a 5xx error-rate SLO), SQS depth/throughput, the asset CloudFront distribution (requests, errors and cache hit rate), the S3 buckets and the app's logs — plus an RDS panel derived from `DB_HOST` in the app's env file (CPU, connections, memory, throughput and read/write latency). It's a read-only convenience: CloudWatch dashboards can't carry tags, so it doesn't appear in `yolo audit`.
+A per-app **CloudWatch dashboard** (`yolo-<env>-<app>-dashboard`) is generated last, so every resource it charts already exists. It panels the ECS service (CPU/memory/tasks), the ALB (target health, requests, latency, slow-request bands, error counts and a 5xx error-rate SLO), SQS depth/throughput, the asset CloudFront distribution (requests, errors and cache hit rate), the S3 buckets, any consumed services (MediaConvert jobs, Rekognition requests) and the app's logs — plus an RDS panel derived from `DB_HOST` in the app's env file (CPU, connections, memory, throughput and read/write latency). It's a read-only convenience: CloudWatch dashboards can't carry tags, so it doesn't appear in `yolo audit`.
 
 When a [`tasks.web.autoscaling`](/reference/manifest#tasks-web-autoscaling) block is present, `sync:app` also registers the **scalable target** and its **target-tracking policies** (CPU always; request-count once `request-count-per-target` is set), right after the ECS service. App Auto Scaling targets aren't taggable either, so they're invisible to `yolo audit` too. If autoscaling is enabled on a task that also runs the scheduler, the sync plan lists an advisory under its **Warnings** section — see [Scaling](/guide/scaling). Scaling is web-only and inert without the manifest block.
 

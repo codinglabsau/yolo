@@ -7,6 +7,7 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Enums\Scope;
+use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Resources\S3\S3Bucket;
@@ -135,6 +136,14 @@ class EcsTaskPolicy implements Resource, SynchronisesConfiguration
         // the per-app role means this can't reach another app's bucket.
         if (Manifest::has('bucket')) {
             $statements = [...$statements, ...$this->bucketStatements()];
+        }
+
+        // Each consumed service yields the statements its consumption grants —
+        // the app-side half of the service contract lives on the enum
+        // (Service::taskRoleStatements()), so a new service never edits this
+        // class.
+        foreach (Manifest::services() as $service) {
+            $statements = [...$statements, ...Service::from($service)->taskRoleStatements()];
         }
 
         return [

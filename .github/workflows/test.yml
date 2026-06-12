@@ -66,4 +66,4 @@ jobs:
         run: composer install --no-cache --no-ansi --no-interaction --no-progress
 
       - name: Enforce coverage threshold
-        run: vendor/bin/pest --coverage --min=63
+        run: vendor/bin/pest --coverage --min=68

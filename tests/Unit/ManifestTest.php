@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
@@ -27,10 +28,10 @@ describe('has and get', function (): void {
     });
 
     it('has returns true even for falsy values', function (): void {
-        writeManifest(['ivs' => false]);
+        writeManifest(['tag' => false]);
 
-        expect(Manifest::has('ivs'))->toBeTrue();
-        expect(Manifest::get('ivs'))->toBeFalse();
+        expect(Manifest::has('tag'))->toBeTrue();
+        expect(Manifest::get('tag'))->toBeFalse();
     });
 });
 
@@ -198,41 +199,26 @@ describe('task-role-policies', function (): void {
     });
 });
 
-describe('ivsEnabled', function (): void {
-    it('is false when ivs is absent', function (): void {
+describe('services', function (): void {
+    it('declares no services when the key is absent', function (): void {
         writeManifest([]);
 
-        expect(Manifest::ivsEnabled())->toBeFalse();
+        expect(Manifest::services())->toBe([])
+            ->and(Manifest::usesService(Service::IVS))->toBeFalse();
     });
 
-    it('is true for the boolean shorthand', function (): void {
-        writeManifest(['ivs' => true]);
+    it('reports a declared service', function (): void {
+        writeManifest(['services' => ['ivs']]);
 
-        expect(Manifest::ivsEnabled())->toBeTrue();
+        expect(Manifest::services())->toBe(['ivs'])
+            ->and(Manifest::usesService(Service::IVS))->toBeTrue();
     });
 
-    it('is false when ivs is explicitly false', function (): void {
-        writeManifest(['ivs' => false]);
+    it('treats a non-list value as nothing declared — the validator rejects it before any step runs', function (): void {
+        writeManifest(['services' => ['ivs' => true]]);
 
-        expect(Manifest::ivsEnabled())->toBeFalse();
-    });
-
-    it('is true for the expanded form with logging on', function (): void {
-        writeManifest(['ivs' => ['logging' => true, 'log-retention-days' => 30]]);
-
-        expect(Manifest::ivsEnabled())->toBeTrue();
-    });
-
-    it('is false for the expanded form with logging off', function (): void {
-        writeManifest(['ivs' => ['logging' => false, 'log-retention-days' => 30]]);
-
-        expect(Manifest::ivsEnabled())->toBeFalse();
-    });
-
-    it('is false for the expanded form without a logging key', function (): void {
-        writeManifest(['ivs' => ['log-retention-days' => 30]]);
-
-        expect(Manifest::ivsEnabled())->toBeFalse();
+        expect(Manifest::services())->toBe([])
+            ->and(Manifest::usesService(Service::IVS))->toBeFalse();
     });
 });
 

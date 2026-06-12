@@ -1,7 +1,7 @@
 <?php
 
-use Codinglabs\Yolo\Steps\Sync\App\SyncIvsEventBridgeTargetStep;
 use Codinglabs\Yolo\Steps\Sync\Account\SyncGithubOidcProviderStep;
+use Codinglabs\Yolo\Steps\Sync\Environment\SyncIvsEventBridgeTargetStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncInternetGatewayAttachmentStep;
 use Codinglabs\Yolo\Steps\Sync\App\Solo\SyncSslCertificateStep as SoloSslCertificateStep;
 use Codinglabs\Yolo\Steps\Sync\App\Tenant\AttachSslCertificateToLoadBalancerListenerStep;

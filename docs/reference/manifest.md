@@ -40,12 +40,8 @@ environments:
     # session:
     #   driver: redis            # default (sessions live on the Valkey cluster); database/cookie/file to change the session backend
 
-    # --- Media: Amazon IVS + MediaConvert ---
-    # ivs: true                  # enable IVS event logging; or expand for finer control:
-    # ivs:
-    #   logging: true
-    #   log-retention-days: 30   # default: 14 — CloudWatch retention
-    # mediaconvert: arn:aws:iam::123456789012:role/MediaConvertRole   # transcoding role ARN (used with IVS)
+    # --- YOLO-provisioned services this app consumes ---
+    # services: [ivs, mediaconvert, rekognition]   # bare capability names only — service shape is hardcoded or lives in the environment manifest
 
     # --- Extra IAM for this app's task role (per-app; never reaches another app) ---
     # task-role-policies:
@@ -217,19 +213,23 @@ Name of an app S3 bucket for application storage. Injected into the container as
 
 Name of the Application Load Balancer to use. Defaults to the per-environment shared `yolo-{env}` ALB.
 
-### `ivs`
+### `services`
 
-Enables IVS (Amazon Interactive Video Service) event logging. Set to `true`, or expand to a map for finer control:
+The YOLO-provisioned services this app consumes — a list of bare capability names:
 
 ```yaml
-ivs:
-  logging: true
-  log-retention-days: 30   # CloudWatch retention (default 14)
+services: [ivs]
 ```
 
-### `mediaconvert`
+| Service | What consuming it gives this app |
+|---|---|
+| `ivs` | The app's ECS task role is granted IVS access (`ivs:*` — channels and stream keys are created by the app at runtime, so there's nothing stable to scope to), and the app's CloudWatch dashboard gains the IVS logs panel |
+| `mediaconvert` | A per-app IAM role for AWS Elemental MediaConvert to assume is provisioned, its computed ARN is baked into the build as `AWS_MEDIACONVERT_ROLE_ID`, the task role is granted the job operations plus `iam:PassRole` locked to that one role and to MediaConvert itself, and the app's CloudWatch dashboard gains a MediaConvert jobs panel. App-side only — jobs run on the account's default on-demand queue, so there is no environment-manifest half |
+| `rekognition` | The app's ECS task role is granted Rekognition access (`rekognition:*` — the detection APIs are resource-less, operating on request payloads or S3 objects read with the caller's own credentials, so reads of the app [`bucket`](#bucket) ride its existing grant), and the app's CloudWatch dashboard gains a Rekognition requests panel. App-side only — a pure pay-per-call API, nothing is provisioned, so there is no environment-manifest half |
 
-MediaConvert role ARN for video transcoding workloads (used with IVS).
+An entry is a *consumption claim*, deliberately just a name: all service **shape** (sizing, versions, retention) is either hardcoded or belongs to [the environment manifest](#the-environment-manifest-yolo-environment-environment-yml), never the app manifest — so two apps can never declare competing configuration for shared infrastructure. Unknown names, duplicate entries, or anything other than a flat list hard-fail validation. Claims are also **published**: every `deploy` and `sync:app` writes the app's claim file (`apps/{app}.yml` — name + services) into the [env config bucket](/guide/provisioning#the-environment-declaration), so the environment tier holds a live record of which apps consume which shared services.
+
+The corresponding env-shared infrastructure is the environment manifest's side of the contract — e.g. the IVS event-logging pipeline (one `/aws/ivs/yolo-{env}` log group + EventBridge rule per environment, because the `aws.ivs` event stream is account-wide) is provisioned by `sync:environment` when `yolo-environment-{environment}.yml` declares `services.ivs`. Defaulted framework backends ([`cache`](#cache), [`session`](#session)) deliberately stay separate keys — `services` is for opt-in capabilities only.
 
 ::: tip No `waf` key
 The [web application firewall](/guide/provisioning#web-application-firewall) is a **compulsory** environment resource — every environment with a load balancer gets one automatically, so there's nothing to configure here. Day-to-day tuning happens in its allow/block IP sets, not the manifest.
@@ -452,3 +452,21 @@ Your manifest implies one of three modes:
 | **Solo** | `domain`/`apex` set at the environment level | One app, one hosted zone + certificate, served on its domain. |
 | **Multi-tenant** | `tenants` set (no env-level `domain`/`apex`) | Per-tenant domains and queues; certs attach per tenant via SNI. |
 | **Headless** | no `domain`, `apex`, or tenant domains | No ALB attachment or DNS. Still deploys and processes queues/scheduled work. |
+
+---
+
+## The environment manifest (`yolo-environment-{environment}.yml`)
+
+`yolo.yml` declares what one **app** needs; the environment has a declaration of its own. `yolo-environment-{environment}.yml` (e.g. `yolo-environment-production.yml` — the environment is in the filename, so a pulled copy can never be pushed at the wrong environment) lives in the env config bucket (`yolo-{account-id}-{env}-config`), not in any app's repo — it's seeded by the environment's first `sync` and from then on owned by the operator, edited through the [`environment:manifest:pull` / `environment:manifest:push`](/reference/commands#yolo-environment-manifest-pull) commands. Every `sync:environment` pulls it fresh from S3 and reconciles toward it, from any app repo.
+
+```yaml
+domain: example.com.au   # the env's canonical domain for shared-service ingress
+services: {}             # env-shared services — the extension point for what sync:environment provisions
+```
+
+| Key | Purpose |
+|---|---|
+| `domain` | The environment's canonical domain for shared-service hostnames (e.g. `search.{domain}`). Distinct from any app's `domain` — shared services are served on the *environment's* name, reachable from every app regardless of their own domains. |
+| `services` | Env-shared services provisioned by `sync:environment`. `services.ivs: {}` enables the environment's IVS event-logging pipeline (the app-side counterpart is [`services: [ivs]`](#services) in `yolo.yml`). |
+
+Like `yolo.yml`, the file is validated against a strict allow-list — an unrecognised key hard-fails both `environment:manifest:push` (before upload) and any sync that reads it. The allow-list is compiled into each release, so adding a new env-manifest key means updating `codinglabsau/yolo` in the environment's app repos **before** pushing the key — an older binary hard-fails (with an upgrade hint) rather than silently ignoring declarations it doesn't know. See [The environment declaration](/guide/provisioning#the-environment-declaration) for the model.

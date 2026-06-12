@@ -14,6 +14,10 @@ class DeployCommand extends SteppedCommand
     use RendersServiceStatus;
 
     protected array $steps = [
+        // Republish the app's claim file first — claims must lead the code
+        // that consumes a service, and a deploy against an environment that
+        // was never synced fails fast here with instructions.
+        Steps\Sync\App\PublishAppManifestStep::class,
         Steps\Deploy\PushAssetsToS3Step::class,
         Steps\Deploy\RegisterTaskDefinitionRevisionStep::class,
         Steps\Deploy\ExecuteDeployStepsStep::class,

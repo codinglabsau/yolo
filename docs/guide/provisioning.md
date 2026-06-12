@@ -13,7 +13,7 @@ YOLO groups every resource by **ownership scope** — the blast radius if it cha
 | Command | Scope | Blast radius | Provisions |
 |---|---|---|---|
 | `yolo sync:account <env>` | **Account** | the whole AWS account | GitHub OIDC provider |
-| `yolo sync:environment <env>` | **Environment** | every app in the environment | VPC, subnets, internet gateway & routes, RDS security group, SNS alarm topic, the shared ECS execution IAM role, the env logs bucket (`yolo-{account-id}-{env}-logs` — the shared ALB's access logs under `alb/`, everything expiring after 90 days), the ALB and its `:80`/`:443` listeners, the [WAF](#web-application-firewall) fronting the ALB |
+| `yolo sync:environment <env>` | **Environment** | every app in the environment | VPC, subnets, internet gateway & routes, RDS security group, SNS alarm topic, the shared ECS execution IAM role, the env config bucket (`yolo-{account-id}-{env}-config` — [the environment's declaration](#the-environment-declaration): env manifest + env-shared `.env`), the env logs bucket (`yolo-{account-id}-{env}-logs` — the shared ALB's access logs under `alb/`, everything expiring after 90 days), the IVS event-logging pipeline (when the env manifest declares `services.ivs` — the `aws.ivs` event stream is account-wide, so the pipeline is env-shared), the ALB and its `:80`/`:443` listeners, the [WAF](#web-application-firewall) fronting the ALB |
 | `yolo sync:app <env>` | **App** | one app | S3 buckets, app IAM (deployer role/policy, the per-app ECS task role + any [`task-role-policies`](/reference/manifest#task-role-policies)), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, hosted zone & ACM certificate, SQS queues, CloudWatch dashboard — plus, for web apps, the shared [Valkey cache](#cache-and-sessions) (default-on; opt out via `cache.store`). Sessions ride the same Valkey cluster by default, so they need no provisioning of their own |
 
 The bare `yolo sync` runs all three **in dependency order** — account, then environment, then app:
@@ -28,6 +28,32 @@ The shared **Valkey cache** is env-scoped but bootstrapped from `sync:app` by ex
 
 ::: tip Why scopes matter
 Several apps can share one environment's VPC and load balancer. Because `sync:app` only attaches and never mutates, deploying app B can't break app A's networking. When you're iterating on one app, `sync:app` is faster than a full `sync` — the account and environment tiers rarely change.
+:::
+
+## The environment declaration
+
+App manifests declare what each **app** needs. The environment-shared tier has a declaration of its own: two files in the env config bucket (`yolo-{account-id}-{env}-config`), living in S3 rather than any app's repo precisely *because* they're shared — no single repo owns them, and every syncing app must see the same truth.
+
+- **`yolo-environment-{environment}.yml`** — [the env manifest](/reference/manifest#the-environment-manifest-yolo-environment-environment-yml): the environment's canonical service domain and its env-shared services. `yolo.yml` is the app; `yolo-environment-production.yml` is the production environment. Seeded with defaults by the environment's first `sync` and **never touched by sync again** — every later edit is yours, made through the pull/push flow below.
+- **`.env`** — the env-shared secrets channel, the environment-tier sibling of each app's `.env.{environment}`. It holds *generated* service secrets (created on demand by the services that need them) and anything an env-shared service should read at provision time.
+
+The bucket carries one more class of object that is **not** yours to edit: each app's published claim file (`apps/{app}.yml` — the app's name and the [`services`](/reference/manifest#services) it consumes). Every `deploy` and every `sync:app` republishes it, so the environment tier always holds a live record of which apps consume which shared services.
+
+The edit flow mirrors app env files:
+
+```bash
+yolo environment:manifest:pull production    # → yolo-environment-production.yml (gitignored)
+# edit
+yolo environment:manifest:push production    # validated, key-level diff, confirm
+yolo sync:environment production             # from any app in the environment
+```
+
+The env-shared `.env` moves the same way via `environment:env:pull` / `environment:env:push` (local copy `.env.environment.production`, gitignored).
+
+Because every `sync:environment` pulls the manifest fresh from S3 and converges toward it, the environment's desired state has a **single source of truth** — apps pinned to different `codinglabsau/yolo` releases reconcile toward the same declared state instead of fighting over compiled-in defaults, within the schema each release knows: a manifest carrying keys from a newer release hard-fails older binaries with an upgrade hint, so update yolo across the environment's app repos before pushing a new key. Changing an env service's size is a file edit and a sync, not a delete-and-recreate.
+
+::: warning Access is the boundary
+S3 read on the env config bucket is what gates env-secret control. Deploying an app never requires it — the barrier to mutate the environment is deliberately higher than the barrier to ship an app.
 :::
 
 ## Web application firewall

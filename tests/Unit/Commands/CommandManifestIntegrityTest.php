@@ -138,6 +138,86 @@ it('accepts session.driver redis when cache.store is redis', function (): void {
     expect(invokeManifestIntegrity())->toBeTrue();
 });
 
+it('accepts a services list of known service names', function (): void {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'services' => ['ivs'],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+});
+
+it('bails on an unknown service name', function (): void {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'services' => ['ivs', 'memcached'],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+    expect(test()->promptOutput->fetch())->toContain('memcached');
+});
+
+it('bails when services carries config — service shape belongs in the environment manifest', function (): void {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'services' => ['ivs' => ['log-retention-days' => 30]],
+    ]);
+
+    // A map under services flattens to unknown key paths, so the allow-list
+    // catches it before the dedicated services validator even runs.
+    expect(invokeManifestIntegrity())->toBeFalse();
+    expect(test()->promptOutput->fetch())->toContain('services.ivs');
+});
+
+it('bails when services is not a list at all', function (): void {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'services' => 'ivs',
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+    expect(test()->promptOutput->fetch())->toContain('list of service names');
+});
+
+it('bails on duplicate services entries', function (): void {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'services' => ['ivs', 'ivs'],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+    expect(test()->promptOutput->fetch())->toContain('duplicate');
+});
+
+it('bails on the removed ivs key — services: [ivs] replaced it', function (): void {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'ivs' => true,
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+    expect(test()->promptOutput->fetch())->toContain('ivs');
+});
+
+it('bails on the removed mediaconvert key — services: [mediaconvert] replaced it', function (): void {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'mediaconvert' => true,
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+    expect(test()->promptOutput->fetch())->toContain('mediaconvert');
+});
+
+it('accepts every known service as a consumed service', function (): void {
+    writeManifest([
+        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'services' => ['ivs', 'mediaconvert', 'rekognition'],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+});
+
 it('accepts the known shape of every task group', function (): void {
     writeManifest([
         'account-id' => '848509375702', 'region' => 'ap-southeast-2',

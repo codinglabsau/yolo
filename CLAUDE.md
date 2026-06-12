@@ -40,7 +40,7 @@ deployments.
 ./vendor/bin/pest --filter "test name"
 
 # Coverage gate — CI enforces this on the 8.4 job (needs a driver: pcov or xdebug)
-./vendor/bin/pest --coverage --min=63
+./vendor/bin/pest --coverage --min=68
 
 # Static analysis — PHPStan runs at level 5 (config in phpstan.neon)
 ./vendor/bin/phpstan analyse --memory-limit=1G

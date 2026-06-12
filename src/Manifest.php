@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo;
 
 use Illuminate\Support\Arr;
 use Symfony\Component\Yaml\Yaml;
+use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
@@ -26,9 +27,9 @@ class Manifest
         'domain', 'apex', 'branch', 'tag', 'repository',
         'tenants.*',
         'bucket', 'alb',
-        'mediaconvert', 'public-subnets',
+        'public-subnets',
         'internet-gateway', 'route-table', 'vpc',
-        'ivs', 'ivs.logging', 'ivs.log-retention-days',
+        'services',
         'rds.subnet', 'rds.security-group',
         'ecs.security-group',
         'sqs.depth-alarm-threshold', 'sqs.depth-alarm-period', 'sqs.depth-alarm-evaluation-periods',
@@ -111,12 +112,13 @@ class Manifest
     /**
      * Flatten an associative manifest node to leaf dot-paths. Lists and scalars
      * are leaves at their own key — we don't descend into list items or
-     * free-form values.
+     * free-form values. Public because EnvManifest validates its own schema
+     * with the same flattening.
      *
      * @param  array<string, mixed>  $node
      * @return array<int, string>
      */
-    protected static function flattenKeys(array $node, string $prefix = ''): array
+    public static function flattenKeys(array $node, string $prefix = ''): array
     {
         $paths = [];
 
@@ -488,13 +490,25 @@ class Manifest
             ->every(fn (array $config): bool => ! isset($config['apex']) && ! isset($config['domain']));
     }
 
-    public static function ivsEnabled(): bool
+    /**
+     * The YOLO-provisioned services this app consumes — bare capability names
+     * (`services: [ivs]`). Service shape (sizing, versions, hosts) lives in the
+     * environment manifest, never here, so apps can't declare competing
+     * configuration for shared infrastructure. Entries are validated against
+     * the Service enum before any command runs (ensureServicesValid).
+     *
+     * @return array<int, string>
+     */
+    public static function services(): array
     {
-        if (static::get('ivs') === true) {
-            return true;
-        }
+        $services = static::get('services', []);
 
-        return static::get('ivs.logging') === true;
+        return is_array($services) && array_is_list($services) ? $services : [];
+    }
+
+    public static function usesService(Service $service): bool
+    {
+        return in_array($service->value, static::services(), true);
     }
 
     /**

@@ -13,6 +13,19 @@ class S3
     }
 
     /**
+     * Whether an S3 failure means the object/bucket genuinely doesn't exist —
+     * NoSuchKey / NoSuchBucket, or a bare 404 (HeadObject carries no error
+     * code in its response body). AccessDenied, throttling and transient
+     * faults are NOT absence and must never be read as it: callers treating
+     * this as "nothing there" rethrow everything else.
+     */
+    public static function isNotFound(S3Exception $e): bool
+    {
+        return in_array($e->getAwsErrorCode(), ['NoSuchKey', 'NoSuchBucket'], true)
+            || $e->getStatusCode() === 404;
+    }
+
+    /**
      * The bucket's Block Public Access configuration, or null when none is set
      * (a fresh bucket has none — AWS throws NoSuchPublicAccessBlockConfiguration).
      *

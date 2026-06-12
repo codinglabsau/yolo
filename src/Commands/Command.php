@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Commands;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Concerns\RegistersAws;
 use Codinglabs\Yolo\Concerns\HasAfterCallbacks;
@@ -92,6 +93,7 @@ abstract class Command extends SymfonyCommand
             && $this->ensureManifestKeyDeclared('account-id')
             && $this->ensureCacheStoreValid()
             && $this->ensureSessionDriverValid()
+            && $this->ensureServicesValid()
             && $this->ensureSchedulerHostNotScaleToZero();
     }
 
@@ -194,6 +196,48 @@ abstract class Command extends SymfonyCommand
         // session driver is caught, not silently shipped pointing at no cluster.
         if (Manifest::sessionDriver() === 'redis' && Manifest::cacheStore() !== 'redis') {
             error('yolo.yml `session.driver: redis` needs the Valkey cache (`cache.store: redis`, the web-app default) — don\'t opt the cache out.');
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * `services` is the app's opt-in list of YOLO-provisioned services — bare
+     * capability names only (the Service enum). All service shape lives in the
+     * environment manifest, so there's nothing else an app may declare here:
+     * not an object, not duplicates, not an unknown name.
+     */
+    protected function ensureServicesValid(): bool
+    {
+        $services = Manifest::get('services');
+
+        if ($services === null) {
+            return true;
+        }
+
+        if (! is_array($services) || ! array_is_list($services)) {
+            error(sprintf('yolo.yml `services` must be a list of service names (%s).', implode(', ', Service::values())));
+
+            return false;
+        }
+
+        $unknown = array_diff($services, Service::values());
+
+        if ($unknown !== []) {
+            error(sprintf(
+                'Unknown %s in yolo.yml `services`: %s. Available: %s.',
+                count($unknown) === 1 ? 'service' : 'services',
+                implode(', ', $unknown),
+                implode(', ', Service::values()),
+            ));
+
+            return false;
+        }
+
+        if (count($services) !== count(array_unique($services))) {
+            error('yolo.yml `services` contains duplicate entries.');
 
             return false;
         }

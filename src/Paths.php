@@ -59,4 +59,28 @@ class Paths
     {
         return Helpers::keyedBucketName('logs', exclusive: false);
     }
+
+    /**
+     * Env-scoped config bucket holding the environment's declaration — the env
+     * manifest (yolo-environment-{environment}.yml) and the env-shared `.env`. The env-tier sibling
+     * of the per-app config buckets, carrying the same secrets posture:
+     * no external write principals, no expiry lifecycle. Read access to this
+     * bucket is the permission that gates env-secret control — app deploys
+     * never need it.
+     */
+    public static function s3EnvConfigBucket(): string
+    {
+        return Helpers::keyedBucketName('config', exclusive: false);
+    }
+
+    /**
+     * This app's claim file inside the env config bucket — the published
+     * record of which YOLO-provisioned services the app consumes. One object
+     * per app under `apps/`, so the env tier can list the prefix and evaluate
+     * the union of every app's claims.
+     */
+    public static function s3AppManifestKey(): string
+    {
+        return sprintf('apps/%s.yml', Manifest::name());
+    }
 }

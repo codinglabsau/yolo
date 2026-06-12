@@ -32,13 +32,13 @@ function collate(array $scopes, ?SyncSteppedCommand $command = null, array $opti
     return (new ReflectionMethod($command, 'collateSteps'))->invoke($command, $scopes, 'testing');
 }
 
-/** The three IVS steps, skipped unless ivs is enabled. */
-function ivsSteps(): array
+/** Three web ingress steps, skipped on a headless app (no domain). */
+function headlessGatedSteps(): array
 {
     return [
-        Steps\Sync\App\SyncIvsCloudWatchLogGroupStep::class,
-        Steps\Sync\App\SyncIvsEventBridgeRuleStep::class,
-        Steps\Sync\App\SyncIvsEventBridgeTargetStep::class,
+        Steps\Sync\App\SyncTargetGroupStep::class,
+        Steps\Sync\App\SyncForwardRuleStep::class,
+        Steps\Sync\App\SyncRedirectRuleStep::class,
     ];
 }
 
@@ -122,25 +122,25 @@ it('keys each scope distinctly so no scope is dropped on merge', function (): vo
         ->and($scopes)->toEqual(array_unique($scopes));
 });
 
-it('groups the three skipped IVS steps under a single determination', function (): void {
+it('groups the three skipped headless-gated steps under a single determination', function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 
-    [$plan, $skipped] = collate(['app' => ivsSteps()]);
+    [$plan, $skipped] = collate(['app' => headlessGatedSteps()]);
 
     expect($plan)->toHaveCount(0);
     expect($skipped)->toHaveCount(3);
 
     expect($skipped->groupBy(fn (array $entry): string => $entry['scope'] . '|' . $entry['reason']))
         ->toHaveCount(1);
-    expect($skipped->first()['reason'])->toBe('ivs not enabled in manifest');
+    expect($skipped->first()['reason'])->toBe('headless app (no ALB / Route 53 / domain)');
 });
 
-it('plans the IVS steps when ivs is enabled', function (): void {
+it('plans the web ingress steps when the app has a domain', function (): void {
     writeManifest([
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'ivs' => true,
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'domain' => 'example.com.au',
     ]);
 
-    [$plan, $skipped] = collate(['app' => ivsSteps()]);
+    [$plan, $skipped] = collate(['app' => headlessGatedSteps()]);
 
     expect($plan)->toHaveCount(3);
     expect($skipped)->toHaveCount(0);

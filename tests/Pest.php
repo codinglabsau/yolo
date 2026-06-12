@@ -2,6 +2,7 @@
 
 use Aws\Result;
 use Aws\MockHandler;
+use Aws\S3\S3Client;
 use Aws\Ec2\Ec2Client;
 use Aws\Ecs\EcsClient;
 use Aws\Iam\IamClient;
@@ -9,12 +10,15 @@ use Aws\CommandInterface;
 use Aws\WAFV2\WAFV2Client;
 use Codinglabs\Yolo\Helpers;
 use GuzzleHttp\Promise\Create;
+use Codinglabs\Yolo\EnvManifest;
 use Symfony\Component\Yaml\Yaml;
 use Aws\CloudFront\CloudFrontClient;
 use Aws\CloudWatch\CloudWatchClient;
+use Codinglabs\Yolo\Commands\Command;
 use Codinglabs\Yolo\Enums\StepResult;
 use Aws\ElastiCache\ElastiCacheClient;
 use Codinglabs\Yolo\Resources\WafV2\WebAcl;
+use Symfony\Component\Console\Input\ArrayInput;
 use Aws\ApplicationAutoScaling\ApplicationAutoScalingClient;
 use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
 use Aws\ResourceGroupsTaggingAPI\ResourceGroupsTaggingAPIClient;
@@ -81,6 +85,58 @@ function writeManifest(array $config, string $environment = 'testing'): void
     ], 10, 2));
 
     Helpers::app()->instance('environment', $environment);
+
+    // The env manifest memoises its S3 read per process; every test that
+    // rewrites the app manifest gets a fresh slate so a previously mocked
+    // (or unmocked) read can't leak across cases.
+    EnvManifest::reset();
+}
+
+/**
+ * Bind a mock S3 client with command-routed responses, capturing every call.
+ * A command's value may be a single Result/Throwable (repeated) or an array
+ * used as a queue (the last entry repeats once exhausted); Throwables resolve
+ * as rejections (e.g. a missing object/bucket). Mirrors bindMockEc2Client.
+ * (bindMockS3Client in SyncS3BucketHardeningTest.php is file-local; this is
+ * the Pest-wide twin for files that need an S3 mock under --parallel.)
+ *
+ * @param  array<string, Result|Throwable|array<int, Result|Throwable>>  $byCommand
+ * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+ */
+function bindRoutedS3Client(array $byCommand, array &$captured): void
+{
+    $mock = new class($byCommand, $captured) extends MockHandler
+    {
+        /** @var array<string, int> */
+        private array $cursors = [];
+
+        public function __construct(protected array $byCommand, protected array &$captured) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            $name = $cmd->getName();
+            $this->captured[] = ['name' => $name, 'args' => $cmd->toArray()];
+
+            $entry = $this->byCommand[$name] ?? new Result();
+
+            if (is_array($entry)) {
+                $index = min($this->cursors[$name] ?? 0, count($entry) - 1);
+                $this->cursors[$name] = $index + 1;
+                $entry = $entry[$index];
+            }
+
+            return $entry instanceof Throwable
+                ? Create::rejectionFor($entry)
+                : Create::promiseFor($entry);
+        }
+    };
+
+    Helpers::app()->instance('s3', new S3Client([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
 }
 
 /**
@@ -611,4 +667,19 @@ function desiredWafRules(): array
     bindRoutedWafV2Client(['ListIPSets' => wafIpSetsResult()], $captured);
 
     return (new WebAcl())->desiredRules();
+}
+
+/**
+ * Run an environment-file command's handle() directly with a bound input —
+ * skipping the base execute() plumbing (auth, STS guard, manifest checks) so
+ * tests exercise the command's own behaviour against mocked AWS only.
+ */
+function runEnvironmentFileCommand(Command $command, string $environment = 'testing'): void
+{
+    $command->input = new ArrayInput(
+        ['environment' => $environment],
+        $command->getDefinition(),
+    );
+
+    $command->handle();
 }

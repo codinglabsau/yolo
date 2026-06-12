@@ -67,6 +67,10 @@ class SyncAppCommand extends SyncSteppedCommand
                 Steps\Sync\App\SyncS3ConfigBucketStep::class,
                 Steps\Sync\App\SyncS3BucketStep::class,
                 Steps\Sync\App\SyncS3AssetBucketStep::class,
+                // environment claim — publish `apps/{app}.yml` into the env
+                // config bucket so the env tier can evaluate which shared
+                // services are still consumed (deploy republishes it too)
+                Steps\Sync\App\PublishAppManifestStep::class,
                 // app IAM (deployer + MediaConvert)
                 Steps\Sync\App\SyncMediaConvertRoleStep::class,
                 Steps\Sync\App\AttachMediaConvertRolePoliciesStep::class,
@@ -147,10 +151,6 @@ class SyncAppCommand extends SyncSteppedCommand
                         Steps\Sync\App\SyncAssetDistributionStep::class,
                     ]
                     : [],
-                // logging (IVS CloudWatch + EventBridge)
-                Steps\Sync\App\SyncIvsCloudWatchLogGroupStep::class,
-                Steps\Sync\App\SyncIvsEventBridgeRuleStep::class,
-                Steps\Sync\App\SyncIvsEventBridgeTargetStep::class,
                 // observability — runs last so every resource it charts already exists
                 Steps\Sync\App\SyncCloudWatchDashboardStep::class,
             ],
