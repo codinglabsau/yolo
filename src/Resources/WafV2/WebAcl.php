@@ -6,7 +6,11 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Change;
 use Codinglabs\Yolo\Aws\WafV2;
 use Codinglabs\Yolo\Enums\Scope;
+use Codinglabs\Yolo\Enums\Service;
+use Codinglabs\Yolo\Enums\ServiceState;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Services\Lifecycle;
+use Codinglabs\Yolo\Services\Typesense;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -53,6 +57,17 @@ class WebAcl implements Resource, SynchronisesConfiguration
     private const string RATE_RULE = 'yolo-rate-limit';
 
     private const string COUNTRY_RULE = 'yolo-banned-countries';
+
+    /**
+     * The search host's own rate rule (public: the Typesense dashboard widget
+     * charts its blocks). Keystroke-as-you-type search + CGNAT aggregation
+     * make the general per-IP ceiling a guaranteed false positive, so the
+     * search host is carved out of yolo-rate-limit and given its own budget —
+     * roomy enough for ~30-50 simultaneously active searchers behind one IP.
+     */
+    public const string SEARCH_RATE_RULE = 'yolo-search-rate-limit';
+
+    private const int SEARCH_RATE_LIMIT = 1000;
 
     public function name(): string
     {
@@ -204,7 +219,25 @@ class WebAcl implements Resource, SynchronisesConfiguration
             $this->ipSetRule(self::BLOCK_RULE, 1, $blockArn, action: 'Block'),
             ...$this->managedGroupRules(),
             $this->rateLimitRule(),
+            ...$this->searchHost() !== null ? [$this->searchRateLimitRule()] : [],
         ];
+    }
+
+    /**
+     * The environment's search host, when its rate handling is active: the
+     * env manifest declares a domain AND the typesense service is on
+     * (offered ∧ claimed). While inactive the general rate rule covers
+     * everything and no search rule exists.
+     */
+    protected function searchHost(): ?string
+    {
+        $host = Typesense::searchHost();
+
+        if ($host === null) {
+            return null;
+        }
+
+        return Lifecycle::state(Service::TYPESENSE) === ServiceState::Provision ? $host : null;
     }
 
     /**
@@ -287,9 +320,57 @@ class WebAcl implements Resource, SynchronisesConfiguration
                     'Limit' => self::RATE_LIMIT,
                     'AggregateKeyType' => 'IP',
                     'EvaluationWindowSec' => self::RATE_WINDOW_SECONDS,
+                    // The search host is carved out — it has its own roomier
+                    // rule below, so keystroke search never trips the general
+                    // per-IP ceiling.
+                    ...$this->searchHost() !== null ? [
+                        'ScopeDownStatement' => [
+                            'NotStatement' => ['Statement' => $this->searchHostStatement()],
+                        ],
+                    ] : [],
                 ],
             ],
             'VisibilityConfig' => $this->visibilityConfig(self::RATE_RULE),
+        ];
+    }
+
+    /**
+     * The search host's own per-IP rate rule, scoped to host == search.{domain}.
+     *
+     * @return array<string, mixed>
+     */
+    protected function searchRateLimitRule(): array
+    {
+        return [
+            'Name' => self::SEARCH_RATE_RULE,
+            'Priority' => 21,
+            'Action' => ['Block' => []],
+            'Statement' => [
+                'RateBasedStatement' => [
+                    'Limit' => self::SEARCH_RATE_LIMIT,
+                    'AggregateKeyType' => 'IP',
+                    'EvaluationWindowSec' => self::RATE_WINDOW_SECONDS,
+                    'ScopeDownStatement' => $this->searchHostStatement(),
+                ],
+            ],
+            'VisibilityConfig' => $this->visibilityConfig(self::SEARCH_RATE_RULE),
+        ];
+    }
+
+    /**
+     * host-header == the search host, lowercased exact match.
+     *
+     * @return array<string, mixed>
+     */
+    protected function searchHostStatement(): array
+    {
+        return [
+            'ByteMatchStatement' => [
+                'FieldToMatch' => ['SingleHeader' => ['Name' => 'host']],
+                'PositionalConstraint' => 'EXACTLY',
+                'SearchString' => (string) $this->searchHost(),
+                'TextTransformations' => [['Priority' => 0, 'Type' => 'LOWERCASE']],
+            ],
         ];
     }
 

@@ -9,6 +9,7 @@ use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Services\Typesense;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\Ec2\PublicSubnet;
+use Codinglabs\Yolo\Resources\ElbV2\SearchTargetGroup;
 use Codinglabs\Yolo\Resources\Ec2\TypesenseSecurityGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 use Codinglabs\Yolo\Resources\ServiceDiscovery\TypesenseDiscoveryService;
@@ -95,6 +96,18 @@ class TypesenseService implements Resource
             'serviceRegistries' => [
                 ['registryArn' => (new TypesenseDiscoveryService($this->node))->arn()],
             ],
+            // All three nodes register into the one search target group —
+            // /health doubles as readiness, so a catching-up replacement stays
+            // out of rotation while the quorum serves. The grace period covers
+            // a fresh node's snapshot pull before health checks count.
+            'loadBalancers' => [
+                [
+                    'targetGroupArn' => (new SearchTargetGroup())->arn(),
+                    'containerName' => 'typesense',
+                    'containerPort' => Typesense::API_PORT,
+                ],
+            ],
+            'healthCheckGracePeriodSeconds' => 120,
             'tags' => Aws::ecsTags($this->tags()),
             'propagateTags' => 'SERVICE',
         ]);
