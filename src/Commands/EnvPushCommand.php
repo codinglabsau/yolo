@@ -81,7 +81,7 @@ class EnvPushCommand extends Command
             warning("$filename does not exist in the config bucket.");
         }
 
-        note("Uploading $filename...");
+        note(sprintf('Uploading %s → s3://%s/%s...', $filename, Paths::s3ConfigBucket(), $filename));
 
         Aws::s3()
             ->putObject([

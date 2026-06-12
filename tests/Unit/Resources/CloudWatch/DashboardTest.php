@@ -37,6 +37,8 @@ function dashboardContext(array $overrides = []): array
         'taskLogGroup' => '/yolo/testing-my-app',
         'ivsLogGroup' => null,
         'wafWebAcl' => null,
+        'mediaConvertQueueArn' => null,
+        'rekognition' => false,
         'depthThreshold' => 100,
     ], $overrides);
 }
@@ -221,6 +223,36 @@ it('drops the web, database and log sections for a headless app with no env DB',
 
     expect(widgetTitles($body))->toContain('# Queue', '# CDN & storage');
     expect(widgetTitles($body))->not->toContain('# Web', '# Database', '# Logs');
+});
+
+it('omits the services section when no chartable service is consumed', function (): void {
+    expect(widgetTitles(Dashboard::body(dashboardContext())))->not->toContain('# Services');
+});
+
+it('adds a MediaConvert panel when the app consumes the mediaconvert service', function (): void {
+    $body = Dashboard::body(dashboardContext([
+        'mediaConvertQueueArn' => 'arn:aws:mediaconvert:ap-southeast-2:111111111111:queues/Default',
+    ]));
+
+    expect(widgetTitles($body))->toContain('# Services');
+
+    $panel = findWidget($body, 'MediaConvert jobs (account default queue)');
+
+    expect($panel['properties']['metrics'][0])->toBe([
+        'AWS/MediaConvert', 'JobsCompletedCount', 'Queue',
+        'arn:aws:mediaconvert:ap-southeast-2:111111111111:queues/Default',
+        ['label' => 'Completed', 'color' => '#2ca02c'],
+    ]);
+});
+
+it('adds a Rekognition panel charting every reporting operation', function (): void {
+    $body = Dashboard::body(dashboardContext(['rekognition' => true]));
+
+    $panel = findWidget($body, 'Rekognition requests (account, by operation)');
+
+    expect($panel['properties']['metrics'][0][0]['expression'])
+        ->toContain('SEARCH')
+        ->toContain('SuccessfulRequestCount');
 });
 
 it('adds an IVS logs panel when IVS logging is enabled', function (): void {

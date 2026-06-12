@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Codinglabs\Yolo\Commands;
 
+use Codinglabs\Yolo\Paths;
 use Symfony\Component\Console\Input\InputArgument;
 use Codinglabs\Yolo\Concerns\ManagesEnvironmentFiles;
 
@@ -27,7 +28,7 @@ class EnvironmentEnvPullCommand extends Command
     {
         $environment = $this->argument('environment');
 
-        note('Downloading env-shared .env...');
+        note(sprintf('Downloading s3://%s/%s → %s...', Paths::s3EnvConfigBucket(), $this->sharedEnvFilename(), $this->sharedEnvFilename()));
 
         if (! $this->download($this->sharedEnvFilename(), $this->sharedEnvLocalPath())) {
             error(sprintf(

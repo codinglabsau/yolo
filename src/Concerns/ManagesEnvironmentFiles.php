@@ -77,9 +77,9 @@ trait ManagesEnvironmentFiles
         ])['Body'];
     }
 
-    protected function upload(string $key, string $body, string $label): void
+    protected function upload(string $key, string $body, string $from): void
     {
-        note(sprintf('Uploading %s...', $label));
+        note(sprintf('Uploading %s → s3://%s/%s...', $from, Paths::s3EnvConfigBucket(), $key));
 
         Aws::s3()->putObject([
             'Body' => $body,

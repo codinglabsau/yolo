@@ -2,6 +2,7 @@
 
 namespace Codinglabs\Yolo\Commands;
 
+use Codinglabs\Yolo\Paths;
 use Symfony\Component\Console\Input\InputArgument;
 use Codinglabs\Yolo\Steps\Build\RetrieveEnvFileStep;
 
@@ -22,7 +23,7 @@ class EnvPullCommand extends Command
     {
         $environment = $this->argument('environment');
 
-        note("Downloading .env.{$environment}...");
+        note(sprintf('Downloading s3://%s/.env.%s → .env.%s...', Paths::s3ConfigBucket(), $environment, $environment));
 
         (new RetrieveEnvFileStep())();
 

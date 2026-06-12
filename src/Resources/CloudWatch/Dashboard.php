@@ -185,6 +185,13 @@ class Dashboard
             'buckets' => static::bucketNames(),
             'taskLogGroup' => $web ? (new TaskLogGroup())->name() : null,
             'ivsLogGroup' => Manifest::usesService(Service::IVS) ? (new IvsLogGroup())->name() : null,
+            // MediaConvert jobs run on the account default queue, so the panel is
+            // account-level by nature — still worth charting on the consumer's
+            // dashboard, since that's where someone debugging a stuck job looks.
+            'mediaConvertQueueArn' => Manifest::usesService(Service::MEDIA_CONVERT)
+                ? sprintf('arn:aws:mediaconvert:%s:%s:queues/Default', Manifest::get('region'), Aws::accountId())
+                : null,
+            'rekognition' => Manifest::usesService(Service::REKOGNITION),
             'depthThreshold' => (int) Manifest::get('sqs.depth-alarm-threshold', 100),
         ];
     }
@@ -333,6 +340,11 @@ class Dashboard
 
         [$section, $y] = static::storageSection($context, $y);
         $widgets = [...$widgets, ...$section];
+
+        if ($context['mediaConvertQueueArn'] !== null || $context['rekognition']) {
+            [$section, $y] = static::servicesSection($context, $y);
+            $widgets = [...$widgets, ...$section];
+        }
 
         [$section, $y] = static::logsSection($context, $y);
         $widgets = [...$widgets, ...$section];
@@ -838,6 +850,70 @@ class Dashboard
                 ->map(fn (string $bucket): array => ['AWS/S3', 'NumberOfObjects', 'BucketName', $bucket, 'StorageType', 'AllStorageTypes', ['label' => $bucket]])
                 ->all(),
         ]);
+        $y += 6;
+
+        return [$widgets, $y];
+    }
+
+    /**
+     * One panel per consumed service with chartable CloudWatch metrics. Both
+     * are account-level by nature (MediaConvert jobs share the account default
+     * queue; Rekognition metrics carry only an Operation dimension), charted on
+     * the consumer's dashboard because that's where the person debugging looks.
+     *
+     * @param  array<string, mixed>  $context
+     * @return array{0: array<int, array<string, mixed>>, 1: int}
+     */
+    protected static function servicesSection(array $context, int $y): array
+    {
+        $region = $context['region'];
+
+        $widgets = [static::header($y, '# Services')];
+        $y++;
+        $x = 0;
+
+        if ($context['mediaConvertQueueArn'] !== null) {
+            $widgets[] = static::metric($x, $y, 12, 6, [
+                'title' => 'MediaConvert jobs (account default queue)',
+                'region' => $region,
+                'view' => 'timeSeries',
+                'stacked' => false,
+                'period' => 300,
+                'stat' => 'Sum',
+                'metrics' => [
+                    ['AWS/MediaConvert', 'JobsCompletedCount', 'Queue', $context['mediaConvertQueueArn'], ['label' => 'Completed', 'color' => static::GREEN]],
+                    ['AWS/MediaConvert', 'JobsErroredCount', 'Queue', $context['mediaConvertQueueArn'], ['label' => 'Errored', 'color' => static::RED]],
+                ],
+            ]);
+            $x += 12;
+        }
+
+        if ($context['rekognition']) {
+            // Rekognition metrics are dimensioned per Operation and the app
+            // decides at runtime which APIs it calls — SEARCH charts whatever
+            // operations actually report, no hardcoded list to drift.
+            $search = fn (string $metric, string $label): array => [[
+                'expression' => sprintf('SEARCH(\'{AWS/Rekognition,Operation} MetricName="%s"\', \'Sum\', 300)', $metric),
+                'label' => $label,
+                'region' => $region,
+            ]];
+
+            $widgets[] = static::metric($x, $y, 12, 6, [
+                'title' => 'Rekognition requests (account, by operation)',
+                'region' => $region,
+                'view' => 'timeSeries',
+                'stacked' => false,
+                'period' => 300,
+                'stat' => 'Sum',
+                'metrics' => [
+                    $search('SuccessfulRequestCount', 'Successful'),
+                    $search('ThrottledCount', 'Throttled'),
+                    $search('UserErrorCount', 'User errors'),
+                    $search('ServerErrorCount', 'Server errors'),
+                ],
+            ]);
+        }
+
         $y += 6;
 
         return [$widgets, $y];

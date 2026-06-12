@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Codinglabs\Yolo\Commands;
 
+use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\EnvManifest;
 use Symfony\Component\Console\Input\InputArgument;
 use Codinglabs\Yolo\Concerns\ManagesEnvironmentFiles;
@@ -28,7 +29,7 @@ class EnvironmentManifestPullCommand extends Command
     {
         $environment = $this->argument('environment');
 
-        note(sprintf('Downloading %s...', EnvManifest::filename()));
+        note(sprintf('Downloading s3://%s/%s → %s...', Paths::s3EnvConfigBucket(), EnvManifest::filename(), EnvManifest::filename()));
 
         if (! $this->download(EnvManifest::filename(), EnvManifest::localPath())) {
             error(sprintf(
