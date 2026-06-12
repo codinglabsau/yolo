@@ -3,9 +3,12 @@
 use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Helpers;
 use Illuminate\Support\Collection;
+use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Steps\TenantStep;
 use Codinglabs\Yolo\Commands\SyncCommand;
+use Codinglabs\Yolo\Commands\BuildCommand;
+use Codinglabs\Yolo\Commands\DeployCommand;
 use Codinglabs\Yolo\Commands\SyncAppCommand;
 use Symfony\Component\Console\Input\ArrayInput;
 use Codinglabs\Yolo\Commands\SyncSteppedCommand;
@@ -50,6 +53,29 @@ class CollationFakeTenantStep extends TenantStep
         return StepResult::CREATED;
     }
 }
+
+it('constructs every declared step with just the environment string', function (array $manifest): void {
+    // Step collation instantiates every declared step as `new $step($environment)`
+    // (collateSteps / extractSteps), so a step constructor must take the environment
+    // first with everything after it optional. A step taking a different first
+    // parameter fatals on the very first run of its command before the plan starts.
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2'] + $manifest);
+
+    $build = new BuildCommand();
+
+    collect((new SyncCommand())->scopes())
+        ->flatten()
+        ->merge($build->steps())
+        ->merge((new ReflectionProperty(BuildCommand::class, 'fargateSteps'))->getValue($build))
+        ->merge((new DeployCommand())->steps())
+        ->unique()
+        ->each(function (string $stepName): void {
+            expect(new $stepName('testing'))->toBeInstanceOf(Step::class);
+        });
+})->with([
+    'solo web app' => [['domain' => 'codinglabs.com.au', 'tasks' => ['web' => []]]],
+    'multi-tenant app' => [['tenants' => ['alpha' => []]]],
+]);
 
 it('orchestrates the three scopes in order — account → environment → app', function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
