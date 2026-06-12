@@ -119,7 +119,7 @@ For multi-tenant apps, a single queue service works the app's default queue; per
 
 ## The scheduler
 
-The scheduler (`crond` firing `schedule:run` every minute) must run as a **singleton** — if it runs on N tasks, every scheduled job fires N times (N× emails, N× billing, N× reports). The queue is safe to multiply (SQS hands each message to one worker); the scheduler is not. There's no stable per-task identity on Fargate to elect one from, so pick one of two strategies.
+The scheduler ([supercronic](https://github.com/aptible/supercronic) firing `schedule:run` every minute) must run as a **singleton** — if it runs on N tasks, every scheduled job fires N times (N× emails, N× billing, N× reports). The queue is safe to multiply (SQS hands each message to one worker); the scheduler is not. There's no stable per-task identity on Fargate to elect one from, so pick one of two strategies.
 
 ### 1. `->onOneServer()`
 

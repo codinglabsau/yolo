@@ -353,7 +353,7 @@ class Manifest
     }
 
     /**
-     * Which container runs the scheduler (crond + schedule:run): a dedicated
+     * Which container runs the scheduler (supercronic + schedule:run): a dedicated
      * `tasks.scheduler` service if extracted, else the standalone queue if there is
      * one, else the web container. The cron always runs somewhere — there's no
      * opt-out — so management work lands on the least request-facing service that

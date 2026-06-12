@@ -11,8 +11,9 @@ You own a small `Dockerfile`; YOLO generates the moving parts (entrypoint, proce
 ```dockerfile
 FROM dunglas/frankenphp:1-php8.4-alpine
 
-# nodejs is the runtime for Inertia SSR (tasks.web.ssr); drop it if you don't use SSR.
-RUN apk add --no-cache git supervisor nodejs \
+# supercronic runs the scheduler's cron as a non-root user (busybox crond can't);
+# nodejs is the runtime for Inertia SSR (tasks.web.ssr) — drop it if you don't use SSR.
+RUN apk add --no-cache git supervisor supercronic nodejs \
     && install-php-extensions intl pcntl bcmath redis pdo_mysql opcache excimer
 
 WORKDIR /app
@@ -68,14 +69,17 @@ For your image to work with YOLO, the Dockerfile must:
    CMD ["web"]
    ```
 4. **Expose the web port**, and make sure it matches `tasks.web.port` in your manifest (default `8000`). The ALB health-checks this port at `/up` (Laravel's built-in [health route](https://laravel.com/docs/deployment#the-health-route)) — override the path or timing via [`tasks.web.health-check.*`](/reference/manifest#tasks-web-health-check).
-5. Have **`supervisor`** installed (the default Dockerfile installs it via `apk add`).
+5. Have **`supervisor`** and **`supercronic`** installed (the default Dockerfile installs both via `apk add`). supervisord runs the container's process tree; [supercronic](https://github.com/aptible/supercronic) drives the scheduler's cron — the container runs as `www-data`, and busybox `crond` silently loads zero jobs for a non-root user, so it cannot stand in.
 
 ## Runtime checks
 
-`yolo build` runs two preflights so a deploy can't ship an image that won't run:
+`yolo build` runs three preflights so a deploy can't ship an image that won't run:
 
 - **Octane** — *before* the build, it reads `composer.lock` and fails if `laravel/octane` isn't in the production requirements, since the web role runs `octane:start`. Skipped when [`tasks.web.octane: false`](/reference/manifest#tasks-web): classic mode runs `frankenphp php-server` and needs no octane package.
-- **SSR (Node)** — when [`tasks.web.ssr`](/reference/manifest#tasks-web) is on, it runs the freshly-built image and fails if `node` isn't on the `PATH`. Running the image (rather than grepping the Dockerfile) sees the resolved base image and multi-stage `COPY --from` layers too, so there are no false negatives. This one matters because a missing SSR runtime is otherwise **silent** — Inertia falls back to client-side rendering and the web tier stays healthy on `/up`, so the deploy goes green with SSR quietly off.
+- **Scheduler (supercronic)** — it runs the freshly-built image and fails if `supercronic` isn't on the `PATH`. Every app hosts the scheduler somewhere (there's no opt-out), and the failure this prevents is **silent**: busybox `crond` — the obvious fallback already in the base image — ignores crontabs not owned by root without logging a word, so an image without supercronic deploys green, stays healthy, and simply never fires a scheduled job.
+- **SSR (Node)** — when [`tasks.web.ssr`](/reference/manifest#tasks-web) is on, it runs the freshly-built image and fails if `node` isn't on the `PATH`. Like the scheduler check, this matters because a missing SSR runtime is otherwise **silent** — Inertia falls back to client-side rendering and the web tier stays healthy on `/up`, so the deploy goes green with SSR quietly off.
+
+The image probes run the image (rather than grepping the Dockerfile), so they see the resolved base image and multi-stage `COPY --from` layers too — no false negatives.
 
 YOLO doesn't assert the image's base runtime (e.g. that PHP is present) — Docker makes that the app's to swap, and a genuinely missing PHP runtime already fails loudly when `octane:start` crash-loops and the deployment rolls back.
 
@@ -91,7 +95,7 @@ tasks:
 
 - **Web** always runs the web server. By default that's `php artisan octane:start` serving Laravel Octane: `octane:start` boots whichever server your app's `OCTANE_SERVER` names; `yolo init` seeds `OCTANE_SERVER=frankenphp` in your `.env` to match the scaffolded Dockerfile. The server is an app concern, not infrastructure YOLO injects — to run a different Octane server, change the base image **and** `OCTANE_SERVER` together. Set [`tasks.web.octane: false`](/reference/manifest#tasks-web) to run FrankenPHP in **classic mode** (`frankenphp php-server`) instead — per-request boot, no resident app — for an app that isn't Octane-safe yet; the `frankenphp` binary ships in the base image independent of `laravel/octane`, so it serves even with no octane package.
 - **The queue worker** runs `queue:work`, bundled in the web container until you extract it.
-- **The scheduler** runs a busybox `crond` that fires `php artisan schedule:run` every minute, bundled until you extract it. (YOLO uses cron, not `schedule:work`, so the scheduler survives `SIGTERM` cleanly.)
+- **The scheduler** runs [supercronic](https://github.com/aptible/supercronic), firing `php artisan schedule:run` every minute, bundled until you extract it. (YOLO uses cron, not `schedule:work`, so the scheduler survives `SIGTERM` cleanly — supercronic stops scheduling on stop and waits out the in-flight run.)
 - **`ssr: true`** adds Inertia's SSR renderer — see [Inertia SSR](#inertia-ssr) below.
 
 ::: tip Independent task groups
@@ -116,7 +120,7 @@ The scaffolded `.dockerignore` trims the build context but **deliberately keeps*
 - `.env` — the environment's file, baked in at build time
 - `vendor` — installed by your `build` hook, not the Dockerfile
 - `public/build` — compiled Vite assets
-- `docker/` — the generated `supervisord.conf`
+- `docker/` — the generated supervisord config(s) and the scheduler's crontab
 - `.yolo-entrypoint.sh` — the generated entrypoint
 
 Don't add those to `.dockerignore` or the build will produce a broken image.

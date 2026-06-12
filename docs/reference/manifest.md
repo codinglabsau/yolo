@@ -413,7 +413,7 @@ See [Scaling → the queue](/guide/scaling#the-queue-scale-to-zero).
 
 ## `tasks.scheduler.*`
 
-A top-level `tasks.scheduler` block extracts the scheduler (busybox `crond` firing `schedule:run`) into its **own** ECS service, pinned at exactly one task — a genuine singleton, so `->onOneServer()` is no longer required. It deploys **stop-then-start** (`minimumHealthyPercent: 0` / `maximumPercent: 100`) so a rollout never briefly runs two crons; a missed cron minute is harmless, a double-run isn't. Without this block the scheduler rides the standalone queue if there is one, else the web container (see [Where each role runs](#where-each-role-runs)).
+A top-level `tasks.scheduler` block extracts the scheduler ([supercronic](https://github.com/aptible/supercronic) firing `schedule:run`) into its **own** ECS service, pinned at exactly one task — a genuine singleton, so `->onOneServer()` is no longer required. It deploys **stop-then-start** (`minimumHealthyPercent: 0` / `maximumPercent: 100`) so a rollout never briefly runs two crons; a missed cron minute is harmless, a double-run isn't. Without this block the scheduler rides the standalone queue if there is one, else the web container (see [Where each role runs](#where-each-role-runs)).
 
 The scheduler never scales (a per-minute cron can't tolerate a cold start), so it has no `min`/`max`.
 

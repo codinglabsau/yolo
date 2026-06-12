@@ -22,8 +22,8 @@ use Codinglabs\Yolo\Enums\ServerGroup;
  *                in-flight job on SIGTERM, so the generic supervise-and-forward is
  *                the whole drain; when it also hosts the scheduler (no dedicated
  *                scheduler service) it runs supervisord instead (queue:work +
- *                crond) and drains cron like web does, minus the ALB window.
- *  - scheduler → busybox crond; the drain halts cron and waits out any in-flight
+ *                supercronic) and drains cron like web does, minus the ALB window.
+ *  - scheduler → supercronic; the drain halts cron and waits out any in-flight
  *                schedule:run so a deploy never cuts a scheduled command short.
  *  - anything  → exec'd directly, replacing the shell (no supervise, no drain).
  *    else        This is the path a one-off ecs:RunTask command override takes —
@@ -115,7 +115,7 @@ SH,
      * The cmd dispatch branches for the roles this app extracts into their own
      * service. Web is the explicit first branch (supervisord), so it needs none
      * here. A standalone queue that also hosts the scheduler runs supervisord
-     * (queue:work + crond); a queue-only service runs the worker directly.
+     * (queue:work + supercronic); a queue-only service runs the worker directly.
      */
     protected function commandCases(): string
     {
@@ -211,9 +211,10 @@ SH, $conf, max($drainWindow, ShutdownTimings::schedulerGrace()), $drainWindow);
     }
 
     /**
-     * The standalone scheduler role's drain: stop crond (the child) so no new
-     * schedule:run fires, then wait out any in-flight run bounded by the
-     * scheduler's grace. Killing crond here is harmless when the generic
+     * The standalone scheduler role's drain: stop supercronic (the child) so no
+     * new schedule:run fires — on SIGTERM it stops scheduling and waits out its
+     * in-flight run itself — with the pgrep loop bounding that wait by the
+     * scheduler's grace. Killing supercronic here is harmless when the generic
      * forwarder kills the (already-dead) child again afterwards.
      */
     protected function schedulerDrainBody(): string

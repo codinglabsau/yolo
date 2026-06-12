@@ -260,7 +260,8 @@ spec, running/desired counts, scaling bounds + policies, current load against th
 for any in-flight rollout, plus a deep link to the app's CloudWatch dashboard. It polls and redraws until quit;
 `--snapshot` (and any non-interactive shell) renders one frame.
 
-The container runs **supervisord** as its process tree: FrankenPHP for web, queue workers, and a busybox `crond`
-driving `schedule:run` (the scheduler is cron, not `schedule:work`). The entrypoint supervises the CMD and traps
+The container runs **supervisord** as its process tree: FrankenPHP for web, queue workers, and `supercronic`
+driving `schedule:run` (the scheduler is cron, not `schedule:work` — supercronic because busybox crond can't run
+cron as a non-root user). The entrypoint supervises the CMD and traps
 SIGTERM so the web tier keeps serving across the ALB drain window before forwarding the stop — see `ShutdownTimings`
 for the grace-period knobs.

@@ -37,7 +37,7 @@ class ExecuteDeployStepsStep implements LongRunning
         // group's container name (the task def names its container after the
         // group): ECS matches overrides by container name, so a mismatch silently
         // drops the command override and the task boots the role's default process
-        // (e.g. crond) instead of the deploy script — never stopping.
+        // (e.g. supercronic) instead of the deploy script — never stopping.
         $group = Manifest::deployGroup();
 
         $cluster = (new EcsCluster())->name();

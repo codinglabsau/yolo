@@ -77,7 +77,7 @@ it('runs a standalone queue under supervisord when it co-hosts the scheduler', f
 
     $script = generatedEntrypointScript();
 
-    // queue:work + crond is two processes → supervisord, drained like web (cron first).
+    // queue:work + supercronic is two processes → supervisord, drained like web (cron first).
     expect($script)->toContain("queue)     cmd='supervisord -c /app/docker/supervisord.queue.conf -n'");
     expect($script)->toContain('supervisorctl -c /app/docker/supervisord.queue.conf stop scheduler');
     // The web container no longer hosts the scheduler — its drain is a plain sleep.
@@ -94,10 +94,10 @@ it('runs a standalone queue as a single worker process when the scheduler is its
 
     $script = generatedEntrypointScript();
 
-    // Queue alone → exec'd worker (no supervisord); the scheduler is its own crond.
+    // Queue alone → exec'd worker (no supervisord); the scheduler is its own supercronic.
     expect($script)->toContain("queue)     cmd='php artisan queue:work");
     expect($script)->not->toContain('supervisord -c /app/docker/supervisord.queue.conf');
-    expect($script)->toContain("scheduler) cmd='crond");
+    expect($script)->toContain("scheduler) cmd='supercronic");
 });
 
 it('adds a scheduler branch running cron when the scheduler is its own service', function (): void {
@@ -109,7 +109,7 @@ it('adds a scheduler branch running cron when the scheduler is its own service',
 
     $script = generatedEntrypointScript();
 
-    expect($script)->toContain("scheduler) cmd='crond");
+    expect($script)->toContain("scheduler) cmd='supercronic");
     expect($script)->toContain("pgrep -f 'artisan schedule:run'");
     // The queue still rides the web container; the web drain is a plain sleep.
     expect($script)->toContain("sleep 10\n");

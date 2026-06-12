@@ -28,6 +28,7 @@ class BuildCommand extends SteppedCommand
         Steps\Build\Fargate\GenerateSupervisorConfigStep::class,
         Steps\Build\Fargate\LoginToEcrStep::class,
         Steps\Build\Fargate\BuildDockerImageStep::class,
+        Steps\Build\Fargate\CheckSchedulerRuntimeStep::class,
         Steps\Build\Fargate\CheckSsrRuntimeStep::class,
         Steps\Build\Fargate\PushDockerImageStep::class,
     ];
