@@ -217,7 +217,7 @@ trait RunsSteppedCommands
         $this->output->writeln('  <options=bold>Warnings</>');
 
         foreach ($warnings as $warning) {
-            $this->output->writeln(sprintf('  <fg=yellow>•</> %s', $warning));
+            $this->output->writeln(sprintf('  <fg=yellow>• %s</>', $warning));
         }
     }
 
