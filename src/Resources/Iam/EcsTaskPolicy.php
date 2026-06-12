@@ -151,6 +151,48 @@ class EcsTaskPolicy implements Resource, SynchronisesConfiguration
             ];
         }
 
+        // Consuming the mediaconvert service (`services: [mediaconvert]`) means
+        // the app submits MediaConvert jobs at runtime. Job operations carry no
+        // stable resource ARNs to scope to; the real boundary is iam:PassRole —
+        // locked to this app's own MediaConvert role, and only into the
+        // MediaConvert service itself.
+        if (Manifest::usesService(Service::MEDIA_CONVERT)) {
+            $statements[] = [
+                'Effect' => 'Allow',
+                'Resource' => '*',
+                'Action' => [
+                    'mediaconvert:CreateJob',
+                    'mediaconvert:GetJob',
+                    'mediaconvert:ListJobs',
+                    'mediaconvert:DescribeEndpoints',
+                ],
+            ];
+            $statements[] = [
+                'Effect' => 'Allow',
+                'Resource' => sprintf(
+                    'arn:aws:iam::%s:role/%s',
+                    Aws::accountId(),
+                    Helpers::keyedResourceName(Iam::MEDIA_CONVERT_ROLE),
+                ),
+                'Action' => ['iam:PassRole'],
+                'Condition' => [
+                    'StringEquals' => ['iam:PassedToService' => 'mediaconvert.amazonaws.com'],
+                ],
+            ];
+        }
+
+        // Consuming the rekognition service (`services: [rekognition]`) grants
+        // the detection APIs, which are resource-less — they operate on request
+        // payloads or S3 objects read with the caller's own credentials, so the
+        // grant is service-wide and S3 access rides the app's bucket statements.
+        if (Manifest::usesService(Service::REKOGNITION)) {
+            $statements[] = [
+                'Effect' => 'Allow',
+                'Resource' => '*',
+                'Action' => ['rekognition:*'],
+            ];
+        }
+
         return [
             'Version' => '2012-10-17',
             'Statement' => $statements,

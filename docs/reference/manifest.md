@@ -41,7 +41,7 @@ environments:
     #   driver: redis            # default (sessions live on the Valkey cluster); database/cookie/file to change the session backend
 
     # --- YOLO-provisioned services this app consumes ---
-    # services: [ivs, mediaconvert]   # bare capability names only — service shape is hardcoded or lives in the environment manifest
+    # services: [ivs, mediaconvert, rekognition]   # bare capability names only — service shape is hardcoded or lives in the environment manifest
 
     # --- Extra IAM for this app's task role (per-app; never reaches another app) ---
     # task-role-policies:
@@ -224,7 +224,8 @@ services: [ivs]
 | Service | What consuming it gives this app |
 |---|---|
 | `ivs` | The app's ECS task role is granted IVS access (`ivs:*` — channels and stream keys are created by the app at runtime, so there's nothing stable to scope to), and the app's CloudWatch dashboard gains the IVS logs panel |
-| `mediaconvert` | A per-app IAM role for AWS Elemental MediaConvert to assume is provisioned, and its computed ARN is baked into the build as `AWS_MEDIACONVERT_ROLE_ID`. App-side only — jobs run on the account's default on-demand queue, so there is no environment-manifest half |
+| `mediaconvert` | A per-app IAM role for AWS Elemental MediaConvert to assume is provisioned, its computed ARN is baked into the build as `AWS_MEDIACONVERT_ROLE_ID`, and the task role is granted the job operations plus `iam:PassRole` locked to that one role and to MediaConvert itself. App-side only — jobs run on the account's default on-demand queue, so there is no environment-manifest half |
+| `rekognition` | The app's ECS task role is granted Rekognition access (`rekognition:*` — the detection APIs are resource-less, operating on request payloads or S3 objects read with the caller's own credentials, so reads of the app [`bucket`](#bucket) ride its existing grant). App-side only — a pure pay-per-call API, nothing is provisioned, so there is no environment-manifest half |
 
 An entry is a *consumption claim*, deliberately just a name: all service **shape** (sizing, versions, retention) is either hardcoded or belongs to [the environment manifest](#the-environment-manifest-yolo-environment-environment-yml), never the app manifest — so two apps can never declare competing configuration for shared infrastructure. Unknown names, duplicate entries, or anything other than a flat list hard-fail validation.
 

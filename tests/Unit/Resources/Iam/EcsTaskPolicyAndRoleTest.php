@@ -134,3 +134,68 @@ it('grants no IVS access when the app does not consume the ivs service', functio
 
     expect($actions)->not->toContain('ivs:*');
 });
+
+it('grants the task role MediaConvert job access and PassRole on the per-app role when the app consumes the mediaconvert service', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'services' => ['mediaconvert'],
+    ]);
+
+    $statements = (new EcsTaskPolicy())->document()['Statement'];
+
+    expect($statements)->toHaveCount(5);
+
+    $jobs = collect($statements)->firstWhere('Action', [
+        'mediaconvert:CreateJob',
+        'mediaconvert:GetJob',
+        'mediaconvert:ListJobs',
+        'mediaconvert:DescribeEndpoints',
+    ]);
+    expect($jobs['Effect'])->toBe('Allow');
+    // Job operations carry no stable resource ARNs — the PassRole statement
+    // below is the real boundary.
+    expect($jobs['Resource'])->toBe('*');
+
+    $passRole = collect($statements)->firstWhere('Action', ['iam:PassRole']);
+    expect($passRole['Effect'])->toBe('Allow');
+    expect($passRole['Resource'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-my-app-mediaconvert-role');
+    expect($passRole['Condition'])->toBe([
+        'StringEquals' => ['iam:PassedToService' => 'mediaconvert.amazonaws.com'],
+    ]);
+});
+
+it('grants no MediaConvert access when the app does not consume the mediaconvert service', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+    ]);
+
+    $actions = collect((new EcsTaskPolicy())->document()['Statement'])->pluck('Action')->flatten();
+
+    expect($actions)->not->toContain('mediaconvert:CreateJob');
+    expect($actions)->not->toContain('iam:PassRole');
+});
+
+it('grants the task role Rekognition access when the app consumes the rekognition service', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'services' => ['rekognition'],
+    ]);
+
+    $statements = (new EcsTaskPolicy())->document()['Statement'];
+
+    expect($statements)->toHaveCount(4);
+
+    $rekognition = collect($statements)->firstWhere('Action', ['rekognition:*']);
+    expect($rekognition['Effect'])->toBe('Allow');
+    // The detection APIs are resource-less — they operate on request payloads
+    // or S3 objects read with the caller's own credentials.
+    expect($rekognition['Resource'])->toBe('*');
+});
+
+it('grants no Rekognition access when the app does not consume the rekognition service', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+    ]);
+
+    $actions = collect((new EcsTaskPolicy())->document()['Statement'])->pluck('Action')->flatten();
+
+    expect($actions)->not->toContain('rekognition:*');
+});

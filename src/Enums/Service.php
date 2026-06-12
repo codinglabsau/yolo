@@ -11,13 +11,15 @@ namespace Codinglabs\Yolo\Enums;
  * belongs to the environment manifest (yolo-environment-{environment}.yml),
  * never the app manifest, so two apps can never declare competing
  * configuration for a shared service. A service need not have an env-manifest
- * half at all — mediaconvert is app-side only (per-app IAM role + env
- * injection, jobs on the account default queue).
+ * half at all — mediaconvert (per-app IAM role + env injection, jobs on the
+ * account default queue) and rekognition (a task-role grant on a pure
+ * pay-per-call API) are app-side only.
  */
 enum Service: string
 {
     case IVS = 'ivs';
     case MEDIA_CONVERT = 'mediaconvert';
+    case REKOGNITION = 'rekognition';
 
     /**
      * @return array<int, string>

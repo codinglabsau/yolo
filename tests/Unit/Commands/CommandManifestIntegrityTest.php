@@ -209,10 +209,10 @@ it('bails on the removed mediaconvert key — services: [mediaconvert] replaced 
     expect(test()->promptOutput->fetch())->toContain('mediaconvert');
 });
 
-it('accepts mediaconvert as a consumed service', function (): void {
+it('accepts every known service as a consumed service', function (): void {
     writeManifest([
         'account-id' => '848509375702', 'region' => 'ap-southeast-2',
-        'services' => ['ivs', 'mediaconvert'],
+        'services' => ['ivs', 'mediaconvert', 'rekognition'],
     ]);
 
     expect(invokeManifestIntegrity())->toBeTrue();
