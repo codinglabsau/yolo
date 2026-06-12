@@ -162,6 +162,15 @@ eventual-consistency cousin in `4899c76`). Checklist for any code that reads or 
 6. **Record drift before any dry-run guard** so the plan and apply passes agree (the `assertReconcilerContract`
    helper in `tests/Pest.php` pins this) — a step that returns early on the plan pass without recording is
    pruned from the apply pass and never self-heals.
+7. **The plan pass runs steps CONCURRENTLY in forked worker processes** (the apply pass stays sequential, in
+   declaration order). This falls out of points 1–2 — a step that survives "nothing exists yet" can't depend on
+   a sibling having planned first — but it adds two hard rules of its own: a step's plan must not write local
+   state another step's plan reads (a file, a container binding, a static cache it expects populated), and
+   everything it reports back must be plain values (`StepResult` + `Change`s — a closure or AWS client in that
+   payload won't survive the process boundary). Each worker re-resolves its AWS clients on fork
+   (`RegistersAws::forgetAwsClients()`); any new client registration must be listed in `AWS_CLIENT_BINDINGS`
+   (a test pins this). Tests pin `YOLO_PLAN_SEQUENTIAL=1` (phpunit.xml) because AWS mocks can't cross the fork
+   boundary — the parallel path is covered by `tests/Unit/Concerns/ParallelPlanTest.php`.
 
 ### Resources (`src/Resources/`)
 

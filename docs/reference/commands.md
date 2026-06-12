@@ -332,6 +332,8 @@ yolo sync <environment> [--check] [--force] [--no-progress] [--tenant=<id>]
 
 `--check` is the machine-readable form of that plan pass: it prints the same diff, never applies, and returns a non-zero exit code when there are pending changes (and `0` when the environment is already in sync). Run `yolo sync <env> --check` in CI to fail a pipeline on drifted or unsynced infrastructure. A non-zero exit also covers a plan that errored (bad credentials, AWS API failure, invalid manifest) — either way, CI should stop and a human should look.
 
+The plan pass is read-only, so it fans out across up to 8 worker processes and renders the same plan in a fraction of the time; the apply pass always runs sequentially, in declaration order. Forking needs the `pcntl` extension (standard on macOS/Linux CLI builds) — without it, or with `YOLO_PLAN_SEQUENTIAL=1` set in the environment, the plan runs in-process instead, with identical output.
+
 These four options are shared by every `sync` command below. See [Provisioning](/guide/provisioning) for the plan/confirm/apply flow.
 
 ---
@@ -350,7 +352,11 @@ Arguments and options as [`sync`](#sync-options). Scope: **account**.
 
 ## `yolo sync:environment`
 
+<<<<<<< HEAD
 Sync the environment-shared (environment-tier) resources — VPC, subnets, internet gateway and routes, the load balancer security group, the env config bucket holding [the environment's declaration](/guide/provisioning#the-environment-declaration) (env manifest + env-shared `.env`, the manifest seeded once on first sync), the env-backed services gated on [the service lifecycle](/guide/provisioning#the-service-lifecycle) (the IVS event-logging pipeline and the [Typesense search cluster](/guide/provisioning#typesense-the-environment-s-search-cluster) — each provisioned while the env manifest declares it **and** a running app uses it, and planned as a `WOULD DELETE` teardown once that stops being true), the ALB and its `:80` listener, the SNS alarm topic, the shared ECS execution IAM role, and the [WAF web ACL](/guide/provisioning#web-application-firewall) (with its allow/block IP sets) fronting the ALB.
+=======
+Sync the environment-shared (environment-tier) resources — VPC, subnets, internet gateway and routes, the load balancer security group, the env config bucket holding [the environment's declaration](/guide/provisioning#the-environment-declaration) (env manifest + env-shared `.env`, the manifest seeded once on first sync), the env-backed services gated on [the service lifecycle](/guide/provisioning#the-service-lifecycle) (the IVS event-logging pipeline while the env manifest declares `services.ivs` **and** a running app uses it — and planned as a `WOULD DELETE` teardown once that stops being true), the ALB and its `:80` listener, the SNS alarm topic, the shared ECS execution IAM role, and the [WAF web ACL](/guide/provisioning#web-application-firewall) (with its allow/block IP sets) fronting the ALB.
+>>>>>>> origin/main
 
 ```bash
 yolo sync:environment <environment> [--check] [--force] [--no-progress] [--tenant=<id>]

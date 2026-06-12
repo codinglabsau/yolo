@@ -81,6 +81,7 @@ Enforcement is hard errors everywhere, never warnings:
 
 Retiring a service is therefore self-enforcing, with hard edges the whole way: remove it from each app's `yolo.yml` → `deploy`/`sync:app` (the app's per-service IAM melts away in the same pass) → remove the env-manifest entry and `push` (accepted once nothing is using it) → `sync:environment` plans the teardown for you to confirm.
 
+<<<<<<< HEAD
 ## Typesense — the environment's search cluster
 
 Declaring `services.typesense` (with its required `version`/`cpu`/`memory` shape — see [the manifest reference](/reference/manifest#the-environment-manifest-yolo-environment-environment-yml)) gives the environment a self-hosted, three-node [Typesense](https://typesense.org) cluster, shared by every app with `typesense` in its `services` list:
@@ -93,6 +94,8 @@ Declaring `services.typesense` (with its required `version`/`cpu`/`memory` shape
 
 Sizing rule of thumb: Typesense holds the whole index in memory at ~2–3× the raw indexed size, so a few hundred MB of records fits comfortably on 1 GB nodes; resizing is an env-manifest edit and a sync.
 
+=======
+>>>>>>> origin/main
 ## Web application firewall
 
 Every environment with a load balancer gets a managed [AWS WAF](https://docs.aws.amazon.com/waf/latest/developerguide/what-is-aws-waf.html) web ACL on its ALB — automatically, with no manifest key. It's compulsory infrastructure, like the ALB itself: one web ACL protects every app sharing the load balancer.
@@ -109,9 +112,9 @@ Tune the rest in the AWS console; YOLO won't undo it.
 
 `sync` never surprises you. It runs as a three-step flow:
 
-1. **Plan** — YOLO inspects live AWS state and computes what would change, rendering it grouped by scope. Brand-new resources are listed under **Will create** (one `+` line each); drift on existing resources is shown under **Pending changes** as per-attribute diffs (`current → desired`).
+1. **Plan** — YOLO inspects live AWS state and computes what would change, rendering it grouped by scope. Brand-new resources are listed under **Will create** (one `+` line each); drift on existing resources is shown under **Pending changes** as per-attribute diffs (`current → desired`). The plan is read-only, so it fans out across up to 8 worker processes — a full-environment plan takes seconds, not the better part of a minute. (No `pcntl`, or `YOLO_PLAN_SEQUENTIAL=1` set? It runs in-process with identical output.)
 2. **Confirm** — you're shown the plan and asked to approve. If nothing has drifted, it short-circuits with **"Already in sync"** and exits without touching anything.
-3. **Apply** — only the changed steps run.
+3. **Apply** — only the changed steps run, sequentially and in declaration order — once writes start, ordering is the dependency contract.
 
 The plan is **always** shown before the confirm, so there's no separate preview mode — to see what a `sync` would do, just run it and read the plan, then decline (or Ctrl-C) instead of confirming. Nothing is written until you approve.
 

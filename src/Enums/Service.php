@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo\Enums;
 
 use Codinglabs\Yolo\Services\Ivs;
+<<<<<<< HEAD
 use Codinglabs\Yolo\Services\Typesense;
+=======
+>>>>>>> origin/main
 use Codinglabs\Yolo\Services\Rekognition;
 use Codinglabs\Yolo\Services\MediaConvert;
 use Codinglabs\Yolo\Services\ServiceDefinition;
@@ -55,7 +58,10 @@ enum Service: string
             self::IVS => new Ivs(),
             self::MEDIA_CONVERT => new MediaConvert(),
             self::REKOGNITION => new Rekognition(),
+<<<<<<< HEAD
             self::TYPESENSE => new Typesense(),
+=======
+>>>>>>> origin/main
         };
     }
 }

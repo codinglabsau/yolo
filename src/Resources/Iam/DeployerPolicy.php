@@ -111,6 +111,7 @@ class DeployerPolicy implements Resource, SynchronisesConfiguration
 
         $assetBucketArn = sprintf('arn:aws:s3:::%s', (new AssetBucket())->name());
         $configBucketArn = sprintf('arn:aws:s3:::%s', Paths::s3ConfigBucket());
+        $appManifestArn = sprintf('arn:aws:s3:::%s/%s', Paths::s3EnvConfigBucket(), Paths::s3AppManifestKey());
 
         $statements = [
             [
@@ -234,6 +235,21 @@ class DeployerPolicy implements Resource, SynchronisesConfiguration
                     's3:ListBucket',
                     's3:ListBucketMultipartUploads',
                     's3:GetBucketLocation',
+                ],
+            ],
+            [
+                // Publish this app's claim file into the env config bucket on
+                // every deploy (PublishAppManifestStep reads then writes it).
+                // Scoped to exactly this app's `apps/{app}.yml` object — never
+                // the bucket root, so the deployer can't reach the env-shared
+                // `.env` or env manifest that share the bucket. Read of those is
+                // the permission that gates env-secret control; app deploys must
+                // not hold it.
+                'Effect' => 'Allow',
+                'Resource' => $appManifestArn,
+                'Action' => [
+                    's3:GetObject',
+                    's3:PutObject',
                 ],
             ],
         ];
