@@ -115,7 +115,7 @@ class SyncTypesenseKeyStep implements Step
 
         Aws::s3()->putObject([
             'Bucket' => Paths::s3ConfigBucket(),
-            'Key' => $this->envKey(),
+            'Key' => Paths::s3AppEnvKey(),
             'Body' => $current . sprintf("%s=%s\n", Typesense::ADMIN_KEY_NAME, $key),
         ]);
     }
@@ -125,7 +125,7 @@ class SyncTypesenseKeyStep implements Step
         try {
             return (string) Aws::s3()->getObject([
                 'Bucket' => Paths::s3ConfigBucket(),
-                'Key' => $this->envKey(),
+                'Key' => Paths::s3AppEnvKey(),
             ])['Body'];
         } catch (S3Exception $e) {
             if (S3::isNotFound($e)) {
@@ -134,11 +134,6 @@ class SyncTypesenseKeyStep implements Step
 
             throw $e;
         }
-    }
-
-    protected function envKey(): string
-    {
-        return sprintf('.env.%s', Helpers::environment());
     }
 
     /**

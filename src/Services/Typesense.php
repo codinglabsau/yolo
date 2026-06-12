@@ -324,8 +324,8 @@ class Typesense extends ServiceDefinition
                 fn (int $node): string => (new TypesenseService($node))->name(),
                 range(0, static::NODES - 1),
             ),
-            'targetGroupSuffix' => static::resolveTargetGroupSuffix(),
-            'albSuffix' => static::resolveAlbSuffix(),
+            'targetGroupSuffix' => static::tryDimension(fn (): string => Dashboard::targetGroupDimension((new SearchTargetGroup())->arn())),
+            'albSuffix' => static::tryDimension(fn (): string => Dashboard::loadBalancerDimension((new LoadBalancer())->arn())),
             'logGroup' => (new TypesenseLogGroup())->name(),
         ]];
     }
@@ -413,25 +413,17 @@ class Typesense extends ServiceDefinition
         return ['Typesense logs' => $context['typesense']['logGroup'] ?? null];
     }
 
-    protected static function resolveTargetGroupSuffix(): ?string
+    /**
+     * Resolve a CloudWatch dimension from a live ARN, or null while the
+     * backing resource doesn't exist yet (the widget is omitted until the
+     * next sync).
+     *
+     * @param  callable(): string  $resolve
+     */
+    protected static function tryDimension(callable $resolve): ?string
     {
         try {
-            $arn = (new SearchTargetGroup())->arn();
-            $position = strpos($arn, ':targetgroup/');
-
-            return $position === false ? $arn : substr($arn, $position + 1);
-        } catch (ResourceDoesNotExistException) {
-            return null;
-        }
-    }
-
-    protected static function resolveAlbSuffix(): ?string
-    {
-        try {
-            $arn = (new LoadBalancer())->arn();
-            $position = strpos($arn, ':loadbalancer/');
-
-            return $position === false ? $arn : substr($arn, $position + strlen(':loadbalancer/'));
+            return $resolve();
         } catch (ResourceDoesNotExistException) {
             return null;
         }

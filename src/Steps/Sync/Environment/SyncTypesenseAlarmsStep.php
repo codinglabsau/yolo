@@ -12,6 +12,7 @@ use Codinglabs\Yolo\Services\Typesense;
 use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Resources\Ecs\ServicesCluster;
+use Codinglabs\Yolo\Resources\CloudWatch\Dashboard;
 use Codinglabs\Yolo\Resources\Ecs\TypesenseService;
 use Codinglabs\Yolo\Resources\ElbV2\SearchTargetGroup;
 use Codinglabs\Yolo\Resources\CloudWatch\TypesenseAlarm;
@@ -86,8 +87,8 @@ class SyncTypesenseAlarmsStep implements Step
     {
         try {
             $dimensions = [
-                ['Name' => 'TargetGroup', 'Value' => $this->targetGroupDimension()],
-                ['Name' => 'LoadBalancer', 'Value' => $this->loadBalancerDimension()],
+                ['Name' => 'TargetGroup', 'Value' => Dashboard::targetGroupDimension((new SearchTargetGroup())->arn())],
+                ['Name' => 'LoadBalancer', 'Value' => Dashboard::loadBalancerDimension((new LoadBalancer())->arn())],
             ];
         } catch (ResourceDoesNotExistException) {
             if ($state === ServiceState::Provision) {
@@ -121,22 +122,6 @@ class SyncTypesenseAlarmsStep implements Step
                 evaluationPeriods: 1,
             ),
         ];
-    }
-
-    protected function targetGroupDimension(): string
-    {
-        $arn = (new SearchTargetGroup())->arn();
-        $position = strpos($arn, ':targetgroup/');
-
-        return $position === false ? $arn : substr($arn, $position + 1);
-    }
-
-    protected function loadBalancerDimension(): string
-    {
-        $arn = (new LoadBalancer())->arn();
-        $position = strpos($arn, ':loadbalancer/');
-
-        return $position === false ? $arn : substr($arn, $position + strlen(':loadbalancer/'));
     }
 
     /**

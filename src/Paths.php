@@ -74,6 +74,15 @@ class Paths
     }
 
     /**
+     * This app's env file in its config bucket — .env.{environment}, the file
+     * env:pull/push move and the build stages into the image.
+     */
+    public static function s3AppEnvKey(): string
+    {
+        return sprintf('.env.%s', Helpers::environment());
+    }
+
+    /**
      * The env-shared .env — generated service secrets, the environment-tier
      * sibling of each app's env file. The same .env.environment.{environment}
      * name in the bucket and on disk, with the environment in the filename so
