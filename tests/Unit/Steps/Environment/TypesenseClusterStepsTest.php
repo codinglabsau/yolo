@@ -114,7 +114,7 @@ it('cascades the cluster teardown: drain services, delete them, then the cluster
     expect(array_search('DeleteService', $names))->toBeLessThan(array_search('DeleteCluster', $names));
 });
 
-it('tears the cluster down when the offer loses its last live claim', function (): void {
+it('tears the cluster down once no running app uses the service', function (): void {
     $captured = [];
     bindServiceLifecycleWorld([
         'manifest' => TYPESENSE_OFFER,

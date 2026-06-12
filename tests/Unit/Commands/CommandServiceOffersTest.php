@@ -24,7 +24,7 @@ beforeEach(function (): void {
     test()->promptOutput = $buffer;
 });
 
-it('passes when the app claims no env-backed services (app-side services need no offer)', function (): void {
+it('passes when the app uses no env-backed services (app-side services need no env entry)', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'services' => ['mediaconvert', 'rekognition'],
@@ -34,7 +34,7 @@ it('passes when the app claims no env-backed services (app-side services need no
     expect(invokeClaimedServicesOffered())->toBeTrue();
 });
 
-it('hard-fails an env-backed claim the environment manifest does not offer', function (): void {
+it('hard-fails when the app uses an env-backed service the environment manifest does not declare', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'services' => ['ivs'],
@@ -46,12 +46,12 @@ it('hard-fails an env-backed claim the environment manifest does not offer', fun
     expect(invokeClaimedServicesOffered())->toBeFalse();
 
     expect(test()->promptOutput->fetch())
-        ->toContain('claims the ivs service')
+        ->toContain('uses the ivs service')
         ->toContain('services.ivs')
         ->toContain('environment:manifest:pull');
 });
 
-it('passes when the environment manifest offers every claimed env-backed service', function (): void {
+it('passes when the environment manifest declares every env-backed service the app uses', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'services' => ['ivs'],

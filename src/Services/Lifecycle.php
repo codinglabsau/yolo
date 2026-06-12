@@ -17,52 +17,57 @@ use Codinglabs\Yolo\Enums\ServiceState;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 /**
- * The two-key lifecycle gate for env-backed services. A service exists in an
- * environment when both keys turn:
+ * Decides whether an env-backed service should exist. A service runs while
+ * two things are true:
  *
- *   1. OFFERED — the env manifest declares `services.{name}`. The entry is the
- *      environment's catalogue: consent, shape, and the memory of what the env
- *      runs. It deliberately survives zero consumers.
- *   2. CLAIMED — at least one live app (an ECS cluster with running tasks, the
- *      audit liveness test) has published `apps/{app}.yml` listing the service.
+ *   1. The environment declares it — `services.{name}` in the env manifest,
+ *      the environment's catalogue of what it runs. The entry stays put even
+ *      when nothing is using the service; removing it is an operator act,
+ *      never an inference.
+ *   2. A running app is using it — every deploy/sync:app publishes the app's
+ *      services (`apps/{app}.yml` in the env config bucket), and only apps
+ *      with running tasks count (the audit liveness test), so a dead app
+ *      can't keep a service alive.
  *
- * Offered ∧ claimed → provision; anything else → teardown — EXCEPT that a live
- * app with no published claim file makes the claim set unknowable (unknown
- * state ≠ no claims), which blocks teardown until every live app's next
- * deploy/sync:app populates the registry. That makes the rollout
- * bootstrap-safe: day one nobody has published, nothing can tear down.
+ * Declared ∧ in use → provision; anything else → teardown — EXCEPT that a
+ * running app which hasn't deployed on this YOLO release yet hasn't told the
+ * environment what it uses, so nothing is created or torn down until every
+ * running app has. That makes the rollout bootstrap-safe: day one nobody has
+ * republished, nothing can tear down.
  *
- * Claims and liveness are read once per process (both sync passes see the
+ * Usage and liveness are read once per process (both sync passes see the
  * same world); on a greenfield plan pass the env config bucket doesn't exist
- * yet, which reads as an empty registry — never an error.
+ * yet, which reads as nothing published — never an error.
  */
 class Lifecycle
 {
-    /** @var array<string, array<int, string>>|null app name => claimed service names */
-    protected static ?array $claims = null;
+    /** @var array<string, array<int, string>>|null app name => services it uses */
+    protected static ?array $published = null;
 
     /** @var array<int, string>|null */
     protected static ?array $liveApps = null;
 
     public static function state(Service $service): ServiceState
     {
-        $offered = EnvManifest::has('services.' . $service->value);
-        $claimants = static::activeClaimants($service);
+        $declared = EnvManifest::has('services.' . $service->value);
+        $using = static::liveAppsUsing($service);
 
         // Reachable only by editing the env manifest outside environment:manifest:push
-        // (push refuses to remove an offer with live claimants) — surface the
+        // (push refuses to remove a service apps still use) — surface the
         // contradiction instead of tearing infrastructure out from under the apps.
-        if (! $offered && $claimants !== []) {
+        if (! $declared && $using !== []) {
             throw new IntegrityCheckException(sprintf(
-                'Live apps still claim the %s service (%s) but the environment manifest no longer offers services.%s. '
-                . 'Re-add the offer via `yolo environment:manifest:pull/push`, or drop the claim from each app\'s yolo.yml and deploy (or `yolo sync:app`) it first.',
+                '%s %s still using the %s service, but the environment manifest no longer declares services.%s. '
+                . 'Put the entry back with `yolo environment:manifest:pull/push`, or remove %s from each app\'s yolo.yml and deploy (or `yolo sync:app`) it first.',
+                implode(', ', $using),
+                count($using) === 1 ? 'is' : 'are',
                 $service->value,
-                implode(', ', $claimants),
+                $service->value,
                 $service->value,
             ));
         }
 
-        if ($offered && $claimants !== []) {
+        if ($declared && $using !== []) {
             return ServiceState::Provision;
         }
 
@@ -70,28 +75,28 @@ class Lifecycle
     }
 
     /**
-     * The live apps whose published claim file lists this service. A dead
-     * app's stale claim can't hold an offer hostage — claims only count while
-     * the claiming app's cluster is running tasks.
+     * The running apps whose published services include this one. A dead app
+     * can't keep a service alive — only apps with running tasks count.
      *
      * @return array<int, string>
      */
-    public static function activeClaimants(Service $service): array
+    public static function liveAppsUsing(Service $service): array
     {
-        $claimants = array_values(array_filter(
+        $using = array_values(array_filter(
             static::liveApps(),
-            fn (string $app): bool => in_array($service->value, static::claims()[$app] ?? [], true),
+            fn (string $app): bool => in_array($service->value, static::published()[$app] ?? [], true),
         ));
 
-        sort($claimants);
+        sort($using);
 
-        return $claimants;
+        return $using;
     }
 
     /**
-     * Live apps with no published claim file — apps deployed by a YOLO that
-     * predates the claims registry. Their claims are unknowable, so they block
-     * teardown (and offer removal) until their next deploy/sync:app publishes.
+     * Running apps that haven't published their services yet — apps deployed
+     * by a YOLO that predates the registry. The environment doesn't know what
+     * they use, so they block teardown (and env-manifest removal) until their
+     * next deploy/sync:app.
      *
      * @return array<int, string>
      */
@@ -99,7 +104,7 @@ class Lifecycle
     {
         $unpublished = array_values(array_filter(
             static::liveApps(),
-            fn (string $app): bool => ! array_key_exists($app, static::claims()),
+            fn (string $app): bool => ! array_key_exists($app, static::published()),
         ));
 
         sort($unpublished);
@@ -112,25 +117,25 @@ class Lifecycle
      */
     public static function reset(): void
     {
-        static::$claims = null;
+        static::$published = null;
         static::$liveApps = null;
     }
 
     /**
-     * Every published claim file under apps/ in the env config bucket, parsed
-     * to app name => claimed services. A missing bucket (greenfield plan pass)
-     * reads as an empty registry; a malformed claim file is a hard error — a
-     * registry we can't read is not a registry reporting "no claims".
+     * Every published services file under apps/ in the env config bucket,
+     * parsed to app name => the services it uses. A missing bucket (a
+     * greenfield plan pass) reads as nothing published; a file we can't read
+     * is a hard error — unreadable is not the same as "uses nothing".
      *
      * @return array<string, array<int, string>>
      */
-    protected static function claims(): array
+    protected static function published(): array
     {
-        if (static::$claims !== null) {
-            return static::$claims;
+        if (static::$published !== null) {
+            return static::$published;
         }
 
-        $claims = [];
+        $published = [];
         $token = null;
 
         try {
@@ -146,42 +151,42 @@ class Lifecycle
                         continue;
                     }
 
-                    [$app, $services] = static::parseClaim((string) $object['Key']);
+                    [$app, $services] = static::parseServicesFile((string) $object['Key']);
 
-                    $claims[$app] = $services;
+                    $published[$app] = $services;
                 }
 
                 $token = ($result['IsTruncated'] ?? false) ? ($result['NextContinuationToken'] ?? null) : null;
             } while ($token !== null);
         } catch (S3Exception $e) {
             if (S3::isNotFound($e)) {
-                return static::$claims = [];
+                return static::$published = [];
             }
 
             throw $e;
         }
 
-        return static::$claims = $claims;
+        return static::$published = $published;
     }
 
     /**
      * @return array{0: string, 1: array<int, string>}
      */
-    protected static function parseClaim(string $key): array
+    protected static function parseServicesFile(string $key): array
     {
-        $claim = Yaml::parse((string) Aws::s3()->getObject([
+        $file = Yaml::parse((string) Aws::s3()->getObject([
             'Bucket' => Paths::s3EnvConfigBucket(),
             'Key' => $key,
         ])['Body']);
 
-        $name = is_array($claim) ? ($claim['name'] ?? null) : null;
-        $services = is_array($claim) ? ($claim['services'] ?? null) : null;
+        $name = is_array($file) ? ($file['name'] ?? null) : null;
+        $services = is_array($file) ? ($file['services'] ?? null) : null;
 
         // PublishAppManifestStep dumps an empty services list as a YAML map,
         // so `services: {}` parses back to [] — both shapes are a valid list.
         if (! is_string($name) || $name === '' || ! is_array($services) || ! array_is_list($services)) {
             throw new IntegrityCheckException(sprintf(
-                'Malformed claim file s3://%s/%s — expected `name` and a `services` list. Deploy or `yolo sync:app` the app to republish it.',
+                'Could not read s3://%s/%s — expected the app\'s name and its services list. A fresh `yolo deploy` or `yolo sync:app` from that app rewrites it.',
                 Paths::s3EnvConfigBucket(),
                 $key,
             ));

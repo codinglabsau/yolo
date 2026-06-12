@@ -83,12 +83,12 @@ class EnvironmentManifestPushCommand extends Command
     }
 
     /**
-     * Removing a service offer is only accepted once no live app claims the
-     * service — push-time is the cheapest failure point, and a hard error
-     * naming the claimant beats a sync that tears infrastructure out from
-     * under a running app. A live app with no published claim file blocks
-     * removal the same way (unknown state ≠ no claims): its next deploy or
-     * sync:app populates the registry.
+     * Removing a service from the env manifest is only accepted once no
+     * running app still uses it — push-time is the cheapest failure point,
+     * and a hard error naming the app beats a sync that tears infrastructure
+     * out from under it. A running app that hasn't published its services yet
+     * blocks removal the same way: the environment can't know what it uses
+     * until its next deploy or sync:app.
      *
      * @param  array<string, mixed>  $current
      * @param  array<string, mixed>  $new
@@ -104,12 +104,13 @@ class EnvironmentManifestPushCommand extends Command
                 continue;
             }
 
-            if (($claimants = Lifecycle::activeClaimants($service)) !== []) {
+            if (($using = Lifecycle::liveAppsUsing($service)) !== []) {
                 error(sprintf(
-                    "Can't remove services.%s — %s still claim%s it. Drop the claim from each app's yolo.yml and deploy (or `yolo sync:app`) it first.",
+                    "Can't remove services.%s — %s %s still using it. Remove %s from each app's yolo.yml services and deploy (or `yolo sync:app`) it, then push again.",
                     $service->value,
-                    implode(', ', $claimants),
-                    count($claimants) === 1 ? 's' : '',
+                    implode(', ', $using),
+                    count($using) === 1 ? 'is' : 'are',
+                    $service->value,
                 ));
 
                 return false;
@@ -117,10 +118,10 @@ class EnvironmentManifestPushCommand extends Command
 
             if (($unpublished = Lifecycle::unpublishedLiveApps()) !== []) {
                 error(sprintf(
-                    "Can't remove services.%s — %s %s not published a claim file yet, so the claim set is unknowable. Deploy (or `yolo sync:app`) each first.",
+                    "Can't remove services.%s yet — %s %s deployed since this YOLO release, so the environment doesn't know whether the service is in use. Deploy (or `yolo sync:app`) each first.",
                     $service->value,
                     implode(', ', $unpublished),
-                    count($unpublished) === 1 ? 'has' : 'have',
+                    count($unpublished) === 1 ? "hasn't" : "haven't",
                 ));
 
                 return false;

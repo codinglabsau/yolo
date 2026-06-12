@@ -13,7 +13,7 @@ YOLO groups every resource by **ownership scope** — the blast radius if it cha
 | Command | Scope | Blast radius | Provisions |
 |---|---|---|---|
 | `yolo sync:account <env>` | **Account** | the whole AWS account | GitHub OIDC provider |
-| `yolo sync:environment <env>` | **Environment** | every app in the environment | VPC, subnets, internet gateway & routes, RDS security group, SNS alarm topic, the shared ECS execution IAM role, the env config bucket (`yolo-{account-id}-{env}-config` — [the environment's declaration](#the-environment-declaration): env manifest + env-shared `.env`), the env logs bucket (`yolo-{account-id}-{env}-logs` — the shared ALB's access logs under `alb/`, everything expiring after 90 days), the IVS event-logging pipeline (when the env manifest offers `services.ivs` **and** a live app claims it — see [the service lifecycle](#the-service-lifecycle-offered-and-claimed)), the ALB and its `:80`/`:443` listeners, the [WAF](#web-application-firewall) fronting the ALB |
+| `yolo sync:environment <env>` | **Environment** | every app in the environment | VPC, subnets, internet gateway & routes, RDS security group, SNS alarm topic, the shared ECS execution IAM role, the env config bucket (`yolo-{account-id}-{env}-config` — [the environment's declaration](#the-environment-declaration): env manifest + env-shared `.env`), the env logs bucket (`yolo-{account-id}-{env}-logs` — the shared ALB's access logs under `alb/`, everything expiring after 90 days), the IVS event-logging pipeline (while the env manifest declares `services.ivs` **and** a running app uses it — see [the service lifecycle](#the-service-lifecycle)), the ALB and its `:80`/`:443` listeners, the [WAF](#web-application-firewall) fronting the ALB |
 | `yolo sync:app <env>` | **App** | one app | S3 buckets, app IAM (deployer role/policy, the per-app ECS task role + any [`task-role-policies`](/reference/manifest#task-role-policies)), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, hosted zone & ACM certificate, SQS queues, CloudWatch dashboard — plus, for web apps, the shared [Valkey cache](#cache-and-sessions) (default-on; opt out via `cache.store`). Sessions ride the same Valkey cluster by default, so they need no provisioning of their own |
 
 The bare `yolo sync` runs all three **in dependency order** — account, then environment, then app:
@@ -37,7 +37,7 @@ App manifests declare what each **app** needs. The environment-shared tier has a
 - **`yolo-environment-{environment}.yml`** — [the env manifest](/reference/manifest#the-environment-manifest-yolo-environment-environment-yml): the environment's canonical service domain and its env-shared services. `yolo.yml` is the app; `yolo-environment-production.yml` is the production environment. Seeded with defaults by the environment's first `sync` and **never touched by sync again** — every later edit is yours, made through the pull/push flow below.
 - **`.env`** — the env-shared secrets channel, the environment-tier sibling of each app's `.env.{environment}`. It holds *generated* service secrets (created on demand by the services that need them) and anything an env-shared service should read at provision time.
 
-The bucket carries one more class of object that is **not** yours to edit: each app's published claim file (`apps/{app}.yml` — the app's name and the [`services`](/reference/manifest#services) it consumes). Every `deploy` and every `sync:app` republishes it, so the environment tier always holds a live record of which apps consume which shared services.
+The bucket carries one more class of object that is **not** yours to edit: each app's services file (`apps/{app}.yml` — the app's name and the [`services`](/reference/manifest#services) it uses). Every `deploy` and every `sync:app` rewrites it, so the environment always knows which apps are using which shared services.
 
 The edit flow mirrors app env files:
 
@@ -56,34 +56,34 @@ Because every `sync:environment` pulls the manifest fresh from S3 and converges 
 S3 read on the env config bucket is what gates env-secret control. Deploying an app never requires it — the barrier to mutate the environment is deliberately higher than the barrier to ship an app.
 :::
 
-## The service lifecycle: offered and claimed
+## The service lifecycle
 
-An env-shared service (the IVS event pipeline today) exists in an environment when **two keys turn together**:
+An env-shared service (the IVS event pipeline today) runs while two things are true:
 
-1. **Offered** — the env manifest declares `services.{name}`. The entry is the environment's catalogue: consent to run the service, its shape, and the memory of what the environment provides. An offer deliberately survives zero consumers — removing it is an operator act, never an inference.
-2. **Claimed** — at least one **live** app (an ECS cluster with running tasks) has published a claim file listing the service. Claims republish on every `deploy` and `sync:app`, and a dead app's stale claim file never counts — liveness is the same test [`audit`](#auditing-what-s-deployed) uses to attribute resources.
+1. **The environment declares it** — `services.{name}` in the env manifest. That entry is the environment's catalogue: the record of what this environment runs and how it's shaped. It stays put even when nothing is using the service — removing it is your call, never an inference.
+2. **A running app is using it** — every `deploy` and `sync:app` publishes the app's `services` list into the env config bucket, and only apps with running tasks count (the same liveness test [`audit`](#auditing-what-s-deployed) uses) — a dead app can't keep a service alive.
 
-`sync:environment` evaluates the gate for every env-backed service on every sync:
+`sync:environment` checks both for every env-backed service, every sync:
 
-| Offered | Live claim | Result |
+| Declared | In use | What sync does |
 |---|---|---|
-| yes | yes | Provisioned and reconciled toward the manifest |
-| yes | no | Planned as a **teardown** (`WOULD DELETE`, behind the confirm gate) |
-| no | no | Torn down if anything still exists; otherwise skipped |
-| no | yes | **Hard error** — only reachable by editing the bucket manifest outside `environment:manifest:push`, which refuses to remove a claimed offer |
+| yes | yes | Provisions it and keeps it reconciled |
+| yes | no | Plans the teardown (`WOULD DELETE`, behind the confirm gate) |
+| no | no | Tears down whatever still exists; otherwise skips |
+| no | yes | **Hard error** — only reachable by editing the bucket manifest by hand, since `environment:manifest:push` refuses to remove a service apps still use |
 
-One deliberate exception: while any **live app has no published claim file** (it was deployed by a YOLO that predates the claims registry), the claim set is unknowable — unknown state ≠ no claims — so nothing is created or torn down until every live app's next `deploy`/`sync:app` populates the registry. That makes the rollout bootstrap-safe: day one nobody has published, and nothing can be torn down by surprise.
+One deliberate exception: a running app that hasn't deployed since this YOLO release hasn't told the environment what it uses yet — so until every running app has, nothing is created or torn down. Day one nobody has redeployed, and nothing gets torn down by surprise.
 
 Enforcement is hard errors everywhere, never warnings:
 
-- An app claiming a service the env manifest doesn't offer fails `build`, `deploy` and `sync:app` with the fix spelled out (add the offer via the manifest pull/push flow, or drop the claim). On a greenfield environment whose manifest hasn't been seeded yet, the check defers to the first sync instead of bricking it.
-- `environment:manifest:push` refuses to remove an offer while live claimants exist — naming them — and likewise while any live app hasn't published its claims.
+- An app that uses a service the environment doesn't declare fails `build`, `deploy` and `sync:app` with the fix spelled out (declare it via the manifest pull/push flow, or take it out of `yolo.yml`). On a greenfield environment whose manifest hasn't been seeded yet, the check defers to the first sync instead of bricking it.
+- `environment:manifest:push` refuses to remove a service while running apps still use it — naming them — and likewise while any running app hasn't published what it uses yet.
 
-Decommissioning is therefore self-enforcing, with hard edges the whole way: drop the claim in each app's `yolo.yml` → `deploy`/`sync:app` republishes (the app's per-service IAM melts away in the same pass) → remove the offer via `environment:manifest:pull`/`push` (accepted only once no live claims remain) → `sync:environment` plans the teardown for you to confirm.
+Retiring a service is therefore self-enforcing, with hard edges the whole way: remove it from each app's `yolo.yml` → `deploy`/`sync:app` (the app's per-service IAM melts away in the same pass) → remove the env-manifest entry and `push` (accepted once nothing is using it) → `sync:environment` plans the teardown for you to confirm.
 
 ## Typesense — the environment's search cluster
 
-Offering `services.typesense` (with its required `version`/`cpu`/`memory` shape — see [the manifest reference](/reference/manifest#the-environment-manifest-yolo-environment-environment-yml)) gives the environment a self-hosted, three-node [Typesense](https://typesense.org) cluster, shared by every app that claims `typesense`:
+Declaring `services.typesense` (with its required `version`/`cpu`/`memory` shape — see [the manifest reference](/reference/manifest#the-environment-manifest-yolo-environment-environment-yml)) gives the environment a self-hosted, three-node [Typesense](https://typesense.org) cluster, shared by every app with `typesense` in its `services` list:
 
 - **Durable by replication, not by disk.** The three single-task ECS services (AZ-spread, one per public subnet, arm64) form a Raft quorum: writes commit on 2-of-3, and a replaced node catches up from the surviving majority over the network — the persistence model that works *with* Fargate's ephemeral storage. Losing one node degrades nothing; losing two degrades to read-only until a node returns. The search index is a rebuildable projection of your database (`scout:import`), never a source of truth.
 - **Stable peer addresses** come from a private Cloud Map DNS namespace (`{env}.internal`): each node owns `typesense-{n}.{env}.internal`, re-resolving to its replacement task within seconds.
