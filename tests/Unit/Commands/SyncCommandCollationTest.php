@@ -69,7 +69,9 @@ it('constructs every declared step with just the environment string', function (
         ->merge((new ReflectionProperty(BuildCommand::class, 'fargateSteps'))->getValue($build))
         ->merge((new DeployCommand())->steps())
         ->unique()
-        ->each(fn (string $stepName) => expect(new $stepName('testing'))->toBeInstanceOf(Step::class));
+        ->each(function (string $stepName): void {
+            expect(new $stepName('testing'))->toBeInstanceOf(Step::class);
+        });
 })->with([
     'solo web app' => [['domain' => 'codinglabs.com.au', 'tasks' => ['web' => []]]],
     'multi-tenant app' => [['tenants' => ['alpha' => []]]],
