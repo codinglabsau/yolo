@@ -5,7 +5,7 @@
 #   .env                  the environment's .env, baked in at build time
 #   vendor                installed by the build hook, not by the Dockerfile
 #   public/build          compiled Vite assets
-#   docker/               generated supervisord.conf
+#   docker/               generated supervisord config(s) + crontab
 #   .yolo-entrypoint.sh   generated deploy-all entrypoint
 
 # VCS & CI

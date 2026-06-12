@@ -106,7 +106,7 @@ environments:
       # scheduler:
       #   cpu: '256'                      # default: '256'
       #   memory: '512'                   # default: '512'
-      #   shutdown-grace-period: 10       # default: 10 — wait out an in-flight schedule:run
+      #   shutdown-grace-period: 115      # default: 115 — the in-flight schedule:run gets the whole stop window
       #   enable-execute-command: false   # default: false
 
     build:
@@ -413,7 +413,7 @@ See [Scaling → the queue](/guide/scaling#the-queue-scale-to-zero).
 
 ## `tasks.scheduler.*`
 
-A top-level `tasks.scheduler` block extracts the scheduler (busybox `crond` firing `schedule:run`) into its **own** ECS service, pinned at exactly one task — a genuine singleton, so `->onOneServer()` is no longer required. It deploys **stop-then-start** (`minimumHealthyPercent: 0` / `maximumPercent: 100`) so a rollout never briefly runs two crons; a missed cron minute is harmless, a double-run isn't. Without this block the scheduler rides the standalone queue if there is one, else the web container (see [Where each role runs](#where-each-role-runs)).
+A top-level `tasks.scheduler` block extracts the scheduler ([supercronic](https://github.com/aptible/supercronic) firing `schedule:run`) into its **own** ECS service, pinned at exactly one task — a genuine singleton, so `->onOneServer()` is no longer required. It deploys **stop-then-start** (`minimumHealthyPercent: 0` / `maximumPercent: 100`) so a rollout never briefly runs two crons; a missed cron minute is harmless, a double-run isn't. Without this block the scheduler rides the standalone queue if there is one, else the web container (see [Where each role runs](#where-each-role-runs)).
 
 The scheduler never scales (a per-minute cron can't tolerate a cold start), so it has no `min`/`max`.
 
@@ -421,7 +421,7 @@ The scheduler never scales (a per-minute cron can't tolerate a cold start), so i
 |---|---|---|
 | `tasks.scheduler.cpu` | `'256'` | Fargate CPU units (the scheduler is light — the smallest tier is usually plenty). |
 | `tasks.scheduler.memory` | `'512'` | Fargate memory (MB). |
-| `tasks.scheduler.shutdown-grace-period` | `10` | Seconds to wait out an in-flight `schedule:run` on `SIGTERM`. Long-running work belongs on the queue, not the cron tick. |
+| `tasks.scheduler.shutdown-grace-period` | `115` | Seconds an in-flight `schedule:run` gets to finish after `SIGTERM` — supercronic stops launching new runs immediately, and its stop overlaps the other programs', so the default hands the run the whole stop window (Fargate's 120s `stopTimeout` cap minus buffer). A run cut off at the wire should self-heal on a later tick; routinely long work still belongs on the queue. |
 | `tasks.scheduler.enable-execute-command` | `false` | Enable ECS Exec on the scheduler service. |
 
 ---

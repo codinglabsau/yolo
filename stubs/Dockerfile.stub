@@ -7,8 +7,9 @@
 # own, so one image serves all.
 FROM dunglas/frankenphp:1-php8.4-alpine
 
-# nodejs is the runtime for Inertia SSR (tasks.web.ssr); drop it if you don't use SSR.
-RUN apk add --no-cache git supervisor nodejs \
+# supercronic runs the scheduler's cron as a non-root user (busybox crond can't);
+# nodejs is the runtime for Inertia SSR (tasks.web.ssr) — drop it if you don't use SSR.
+RUN apk add --no-cache git supervisor supercronic nodejs \
     && install-php-extensions intl pcntl bcmath redis pdo_mysql opcache excimer
 
 WORKDIR /app

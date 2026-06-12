@@ -15,8 +15,8 @@ beforeEach(function (): void {
     if (is_file(Paths::build('docker/supervisord.queue.conf'))) {
         unlink(Paths::build('docker/supervisord.queue.conf'));
     }
-    if (is_file(Paths::build('docker/crontabs/www-data'))) {
-        unlink(Paths::build('docker/crontabs/www-data'));
+    if (is_file(Paths::build('docker/crontab'))) {
+        unlink(Paths::build('docker/crontab'));
     }
 });
 
@@ -63,7 +63,7 @@ it('bundles octane, the scheduler and the queue worker into the web config for a
     expect($config)->toContain('[program:web]');
     expect($config)->toContain('[program:scheduler]');
     // The scheduler runs as cron, not a schedule:work daemon.
-    expect($config)->toContain('command=crond -f -d 8 -c /app/docker/crontabs');
+    expect($config)->toContain('command=supercronic /app/docker/crontab');
     expect($config)->not->toContain('schedule:work');
     expect($config)->toContain('[program:queue]');
     expect($config)->toContain('command=php artisan queue:work --tries=3 --max-time=3600');
@@ -109,7 +109,7 @@ it('writes a second supervisord config for a standalone queue that hosts the sch
     expect($web)->not->toContain('[program:queue]');
     expect($web)->not->toContain('[program:scheduler]');
 
-    // Queue container: queue worker + crond, no octane.
+    // Queue container: queue worker + supercronic, no octane.
     $queue = file_get_contents(Paths::build('docker/supervisord.queue.conf'));
     expect($queue)->toContain('[program:queue]');
     expect($queue)->toContain('[program:scheduler]');
@@ -131,10 +131,11 @@ it('writes no queue supervisord config when the standalone queue is a single pro
 it('writes a crontab firing schedule:run each minute (the scheduler always runs somewhere)', function (): void {
     (new GenerateSupervisorConfigStep('testing'))();
 
-    $crontab = file_get_contents(Paths::build('docker/crontabs/www-data'));
+    $crontab = file_get_contents(Paths::build('docker/crontab'));
 
-    expect($crontab)->toContain('* * * * * cd /app && ');
-    expect($crontab)->toContain('php artisan schedule:run');
+    // The whole entry: supercronic jobs inherit the container env and have their
+    // output captured, so no PATH override or fd redirect rides along.
+    expect($crontab)->toContain("* * * * * cd /app && php artisan schedule:run\n");
 });
 
 it('uses the web shutdown-grace-period for octanes stop wait', function (): void {

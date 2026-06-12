@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo;
 
 use Codinglabs\Yolo\Enums\ServerGroup;
+use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 /**
  * One source of truth for how each container shuts down, so supervisord's
@@ -12,8 +13,9 @@ use Codinglabs\Yolo\Enums\ServerGroup;
  * work on SIGTERM before being killed. Octane sits behind the ALB, so its grace
  * doubles as the target group's deregistration delay and the entrypoint drain. The
  * queue worker defaults longer (its in-flight job can outlast an ALB drain); the
- * scheduler just needs its current cron tick to finish. Programs are placed by task
- * presence (Manifest::queueHost / schedulerHost), not flags — so the graces for a
+ * scheduler defaults to the whole stop window, since its stop overlaps the other
+ * programs' (see stopTimeoutFor). Programs are placed by task presence
+ * (Manifest::queueHost / schedulerHost), not flags — so the graces for a
  * given container follow from which group it is:
  *
  *     tasks:
@@ -31,11 +33,6 @@ final class ShutdownTimings
     // The web process's graceful-stop window when not set in the manifest.
     private const int WEB_DEFAULT_GRACE = 10;
 
-    // A standalone scheduler's graceful-stop window: long enough to let an
-    // in-flight schedule:run tick finish. A scheduled command that routinely
-    // outlasts this belongs on the queue, not the cron tick.
-    private const int SCHEDULER_DEFAULT_GRACE = 10;
-
     // The bundled SSR renderer's graceful-stop window. A render is sub-second and
     // stateless (Inertia falls back to client-side rendering if it's gone), so it
     // only needs a moment to finish an in-flight render before SIGKILL.
@@ -47,6 +44,14 @@ final class ShutdownTimings
 
     // Fargate hard-caps the container stopTimeout at 120s.
     private const int MAX_STOP_TIMEOUT = 120;
+
+    // The scheduler's graceful-stop window: everything Fargate allows. supercronic
+    // is signalled the instant SIGTERM lands (no new schedule:run fires) and its
+    // stop overlaps every other program's rather than preceding them (see
+    // stopTimeoutFor), so handing the in-flight run the whole stop budget costs
+    // the other graces nothing. A run killed at the wire anyway is acceptable by
+    // design — scheduled work must self-heal across ticks.
+    private const int SCHEDULER_DEFAULT_GRACE = self::MAX_STOP_TIMEOUT - self::STOP_TIMEOUT_BUFFER;
 
     /**
      * The web (octane) process's graceful-stop window. Octane is behind the ALB,
@@ -80,9 +85,11 @@ final class ShutdownTimings
     }
 
     /**
-     * The scheduler's graceful-stop window — just long enough to wait out an
-     * in-flight schedule:run tick. Read from `tasks.scheduler` (only present when
-     * extracted); a bundled scheduler gets the default.
+     * The scheduler's graceful-stop window — how long an in-flight schedule:run
+     * gets to finish after supercronic stops launching new ticks. Defaults to the
+     * whole stop budget (Fargate's cap minus the buffer), since the scheduler's
+     * stop overlaps the other programs'. Read from `tasks.scheduler` (only
+     * present when extracted); a bundled scheduler gets the default.
      */
     public static function schedulerGrace(): int
     {
@@ -134,26 +141,43 @@ final class ShutdownTimings
     }
 
     /**
-     * ECS's SIGTERM-to-SIGKILL ceiling for a group's task, with buffer and capped
-     * at Fargate's 120s. The drain runs the scheduler down first (cron halted,
-     * in-flight schedule:run waited out — overlapping the ALB window on web), then
-     * supervisord stops the remaining programs in parallel for the slowest of their
-     * graces. Without a scheduler it's the drain window plus the slowest program.
-     * Only the web container has an ALB drain window; queue/scheduler tasks have no
-     * load balancer to keep serving for.
+     * ECS's SIGTERM-to-SIGKILL ceiling for a group's task, hard-capped by Fargate
+     * at 120s. The scheduler's stop OVERLAPS the other programs' stops rather
+     * than preceding them: supercronic is signalled the moment SIGTERM lands (the
+     * web entrypoint signals it before holding the ALB drain window; everywhere
+     * else the forward is immediate, and supervisord signals all programs at
+     * once), so no new schedule:run fires while the drain window and the other
+     * graces play out in parallel. The budget is therefore the slower of the two
+     * tracks — the drain window plus the slowest non-scheduler program, or the
+     * scheduler's grace — never their sum, which is what lets the in-flight
+     * schedule:run keep the whole window. Only the web container has an ALB drain
+     * window; queue/scheduler tasks have no load balancer to keep serving for.
+     *
+     * Graces that overcommit the cap are a manifest error, not a silent clamp —
+     * clamping would have supervisord promising a program a window ECS cuts off
+     * at the wire.
      */
     public static function stopTimeoutFor(ServerGroup $group): int
     {
         $graces = self::programGraces($group);
         $drainWindow = $group === ServerGroup::WEB ? self::drain() : 0;
 
-        if (isset($graces['scheduler'])) {
-            $rest = array_diff_key($graces, ['scheduler' => 0]);
-            $total = max($drainWindow, $graces['scheduler']) + ($rest === [] ? 0 : max($rest));
-        } else {
-            $total = $drainWindow + max($graces);
+        $rest = array_diff_key($graces, ['scheduler' => 0]);
+        $total = max($drainWindow + ($rest === [] ? 0 : max($rest)), $graces['scheduler'] ?? 0);
+
+        $stopTimeout = $total + self::STOP_TIMEOUT_BUFFER;
+
+        if ($stopTimeout > self::MAX_STOP_TIMEOUT) {
+            throw new IntegrityCheckException(sprintf(
+                'The %s container\'s shutdown graces need a %ds stop timeout, but Fargate caps it at %ds — '
+                . 'lower a shutdown-grace-period, or extract the queue/scheduler into their own services to '
+                . 'split the budget.',
+                $group->value,
+                $stopTimeout,
+                self::MAX_STOP_TIMEOUT,
+            ));
         }
 
-        return min($total + self::STOP_TIMEOUT_BUFFER, self::MAX_STOP_TIMEOUT);
+        return $stopTimeout;
     }
 }
