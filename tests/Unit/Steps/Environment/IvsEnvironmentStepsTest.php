@@ -161,7 +161,7 @@ it('the target step skips on teardown — the rule deletion removes its own targ
     expect(array_column($ebCaptured, 'name'))->not->toContain('RemoveTargets');
 });
 
-it('holds position (skips) while a live app has not published its claim file', function (): void {
+it('holds position (skips) while a running app has not published its services yet', function (): void {
     $captured = [];
     bindServiceLifecycleWorld([
         'manifest' => "services:\n  ivs: {}\n",

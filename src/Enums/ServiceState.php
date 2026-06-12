@@ -5,26 +5,25 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo\Enums;
 
 /**
- * The lifecycle state of an env-backed service in an environment, evaluated
- * from the two keys that must both turn for the service to exist: the env
- * manifest OFFERS it (`services.{name}`), and at least one live app CLAIMS it
- * (a published `apps/{app}.yml` listing the service, from an app whose ECS
- * cluster is running tasks).
+ * What sync should do about an env-backed service, decided by two facts: the
+ * environment manifest declares it (`services.{name}`), and at least one
+ * running app uses it (the services each app publishes on deploy/sync:app,
+ * counted only while the app has running tasks).
  */
 enum ServiceState
 {
-    /** Both keys turned (offered ∧ live claim) — sync the service's resources toward the manifest. */
+    /** Declared by the environment and in use by a running app — sync it toward the manifest. */
     case Provision;
 
-    /** Not offered-and-claimed, and every live app has published — tear the service's resources down. */
+    /** Not declared-and-in-use, and every running app has published what it uses — tear it down. */
     case Teardown;
 
     /**
-     * The gate is off but a live app hasn't published its claim file, so the
-     * claim set is unknowable — unknown state ≠ no claims, so nothing is
-     * created or torn down until every live app's next deploy/sync:app
-     * populates the registry. That makes the rollout bootstrap-safe: day one
-     * nobody has published and existing services hold position.
+     * A running app hasn't deployed on this YOLO release yet, so the
+     * environment doesn't know what it uses — nothing is created or torn
+     * down until every running app has published. That makes the rollout
+     * bootstrap-safe: day one nobody has republished, and existing services
+     * hold position.
      */
     case Retain;
 }
