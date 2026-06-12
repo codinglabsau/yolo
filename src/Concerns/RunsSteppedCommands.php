@@ -127,7 +127,7 @@ trait RunsSteppedCommands
      */
     protected static function planEntryHasWork(array $entry): bool
     {
-        return in_array($entry['status'], [StepResult::WOULD_CREATE, StepResult::WOULD_SYNC, StepResult::WOULD_DELETE], true)
+        return in_array($entry['status'], [StepResult::WOULD_CREATE, StepResult::WOULD_SYNC, StepResult::WOULD_DELETE, StepResult::WOULD_BUILD], true)
             || $entry['changes'] !== [];
     }
 
@@ -609,6 +609,7 @@ trait RunsSteppedCommands
             StepResult::SUCCESS => '<fg=green>SUCCESS</>',
             StepResult::SYNCED => '<fg=green>SYNCED</>',
             StepResult::DELETED => '<fg=green>DELETED</>',
+            StepResult::BUILT => '<fg=green>BUILT</>',
 
             // yellow
             StepResult::SKIPPED => '<fg=yellow>SKIPPED</>',
@@ -616,6 +617,7 @@ trait RunsSteppedCommands
             StepResult::WOULD_CREATE => '<fg=yellow>WOULD CREATE</>',
             StepResult::WOULD_SYNC => '<fg=yellow>WOULD SYNC</>',
             StepResult::WOULD_DELETE => '<fg=yellow>WOULD DELETE</>',
+            StepResult::WOULD_BUILD => '<fg=yellow>WOULD BUILD</>',
 
             // red
             StepResult::MANIFEST_INVALID => '<fg=red>MANIFEST INVALID</>',

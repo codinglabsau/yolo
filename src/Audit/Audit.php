@@ -77,6 +77,7 @@ class Audit
         'Rds' => 'rds',
         'Route53' => 'route53',
         'S3' => 's3',
+        'ServiceDiscovery' => 'servicediscovery',
         'Sns' => 'sns',
         'Sqs' => 'sqs',
         'WafV2' => 'wafv2',
@@ -106,9 +107,21 @@ class Audit
     ];
 
     /**
+     * The cluster suffix that is NOT an app: yolo-{env}-services hosts the
+     * environment's shared service tasks (Typesense nodes), so deriving an app
+     * named "services" from it would corrupt liveness — the claims registry
+     * would wait forever for an app that can never publish. The name is
+     * reserved at the manifest gate (Command::ensureNameNotReserved) so a real
+     * app can never collide with it.
+     */
+    public const RESERVED_APP_NAME = 'services';
+
+    /**
      * App names that have a live ECS cluster for this environment, derived from
      * cluster ARNs by the yolo-{env}-{app} naming convention. The bare yolo-{env}
-     * cluster (none exists, but defensively) and non-YOLO clusters are ignored.
+     * cluster (none exists, but defensively), the env services cluster
+     * (yolo-{env}-services — shared service tasks, not an app) and non-YOLO
+     * clusters are ignored.
      *
      * @param  array<int, string>  $clusterArns
      * @return array<int, string>
@@ -121,6 +134,7 @@ class Audit
             ->map(fn (string $arn): ?string => Arn::parse($arn)?->resourceId)
             ->filter(fn (?string $name): bool => $name !== null && str_starts_with($name, $prefix) && strlen($name) > strlen($prefix))
             ->map(fn (string $name): string => substr($name, strlen($prefix)))
+            ->reject(fn (string $name): bool => $name === self::RESERVED_APP_NAME)
             ->unique()
             ->values()
             ->all();

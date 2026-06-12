@@ -25,6 +25,15 @@ it('derives live app names from cluster ARNs by the yolo-{env}-{app} convention'
     expect($apps)->toBe(['codinglabs', 'ghost']);
 });
 
+it('never derives an app from the env services cluster — shared service tasks are not an app', function (): void {
+    $apps = Audit::appsFromClusters([
+        'arn:aws:ecs:ap-southeast-2:111:cluster/yolo-production-codinglabs',
+        'arn:aws:ecs:ap-southeast-2:111:cluster/yolo-production-services',
+    ], 'production');
+
+    expect($apps)->toBe(['codinglabs']);
+});
+
 it('classifies resources as ok or unexpected with a reason', function (): void {
     $report = Audit::classify([
         auditResource('arn:aws:ecs:ap-southeast-2:111:service/yolo-production-codinglabs/web', ['yolo:app' => 'codinglabs', 'yolo:scope' => 'app', 'Name' => 'yolo-production-codinglabs-web']),

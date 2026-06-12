@@ -16,6 +16,12 @@ enum StepResult
     case DELETED;
     case WOULD_DELETE;
 
+    // A sync step that produces a pushed artefact (a docker image) rather than
+    // reconciling a live AWS resource — the plan computes the content tag
+    // without Docker; apply runs the build.
+    case BUILT;
+    case WOULD_BUILD;
+
     case CUSTOM_MANAGED;
     case TIMEOUT;
     case SKIPPED;

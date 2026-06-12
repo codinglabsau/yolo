@@ -300,3 +300,17 @@ it('accepts a task-role-policies list', function (): void {
 
     expect(invokeManifestIntegrity())->toBeTrue();
 });
+
+it('rejects the reserved app name `services` — it collides with the env services cluster', function (): void {
+    file_put_contents(BASE_PATH . '/yolo.yml', Yaml::dump([
+        'name' => 'services',
+        'environments' => [
+            'testing' => ['account-id' => '848509375702', 'region' => 'ap-southeast-2'],
+        ],
+    ], 10, 2));
+    Helpers::app()->instance('environment', 'testing');
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    expect(test()->promptOutput->fetch())->toContain('reserved');
+});

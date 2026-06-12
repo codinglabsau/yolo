@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Commands;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Audit\Audit;
 use Codinglabs\Yolo\EnvManifest;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServerGroup;
@@ -89,6 +90,7 @@ abstract class Command extends SymfonyCommand
     protected function ensureManifestIntegrity(): bool
     {
         return $this->ensureNameDeclared()
+            && $this->ensureNameNotReserved()
             && $this->ensureNoUnknownManifestKeys()
             && $this->ensureManifestKeyDeclared('region')
             && $this->ensureManifestKeyDeclared('account-id')
@@ -300,6 +302,23 @@ abstract class Command extends SymfonyCommand
         }
 
         error('yolo.yml must declare `name`.');
+
+        return false;
+    }
+
+    /**
+     * `services` is reserved: yolo-{env}-services is the env services cluster
+     * (shared service tasks, not an app), and app liveness derivation skips
+     * it — an app actually named "services" would be invisible to the claims
+     * registry and the audit.
+     */
+    protected function ensureNameNotReserved(): bool
+    {
+        if (Manifest::name() !== Audit::RESERVED_APP_NAME) {
+            return true;
+        }
+
+        error(sprintf('yolo.yml `name` cannot be "%s" — it is reserved for the env services cluster (yolo-{env}-%s).', Audit::RESERVED_APP_NAME, Audit::RESERVED_APP_NAME));
 
         return false;
     }

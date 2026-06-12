@@ -86,7 +86,7 @@ class Ecs
 
         do {
             $result = Aws::ecs()->listClusters(array_filter(['nextToken' => $token]));
-            $arns = [...$arns, ...$result['clusterArns']];
+            $arns = [...$arns, ...($result['clusterArns'] ?? [])];
             $token = $result['nextToken'] ?? null;
         } while ($token);
 
