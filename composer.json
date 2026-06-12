@@ -12,6 +12,7 @@
     "illuminate/support": "^12|^13",
     "laravel/prompts": "^0.3",
     "nesbot/carbon": "^3.10",
+    "spatie/fork": "^1.2",
     "symfony/console": "^7.1",
     "symfony/yaml": "^7.1",
     "vlucas/phpdotenv": "^5.6"

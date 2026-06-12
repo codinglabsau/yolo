@@ -330,6 +330,8 @@ yolo sync <environment> [--check] [--force] [--no-progress] [--tenant=<id>]
 
 `--check` is the machine-readable form of that plan pass: it prints the same diff, never applies, and returns a non-zero exit code when there are pending changes (and `0` when the environment is already in sync). Run `yolo sync <env> --check` in CI to fail a pipeline on drifted or unsynced infrastructure. A non-zero exit also covers a plan that errored (bad credentials, AWS API failure, invalid manifest) — either way, CI should stop and a human should look.
 
+The plan pass is read-only, so it fans out across up to 8 worker processes and renders the same plan in a fraction of the time; the apply pass always runs sequentially, in declaration order. Forking needs the `pcntl` extension (standard on macOS/Linux CLI builds) — without it, or with `YOLO_PLAN_SEQUENTIAL=1` set in the environment, the plan runs in-process instead, with identical output.
+
 These four options are shared by every `sync` command below. See [Provisioning](/guide/provisioning) for the plan/confirm/apply flow.
 
 ---
