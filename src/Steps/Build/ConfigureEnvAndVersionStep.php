@@ -7,7 +7,6 @@ use Codinglabs\Yolo\Paths;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -36,15 +35,12 @@ class ConfigureEnvAndVersionStep implements Step
             'APP_VERSION' => $appVersion,
         ];
 
-        // Consuming the mediaconvert service provisions a per-app role for
-        // MediaConvert to assume; the app passes it on every CreateJob, so the
-        // computed ARN is baked in at build.
-        if (Manifest::usesService(Service::MEDIA_CONVERT)) {
-            $values['AWS_MEDIACONVERT_ROLE_ID'] = sprintf(
-                'arn:aws:iam::%s:role/%s',
-                Aws::accountId(),
-                Helpers::keyedResourceName(Iam::MEDIA_CONVERT_ROLE),
-            );
+        // Each consumed service contributes its build-time env values — the
+        // injection half of the service contract lives on the definition
+        // (ServiceDefinition::buildValues()), so a new service never edits
+        // this step.
+        foreach (Manifest::services() as $service) {
+            $values = [...$values, ...Service::from($service)->definition()->buildValues()];
         }
 
         // Assets always live in S3 behind the YOLO-provisioned CloudFront

@@ -58,6 +58,12 @@ class BuildCommand extends SteppedCommand
 
         $this->input->setOption('app-version', $appVersion);
 
+        // Claim-without-offer fails before any build effort is spent (deploy
+        // inherits this gate by running build first).
+        if (! $this->ensureClaimedServicesOffered()) {
+            return self::FAILURE;
+        }
+
         if (Manifest::has('tasks')) {
             $this->steps = [...$this->steps, ...$this->fargateSteps];
         }

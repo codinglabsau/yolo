@@ -126,6 +126,8 @@ yolo environment:manifest:push <environment>
 
 Validates the local file against the manifest schema **before** anything touches the bucket — a misshapen manifest can never become the environment's declared truth — then shows a key-level diff against the remote and asks for confirmation. After uploading it offers to delete the local working copy (default: yes). Apply the pushed declaration with [`sync:environment`](#yolo-sync-environment), from any app in the environment.
 
+Removing a [service](/guide/provisioning#the-service-lifecycle) (`services.{name}`) is refused while a running app still uses it — the error names the app — and likewise while any running app hasn't published what it uses yet. Remove the service from each app's `yolo.yml` and deploy (or `sync:app`) it first; the push goes through once nothing is using it.
+
 ---
 
 ## `yolo environment:env:pull`
@@ -350,7 +352,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **account**.
 
 ## `yolo sync:environment`
 
-Sync the environment-shared (environment-tier) resources — VPC, subnets, internet gateway and routes, the load balancer security group, the env config bucket holding [the environment's declaration](/guide/provisioning#the-environment-declaration) (env manifest + env-shared `.env`, the manifest seeded once on first sync), the IVS event-logging pipeline when the env manifest declares `services.ivs`, the ALB and its `:80` listener, the SNS alarm topic, the shared ECS execution IAM role, and the [WAF web ACL](/guide/provisioning#web-application-firewall) (with its allow/block IP sets) fronting the ALB.
+Sync the environment-shared (environment-tier) resources — VPC, subnets, internet gateway and routes, the load balancer security group, the env config bucket holding [the environment's declaration](/guide/provisioning#the-environment-declaration) (env manifest + env-shared `.env`, the manifest seeded once on first sync), the env-backed services gated on [the service lifecycle](/guide/provisioning#the-service-lifecycle) (the IVS event-logging pipeline while the env manifest declares `services.ivs` **and** a running app uses it — and planned as a `WOULD DELETE` teardown once that stops being true), the ALB and its `:80` listener, the SNS alarm topic, the shared ECS execution IAM role, and the [WAF web ACL](/guide/provisioning#web-application-firewall) (with its allow/block IP sets) fronting the ALB.
 
 ```bash
 yolo sync:environment <environment> [--check] [--force] [--no-progress] [--tenant=<id>]
@@ -362,7 +364,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **environment**. These 
 
 ## `yolo sync:app`
 
-Sync a single application's resources for the given environment — S3 buckets, the app's published claim file (`apps/{app}.yml` in the env config bucket), app IAM (deployer role/policy, the per-app ECS task role plus any [`task-role-policies`](/reference/manifest#task-role-policies), and the MediaConvert role when the app consumes the [`mediaconvert` service](/reference/manifest#services)), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, SQS queues, a CloudWatch dashboard, target-tracking autoscaling (when configured), and — for a solo app — its hosted zone and ACM certificate. For web apps it also provisions the shared [Valkey cache](/guide/provisioning#cache-and-sessions) (`cache.store`, default-on); sessions ride the same cluster by default ([`session.driver: redis`](/guide/provisioning#cache-and-sessions)), so they need no resources of their own.
+Sync a single application's resources for the given environment — S3 buckets, the app's published claim file (`apps/{app}.yml` in the env config bucket), app IAM (deployer role/policy, the per-app ECS task role plus any [`task-role-policies`](/reference/manifest#task-role-policies), and the MediaConvert role when the app uses the [`mediaconvert` service](/reference/manifest#services) — torn down again on the sync after the app stops using it), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, SQS queues, a CloudWatch dashboard, target-tracking autoscaling (when configured), and — for a solo app — its hosted zone and ACM certificate. For web apps it also provisions the shared [Valkey cache](/guide/provisioning#cache-and-sessions) (`cache.store`, default-on); sessions ride the same cluster by default ([`session.driver: redis`](/guide/provisioning#cache-and-sessions)), so they need no resources of their own.
 
 ```bash
 yolo sync:app <environment> [--check] [--force] [--no-progress] [--tenant=<id>]

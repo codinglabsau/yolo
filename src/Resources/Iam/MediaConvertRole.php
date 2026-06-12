@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
@@ -16,7 +17,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * EcsTaskRole, but app-exclusive (one per app) so it carries the yolo:app owner
  * tag. Permission policies are attached separately by AttachMediaConvertRolePoliciesStep.
  */
-class MediaConvertRole implements Resource, SynchronisesConfiguration
+class MediaConvertRole implements Deletable, Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
     use SynchronisesAssumeRolePolicy;
@@ -69,6 +70,29 @@ class MediaConvertRole implements Resource, SynchronisesConfiguration
     public function synchroniseTags(bool $apply): array
     {
         return Aws::synchroniseIamRoleTags($this->name(), $this->tags(), $apply);
+    }
+
+    /**
+     * Teardown when the app drops its mediaconvert claim: IAM refuses to
+     * delete a role with attached policies, so the managed-policy attachments
+     * (AttachMediaConvertRolePoliciesStep's work) detach first.
+     */
+    public function delete(): void
+    {
+        $attached = Aws::iam()->listAttachedRolePolicies([
+            'RoleName' => $this->name(),
+        ])['AttachedPolicies'] ?? [];
+
+        foreach ($attached as $policy) {
+            Aws::iam()->detachRolePolicy([
+                'RoleName' => $this->name(),
+                'PolicyArn' => $policy['PolicyArn'],
+            ]);
+        }
+
+        Aws::iam()->deleteRole([
+            'RoleName' => $this->name(),
+        ]);
     }
 
     public function assumeRolePolicyDocument(): array

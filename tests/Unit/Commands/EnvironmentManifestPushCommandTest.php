@@ -94,3 +94,71 @@ it('uploads nothing when the diff is declined', function (): void {
     expect(file_exists(EnvManifest::localPath()))->toBeTrue();
     expect(Prompt::content())->toContain('Nothing uploaded');
 });
+
+it('refuses to remove a service a running app still uses, naming the app', function (): void {
+    Prompt::fake();
+    file_put_contents(EnvManifest::localPath(), "services: {  }\n");
+
+    $captured = [];
+    bindServiceLifecycleWorld([
+        'manifest' => "services:\n  ivs: {}\n",
+        'claims' => ['my-app' => ['ivs']],
+        'clusters' => ['my-app' => true],
+    ], $captured);
+
+    runEnvironmentFileCommand(new EnvironmentManifestPushCommand());
+
+    expect(array_column($captured, 'name'))->not->toContain('PutObject');
+    expect(Prompt::content())->toContain("Can't remove services.ivs")
+        ->toContain('my-app');
+});
+
+it('refuses to remove a service while a running app has not published what it uses', function (): void {
+    Prompt::fake();
+    file_put_contents(EnvManifest::localPath(), "services: {  }\n");
+
+    $captured = [];
+    bindServiceLifecycleWorld([
+        'manifest' => "services:\n  ivs: {}\n",
+        'claims' => [],
+        'clusters' => ['my-app' => true],
+    ], $captured);
+
+    runEnvironmentFileCommand(new EnvironmentManifestPushCommand());
+
+    expect(array_column($captured, 'name'))->not->toContain('PutObject');
+    expect(Prompt::content())->toContain("Can't remove services.ivs")
+        ->toContain("hasn't deployed");
+});
+
+it('allows removing a service once no running app uses it', function (): void {
+    Prompt::fake([Key::ENTER, Key::ENTER]);
+    file_put_contents(EnvManifest::localPath(), "services: {  }\n");
+
+    $captured = [];
+    bindServiceLifecycleWorld([
+        'manifest' => "services:\n  ivs: {}\n",
+        'claims' => ['my-app' => []],
+        'clusters' => ['my-app' => true],
+    ], $captured);
+
+    runEnvironmentFileCommand(new EnvironmentManifestPushCommand());
+
+    expect(array_column($captured, 'name'))->toContain('PutObject');
+});
+
+it('a dead app does not block removing a service', function (): void {
+    Prompt::fake([Key::ENTER, Key::ENTER]);
+    file_put_contents(EnvManifest::localPath(), "services: {  }\n");
+
+    $captured = [];
+    bindServiceLifecycleWorld([
+        'manifest' => "services:\n  ivs: {}\n",
+        'claims' => ['my-app' => ['ivs']],
+        'clusters' => ['my-app' => false],
+    ], $captured);
+
+    runEnvironmentFileCommand(new EnvironmentManifestPushCommand());
+
+    expect(array_column($captured, 'name'))->toContain('PutObject');
+});

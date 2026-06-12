@@ -113,3 +113,13 @@ it('names the manifest after its environment, in the bucket and on disk', functi
 it('accepts a declared ivs service', function (): void {
     expect(EnvManifest::parse("services:\n  ivs: {}\n"))->toBe(['services' => ['ivs' => []]]);
 });
+
+it('rejects a scalar offer — the allow-list cannot catch a leaf, the definition validates the shape', function (): void {
+    expect(fn (): array => EnvManifest::parse("services:\n  ivs: true\n"))
+        ->toThrow(IntegrityCheckException::class, 'services.ivs');
+});
+
+it('rejects unknown keys inside an offer block via the per-service offer keys', function (): void {
+    expect(fn (): array => EnvManifest::parse("services:\n  ivs:\n    nodes: 3\n"))
+        ->toThrow(IntegrityCheckException::class, 'services.ivs.nodes');
+});

@@ -64,21 +64,14 @@ abstract class AbstractAuditCommand extends Command
 
     /**
      * Apps with at least one running Fargate task — the authoritative "what's
-     * actually deployed" signal. We only probe clusters in this environment's
-     * namespace so the audit doesn't list tasks across unrelated clusters.
+     * actually deployed" signal, shared with the service lifecycle's claim
+     * gating via Ecs::liveApps().
      *
      * @return array<int, string>
      */
     protected function liveApps(string $environment): array
     {
-        $prefix = "yolo-$environment-";
-
-        $liveClusters = collect(Ecs::clusterArns())
-            ->filter(fn (string $arn): bool => str_starts_with(Arn::parse($arn)->resourceId ?? '', $prefix))
-            ->filter(fn (string $arn): bool => Ecs::clusterRunningTasks($arn) !== [])
-            ->all();
-
-        return Audit::appsFromClusters($liveClusters, $environment);
+        return Ecs::liveApps($environment);
     }
 
     /**

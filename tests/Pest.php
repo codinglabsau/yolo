@@ -9,14 +9,19 @@ use Aws\Iam\IamClient;
 use Aws\CommandInterface;
 use Aws\WAFV2\WAFV2Client;
 use Codinglabs\Yolo\Helpers;
+use GuzzleHttp\Psr7\Response;
+use Aws\Command as AwsCommand;
 use GuzzleHttp\Promise\Create;
 use Codinglabs\Yolo\EnvManifest;
 use Symfony\Component\Yaml\Yaml;
+use Aws\S3\Exception\S3Exception;
 use Aws\CloudFront\CloudFrontClient;
 use Aws\CloudWatch\CloudWatchClient;
 use Codinglabs\Yolo\Commands\Command;
 use Codinglabs\Yolo\Enums\StepResult;
 use Aws\ElastiCache\ElastiCacheClient;
+use Aws\EventBridge\EventBridgeClient;
+use Codinglabs\Yolo\Services\Lifecycle;
 use Codinglabs\Yolo\Resources\WafV2\WebAcl;
 use Symfony\Component\Console\Input\ArrayInput;
 use Aws\ApplicationAutoScaling\ApplicationAutoScalingClient;
@@ -86,10 +91,12 @@ function writeManifest(array $config, string $environment = 'testing'): void
 
     Helpers::app()->instance('environment', $environment);
 
-    // The env manifest memoises its S3 read per process; every test that
-    // rewrites the app manifest gets a fresh slate so a previously mocked
-    // (or unmocked) read can't leak across cases.
+    // The env manifest and the service-claims registry memoise their AWS
+    // reads per process; every test that rewrites the app manifest gets a
+    // fresh slate so a previously mocked (or unmocked) read can't leak
+    // across cases.
     EnvManifest::reset();
+    Lifecycle::reset();
 }
 
 /**
@@ -682,4 +689,144 @@ function runEnvironmentFileCommand(Command $command, string $environment = 'test
     );
 
     $command->handle();
+}
+
+/**
+ * Bind a mock EventBridge client with command-routed responses, capturing
+ * every call. A command's value may be a single Result/Throwable (repeated)
+ * or an array used as a queue (the last entry repeats once exhausted);
+ * Throwables resolve as rejections. Mirrors bindRoutedS3Client.
+ *
+ * @param  array<string, Result|Throwable|array<int, Result|Throwable>>  $byCommand
+ * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+ */
+function bindRoutedEventBridgeClient(array $byCommand, array &$captured): void
+{
+    $mock = new class($byCommand, $captured) extends MockHandler
+    {
+        /** @var array<string, int> */
+        private array $cursors = [];
+
+        public function __construct(protected array $byCommand, protected array &$captured) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            $name = $cmd->getName();
+            $this->captured[] = ['name' => $name, 'args' => $cmd->toArray()];
+
+            $entry = $this->byCommand[$name] ?? new Result();
+
+            if (is_array($entry)) {
+                $index = min($this->cursors[$name] ?? 0, count($entry) - 1);
+                $this->cursors[$name] = $index + 1;
+                $entry = $entry[$index];
+            }
+
+            return $entry instanceof Throwable
+                ? Create::rejectionFor($entry)
+                : Create::promiseFor($entry);
+        }
+    };
+
+    Helpers::app()->instance('eventBridge', new EventBridgeClient([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+}
+
+/**
+ * Bind the S3 + ECS world the service lifecycle reads: the env manifest body
+ * (null = no manifest object), the published claim files (app => claimed
+ * services), and the environment's clusters (app => has running tasks).
+ * GetObject is routed by KEY — the env manifest and each claim file resolve
+ * independently of read order. `bucket: false` makes every S3 read throw
+ * NoSuchBucket (the greenfield plan pass). S3 calls are captured by reference.
+ *
+ * @param  array{manifest?: string|null, claims?: array<string, array<int, string>>, clusters?: array<string, bool>, bucket?: bool}  $world
+ * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+ */
+function bindServiceLifecycleWorld(array $world, array &$captured): void
+{
+    $manifest = $world['manifest'] ?? null;
+    $claims = $world['claims'] ?? [];
+    $clusters = $world['clusters'] ?? [];
+    $bucketExists = $world['bucket'] ?? true;
+
+    $byKey = [];
+
+    if ($manifest !== null) {
+        $byKey['yolo-environment-' . Helpers::environment() . '.yml'] = new Result(['Body' => $manifest]);
+    }
+
+    foreach ($claims as $app => $services) {
+        $byKey["apps/$app.yml"] = new Result(['Body' => Yaml::dump(['name' => $app, 'services' => $services])]);
+    }
+
+    $listing = new Result([
+        'Contents' => collect($claims)->keys()->map(fn (string $app): array => ['Key' => "apps/$app.yml"])->values()->all(),
+        'IsTruncated' => false,
+    ]);
+
+    $mock = new class($byKey, $listing, $bucketExists, $captured) extends MockHandler
+    {
+        /** @param  array<string, Result>  $byKey */
+        public function __construct(
+            protected array $byKey,
+            protected Result $listing,
+            protected bool $bucketExists,
+            protected array &$captured,
+        ) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            $this->captured[] = ['name' => $cmd->getName(), 'args' => $cmd->toArray()];
+
+            if (! $this->bucketExists) {
+                return Create::rejectionFor(new S3Exception('No such bucket', new AwsCommand($cmd->getName()), [
+                    'code' => 'NoSuchBucket',
+                    'response' => new Response(404),
+                ]));
+            }
+
+            return match (true) {
+                $cmd->getName() === 'ListObjectsV2' => Create::promiseFor($this->listing),
+                $cmd->getName() === 'HeadObject' && isset($this->byKey[$cmd['Key']]) => Create::promiseFor(new Result()),
+                isset($this->byKey[$cmd['Key'] ?? '']) => Create::promiseFor($this->byKey[$cmd['Key']]),
+                default => Create::rejectionFor(new S3Exception('Not found', new AwsCommand($cmd->getName()), [
+                    'code' => 'NoSuchKey',
+                    'response' => new Response(404),
+                ])),
+            };
+        }
+    };
+
+    Helpers::app()->instance('s3', new S3Client([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+
+    $accountId = '111111111111';
+
+    $clusterArns = collect($clusters)
+        ->keys()
+        ->map(fn (string $app): string => sprintf('arn:aws:ecs:ap-southeast-2:%s:cluster/yolo-%s-%s', $accountId, Helpers::environment(), $app))
+        ->values()
+        ->all();
+
+    // ListTasks resolves per cluster in ListClusters order, so the running
+    // flags queue in the same order the lifecycle probes them.
+    $taskResults = collect($clusters)
+        ->values()
+        ->map(fn (bool $running): Result => new Result(['taskArns' => $running ? ['arn:aws:ecs:ap-southeast-2:111111111111:task/x'] : []]))
+        ->all();
+
+    $ecsCaptured = [];
+    bindRoutedEcsClient([
+        'ListClusters' => new Result(['clusterArns' => $clusterArns]),
+        'ListTasks' => $taskResults === [] ? new Result(['taskArns' => []]) : $taskResults,
+    ], $ecsCaptured);
 }

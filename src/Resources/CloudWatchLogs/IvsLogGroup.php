@@ -9,6 +9,7 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Aws\CloudWatchLogs;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -23,7 +24,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * follows the AWS convention for service log groups. Retention and the
  * EventBridge-delivery resource policy are reconciled on every sync.
  */
-class IvsLogGroup implements Resource, SynchronisesConfiguration
+class IvsLogGroup implements Deletable, Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
 
@@ -66,6 +67,25 @@ class IvsLogGroup implements Resource, SynchronisesConfiguration
         ]);
 
         $this->synchroniseConfiguration();
+    }
+
+    /**
+     * Teardown removes the log group (and its retained events — IVS events are
+     * rebuildable debugging telemetry, not a source of truth) plus the
+     * account-level EventBridge-delivery resource policy only this pipeline
+     * uses.
+     */
+    public function delete(): void
+    {
+        Aws::cloudWatchLogs()->deleteLogGroup([
+            'logGroupName' => $this->name(),
+        ]);
+
+        if (CloudWatchLogs::resourcePolicy($this->eventBridgePolicyName()) !== null) {
+            Aws::cloudWatchLogs()->deleteResourcePolicy([
+                'policyName' => $this->eventBridgePolicyName(),
+            ]);
+        }
     }
 
     public function synchroniseTags(bool $apply): array

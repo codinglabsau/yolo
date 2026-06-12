@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Commands;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\EnvManifest;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Concerns\RegistersAws;
@@ -243,6 +244,54 @@ abstract class Command extends SymfonyCommand
         }
 
         return true;
+    }
+
+    /**
+     * An app may only use an env-backed service the environment manifest
+     * declares — otherwise the app would publish what it uses, and the
+     * environment would quietly provision nothing. Build, deploy and sync:app
+     * hard-fail it with the fix spelled out. Before the env manifest exists
+     * (a greenfield environment the first sync hasn't seeded yet) there is
+     * nothing to validate against, so the check defers to that first sync
+     * rather than bricking it.
+     */
+    protected function ensureClaimedServicesOffered(): bool
+    {
+        $envBacked = array_filter(
+            Manifest::services(),
+            fn (string $service): bool => Service::from($service)->definition()->envBacked(),
+        );
+
+        if ($envBacked === []) {
+            return true;
+        }
+
+        if (! EnvManifest::remoteExists()) {
+            return true;
+        }
+
+        $missing = array_values(array_filter(
+            $envBacked,
+            fn (string $service): bool => ! EnvManifest::has('services.' . $service),
+        ));
+
+        if ($missing === []) {
+            return true;
+        }
+
+        error(sprintf(
+            "This app uses the %s service%s, but %s doesn't declare %s yet.\nDeclare services.%s with `yolo environment:manifest:pull %s` / `yolo environment:manifest:push %s`, or remove %s from yolo.yml's services list.",
+            implode(', ', $missing),
+            count($missing) === 1 ? '' : 's',
+            EnvManifest::filename(),
+            count($missing) === 1 ? 'it' : 'them',
+            implode(', services.', $missing),
+            Helpers::environment(),
+            Helpers::environment(),
+            count($missing) === 1 ? 'it' : 'them',
+        ));
+
+        return false;
     }
 
     protected function ensureNameDeclared(): bool
