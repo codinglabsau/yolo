@@ -10,10 +10,19 @@ use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Aws\S3;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\EnvManifest;
 use Aws\S3\Exception\S3Exception;
 use Codinglabs\Yolo\Enums\Service;
+use Codinglabs\Yolo\Resources\WafV2\WebAcl;
+use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
+use Codinglabs\Yolo\Resources\Ecs\ServicesCluster;
+use Codinglabs\Yolo\Resources\CloudWatch\Dashboard;
+use Codinglabs\Yolo\Resources\Ecs\TypesenseService;
+use Codinglabs\Yolo\Resources\ElbV2\SearchTargetGroup;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
+use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
+use Codinglabs\Yolo\Resources\CloudWatchLogs\TypesenseLogGroup;
 
 /**
  * Typesense — the environment's self-hosted search service. One three-node
@@ -29,8 +38,11 @@ use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
  */
 class Typesense extends ServiceDefinition
 {
-    /** Raft wants odd quorums; three is the smallest that survives a node loss. */
-    public const int NODES = 3;
+    /** The node counts that make sense: 3 survives one loss, 5 survives two
+     * (and spreads read load wider). Anything even pays for an extra node
+     * without gaining the ability to lose another one, and 1 means any task
+     * replacement loses the search data — so neither is offered. */
+    public const array NODE_COUNTS = [3, 5];
 
     public const int API_PORT = 8108;
 
@@ -65,7 +77,7 @@ class Typesense extends ServiceDefinition
     #[\Override]
     public function offerKeys(): array
     {
-        return ['version', 'cpu', 'memory'];
+        return ['version', 'nodes', 'cpu', 'memory'];
     }
 
     /**
@@ -107,6 +119,15 @@ class Typesense extends ServiceDefinition
                 ));
             }
         }
+
+        $nodes = $offer['nodes'] ?? null;
+
+        if ($nodes !== null && (! is_numeric($nodes) || ! in_array((int) $nodes, self::NODE_COUNTS, true))) {
+            throw new IntegrityCheckException(sprintf(
+                'services.typesense.nodes in %s must be 3 or 5 — an even count pays for an extra node without gaining the ability to lose another one, and a single node loses its search data whenever the task is replaced.',
+                $filename,
+            ));
+        }
     }
 
     #[\Override]
@@ -129,8 +150,54 @@ class Typesense extends ServiceDefinition
             Steps\Sync\Environment\SyncTypesenseNamespaceStep::class,
             Steps\Sync\Environment\SyncTypesenseDiscoveryServicesStep::class,
             Steps\Sync\Environment\SyncTypesenseSecurityGroupStep::class,
+            // The search target group precedes the nodes so they attach to it
+            // at create — Typesense's /health doubles as readiness, dropping a
+            // catching-up node out of rotation while the quorum serves.
+            Steps\Sync\Environment\SyncSearchTargetGroupStep::class,
             Steps\Sync\Environment\SyncTypesenseTaskDefinitionStep::class,
             Steps\Sync\Environment\SyncTypesenseNodesStep::class,
+            // Public ingress: the env-domain cert (SNI on the shared :443
+            // listener), the search.{domain} rule and its Route 53 alias.
+            Steps\Sync\Environment\SyncSearchCertificateStep::class,
+            Steps\Sync\Environment\SyncSearchListenerRuleStep::class,
+            Steps\Sync\Environment\SyncSearchRecordSetStep::class,
+            Steps\Sync\Environment\SyncTypesenseAlarmsStep::class,
+        ];
+    }
+
+    #[\Override]
+    public function appSteps(): array
+    {
+        return [
+            Steps\Sync\App\SyncTypesenseAppIngressStep::class,
+            Steps\Sync\App\SyncTypesenseKeyStep::class,
+        ];
+    }
+
+    /**
+     * Build-time env injection for a consuming app: Scout's driver and prefix,
+     * plus the private node addresses for server-side indexing (in-VPC, off
+     * the ALB/WAF — bulk reimports never meet the rate limiter). The app's
+     * scoped TYPESENSE_API_KEY is NOT injected here: sync:app mints it into
+     * the app's .env.{environment}, where the build reads it like any other
+     * env value. Browser config (the public host + a search-only key) is the
+     * app's own concern.
+     */
+    #[\Override]
+    public function buildValues(): array
+    {
+        return [
+            'SCOUT_DRIVER' => 'typesense',
+            'SCOUT_PREFIX' => Helpers::keyedResourceName() . '_',
+            'TYPESENSE_HOST' => static::nodeAddress(0),
+            'TYPESENSE_PORT' => (string) static::API_PORT,
+            'TYPESENSE_PROTOCOL' => 'http',
+            // Every node, host:port:protocol — for apps wiring Scout's client
+            // with the full list for native client-side failover.
+            'TYPESENSE_NODES' => implode(',', array_map(
+                fn (int $node): string => sprintf('%s:%d:http', static::nodeAddress($node), static::API_PORT),
+                range(0, static::nodes() - 1),
+            )),
         ];
     }
 
@@ -157,6 +224,26 @@ class Typesense extends ServiceDefinition
     public static function memory(): int
     {
         return (int) EnvManifest::get('services.typesense.memory', 1024);
+    }
+
+    /**
+     * How many nodes the cluster runs — 3 (the default; survives one loss) or
+     * 5 (survives two, spreads read load wider). Changing it is a manifest
+     * edit + sync: the existing nodes roll onto the new peer list one at a
+     * time, then sync adds or removes the difference.
+     */
+    public static function nodes(): int
+    {
+        return (int) EnvManifest::get('services.typesense.nodes', 3);
+    }
+
+    /**
+     * The fewest healthy nodes that can still take writes — below this the
+     * cluster is read-only until a node returns.
+     */
+    public static function quorumFloor(): int
+    {
+        return intdiv(static::nodes(), 2) + 1;
     }
 
     /**
@@ -190,10 +277,12 @@ class Typesense extends ServiceDefinition
     }
 
     /**
-     * The content tag the image build pushes: declared version + a key
-     * fingerprint, so a version bump or a key rotation produces a new tag (and
-     * a task-def revision that rolls the nodes) while an unchanged pair skips
-     * the build entirely. Null until both inputs exist.
+     * The content tag the image build pushes: the declared version + a
+     * fingerprint of everything baked into the image (the admin key and the
+     * peer list) — so a version bump, key rotation or node-count change
+     * produces a new tag (and a task-def revision that rolls the nodes),
+     * while unchanged inputs skip the build entirely. Null until the inputs
+     * exist.
      */
     public static function imageTag(): ?string
     {
@@ -204,7 +293,7 @@ class Typesense extends ServiceDefinition
             return null;
         }
 
-        return sprintf('%s-%s', $version, substr(hash('sha256', $key), 0, 12));
+        return sprintf('%s-%s', $version, substr(hash('sha256', $key . '|' . implode(',', static::peers())), 0, 12));
     }
 
     /**
@@ -225,7 +314,7 @@ class Typesense extends ServiceDefinition
     {
         return array_map(
             fn (int $node): string => sprintf('%s:%d:%d', static::nodeAddress($node), static::PEERING_PORT, static::API_PORT),
-            range(0, static::NODES - 1),
+            range(0, static::nodes() - 1),
         );
     }
 
@@ -235,6 +324,153 @@ class Typesense extends ServiceDefinition
     public static function namespaceName(): string
     {
         return sprintf('%s.internal', Helpers::environment());
+    }
+
+    /**
+     * The public search host — search.{domain} on the env manifest's canonical
+     * domain, or null while no domain is declared.
+     */
+    public static function searchHost(): ?string
+    {
+        $domain = EnvManifest::get('domain');
+
+        return is_string($domain) && $domain !== '' ? sprintf('search.%s', $domain) : null;
+    }
+
+    /**
+     * The search host is the service's public face — an offered-and-claimed
+     * typesense without an env domain is a misconfiguration, surfaced as a
+     * hard error naming the fix rather than a silently private cluster.
+     */
+    public static function requireSearchHost(): string
+    {
+        $host = static::searchHost();
+
+        if ($host === null) {
+            throw new IntegrityCheckException(
+                'services.typesense needs the environment manifest to declare `domain` (the search host is search.{domain}) — set it via `yolo environment:manifest:pull/push`.',
+            );
+        }
+
+        return $host;
+    }
+
+    #[\Override]
+    public function dashboardContext(): array
+    {
+        if (! Manifest::usesService(Service::TYPESENSE)) {
+            return ['typesense' => null];
+        }
+
+        return ['typesense' => [
+            'cluster' => (new ServicesCluster())->name(),
+            'services' => array_map(
+                fn (int $node): string => (new TypesenseService($node))->name(),
+                range(0, static::nodes() - 1),
+            ),
+            'targetGroupSuffix' => static::tryDimension(fn (): string => Dashboard::targetGroupDimension((new SearchTargetGroup())->arn())),
+            'albSuffix' => static::tryDimension(fn (): string => Dashboard::loadBalancerDimension((new LoadBalancer())->arn())),
+            'logGroup' => (new TypesenseLogGroup())->name(),
+        ]];
+    }
+
+    #[\Override]
+    public function servicesWidgets(array $context): array
+    {
+        $typesense = $context['typesense'] ?? null;
+
+        if ($typesense === null) {
+            return [];
+        }
+
+        $region = $context['region'];
+        $widgets = [];
+
+        if ($typesense['targetGroupSuffix'] !== null && $typesense['albSuffix'] !== null) {
+            $widgets[] = [
+                'title' => 'Search node health (quorum needs 2)',
+                'region' => $region,
+                'view' => 'timeSeries',
+                'stacked' => false,
+                'period' => 60,
+                'stat' => 'Minimum',
+                'yAxis' => ['left' => ['min' => 0]],
+                'metrics' => [
+                    ['AWS/ApplicationELB', 'HealthyHostCount', 'TargetGroup', $typesense['targetGroupSuffix'], 'LoadBalancer', $typesense['albSuffix'], ['label' => 'Healthy', 'color' => Dashboard::GREEN]],
+                    ['AWS/ApplicationELB', 'UnHealthyHostCount', 'TargetGroup', $typesense['targetGroupSuffix'], 'LoadBalancer', $typesense['albSuffix'], ['label' => 'Unhealthy', 'stat' => 'Maximum', 'color' => Dashboard::RED]],
+                ],
+                'annotations' => ['horizontal' => [
+                    ['color' => Dashboard::RED, 'label' => 'Quorum floor', 'value' => static::quorumFloor(), 'fill' => 'below'],
+                ]],
+            ];
+
+            $widgets[] = [
+                'title' => 'Search requests + p99 latency',
+                'region' => $region,
+                'view' => 'timeSeries',
+                'stacked' => false,
+                'period' => 60,
+                'metrics' => [
+                    ['AWS/ApplicationELB', 'RequestCount', 'TargetGroup', $typesense['targetGroupSuffix'], 'LoadBalancer', $typesense['albSuffix'], ['stat' => 'Sum', 'label' => 'Requests', 'color' => Dashboard::BLUE]],
+                    ['AWS/ApplicationELB', 'TargetResponseTime', 'TargetGroup', $typesense['targetGroupSuffix'], 'LoadBalancer', $typesense['albSuffix'], ['stat' => 'p99', 'label' => 'p99', 'yAxis' => 'right', 'color' => Dashboard::ORANGE]],
+                ],
+            ];
+        }
+
+        $nodeMetrics = [];
+
+        foreach ($typesense['services'] as $index => $service) {
+            $nodeMetrics[] = ['ECS/ContainerInsights', 'MemoryUtilized', 'ClusterName', $typesense['cluster'], 'ServiceName', $service, ['label' => sprintf('node %d memory', $index)]];
+            $nodeMetrics[] = ['ECS/ContainerInsights', 'CpuUtilized', 'ClusterName', $typesense['cluster'], 'ServiceName', $service, ['label' => sprintf('node %d cpu', $index), 'yAxis' => 'right']];
+        }
+
+        $widgets[] = [
+            'title' => 'Search nodes — memory (MB) + CPU (units)',
+            'region' => $region,
+            'view' => 'timeSeries',
+            'stacked' => false,
+            'period' => 60,
+            'stat' => 'Average',
+            'metrics' => $nodeMetrics,
+        ];
+
+        if (($context['wafWebAcl'] ?? null) !== null) {
+            $widgets[] = [
+                'title' => 'Search rate-limit blocks',
+                'region' => $region,
+                'view' => 'timeSeries',
+                'stacked' => false,
+                'period' => 300,
+                'stat' => 'Sum',
+                'metrics' => [
+                    ['AWS/WAFV2', 'BlockedRequests', 'WebACL', $context['wafWebAcl'], 'Rule', WebAcl::SEARCH_RATE_RULE, 'Region', $region, ['label' => 'Blocked', 'color' => Dashboard::RED]],
+                ],
+            ];
+        }
+
+        return $widgets;
+    }
+
+    #[\Override]
+    public function logPanels(array $context): array
+    {
+        return ['Typesense logs' => $context['typesense']['logGroup'] ?? null];
+    }
+
+    /**
+     * Resolve a CloudWatch dimension from a live ARN, or null while the
+     * backing resource doesn't exist yet (the widget is omitted until the
+     * next sync).
+     *
+     * @param  callable(): string  $resolve
+     */
+    protected static function tryDimension(callable $resolve): ?string
+    {
+        try {
+            return $resolve();
+        } catch (ResourceDoesNotExistException) {
+            return null;
+        }
     }
 
     /**

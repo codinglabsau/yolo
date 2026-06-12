@@ -6,6 +6,7 @@ use Aws\Result;
 use Aws\Command;
 use Aws\Exception\AwsException;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Services\Typesense;
 use Codinglabs\Yolo\Resources\Ecs\ServicesCluster;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncTypesenseNodesStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\BuildTypesenseImageStep;
@@ -70,7 +71,7 @@ it('skips the image build when the content tag already exists in ECR', function 
     expect((new BuildTypesenseImageStep())(['dry-run' => true]))->toBe(StepResult::SYNCED);
 
     $describe = collect($ecrCaptured)->firstWhere('name', 'DescribeImages');
-    expect($describe['args']['imageIds'][0]['imageTag'])->toBe('29.0-' . substr(hash('sha256', 'abc123'), 0, 12));
+    expect($describe['args']['imageIds'][0]['imageTag'])->toBe('29.0-' . substr(hash('sha256', 'abc123|' . implode(',', Typesense::peers())), 0, 12));
 });
 
 it('plans WOULD_BUILD without touching Docker when the tag is missing', function (): void {

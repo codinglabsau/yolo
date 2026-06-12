@@ -21,7 +21,9 @@ use Codinglabs\Yolo\Resources\ServiceDiscovery\TypesenseDiscoveryService;
  *
  * Teardown is a deliberate skip: AWS refuses to delete a namespace with
  * services in it, so the namespace's delete cascades these — same pattern as
- * the IVS rule/target pair.
+ * the IVS rule/target pair. A node-count reduction's surplus entries are
+ * removed by the nodes step alongside their ECS services, where the ordering
+ * (task stopped, instance deregistered, then the DNS entry) lives in one place.
  */
 class SyncTypesenseDiscoveryServicesStep implements Step
 {
@@ -37,7 +39,7 @@ class SyncTypesenseDiscoveryServicesStep implements Step
         $pendingCreate = false;
         $pendingSync = false;
 
-        foreach (range(0, Typesense::NODES - 1) as $node) {
+        foreach (range(0, Typesense::nodes() - 1) as $node) {
             $service = new TypesenseDiscoveryService($node);
 
             if (! $service->exists()) {

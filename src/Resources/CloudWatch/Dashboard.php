@@ -262,7 +262,7 @@ class Dashboard
         try {
             $body = Aws::s3()->getObject([
                 'Bucket' => Paths::s3ConfigBucket(),
-                'Key' => sprintf('.env.%s', Helpers::environment()),
+                'Key' => Paths::s3AppEnvKey(),
             ])['Body'];
 
             return Dotenv::parse((string) $body)['DB_HOST'] ?? null;

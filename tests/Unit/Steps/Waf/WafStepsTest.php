@@ -7,6 +7,12 @@ use Codinglabs\Yolo\Steps\Sync\Environment\SyncWafAssociationStep;
 
 beforeEach(function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
+
+    // The web ACL's rule set is lifecycle-aware (the search carve-out exists
+    // only while the environment runs typesense) — bind an empty world so
+    // these steps exercise the baseline rules whatever worker ordering dealt.
+    $worldCaptured = [];
+    bindServiceLifecycleWorld(['bucket' => false], $worldCaptured);
 });
 
 const WAF_WEBACL_ARN = 'arn:aws:wafv2:ap-southeast-2:111:regional/webacl/yolo-testing-waf/acl-id';

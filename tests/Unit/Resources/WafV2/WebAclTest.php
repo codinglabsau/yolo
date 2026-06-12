@@ -5,6 +5,12 @@ use Codinglabs\Yolo\Resources\WafV2\WebAcl;
 
 beforeEach(function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
+
+    // The rule set is lifecycle-aware (the search carve-out exists only while
+    // typesense is offered ∧ claimed) — bind an empty world so these tests
+    // exercise the baseline rules.
+    $worldCaptured = [];
+    bindServiceLifecycleWorld(['bucket' => false], $worldCaptured);
 });
 
 it('is named for the environment scope', function (): void {

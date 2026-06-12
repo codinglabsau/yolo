@@ -89,9 +89,17 @@ Declaring `services.typesense` (a pinned `version` plus optional `cpu`/`memory` 
 - **Stable peer addresses** come from a private Cloud Map DNS namespace (`{env}.internal`): each node owns `typesense-{n}.{env}.internal`, re-resolving to its replacement task within seconds.
 - **The image is the secret boundary.** Sync seed-generates an admin API key into the env-shared `.env`, then builds `typesense/typesense:{version}` plus a config file carrying that key into an env-scoped ECR repository, content-tagged by version + key fingerprint — unchanged inputs never rebuild, and a version bump or key rotation re-tags the image and **rolls the nodes one at a time**, each waiting for stability before the next (the quorum holds throughout). The task definition carries no secret.
 - **The env services cluster** (`yolo-{env}-services`) hosts the node tasks, kept apart from the per-app clusters so app liveness derivation never mistakes shared-service tasks for an app — which is also why `services` is a reserved app name.
-- Node-to-node Raft traffic (8107) is locked to the node security group itself; the search API (8108) admits the environment's ALB. Public ingress, per-app scoped keys and build-time injection are the consumption half of the contract.
+- Node-to-node Raft traffic (8107) is locked to the node security group itself; the search API (8108) admits the environment's ALB plus each consuming app's task security group.
 
-Sizing rule of thumb: Typesense holds the whole index in memory at ~2–3× the raw indexed size, so a few hundred MB of records fits comfortably on 1 GB nodes; resizing is an env-manifest edit and a sync.
+**Two deliberate traffic paths.** Browsers reach the cluster on **`search.{domain}`** (the env manifest's `domain` — required once the environment runs typesense): an env cert rides the shared `:443` listener via SNI, a Name-tagged listener rule forwards the host to a target group health-checking Typesense's own `/health` (so a catching-up node drops out of rotation while the quorum serves), and a Route 53 alias points the host at the ALB. App/Scout **indexing stays private, in-VPC** — the build injects the Cloud Map node addresses, so bulk reimports never meet the ALB, the WAF, or its rate budget.
+
+**The WAF knows about search.** Keystroke queries behind CGNAT would false-positive the general per-IP rate rule, so while the search host is active, `yolo-rate-limit` carves it out and a YOLO-owned `yolo-search-rate-limit` rule (1,000 req/min per IP, host-scoped) takes over.
+
+**Keys are scoped per app.** The admin key never leaves the env tier (baked into the env-scoped image; app builds can't read the env bucket). `sync:app` mints each consuming app a key restricted to its own `{prefix}*` collections via the admin API — a leaked app key reaches that app's collections only — and writes it into the app's `.env.{environment}`. While the cluster isn't up yet, the mint skips with instructions and lands on the next sync. Browser search keys (search-only, the Algolia secured-key model) are minted app-side.
+
+**Observability rides the consumer's dashboard** (search node health with the quorum floor annotated, request count + p99, per-node memory/CPU, rate-limit blocks, a Typesense logs panel), and the env SNS topic gets the quorum alarm pair — healthy nodes < 3 warns, < 2 means read-only — plus per-node memory alarms at 80% of the offer.
+
+Sizing rule of thumb: Typesense holds the whole index in memory at ~2–3× the raw indexed size, so a few hundred MB of records fits comfortably on 1 GB nodes; resizing is an env-manifest edit and a sync. Losing all three nodes at once is genuine DR: the index is a rebuildable projection, so `scout:import` from the database restores it.
 
 ## Web application firewall
 
