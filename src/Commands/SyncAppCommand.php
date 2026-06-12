@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServerGroup;
 
 /**
@@ -24,6 +25,19 @@ class SyncAppCommand extends SyncSteppedCommand
         $this->addSyncOptions()
             ->setName('sync:app')
             ->setDescription('Sync a single application\'s resources for the given environment');
+    }
+
+    #[\Override]
+    public function handle(): int
+    {
+        // A claim on a service the env manifest doesn't offer is a hard error
+        // here, exactly as at build/deploy — the claim would publish cleanly
+        // and then provision nothing.
+        if (! $this->ensureClaimedServicesOffered()) {
+            return self::FAILURE;
+        }
+
+        return parent::handle();
     }
 
     #[\Override]
@@ -71,9 +85,12 @@ class SyncAppCommand extends SyncSteppedCommand
                 // config bucket so the env tier can evaluate which shared
                 // services are still consumed (deploy republishes it too)
                 Steps\Sync\App\PublishAppManifestStep::class,
-                // app IAM (deployer + MediaConvert)
-                Steps\Sync\App\SyncMediaConvertRoleStep::class,
-                Steps\Sync\App\AttachMediaConvertRolePoliciesStep::class,
+                // per-service app resources — every service's app steps are
+                // always in the plan (each self-gates on the app's claim), so
+                // dropping a claim melts that service's per-app IAM on the
+                // same sync rather than orphaning it
+                ...static::appServiceSteps(),
+                // app IAM (deployer)
                 Steps\Sync\App\SyncDeployerPolicyStep::class,
                 Steps\Sync\App\SyncDeployerRoleStep::class,
                 Steps\Sync\App\AttachDeployerRolePoliciesStep::class,
@@ -155,5 +172,23 @@ class SyncAppCommand extends SyncSteppedCommand
                 Steps\Sync\App\SyncCloudWatchDashboardStep::class,
             ],
         ];
+    }
+
+    /**
+     * Every service's app-tier steps, composed from the definitions in enum
+     * order — the declared plan stays the same whatever the app claims; each
+     * step gates itself on the claim (sync when claimed, melt when dropped).
+     *
+     * @return array<int, class-string>
+     */
+    protected static function appServiceSteps(): array
+    {
+        $steps = [];
+
+        foreach (Service::definitions() as $definition) {
+            $steps = [...$steps, ...$definition->appSteps()];
+        }
+
+        return $steps;
     }
 }

@@ -41,18 +41,30 @@ class EnvManifest
     /**
      * The complete set of valid env-manifest keys as dot-paths, mirroring the
      * app manifest's allow-list discipline. `services` is the extension point:
-     * each env-backed Service case contributes its own `services.{name}` key,
-     * so adding a service never edits this class — the enum already knows
-     * which services have an env-shared half to declare.
+     * each env-backed service contributes its own `services.{name}` key plus
+     * whatever offer keys its definition declares (version/cpu/memory and the
+     * like), so adding a service never edits this class — the definition
+     * already knows the shape of its env-shared half.
      *
      * @return array<int, string>
      */
     protected static function allowedKeys(): array
     {
-        $serviceKeys = array_map(
-            fn (Service $service): string => 'services.' . $service->value,
-            array_filter(Service::cases(), fn (Service $service): bool => $service->envBacked()),
-        );
+        $serviceKeys = [];
+
+        foreach (Service::cases() as $service) {
+            $definition = $service->definition();
+
+            if (! $definition->envBacked()) {
+                continue;
+            }
+
+            $serviceKeys[] = 'services.' . $service->value;
+
+            foreach ($definition->offerKeys() as $key) {
+                $serviceKeys[] = sprintf('services.%s.%s', $service->value, $key);
+            }
+        }
 
         return ['domain', 'services', ...$serviceKeys];
     }
@@ -143,6 +155,18 @@ class EnvManifest
                 static::filename(),
                 implode(', ', $unknown),
             ));
+        }
+
+        // Each declared offer is validated by its service's definition — the
+        // allow-list above catches unknown keys, this catches a misshapen
+        // offer (a scalar/list where a map belongs, a missing required key)
+        // before it can become the environment's declared truth.
+        foreach (Service::cases() as $service) {
+            $path = 'services.' . $service->value;
+
+            if ($service->definition()->envBacked() && Arr::has($manifest, $path)) {
+                $service->definition()->validateOffer(Arr::get($manifest, $path), static::filename());
+            }
         }
 
         return $manifest;

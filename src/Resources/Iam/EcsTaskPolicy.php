@@ -139,11 +139,11 @@ class EcsTaskPolicy implements Resource, SynchronisesConfiguration
         }
 
         // Each consumed service yields the statements its consumption grants —
-        // the app-side half of the service contract lives on the enum
-        // (Service::taskRoleStatements()), so a new service never edits this
-        // class.
+        // the app-side half of the service contract lives on the service's
+        // definition (ServiceDefinition::taskRoleStatements()), so a new
+        // service never edits this class.
         foreach (Manifest::services() as $service) {
-            $statements = [...$statements, ...Service::from($service)->taskRoleStatements()];
+            $statements = [...$statements, ...Service::from($service)->definition()->taskRoleStatements()];
         }
 
         return [

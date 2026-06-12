@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Aws\EventBridge;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -20,9 +21,12 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * `services.ivs`. putRule is an upsert, so rule config is reconciled through
  * synchroniseConfiguration on every existing sync.
  */
-class IvsEventBridgeRule implements Resource, SynchronisesConfiguration
+class IvsEventBridgeRule implements Deletable, Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
+
+    /** The rule's single target id — the IVS log group delivery. */
+    public const string TARGET_ID = 'ivs-cloudwatch-logs';
 
     public function name(): string
     {
@@ -54,6 +58,24 @@ class IvsEventBridgeRule implements Resource, SynchronisesConfiguration
     {
         $this->putRule();
         $this->synchroniseTags(apply: true);
+    }
+
+    /**
+     * Teardown removes the rule and its log-group target in one atomic act —
+     * AWS refuses to delete a rule that still has targets, and the target is
+     * meaningless without the rule (the target step delegates its teardown
+     * here for the same reason).
+     */
+    public function delete(): void
+    {
+        Aws::eventBridge()->removeTargets([
+            'Rule' => $this->name(),
+            'Ids' => [self::TARGET_ID],
+        ]);
+
+        Aws::eventBridge()->deleteRule([
+            'Name' => $this->name(),
+        ]);
     }
 
     public function synchroniseTags(bool $apply): array

@@ -2,18 +2,20 @@
 
 namespace Codinglabs\Yolo\Steps\Sync\Environment;
 
-use Codinglabs\Yolo\EnvManifest;
+use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Enums\ServiceState;
+use Codinglabs\Yolo\Services\Lifecycle;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Resources\CloudWatchLogs\IvsLogGroup;
 
 /**
- * Provisions the env-shared IVS event log group when the environment manifest
- * declares the ivs service (`services.ivs`). One pipeline per environment —
- * the `aws.ivs` event stream is account-wide, so this was never a per-app
- * resource. Apps opt into *consuming* IVS via their own `services: [ivs]`,
- * which grants their task role IVS access.
+ * The env-shared IVS event log group, gated on the two-key service lifecycle:
+ * provisioned while the environment manifest offers `services.ivs` AND a live
+ * app claims ivs, torn down when the gate turns off. One pipeline per
+ * environment — the `aws.ivs` event stream is account-wide, so this was never
+ * a per-app resource.
  */
 class SyncIvsCloudWatchLogGroupStep implements Step
 {
@@ -21,10 +23,10 @@ class SyncIvsCloudWatchLogGroupStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        if (! EnvManifest::has('services.ivs')) {
-            return StepResult::SKIPPED;
-        }
-
-        return $this->syncResource(new IvsLogGroup(), $options);
+        return match (Lifecycle::state(Service::IVS)) {
+            ServiceState::Provision => $this->syncResource(new IvsLogGroup(), $options),
+            ServiceState::Teardown => $this->teardownResource(new IvsLogGroup(), $options),
+            ServiceState::Retain => StepResult::SKIPPED,
+        };
     }
 }

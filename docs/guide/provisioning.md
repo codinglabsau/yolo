@@ -13,7 +13,7 @@ YOLO groups every resource by **ownership scope** — the blast radius if it cha
 | Command | Scope | Blast radius | Provisions |
 |---|---|---|---|
 | `yolo sync:account <env>` | **Account** | the whole AWS account | GitHub OIDC provider |
-| `yolo sync:environment <env>` | **Environment** | every app in the environment | VPC, subnets, internet gateway & routes, RDS security group, SNS alarm topic, the shared ECS execution IAM role, the env config bucket (`yolo-{account-id}-{env}-config` — [the environment's declaration](#the-environment-declaration): env manifest + env-shared `.env`), the env logs bucket (`yolo-{account-id}-{env}-logs` — the shared ALB's access logs under `alb/`, everything expiring after 90 days), the IVS event-logging pipeline (when the env manifest declares `services.ivs` — the `aws.ivs` event stream is account-wide, so the pipeline is env-shared), the ALB and its `:80`/`:443` listeners, the [WAF](#web-application-firewall) fronting the ALB |
+| `yolo sync:environment <env>` | **Environment** | every app in the environment | VPC, subnets, internet gateway & routes, RDS security group, SNS alarm topic, the shared ECS execution IAM role, the env config bucket (`yolo-{account-id}-{env}-config` — [the environment's declaration](#the-environment-declaration): env manifest + env-shared `.env`), the env logs bucket (`yolo-{account-id}-{env}-logs` — the shared ALB's access logs under `alb/`, everything expiring after 90 days), the IVS event-logging pipeline (when the env manifest offers `services.ivs` **and** a live app claims it — see [the service lifecycle](#the-service-lifecycle-offered-and-claimed)), the ALB and its `:80`/`:443` listeners, the [WAF](#web-application-firewall) fronting the ALB |
 | `yolo sync:app <env>` | **App** | one app | S3 buckets, app IAM (deployer role/policy, the per-app ECS task role + any [`task-role-policies`](/reference/manifest#task-role-policies)), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, hosted zone & ACM certificate, SQS queues, CloudWatch dashboard — plus, for web apps, the shared [Valkey cache](#cache-and-sessions) (default-on; opt out via `cache.store`). Sessions ride the same Valkey cluster by default, so they need no provisioning of their own |
 
 The bare `yolo sync` runs all three **in dependency order** — account, then environment, then app:
@@ -55,6 +55,31 @@ Because every `sync:environment` pulls the manifest fresh from S3 and converges 
 ::: warning Access is the boundary
 S3 read on the env config bucket is what gates env-secret control. Deploying an app never requires it — the barrier to mutate the environment is deliberately higher than the barrier to ship an app.
 :::
+
+## The service lifecycle: offered and claimed
+
+An env-shared service (the IVS event pipeline today) exists in an environment when **two keys turn together**:
+
+1. **Offered** — the env manifest declares `services.{name}`. The entry is the environment's catalogue: consent to run the service, its shape, and the memory of what the environment provides. An offer deliberately survives zero consumers — removing it is an operator act, never an inference.
+2. **Claimed** — at least one **live** app (an ECS cluster with running tasks) has published a claim file listing the service. Claims republish on every `deploy` and `sync:app`, and a dead app's stale claim file never counts — liveness is the same test [`audit`](#auditing-what-s-deployed) uses to attribute resources.
+
+`sync:environment` evaluates the gate for every env-backed service on every sync:
+
+| Offered | Live claim | Result |
+|---|---|---|
+| yes | yes | Provisioned and reconciled toward the manifest |
+| yes | no | Planned as a **teardown** (`WOULD DELETE`, behind the confirm gate) |
+| no | no | Torn down if anything still exists; otherwise skipped |
+| no | yes | **Hard error** — only reachable by editing the bucket manifest outside `environment:manifest:push`, which refuses to remove a claimed offer |
+
+One deliberate exception: while any **live app has no published claim file** (it was deployed by a YOLO that predates the claims registry), the claim set is unknowable — unknown state ≠ no claims — so nothing is created or torn down until every live app's next `deploy`/`sync:app` populates the registry. That makes the rollout bootstrap-safe: day one nobody has published, and nothing can be torn down by surprise.
+
+Enforcement is hard errors everywhere, never warnings:
+
+- An app claiming a service the env manifest doesn't offer fails `build`, `deploy` and `sync:app` with the fix spelled out (add the offer via the manifest pull/push flow, or drop the claim). On a greenfield environment whose manifest hasn't been seeded yet, the check defers to the first sync instead of bricking it.
+- `environment:manifest:push` refuses to remove an offer while live claimants exist — naming them — and likewise while any live app hasn't published its claims.
+
+Decommissioning is therefore self-enforcing, with hard edges the whole way: drop the claim in each app's `yolo.yml` → `deploy`/`sync:app` republishes (the app's per-service IAM melts away in the same pass) → remove the offer via `environment:manifest:pull`/`push` (accepted only once no live claims remain) → `sync:environment` plans the teardown for you to confirm.
 
 ## Web application firewall
 

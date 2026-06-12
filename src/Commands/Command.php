@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Commands;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\EnvManifest;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Concerns\RegistersAws;
@@ -243,6 +244,53 @@ abstract class Command extends SymfonyCommand
         }
 
         return true;
+    }
+
+    /**
+     * An app may only claim an env-backed service the environment manifest
+     * offers — a claim without an offer would publish cleanly and then
+     * provision nothing (the two-key lifecycle gate never turns), so build,
+     * deploy and sync:app hard-fail it with the fix spelled out. Before the
+     * env manifest exists (a greenfield environment the first sync hasn't
+     * seeded yet) there is nothing to validate against, so the check defers
+     * to that first sync rather than bricking it.
+     */
+    protected function ensureClaimedServicesOffered(): bool
+    {
+        $claimed = array_filter(
+            Manifest::services(),
+            fn (string $service): bool => Service::from($service)->definition()->envBacked(),
+        );
+
+        if ($claimed === []) {
+            return true;
+        }
+
+        if (! EnvManifest::remoteExists()) {
+            return true;
+        }
+
+        $missing = array_values(array_filter(
+            $claimed,
+            fn (string $service): bool => ! EnvManifest::has('services.' . $service),
+        ));
+
+        if ($missing === []) {
+            return true;
+        }
+
+        error(sprintf(
+            "yolo.yml claims the %s service%s but %s does not offer %s.\nAdd services.%s via `yolo environment:manifest:pull %s` / `yolo environment:manifest:push %s`, or drop the claim from yolo.yml.",
+            implode(', ', $missing),
+            count($missing) === 1 ? '' : 's',
+            EnvManifest::filename(),
+            count($missing) === 1 ? 'it' : 'them',
+            implode(', services.', $missing),
+            Helpers::environment(),
+            Helpers::environment(),
+        ));
+
+        return false;
     }
 
     protected function ensureNameDeclared(): bool

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Steps;
+use Codinglabs\Yolo\Enums\Service;
 
 /**
  * Writer of env-shared (environment-tier) resources — one set per environment, shared by
@@ -51,13 +52,13 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 // toward it, never rewrites it.
                 Steps\Sync\Environment\SyncEnvConfigBucketStep::class,
                 Steps\Sync\Environment\SeedEnvManifestStep::class,
-                // IVS event-logging pipeline (gated on the env manifest declaring
-                // `services.ivs`) — env-shared because the `aws.ivs` event stream
-                // is account-wide; apps opt into consuming IVS via their own
-                // `services: [ivs]`, which grants their task role IVS access.
-                Steps\Sync\Environment\SyncIvsCloudWatchLogGroupStep::class,
-                Steps\Sync\Environment\SyncIvsEventBridgeRuleStep::class,
-                Steps\Sync\Environment\SyncIvsEventBridgeTargetStep::class,
+                // env-backed services — each definition composes its own
+                // ordered steps, every one gated on the two-key lifecycle
+                // (offered by the env manifest ∧ claimed by a live app via
+                // the claims registry). The same steps tear the service down
+                // when its gate turns off, so the plan stays declared either
+                // way.
+                ...static::environmentServiceSteps(),
                 // env logs bucket (ALB access logs under alb/) — provisioned
                 // before the load balancer so the log-delivery bucket policy
                 // already grants the ELB service principal `s3:PutObject` when
@@ -76,5 +77,22 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 Steps\Sync\Environment\SyncWafAssociationStep::class,
             ],
         ];
+    }
+
+    /**
+     * Every env-backed service's environment-tier steps, composed from the
+     * definitions in enum order.
+     *
+     * @return array<int, class-string>
+     */
+    protected static function environmentServiceSteps(): array
+    {
+        $steps = [];
+
+        foreach (Service::definitions() as $definition) {
+            $steps = [...$steps, ...$definition->environmentSteps()];
+        }
+
+        return $steps;
     }
 }

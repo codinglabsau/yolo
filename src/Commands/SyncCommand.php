@@ -13,6 +13,19 @@ class SyncCommand extends SyncSteppedCommand
             ->setDescription('Sync all resources for the given environment (account → environment → app)');
     }
 
+    #[\Override]
+    public function handle(): int
+    {
+        // The orchestrating sync composes the tier commands' scopes but not
+        // their handle(), so the app tier's claim-without-offer gate is
+        // re-applied here.
+        if (! $this->ensureClaimedServicesOffered()) {
+            return self::FAILURE;
+        }
+
+        return parent::handle();
+    }
+
     /**
      * The orchestrating `sync` composes the tier commands' scopes but not their
      * handle(), so compose their plan warnings the same way.

@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Change;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 
 /**
@@ -60,5 +61,29 @@ trait SynchronisesResource
         $resource->create();
 
         return StepResult::CREATED;
+    }
+
+    /**
+     * The teardown mirror of syncResource(): delete the resource when its gate
+     * has turned off (a service no longer offered ∧ claimed, an app-side claim
+     * dropped). Absent already ⇒ SKIPPED, so a torn-down service stays quiet on
+     * every later sync. The Change is recorded before the dry-run guard so the
+     * plan and apply passes agree and the step survives the pending-only prune.
+     */
+    protected function teardownResource(Resource&Deletable $resource, array $options): StepResult
+    {
+        if (! $resource->exists()) {
+            return StepResult::SKIPPED;
+        }
+
+        $this->recordChange(Change::make($resource->name(), 'provisioned', null));
+
+        if ((bool) Arr::get($options, 'dry-run')) {
+            return StepResult::WOULD_DELETE;
+        }
+
+        $resource->delete();
+
+        return StepResult::DELETED;
     }
 }

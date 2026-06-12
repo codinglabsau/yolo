@@ -19,7 +19,6 @@ use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Resources\S3\AssetBucket;
 use Codinglabs\Yolo\Resources\ElbV2\TargetGroup;
 use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
-use Codinglabs\Yolo\Resources\CloudWatchLogs\IvsLogGroup;
 use Codinglabs\Yolo\Resources\CloudWatchLogs\TaskLogGroup;
 use Codinglabs\Yolo\Resources\CloudFront\AssetDistribution;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -66,15 +65,17 @@ class Dashboard
     // 5xx SLO line (% of requests). A sustained breach is a user-facing outage.
     protected const ERROR_RATE_SLO = 1;
 
-    protected const BLUE = '#1f77b4';
+    // Public: service definitions reference the palette when composing their
+    // own `# Services` widgets (ServiceDefinition::servicesWidgets()).
+    public const BLUE = '#1f77b4';
 
-    protected const GREEN = '#2ca02c';
+    public const GREEN = '#2ca02c';
 
-    protected const ORANGE = '#ff7f0e';
+    public const ORANGE = '#ff7f0e';
 
-    protected const RED = '#d62728';
+    public const RED = '#d62728';
 
-    protected const PURPLE = '#9467bd';
+    public const PURPLE = '#9467bd';
 
     public function name(): string
     {
@@ -184,16 +185,26 @@ class Dashboard
             'rds' => static::rdsTarget($this->databaseHost()),
             'buckets' => static::bucketNames(),
             'taskLogGroup' => $web ? (new TaskLogGroup())->name() : null,
-            'ivsLogGroup' => Manifest::usesService(Service::IVS) ? (new IvsLogGroup())->name() : null,
-            // MediaConvert jobs run on the account default queue, so the panel is
-            // account-level by nature — still worth charting on the consumer's
-            // dashboard, since that's where someone debugging a stuck job looks.
-            'mediaConvertQueueArn' => Manifest::usesService(Service::MEDIA_CONVERT)
-                ? sprintf('arn:aws:mediaconvert:%s:%s:queues/Default', Manifest::get('region'), Aws::accountId())
-                : null,
-            'rekognition' => Manifest::usesService(Service::REKOGNITION),
+            // Each service definition contributes its own context entries —
+            // always returning its keys (null/false when the app doesn't
+            // consume the service) so the body builder can rely on them.
+            ...static::servicesContext(),
             'depthThreshold' => (int) Manifest::get('sqs.depth-alarm-threshold', 100),
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected static function servicesContext(): array
+    {
+        $context = [];
+
+        foreach (Service::definitions() as $definition) {
+            $context = [...$context, ...$definition->dashboardContext()];
+        }
+
+        return $context;
     }
 
     /**
@@ -341,8 +352,10 @@ class Dashboard
         [$section, $y] = static::storageSection($context, $y);
         $widgets = [...$widgets, ...$section];
 
-        if ($context['mediaConvertQueueArn'] !== null || $context['rekognition']) {
-            [$section, $y] = static::servicesSection($context, $y);
+        $serviceWidgets = static::serviceWidgets($context);
+
+        if ($serviceWidgets !== []) {
+            [$section, $y] = static::servicesSection($serviceWidgets, $y);
             $widgets = [...$widgets, ...$section];
         }
 
@@ -864,64 +877,53 @@ class Dashboard
      * @param  array<string, mixed>  $context
      * @return array{0: array<int, array<string, mixed>>, 1: int}
      */
-    protected static function servicesSection(array $context, int $y): array
+    /**
+     * The `# Services` widget property maps every consumed service's
+     * definition contributes, in enum order. Each renders as a half-width
+     * panel; servicesSection packs them two per row.
+     *
+     * @param  array<string, mixed>  $context
+     * @return array<int, array<string, mixed>>
+     */
+    protected static function serviceWidgets(array $context): array
     {
-        $region = $context['region'];
+        $widgets = [];
 
+        foreach (Service::definitions() as $definition) {
+            $widgets = [...$widgets, ...$definition->servicesWidgets($context)];
+        }
+
+        return $widgets;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $serviceWidgets
+     * @return array{0: array<int, array<string, mixed>>, 1: int}
+     */
+    protected static function servicesSection(array $serviceWidgets, int $y): array
+    {
         $widgets = [static::header($y, '# Services')];
         $y++;
-        $x = 0;
 
-        if ($context['mediaConvertQueueArn'] !== null) {
-            $widgets[] = static::metric($x, $y, 12, 6, [
-                'title' => 'MediaConvert jobs (account default queue)',
-                'region' => $region,
-                'view' => 'timeSeries',
-                'stacked' => false,
-                'period' => 300,
-                'stat' => 'Sum',
-                'metrics' => [
-                    ['AWS/MediaConvert', 'JobsCompletedCount', 'Queue', $context['mediaConvertQueueArn'], ['label' => 'Completed', 'color' => static::GREEN]],
-                    ['AWS/MediaConvert', 'JobsErroredCount', 'Queue', $context['mediaConvertQueueArn'], ['label' => 'Errored', 'color' => static::RED]],
-                ],
-            ]);
-            $x += 12;
+        foreach ($serviceWidgets as $index => $properties) {
+            $widgets[] = static::metric($index % 2 === 0 ? 0 : 12, $y, 12, 6, $properties);
+
+            if ($index % 2 === 1) {
+                $y += 6;
+            }
         }
 
-        if ($context['rekognition']) {
-            // Rekognition metrics are dimensioned per Operation and the app
-            // decides at runtime which APIs it calls — SEARCH charts whatever
-            // operations actually report, no hardcoded list to drift.
-            $search = fn (string $metric, string $label): array => [[
-                'expression' => sprintf('SEARCH(\'{AWS/Rekognition,Operation} MetricName="%s"\', \'Sum\', 300)', $metric),
-                'label' => $label,
-                'region' => $region,
-            ]];
-
-            $widgets[] = static::metric($x, $y, 12, 6, [
-                'title' => 'Rekognition requests (account, by operation)',
-                'region' => $region,
-                'view' => 'timeSeries',
-                'stacked' => false,
-                'period' => 300,
-                'stat' => 'Sum',
-                'metrics' => [
-                    $search('SuccessfulRequestCount', 'Successful'),
-                    $search('ThrottledCount', 'Throttled'),
-                    $search('UserErrorCount', 'User errors'),
-                    $search('ServerErrorCount', 'Server errors'),
-                ],
-            ]);
+        // An odd final panel still occupies its row.
+        if (count($serviceWidgets) % 2 === 1) {
+            $y += 6;
         }
-
-        $y += 6;
 
         return [$widgets, $y];
     }
 
     /**
-     * Logs Insights panels over the app's task log group and, when IVS logging is
-     * enabled, the IVS log group.
+     * Logs Insights panels over the app's task log group plus whatever panels
+     * each consumed service's definition contributes (e.g. the IVS log group).
      *
      * @param  array<string, mixed>  $context
      * @return array{0: array<int, array<string, mixed>>, 1: int}
@@ -930,9 +932,15 @@ class Dashboard
     {
         $region = $context['region'];
 
+        $servicePanels = [];
+
+        foreach (Service::definitions() as $definition) {
+            $servicePanels = [...$servicePanels, ...$definition->logPanels($context)];
+        }
+
         $logGroups = collect([
             'Application logs' => $context['taskLogGroup'],
-            'IVS logs' => $context['ivsLogGroup'],
+            ...$servicePanels,
         ])->filter();
 
         if ($logGroups->isEmpty()) {

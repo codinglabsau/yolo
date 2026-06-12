@@ -3,7 +3,9 @@
 namespace Codinglabs\Yolo\Aws;
 
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Audit\Arn;
 use Aws\Exception\AwsException;
+use Codinglabs\Yolo\Audit\Audit;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
@@ -89,6 +91,27 @@ class Ecs
         } while ($token);
 
         return $arns;
+    }
+
+    /**
+     * Apps with at least one running Fargate task in this environment — the
+     * authoritative "what's actually deployed" liveness signal, shared by the
+     * audit's ownership attribution and the service lifecycle's claim gating.
+     * Only clusters in the environment's yolo-{env}- namespace are probed, so
+     * unrelated clusters are never listed.
+     *
+     * @return array<int, string>
+     */
+    public static function liveApps(string $environment): array
+    {
+        $prefix = "yolo-$environment-";
+
+        $liveClusters = collect(static::clusterArns())
+            ->filter(fn (string $arn): bool => str_starts_with(Arn::parse($arn)->resourceId ?? '', $prefix))
+            ->filter(fn (string $arn): bool => static::clusterRunningTasks($arn) !== [])
+            ->all();
+
+        return Audit::appsFromClusters($liveClusters, $environment);
     }
 
     /**
