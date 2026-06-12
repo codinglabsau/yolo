@@ -9,8 +9,14 @@ FROM dunglas/frankenphp:1-php8.4-alpine
 
 # supercronic runs the scheduler's cron as a non-root user (busybox crond can't);
 # nodejs is the runtime for Inertia SSR (tasks.web.ssr) — drop it if you don't use SSR.
+# redis and excimer install from pinned GitHub tags rather than their PECL aliases —
+# pecl.php.net (the aliases' source) times out routinely. ADD clones the phpredis
+# tag with submodules (the tag tarball is missing liblzf), and the installer
+# accepts the clone as a source path.
+ADD https://github.com/phpredis/phpredis.git#6.3.0 /usr/src/phpredis
 RUN apk add --no-cache git supervisor supercronic nodejs \
-    && install-php-extensions intl pcntl bcmath redis pdo_mysql opcache excimer
+    && install-php-extensions intl pcntl bcmath /usr/src/phpredis pdo_mysql opcache wikimedia/php-excimer@1.2.6 \
+    && rm -rf /usr/src/phpredis
 
 WORKDIR /app
 
