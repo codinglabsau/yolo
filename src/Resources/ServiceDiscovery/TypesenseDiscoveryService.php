@@ -3,9 +3,11 @@
 namespace Codinglabs\Yolo\Resources\ServiceDiscovery;
 
 use Codinglabs\Yolo\Aws;
+use Aws\Exception\AwsException;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Services\Typesense;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 use Codinglabs\Yolo\Aws\ServiceDiscovery as ServiceDiscoveryApi;
@@ -15,9 +17,10 @@ use Codinglabs\Yolo\Aws\ServiceDiscovery as ServiceDiscoveryApi;
  * service per node (not one service for the cluster) because Raft peers must
  * address each node individually; the ECS node service registers its task's
  * ENI here, so a replaced task re-resolves within the record's 10s TTL.
- * Deleted by the namespace's cascading teardown, never individually.
+ * Deleted by the namespace's cascading teardown on a full removal, or
+ * individually when a node-count reduction retires its node.
  */
-class TypesenseDiscoveryService implements Resource
+class TypesenseDiscoveryService implements Deletable, Resource
 {
     use ResolvesTags;
 
@@ -74,6 +77,31 @@ class TypesenseDiscoveryService implements Resource
     public function synchroniseTags(bool $apply): array
     {
         return Aws::synchroniseServiceDiscoveryTags($this->arn(), $this->tags(), $apply);
+    }
+
+    /**
+     * Cloud Map refuses to delete a service while its ECS-registered instance
+     * is still deregistering (the node's task was just stopped), so the
+     * delete waits that window out before a genuine failure propagates.
+     */
+    public function delete(): void
+    {
+        $id = $this->current()['Id'];
+        $deadline = time() + 120;
+
+        do {
+            try {
+                Aws::serviceDiscovery()->deleteService(['Id' => $id]);
+
+                return;
+            } catch (AwsException $e) {
+                if ($e->getAwsErrorCode() !== 'ResourceInUse' || time() >= $deadline) {
+                    throw $e;
+                }
+
+                sleep(5);
+            }
+        } while (true);
     }
 
     /**

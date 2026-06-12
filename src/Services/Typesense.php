@@ -38,8 +38,11 @@ use Codinglabs\Yolo\Resources\CloudWatchLogs\TypesenseLogGroup;
  */
 class Typesense extends ServiceDefinition
 {
-    /** Raft wants odd quorums; three is the smallest that survives a node loss. */
-    public const int NODES = 3;
+    /** The node counts that make sense: 3 survives one loss, 5 survives two
+     * (and spreads read load wider). Anything even pays for an extra node
+     * without gaining the ability to lose another one, and 1 means any task
+     * replacement loses the search data — so neither is offered. */
+    public const array NODE_COUNTS = [3, 5];
 
     public const int API_PORT = 8108;
 
@@ -74,7 +77,7 @@ class Typesense extends ServiceDefinition
     #[\Override]
     public function offerKeys(): array
     {
-        return ['version', 'cpu', 'memory'];
+        return ['version', 'nodes', 'cpu', 'memory'];
     }
 
     /**
@@ -115,6 +118,15 @@ class Typesense extends ServiceDefinition
                     $key,
                 ));
             }
+        }
+
+        $nodes = $offer['nodes'] ?? null;
+
+        if ($nodes !== null && (! is_numeric($nodes) || ! in_array((int) $nodes, self::NODE_COUNTS, true))) {
+            throw new IntegrityCheckException(sprintf(
+                'services.typesense.nodes in %s must be 3 or 5 — an even count pays for an extra node without gaining the ability to lose another one, and a single node loses its search data whenever the task is replaced.',
+                $filename,
+            ));
         }
     }
 
@@ -184,7 +196,7 @@ class Typesense extends ServiceDefinition
             // with the full list for native client-side failover.
             'TYPESENSE_NODES' => implode(',', array_map(
                 fn (int $node): string => sprintf('%s:%d:http', static::nodeAddress($node), static::API_PORT),
-                range(0, static::NODES - 1),
+                range(0, static::nodes() - 1),
             )),
         ];
     }
@@ -212,6 +224,26 @@ class Typesense extends ServiceDefinition
     public static function memory(): int
     {
         return (int) EnvManifest::get('services.typesense.memory', 1024);
+    }
+
+    /**
+     * How many nodes the cluster runs — 3 (the default; survives one loss) or
+     * 5 (survives two, spreads read load wider). Changing it is a manifest
+     * edit + sync: the existing nodes roll onto the new peer list one at a
+     * time, then sync adds or removes the difference.
+     */
+    public static function nodes(): int
+    {
+        return (int) EnvManifest::get('services.typesense.nodes', 3);
+    }
+
+    /**
+     * The fewest healthy nodes that can still take writes — below this the
+     * cluster is read-only until a node returns.
+     */
+    public static function quorumFloor(): int
+    {
+        return intdiv(static::nodes(), 2) + 1;
     }
 
     /**
@@ -245,10 +277,12 @@ class Typesense extends ServiceDefinition
     }
 
     /**
-     * The content tag the image build pushes: declared version + a key
-     * fingerprint, so a version bump or a key rotation produces a new tag (and
-     * a task-def revision that rolls the nodes) while an unchanged pair skips
-     * the build entirely. Null until both inputs exist.
+     * The content tag the image build pushes: the declared version + a
+     * fingerprint of everything baked into the image (the admin key and the
+     * peer list) — so a version bump, key rotation or node-count change
+     * produces a new tag (and a task-def revision that rolls the nodes),
+     * while unchanged inputs skip the build entirely. Null until the inputs
+     * exist.
      */
     public static function imageTag(): ?string
     {
@@ -259,7 +293,7 @@ class Typesense extends ServiceDefinition
             return null;
         }
 
-        return sprintf('%s-%s', $version, substr(hash('sha256', $key), 0, 12));
+        return sprintf('%s-%s', $version, substr(hash('sha256', $key . '|' . implode(',', static::peers())), 0, 12));
     }
 
     /**
@@ -280,7 +314,7 @@ class Typesense extends ServiceDefinition
     {
         return array_map(
             fn (int $node): string => sprintf('%s:%d:%d', static::nodeAddress($node), static::PEERING_PORT, static::API_PORT),
-            range(0, static::NODES - 1),
+            range(0, static::nodes() - 1),
         );
     }
 
@@ -332,7 +366,7 @@ class Typesense extends ServiceDefinition
             'cluster' => (new ServicesCluster())->name(),
             'services' => array_map(
                 fn (int $node): string => (new TypesenseService($node))->name(),
-                range(0, static::NODES - 1),
+                range(0, static::nodes() - 1),
             ),
             'targetGroupSuffix' => static::tryDimension(fn (): string => Dashboard::targetGroupDimension((new SearchTargetGroup())->arn())),
             'albSuffix' => static::tryDimension(fn (): string => Dashboard::loadBalancerDimension((new LoadBalancer())->arn())),
@@ -366,7 +400,7 @@ class Typesense extends ServiceDefinition
                     ['AWS/ApplicationELB', 'UnHealthyHostCount', 'TargetGroup', $typesense['targetGroupSuffix'], 'LoadBalancer', $typesense['albSuffix'], ['label' => 'Unhealthy', 'stat' => 'Maximum', 'color' => Dashboard::RED]],
                 ],
                 'annotations' => ['horizontal' => [
-                    ['color' => Dashboard::RED, 'label' => 'Quorum floor', 'value' => 2, 'fill' => 'below'],
+                    ['color' => Dashboard::RED, 'label' => 'Quorum floor', 'value' => static::quorumFloor(), 'fill' => 'below'],
                 ]],
             ];
 

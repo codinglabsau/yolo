@@ -47,6 +47,12 @@ class SyncTypesenseAlarmsStep implements Step
                 : $this->teardownResource($alarm, $options);
         }
 
+        // A node-count reduction leaves memory alarms for nodes that no
+        // longer exist — they go even while the service stays provisioned.
+        foreach ($this->surplusMemoryAlarms() as $alarm) {
+            $results[] = $this->teardownResource($alarm, $options);
+        }
+
         return $this->aggregate($results);
     }
 
@@ -56,7 +62,7 @@ class SyncTypesenseAlarmsStep implements Step
     protected function alarms(ServiceState $state): array
     {
         $alarms = $this->healthyHostAlarms($state);
-        foreach (range(0, Typesense::NODES - 1) as $node) {
+        foreach (range(0, Typesense::nodes() - 1) as $node) {
             $alarms[] = new TypesenseAlarm(
                 suffix: sprintf('node-%d-memory', $node),
                 description: sprintf('Typesense node %d sustained memory above 80%% - the index is outgrowing the offer, resize services.typesense.memory', $node),
@@ -83,6 +89,38 @@ class SyncTypesenseAlarmsStep implements Step
      *
      * @return array<int, TypesenseAlarm>
      */
+    /**
+     * Memory alarms for node indexes above the declared count — only ever 3
+     * and 4, since the valid counts are 3 and 5. Absent alarms skip for free.
+     *
+     * @return array<int, TypesenseAlarm>
+     */
+    protected function surplusMemoryAlarms(): array
+    {
+        $alarms = [];
+
+        // range() counts DOWN when from > to — at the maximum count there is
+        // no surplus, so bail before it manufactures one.
+        if (Typesense::nodes() >= max(Typesense::NODE_COUNTS)) {
+            return [];
+        }
+
+        foreach (range(Typesense::nodes(), max(Typesense::NODE_COUNTS) - 1) as $node) {
+            $alarms[] = new TypesenseAlarm(
+                suffix: sprintf('node-%d-memory', $node),
+                description: 'retired',
+                namespace: 'ECS/ContainerInsights',
+                metricName: 'MemoryUtilized',
+                dimensions: [],
+                statistic: 'Average',
+                comparisonOperator: 'GreaterThanThreshold',
+                threshold: 0,
+            );
+        }
+
+        return $alarms;
+    }
+
     protected function healthyHostAlarms(ServiceState $state): array
     {
         try {
@@ -107,18 +145,18 @@ class SyncTypesenseAlarmsStep implements Step
                 dimensions: $dimensions,
                 statistic: 'Minimum',
                 comparisonOperator: 'LessThanThreshold',
-                threshold: 3,
+                threshold: Typesense::nodes(),
                 evaluationPeriods: 3,
             ),
             new TypesenseAlarm(
                 suffix: 'quorum-lost',
-                description: 'Typesense quorum lost (fewer than 2 healthy nodes) - the cluster is read-only until a node returns',
+                description: sprintf('Typesense can no longer take writes (fewer than %d healthy nodes) - search is read-only until a node returns', Typesense::quorumFloor()),
                 namespace: 'AWS/ApplicationELB',
                 metricName: 'HealthyHostCount',
                 dimensions: $dimensions,
                 statistic: 'Minimum',
                 comparisonOperator: 'LessThanThreshold',
-                threshold: 2,
+                threshold: Typesense::quorumFloor(),
                 evaluationPeriods: 1,
             ),
         ];

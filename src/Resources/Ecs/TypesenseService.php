@@ -33,6 +33,11 @@ class TypesenseService implements Resource
 
     public function __construct(protected int $node) {}
 
+    public function node(): int
+    {
+        return $this->node;
+    }
+
     public function name(): string
     {
         return $this->keyedName(sprintf('typesense-%d', $this->node));
