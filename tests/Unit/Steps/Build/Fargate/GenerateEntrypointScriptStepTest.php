@@ -46,16 +46,19 @@ it('supervises a known role so SIGTERM can be trapped and drained', function ():
     expect($script)->toContain('wait "$child"');
 });
 
-it('dispatches the web role to supervisord and bundles the scheduler drain for a plain web app', function (): void {
+it('dispatches the web role to supervisord and signals the bundled scheduler before the ALB window', function (): void {
     $script = generatedEntrypointScript();
 
     expect($script)->toContain("web)       cmd='supervisord -c /etc/supervisord.conf -n'");
     // No standalone queue/scheduler service → no extra cmd branches.
     expect($script)->not->toContain('queue)     cmd=');
     expect($script)->not->toContain('scheduler) cmd=');
-    // The web container hosts the scheduler, so its drain halts cron and waits.
-    expect($script)->toContain('supervisorctl -c /etc/supervisord.conf stop scheduler');
-    expect($script)->toContain("pgrep -f 'artisan schedule:run'");
+    // The web container hosts the scheduler: supercronic is signalled before the
+    // drain window so no new schedule:run launches while web keeps serving —
+    // backgrounded, so waiting out the in-flight run overlaps the window instead
+    // of delaying the forward.
+    expect($script)->toContain("supervisorctl -c /etc/supervisord.conf stop scheduler >/dev/null 2>&1 &\n");
+    expect($script)->toContain("sleep 10\n");
 });
 
 it('execs an unknown command directly instead of booting the web server', function (): void {
@@ -77,9 +80,11 @@ it('runs a standalone queue under supervisord when it co-hosts the scheduler', f
 
     $script = generatedEntrypointScript();
 
-    // queue:work + supercronic is two processes → supervisord, drained like web (cron first).
+    // queue:work + supercronic is two processes → supervisord. No drain branch
+    // for the role: with no ALB window holding the forward back, the immediate
+    // SIGTERM reaches supervisord, which signals both programs at once.
     expect($script)->toContain("queue)     cmd='supervisord -c /app/docker/supervisord.queue.conf -n'");
-    expect($script)->toContain('supervisorctl -c /app/docker/supervisord.queue.conf stop scheduler');
+    expect($script)->not->toContain('stop scheduler');
     // The web container no longer hosts the scheduler — its drain is a plain sleep.
     expect($script)->toContain("sleep 10\n");
     expect($script)->not->toContain('scheduler) cmd=');
@@ -109,8 +114,10 @@ it('adds a scheduler branch running cron when the scheduler is its own service',
 
     $script = generatedEntrypointScript();
 
+    // supercronic stops scheduling and waits out the in-flight run on SIGTERM,
+    // so the generic forward is the whole drain — no scheduler drain branch.
     expect($script)->toContain("scheduler) cmd='supercronic");
-    expect($script)->toContain("pgrep -f 'artisan schedule:run'");
+    expect($script)->not->toContain('stop scheduler');
     // The queue still rides the web container; the web drain is a plain sleep.
     expect($script)->toContain("sleep 10\n");
     expect($script)->not->toContain('queue)     cmd=');

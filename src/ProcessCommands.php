@@ -51,7 +51,8 @@ class ProcessCommands
     /**
      * The scheduler runs as cron (supercronic firing schedule:run each minute),
      * not a long-lived schedule:work daemon — so the trigger halts cleanly on
-     * shutdown and only the in-flight run is waited out (see the entrypoint drain).
+     * shutdown and only the in-flight run is waited out (see
+     * ShutdownTimings::stopTimeoutFor for the budget that wait lives in).
      *
      * supercronic is the one cron that works here: the container runs everything
      * as www-data, and busybox crond can't run cron as a non-root user — it
@@ -59,9 +60,9 @@ class ProcessCommands
      * die on a setgroups EPERM before exec. supercronic is built for exactly this
      * (jobs run as the invoking user, no identity switch), captures job output to
      * its own stdout/stderr — which supervisord already routes to the container
-     * log — and on SIGTERM stops scheduling and waits out the in-flight run,
-     * matching the entrypoint drain. CheckSchedulerRuntimeStep gates the build on
-     * the binary being present in the image.
+     * log — and on SIGTERM stops scheduling and waits out the in-flight run, so
+     * its stop IS the drain. CheckSchedulerRuntimeStep gates the build on the
+     * binary being present in the image.
      */
     public static function scheduler(): string
     {

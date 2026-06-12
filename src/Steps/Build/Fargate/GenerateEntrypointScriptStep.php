@@ -18,13 +18,14 @@ use Codinglabs\Yolo\Enums\ServerGroup;
  *
  *  - web       → supervisord (the web server + any bundled queue/scheduler/ssr),
  *                drained behind the ALB so a deploy doesn't 502. The default role.
- *  - queue     → the standalone queue worker. queue:work alone finishes its
- *                in-flight job on SIGTERM, so the generic supervise-and-forward is
- *                the whole drain; when it also hosts the scheduler (no dedicated
+ *  - queue     → the standalone queue worker. The generic supervise-and-forward
+ *                is the whole drain: queue:work finishes its in-flight job on
+ *                SIGTERM, and when the queue co-hosts the scheduler (no dedicated
  *                scheduler service) it runs supervisord instead (queue:work +
- *                supercronic) and drains cron like web does, minus the ALB window.
- *  - scheduler → supercronic; the drain halts cron and waits out any in-flight
- *                schedule:run so a deploy never cuts a scheduled command short.
+ *                supercronic), which signals both at once — supercronic stops
+ *                launching ticks immediately and waits out the in-flight run.
+ *  - scheduler → supercronic alone; the forwarded SIGTERM is the whole drain for
+ *                the same reason, bounded by the task's stopTimeout.
  *  - anything  → exec'd directly, replacing the shell (no supervise, no drain).
  *    else        This is the path a one-off ecs:RunTask command override takes —
  *                e.g. the deploy step's `sh -c "php artisan migrate --force"` —
@@ -72,7 +73,7 @@ drain() {
     case "$role" in
         web)
 %s            ;;
-%s    esac
+    esac
     kill -TERM "$child" 2>/dev/null
 }
 trap drain TERM
@@ -98,7 +99,6 @@ exit "$status"
 
 SH,
             $this->indent($this->webDrainBody(), 12),
-            $this->queueDrainCase() . $this->schedulerDrainCase(),
             $this->commandCases(),
         );
 
@@ -137,100 +137,35 @@ SH,
     }
 
     /**
-     * The standalone queue's drain branch — emitted only when the queue co-hosts
-     * the scheduler (no dedicated scheduler service), so it runs supervisord and
-     * must halt cron the same way web does. A queue-only service needs no branch:
-     * queue:work finishes its in-flight job on the generic SIGTERM forward.
-     */
-    protected function queueDrainCase(): string
-    {
-        if (Manifest::schedulerHost() !== ServerGroup::QUEUE) {
-            return '';
-        }
-
-        return sprintf(
-            "        queue)\n%s            ;;\n",
-            $this->indent($this->supervisordSchedulerDrain(0, '/app/docker/supervisord.queue.conf'), 12),
-        );
-    }
-
-    /**
-     * The standalone scheduler's drain branch, emitted only when the scheduler is
-     * its own service.
-     */
-    protected function schedulerDrainCase(): string
-    {
-        if (! Manifest::hasStandaloneScheduler()) {
-            return '';
-        }
-
-        return sprintf("        scheduler)\n%s            ;;\n", $this->indent($this->schedulerDrainBody(), 12));
-    }
-
-    /**
      * The web role's drain, run before the stop is forwarded to supervisord. ECS
      * sends SIGTERM the moment it deregisters the task, but the ALB takes a few
      * seconds to stop routing to a draining target, so we keep serving for the
-     * drain window first. When the web container hosts the scheduler (it isn't
-     * extracted) it also halts cron and waits out any in-flight schedule:run. A
-     * headless app has no target group, so the sleep is dropped and we stop at once.
+     * drain window first. When the web container hosts the scheduler, supercronic
+     * is signalled before the window so no new schedule:run launches while we
+     * keep serving — backgrounded, so its stop (supercronic waits out the
+     * in-flight run under its own stopwaitsecs) overlaps the window and the other
+     * programs' stops instead of delaying the forward (the budget in
+     * ShutdownTimings::stopTimeoutFor counts on that overlap). Stopping via
+     * supervisorctl, never a direct signal, so supervisord doesn't autorestart it.
+     *
+     * Web is the only role that needs this: everywhere else (headless web, a
+     * queue co-hosting the scheduler, a standalone scheduler) there's no ALB
+     * window holding the forward back, so the immediate SIGTERM forward reaches
+     * supervisord — or supercronic itself — at once and is the whole drain.
      */
     protected function webDrainBody(): string
     {
         $drain = ShutdownTimings::drain();
 
-        if (Manifest::schedulerHost() === ServerGroup::WEB) {
-            return $this->supervisordSchedulerDrain($drain, '/etc/supervisord.conf');
+        if ($drain === 0) {
+            return '';
         }
 
-        return $drain > 0 ? "sleep $drain\n" : '';
-    }
+        $body = Manifest::schedulerHost() === ServerGroup::WEB
+            ? "supervisorctl -c /etc/supervisord.conf stop scheduler >/dev/null 2>&1 &\n"
+            : '';
 
-    /**
-     * Drain a supervisord container that hosts the scheduler: stop cron first so no
-     * new schedule:run fires, then hold the container open until the drain window
-     * has elapsed (octane keeps serving behind the ALB on web; zero on a queue
-     * container, which has no ALB) *and* any in-flight schedule:run has finished —
-     * bounded by the scheduler's grace so a long job can't stall the deploy past the
-     * stopTimeout. The generic forwarder then stops the remaining programs.
-     */
-    protected function supervisordSchedulerDrain(int $drainWindow, string $conf): string
-    {
-        return sprintf(<<<'SH'
-supervisorctl -c %s stop scheduler >/dev/null 2>&1
-waited=0
-while [ "$waited" -lt %d ]; do
-    if [ "$waited" -ge %d ] && ! pgrep -f 'artisan schedule:run' >/dev/null 2>&1; then
-        break
-    fi
-    sleep 1
-    waited=$((waited + 1))
-done
-
-SH, $conf, max($drainWindow, ShutdownTimings::schedulerGrace()), $drainWindow);
-    }
-
-    /**
-     * The standalone scheduler role's drain: stop supercronic (the child) so no
-     * new schedule:run fires — on SIGTERM it stops scheduling and waits out its
-     * in-flight run itself — with the pgrep loop bounding that wait by the
-     * scheduler's grace. Killing supercronic here is harmless when the generic
-     * forwarder kills the (already-dead) child again afterwards.
-     */
-    protected function schedulerDrainBody(): string
-    {
-        return sprintf(<<<'SH'
-kill -TERM "$child" 2>/dev/null
-waited=0
-while [ "$waited" -lt %d ]; do
-    if ! pgrep -f 'artisan schedule:run' >/dev/null 2>&1; then
-        break
-    fi
-    sleep 1
-    waited=$((waited + 1))
-done
-
-SH, ShutdownTimings::schedulerGrace());
+        return $body . "sleep $drain\n";
     }
 
     /**

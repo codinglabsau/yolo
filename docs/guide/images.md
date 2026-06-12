@@ -136,3 +136,5 @@ tasks:
 ```
 
 The same value sets the container's `stopTimeout` and the ALB deregistration delay, keeping all three in lock-step. See [`tasks.web.shutdown-grace-period`](/reference/manifest#tasks-web).
+
+The scheduler gets special treatment: supercronic stops launching new `schedule:run` ticks the instant `SIGTERM` lands, and the in-flight run gets the rest of the stop window — by default everything Fargate allows, since its stop overlaps the other programs' rather than delaying them. All of a container's graces share Fargate's 120s `stopTimeout` ceiling; a combination that overcommits it fails the deploy with an error instead of being silently cut short at the wire.
