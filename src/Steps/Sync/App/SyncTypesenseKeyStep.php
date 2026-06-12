@@ -41,7 +41,7 @@ class SyncTypesenseKeyStep implements Step
 {
     use RecordsChanges;
 
-    public function __construct(protected ?Client $http = null) {}
+    public function __construct(protected string $environment, protected ?Client $http = null) {}
 
     public function __invoke(array $options): StepResult
     {

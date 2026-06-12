@@ -82,7 +82,7 @@ it('leaves an already-minted app key alone', function (): void {
         'GetObject' => new Result(['Body' => "TYPESENSE_API_KEY=already-minted\n"]),
     ], $captured);
 
-    expect((new SyncTypesenseKeyStep())([]))->toBe(StepResult::SYNCED);
+    expect((new SyncTypesenseKeyStep('testing'))([]))->toBe(StepResult::SYNCED);
     expect(array_column($captured, 'name'))->not->toContain('PutObject');
 });
 
@@ -101,12 +101,12 @@ it('plans the mint without any HTTP call, and mints + persists on apply', functi
         new Response(201, [], (string) json_encode(['value' => 'scoped-key'])),
     ]);
 
-    $planned = new SyncTypesenseKeyStep(new Client(['handler' => HandlerStack::create($guzzle)]));
+    $planned = new SyncTypesenseKeyStep('testing', new Client(['handler' => HandlerStack::create($guzzle)]));
     expect($planned(['dry-run' => true]))->toBe(StepResult::WOULD_CREATE);
     expect($planned->changes())->not->toBeEmpty();
     expect($guzzle->count())->toBe(1); // nothing consumed on the plan
 
-    $step = new SyncTypesenseKeyStep(new Client(['handler' => HandlerStack::create($guzzle)]));
+    $step = new SyncTypesenseKeyStep('testing', new Client(['handler' => HandlerStack::create($guzzle)]));
     expect($step([]))->toBe(StepResult::CREATED);
 
     $put = collect($captured)->firstWhere('name', 'PutObject');
@@ -125,6 +125,6 @@ it('skips the mint with instructions while the cluster is not provisioned yet', 
 
     Prompt::fake();
 
-    expect((new SyncTypesenseKeyStep())([]))->toBe(StepResult::SKIPPED);
+    expect((new SyncTypesenseKeyStep('testing'))([]))->toBe(StepResult::SKIPPED);
     expect(Prompt::content())->toContain('not provisioned yet');
 });
