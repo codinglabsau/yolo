@@ -33,6 +33,21 @@ enum Service: string
     }
 
     /**
+     * Whether this service has an environment-manifest half — env-shared
+     * infrastructure that sync:environment provisions when the environment
+     * declares `services.{name}`. App-side-only services have nothing to
+     * declare env-side, so they never appear in the env manifest's allowed
+     * keys.
+     */
+    public function envBacked(): bool
+    {
+        return match ($this) {
+            self::IVS => true,
+            self::MEDIA_CONVERT, self::REKOGNITION => false,
+        };
+    }
+
+    /**
      * The IAM statements consuming this service adds to the app's ECS task
      * role policy — the app-side half of the service contract. Exhaustive by
      * design: adding a case without deciding its grants fails static analysis,

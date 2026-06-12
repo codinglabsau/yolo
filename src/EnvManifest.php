@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Aws\S3;
 use Illuminate\Support\Arr;
 use Symfony\Component\Yaml\Yaml;
 use Aws\S3\Exception\S3Exception;
+use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 /**
@@ -38,14 +39,23 @@ class EnvManifest
     }
 
     /**
-     * The complete set of valid env-manifest keys as dot-paths — the single
-     * source of truth for the file's shape, mirroring the app manifest's
-     * allow-list discipline. `services` is the extension point env services
-     * declare under; it ships as an empty map until the first service lands.
+     * The complete set of valid env-manifest keys as dot-paths, mirroring the
+     * app manifest's allow-list discipline. `services` is the extension point:
+     * each env-backed Service case contributes its own `services.{name}` key,
+     * so adding a service never edits this class — the enum already knows
+     * which services have an env-shared half to declare.
      *
-     * @var array<int, string>
+     * @return array<int, string>
      */
-    protected const ALLOWED_KEYS = ['domain', 'services', 'services.ivs'];
+    protected static function allowedKeys(): array
+    {
+        $serviceKeys = array_map(
+            fn (Service $service): string => 'services.' . $service->value,
+            array_filter(Service::cases(), fn (Service $service): bool => $service->envBacked()),
+        );
+
+        return ['domain', 'services', ...$serviceKeys];
+    }
 
     /** @var array<string, mixed>|null */
     protected static ?array $loaded = null;
@@ -209,7 +219,7 @@ class EnvManifest
 
     protected static function keyAllowed(string $path): bool
     {
-        foreach (static::ALLOWED_KEYS as $allowed) {
+        foreach (static::allowedKeys() as $allowed) {
             if ($allowed === $path) {
                 return true;
             }

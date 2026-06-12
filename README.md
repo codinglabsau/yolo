@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/codinglabsau/yolo/actions/workflows/test.yml"><img src="https://github.com/codinglabsau/yolo/actions/workflows/test.yml/badge.svg" alt="Tests"></a>
-  <a href="https://github.com/codinglabsau/yolo/actions/workflows/test.yml"><img src="https://img.shields.io/badge/coverage-%E2%89%A563%25-yellow" alt="Coverage (enforced minimum)"></a>
+  <a href="https://github.com/codinglabsau/yolo/actions/workflows/test.yml"><img src="https://img.shields.io/badge/coverage-%E2%89%A568%25-yellow" alt="Coverage (enforced minimum)"></a>
   <a href="https://github.com/codinglabsau/yolo/actions/workflows/analyse.yml"><img src="https://img.shields.io/badge/PHPStan-level%205-brightgreen" alt="PHPStan level 5"></a>
   <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
 </p>
@@ -21,7 +21,7 @@ YOLO deploys Laravel applications to AWS Fargate.
 Everything lives at **[codinglabsau.github.io/yolo](https://codinglabsau.github.io/yolo/)**:
 
 - [Getting Started](https://codinglabsau.github.io/yolo/guide/getting-started) — a Laravel app live on Fargate in under an hour
-- [Provisioning](https://codinglabsau.github.io/yolo/guide/provisioning) and [Building & Deploying](https://codinglabsau.github.io/yolo/guide/building-and-deploying)
+- [Provisioning](https://codinglabsau.github.io/yolo/guide/provisioning) — scope-first sync, the environment declaration and opt-in services — and [Building & Deploying](https://codinglabsau.github.io/yolo/guide/building-and-deploying)
 - [Deploying from GitHub Actions](https://codinglabsau.github.io/yolo/guide/ci-cd) — keyless OIDC, plus the `--check` drift gate for CI
 - [Command reference](https://codinglabsau.github.io/yolo/reference/commands) and [manifest reference](https://codinglabsau.github.io/yolo/reference/manifest)
 
