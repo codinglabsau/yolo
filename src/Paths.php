@@ -72,4 +72,15 @@ class Paths
     {
         return Helpers::keyedBucketName('config', exclusive: false);
     }
+
+    /**
+     * This app's claim file inside the env config bucket — the published
+     * record of which YOLO-provisioned services the app consumes. One object
+     * per app under `apps/`, so the env tier can list the prefix and evaluate
+     * the union of every app's claims.
+     */
+    public static function s3AppManifestKey(): string
+    {
+        return sprintf('apps/%s.yml', Manifest::name());
+    }
 }

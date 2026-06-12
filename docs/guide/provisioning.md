@@ -37,6 +37,8 @@ App manifests declare what each **app** needs. The environment-shared tier has a
 - **`yolo-environment-{environment}.yml`** — [the env manifest](/reference/manifest#the-environment-manifest-yolo-environment-environment-yml): the environment's canonical service domain and its env-shared services. `yolo.yml` is the app; `yolo-environment-production.yml` is the production environment. Seeded with defaults by the environment's first `sync` and **never touched by sync again** — every later edit is yours, made through the pull/push flow below.
 - **`.env`** — the env-shared secrets channel, the environment-tier sibling of each app's `.env.{environment}`. It holds *generated* service secrets (created on demand by the services that need them) and anything an env-shared service should read at provision time.
 
+The bucket carries one more class of object that is **not** yours to edit: each app's published claim file (`apps/{app}.yml` — the app's name and the [`services`](/reference/manifest#services) it consumes). Every `deploy` and every `sync:app` republishes it, so the environment tier always holds a live record of which apps consume which shared services.
+
 The edit flow mirrors app env files:
 
 ```bash
