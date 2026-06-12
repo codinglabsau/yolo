@@ -81,7 +81,6 @@ Enforcement is hard errors everywhere, never warnings:
 
 Retiring a service is therefore self-enforcing, with hard edges the whole way: remove it from each app's `yolo.yml` → `deploy`/`sync:app` (the app's per-service IAM melts away in the same pass) → remove the env-manifest entry and `push` (accepted once nothing is using it) → `sync:environment` plans the teardown for you to confirm.
 
-<<<<<<< HEAD
 ## Typesense — the environment's search cluster
 
 Declaring `services.typesense` (with its required `version`/`cpu`/`memory` shape — see [the manifest reference](/reference/manifest#the-environment-manifest-yolo-environment-environment-yml)) gives the environment a self-hosted, three-node [Typesense](https://typesense.org) cluster, shared by every app with `typesense` in its `services` list:
@@ -94,8 +93,6 @@ Declaring `services.typesense` (with its required `version`/`cpu`/`memory` shape
 
 Sizing rule of thumb: Typesense holds the whole index in memory at ~2–3× the raw indexed size, so a few hundred MB of records fits comfortably on 1 GB nodes; resizing is an env-manifest edit and a sync.
 
-=======
->>>>>>> origin/main
 ## Web application firewall
 
 Every environment with a load balancer gets a managed [AWS WAF](https://docs.aws.amazon.com/waf/latest/developerguide/what-is-aws-waf.html) web ACL on its ALB — automatically, with no manifest key. It's compulsory infrastructure, like the ALB itself: one web ACL protects every app sharing the load balancer.

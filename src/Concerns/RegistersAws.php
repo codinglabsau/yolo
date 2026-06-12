@@ -60,6 +60,7 @@ trait RegistersAws
         'resourceGroupsTaggingApiGlobal',
         'route53',
         's3',
+        'serviceDiscovery',
         'sns',
         'sqs',
         'sts',
