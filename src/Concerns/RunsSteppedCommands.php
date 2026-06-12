@@ -2,6 +2,7 @@
 
 namespace Codinglabs\Yolo\Concerns;
 
+use Spatie\Fork\Fork;
 use Codinglabs\Yolo\Change;
 use Illuminate\Support\Str;
 use Laravel\Prompts\Prompt;
@@ -23,6 +24,7 @@ use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Symfony\Component\Console\Command\Command as SymfonyCommand;
 
 use function Laravel\Prompts\info;
+use function Laravel\Prompts\error;
 use function Laravel\Prompts\intro;
 use function Laravel\Prompts\table;
 use function Laravel\Prompts\confirm;
@@ -238,11 +240,26 @@ trait RunsSteppedCommands
      * without writing; under `apply: true` the original input options flow
      * through unchanged.
      *
+     * The plan pass fans out across forked workers when it can: the two-pass
+     * contract already makes every step's plan read-only and independent of
+     * its siblings (each must survive nothing-exists-yet, so none may depend
+     * on another having run), which is exactly the order-independence
+     * concurrent execution needs. Apply always runs sequentially — once
+     * writes start, declaration order IS the dependency order.
+     *
      * @param  Collection<int, array{scope: string, step: Step}>  $plan
      * @return Collection<int, array{index: int, scope: string, step: Step, status: StepResult|string, elapsed: int, changes: array<int, Change>}>
      */
     protected function executePlan(Collection $plan, int $now, bool $apply): Collection
     {
+        $options = $apply
+            ? $this->input->getOptions()
+            : [...$this->input->getOptions(), 'dry-run' => true];
+
+        if (! $apply && static::planWorkers($plan->count()) > 1) {
+            return $this->executePlanConcurrently($plan, $options);
+        }
+
         $multiScope = $plan->pluck('scope')->unique()->count() > 1;
 
         $progress = $this->option('no-progress')
@@ -250,10 +267,6 @@ trait RunsSteppedCommands
             : progress(label: 'Starting first step...', steps: $plan->count());
 
         $progress?->start();
-
-        $options = $apply
-            ? $this->input->getOptions()
-            : [...$this->input->getOptions(), 'dry-run' => true];
 
         $ran = $plan->values()->map(function (array $entry, int $i) use ($progress, $now, $multiScope, $options): array {
             $step = $entry['step'];
@@ -273,6 +286,142 @@ trait RunsSteppedCommands
         $progress?->finish();
 
         return $ran;
+    }
+
+    /**
+     * How many processes the plan pass may fan out across, capped so a wide
+     * plan can't burst-throttle the AWS Describe APIs. One means "run
+     * sequentially": forking needs pcntl (absent on Windows builds), and the
+     * test suite pins YOLO_PLAN_SEQUENTIAL because MockHandler queues and
+     * captured-call references can't cross a process boundary.
+     */
+    protected static function planWorkers(int $steps): int
+    {
+        if (! extension_loaded('pcntl') || ! function_exists('pcntl_fork')) {
+            return 1;
+        }
+
+        if (! in_array(getenv('YOLO_PLAN_SEQUENTIAL'), [false, '', '0'], true)) {
+            return 1;
+        }
+
+        return min(8, $steps);
+    }
+
+    /**
+     * Fan the plan pass out across forked worker processes, one per step.
+     *
+     * Each child first releases the AWS clients it inherited (a forked copy
+     * of a live client shares the parent's open sockets), runs its step with
+     * the dry-run options, and ships back plain values only — the StepResult,
+     * the elapsed seconds and the recorded Changes. Failures are gathered
+     * rather than fail-fast, so a broken first sync surfaces every crashing
+     * step in one pass. Results are reassembled in declaration order, so the
+     * rendered plan is byte-identical to a sequential pass.
+     *
+     * @param  Collection<int, array{scope: string, step: Step}>  $plan
+     * @param  array<string, mixed>  $options
+     * @return Collection<int, array{index: int, scope: string, step: Step, status: StepResult|string, elapsed: int, changes: array<int, Change>}>
+     */
+    protected function executePlanConcurrently(Collection $plan, array $options): Collection
+    {
+        $entries = $plan->values();
+        $multiScope = $entries->pluck('scope')->unique()->count() > 1;
+
+        $progress = $this->option('no-progress')
+            ? null
+            : progress(
+                label: sprintf('Planning %d steps across %d workers...', $entries->count(), static::planWorkers($entries->count())),
+                steps: $entries->count()
+            );
+
+        $progress?->start();
+
+        $tasks = $entries->map(function (array $entry) use ($options, $multiScope): \Closure {
+            $label = static::planEntryLabel($entry, $multiScope);
+
+            return function () use ($entry, $options, $label): array {
+                $started = time();
+                $step = $entry['step'];
+
+                try {
+                    $status = $step($options);
+
+                    return [
+                        'label' => $label,
+                        'status' => $status,
+                        'elapsed' => time() - $started,
+                        'changes' => method_exists($step, 'changes') ? $step->changes() : [],
+                    ];
+                } catch (\Throwable $e) {
+                    return [
+                        'label' => $label,
+                        'error' => sprintf('%s: %s', $e::class, $e->getMessage()),
+                        'elapsed' => time() - $started,
+                    ];
+                }
+            };
+        });
+
+        $results = Fork::new()
+            ->concurrent(static::planWorkers($entries->count()))
+            ->before(child: static fn () => static::forgetAwsClients())
+            ->after(parent: function (mixed $output) use ($progress): void {
+                $progress?->label(sprintf('Planned %s', is_array($output) ? $output['label'] : 'step'))->advance();
+            })
+            ->run(...$tasks->all());
+
+        $progress?->finish();
+
+        $this->ensurePlanWorkersSucceeded($entries, $results);
+
+        return $entries->map(fn (array $entry, int $i): array => [
+            'index' => $i + 1,
+            'scope' => $entry['scope'],
+            'step' => $entry['step'],
+            'status' => $results[$i]['status'],
+            'elapsed' => $results[$i]['elapsed'],
+            'changes' => $results[$i]['changes'],
+        ]);
+    }
+
+    /**
+     * Surface every plan worker failure at once, then abort before the
+     * confirm gate. A worker reports an error when its step threw; one that
+     * died without reporting at all (a crash before the step ran, an OOM
+     * kill) comes back as a non-array. Gathering beats fail-fast here — a
+     * broken first sync names every crashing step in a single run.
+     *
+     * @param  Collection<int, array{scope: string, step: Step}>  $entries
+     * @param  array<int, mixed>  $results
+     */
+    protected function ensurePlanWorkersSucceeded(Collection $entries, array $results): void
+    {
+        $failures = [];
+
+        foreach ($entries->all() as $i => $entry) {
+            $result = $results[$i] ?? null;
+
+            if (is_array($result) && ! array_key_exists('error', $result)) {
+                continue;
+            }
+
+            $label = sprintf('%s · %s', $entry['scope'], static::normaliseStep($entry['step']));
+
+            $failures[] = is_array($result)
+                ? sprintf('%s — %s', $label, $result['error'])
+                : sprintf('%s — worker exited without reporting', $label);
+        }
+
+        if ($failures === []) {
+            return;
+        }
+
+        foreach ($failures as $failure) {
+            error($failure);
+        }
+
+        throw new \RuntimeException(sprintf('Plan failed for %d step(s).', count($failures)));
     }
 
     /**

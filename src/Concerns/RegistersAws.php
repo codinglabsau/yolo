@@ -32,6 +32,54 @@ use Aws\ResourceGroupsTaggingAPI\ResourceGroupsTaggingAPIClient;
 
 trait RegistersAws
 {
+    /**
+     * Every container key registerAwsServices() binds — the full client set a
+     * forked plan worker must release so each child process lazily constructs
+     * its own clients instead of inheriting the parent's. Pinned against the
+     * actual registrations by a test, so adding a client without listing it
+     * here fails fast.
+     *
+     * @var array<int, string>
+     */
+    public const AWS_CLIENT_BINDINGS = [
+        'acm',
+        'applicationAutoScaling',
+        'cloudWatch',
+        'cloudWatchLogs',
+        'cloudFront',
+        'ec2',
+        'elastiCache',
+        'ecr',
+        'ecs',
+        'eventBridge',
+        'elasticLoadBalancingV2',
+        'iam',
+        'rds',
+        'resourceGroupsTaggingApi',
+        'resourceGroupsTaggingApiGlobal',
+        'route53',
+        's3',
+        'sns',
+        'sqs',
+        'sts',
+        'wafV2',
+    ];
+
+    /**
+     * Drop every resolved AWS client instance. A forked child inherits the
+     * parent's resolved clients — and with them the parent's open curl
+     * sockets, which two processes must never share — so each plan worker
+     * calls this first. The singleton bindings survive, so clients rebuild
+     * lazily in the child with the same arguments (including the memoised
+     * credentials, which are plain values by that point).
+     */
+    public static function forgetAwsClients(): void
+    {
+        foreach (self::AWS_CLIENT_BINDINGS as $service) {
+            Helpers::app()->forgetInstance($service);
+        }
+    }
+
     protected function registerAwsServices(): void
     {
         // common arguments for all AWS clients
