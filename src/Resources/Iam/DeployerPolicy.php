@@ -14,6 +14,8 @@ use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
 use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Resources\S3\AssetBucket;
 use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
+use Codinglabs\Yolo\Resources\S3\S3ConfigBucket;
+use Codinglabs\Yolo\Resources\S3\EnvConfigBucket;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -109,9 +111,9 @@ class DeployerPolicy implements Resource, SynchronisesConfiguration
             $taskDefinitionArns[] = sprintf('arn:aws:ecs:%s:%s:task-definition/%s:*', $region, $accountId, $name);
         }
 
-        $assetBucketArn = sprintf('arn:aws:s3:::%s', (new AssetBucket())->name());
-        $configBucketArn = sprintf('arn:aws:s3:::%s', Paths::s3ConfigBucket());
-        $appManifestArn = sprintf('arn:aws:s3:::%s/%s', Paths::s3EnvConfigBucket(), Paths::s3AppManifestKey());
+        $assetBucketArn = (new AssetBucket())->arn();
+        $configBucketArn = (new S3ConfigBucket())->arn();
+        $appManifestArn = (new EnvConfigBucket())->arn() . '/' . Paths::s3AppManifestKey();
 
         $statements = [
             [

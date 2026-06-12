@@ -204,7 +204,7 @@ class S3LogsBucket implements Resource, SynchronisesConfiguration
                     'Effect' => 'Allow',
                     'Principal' => ['Service' => 'logdelivery.elasticloadbalancing.amazonaws.com'],
                     'Action' => 's3:PutObject',
-                    'Resource' => sprintf('arn:aws:s3:::%s/alb/*', $this->name()),
+                    'Resource' => $this->arn() . '/alb/*',
                     'Condition' => [
                         'StringEquals' => ['aws:SourceAccount' => $accountId],
                         'ArnLike' => [
