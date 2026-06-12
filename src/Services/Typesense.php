@@ -69,9 +69,11 @@ class Typesense extends ServiceDefinition
     }
 
     /**
-     * The manifest entry is the catalogue AND the cluster's shape — all
-     * three keys are required so an environment can never run an implicit
-     * version or sizing. Version bumps and resizes are manifest edits + a sync.
+     * The manifest entry follows the tasks.* conventions: `version` is the
+     * one required decision (an environment never runs an implicit search
+     * engine version — and a YOLO upgrade must never imply one), while
+     * `cpu`/`memory` are optional per-node sizing with the same value style
+     * as tasks.web (quoted or bare numerics, sensible defaults).
      */
     #[\Override]
     public function validateOffer(mixed $offer, string $filename): void
@@ -92,13 +94,16 @@ class Typesense extends ServiceDefinition
         }
 
         foreach (['cpu', 'memory'] as $key) {
-            if (! is_int($offer[$key] ?? null) || $offer[$key] <= 0) {
+            $value = $offer[$key] ?? null;
+
+            if ($value !== null && (! is_numeric($value) || (int) $value <= 0)) {
                 throw new IntegrityCheckException(sprintf(
-                    'services.typesense.%s in %s must be a positive integer (Fargate %s units, e.g. %s).',
+                    'services.typesense.%s in %s must be a positive number of Fargate %s units (e.g. %s), like tasks.web.%s.',
                     $key,
                     $filename,
                     $key,
-                    $key === 'cpu' ? '256' : '1024',
+                    $key === 'cpu' ? "'256'" : "'1024'",
+                    $key,
                 ));
             }
         }
@@ -139,6 +144,11 @@ class Typesense extends ServiceDefinition
         return is_string($version) && $version !== '' ? $version : null;
     }
 
+    /**
+     * Per-node sizing, tasks.web-style: optional in the manifest, defaulting
+     * to the seed shape (0.25 vCPU / 1 GB — comfortable for a few hundred MB
+     * of index; Typesense wants RAM ≈ 2-3× the raw indexed size).
+     */
     public static function cpu(): int
     {
         return (int) EnvManifest::get('services.typesense.cpu', 256);
