@@ -4,6 +4,7 @@ use Aws\Result;
 use Aws\MockHandler;
 use Aws\S3\S3Client;
 use Aws\Ec2\Ec2Client;
+use Aws\Ecr\EcrClient;
 use Aws\Ecs\EcsClient;
 use Aws\Iam\IamClient;
 use Aws\CommandInterface;
@@ -22,6 +23,7 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Aws\ElastiCache\ElastiCacheClient;
 use Aws\EventBridge\EventBridgeClient;
 use Codinglabs\Yolo\Services\Lifecycle;
+use Codinglabs\Yolo\Services\Typesense;
 use Codinglabs\Yolo\Resources\WafV2\WebAcl;
 use Symfony\Component\Console\Input\ArrayInput;
 use Aws\ApplicationAutoScaling\ApplicationAutoScalingClient;
@@ -91,12 +93,13 @@ function writeManifest(array $config, string $environment = 'testing'): void
 
     Helpers::app()->instance('environment', $environment);
 
-    // The env manifest and the service-claims registry memoise their AWS
-    // reads per process; every test that rewrites the app manifest gets a
-    // fresh slate so a previously mocked (or unmocked) read can't leak
-    // across cases.
+    // The env manifest, the service-claims registry and the Typesense admin
+    // key memoise their AWS reads per process; every test that rewrites the
+    // app manifest gets a fresh slate so a previously mocked (or unmocked)
+    // read can't leak across cases.
     EnvManifest::reset();
     Lifecycle::reset();
+    Typesense::reset();
 }
 
 /**
@@ -737,6 +740,50 @@ function bindRoutedEventBridgeClient(array $byCommand, array &$captured): void
 }
 
 /**
+ * Bind a mock ECR client with command-routed responses, capturing every call.
+ * A command's value may be a single Result/Throwable (repeated) or an array
+ * used as a queue. Mirrors bindRoutedS3Client.
+ *
+ * @param  array<string, Result|Throwable|array<int, Result|Throwable>>  $byCommand
+ * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+ */
+function bindRoutedEcrClient(array $byCommand, array &$captured): void
+{
+    $mock = new class($byCommand, $captured) extends MockHandler
+    {
+        /** @var array<string, int> */
+        private array $cursors = [];
+
+        public function __construct(protected array $byCommand, protected array &$captured) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            $name = $cmd->getName();
+            $this->captured[] = ['name' => $name, 'args' => $cmd->toArray()];
+
+            $entry = $this->byCommand[$name] ?? new Result();
+
+            if (is_array($entry)) {
+                $index = min($this->cursors[$name] ?? 0, count($entry) - 1);
+                $this->cursors[$name] = $index + 1;
+                $entry = $entry[$index];
+            }
+
+            return $entry instanceof Throwable
+                ? Create::rejectionFor($entry)
+                : Create::promiseFor($entry);
+        }
+    };
+
+    Helpers::app()->instance('ecr', new EcrClient([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+}
+
+/**
  * Bind the S3 + ECS world the service lifecycle reads: the env manifest body
  * (null = no manifest object), the published claim files (app => claimed
  * services), and the environment's clusters (app => has running tasks).
@@ -744,7 +791,7 @@ function bindRoutedEventBridgeClient(array $byCommand, array &$captured): void
  * independently of read order. `bucket: false` makes every S3 read throw
  * NoSuchBucket (the greenfield plan pass). S3 calls are captured by reference.
  *
- * @param  array{manifest?: string|null, claims?: array<string, array<int, string>>, clusters?: array<string, bool>, bucket?: bool}  $world
+ * @param  array{manifest?: string|null, claims?: array<string, array<int, string>>, clusters?: array<string, bool>, bucket?: bool, sharedEnv?: string|null}  $world
  * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
  */
 function bindServiceLifecycleWorld(array $world, array &$captured): void
@@ -758,6 +805,10 @@ function bindServiceLifecycleWorld(array $world, array &$captured): void
 
     if ($manifest !== null) {
         $byKey['yolo-environment-' . Helpers::environment() . '.yml'] = new Result(['Body' => $manifest]);
+    }
+
+    if (($world['sharedEnv'] ?? null) !== null) {
+        $byKey['.env.environment.' . Helpers::environment()] = new Result(['Body' => $world['sharedEnv']]);
     }
 
     foreach ($claims as $app => $services) {
@@ -792,6 +843,7 @@ function bindServiceLifecycleWorld(array $world, array &$captured): void
 
             return match (true) {
                 $cmd->getName() === 'ListObjectsV2' => Create::promiseFor($this->listing),
+                $cmd->getName() === 'PutObject' => Create::promiseFor(new Result()),
                 $cmd->getName() === 'HeadObject' && isset($this->byKey[$cmd['Key']]) => Create::promiseFor(new Result()),
                 isset($this->byKey[$cmd['Key'] ?? '']) => Create::promiseFor($this->byKey[$cmd['Key']]),
                 default => Create::rejectionFor(new S3Exception('Not found', new AwsCommand($cmd->getName()), [

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo\Enums;
 
 use Codinglabs\Yolo\Services\Ivs;
+use Codinglabs\Yolo\Services\Typesense;
 use Codinglabs\Yolo\Services\Rekognition;
 use Codinglabs\Yolo\Services\MediaConvert;
 use Codinglabs\Yolo\Services\ServiceDefinition;
@@ -27,6 +28,7 @@ enum Service: string
     case IVS = 'ivs';
     case MEDIA_CONVERT = 'mediaconvert';
     case REKOGNITION = 'rekognition';
+    case TYPESENSE = 'typesense';
 
     /**
      * @return array<int, string>
@@ -47,12 +49,22 @@ enum Service: string
         return array_map(fn (Service $service): ServiceDefinition => $service->definition(), self::cases());
     }
 
+    /**
+     * This service's key in the environment manifest — where the environment
+     * declares it runs the service (`services.{name}`).
+     */
+    public function envManifestKey(): string
+    {
+        return 'services.' . $this->value;
+    }
+
     public function definition(): ServiceDefinition
     {
         return match ($this) {
             self::IVS => new Ivs(),
             self::MEDIA_CONVERT => new MediaConvert(),
             self::REKOGNITION => new Rekognition(),
+            self::TYPESENSE => new Typesense(),
         };
     }
 }

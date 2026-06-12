@@ -28,4 +28,25 @@ class Ecr
 
         return $repositories[0];
     }
+
+    /**
+     * Whether an image with this tag exists in the repository. A missing
+     * repository reads as a missing image — on a greenfield plan pass the
+     * repo's own create is still pending, so the image can't exist either.
+     */
+    public static function imageExists(string $repository, string $tag): bool
+    {
+        try {
+            return Aws::ecr()->describeImages([
+                'repositoryName' => $repository,
+                'imageIds' => [['imageTag' => $tag]],
+            ])['imageDetails'] !== [];
+        } catch (AwsException $e) {
+            if (in_array($e->getAwsErrorCode(), ['ImageNotFoundException', 'RepositoryNotFoundException'], true)) {
+                return false;
+            }
+
+            throw $e;
+        }
+    }
 }

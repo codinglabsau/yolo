@@ -96,7 +96,7 @@ class EnvironmentManifestPushCommand extends Command
     protected function ensureRemovedOffersUnclaimed(array $current, array $new): bool
     {
         foreach (Service::cases() as $service) {
-            $path = 'services.' . $service->value;
+            $path = $service->envManifestKey();
             if (! Arr::has($current, $path)) {
                 continue;
             }

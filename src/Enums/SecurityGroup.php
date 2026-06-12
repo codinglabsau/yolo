@@ -10,4 +10,5 @@ enum SecurityGroup: string
     case LOAD_BALANCER_SECURITY_GROUP = 'load-balancer-security-group';
     case RDS_SECURITY_GROUP = 'rds-security-group';
     case CACHE_SECURITY_GROUP = 'cache-security-group';
+    case TYPESENSE_SECURITY_GROUP = 'typesense-security-group';
 }

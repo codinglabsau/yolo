@@ -21,6 +21,7 @@ use Aws\CloudWatch\CloudWatchClient;
 use Aws\ElastiCache\ElastiCacheClient;
 use Aws\EventBridge\EventBridgeClient;
 use Aws\CloudWatchLogs\CloudWatchLogsClient;
+use Aws\ServiceDiscovery\ServiceDiscoveryClient;
 use Aws\ApplicationAutoScaling\ApplicationAutoScalingClient;
 use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
 use Aws\ResourceGroupsTaggingAPI\ResourceGroupsTaggingAPIClient;
@@ -296,6 +297,25 @@ class Aws
             $tags,
             fn () => static::eventBridge()->listTagsForResource(['ResourceARN' => $arn])['Tags'] ?? [],
             fn (array $missing) => static::eventBridge()->tagResource([
+                'ResourceARN' => $arn,
+                'Tags' => static::keyValueTags($missing),
+            ]),
+            $apply,
+        );
+    }
+
+    /**
+     * Synchronise tags on a Cloud Map (Service Discovery) namespace or
+     * service, addressed by its ARN.
+     *
+     * @return array<string, string>
+     */
+    public static function synchroniseServiceDiscoveryTags(string $arn, array $tags, bool $apply): array
+    {
+        return static::reconcileTags(
+            $tags,
+            fn () => static::serviceDiscovery()->listTagsForResource(['ResourceARN' => $arn])['Tags'] ?? [],
+            fn (array $missing) => static::serviceDiscovery()->tagResource([
                 'ResourceARN' => $arn,
                 'Tags' => static::keyValueTags($missing),
             ]),
@@ -587,6 +607,11 @@ class Aws
     public static function cloudWatch(): CloudWatchClient
     {
         return Helpers::app('cloudWatch');
+    }
+
+    public static function serviceDiscovery(): ServiceDiscoveryClient
+    {
+        return Helpers::app('serviceDiscovery');
     }
 
     public static function cloudWatchLogs(): CloudWatchLogsClient

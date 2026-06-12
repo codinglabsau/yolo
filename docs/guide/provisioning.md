@@ -81,6 +81,18 @@ Enforcement is hard errors everywhere, never warnings:
 
 Retiring a service is therefore self-enforcing, with hard edges the whole way: remove it from each app's `yolo.yml` → `deploy`/`sync:app` (the app's per-service IAM melts away in the same pass) → remove the env-manifest entry and `push` (accepted once nothing is using it) → `sync:environment` plans the teardown for you to confirm.
 
+## Typesense — the environment's search cluster
+
+Declaring `services.typesense` (a pinned `version` plus optional `cpu`/`memory` per-node sizing, `tasks.*`-style — see [the manifest reference](/reference/manifest#the-environment-manifest-yolo-environment-environment-yml)) gives the environment a self-hosted, three-node [Typesense](https://typesense.org) cluster, shared by every app with `typesense` in its `services` list:
+
+- **Durable by replication, not by disk.** The three single-task ECS services (AZ-spread, one per public subnet, arm64) form a Raft quorum: writes commit on 2-of-3, and a replaced node catches up from the surviving majority over the network — the persistence model that works *with* Fargate's ephemeral storage. Losing one node degrades nothing; losing two degrades to read-only until a node returns. The search index is a rebuildable projection of your database (`scout:import`), never a source of truth.
+- **Stable peer addresses** come from a private Cloud Map DNS namespace (`{env}.internal`): each node owns `typesense-{n}.{env}.internal`, re-resolving to its replacement task within seconds.
+- **The image is the secret boundary.** Sync seed-generates an admin API key into the env-shared `.env`, then builds `typesense/typesense:{version}` plus a config file carrying that key into an env-scoped ECR repository, content-tagged by version + key fingerprint — unchanged inputs never rebuild, and a version bump or key rotation re-tags the image and **rolls the nodes one at a time**, each waiting for stability before the next (the quorum holds throughout). The task definition carries no secret.
+- **The env services cluster** (`yolo-{env}-services`) hosts the node tasks, kept apart from the per-app clusters so app liveness derivation never mistakes shared-service tasks for an app — which is also why `services` is a reserved app name.
+- Node-to-node Raft traffic (8107) is locked to the node security group itself; the search API (8108) admits the environment's ALB. Public ingress, per-app scoped keys and build-time injection are the consumption half of the contract.
+
+Sizing rule of thumb: Typesense holds the whole index in memory at ~2–3× the raw indexed size, so a few hundred MB of records fits comfortably on 1 GB nodes; resizing is an env-manifest edit and a sync.
+
 ## Web application firewall
 
 Every environment with a load balancer gets a managed [AWS WAF](https://docs.aws.amazon.com/waf/latest/developerguide/what-is-aws-waf.html) web ACL on its ALB — automatically, with no manifest key. It's compulsory infrastructure, like the ALB itself: one web ACL protects every app sharing the load balancer.

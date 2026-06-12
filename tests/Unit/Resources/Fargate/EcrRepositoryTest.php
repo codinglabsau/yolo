@@ -3,44 +3,10 @@
 declare(strict_types=1);
 
 use Aws\Result;
-use Aws\MockHandler;
-use Aws\Ecr\EcrClient;
-use Aws\CommandInterface;
-use Codinglabs\Yolo\Helpers;
-use GuzzleHttp\Promise\Create;
 use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
 
-/**
- * Bind a mock ECR client with command-routed responses, capturing every call.
- *
- * @param  array<string, Result>  $byCommand
- * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
- */
-function bindRoutedEcrClient(array $byCommand, array &$captured): void
-{
-    $mock = new class($byCommand, $captured) extends MockHandler
-    {
-        /**
-         * @param  array<string, Result>  $byCommand
-         * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
-         */
-        public function __construct(protected array $byCommand, protected array &$captured) {}
-
-        public function __invoke(CommandInterface $cmd, $request)
-        {
-            $this->captured[] = ['name' => $cmd->getName(), 'args' => $cmd->toArray()];
-
-            return Create::promiseFor($this->byCommand[$cmd->getName()] ?? new Result());
-        }
-    };
-
-    Helpers::app()->instance('ecr', new EcrClient([
-        'region' => 'ap-southeast-2',
-        'version' => 'latest',
-        'credentials' => false,
-        'handler' => $mock,
-    ]));
-}
+// bindRoutedEcrClient lives in tests/Pest.php — shared with the Typesense
+// image/repository tests, which need it under --parallel.
 
 beforeEach(function (): void {
     writeManifest([

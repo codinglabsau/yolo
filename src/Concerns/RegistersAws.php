@@ -25,6 +25,7 @@ use Aws\EventBridge\EventBridgeClient;
 use Aws\Credentials\CredentialProvider;
 use GuzzleHttp\Exception\ConnectException;
 use Aws\CloudWatchLogs\CloudWatchLogsClient;
+use Aws\ServiceDiscovery\ServiceDiscoveryClient;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Aws\ApplicationAutoScaling\ApplicationAutoScalingClient;
 use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
@@ -59,6 +60,7 @@ trait RegistersAws
         'resourceGroupsTaggingApiGlobal',
         'route53',
         's3',
+        'serviceDiscovery',
         'sns',
         'sqs',
         'sts',
@@ -110,6 +112,7 @@ trait RegistersAws
         Helpers::app()->singleton('resourceGroupsTaggingApiGlobal', fn (): ResourceGroupsTaggingAPIClient => new ResourceGroupsTaggingAPIClient([...$arguments, 'region' => 'us-east-1']));
         Helpers::app()->singleton('route53', fn (): Route53Client => new Route53Client($arguments));
         Helpers::app()->singleton('s3', fn (): S3Client => new S3Client($arguments));
+        Helpers::app()->singleton('serviceDiscovery', fn (): ServiceDiscoveryClient => new ServiceDiscoveryClient($arguments));
         Helpers::app()->singleton('sns', fn (): SnsClient => new SnsClient($arguments));
         Helpers::app()->singleton('sqs', fn (): SqsClient => new SqsClient($arguments));
         Helpers::app()->singleton('sts', fn (): StsClient => new StsClient($arguments));
