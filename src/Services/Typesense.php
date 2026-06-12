@@ -21,9 +21,9 @@ use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
  * on 2-of-3, a replaced node catches up from the surviving majority over the
  * network, so plain ephemeral Fargate storage is durable by replication
  * rather than by disk. Node count is hardcoded at three (Raft wants odd
- * quorums); the offer declares version and per-node sizing.
+ * quorums); the env-manifest entry declares version and per-node sizing.
  *
- * This definition is also the service's knowledge centre: the offer's shape,
+ * This definition is also the service's knowledge centre: the manifest entry's shape,
  * the admin key (seed-generated into the env-shared .env), the content-tagged
  * image, and the stable Cloud Map node addresses all resolve from here.
  */
@@ -69,9 +69,9 @@ class Typesense extends ServiceDefinition
     }
 
     /**
-     * The offer is the catalogue entry AND the cluster's shape — all three
-     * keys are required so an environment can never run an implicit version
-     * or sizing. Version bumps and resizes are manifest edits + a sync.
+     * The manifest entry is the catalogue AND the cluster's shape — all
+     * three keys are required so an environment can never run an implicit
+     * version or sizing. Version bumps and resizes are manifest edits + a sync.
      */
     #[\Override]
     public function validateOffer(mixed $offer, string $filename): void

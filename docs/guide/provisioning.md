@@ -83,7 +83,7 @@ Retiring a service is therefore self-enforcing, with hard edges the whole way: r
 
 ## Typesense — the environment's search cluster
 
-Offering `services.typesense` (with its required `version`/`cpu`/`memory` shape — see [the manifest reference](/reference/manifest#the-environment-manifest-yolo-environment-environment-yml)) gives the environment a self-hosted, three-node [Typesense](https://typesense.org) cluster, shared by every app that claims `typesense`:
+Declaring `services.typesense` (with its required `version`/`cpu`/`memory` shape — see [the manifest reference](/reference/manifest#the-environment-manifest-yolo-environment-environment-yml)) gives the environment a self-hosted, three-node [Typesense](https://typesense.org) cluster, shared by every app with `typesense` in its `services` list:
 
 - **Durable by replication, not by disk.** The three single-task ECS services (AZ-spread, one per public subnet, arm64) form a Raft quorum: writes commit on 2-of-3, and a replaced node catches up from the surviving majority over the network — the persistence model that works *with* Fargate's ephemeral storage. Losing one node degrades nothing; losing two degrades to read-only until a node returns. The search index is a rebuildable projection of your database (`scout:import`), never a source of truth.
 - **Stable peer addresses** come from a private Cloud Map DNS namespace (`{env}.internal`): each node owns `typesense-{n}.{env}.internal`, re-resolving to its replacement task within seconds.
