@@ -219,7 +219,7 @@ class Typesense extends ServiceDefinition
         try {
             $body = (string) Aws::s3()->getObject([
                 'Bucket' => Paths::s3EnvConfigBucket(),
-                'Key' => static::sharedEnvKey(),
+                'Key' => Paths::s3SharedEnvKey(),
             ])['Body'];
         } catch (S3Exception $e) {
             if (S3::isNotFound($e)) {
@@ -232,15 +232,6 @@ class Typesense extends ServiceDefinition
         $key = Dotenv::parse($body)[static::ADMIN_KEY_NAME] ?? null;
 
         return static::$adminKey = (is_string($key) && $key !== '' ? $key : null);
-    }
-
-    /**
-     * The env-shared .env's object key in the env config bucket — the same
-     * .env.environment.{environment} name it carries on disk.
-     */
-    public static function sharedEnvKey(): string
-    {
-        return sprintf('.env.environment.%s', Helpers::environment());
     }
 
     /**

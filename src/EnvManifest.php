@@ -59,10 +59,10 @@ class EnvManifest
                 continue;
             }
 
-            $serviceKeys[] = 'services.' . $service->value;
+            $serviceKeys[] = $service->envManifestKey();
 
             foreach ($definition->offerKeys() as $key) {
-                $serviceKeys[] = sprintf('services.%s.%s', $service->value, $key);
+                $serviceKeys[] = $service->envManifestKey() . '.' . $key;
             }
         }
 
@@ -162,7 +162,7 @@ class EnvManifest
         // offer (a scalar/list where a map belongs, a missing required key)
         // before it can become the environment's declared truth.
         foreach (Service::cases() as $service) {
-            $path = 'services.' . $service->value;
+            $path = $service->envManifestKey();
 
             if ($service->definition()->envBacked() && Arr::has($manifest, $path)) {
                 $service->definition()->validateOffer(Arr::get($manifest, $path), static::filename());

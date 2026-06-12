@@ -50,7 +50,7 @@ class SyncTypesenseAdminKeyStep implements Step
 
         Aws::s3()->putObject([
             'Bucket' => Paths::s3EnvConfigBucket(),
-            'Key' => Typesense::sharedEnvKey(),
+            'Key' => Paths::s3SharedEnvKey(),
             'Body' => $this->bodyWithKey(),
         ]);
 
@@ -82,7 +82,7 @@ class SyncTypesenseAdminKeyStep implements Step
         try {
             return (string) Aws::s3()->getObject([
                 'Bucket' => Paths::s3EnvConfigBucket(),
-                'Key' => Typesense::sharedEnvKey(),
+                'Key' => Paths::s3SharedEnvKey(),
             ])['Body'];
         } catch (S3Exception $e) {
             if (S3::isNotFound($e)) {

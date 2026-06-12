@@ -49,7 +49,7 @@ class Lifecycle
 
     public static function state(Service $service): ServiceState
     {
-        $declared = EnvManifest::has('services.' . $service->value);
+        $declared = EnvManifest::has($service->envManifestKey());
         $using = static::liveAppsUsing($service);
 
         // Reachable only by editing the env manifest outside environment:manifest:push
