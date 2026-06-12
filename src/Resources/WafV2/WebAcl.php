@@ -226,7 +226,8 @@ class WebAcl implements Resource, SynchronisesConfiguration
     /**
      * The environment's search host, when its rate handling is active: the
      * env manifest declares a domain AND the typesense service is on
-     * (offered ∧ claimed). While inactive the general rate rule covers
+     * (declared by the env manifest, in use by a running app). While inactive
+     * the general rate rule covers
      * everything and no search rule exists.
      */
     protected function searchHost(): ?string

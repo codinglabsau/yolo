@@ -40,7 +40,7 @@ it('adds the search rate rule and carves the search host out of the general rate
         ->and($rules['yolo-rate-limit']['Statement']['RateBasedStatement']['ScopeDownStatement']['NotStatement']['Statement']['ByteMatchStatement']['SearchString'])->toBe('search.example.com.au');
 });
 
-it('keeps the baseline rule set untouched while typesense is not offered and claimed', function (): void {
+it('keeps the baseline rule set untouched while the environment is not running typesense', function (): void {
     $captured = [];
     bindServiceLifecycleWorld([
         'manifest' => "domain: example.com.au\nservices: {  }\n",

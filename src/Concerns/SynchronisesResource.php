@@ -65,8 +65,8 @@ trait SynchronisesResource
 
     /**
      * The teardown mirror of syncResource(): delete the resource when its gate
-     * has turned off (a service no longer offered ∧ claimed, an app-side claim
-     * dropped). Absent already ⇒ SKIPPED, so a torn-down service stays quiet on
+     * has turned off (the environment no longer runs the service, or this app
+     * stopped using it). Absent already ⇒ SKIPPED, so a torn-down service stays quiet on
      * every later sync. The Change is recorded before the dry-run guard so the
      * plan and apply passes agree and the step survives the pending-only prune.
      */
