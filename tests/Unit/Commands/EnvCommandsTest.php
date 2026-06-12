@@ -1,9 +1,12 @@
 <?php
 
 use Aws\Result;
+use Aws\Command;
 use Laravel\Prompts\Key;
 use Codinglabs\Yolo\Paths;
 use Laravel\Prompts\Prompt;
+use GuzzleHttp\Psr7\Response;
+use Aws\S3\Exception\S3Exception;
 use Codinglabs\Yolo\Commands\EnvPullCommand;
 use Codinglabs\Yolo\Commands\EnvPushCommand;
 
@@ -92,4 +95,43 @@ it('uploads nothing when the diff is declined and keeps the local file', functio
     expect(array_column($captured, 'name'))->not->toContain('PutObject');
     expect(file_exists(Paths::base('.env.testing')))->toBeTrue();
     expect(Prompt::content())->toContain('Nothing uploaded');
+});
+
+it('treats a missing bucket copy as a first push — warns, diffs against nothing, uploads on confirm', function (): void {
+    // Upload confirm + delete-local confirm, both yes-by-default.
+    Prompt::fake([Key::ENTER, Key::ENTER]);
+    file_put_contents(Paths::base('.env.testing'), "APP_KEY=first\n");
+
+    $captured = [];
+    bindRoutedS3Client([
+        'GetObject' => new S3Exception('Not Found', new Command('GetObject'), [
+            'response' => new Response(404),
+        ]),
+        'PutObject' => new Result(),
+    ], $captured);
+
+    runEnvironmentFileCommand(new EnvPushCommand());
+
+    expect(Prompt::content())->toContain('does not exist in the config bucket yet');
+
+    $put = collect($captured)->firstWhere('name', 'PutObject');
+
+    expect((string) $put['args']['Body'])->toBe("APP_KEY=first\n");
+    expect(file_exists(Paths::base('.env.testing')))->toBeFalse();
+});
+
+it('throws on a denied bucket read instead of treating it as a first push', function (): void {
+    Prompt::fake();
+    file_put_contents(Paths::base('.env.testing'), "APP_KEY=value\n");
+
+    $captured = [];
+    bindRoutedS3Client([
+        'GetObject' => new S3Exception('Access Denied', new Command('GetObject'), [
+            'code' => 'AccessDenied',
+            'response' => new Response(403),
+        ]),
+    ], $captured);
+
+    expect(fn () => runEnvironmentFileCommand(new EnvPushCommand()))->toThrow(S3Exception::class);
+    expect(array_column($captured, 'name'))->not->toContain('PutObject');
 });

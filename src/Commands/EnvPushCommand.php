@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Commands;
 use Dotenv\Dotenv;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Aws\S3;
 use Aws\S3\Exception\S3Exception;
 use Symfony\Component\Console\Input\InputArgument;
 use Codinglabs\Yolo\Steps\Build\RetrieveEnvFileStep;
@@ -13,8 +14,6 @@ use Codinglabs\Yolo\Concerns\ManagesEnvironmentFiles;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\error;
-use function Laravel\Prompts\table;
-use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\warning;
 
 class EnvPushCommand extends Command
@@ -34,7 +33,7 @@ class EnvPushCommand extends Command
         $environment = $this->argument('environment');
         $filename = ".env.$environment";
         $path = Paths::base($filename);
-        $temporaryFilename = "$filename.tmp";
+        $temporaryPath = Paths::base("$filename.tmp");
 
         if (! file_exists($path)) {
             error("Could not find $filename");
@@ -42,43 +41,30 @@ class EnvPushCommand extends Command
             return;
         }
 
+        $current = [];
+
         try {
             (new RetrieveEnvFileStep())([
-                'save-as' => Paths::base($temporaryFilename),
+                'save-as' => $temporaryPath,
             ]);
 
-            note('Comparing changes...');
-
-            $oldContents = Dotenv::parse(file_get_contents(Paths::base($temporaryFilename)));
-            $newContents = Dotenv::parse(file_get_contents($path));
-            $differences = collect($oldContents)
-                ->diffAssoc($newContents)
-                ->union(collect($newContents)->diffAssoc($oldContents))
-                ->keys();
-
-            if ($differences->isNotEmpty()) {
-                table(
-                    ['Key', 'Current Value', 'New Value'],
-                    $differences->map(fn ($key): array => [
-                        $key,
-                        $oldContents[$key] ?? null,
-                        $newContents[$key] ?? null,
-                    ])->toArray()
-                );
+            $current = Dotenv::parse((string) file_get_contents($temporaryPath));
+        } catch (S3Exception $e) {
+            // Only genuine absence reads as "first push" — a denied or
+            // transient read must never silently diff against nothing.
+            if (! S3::isNotFound($e)) {
+                throw $e;
             }
 
-            $confirm = $differences->isEmpty()
-                ? confirm('No changes detected - do you want to upload anyway?')
-                : confirm('Are you sure you want to upload these changes?');
+            warning("$filename does not exist in the config bucket yet.");
+        }
 
-            if (! $confirm) {
-                unlink(Paths::base($temporaryFilename));
-                info('🐥 Nothing uploaded.');
+        $new = Dotenv::parse((string) file_get_contents($path));
 
-                return;
-            }
-        } catch (S3Exception) {
-            warning("$filename does not exist in the config bucket.");
+        if (! $this->confirmDifferences($current, $new, $filename)) {
+            $this->deleteTemporaryCopy($temporaryPath);
+
+            return;
         }
 
         note(sprintf('Uploading %s → s3://%s/%s...', $filename, Paths::s3ConfigBucket(), $filename));
@@ -90,10 +76,17 @@ class EnvPushCommand extends Command
                 'Key' => $filename,
             ]);
 
-        unlink(Paths::base($temporaryFilename));
+        $this->deleteTemporaryCopy($temporaryPath);
 
         info('Uploaded successfully.');
 
         $this->confirmDeleteLocal($path, $filename);
+    }
+
+    protected function deleteTemporaryCopy(string $temporaryPath): void
+    {
+        if (file_exists($temporaryPath)) {
+            unlink($temporaryPath);
+        }
     }
 }
