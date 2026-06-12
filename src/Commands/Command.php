@@ -274,7 +274,7 @@ abstract class Command extends SymfonyCommand
 
         $missing = array_values(array_filter(
             $envBacked,
-            fn (string $service): bool => ! EnvManifest::has('services.' . $service),
+            fn (string $service): bool => ! EnvManifest::has(Service::from($service)->envManifestKey()),
         ));
 
         if ($missing === []) {

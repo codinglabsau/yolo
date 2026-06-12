@@ -49,6 +49,15 @@ enum Service: string
         return array_map(fn (Service $service): ServiceDefinition => $service->definition(), self::cases());
     }
 
+    /**
+     * This service's key in the environment manifest — where the environment
+     * declares it runs the service (`services.{name}`).
+     */
+    public function envManifestKey(): string
+    {
+        return 'services.' . $this->value;
+    }
+
     public function definition(): ServiceDefinition
     {
         return match ($this) {

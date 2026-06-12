@@ -74,6 +74,17 @@ class Paths
     }
 
     /**
+     * The env-shared .env — generated service secrets, the environment-tier
+     * sibling of each app's env file. The same .env.environment.{environment}
+     * name in the bucket and on disk, with the environment in the filename so
+     * a pulled copy can never be pushed at the wrong environment.
+     */
+    public static function s3SharedEnvKey(): string
+    {
+        return sprintf('.env.environment.%s', Helpers::environment());
+    }
+
+    /**
      * This app's claim file inside the env config bucket — the published
      * record of which YOLO-provisioned services the app consumes. One object
      * per app under `apps/`, so the env tier can list the prefix and evaluate

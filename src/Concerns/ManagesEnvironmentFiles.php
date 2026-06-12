@@ -8,7 +8,6 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Aws\S3;
 use Illuminate\Support\Arr;
-use Codinglabs\Yolo\Helpers;
 use Aws\S3\Exception\S3Exception;
 
 use function Laravel\Prompts\info;
@@ -31,7 +30,7 @@ trait ManagesEnvironmentFiles
      */
     protected function sharedEnvFilename(): string
     {
-        return sprintf('.env.environment.%s', Helpers::environment());
+        return Paths::s3SharedEnvKey();
     }
 
     /**
