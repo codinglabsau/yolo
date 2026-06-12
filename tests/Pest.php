@@ -14,9 +14,11 @@ use Codinglabs\Yolo\EnvManifest;
 use Symfony\Component\Yaml\Yaml;
 use Aws\CloudFront\CloudFrontClient;
 use Aws\CloudWatch\CloudWatchClient;
+use Codinglabs\Yolo\Commands\Command;
 use Codinglabs\Yolo\Enums\StepResult;
 use Aws\ElastiCache\ElastiCacheClient;
 use Codinglabs\Yolo\Resources\WafV2\WebAcl;
+use Symfony\Component\Console\Input\ArrayInput;
 use Aws\ApplicationAutoScaling\ApplicationAutoScalingClient;
 use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
 use Aws\ResourceGroupsTaggingAPI\ResourceGroupsTaggingAPIClient;
@@ -665,4 +667,19 @@ function desiredWafRules(): array
     bindRoutedWafV2Client(['ListIPSets' => wafIpSetsResult()], $captured);
 
     return (new WebAcl())->desiredRules();
+}
+
+/**
+ * Run an environment-file command's handle() directly with a bound input —
+ * skipping the base execute() plumbing (auth, STS guard, manifest checks) so
+ * tests exercise the command's own behaviour against mocked AWS only.
+ */
+function runEnvironmentFileCommand(Command $command, string $environment = 'testing'): void
+{
+    $command->input = new ArrayInput(
+        ['environment' => $environment],
+        $command->getDefinition(),
+    );
+
+    $command->handle();
 }
