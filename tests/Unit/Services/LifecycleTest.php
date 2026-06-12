@@ -23,7 +23,7 @@ it('provisions when the env manifest offers the service and a live app claims it
     ], $captured);
 
     expect(Lifecycle::state(Service::IVS))->toBe(ServiceState::Provision);
-    expect(Lifecycle::activeClaimants(Service::IVS))->toBe(['my-app']);
+    expect(Lifecycle::liveAppsUsing(Service::IVS))->toBe(['my-app']);
 });
 
 it('tears down when the offer is present but no live app claims it', function (): void {
@@ -48,7 +48,7 @@ it('tears down when the service is not offered and every live app has published'
     expect(Lifecycle::state(Service::IVS))->toBe(ServiceState::Teardown);
 });
 
-it('a dead app\'s stale claim cannot hold the offer — claims only count while the cluster runs tasks', function (): void {
+it('a dead app cannot keep a service alive — only apps with running tasks count', function (): void {
     $captured = [];
     bindServiceLifecycleWorld([
         'manifest' => "services:\n  ivs: {}\n",
@@ -57,11 +57,11 @@ it('a dead app\'s stale claim cannot hold the offer — claims only count while 
         'clusters' => ['my-app' => false],
     ], $captured);
 
-    expect(Lifecycle::activeClaimants(Service::IVS))->toBe([]);
+    expect(Lifecycle::liveAppsUsing(Service::IVS))->toBe([]);
     expect(Lifecycle::state(Service::IVS))->toBe(ServiceState::Teardown);
 });
 
-it('retains (blocks teardown) while a live app has not published its claim file', function (): void {
+it('retains (blocks teardown) while a running app has not published its services yet', function (): void {
     $captured = [];
     bindServiceLifecycleWorld([
         'manifest' => "services:\n  ivs: {}\n",
@@ -94,11 +94,11 @@ it('reads a greenfield environment (no config bucket) as an empty registry and t
     // Not offered, no claims, no live apps → Teardown state; with nothing
     // existing every step lands on SKIPPED. The point: no crash, no throw.
     expect(Lifecycle::state(Service::IVS))->toBe(ServiceState::Teardown);
-    expect(Lifecycle::activeClaimants(Service::IVS))->toBe([]);
+    expect(Lifecycle::liveAppsUsing(Service::IVS))->toBe([]);
     expect(Lifecycle::unpublishedLiveApps())->toBe([]);
 });
 
-it('hard-fails when live apps claim a service the env manifest no longer offers', function (): void {
+it('hard-fails when running apps still use a service the env manifest no longer declares', function (): void {
     $captured = [];
     bindServiceLifecycleWorld([
         'manifest' => "services: {  }\n",
@@ -107,10 +107,10 @@ it('hard-fails when live apps claim a service the env manifest no longer offers'
     ], $captured);
 
     expect(fn (): ServiceState => Lifecycle::state(Service::IVS))
-        ->toThrow(IntegrityCheckException::class, 'no longer offers services.ivs');
+        ->toThrow(IntegrityCheckException::class, 'no longer declares services.ivs');
 });
 
-it('hard-fails on a malformed claim file instead of reading it as no claims', function (): void {
+it('hard-fails on an unreadable services file instead of reading it as unused', function (): void {
     $captured = [];
     bindRoutedS3Client([
         'GetObject' => [

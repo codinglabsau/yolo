@@ -95,7 +95,7 @@ it('uploads nothing when the diff is declined', function (): void {
     expect(Prompt::content())->toContain('Nothing uploaded');
 });
 
-it('refuses to remove an offer while a live app still claims the service, naming the claimant', function (): void {
+it('refuses to remove a service a running app still uses, naming the app', function (): void {
     Prompt::fake();
     file_put_contents(EnvManifest::localPath(), "services: {  }\n");
 
@@ -113,7 +113,7 @@ it('refuses to remove an offer while a live app still claims the service, naming
         ->toContain('my-app');
 });
 
-it('refuses to remove an offer while a live app has not published its claim file', function (): void {
+it('refuses to remove a service while a running app has not published what it uses', function (): void {
     Prompt::fake();
     file_put_contents(EnvManifest::localPath(), "services: {  }\n");
 
@@ -128,10 +128,10 @@ it('refuses to remove an offer while a live app has not published its claim file
 
     expect(array_column($captured, 'name'))->not->toContain('PutObject');
     expect(Prompt::content())->toContain("Can't remove services.ivs")
-        ->toContain('not published');
+        ->toContain("hasn't deployed");
 });
 
-it('allows removing an offer once no live app claims the service', function (): void {
+it('allows removing a service once no running app uses it', function (): void {
     Prompt::fake([Key::ENTER, Key::ENTER]);
     file_put_contents(EnvManifest::localPath(), "services: {  }\n");
 
@@ -147,7 +147,7 @@ it('allows removing an offer once no live app claims the service', function (): 
     expect(array_column($captured, 'name'))->toContain('PutObject');
 });
 
-it('a dead app\'s stale claim does not block removing the offer', function (): void {
+it('a dead app does not block removing a service', function (): void {
     Prompt::fake([Key::ENTER, Key::ENTER]);
     file_put_contents(EnvManifest::localPath(), "services: {  }\n");
 
