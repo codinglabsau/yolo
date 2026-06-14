@@ -41,7 +41,7 @@ YOLO runs two target-tracking policies at once. Application Auto Scaling takes t
 | **Request concurrency** | in-flight requests per task (derived) | The default, leading signal — concurrency climbs the instant traffic does, ahead of CPU. Scales the web tier under normal HTTP load. No tuning: its target comes from the task's memory. |
 | **CPU** | `ECSServiceAverageCPUUtilization` | The safety net. Catches load that pegs the CPU without raising request concurrency — a few heavy, low-rate requests. Target defaults to 65%. |
 
-Both are on the moment you add the block — there's nothing to seed from a load test first. This mirrors how [Laravel Cloud](https://cloud.laravel.com/docs/compute) scales app compute: on active requests being processed rather than trailing CPU, so faster responses need fewer tasks for the same traffic.
+Both are on the moment you add the block — there's nothing to seed from a load test first. Scaling on the requests a task is actively serving rather than trailing CPU means faster responses need fewer tasks for the same traffic, and a spike is caught as it arrives.
 
 ### How the concurrency target is derived
 

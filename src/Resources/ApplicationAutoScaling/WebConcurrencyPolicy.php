@@ -13,11 +13,11 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * The web service's **default** scaling policy: target-tracks in-flight request
- * **concurrency per task**, the leading signal for HTTP load. Modelled on Laravel
- * Cloud's compute autoscaling, which scales on active requests being processed
- * (`desired = ceil(active_requests / workers_per_replica)`) rather than trailing
- * CPU — so faster responses need fewer tasks for the same traffic, and a spike is
- * caught as it arrives instead of after CPU has already climbed.
+ * **concurrency per task**, the leading signal for HTTP load. Scaling on the
+ * requests a task is actively serving (`desired = ceil(active_requests /
+ * workers_per_task)`) rather than trailing CPU means faster responses need fewer
+ * tasks for the same traffic, and a spike is caught as it arrives instead of after
+ * CPU has already climbed.
  *
  * Concurrency isn't a metric the ALB publishes, so it's derived with CloudWatch
  * metric math from two that it does (Little's Law, L = λ × W):
@@ -32,9 +32,9 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * the ALB is shared across the environment.
  *
  * The target is **derived from task memory**, not hand-tuned from a load test:
- * `floor(memory_mb / 30)` workers per task (Laravel Cloud's ~30 MB/worker estimate)
- * held at 70% utilisation, leaving headroom for the within-minute peak and the cold
- * start of the next task. A 1024 MB task → 34 workers → target ~23 concurrent.
+ * `floor(memory_mb / 30)` workers per task (a ~30 MB/worker estimate for a typical
+ * PHP app) held at 70% utilisation, leaving headroom for the within-minute peak and
+ * the cold start of the next task. A 1024 MB task → 34 workers → target ~23 concurrent.
  *
  * Composes with the CPU {@see ScalingPolicy} (the safety net for a few heavy,
  * low-rate requests that saturate CPU without raising concurrency): Application
@@ -43,7 +43,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  *
  * Known dynamic: because the signal includes latency, a slow downstream dependency
  * (a struggling database) raises concurrency and scales the web tier out even when
- * adding tasks won't help — the same exposure Laravel Cloud's model carries. The
+ * adding tasks won't help — an exposure inherent to any latency-bearing signal. The
  * `max` bound caps the blast radius; the CPU policy doesn't (CPU stays low when the
  * stall is downstream), so `max` is the backstop there.
  *
@@ -56,7 +56,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  */
 class WebConcurrencyPolicy implements TargetTrackingPolicy
 {
-    /** Laravel Cloud's estimate: each PHP worker uses ~30 MB and serves one request at a time. */
+    /** A typical PHP worker uses ~30 MB and serves one request at a time. */
     private const int WORKER_MEMORY_MB = 30;
 
     /** Hold concurrency at 70% of worker capacity, leaving headroom for the in-minute peak. */

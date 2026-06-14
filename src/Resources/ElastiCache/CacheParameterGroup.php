@@ -13,8 +13,8 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 /**
  * Custom cache parameter group pinning `maxmemory-policy=allkeys-lru` so the
  * shared cache never refuses a write under memory pressure (it evicts the
- * least-recently-used key instead), matching Laravel Cloud's general-purpose
- * default. The parameter-group family is coupled to the engine major, so it is
+ * least-recently-used key instead) — the right general-purpose default for an
+ * app cache. The parameter-group family is coupled to the engine major, so it is
  * pinned alongside CacheCluster::ENGINE_VERSION.
  */
 class CacheParameterGroup implements Resource
