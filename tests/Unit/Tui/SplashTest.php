@@ -50,6 +50,15 @@ it('animates the rocket: on the pad at 0, lifted off with the tagline at 1', fun
     expect(implode("\n", $start))->not->toContain('deploy · observe · steer');
 });
 
+it('shows a boot line on the pad without changing the canvas height', function (): void {
+    $padWithStatus = Splash::frame(0.0, 80, 'connecting to production…');
+    $launch = Splash::frame(1.0, 80);
+
+    expect(implode("\n", $padWithStatus))->toContain('connecting to production…')
+        ->and($padWithStatus)->toHaveCount(count($launch));  // the status row is always reserved
+    expect(implode("\n", $launch))->not->toContain('connecting');
+});
+
 it('grows the exhaust trail as the rocket climbs', function (): void {
     $trailRows = fn (array $rows): int => count(array_filter($rows, fn (string $row): bool => str_contains($row, '◢') || str_contains($row, '▓') || str_contains($row, '·')));
 
