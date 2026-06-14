@@ -30,7 +30,15 @@ tasks:
       cpu-utilization: 65   # optional — the safety-net policy's target
 ```
 
-On the next `yolo sync` / `yolo sync:app`, YOLO registers an [Application Auto Scaling](https://docs.aws.amazon.com/autoscaling/application/userguide/what-is-application-auto-scaling.html) **scalable target** on the ECS service (bounded by `min`/`max`) and attaches **target-tracking policies** to it. Without the block, the service stays at a fixed single task.
+Or just turn it on with the defaults (`min: 1`, `max: 4`):
+
+```yaml
+tasks:
+  web:
+    autoscaling: true       # shorthand; `false` (or no key) = a fixed single task
+```
+
+On the next `yolo sync` / `yolo sync:app`, YOLO registers an [Application Auto Scaling](https://docs.aws.amazon.com/autoscaling/application/userguide/what-is-application-auto-scaling.html) **scalable target** on the ECS service (bounded by `min`/`max`) and attaches **target-tracking policies** to it. Without it, the service stays at a fixed single task.
 
 ### Two metrics, composed
 

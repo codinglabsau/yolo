@@ -194,7 +194,7 @@ class SyncTaskDefinitionStep implements Step
                     // placeholder — Caddy reads it from the OS env (the app .env never reaches
                     // Caddy's process), and it's never a Caddyfile takeover. Web task only, set
                     // wherever web autoscaling is (a no-op in classic mode, which ignores it).
-                    ...$group === ServerGroup::WEB && Manifest::has('tasks.web.autoscaling') ? [
+                    ...$group === ServerGroup::WEB && Manifest::hasAutoscaling() ? [
                         'environment' => [
                             ['name' => 'CADDY_GLOBAL_OPTIONS', 'value' => 'servers { metrics }'],
                         ],

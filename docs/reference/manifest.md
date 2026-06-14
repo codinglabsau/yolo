@@ -362,7 +362,7 @@ The other defaults are tuned to avoid false-positive failures on a Laravel/Octan
 
 ### `tasks.web.autoscaling.*`
 
-Add an `autoscaling` block to turn on [Application Auto Scaling](/guide/scaling) for the web service. Without it, the service runs a fixed single task (today's behaviour). With it, YOLO scales on **request concurrency** — the default, leading signal, with its target derived from the task's memory so there's nothing to tune — and composes a **CPU** policy alongside as a safety net. The only knobs are the bounds and cooldowns.
+Add an `autoscaling` block to turn on [Application Auto Scaling](/guide/scaling) for the web service — or `autoscaling: true` for the defaults (`min: 1`, `max: 4`); `false` or no key leaves a fixed single task. With it, YOLO scales on **request concurrency** — the default, leading signal, with its target derived from the task's memory so there's nothing to tune — and composes a **CPU** policy alongside as a safety net. The only knobs are the bounds and cooldowns.
 
 | Key | Default | Description |
 |---|---|---|

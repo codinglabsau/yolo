@@ -48,6 +48,16 @@ it('registers the target with the manifest min/max when absent', function (): vo
     ]);
 });
 
+it('takes default 1–4 bounds for the autoscaling: true shorthand', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => true]],
+    ]);
+
+    expect((new ScalableTarget())->min())->toBe(1)
+        ->and((new ScalableTarget())->max())->toBe(4);
+});
+
 it('does not register when the live min/max already match', function (): void {
     $captured = [];
     bindMockApplicationAutoScalingClient([

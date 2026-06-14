@@ -42,7 +42,7 @@ class GenerateSupervisorConfigStep implements Step
 
         // The burst saturation emitter rides the web container only; its
         // supervisord program is added by config() for the same gate.
-        if (Manifest::has('tasks.web.autoscaling')) {
+        if (Manifest::hasAutoscaling()) {
             $this->writeEmitterScript();
         }
 
@@ -93,7 +93,7 @@ class GenerateSupervisorConfigStep implements Step
 
         // The burst saturation emitter (web container only) — a stateless loop
         // that needs no drain window, so a 1s stop wait is plenty.
-        if ($group === ServerGroup::WEB && Manifest::has('tasks.web.autoscaling')) {
+        if ($group === ServerGroup::WEB && Manifest::hasAutoscaling()) {
             $blocks[] = $this->program('saturation', ProcessCommands::saturationEmitter(), stopwaitsecs: 1);
         }
 

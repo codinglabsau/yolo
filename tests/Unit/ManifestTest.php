@@ -158,6 +158,44 @@ describe('octane', function (): void {
     });
 });
 
+describe('autoscaling', function (): void {
+    it('is on with an autoscaling block', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => ['autoscaling' => ['min' => 2, 'max' => 6]]],
+        ]);
+
+        expect(Manifest::hasAutoscaling())->toBeTrue();
+    });
+
+    it('is on with the `autoscaling: true` shorthand', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => ['autoscaling' => true]],
+        ]);
+
+        expect(Manifest::hasAutoscaling())->toBeTrue();
+    });
+
+    it('is off with an explicit `autoscaling: false`', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => ['autoscaling' => false]],
+        ]);
+
+        expect(Manifest::hasAutoscaling())->toBeFalse();
+    });
+
+    it('is off without an autoscaling key', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => []],
+        ]);
+
+        expect(Manifest::hasAutoscaling())->toBeFalse();
+    });
+});
+
 describe('task-role-policies', function (): void {
     it('defaults to no additional policies', function (): void {
         writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
