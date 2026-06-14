@@ -37,7 +37,10 @@ class Keyboard
     }
 
     /**
-     * Read whatever keypress is waiting, or null if none.
+     * Read whatever keypress is waiting, or null if none. Impure — each poll may
+     * return a different key (or nothing), so callers can poll it in a loop.
+     *
+     * @phpstan-impure
      *
      * @codeCoverageIgnore raw terminal I/O
      */

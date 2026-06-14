@@ -3,13 +3,17 @@
 namespace Codinglabs\Yolo\Tui;
 
 /**
- * The launch splash — a rocket and flame above the cyan→lime YOLO wordmark, in
- * the Outrun palette. It plays over the first AWS fetch (so it masks latency
- * rather than adding it), holds to a ~1s floor so it registers, and any keypress
- * skips it. The caller gates it off for non-TTY / NO_COLOR shells.
+ * The launch splash. The rocket sits on the pad while the first fetch runs, then
+ * lifts off — climbing a constant-height canvas with a growing flame/exhaust
+ * trail — while the YOLO wordmark wipes in left-to-right (cyan→lime, the logo's
+ * gradient) and the tagline lands as it settles. Any keypress skips it; the
+ * caller gates it off for non-TTY / NO_COLOR shells.
  */
 class Splash
 {
+    /** How many rows the rocket climbs across the animation. */
+    public const LIFT = 5;
+
     /** @var array<int, string> */
     public const ROCKET = [
         '    /\\',
@@ -18,12 +22,6 @@ class Splash
         '  |    |',
         ' /|    |\\',
         '/_|____|_\\',
-    ];
-
-    /** @var array<int, string> */
-    public const FLAME = [
-        '   )||(',
-        '  ◢◤◢◤◢',
     ];
 
     /** @var array<int, string> */
@@ -39,53 +37,83 @@ class Splash
     public const TAGLINE = 'deploy · observe · steer';
 
     /**
-     * The composed splash frame — rocket and flame above the cyan→lime wordmark,
-     * each row centred to $width. Pure: returns themed lines, writes nothing.
+     * The thrust + exhaust glyphs below the rocket, brightest first, fading down
+     * the trail. Index 0 is the always-lit base thrust; deeper rows appear as the
+     * rocket climbs.
+     *
+     * @var array<int, array{0: string, 1: Theme}>
+     */
+    private const array TRAIL = [
+        ['◢◤◢◤◢', Theme::Active],
+        ['▒▓▓▒', Theme::Active],
+        ['░▒▒░', Theme::Warning],
+        [' ░░ ', Theme::Warning],
+        [' ·· ', Theme::Muted],
+        ['  ·  ', Theme::Muted],
+    ];
+
+    /**
+     * One animation frame at $progress (0 = on the pad, 1 = settled). The canvas
+     * is a constant height so the in-place repaint never jumps: as the rocket
+     * rises, the blank rows above it become exhaust-trail rows below it.
      *
      * @return array<int, string>
      */
-    public static function lines(int $width = 80): array
+    public static function frame(float $progress, int $width = 80): array
     {
-        $rows = [''];
+        $progress = max(0.0, min(1.0, $progress));
+        $above = (int) round((1.0 - $progress) * self::LIFT);
+        $trail = self::LIFT - $above;
 
-        foreach (static::ROCKET as $line) {
+        $rows = array_fill(0, $above, '');
+
+        foreach (self::ROCKET as $line) {
             $rows[] = self::centre(Theme::Text->fg($line), mb_strlen($line), $width);
         }
 
-        foreach (static::FLAME as $line) {
-            $rows[] = self::centre(Theme::Active->fg($line), mb_strlen($line), $width);
+        foreach (array_slice(self::TRAIL, 0, $trail + 1) as [$glyph, $colour]) {
+            $rows[] = self::centre($colour->fg($glyph), mb_strlen($glyph), $width);
         }
 
         $rows[] = '';
 
-        foreach (static::wordmark() as [$tagged, $rawLength]) {
+        foreach (self::wordmarkReveal($progress) as [$tagged, $rawLength]) {
             $rows[] = self::centre($tagged, $rawLength, $width);
         }
 
         $rows[] = '';
-        $rows[] = self::centre(Theme::Accent->fg(static::TAGLINE), mb_strlen((string) static::TAGLINE), $width);
-        $rows[] = '';
+        $rows[] = $progress >= 1.0
+            ? self::centre(Theme::Accent->fg(self::TAGLINE), mb_strlen(self::TAGLINE), $width)
+            : '';
 
         return $rows;
     }
 
     /**
-     * Each wordmark line split at its midpoint — left half cyan, right half lime —
-     * to echo the logo's gradient cheaply. Returns [taggedLine, rawLength] pairs.
+     * The wordmark wiped in left-to-right to $progress — the revealed run split
+     * cyan (left half) → lime (right half), echoing the logo. Each entry is
+     * [taggedVisible, fullLineLength] so centring stays fixed as it fills.
      *
      * @return array<int, array{0: string, 1: int}>
      */
-    public static function wordmark(): array
+    public static function wordmarkReveal(float $progress): array
     {
-        return array_map(static function (string $line): array {
+        $progress = max(0.0, min(1.0, $progress));
+        $longest = max(array_map(mb_strlen(...), self::WORD));
+        $reveal = (int) ceil($progress * $longest);
+
+        return array_map(static function (string $line) use ($reveal): array {
             $length = mb_strlen($line);
+            $shown = min($reveal, $length);
             $mid = (int) ceil($length / 2);
 
-            $tagged = Theme::Primary->fg(mb_substr($line, 0, $mid))
-                . Theme::Healthy->fg(mb_substr($line, $mid));
+            $cyan = mb_substr($line, 0, min($shown, $mid));
+            $lime = $shown > $mid ? mb_substr($line, $mid, $shown - $mid) : '';
+
+            $tagged = Theme::Primary->fg($cyan) . ($lime === '' ? '' : Theme::Healthy->fg($lime));
 
             return [$tagged, $length];
-        }, static::WORD);
+        }, self::WORD);
     }
 
     private static function centre(string $tagged, int $rawLength, int $width): string
@@ -94,25 +122,37 @@ class Splash
     }
 
     /**
-     * Paint the splash, run $work (the first fetch) underneath it, then hold to a
-     * ~1s floor so it's seen — bailing early on any keypress. Never adds time
-     * beyond the floor: a slow fetch is simply masked by the frame.
+     * Hold the rocket on the pad while $work (the first fetch) runs, then play the
+     * launch — progress 0→1 over ~1.2s — and settle briefly. Any keypress skips.
      *
      * @codeCoverageIgnore timing + terminal I/O — exercised by hand, not in CI.
      */
     public function play(Screen $screen, Keyboard $keyboard, callable $work): void
     {
-        $screen->paint(static::lines($screen->width()));
+        $width = $screen->width();
 
-        $started = microtime(true);
+        $screen->paint(self::frame(0.0, $width));
         $work();
 
-        while (microtime(true) - $started < 1.0) {
+        $steps = 26;
+
+        for ($step = 0; $step <= $steps; $step++) {
             if ($keyboard->read() !== null) {
-                break;
+                return;
             }
 
-            usleep(50_000);
+            $screen->paint(self::frame($step / $steps, $width));
+            usleep(42_000);
+        }
+
+        $settle = microtime(true) + 0.5;
+
+        while (microtime(true) < $settle) {
+            if ($keyboard->read() !== null) {
+                return;
+            }
+
+            usleep(40_000);
         }
     }
 }
