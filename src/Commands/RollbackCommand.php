@@ -27,10 +27,12 @@ use function Laravel\Prompts\warning;
  * image that already exists in ECR, skipping the build.
  *
  * Reuses the deploy tail (register a task-definition revision pinned to the
- * chosen version, roll each service onto it, wait for healthy, re-UPSERT DNS)
- * but runs no build and no deploy hooks: code and assets are versioned and
- * immutable, so they roll back cleanly; the database does not, which the
- * confirm gate calls out before anything changes.
+ * chosen version, re-run the deploy hooks, roll each service onto it, wait for
+ * healthy, re-UPSERT DNS) but runs no build and re-pushes no assets — the image
+ * and its asset tree already exist. Code and assets revert cleanly; the database
+ * does not — `migrate` in the hooks is forward-only, so it applies nothing new
+ * and never reverts the schema, which the confirm gate calls out before anything
+ * changes.
  *
  * The picker lists the last deployments by **app version** (parsed from the
  * image ref), newest first — never by ECS task-def revision, which is just
@@ -47,15 +49,18 @@ class RollbackCommand extends SteppedCommand
     use RendersServiceStatus;
 
     /**
-     * The deploy tail, minus the build-time work: no PushAssetsToS3Step (the
-     * target version's assets are already on the CDN) and no
-     * ExecuteDeployStepsStep (rollback never re-runs migrations — see the
-     * database warning on the confirm gate).
+     * The deploy tail, minus only the build-time work: the image and its assets
+     * already exist, so no build and no PushAssetsToS3Step. The deploy hooks DO
+     * re-run via ExecuteDeployStepsStep — they're what makes a version live
+     * (cache rebuilds, migrate, etc.) and they run against the rolled-back
+     * image. `migrate` is forward-only, so it applies nothing new and never
+     * reverts the schema (hence the database warning on the confirm gate).
      *
      * @var array<int, class-string>
      */
     protected array $steps = [
         Steps\Deploy\RegisterTaskDefinitionRevisionStep::class,
+        Steps\Deploy\ExecuteDeployStepsStep::class,
         Steps\Deploy\UpdateEcsServiceStep::class,
         Steps\Deploy\WaitForDeploymentHealthyStep::class,
         Steps\Deploy\SyncSoloRecordSetStep::class,
@@ -307,8 +312,8 @@ class RollbackCommand extends SteppedCommand
     {
         $this->output->writeln('');
         $this->output->writeln('  <options=bold;fg=yellow>⚠ The database is not rolled back</>');
-        $this->output->writeln('  <fg=yellow>Code and assets revert to this version; the database does not.</>');
-        $this->output->writeln('  <fg=yellow>Destructive migrations applied since then will NOT be undone — verify the schema is compatible.</>');
+        $this->output->writeln('  <fg=yellow>Deploy hooks re-run, but migrations are forward-only — the schema is not reverted.</>');
+        $this->output->writeln('  <fg=yellow>Destructive migrations since this version will NOT be undone; verify the old code runs against it.</>');
         $this->output->writeln('');
 
         if ($this->option('force')) {

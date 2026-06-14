@@ -10,6 +10,9 @@ use Codinglabs\Yolo\Resources\Iam\EcsTaskRole;
 use Symfony\Component\Console\Input\ArrayInput;
 use Codinglabs\Yolo\Resources\Iam\EcsExecutionRole;
 use Symfony\Component\Console\Output\BufferedOutput;
+use Codinglabs\Yolo\Steps\Deploy\UpdateEcsServiceStep;
+use Codinglabs\Yolo\Steps\Deploy\ExecuteDeployStepsStep;
+use Codinglabs\Yolo\Steps\Deploy\RegisterTaskDefinitionRevisionStep;
 
 /**
  * Drive RollbackCommand::handle() directly with mocked AWS clients. Prompts run
@@ -82,6 +85,18 @@ it('is registered in the application', function (): void {
     $commands = (new ReflectionClass(Yolo::class))->getDefaultProperties()['commands'];
 
     expect($commands)->toContain(RollbackCommand::class);
+});
+
+it('re-runs the deploy hooks, after registering the revision and before rolling the service', function (): void {
+    $steps = (new RollbackCommand())->steps();
+
+    $register = array_search(RegisterTaskDefinitionRevisionStep::class, $steps, true);
+    $hooks = array_search(ExecuteDeployStepsStep::class, $steps, true);
+    $update = array_search(UpdateEcsServiceStep::class, $steps, true);
+
+    expect($hooks)->not->toBeFalse()
+        ->and($register)->toBeLessThan($hooks)
+        ->and($hooks)->toBeLessThan($update);
 });
 
 it('lists deploy versions newest first, dropping latest/buildcache-only and untagged images', function (): void {

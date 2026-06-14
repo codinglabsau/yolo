@@ -61,7 +61,7 @@ To return to a version you've already shipped, use [`yolo rollback`](/reference/
 yolo rollback production
 ```
 
-The interactive picker lists your recent deployments (newest first, the running one marked `(current)`); pick one and it re-points the service through the same circuit-breaker-guarded rollout as a deploy. Because every build's code and assets are versioned and immutable, they revert cleanly — but the **database does not**, so `rollback` warns before continuing: a rollback past a destructive migration can break against the old code.
+The interactive picker lists your recent deployments (newest first, the running one marked `(current)`); pick one and it re-points the service through the same circuit-breaker-guarded rollout as a deploy — re-running your `deploy` hooks against the rolled-back image. Code and assets are versioned and immutable, so they revert cleanly — but the **database does not** (`migrate` is forward-only and never reverts the schema), so `rollback` warns before continuing: a rollback past a destructive migration can break against the old code.
 
 ::: warning
 Rollback reverts code and assets, never the schema. Roll back across additive migrations freely; across a destructive one, only after confirming the old code runs against the new schema.
