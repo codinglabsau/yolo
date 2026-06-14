@@ -4,7 +4,7 @@ By default an app runs as **one Fargate task** doing everything — Octane plus 
 
 | Service | How it scales | Opt in with |
 |---|---|---|
-| **web** | target tracking (CPU + request count), `min`→`max` | `tasks.web.autoscaling` |
+| **web** | target tracking (request concurrency + CPU), `min`→`max` | `tasks.web.autoscaling` |
 | **queue** | backlog-per-task, **scales to zero** | top-level `tasks.queue` |
 | **scheduler** | never — pinned singleton (exactly one task) | top-level `tasks.scheduler` |
 
@@ -19,7 +19,7 @@ Autoscaling **bounds** (`min`/`max`) live in the manifest and are reconciled by 
 
 ## Autoscaling
 
-Add a `tasks.web.autoscaling` block to the environment to turn it on:
+`yolo init` scaffolds new apps with web autoscaling **on** (`tasks.web.autoscaling: true`, bounds 1–4) — so a fresh app scales out of the box. To set your own bounds, expand the shorthand into a block:
 
 ```yaml
 tasks:
@@ -27,37 +27,63 @@ tasks:
     autoscaling:
       min: 1
       max: 6
-      cpu-utilization: 65
-      request-count-per-target: 1000   # seed from a load test
+      cpu-utilization: 65   # optional — the safety-net policy's target
 ```
 
-On the next `yolo sync` / `yolo sync:app`, YOLO registers an [Application Auto Scaling](https://docs.aws.amazon.com/autoscaling/application/userguide/what-is-application-auto-scaling.html) **scalable target** on the ECS service (bounded by `min`/`max`) and attaches **target-tracking policies** to it. Without the block, the service stays at a fixed single task.
+The scaffolded shorthand takes the defaults (`min: 1`, `max: 4`):
+
+```yaml
+tasks:
+  web:
+    autoscaling: true       # shorthand; `false` (or no key) = a fixed single task
+```
+
+On the next `yolo sync` / `yolo sync:app`, YOLO registers an [Application Auto Scaling](https://docs.aws.amazon.com/autoscaling/application/userguide/what-is-application-auto-scaling.html) **scalable target** on the ECS service (bounded by `min`/`max`) and attaches **target-tracking policies** to it. Without it, the service stays at a fixed single task.
 
 ### Two metrics, composed
 
-YOLO can run two target-tracking policies at once. Application Auto Scaling takes the **maximum** desired count any policy asks for, so they compose rather than fight — scale-out always wins.
+YOLO runs two target-tracking policies at once. Application Auto Scaling takes the **maximum** desired count any policy asks for, so they compose rather than fight — scale-out always wins.
 
 | Policy | Metric | Role |
 |---|---|---|
-| **CPU** | `ECSServiceAverageCPUUtilization` | Always on with autoscaling. Works with no tuning — a sane default catches load that saturates the CPU (including a few heavy, low-rate requests). |
-| **Request count** | `ALBRequestCountPerTarget` | Added only once `request-count-per-target` is set. The *leading* indicator — per-target request rate climbs the instant traffic does, ahead of CPU and latency. |
+| **Request concurrency** | in-flight requests per task (derived) | The default, leading signal — concurrency climbs the instant traffic does, ahead of CPU. Scales the web tier under normal HTTP load. No tuning: its target comes from the task's memory. |
+| **CPU** | `ECSServiceAverageCPUUtilization` | The safety net. Catches load that pegs the CPU without raising request concurrency — a few heavy, low-rate requests. Target defaults to 65%. |
 
-Start with CPU (it ships working). Add the request-count policy once you have a number for it.
+Both are on the moment you add the block — there's nothing to seed from a load test first. Scaling on the requests a task is actively serving rather than trailing CPU means faster responses need fewer tasks for the same traffic, and a spike is caught as it arrives.
 
-### Choosing the request-count target
+### How the concurrency target is derived
 
-`request-count-per-target` is **requests per task per minute** — the point at which one task is comfortably busy but not degrading. Don't guess it: run a load test, watch p95 response time as you ramp concurrency, and take the per-target request rate at the plateau just before p95 starts climbing. Seed that number, then tune `scale-out-cooldown` / `scale-in-cooldown` if the service oscillates.
+The ALB doesn't publish in-flight concurrency, so YOLO derives it with CloudWatch metric math from two metrics it does — request rate and response time (Little's Law, `concurrency = rate × latency`):
 
-Until you set it, CPU-based autoscaling is already active — you lose nothing by waiting for real data.
+```
+concurrency_per_task = (RequestCountPerTarget / 60) × TargetResponseTime
+```
+
+and target-tracks it at a value derived from the task's memory — `floor(memory_mb / 30)` PHP workers per task (each ~30 MB, serving one request at a time) held at **70% utilisation**. A 1024 MB task → 34 workers → a target of ~23 concurrent requests, leaving headroom for the within-minute peak and the next task's cold start. Resize the task (`tasks.web.memory`) and the target follows; there's no separate knob.
+
+Because the signal includes latency, a slow downstream dependency (a struggling database) raises concurrency and scales the web tier out even when more tasks won't help — the `max` bound is the backstop there, since CPU stays low when the stall is downstream.
+
+### Faster scale-out: burst
+
+The two policies above scale on ALB metrics, which are 1-minute resolution — a good signal, but ~1 min behind a sudden spike. So once you're autoscaling, YOLO also runs a **burst** path. There's no knob for it: it's near-free and fails safe, and no app wants slower scaling, so — like the concurrency and CPU policies — it's just part of how web autoscaling works, provisioned wherever the scalable target is. (The signal is FrankenPHP's worker metrics, which only worker mode — Octane, the default — populates; a classic-mode tier simply never emits it, so the alarm sits inert and burst is a no-op there. Nothing to switch on or off.)
+
+Burst adds a **step-scaling policy** driven by a **high-resolution alarm** (10s) on a signal the container reports about *itself*: each web task publishes its FrankenPHP worker saturation (busy ÷ total threads) — an *earlier* indicator than the ALB, since workers queue before latency even climbs. Detection drops from ~60s to **~10–15s**; at ≥80% saturation it adds a task, at ≥90% it adds two. Scale-in stays with the target-tracking policies, so burst can only ever scale out faster, never fight them.
+
+How it works, and what it costs:
+
+- A tiny supervised process in the web container reads FrankenPHP's metrics endpoint and writes the saturation as an [embedded-metric-format](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format.html) line to stdout — **only while it's hot** (≥70%). CloudWatch Logs auto-extracts the metric, so there's no `PutMetricData`, no AWS SDK in the container and **no new IAM**.
+- YOLO turns FrankenPHP's metrics endpoint on with a single `CADDY_GLOBAL_OPTIONS` env var on the web task (it never touches your Caddyfile).
+- Cost is dominated by the one high-resolution alarm — roughly **$0.30/month** per app; the metric and log lines are near-zero because nothing is emitted until the service is hot.
+
+::: warning Burst is not a substitute for warm capacity
+Even instant detection still waits ~55s for the new task to boot and pass ALB health. So reactive scaling — burst included — bottoms out at ~1 min to relief; below that you need a task that's already running (`min ≥ N`). Burst makes the spike that *exceeds* your warm headroom land faster; it doesn't remove the need for the headroom.
+:::
+
+The burst alarm and step policy aren't taggable, so (like the target-tracking policies) they don't appear in [`yolo audit`](/reference/commands#yolo-audit); dropping the autoscaling block (or switching the web tier to classic mode) deletes both on the next sync.
 
 ### Turning autoscaling off
 
-Autoscaling is declarative — sync reconciles live state down to what the manifest asks for, so removing config tears the matching infrastructure back down on the next `yolo sync`:
-
-| You remove… | Next sync… |
-| --- | --- |
-| `request-count-per-target` (keep the block) | Deletes the request-count policy and the scale-out / scale-in alarms AWS generated for it. The CPU policy stays. |
-| The whole `autoscaling` block | Deregisters the scalable target, which cascades the delete to **every** policy and alarm on it. |
+Autoscaling is declarative — sync reconciles live state down to what the manifest asks for, so removing the `autoscaling` block deregisters the scalable target on the next `yolo sync`, which cascades the delete to **every** policy and alarm on it.
 
 Deregistering doesn't drop tasks — the service reverts to a **fixed** task count frozen at its current live count. Bring it down with [`yolo scale`](#manual-scaling) if you no longer need the extra capacity.
 

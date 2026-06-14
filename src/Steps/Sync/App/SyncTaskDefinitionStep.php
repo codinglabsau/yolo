@@ -189,6 +189,16 @@ class SyncTaskDefinitionStep implements Step
                             ],
                         ],
                     ] : [],
+                    // Burst scaling reads FrankenPHP's worker metrics; switch the metrics
+                    // endpoint on additively through Octane's Caddyfile {$CADDY_GLOBAL_OPTIONS}
+                    // placeholder — Caddy reads it from the OS env (the app .env never reaches
+                    // Caddy's process), and it's never a Caddyfile takeover. Web task only, set
+                    // wherever web autoscaling is (a no-op in classic mode, which ignores it).
+                    ...$group === ServerGroup::WEB && Manifest::isAutoscaling() ? [
+                        'environment' => [
+                            ['name' => 'CADDY_GLOBAL_OPTIONS', 'value' => 'servers { metrics }'],
+                        ],
+                    ] : [],
                     'logConfiguration' => [
                         'logDriver' => 'awslogs',
                         'options' => [

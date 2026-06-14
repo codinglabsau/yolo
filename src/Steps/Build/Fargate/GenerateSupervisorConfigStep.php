@@ -10,6 +10,7 @@ use Codinglabs\Yolo\ShutdownTimings;
 use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
 use Codinglabs\Yolo\Enums\ServerGroup;
+use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
 
 /**
  * Generates each container's supervisord.conf into the build context from the
@@ -39,6 +40,12 @@ class GenerateSupervisorConfigStep implements Step
         // The web container always runs supervisord (the web server + whatever it hosts).
         $this->writeConfig('docker/supervisord.conf', ServerGroup::WEB);
 
+        // The burst saturation emitter rides the web container only; its
+        // supervisord program is added by config() for the same gate.
+        if (Manifest::isAutoscaling()) {
+            $this->writeEmitterScript();
+        }
+
         // A standalone queue only needs supervisord when it co-hosts the scheduler
         // (queue:work + supercronic = two processes). A queue-only service runs a single
         // exec'd process — no config — so the entrypoint dispatches it directly.
@@ -57,13 +64,13 @@ class GenerateSupervisorConfigStep implements Step
     {
         $path = Paths::build($relativePath);
         $this->filesystem->ensureDirectoryExists(dirname($path));
-        $this->filesystem->put($path, $this->config(ShutdownTimings::programGraces($group)));
+        $this->filesystem->put($path, $this->config($group, ShutdownTimings::programGraces($group)));
     }
 
     /**
      * @param  array<string, int>  $graces
      */
-    protected function config(array $graces): string
+    protected function config(ServerGroup $group, array $graces): string
     {
         $blocks = [$this->header()];
 
@@ -84,7 +91,33 @@ class GenerateSupervisorConfigStep implements Step
             }
         }
 
+        // The burst saturation emitter (web container only) — a stateless loop
+        // that needs no drain window, so a 1s stop wait is plenty.
+        if ($group === ServerGroup::WEB && Manifest::isAutoscaling()) {
+            $blocks[] = $this->program('saturation', ProcessCommands::saturationEmitter(), stopwaitsecs: 1);
+        }
+
         return implode("\n\n", $blocks) . "\n";
+    }
+
+    /**
+     * Render the saturation emitter from its stub, substituting this app's web
+     * service name (the metric's dimension value) and the metric contract it shares
+     * with {@see WebBurstPolicy}'s alarm, into the build context.
+     */
+    protected function writeEmitterScript(): void
+    {
+        $script = strtr((string) $this->filesystem->get(Paths::stubs('yolo-saturation.php.stub')), [
+            '{{service}}' => WebBurstPolicy::serviceName(),
+            '{{floor}}' => (string) WebBurstPolicy::EMIT_FLOOR,
+            '{{namespace}}' => WebBurstPolicy::METRIC_NAMESPACE,
+            '{{metric}}' => WebBurstPolicy::METRIC_NAME,
+            '{{dimension}}' => WebBurstPolicy::METRIC_DIMENSION,
+        ]);
+
+        $path = Paths::build('docker/yolo-saturation.php');
+        $this->filesystem->ensureDirectoryExists(dirname($path));
+        $this->filesystem->put($path, $script);
     }
 
     /**

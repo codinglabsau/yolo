@@ -62,7 +62,7 @@ class SyncScalableTargetStep implements Step
         $target = new ScalableTarget($this->group());
         $live = $target->current();
 
-        if (! Manifest::has('tasks.web.autoscaling')) {
+        if (! Manifest::isAutoscaling()) {
             if ($live === null) {
                 return StepResult::SKIPPED;
             }

@@ -20,18 +20,8 @@ it('builds a predefined CPU target-tracking configuration', function (): void {
     ]);
 });
 
-it('includes the resource label only for request-count policies', function (): void {
-    $config = (new ScalingPolicy('p', 'ALBRequestCountPerTarget', 1000.0, 'app/x/1/targetgroup/y/2'))->configuration();
-
-    expect($config['PredefinedMetricSpecification'])->toBe([
-        'PredefinedMetricType' => 'ALBRequestCountPerTarget',
-        'ResourceLabel' => 'app/x/1/targetgroup/y/2',
-    ]);
-});
-
 it('reports every comparable field as drift when the policy is absent', function (): void {
-    // target, metric, scale-out and scale-in cooldowns drift; the resource label
-    // is null on both sides for a CPU policy, so it is not a change.
+    // target, metric, scale-out and scale-in cooldowns all drift against a null live policy.
     expect((new ScalingPolicy('p', 'ECSServiceAverageCPUUtilization', 65.0))->drift(null))->toHaveCount(4);
 });
 

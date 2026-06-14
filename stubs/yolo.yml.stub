@@ -39,6 +39,11 @@ environments:
         port: 8000
         enable-execute-command: true   # ECS Exec shell access (gate with MFA on your IAM)
 
+        # Request-based autoscaling, on by default — web scales out on request concurrency
+        # (with CPU as a safety net and a ~10s burst path), between 1 and 4 tasks. Expand to a
+        # block for your own bounds (autoscaling: { min: 2, max: 8 }); set false to pin one task.
+        autoscaling: true
+
         # shutdown-grace-period: seconds the web process gets to finish work on SIGTERM before it's
         # killed (default 10). It's also the ALB drain window (no deploy 502s) and the container stop
         # timeout derives from it — bump for long in-flight requests (uploads, exports, SSE).

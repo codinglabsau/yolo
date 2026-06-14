@@ -58,7 +58,7 @@ class SyncAppCommand extends SyncSteppedCommand
         $host = Manifest::schedulerHost();
 
         $hostAutoscales = match ($host) {
-            ServerGroup::WEB => Manifest::has('tasks.web.autoscaling'),
+            ServerGroup::WEB => Manifest::isAutoscaling(),
             ServerGroup::QUEUE => true, // a standalone queue is always autoscaled (min↔max)
             ServerGroup::SCHEDULER => false, // dedicated singleton — never multi-fires
         };
@@ -145,6 +145,11 @@ class SyncAppCommand extends SyncSteppedCommand
                         // back down. Both steps no-op when it was never enabled.
                         Steps\Sync\App\SyncScalableTargetStep::class,
                         Steps\Sync\App\SyncScalingPoliciesStep::class,
+                        // Burst scale-out: a high-res worker-saturation alarm + step policy
+                        // for ~10s spike detection — part of web autoscaling, not a setting.
+                        // Wired whenever the web task exists so a non-autoscaling web tier
+                        // prunes the policy + its self-authored alarm; no-ops when it doesn't apply.
+                        Steps\Sync\App\SyncWebBurstStep::class,
                         // Standalone queue service (own task-def + service +
                         // scale-to-zero autoscaling) — only when tasks.queue extracts
                         // it from the web container.

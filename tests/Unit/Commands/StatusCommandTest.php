@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Commands\StatusCommand;
+use Codinglabs\Yolo\Concerns\RendersServiceStatus;
 
 // The status dashboard's display logic lives in pure static helpers on the
 // RendersServiceStatus trait, reached here through StatusCommand. They take plain
@@ -61,16 +62,56 @@ it('describes scaling bounds, policies, or a fixed/singleton service', function 
         'max' => 4,
         'policies' => [
             ['metric' => 'ECSServiceAverageCPUUtilization', 'target' => 65.0],
-            ['metric' => 'ALBRequestCountPerTarget', 'target' => 1200.0],
+            ['metric' => 'concurrency', 'target' => 23.0],
+            ['metric' => 'burst', 'target' => 0.0],
         ],
     ];
 
     expect(StatusCommand::formatScaling($scaling, ServerGroup::WEB))
-        ->toBe('1–4 auto (cpu 65%, req 1200)');
+        ->toBe('1–4 auto (cpu 65%, concurrency 23, burst)');
 
     $queue = ['min' => 0, 'max' => 10, 'policies' => [['metric' => 'backlog', 'target' => 0.0]]];
 
     expect(StatusCommand::formatScaling($queue, ServerGroup::QUEUE))->toBe('0–10 auto (backlog)');
+});
+
+it('reduces a live policy to its metric and target', function (): void {
+    $probe = new class()
+    {
+        use RendersServiceStatus;
+
+        /** @param array<string, mixed> $policy */
+        public function view(array $policy): ?array
+        {
+            return self::policyView($policy);
+        }
+    };
+
+    // The customized-metric concurrency policy carries no PredefinedMetricType, so
+    // it's recognised by its policy name.
+    expect($probe->view([
+        'PolicyName' => 'yolo-testing-my-app-concurrency-scaling-policy',
+        'TargetTrackingScalingPolicyConfiguration' => [
+            'TargetValue' => 23.0,
+            'CustomizedMetricSpecification' => ['Metrics' => []],
+        ],
+    ]))->toBe(['metric' => 'concurrency', 'target' => 23.0]);
+
+    // A predefined policy reduces to its metric type.
+    expect($probe->view([
+        'PolicyName' => 'yolo-testing-my-app-cpu-scaling-policy',
+        'TargetTrackingScalingPolicyConfiguration' => [
+            'TargetValue' => 65.0,
+            'PredefinedMetricSpecification' => ['PredefinedMetricType' => 'ECSServiceAverageCPUUtilization'],
+        ],
+    ]))->toBe(['metric' => 'ECSServiceAverageCPUUtilization', 'target' => 65.0]);
+
+    // A step-scaling policy has no target-tracking config — named by which one it is:
+    // the web burst policy, else the queue backlog/scale-to-zero bootstrap.
+    expect($probe->view(['PolicyName' => 'yolo-prod-app-web-burst-policy', 'StepScalingPolicyConfiguration' => []]))
+        ->toBe(['metric' => 'burst', 'target' => 0.0]);
+    expect($probe->view(['PolicyName' => 'yolo-prod-app-queue-bootstrap-policy', 'StepScalingPolicyConfiguration' => []]))
+        ->toBe(['metric' => 'backlog', 'target' => 0.0]);
 });
 
 it('formats live load against the CPU target, with web-only request/response', function (): void {

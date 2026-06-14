@@ -236,3 +236,20 @@ it('preserves the deployed image when re-registering for a genuine infra change'
         ->and($register['args']['containerDefinitions'][0]['image'])
         ->toBe('111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/my-app:26.21.2.1500');
 });
+
+it('sets no container environment by default', function (): void {
+    expect(SyncTaskDefinitionStep::payload()['containerDefinitions'][0])
+        ->not->toHaveKey('environment');
+});
+
+it('enables the FrankenPHP metrics endpoint on the web container for an Octane autoscaling app', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => ['min' => 2, 'max' => 8]]],
+    ]);
+
+    // The burst saturation emitter reads FrankenPHP's metrics; CADDY_GLOBAL_OPTIONS
+    // turns the endpoint on additively (Caddy reads it from the OS env).
+    expect(SyncTaskDefinitionStep::payload()['containerDefinitions'][0]['environment'])
+        ->toBe([['name' => 'CADDY_GLOBAL_OPTIONS', 'value' => 'servers { metrics }']]);
+});

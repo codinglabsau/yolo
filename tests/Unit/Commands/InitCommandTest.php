@@ -1,6 +1,8 @@
 <?php
 
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Commands\InitCommand;
 
 function dockerignorePatterns(): array
@@ -21,6 +23,19 @@ it('never ignores what the image is built from', function (): void {
     // ignoring any would silently break the deploy.
     expect(dockerignorePatterns())->not->toContain('.env', 'vendor', 'public/build', 'docker', '.yolo-entrypoint.sh');
 });
+
+it('scaffolds web autoscaling on by default', function (): void {
+    // Drive the literal stub (placeholders filled) through the real Manifest
+    // reader — proves the scaffold parses to autoscaling-on, not just a string match.
+    file_put_contents(Paths::manifest(), str_replace(
+        ['{NAME}', '{AWS_ACCOUNT_ID}', '{AWS_REGION}'],
+        ['my-app', '111111111111', 'ap-southeast-2'],
+        file_get_contents(Paths::stubs('yolo.yml.stub'))
+    ));
+    Helpers::app()->instance('environment', 'production');
+
+    expect(Manifest::isAutoscaling())->toBeTrue();
+})->after(fn (): bool => @unlink(Paths::manifest()));
 
 it('scaffolds a .dockerignore when none exists', function (): void {
     $path = Paths::base('.dockerignore');

@@ -343,6 +343,19 @@ class Manifest
     }
 
     /**
+     * Whether the web tier autoscales — the single gate every scaling resource keys
+     * off (the scalable target, the concurrency/CPU policies, burst). Two manifest
+     * forms turn it on: the block `tasks.web.autoscaling: {min, max, …}` for explicit
+     * bounds, or the shorthand `tasks.web.autoscaling: true` to take the defaults
+     * (min 1, max 4). An explicit `false` — or no key — leaves the web service a
+     * fixed single task. Off ⇒ everything scaling tears down (or never provisions).
+     */
+    public static function isAutoscaling(): bool
+    {
+        return static::get('tasks.web.autoscaling', false) !== false;
+    }
+
+    /**
      * Which container runs the queue worker: a standalone `tasks.queue` service if
      * extracted, else bundled in the web container. The worker always runs
      * somewhere — there's no opt-out.

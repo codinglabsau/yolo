@@ -46,7 +46,7 @@ yolo init
 
 Interactive. Prompts for the app name, AWS account ID, region, and (unless multi-tenant) a domain and optional S3 bucket. It then:
 
-- Writes `yolo.yml` from the stub.
+- Writes `yolo.yml` from the stub — with web [autoscaling](/guide/scaling) on by default (`tasks.web.autoscaling: true`, bounds 1–4).
 - Writes a default `Dockerfile` and `.dockerignore` (asks before overwriting existing ones).
 - Creates a starter `.env.production`.
 - Appends `.yolo`, `.env.staging`, `.env.production`, and the env-shared working copies (`.env.environment.*`, `yolo-environment-*.yml`) to `.gitignore`.
@@ -378,7 +378,7 @@ Some environment-tier resources are bootstrapped here by exception — the RDS s
 
 A per-app **CloudWatch dashboard** (`yolo-<env>-<app>-dashboard`) is generated last, so every resource it charts already exists. It panels the ECS service (CPU/memory/tasks), the ALB (target health, requests, latency, slow-request bands, error counts and a 5xx error-rate SLO), SQS depth/throughput, the asset CloudFront distribution (requests, errors and cache hit rate), the S3 buckets, any consumed services (MediaConvert jobs, Rekognition requests) and the app's logs — plus an RDS panel derived from `DB_HOST` in the app's env file (CPU, connections, memory, throughput and read/write latency). It's a read-only convenience: CloudWatch dashboards can't carry tags, so it doesn't appear in `yolo audit`.
 
-When a [`tasks.web.autoscaling`](/reference/manifest#tasks-web-autoscaling) block is present, `sync:app` also registers the **scalable target** and its **target-tracking policies** (CPU always; request-count once `request-count-per-target` is set), right after the ECS service. App Auto Scaling targets aren't taggable either, so they're invisible to `yolo audit` too. If autoscaling is enabled on a task that also runs the scheduler, the sync plan lists an advisory under its **Warnings** section — see [Scaling](/guide/scaling). Scaling is web-only and inert without the manifest block.
+When a [`tasks.web.autoscaling`](/reference/manifest#tasks-web-autoscaling) block is present, `sync:app` also registers the **scalable target** and its **target-tracking policies** (request concurrency by default, derived from task memory, plus CPU as a safety net), right after the ECS service. App Auto Scaling targets aren't taggable either, so they're invisible to `yolo audit` too. If autoscaling is enabled on a task that also runs the scheduler, the sync plan lists an advisory under its **Warnings** section — see [Scaling](/guide/scaling). Scaling is web-only and inert without the manifest block.
 
 ---
 

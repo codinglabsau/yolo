@@ -148,12 +148,18 @@ trait RendersServiceStatus
         $config = $policy['TargetTrackingScalingPolicyConfiguration'] ?? null;
 
         if ($config === null) {
-            // Step scaling (the queue scale-to-zero/backlog policy) — name it but
-            // there's no single target value to show.
-            return ['metric' => 'backlog', 'target' => 0.0];
+            // Step scaling has no single target value — name it by the policy YOLO
+            // runs: the web burst policy, else the queue scale-to-zero bootstrap.
+            $metric = str_contains($policy['PolicyName'] ?? '', 'burst') ? 'burst' : 'backlog';
+
+            return ['metric' => $metric, 'target' => 0.0];
         }
 
-        $metric = $config['PredefinedMetricSpecification']['PredefinedMetricType'] ?? 'custom';
+        // A customized-metric target-tracking policy carries no PredefinedMetricType;
+        // the web concurrency policy is the one YOLO runs, recognised by its name
+        // (SyncScalingPoliciesStep::CONCURRENCY_POLICY → '…-concurrency-scaling-policy').
+        $metric = $config['PredefinedMetricSpecification']['PredefinedMetricType']
+            ?? (str_contains($policy['PolicyName'] ?? '', 'concurrency') ? 'concurrency' : 'custom');
 
         return ['metric' => $metric, 'target' => (float) ($config['TargetValue'] ?? 0)];
     }
@@ -351,7 +357,8 @@ trait RendersServiceStatus
     {
         return match ($policy['metric']) {
             'ECSServiceAverageCPUUtilization' => sprintf('cpu %s%%', static::trimFloat($policy['target'])),
-            'ALBRequestCountPerTarget' => sprintf('req %s', static::trimFloat($policy['target'])),
+            'concurrency' => sprintf('concurrency %s', static::trimFloat($policy['target'])),
+            'burst' => 'burst',
             'backlog' => 'backlog',
             default => $policy['metric'],
         };
