@@ -231,6 +231,52 @@ trait RendersServiceStatus
     // --- Pure formatters (unit-tested directly) -----------------------------
 
     /**
+     * The machine-readable form of the gathered status rows — a clean,
+     * JSON-serialisable shape for `--json` consumers (the `/yolo` skill and
+     * scripts). Pure: it flattens the gathered rows (a `ServerGroup` enum plus
+     * nested arrays) and drops the raw `primary` deployment blob, which carries
+     * DateTimeInterface timestamps that don't belong in the contract.
+     *
+     * @param  array<int, array<string, mixed>>  $statuses
+     * @return array<int, array<string, mixed>>
+     */
+    public static function jsonStatuses(array $statuses): array
+    {
+        return array_map(static::jsonStatus(...), $statuses);
+    }
+
+    /**
+     * @param  array<string, mixed>  $status
+     * @return array<string, mixed>
+     */
+    public static function jsonStatus(array $status): array
+    {
+        return [
+            'group' => $status['group']->value,
+            'exists' => (bool) $status['exists'],
+            'tasks' => [
+                'running' => (int) $status['running'],
+                'desired' => (int) $status['desired'],
+                'pending' => (int) $status['pending'],
+            ],
+            'spec' => [
+                'cpu' => $status['cpu'],
+                'memory' => $status['memory'],
+                'launch' => $status['launch'],
+            ],
+            'revision' => $status['revision'],
+            'version' => $status['version'],
+            'rollout' => [
+                'state' => $status['rolloutState'],
+                'reason' => $status['rolloutReason'],
+            ],
+            'scaling' => $status['scaling'],
+            'cpuTarget' => $status['cpuTarget'],
+            'load' => $status['load'],
+        ];
+    }
+
+    /**
      * FARGATE / SPOT from a service's launch type or capacity-provider strategy.
      *
      * @param  array<string, mixed>  $service

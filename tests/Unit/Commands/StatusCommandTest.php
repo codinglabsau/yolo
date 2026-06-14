@@ -170,3 +170,78 @@ it('reads the launch type, defaulting to FARGATE and detecting Spot', function (
     ]))->toBe('SPOT');
     expect(StatusCommand::launchType([]))->toBe('FARGATE');
 });
+
+it('serialises gathered status rows into a clean, encodable json shape', function (): void {
+    $statuses = [
+        [
+            'group' => ServerGroup::WEB,
+            'exists' => true,
+            'running' => 2,
+            'desired' => 2,
+            'pending' => 0,
+            'launch' => 'FARGATE',
+            'cpu' => '512',
+            'memory' => '1024',
+            'revision' => 'web:42',
+            'version' => '20260605-1',
+            // The raw primary deployment blob carries DateTimeInterface timestamps;
+            // it must be dropped from the machine contract.
+            'primary' => ['createdAt' => new DateTimeImmutable('@1000')],
+            'rolloutState' => 'COMPLETED',
+            'rolloutReason' => null,
+            'scaling' => ['min' => 1, 'max' => 4, 'policies' => [['metric' => 'ECSServiceAverageCPUUtilization', 'target' => 65.0]]],
+            'cpuTarget' => 65.0,
+            'load' => ['cpu' => 43.2, 'memory' => 38.0, 'requests' => 410.0, 'response' => 0.126],
+        ],
+    ];
+
+    $json = StatusCommand::jsonStatuses($statuses);
+
+    expect($json)->toBe([
+        [
+            'group' => 'web',
+            'exists' => true,
+            'tasks' => ['running' => 2, 'desired' => 2, 'pending' => 0],
+            'spec' => ['cpu' => '512', 'memory' => '1024', 'launch' => 'FARGATE'],
+            'revision' => 'web:42',
+            'version' => '20260605-1',
+            'rollout' => ['state' => 'COMPLETED', 'reason' => null],
+            'scaling' => ['min' => 1, 'max' => 4, 'policies' => [['metric' => 'ECSServiceAverageCPUUtilization', 'target' => 65.0]]],
+            'cpuTarget' => 65.0,
+            'load' => ['cpu' => 43.2, 'memory' => 38.0, 'requests' => 410.0, 'response' => 0.126],
+        ],
+    ]);
+
+    // No raw deployment blob, and the payload encodes to valid JSON cleanly.
+    expect($json[0])->not->toHaveKey('primary');
+    expect(json_encode($json))->toBeJson();
+});
+
+it('serialises a not-yet-deployed group without choking on null spec', function (): void {
+    $statuses = [[
+        'group' => ServerGroup::QUEUE,
+        'exists' => false,
+        'running' => 0,
+        'desired' => 0,
+        'pending' => 0,
+        'launch' => 'FARGATE',
+        'cpu' => null,
+        'memory' => null,
+        'revision' => null,
+        'version' => null,
+        'primary' => null,
+        'rolloutState' => null,
+        'rolloutReason' => null,
+        'scaling' => null,
+        'cpuTarget' => null,
+        'load' => ['cpu' => null, 'memory' => null, 'requests' => null, 'response' => null],
+    ]];
+
+    expect(StatusCommand::jsonStatuses($statuses)[0])->toMatchArray([
+        'group' => 'queue',
+        'exists' => false,
+        'spec' => ['cpu' => null, 'memory' => null, 'launch' => 'FARGATE'],
+        'scaling' => null,
+        'rollout' => ['state' => null, 'reason' => null],
+    ]);
+});

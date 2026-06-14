@@ -17,11 +17,27 @@ class StatusCommand extends Command
             ->setName('status')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('snapshot', null, InputOption::VALUE_NONE, 'Render once and exit instead of running the live dashboard')
+            ->addOption('json', null, InputOption::VALUE_NONE, 'Emit the status as JSON and exit (machine-readable; for the /yolo skill and scripts)')
             ->setDescription("Show a live dashboard of the app's services, load, scaling and any in-progress deploy");
     }
 
     public function handle(): int
     {
+        // `--json` is the machine-readable contract the /yolo skill consumes: gather
+        // once, emit the structured payload, and exit non-zero if a deploy is failed
+        // so it stays scriptable. No dashboard, regardless of interactivity.
+        if ($this->option('json')) {
+            $statuses = static::gatherServiceStatuses();
+
+            $this->output->writeln((string) json_encode([
+                'app' => Manifest::current()['name'] ?? null,
+                'environment' => $this->argument('environment'),
+                'groups' => static::jsonStatuses($statuses),
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+            return static::anyDeploymentFailed($statuses) ? 1 : 0;
+        }
+
         // A snapshot (or a non-interactive shell, where a redraw loop is pointless)
         // renders one frame and exits non-zero if a deployment is currently failed.
         if ($this->option('snapshot') || ! $this->input->isInteractive()) {
