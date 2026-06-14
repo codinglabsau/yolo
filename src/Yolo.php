@@ -29,6 +29,9 @@ class Yolo
         // Deploy
         Commands\DeployCommand::class,
 
+        // Rollback
+        Commands\RollbackCommand::class,
+
         // Status
         Commands\StatusCommand::class,
 

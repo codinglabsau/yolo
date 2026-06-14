@@ -53,6 +53,20 @@ The version **must start with the current `year.week` prefix** (e.g. `26.22`) �
 The week prefix is computed in your manifest's `timezone` (defaulting to UTC). Set `timezone` to your team's timezone so a version cut just before midnight on a Sunday doesn't trip the validation. See [`timezone`](/reference/manifest#timezone).
 :::
 
+## Rolling back
+
+To return to a version you've already shipped, use [`yolo rollback`](/reference/commands#yolo-rollback) — it re-deploys an image that's still in ECR, skipping the build entirely:
+
+```bash
+yolo rollback production
+```
+
+The interactive picker lists your recent deployments (newest first, the running one marked `(current)`); pick one and it re-points the service through the same circuit-breaker-guarded rollout as a deploy. Because every build's code and assets are versioned and immutable, they revert cleanly — but the **database does not**, so `rollback` warns before continuing: a rollback past a destructive migration can break against the old code.
+
+::: warning
+Rollback reverts code and assets, never the schema. Roll back across additive migrations freely; across a destructive one, only after confirming the old code runs against the new schema.
+:::
+
 ## Hooks: `build` vs `deploy` vs `deploy-all`
 
 Three manifest arrays run shell commands at different points:
