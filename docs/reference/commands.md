@@ -46,7 +46,7 @@ yolo init
 
 Interactive. Prompts for the app name, AWS account ID, region, and (unless multi-tenant) a domain and optional S3 bucket. It then:
 
-- Writes `yolo.yml` from the stub.
+- Writes `yolo.yml` from the stub — with web [autoscaling](/guide/scaling) on by default (`tasks.web.autoscaling: true`, bounds 1–4).
 - Writes a default `Dockerfile` and `.dockerignore` (asks before overwriting existing ones).
 - Creates a starter `.env.production`.
 - Appends `.yolo`, `.env.staging`, `.env.production`, and the env-shared working copies (`.env.environment.*`, `yolo-environment-*.yml`) to `.gitignore`.

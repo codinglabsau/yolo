@@ -19,7 +19,7 @@ Autoscaling **bounds** (`min`/`max`) live in the manifest and are reconciled by 
 
 ## Autoscaling
 
-Add a `tasks.web.autoscaling` block to the environment to turn it on:
+`yolo init` scaffolds new apps with web autoscaling **on** (`tasks.web.autoscaling: true`, bounds 1–4) — so a fresh app scales out of the box. To set your own bounds, expand the shorthand into a block:
 
 ```yaml
 tasks:
@@ -30,7 +30,7 @@ tasks:
       cpu-utilization: 65   # optional — the safety-net policy's target
 ```
 
-Or just turn it on with the defaults (`min: 1`, `max: 4`):
+The scaffolded shorthand takes the defaults (`min: 1`, `max: 4`):
 
 ```yaml
 tasks:
