@@ -5,13 +5,13 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo\Tui\Panels;
 
 use Closure;
-use Codinglabs\Yolo\Tui\Theme;
 
 /**
  * A TUI tab. The shell owns the loop, the global health bar and the tab bar; a
  * Panel owns one tab's body and its key handling. render() returns ANSI-tagged
  * lines (pure — it never touches the terminal), so panels are testable frame by
  * frame; the shell paints them. gather() refreshes live AWS state each tick.
+ * Panels colour themselves directly off the Theme enum.
  */
 interface Panel
 {
@@ -29,7 +29,7 @@ interface Panel
      *
      * @return array<int, string>
      */
-    public function render(int $width, Theme $theme): array;
+    public function render(int $width): array;
 
     /**
      * The footer key hints for this tab (e.g. ['↑↓ select', '⏎ actions']).

@@ -44,6 +44,9 @@ class Yolo
         // Services (the env service gate)
         Commands\ServicesCommand::class,
 
+        // Interactive dashboard
+        Commands\TuiCommand::class,
+
         // Sync (scope-grouped: account → environment → app, orchestrated by `sync`)
         Commands\SyncCommand::class,
         Commands\SyncAccountCommand::class,
