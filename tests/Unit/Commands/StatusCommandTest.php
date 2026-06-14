@@ -63,11 +63,12 @@ it('describes scaling bounds, policies, or a fixed/singleton service', function 
         'policies' => [
             ['metric' => 'ECSServiceAverageCPUUtilization', 'target' => 65.0],
             ['metric' => 'concurrency', 'target' => 23.0],
+            ['metric' => 'burst', 'target' => 0.0],
         ],
     ];
 
     expect(StatusCommand::formatScaling($scaling, ServerGroup::WEB))
-        ->toBe('1–4 auto (cpu 65%, concurrency 23)');
+        ->toBe('1–4 auto (cpu 65%, concurrency 23, burst)');
 
     $queue = ['min' => 0, 'max' => 10, 'policies' => [['metric' => 'backlog', 'target' => 0.0]]];
 
@@ -105,8 +106,11 @@ it('reduces a live policy to its metric and target', function (): void {
         ],
     ]))->toBe(['metric' => 'ECSServiceAverageCPUUtilization', 'target' => 65.0]);
 
-    // A step-scaling policy has no target-tracking config — surfaced as a backlog entry.
-    expect($probe->view(['PolicyName' => 'x', 'StepScalingPolicyConfiguration' => []]))
+    // A step-scaling policy has no target-tracking config — named by which one it is:
+    // the web burst policy, else the queue backlog/scale-to-zero bootstrap.
+    expect($probe->view(['PolicyName' => 'yolo-prod-app-web-burst-policy', 'StepScalingPolicyConfiguration' => []]))
+        ->toBe(['metric' => 'burst', 'target' => 0.0]);
+    expect($probe->view(['PolicyName' => 'yolo-prod-app-queue-bootstrap-policy', 'StepScalingPolicyConfiguration' => []]))
         ->toBe(['metric' => 'backlog', 'target' => 0.0]);
 });
 

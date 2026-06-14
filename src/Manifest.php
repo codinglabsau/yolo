@@ -343,6 +343,35 @@ class Manifest
     }
 
     /**
+     * Whether the opt-in web **burst** scale-out path is on: a high-res worker
+     * saturation alarm + step-scaling policy for ~10s spike detection, on top of
+     * the default target-tracking. Off by default; goes through strict bool
+     * validation so a typo can't silently enable it.
+     *
+     * Burst lives under `autoscaling` (it scales that target), so it's inert without
+     * the block. Once explicitly on, the web tier MUST run Octane — the saturation
+     * signal is FrankenPHP's worker metrics, which classic mode has no pool to
+     * expose — so `burst: true` + `octane: false` is a hard error, not a silent
+     * downgrade: a knob asked for and quietly ignored is worse than a loud refusal.
+     */
+    public static function webBurstEnabled(): bool
+    {
+        if (! static::has('tasks.web.autoscaling')) {
+            return false;
+        }
+
+        if (! Helpers::validateStrictBool(static::get('tasks.web.autoscaling.burst', false), 'tasks.web.autoscaling.burst')) {
+            return false;
+        }
+
+        if (! static::usesOctane()) {
+            throw new IntegrityCheckException('tasks.web.autoscaling.burst requires tasks.web.octane: true — burst reads FrankenPHP worker metrics, which classic mode does not expose.');
+        }
+
+        return true;
+    }
+
+    /**
      * Which container runs the queue worker: a standalone `tasks.queue` service if
      * extracted, else bundled in the web container. The worker always runs
      * somewhere — there's no opt-out.

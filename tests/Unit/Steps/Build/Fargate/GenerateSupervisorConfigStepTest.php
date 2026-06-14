@@ -18,6 +18,9 @@ beforeEach(function (): void {
     if (is_file(Paths::build('docker/crontab'))) {
         unlink(Paths::build('docker/crontab'));
     }
+    if (is_file(Paths::build('docker/yolo-saturation.php'))) {
+        unlink(Paths::build('docker/yolo-saturation.php'));
+    }
 });
 
 function generatedSupervisorConfig(): string
@@ -178,4 +181,39 @@ it('runs the inertia ssr renderer when tasks.web.ssr is enabled', function (): v
 
 it('does not run the ssr renderer by default', function (): void {
     expect(generatedSupervisorConfig())->not->toContain('[program:ssr]');
+});
+
+it('omits the saturation emitter program and script when burst is off', function (): void {
+    // beforeEach clears any prior script; the default manifest has no burst.
+    expect(generatedSupervisorConfig())->not->toContain('[program:saturation]');
+    expect(is_file(Paths::build('docker/yolo-saturation.php')))->toBeFalse();
+});
+
+it('adds the saturation emitter program and writes its script when burst is on', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => ['min' => 2, 'max' => 8, 'burst' => true]]],
+    ]);
+
+    $config = generatedSupervisorConfig();
+
+    expect($config)->toContain('[program:saturation]');
+    expect($config)->toContain('command=php /app/docker/yolo-saturation.php');
+
+    // The emitter is rendered from its stub with the metric contract + this app's
+    // web service name substituted in — and no leftover placeholder tokens.
+    $script = file_get_contents(Paths::build('docker/yolo-saturation.php'));
+    expect($script)
+        ->toContain("\$service = 'yolo-testing-my-app-web';")
+        ->toContain("'Namespace' => 'YOLO/Autoscaling'")
+        ->toContain("'Name' => 'WorkerSaturation'")
+        ->toContain("'ServiceName' => \$service")
+        ->toContain('$floor = 70;')
+        ->toContain('frankenphp_busy_threads')
+        ->not->toContain('{{');
+
+    // The rendered emitter is runtime PHP — gate its syntax so a stub edit that
+    // breaks it is caught here, not on a deploy.
+    exec('php -l ' . escapeshellarg(Paths::build('docker/yolo-saturation.php')), $output, $code);
+    expect($code)->toBe(0);
 });

@@ -158,6 +158,55 @@ describe('octane', function (): void {
     });
 });
 
+describe('web burst', function (): void {
+    it('is off by default, even with autoscaling on', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => ['autoscaling' => ['min' => 1, 'max' => 4]]],
+        ]);
+
+        expect(Manifest::webBurstEnabled())->toBeFalse();
+    });
+
+    it('is on when burst is true and autoscaling + octane are on', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => ['autoscaling' => ['min' => 1, 'max' => 4, 'burst' => true]]],
+        ]);
+
+        expect(Manifest::webBurstEnabled())->toBeTrue();
+    });
+
+    it('requires autoscaling — burst alone is inert', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => []],
+        ]);
+
+        // No autoscaling block: there's no scalable target to burst, so it stays off
+        // regardless of any stray flag.
+        expect(Manifest::webBurstEnabled())->toBeFalse();
+    });
+
+    it('hard-fails when burst is on but octane is off, rather than silently ignoring it', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => ['octane' => false, 'autoscaling' => ['min' => 1, 'max' => 4, 'burst' => true]]],
+        ]);
+
+        expect(fn (): bool => Manifest::webBurstEnabled())->toThrow(IntegrityCheckException::class);
+    });
+
+    it('rejects a non-boolean burst flag', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => ['autoscaling' => ['min' => 1, 'max' => 4, 'burst' => 'sometimes']]],
+        ]);
+
+        expect(fn (): bool => Manifest::webBurstEnabled())->toThrow(IntegrityCheckException::class);
+    });
+});
+
 describe('task-role-policies', function (): void {
     it('defaults to no additional policies', function (): void {
         writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
