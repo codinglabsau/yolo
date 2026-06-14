@@ -30,7 +30,8 @@ abstract class AbstractAuditCommand extends Command
     {
         $this
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
-            ->addOption('unexpected', null, InputOption::VALUE_NONE, 'Only show unexpected resources (anything not accounted for by YOLO)');
+            ->addOption('unexpected', null, InputOption::VALUE_NONE, 'Only show unexpected resources (anything not accounted for by YOLO)')
+            ->addOption('json', null, InputOption::VALUE_NONE, 'Emit the audit as JSON and exit (machine-readable; for the /yolo skill and scripts)');
     }
 
     public function handle(): int
@@ -42,6 +43,10 @@ abstract class AbstractAuditCommand extends Command
         ]);
 
         $report = Audit::classify($tagged, $this->liveApps($environment));
+
+        if ($this->option('json')) {
+            return $this->renderJson($report, $environment);
+        }
 
         return $this->render($report, $environment);
     }
@@ -120,6 +125,51 @@ abstract class AbstractAuditCommand extends Command
         ));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * The machine-readable form for `--json` consumers (the `/yolo` skill,
+     * scripts): the same scope-filtered + `--unexpected`-filtered rows the table
+     * would show, plus the environment, live apps and counts derived from those
+     * rows — so the payload is internally consistent (unlike the human note,
+     * which prints the env-wide totals alongside a filtered table).
+     *
+     * @param  array{resources: array<int, array<string, mixed>>, liveApps: array<int, string>, okCount: int, unexpectedCount: int}  $report
+     */
+    protected function renderJson(array $report, string $environment): int
+    {
+        $rows = $this->filtered($report['resources']);
+
+        $this->output->writeln((string) json_encode([
+            'environment' => $environment,
+            'liveApps' => array_values($report['liveApps']),
+            'okCount' => $rows->where('status', Audit::STATUS_OK)->count(),
+            'unexpectedCount' => $rows->where('status', Audit::STATUS_UNEXPECTED)->count(),
+            'resources' => static::auditJsonRows($rows->all()),
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Flatten audit resource rows to the clean machine shape (a stable subset of
+     * keys, `app`/`reason`/`arn` defaulting to null). Pure — unit-tested directly
+     * with hand-built rows, no AWS.
+     *
+     * @param  array<int, array<string, mixed>>  $resources
+     * @return array<int, array<string, mixed>>
+     */
+    public static function auditJsonRows(array $resources): array
+    {
+        return array_map(static fn (array $resource): array => [
+            'scope' => $resource['scope'],
+            'status' => $resource['status'],
+            'type' => $resource['type'],
+            'name' => $resource['name'],
+            'app' => $resource['app'] ?? null,
+            'reason' => $resource['reason'] ?? null,
+            'arn' => $resource['arn'] ?? null,
+        ], $resources);
     }
 
     /**
