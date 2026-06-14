@@ -212,7 +212,7 @@ Once the rollout settles, `deploy` prints a recap — the same per-group summary
 Show a live dashboard of the app's running state for an environment — what each service group is running, its current load, scaling configuration, and any deploy in progress.
 
 ```bash
-yolo status <environment> [--snapshot]
+yolo status <environment> [--snapshot] [--json]
 ```
 
 | Argument | Required | Description |
@@ -222,6 +222,7 @@ yolo status <environment> [--snapshot]
 | Option | Value | Default | Description |
 |---|---|---|---|
 | `--snapshot` | flag | off | Render one frame and exit instead of running the live dashboard. |
+| `--json` | flag | off | Emit the status as JSON (`{app, environment, groups}`) and exit — machine-readable for the `/yolo` skill and scripts. Exits non-zero if a deployment is currently failed. |
 
 The dashboard has three panels, read live from ECS, Application Auto Scaling and CloudWatch:
 
@@ -231,7 +232,7 @@ The dashboard has three panels, read live from ECS, Application Auto Scaling and
 
 Below the panels is a clickable deep link to the app's CloudWatch dashboard for the full metrics view.
 
-By default it **polls and redraws until you quit** (Ctrl-C), picking up any deploy that starts while it's open — so it doubles as a live deploy watch. `--snapshot` (and any non-interactive shell) renders a single frame and exits instead, returning a non-zero exit code if a deployment is currently failed.
+By default it **polls and redraws until you quit** (Ctrl-C), picking up any deploy that starts while it's open — so it doubles as a live deploy watch. `--snapshot` (and any non-interactive shell) renders a single frame and exits instead, returning a non-zero exit code if a deployment is currently failed. `--json` emits the same live state as a structured payload rather than the dashboard — the machine-readable contract the `/yolo` skill (and any script) consumes.
 
 ---
 
@@ -387,7 +388,7 @@ When a [`tasks.web.autoscaling`](/reference/manifest#tasks-web-autoscaling) bloc
 Audit YOLO-tagged resources for an environment (account → environment → app) and flag anything not accounted for. Read-only.
 
 ```bash
-yolo audit <environment> [--unexpected]
+yolo audit <environment> [--unexpected] [--json]
 ```
 
 | Argument | Required | Description |
@@ -397,6 +398,7 @@ yolo audit <environment> [--unexpected]
 | Option | Value | Description |
 |---|---|---|
 | `--unexpected` | flag | Only show unexpected resources — anything not accounted for by YOLO. |
+| `--json` | flag | Emit the audit as JSON (`{environment, liveApps, okCount, unexpectedCount, resources}`) and exit — machine-readable for the `/yolo` skill and scripts. Honours the same scope and `--unexpected` filtering as the table. |
 
 Queries the Resource Groups Tagging API for everything tagged `yolo:environment=<env>` and classifies each resource as **`ok`** or **`unexpected`**, with a **Reason** explaining each unexpected row — `no ownership tag`, `service no longer provisioned`, or `app cluster gone` (see [Provisioning › Auditing](/guide/provisioning#auditing-what-s-deployed)). Audit is an ownership/inventory check; it does not inspect a resource's configuration (that's `sync`'s job). Results are grouped by scope, unexpected-first within a scope, with clickable AWS Console links where the terminal supports them.
 
