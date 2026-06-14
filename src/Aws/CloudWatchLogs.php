@@ -28,6 +28,30 @@ class CloudWatchLogs
     }
 
     /**
+     * Recent log events for a group's stream prefix (web/queue/scheduler). A
+     * missing group reads as no events rather than throwing — the Logs tab shows
+     * an empty state until the first task logs.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function recent(string $logGroup, string $streamPrefix, int $limit = 60): array
+    {
+        try {
+            return Aws::cloudWatchLogs()->filterLogEvents([
+                'logGroupName' => $logGroup,
+                'logStreamNamePrefix' => $streamPrefix,
+                'limit' => $limit,
+            ])['events'] ?? [];
+        } catch (AwsException $e) {
+            if ($e->getAwsErrorCode() === 'ResourceNotFoundException') {
+                return [];
+            }
+
+            throw $e;
+        }
+    }
+
+    /**
      * The account-level resource policy with the given name decoded to an array,
      * or null when no such policy exists. Used to diff the EventBridge log-delivery
      * grant before re-putting it.
