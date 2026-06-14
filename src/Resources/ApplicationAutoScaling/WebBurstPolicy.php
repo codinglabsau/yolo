@@ -18,9 +18,12 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 /**
  * The **burst** scale-out path for the web service: a real-time companion to the
  * {@see WebConcurrencyPolicy} default, for the sudden spike the ~60s CloudWatch
- * metric floor can't catch in time. Not a knob — like the other policies it's just
- * part of how web autoscaling works, on whenever autoscaling is enabled and the web
- * tier runs Octane (the saturation signal is FrankenPHP's worker metrics).
+ * metric floor can't catch in time. Not a knob — like the concurrency and CPU
+ * policies it's just part of the scaling machinery, provisioned wherever web
+ * autoscaling is. The signal is FrankenPHP's worker metrics, which only the worker
+ * mode (Octane) populates — but it needs no gate: a classic-mode web tier simply
+ * never emits the metric, so the alarm sits inert (INSUFFICIENT_DATA) and burst is
+ * a no-op there. Nothing to switch on.
  *
  * The target-tracking policies scale on ALB metrics, which are 1-minute resolution
  * — a good signal, but ~1 min behind. This pairs a **step-scaling policy** with a
@@ -36,7 +39,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * \Codinglabs\Yolo\Steps\Build\Fargate\GenerateSupervisorConfigStep}) just writes
  * to stdout, which already ships to CloudWatch Logs. Enabling FrankenPHP's metrics
  * endpoint is a single `CADDY_GLOBAL_OPTIONS` env var, set on the web task only
- * when burst applies (autoscaling + Octane).
+ * when burst applies (autoscaling enabled).
  *
  * Scale-*in* is left entirely to the target-tracking policies (slow, safe) — this
  * is scale-out only, so it can only ever add capacity faster, never fight them.

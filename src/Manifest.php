@@ -343,23 +343,6 @@ class Manifest
     }
 
     /**
-     * Whether the web **burst** scale-out path runs — a high-res worker-saturation
-     * alarm + step policy for ~10s spike detection on top of the target-tracking.
-     *
-     * Not a knob. Like the concurrency and CPU policies, burst is just part of how
-     * web autoscaling works — there's no decision to make (no app wants slower
-     * scaling; it's near-free and fails safe). So it's unconditionally on whenever
-     * autoscaling is enabled and the web tier runs Octane — the saturation signal is
-     * FrankenPHP's worker metrics, which classic mode has no pool to expose. The
-     * escape hatch, if it ever misbehaves, is the autoscaling block itself (or
-     * `yolo scale`), the same lever that governs every other policy.
-     */
-    public static function webBurstEnabled(): bool
-    {
-        return static::has('tasks.web.autoscaling') && static::usesOctane();
-    }
-
-    /**
      * Which container runs the queue worker: a standalone `tasks.queue` service if
      * extracted, else bundled in the web container. The worker always runs
      * somewhere — there's no opt-out.

@@ -158,36 +158,6 @@ describe('octane', function (): void {
     });
 });
 
-describe('web burst', function (): void {
-    it('runs for an Octane app once autoscaling is enabled — no flag', function (): void {
-        writeManifest([
-            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tasks' => ['web' => ['autoscaling' => ['min' => 1, 'max' => 4]]],
-        ]);
-
-        // It's just part of how web autoscaling works, like the concurrency/CPU policies.
-        expect(Manifest::webBurstEnabled())->toBeTrue();
-    });
-
-    it('is off without autoscaling — there is no scalable target to burst', function (): void {
-        writeManifest([
-            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tasks' => ['web' => []],
-        ]);
-
-        expect(Manifest::webBurstEnabled())->toBeFalse();
-    });
-
-    it('is off for a classic-mode app — no worker pool to measure', function (): void {
-        writeManifest([
-            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tasks' => ['web' => ['octane' => false, 'autoscaling' => ['min' => 1, 'max' => 4]]],
-        ]);
-
-        expect(Manifest::webBurstEnabled())->toBeFalse();
-    });
-});
-
 describe('task-role-policies', function (): void {
     it('defaults to no additional policies', function (): void {
         writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);

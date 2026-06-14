@@ -14,11 +14,11 @@ use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
 /**
  * Provisions (or tears down) the web burst scale-out path — a high-res
  * worker-saturation alarm + step-scaling policy ({@see WebBurstPolicy}). Burst is
- * unconditional for an Octane app under autoscaling, so this is wired into sync:app
- * whenever the web task exists: a web tier that drops autoscaling or runs classic
- * mode has its policy and self-authored alarm deleted on the next sync rather than
- * orphaned — App Auto Scaling cascades the step policy when the scalable target is
- * deregistered, but the alarm is standalone and must be deleted explicitly.
+ * part of web autoscaling, provisioned wherever the scalable target is, so this is
+ * wired into sync:app whenever the web task exists: a web tier that drops
+ * autoscaling has its policy and self-authored alarm deleted on the next sync rather
+ * than orphaned — App Auto Scaling cascades the step policy when the scalable target
+ * is deregistered, but the alarm is standalone and must be deleted explicitly.
  *
  * Skips on a greenfield first sync when the web ECS service doesn't exist yet (the
  * policy attaches to its scalable target).
@@ -36,7 +36,7 @@ class SyncWebBurstStep implements Step
         $dryRun = (bool) Arr::get($options, 'dry-run');
         $burst = new WebBurstPolicy();
 
-        if (! Manifest::webBurstEnabled()) {
+        if (! Manifest::has('tasks.web.autoscaling')) {
             $changes = $burst->teardown(apply: ! $dryRun);
 
             $this->recordChanges($changes);

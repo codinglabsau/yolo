@@ -6,17 +6,11 @@ use Codinglabs\Yolo\Steps\Sync\App\SyncWebBurstStep;
 
 function burstManifest(bool $on): void
 {
-    // Burst isn't a flag — it runs for an Octane app under autoscaling. "Off" is a
-    // classic-mode app (no worker pool to measure), which is also what triggers a teardown.
-    $web = ['autoscaling' => ['min' => 2, 'max' => 8]];
-
-    if (! $on) {
-        $web['octane'] = false;
-    }
-
+    // Burst is part of web autoscaling — "off" is a web tier with no autoscaling block
+    // (no scalable target), which is what triggers a teardown.
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => $web],
+        'tasks' => ['web' => $on ? ['autoscaling' => ['min' => 2, 'max' => 8]] : []],
     ]);
 }
 

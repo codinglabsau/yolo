@@ -372,7 +372,7 @@ Add an `autoscaling` block to turn on [Application Auto Scaling](/guide/scaling)
 | `autoscaling.scale-out-cooldown` | `60` | Seconds between scale-out steps (both policies). |
 | `autoscaling.scale-in-cooldown` | `300` | Seconds between scale-in steps, both policies (kept conservative). |
 
-There's no `burst` knob: real-time [burst scale-out](/guide/scaling#faster-scale-out-burst) (a high-res worker-saturation alarm + step policy, ~10s spike detection) is just part of how web autoscaling works — unconditionally on for an Octane app, like the concurrency and CPU policies.
+There's no `burst` knob: real-time [burst scale-out](/guide/scaling#faster-scale-out-burst) (a high-res worker-saturation alarm + step policy, ~10s spike detection) is just part of how web autoscaling works — provisioned with the scalable target, like the concurrency and CPU policies (a classic-mode tier never emits the signal, so it's a no-op there).
 
 The request-concurrency policy itself has no manifest knob: its target is `floor(memory / 30)` workers per task at 70% utilisation (see [Scaling](/guide/scaling#how-the-concurrency-target-is-derived)).
 

@@ -57,7 +57,7 @@ Because the signal includes latency, a slow downstream dependency (a struggling 
 
 ### Faster scale-out: burst
 
-The two policies above scale on ALB metrics, which are 1-minute resolution — a good signal, but ~1 min behind a sudden spike. So once you're autoscaling, YOLO also runs a **burst** path. There's no knob for it: it's near-free and fails safe, and no app wants slower scaling, so — like the concurrency and CPU policies — it's just part of how web autoscaling works. It's on whenever autoscaling is enabled and the web tier runs **Octane** (a classic-mode app has no worker pool to measure, so it doesn't apply there).
+The two policies above scale on ALB metrics, which are 1-minute resolution — a good signal, but ~1 min behind a sudden spike. So once you're autoscaling, YOLO also runs a **burst** path. There's no knob for it: it's near-free and fails safe, and no app wants slower scaling, so — like the concurrency and CPU policies — it's just part of how web autoscaling works, provisioned wherever the scalable target is. (The signal is FrankenPHP's worker metrics, which only worker mode — Octane, the default — populates; a classic-mode tier simply never emits it, so the alarm sits inert and burst is a no-op there. Nothing to switch on or off.)
 
 Burst adds a **step-scaling policy** driven by a **high-resolution alarm** (10s) on a signal the container reports about *itself*: each web task publishes its FrankenPHP worker saturation (busy ÷ total threads) — an *earlier* indicator than the ALB, since workers queue before latency even climbs. Detection drops from ~60s to **~10–15s**; at ≥80% saturation it adds a task, at ≥90% it adds two. Scale-in stays with the target-tracking policies, so burst can only ever scale out faster, never fight them.
 

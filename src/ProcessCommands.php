@@ -85,7 +85,7 @@ class ProcessCommands
      * (GenerateSupervisorConfigStep writes it from a stub) that reports FrankenPHP's
      * worker saturation to CloudWatch via EMF while the web tier is hot, driving the
      * burst step-scaling alarm. Bundled in the web container only when burst applies
-     * (autoscaling enabled + Octane). It's a plain PHP script, not an artisan
+     * (web autoscaling enabled). It's a plain PHP script, not an artisan
      * command, so it stays independent of the app's bootstrap.
      */
     public static function saturationEmitter(): string
