@@ -165,7 +165,7 @@ describe('autoscaling', function (): void {
             'tasks' => ['web' => ['autoscaling' => ['min' => 2, 'max' => 6]]],
         ]);
 
-        expect(Manifest::hasAutoscaling())->toBeTrue();
+        expect(Manifest::isAutoscaling())->toBeTrue();
     });
 
     it('is on with the `autoscaling: true` shorthand', function (): void {
@@ -174,7 +174,7 @@ describe('autoscaling', function (): void {
             'tasks' => ['web' => ['autoscaling' => true]],
         ]);
 
-        expect(Manifest::hasAutoscaling())->toBeTrue();
+        expect(Manifest::isAutoscaling())->toBeTrue();
     });
 
     it('is off with an explicit `autoscaling: false`', function (): void {
@@ -183,7 +183,7 @@ describe('autoscaling', function (): void {
             'tasks' => ['web' => ['autoscaling' => false]],
         ]);
 
-        expect(Manifest::hasAutoscaling())->toBeFalse();
+        expect(Manifest::isAutoscaling())->toBeFalse();
     });
 
     it('is off without an autoscaling key', function (): void {
@@ -192,7 +192,7 @@ describe('autoscaling', function (): void {
             'tasks' => ['web' => []],
         ]);
 
-        expect(Manifest::hasAutoscaling())->toBeFalse();
+        expect(Manifest::isAutoscaling())->toBeFalse();
     });
 });
 

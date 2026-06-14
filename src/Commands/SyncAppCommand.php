@@ -58,7 +58,7 @@ class SyncAppCommand extends SyncSteppedCommand
         $host = Manifest::schedulerHost();
 
         $hostAutoscales = match ($host) {
-            ServerGroup::WEB => Manifest::hasAutoscaling(),
+            ServerGroup::WEB => Manifest::isAutoscaling(),
             ServerGroup::QUEUE => true, // a standalone queue is always autoscaled (min↔max)
             ServerGroup::SCHEDULER => false, // dedicated singleton — never multi-fires
         };

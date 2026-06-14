@@ -350,7 +350,7 @@ class Manifest
      * (min 1, max 4). An explicit `false` — or no key — leaves the web service a
      * fixed single task. Off ⇒ everything scaling tears down (or never provisions).
      */
-    public static function hasAutoscaling(): bool
+    public static function isAutoscaling(): bool
     {
         return static::get('tasks.web.autoscaling', false) !== false;
     }

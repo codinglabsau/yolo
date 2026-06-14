@@ -36,7 +36,7 @@ class SyncWebBurstStep implements Step
         $dryRun = (bool) Arr::get($options, 'dry-run');
         $burst = new WebBurstPolicy();
 
-        if (! Manifest::hasAutoscaling()) {
+        if (! Manifest::isAutoscaling()) {
             $changes = $burst->teardown(apply: ! $dryRun);
 
             $this->recordChanges($changes);

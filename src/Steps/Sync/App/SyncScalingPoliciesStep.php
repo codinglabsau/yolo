@@ -57,7 +57,7 @@ class SyncScalingPoliciesStep implements Step
     {
         // Autoscaling removed entirely → the scalable target is deregistered by
         // SyncScalableTargetStep, cascading every policy and alarm. Nothing to do.
-        if (! Manifest::hasAutoscaling()) {
+        if (! Manifest::isAutoscaling()) {
             return StepResult::SKIPPED;
         }
 
