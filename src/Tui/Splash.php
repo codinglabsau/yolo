@@ -137,7 +137,7 @@ class Splash
         $steps = 26;
 
         for ($step = 0; $step <= $steps; $step++) {
-            if (self::skipRequested($keyboard)) {
+            if ($keyboard->read() !== null) {
                 return;
             }
 
@@ -148,26 +148,11 @@ class Splash
         $settle = microtime(true) + 0.5;
 
         while (microtime(true) < $settle) {
-            if (self::skipRequested($keyboard)) {
+            if ($keyboard->read() !== null) {
                 return;
             }
 
             usleep(40_000);
         }
-    }
-
-    /**
-     * Whether the operator pressed a key to skip the splash. Reads live keyboard
-     * input, so each call stands alone (the two poll loops both consult it).
-     *
-     * @phpstan-impure
-     *
-     * @codeCoverageIgnore raw terminal I/O — exercised by hand, not in CI.
-     */
-    private static function skipRequested(Keyboard $keyboard): bool
-    {
-        $key = $keyboard->read();
-
-        return $key !== null;
     }
 }
