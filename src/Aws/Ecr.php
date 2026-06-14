@@ -49,4 +49,37 @@ class Ecr
             throw $e;
         }
     }
+
+    /**
+     * Every image detail in the repository, across all pages — each carrying
+     * its `imageTags` and `imagePushedAt`. A missing repository yields an empty
+     * list (a greenfield app has nothing to roll back to) rather than throwing.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function images(string $repository): array
+    {
+        $details = [];
+        $token = null;
+
+        try {
+            do {
+                $result = Aws::ecr()->describeImages(array_filter([
+                    'repositoryName' => $repository,
+                    'nextToken' => $token,
+                ]));
+
+                $details = [...$details, ...($result['imageDetails'] ?? [])];
+                $token = $result['nextToken'] ?? null;
+            } while ($token);
+        } catch (AwsException $e) {
+            if ($e->getAwsErrorCode() === 'RepositoryNotFoundException') {
+                return [];
+            }
+
+            throw $e;
+        }
+
+        return $details;
+    }
 }

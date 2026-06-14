@@ -21,6 +21,7 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | [`environment:env:push <env>`](#yolo-environment-env-push) | Upload the env-shared `.env` (with diff) |
 | [`build <env>`](#yolo-build) | Build and push the container image |
 | [`deploy <env>`](#yolo-deploy) | Build, then roll out a zero-downtime deploy |
+| [`rollback <env>`](#yolo-rollback) | Re-deploy a previously-built version from ECR, without a build |
 | [`status <env>`](#yolo-status) | Live dashboard of services, load, scaling and any in-progress deploy |
 | [`run <env>`](#yolo-run) | Open a shell / run a command in a running container |
 | [`scale <env> [count]`](#yolo-scale) | Adjust the web service's task count out of band |
@@ -204,6 +205,35 @@ yolo deploy <environment> [--app-version=<tag>] [--group=<groups>] [--no-progres
 After building, `deploy` republishes the app's claim file (`apps/{app}.yml` in the env config bucket — see [the environment declaration](/guide/provisioning#the-environment-declaration)), pushes assets to S3, registers a new task-definition revision **for each service group** (web plus any standalone queue/scheduler), runs `deploy` hooks as a one-off task, rolls each ECS service onto its new revision, waits for the web service to go healthy (the deployment circuit breaker auto-rolls-back on failure), then UPSERTs Route 53 records. It always waits for the rollout to stabilise — there is no opt-out flag. `--group` narrows the rollout to a subset of services (the shared image is built either way); a deploy that omits `web` skips the ALB health wait, relying on the circuit breaker.
 
 Once the rollout settles, `deploy` prints a recap — the same per-group summary table and CloudWatch dashboard link [`status`](#yolo-status) shows — so you can see what's now running and the new revision of each service.
+
+---
+
+## `yolo rollback`
+
+Roll an environment back to a previously-deployed version — re-deploy an image that already exists in ECR, **without a build**.
+
+```bash
+yolo rollback <environment> [--app-version=<version>] [--group=<groups>] [--force] [--no-progress]
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `environment` | yes | The environment name |
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--app-version` | string | — | Roll back to this version non-interactively, skipping the picker. |
+| `--group` | comma-separated | all the app runs | Service groups to roll (`web,queue,scheduler`). |
+| `--force` / `-f` | flag | off | Skip the confirmation prompt (pair with `--app-version` for CI). |
+| `--no-progress` | flag | off | Hide the live progress output. |
+
+Run with no `--app-version` and `rollback` shows an interactive picker of the last deployments, read from ECR and listed by **app version** (parsed from the image ref), newest first. The first page holds the 10 most recent; "Show older versions →" pages back through the rest (ECR keeps the last 30). The version that's running now is marked `(current)`.
+
+Rollback reuses the back half of [`deploy`](#yolo-deploy) — it registers a task-definition revision pinned to the chosen version, **re-runs the `deploy` hooks** against the rolled-back image, rolls each service onto it, waits for the web service to go healthy (the circuit breaker auto-rolls-back on failure), then UPSERTs Route 53 records — but runs **no build and re-pushes no assets** (the image and its asset tree already exist). The `deploy` hooks re-run because they're what makes a version live (cache rebuilds, `migrate`, …); `migrate` is forward-only, so it applies nothing new and **never reverts the schema**. Code and assets revert cleanly; the **database does not** — the confirm gate spells this out and defaults to "no": a rollback past a destructive migration can break against the old code. `--force` skips the gate.
+
+Targets are always selected by version, never by ECS task-definition revision number — the revision integer is AWS's per-family registration counter and says nothing about which version a revision runs, and `sync`-registered revisions pin the moving `:latest` tag (so they're never offered as a rollback target).
+
+Once the rollout settles, `rollback` prints the same recap as `deploy`.
 
 ---
 
