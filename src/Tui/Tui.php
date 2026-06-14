@@ -50,7 +50,12 @@ class Tui
 
         try {
             if ($this->splash) {
-                (new Splash())->play($this->screen, $this->keyboard, fn () => $this->panels[$this->active]->gather());
+                (new Splash())->play(
+                    $this->screen,
+                    $this->keyboard,
+                    fn () => $this->panels[$this->active]->gather(),
+                    'connecting to ' . $this->environment . '…',
+                );
             }
 
             while (! $this->quit) {

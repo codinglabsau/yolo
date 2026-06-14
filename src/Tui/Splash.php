@@ -59,7 +59,7 @@ class Splash
      *
      * @return array<int, string>
      */
-    public static function frame(float $progress, int $width = 80): array
+    public static function frame(float $progress, int $width = 80, string $status = ''): array
     {
         $progress = max(0.0, min(1.0, $progress));
         $above = (int) round((1.0 - $progress) * self::LIFT);
@@ -85,6 +85,13 @@ class Splash
         $rows[] = $progress >= 1.0
             ? self::centre(Theme::Accent->fg(self::TAGLINE), mb_strlen(self::TAGLINE), $width)
             : '';
+
+        // A boot line for the pad-wait (the rocket holds here while the first
+        // fetch runs). Always a row — empty during the launch — so the height
+        // stays constant and the repaint never jumps.
+        $rows[] = $status === ''
+            ? ''
+            : self::centre(Theme::Muted->fg('▸ ' . $status), mb_strlen('▸ ' . $status), $width);
 
         return $rows;
     }
@@ -127,11 +134,11 @@ class Splash
      *
      * @codeCoverageIgnore timing + terminal I/O — exercised by hand, not in CI.
      */
-    public function play(Screen $screen, Keyboard $keyboard, callable $work): void
+    public function play(Screen $screen, Keyboard $keyboard, callable $work, string $status = ''): void
     {
         $width = $screen->width();
 
-        $screen->paint(self::frame(0.0, $width));
+        $screen->paint(self::frame(0.0, $width, $status));
         $work();
 
         $steps = 26;
