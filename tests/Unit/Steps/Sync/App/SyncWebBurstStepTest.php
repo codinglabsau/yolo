@@ -6,9 +6,10 @@ use Codinglabs\Yolo\Steps\Sync\App\SyncWebBurstStep;
 
 function burstManifest(bool $burst): void
 {
+    // Burst defaults on for Octane apps, so "off" must be an explicit burst: false.
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['autoscaling' => array_filter(['min' => 2, 'max' => 8, 'burst' => $burst ?: null])]],
+        'tasks' => ['web' => ['autoscaling' => ['min' => 2, 'max' => 8, 'burst' => $burst]]],
     ]);
 }
 

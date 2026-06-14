@@ -55,18 +55,17 @@ and target-tracks it at a value derived from the task's memory — `floor(memory
 
 Because the signal includes latency, a slow downstream dependency (a struggling database) raises concurrency and scales the web tier out even when more tasks won't help — the `max` bound is the backstop there, since CPU stays low when the stall is downstream.
 
-### Faster scale-out: burst (opt-in)
+### Faster scale-out: burst
 
-The two policies above scale on ALB metrics, which are 1-minute resolution — a good signal, but ~1 min behind a sudden spike. For latency-sensitive apps that can't wait, add `burst`:
+The two policies above scale on ALB metrics, which are 1-minute resolution — a good signal, but ~1 min behind a sudden spike. So once you're autoscaling, YOLO also runs a **burst** path — and because it's near-free and fails safe, **it's on by default** for an Octane app. Set `burst: false` to opt out:
 
 ```yaml
 tasks:
   web:
-    octane: true          # required — burst reads FrankenPHP's worker metrics
     autoscaling:
       min: 3              # burst complements warm capacity; it doesn't replace it
       max: 12
-      burst: true
+      # burst: false      # on by default for Octane apps; set false to opt out
 ```
 
 Burst adds a **step-scaling policy** driven by a **high-resolution alarm** (10s) on a signal the container reports about *itself*: each web task publishes its FrankenPHP worker saturation (busy ÷ total threads) — an *earlier* indicator than the ALB, since workers queue before latency even climbs. Detection drops from ~60s to **~10–15s**; at ≥80% saturation it adds a task, at ≥90% it adds two. Scale-in stays with the target-tracking policies, so burst can only ever scale out faster, never fight them.
@@ -74,14 +73,14 @@ Burst adds a **step-scaling policy** driven by a **high-resolution alarm** (10s)
 How it works, and what it costs:
 
 - A tiny supervised process in the web container reads FrankenPHP's metrics endpoint and writes the saturation as an [embedded-metric-format](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format.html) line to stdout — **only while it's hot** (≥70%). CloudWatch Logs auto-extracts the metric, so there's no `PutMetricData`, no AWS SDK in the container and **no new IAM**.
-- YOLO turns FrankenPHP's metrics endpoint on with a single `CADDY_GLOBAL_OPTIONS` env var on the web task (it never touches your Caddyfile). This needs `tasks.web.octane: true` (the default); a classic-mode app has no worker pool to measure, so burst is rejected there.
+- YOLO turns FrankenPHP's metrics endpoint on with a single `CADDY_GLOBAL_OPTIONS` env var on the web task (it never touches your Caddyfile). The saturation signal *is* FrankenPHP's worker metrics, so burst needs Octane (the default): a classic-mode app has no worker pool, so it defaults off there — and an explicit `burst: true` on classic mode is a hard error, not a silent no-op.
 - Cost is dominated by the one high-resolution alarm — roughly **$0.30/month** per app; the metric and log lines are near-zero because nothing is emitted until the service is hot.
 
 ::: warning Burst is not a substitute for warm capacity
 Even instant detection still waits ~55s for the new task to boot and pass ALB health. So reactive scaling — burst included — bottoms out at ~1 min to relief; below that you need a task that's already running (`min ≥ N`). Burst makes the spike that *exceeds* your warm headroom land faster; it doesn't remove the need for the headroom.
 :::
 
-The burst alarm and step policy aren't taggable, so (like the target-tracking policies) they don't appear in [`yolo audit`](/reference/commands#yolo-audit); switching `burst` off deletes both on the next sync.
+The burst alarm and step policy aren't taggable, so (like the target-tracking policies) they don't appear in [`yolo audit`](/reference/commands#yolo-audit); setting `burst: false` deletes both on the next sync.
 
 ### Turning autoscaling off
 

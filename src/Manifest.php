@@ -349,10 +349,14 @@ class Manifest
      * validation so a typo can't silently enable it.
      *
      * Burst lives under `autoscaling` (it scales that target), so it's inert without
-     * the block. Once explicitly on, the web tier MUST run Octane — the saturation
-     * signal is FrankenPHP's worker metrics, which classic mode has no pool to
-     * expose — so `burst: true` + `octane: false` is a hard error, not a silent
-     * downgrade: a knob asked for and quietly ignored is worse than a loud refusal.
+     * the block — but once you're autoscaling, it's **on by default** for an Octane
+     * app: it's near-free (~$0.30/mo, fails safe) and faster scale-out is the point of
+     * autoscaling, not a knob to discover. Set `burst: false` to opt out.
+     *
+     * The saturation signal is FrankenPHP's worker metrics, which classic mode has no
+     * pool to expose — so classic apps default off, and an *explicit* `burst: true` on
+     * classic is a hard error (a knob asked for and quietly ignored is worse than a
+     * loud refusal), while the default simply stays off there.
      */
     public static function webBurstEnabled(): bool
     {
@@ -360,15 +364,18 @@ class Manifest
             return false;
         }
 
-        if (! Helpers::validateStrictBool(static::get('tasks.web.autoscaling.burst', false), 'tasks.web.autoscaling.burst')) {
-            return false;
-        }
+        // Default to on for Octane apps, off for classic — so an unset `burst` follows
+        // the server, and only an explicit value overrides.
+        $burst = Helpers::validateStrictBool(
+            static::get('tasks.web.autoscaling.burst', static::usesOctane()),
+            'tasks.web.autoscaling.burst',
+        );
 
-        if (! static::usesOctane()) {
+        if ($burst && ! static::usesOctane()) {
             throw new IntegrityCheckException('tasks.web.autoscaling.burst requires tasks.web.octane: true — burst reads FrankenPHP worker metrics, which classic mode does not expose.');
         }
 
-        return true;
+        return $burst;
     }
 
     /**

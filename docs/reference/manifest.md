@@ -83,7 +83,7 @@ environments:
         #   cpu-utilization: 65           # default: 65 — the CPU safety-net policy
         #   scale-out-cooldown: 60        # default: 60
         #   scale-in-cooldown: 300        # default: 300
-        #   burst: false                 # opt-in ~10s spike detection (needs octane)
+        #   burst: false                 # ~10s spike detection — on by default for octane; false to opt out
         #   # request concurrency is the default signal — derived from task memory, no tuning
 
       # Extract the queue into its own ECS service (scale independently of web).
@@ -371,7 +371,7 @@ Add an `autoscaling` block to turn on [Application Auto Scaling](/guide/scaling)
 | `autoscaling.cpu-utilization` | `65` | Target average CPU % — the safety-net policy composed alongside concurrency. |
 | `autoscaling.scale-out-cooldown` | `60` | Seconds between scale-out steps (both policies). |
 | `autoscaling.scale-in-cooldown` | `300` | Seconds between scale-in steps, both policies (kept conservative). |
-| `autoscaling.burst` | `false` | Opt-in real-time burst scale-out — a high-res worker-saturation alarm + step policy for ~10s spike detection on top of the ~60s target-tracking. Requires `tasks.web.octane: true`. See [Scaling → burst](/guide/scaling#faster-scale-out-burst-opt-in). |
+| `autoscaling.burst` | `true` (Octane) | Real-time burst scale-out — a high-res worker-saturation alarm + step policy for ~10s spike detection on top of the ~60s target-tracking. On by default for Octane apps (off for classic mode); set `false` to opt out. See [Scaling → burst](/guide/scaling#faster-scale-out-burst). |
 
 The request-concurrency policy itself has no manifest knob: its target is `floor(memory / 30)` workers per task at 70% utilisation (see [Scaling](/guide/scaling#how-the-concurrency-target-is-derived)).
 

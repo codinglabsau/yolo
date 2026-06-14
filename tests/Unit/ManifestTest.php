@@ -159,32 +159,42 @@ describe('octane', function (): void {
 });
 
 describe('web burst', function (): void {
-    it('is off by default, even with autoscaling on', function (): void {
+    it('is on by default for an Octane app once autoscaling is enabled', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'tasks' => ['web' => ['autoscaling' => ['min' => 1, 'max' => 4]]],
         ]);
 
-        expect(Manifest::webBurstEnabled())->toBeFalse();
-    });
-
-    it('is on when burst is true and autoscaling + octane are on', function (): void {
-        writeManifest([
-            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tasks' => ['web' => ['autoscaling' => ['min' => 1, 'max' => 4, 'burst' => true]]],
-        ]);
-
+        // Octane is the default, so burst follows it — no flag needed.
         expect(Manifest::webBurstEnabled())->toBeTrue();
     });
 
-    it('requires autoscaling — burst alone is inert', function (): void {
+    it('can be opted out with burst: false', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => ['autoscaling' => ['min' => 1, 'max' => 4, 'burst' => false]]],
+        ]);
+
+        expect(Manifest::webBurstEnabled())->toBeFalse();
+    });
+
+    it('requires autoscaling — there is no scalable target to burst without it', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'tasks' => ['web' => []],
         ]);
 
-        // No autoscaling block: there's no scalable target to burst, so it stays off
-        // regardless of any stray flag.
+        expect(Manifest::webBurstEnabled())->toBeFalse();
+    });
+
+    it('defaults off for a classic-mode app, with no error', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => ['octane' => false, 'autoscaling' => ['min' => 1, 'max' => 4]]],
+        ]);
+
+        // Classic mode has no worker pool to measure, so the default is off — quietly,
+        // since the operator didn't ask for it.
         expect(Manifest::webBurstEnabled())->toBeFalse();
     });
 
