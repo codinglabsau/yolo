@@ -343,39 +343,20 @@ class Manifest
     }
 
     /**
-     * Whether the opt-in web **burst** scale-out path is on: a high-res worker
-     * saturation alarm + step-scaling policy for ~10s spike detection, on top of
-     * the default target-tracking. Off by default; goes through strict bool
-     * validation so a typo can't silently enable it.
+     * Whether the web **burst** scale-out path runs — a high-res worker-saturation
+     * alarm + step policy for ~10s spike detection on top of the target-tracking.
      *
-     * Burst lives under `autoscaling` (it scales that target), so it's inert without
-     * the block — but once you're autoscaling, it's **on by default** for an Octane
-     * app: it's near-free (~$0.30/mo, fails safe) and faster scale-out is the point of
-     * autoscaling, not a knob to discover. Set `burst: false` to opt out.
-     *
-     * The saturation signal is FrankenPHP's worker metrics, which classic mode has no
-     * pool to expose — so classic apps default off, and an *explicit* `burst: true` on
-     * classic is a hard error (a knob asked for and quietly ignored is worse than a
-     * loud refusal), while the default simply stays off there.
+     * Not a knob. Like the concurrency and CPU policies, burst is just part of how
+     * web autoscaling works — there's no decision to make (no app wants slower
+     * scaling; it's near-free and fails safe). So it's unconditionally on whenever
+     * autoscaling is enabled and the web tier runs Octane — the saturation signal is
+     * FrankenPHP's worker metrics, which classic mode has no pool to expose. The
+     * escape hatch, if it ever misbehaves, is the autoscaling block itself (or
+     * `yolo scale`), the same lever that governs every other policy.
      */
     public static function webBurstEnabled(): bool
     {
-        if (! static::has('tasks.web.autoscaling')) {
-            return false;
-        }
-
-        // Default to on for Octane apps, off for classic — so an unset `burst` follows
-        // the server, and only an explicit value overrides.
-        $burst = Helpers::validateStrictBool(
-            static::get('tasks.web.autoscaling.burst', static::usesOctane()),
-            'tasks.web.autoscaling.burst',
-        );
-
-        if ($burst && ! static::usesOctane()) {
-            throw new IntegrityCheckException('tasks.web.autoscaling.burst requires tasks.web.octane: true — burst reads FrankenPHP worker metrics, which classic mode does not expose.');
-        }
-
-        return $burst;
+        return static::has('tasks.web.autoscaling') && static::usesOctane();
     }
 
     /**

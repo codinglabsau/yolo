@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
 beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['autoscaling' => ['min' => 2, 'max' => 8, 'burst' => true]]],
+        'tasks' => ['web' => ['autoscaling' => ['min' => 2, 'max' => 8]]],
     ]);
 });
 

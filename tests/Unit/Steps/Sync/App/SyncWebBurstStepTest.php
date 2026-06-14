@@ -4,12 +4,19 @@ use Aws\Result;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Steps\Sync\App\SyncWebBurstStep;
 
-function burstManifest(bool $burst): void
+function burstManifest(bool $on): void
 {
-    // Burst defaults on for Octane apps, so "off" must be an explicit burst: false.
+    // Burst isn't a flag — it runs for an Octane app under autoscaling. "Off" is a
+    // classic-mode app (no worker pool to measure), which is also what triggers a teardown.
+    $web = ['autoscaling' => ['min' => 2, 'max' => 8]];
+
+    if (! $on) {
+        $web['octane'] = false;
+    }
+
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['autoscaling' => ['min' => 2, 'max' => 8, 'burst' => $burst]]],
+        'tasks' => ['web' => $web],
     ]);
 }
 
@@ -19,7 +26,7 @@ function activeWebService(array &$captured): void
 }
 
 beforeEach(function (): void {
-    burstManifest(burst: true);
+    burstManifest(on: true);
 });
 
 it('skips on a greenfield sync when the web service does not exist yet', function (): void {
@@ -62,7 +69,7 @@ it('would-create on a dry-run without writing', function (): void {
 });
 
 it('prunes the policy and alarm when burst is switched off', function (): void {
-    burstManifest(burst: false);
+    burstManifest(on: false);
 
     $ecs = [];
     $aa = [];
@@ -83,7 +90,7 @@ it('prunes the policy and alarm when burst is switched off', function (): void {
 });
 
 it('skips when burst is off and there is nothing to tear down', function (): void {
-    burstManifest(burst: false);
+    burstManifest(on: false);
 
     $ecs = [];
     $aa = [];

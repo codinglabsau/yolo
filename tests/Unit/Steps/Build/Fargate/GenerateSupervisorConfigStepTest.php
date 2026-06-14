@@ -192,7 +192,7 @@ it('omits the saturation emitter program and script when burst is off', function
 it('adds the saturation emitter program and writes its script when burst is on', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['autoscaling' => ['min' => 2, 'max' => 8, 'burst' => true]]],
+        'tasks' => ['web' => ['autoscaling' => ['min' => 2, 'max' => 8]]],
     ]);
 
     $config = generatedSupervisorConfig();

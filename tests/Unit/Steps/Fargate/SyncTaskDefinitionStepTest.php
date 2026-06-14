@@ -245,7 +245,7 @@ it('sets no container environment by default', function (): void {
 it('enables the FrankenPHP metrics endpoint on the web container when burst is on', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['autoscaling' => ['min' => 2, 'max' => 8, 'burst' => true]]],
+        'tasks' => ['web' => ['autoscaling' => ['min' => 2, 'max' => 8]]],
     ]);
 
     // The burst saturation emitter reads FrankenPHP's metrics; CADDY_GLOBAL_OPTIONS

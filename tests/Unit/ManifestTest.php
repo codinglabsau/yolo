@@ -159,26 +159,17 @@ describe('octane', function (): void {
 });
 
 describe('web burst', function (): void {
-    it('is on by default for an Octane app once autoscaling is enabled', function (): void {
+    it('runs for an Octane app once autoscaling is enabled — no flag', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'tasks' => ['web' => ['autoscaling' => ['min' => 1, 'max' => 4]]],
         ]);
 
-        // Octane is the default, so burst follows it — no flag needed.
+        // It's just part of how web autoscaling works, like the concurrency/CPU policies.
         expect(Manifest::webBurstEnabled())->toBeTrue();
     });
 
-    it('can be opted out with burst: false', function (): void {
-        writeManifest([
-            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tasks' => ['web' => ['autoscaling' => ['min' => 1, 'max' => 4, 'burst' => false]]],
-        ]);
-
-        expect(Manifest::webBurstEnabled())->toBeFalse();
-    });
-
-    it('requires autoscaling — there is no scalable target to burst without it', function (): void {
+    it('is off without autoscaling — there is no scalable target to burst', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'tasks' => ['web' => []],
@@ -187,33 +178,13 @@ describe('web burst', function (): void {
         expect(Manifest::webBurstEnabled())->toBeFalse();
     });
 
-    it('defaults off for a classic-mode app, with no error', function (): void {
+    it('is off for a classic-mode app — no worker pool to measure', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'tasks' => ['web' => ['octane' => false, 'autoscaling' => ['min' => 1, 'max' => 4]]],
         ]);
 
-        // Classic mode has no worker pool to measure, so the default is off — quietly,
-        // since the operator didn't ask for it.
         expect(Manifest::webBurstEnabled())->toBeFalse();
-    });
-
-    it('hard-fails when burst is on but octane is off, rather than silently ignoring it', function (): void {
-        writeManifest([
-            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tasks' => ['web' => ['octane' => false, 'autoscaling' => ['min' => 1, 'max' => 4, 'burst' => true]]],
-        ]);
-
-        expect(fn (): bool => Manifest::webBurstEnabled())->toThrow(IntegrityCheckException::class);
-    });
-
-    it('rejects a non-boolean burst flag', function (): void {
-        writeManifest([
-            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tasks' => ['web' => ['autoscaling' => ['min' => 1, 'max' => 4, 'burst' => 'sometimes']]],
-        ]);
-
-        expect(fn (): bool => Manifest::webBurstEnabled())->toThrow(IntegrityCheckException::class);
     });
 });
 
