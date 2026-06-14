@@ -80,10 +80,10 @@ environments:
         # autoscaling:                    # omit the whole block for a fixed single task
         #   min: 1                        # default: 1
         #   max: 4                        # default: 4
-        #   cpu-utilization: 65           # default: 65 — always-on CPU target-tracking policy
-        #   request-count-per-target: 1000   # no default — seed from a load test (req/task/min)
+        #   cpu-utilization: 65           # default: 65 — the CPU safety-net policy
         #   scale-out-cooldown: 60        # default: 60
         #   scale-in-cooldown: 300        # default: 300
+        #   # request concurrency is the default signal — derived from task memory, no tuning
 
       # Extract the queue into its own ECS service (scale independently of web).
       # Presence is the opt-in. A standalone queue scales to zero by default —
@@ -361,16 +361,17 @@ The other defaults are tuned to avoid false-positive failures on a Laravel/Octan
 
 ### `tasks.web.autoscaling.*`
 
-Add an `autoscaling` block to turn on [Application Auto Scaling](/guide/scaling) for the web service. Without it, the service runs a fixed single task (today's behaviour). With it, YOLO registers a scalable target plus a CPU target-tracking policy; add `request-count-per-target` (seeded from a load test) to also scale on per-target request rate.
+Add an `autoscaling` block to turn on [Application Auto Scaling](/guide/scaling) for the web service. Without it, the service runs a fixed single task (today's behaviour). With it, YOLO scales on **request concurrency** — the default, leading signal, with its target derived from the task's memory so there's nothing to tune — and composes a **CPU** policy alongside as a safety net. The only knobs are the bounds and cooldowns.
 
 | Key | Default | Description |
 |---|---|---|
 | `autoscaling.min` | `1` | Minimum number of tasks. |
 | `autoscaling.max` | `4` | Maximum number of tasks. |
-| `autoscaling.cpu-utilization` | `65` | Target average CPU % — the always-on policy. |
-| `autoscaling.request-count-per-target` | — | Target requests per task per minute (`ALBRequestCountPerTarget`). Omit until you have a load-test number; the policy is created only once it's set. |
-| `autoscaling.scale-out-cooldown` | `60` | Seconds between scale-out steps. |
-| `autoscaling.scale-in-cooldown` | `300` | Seconds between scale-in steps (kept conservative). |
+| `autoscaling.cpu-utilization` | `65` | Target average CPU % — the safety-net policy composed alongside concurrency. |
+| `autoscaling.scale-out-cooldown` | `60` | Seconds between scale-out steps (both policies). |
+| `autoscaling.scale-in-cooldown` | `300` | Seconds between scale-in steps, both policies (kept conservative). |
+
+The request-concurrency policy itself has no manifest knob: its target is `floor(memory / 30)` workers per task at 70% utilisation (see [Scaling](/guide/scaling#how-the-concurrency-target-is-derived)).
 
 ```yaml
 tasks:
@@ -379,7 +380,6 @@ tasks:
       min: 1
       max: 6
       cpu-utilization: 65
-      request-count-per-target: 1000   # seed from a load test
 ```
 
 ::: warning Bundled scheduler

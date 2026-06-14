@@ -153,7 +153,11 @@ trait RendersServiceStatus
             return ['metric' => 'backlog', 'target' => 0.0];
         }
 
-        $metric = $config['PredefinedMetricSpecification']['PredefinedMetricType'] ?? 'custom';
+        // A customized-metric target-tracking policy carries no PredefinedMetricType;
+        // the web concurrency policy is the one YOLO runs, recognised by its name
+        // (SyncScalingPoliciesStep::CONCURRENCY_POLICY → '…-concurrency-scaling-policy').
+        $metric = $config['PredefinedMetricSpecification']['PredefinedMetricType']
+            ?? (str_contains($policy['PolicyName'] ?? '', 'concurrency') ? 'concurrency' : 'custom');
 
         return ['metric' => $metric, 'target' => (float) ($config['TargetValue'] ?? 0)];
     }
@@ -351,7 +355,7 @@ trait RendersServiceStatus
     {
         return match ($policy['metric']) {
             'ECSServiceAverageCPUUtilization' => sprintf('cpu %s%%', static::trimFloat($policy['target'])),
-            'ALBRequestCountPerTarget' => sprintf('req %s', static::trimFloat($policy['target'])),
+            'concurrency' => sprintf('concurrency %s', static::trimFloat($policy['target'])),
             'backlog' => 'backlog',
             default => $policy['metric'],
         };

@@ -12,29 +12,29 @@ use Codinglabs\Yolo\Aws\ApplicationAutoScaling;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * A target-tracking scaling policy on the web service's scalable target. A
- * constructor-configured reconciler shared by the request-count and CPU policies —
- * PutScalingPolicy is a pure upsert, so there's no create/update split. Dry-run
- * honest: it reads the live policy, diffs the comparable fields and only writes on
- * drift.
+ * The web service's CPU target-tracking scaling policy
+ * (ECSServiceAverageCPUUtilization) — the safety net composed alongside the
+ * default {@see WebConcurrencyPolicy}: it catches a few heavy, low-rate requests
+ * that peg the CPU without raising request concurrency. A constructor-configured
+ * reconciler around a predefined metric — PutScalingPolicy is a pure upsert, so
+ * there's no create/update split. Dry-run honest: it reads the live policy, diffs
+ * the comparable fields and only writes on drift.
  *
- * Both policies attach to the same {@see ScalableTarget}. App Auto Scaling takes
- * the max desired count across every policy, so scale-out always wins and the two
- * metrics compose rather than fight.
+ * Both policies attach to the same {@see ScalableTarget}. Application Auto Scaling
+ * takes the max desired count across every policy, so scale-out always wins and
+ * the two metrics compose rather than fight.
  */
-class ScalingPolicy
+class ScalingPolicy implements TargetTrackingPolicy
 {
     /**
      * @param  string  $policyName  the App Auto Scaling policy name
-     * @param  string  $metricType  a predefined metric type (ALBRequestCountPerTarget / ECSServiceAverageCPUUtilization)
+     * @param  string  $metricType  a predefined metric type (ECSServiceAverageCPUUtilization)
      * @param  float  $targetValue  the value target tracking holds the metric at
-     * @param  string|null  $resourceLabel  required by ALBRequestCountPerTarget ({alb-suffix}/{tg-suffix}); null otherwise
      */
     public function __construct(
         protected string $policyName,
         protected string $metricType,
         protected float $targetValue,
-        protected ?string $resourceLabel = null,
     ) {}
 
     public function exists(): bool
@@ -77,10 +77,9 @@ class ScalingPolicy
     {
         return [
             'TargetValue' => $this->targetValue,
-            'PredefinedMetricSpecification' => array_filter([
+            'PredefinedMetricSpecification' => [
                 'PredefinedMetricType' => $this->metricType,
-                'ResourceLabel' => $this->resourceLabel,
-            ], fn (?string $value): bool => $value !== null),
+            ],
             'ScaleOutCooldown' => static::scaleOutCooldown(),
             'ScaleInCooldown' => static::scaleInCooldown(),
         ];
@@ -109,12 +108,6 @@ class ScalingPolicy
 
         if ($currentMetric !== $this->metricType) {
             $changes[] = Change::make("{$this->policyName} metric", $currentMetric, $this->metricType);
-        }
-
-        $currentLabel = $current['PredefinedMetricSpecification']['ResourceLabel'] ?? null;
-
-        if ($currentLabel !== $this->resourceLabel) {
-            $changes[] = Change::make("{$this->policyName} ResourceLabel", $currentLabel, $this->resourceLabel);
         }
 
         $currentOut = isset($current['ScaleOutCooldown']) ? (int) $current['ScaleOutCooldown'] : null;

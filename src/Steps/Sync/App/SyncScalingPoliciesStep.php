@@ -17,24 +17,33 @@ use Codinglabs\Yolo\Resources\CloudWatch\Dashboard;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\ScalingPolicy;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\ScalableTarget;
+use Codinglabs\Yolo\Resources\ApplicationAutoScaling\TargetTrackingPolicy;
+use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebConcurrencyPolicy;
 
 /**
  * Reconciles the web service's target-tracking scaling policies onto its scalable
- * target. The CPU policy (ECSServiceAverageCPUUtilization) is always present when
- * autoscaling is enabled — it works without any load-test tuning. The
- * request-count policy (ALBRequestCountPerTarget) is added only once a
- * tasks.web.autoscaling.request-count-per-target value is set, since its target
- * is the per-target request plateau that has to come from a load test.
+ * target. Two policies, both on by default once autoscaling is enabled:
+ *
+ *  - the request-concurrency policy ({@see WebConcurrencyPolicy}) — the default,
+ *    leading signal, with its target derived from task memory (no load test); and
+ *  - the CPU policy ({@see ScalingPolicy}, ECSServiceAverageCPUUtilization) — the
+ *    safety net for load that pegs CPU without raising concurrency.
+ *
+ * Application Auto Scaling takes the max desired across both, so they compose
+ * rather than fight. There is no per-app tuning to switch on: replacing the old
+ * opt-in `request-count-per-target` policy, concurrency works out of the box.
  *
  * Reconciles desired against live: it upserts the policies the manifest wants and
- * prunes any live policy it no longer does — removing request-count-per-target
- * deletes that policy (and the alarms AWS generated for it) on the next sync.
+ * prunes any live policy it no longer does — so the now-removed request-count
+ * policy (and the alarms AWS generated for it) is deleted on the next sync.
  *
  * Skips on a greenfield first sync when the ECS service doesn't exist yet, and
- * silently drops the request-count policy when the ALB / target group aren't
- * resolvable yet (it lands on the next sync once they are). When the whole
- * autoscaling block is removed this step no-ops — SyncScalableTargetStep
- * deregisters the scalable target, which cascades every policy and alarm.
+ * silently defers the concurrency policy when the ALB / target group aren't
+ * resolvable yet (it needs them to build its metric dimensions; it lands on the
+ * next sync once they are — never throwing in the plan pass). The CPU policy has
+ * no such dependency and is always present. When the whole autoscaling block is
+ * removed this step no-ops — SyncScalableTargetStep deregisters the scalable
+ * target, which cascades every policy and alarm.
  */
 class SyncScalingPoliciesStep implements Step
 {
@@ -42,7 +51,7 @@ class SyncScalingPoliciesStep implements Step
 
     protected const CPU_POLICY = 'cpu-scaling-policy';
 
-    protected const REQUEST_COUNT_POLICY = 'request-count-scaling-policy';
+    protected const CONCURRENCY_POLICY = 'concurrency-scaling-policy';
 
     public function __invoke(array $options): StepResult
     {
@@ -103,8 +112,8 @@ class SyncScalingPoliciesStep implements Step
     /**
      * Live policies on the scalable target that the manifest no longer wants.
      * Diffed against desiredPolicyNames() — the manifest's intent — NOT policies(),
-     * so a request-count policy that's merely deferred (its ResourceLabel not
-     * resolvable on a greenfield sync) is never mistaken for one to prune.
+     * so the concurrency policy that's merely deferred (its ALB/TG not resolvable on
+     * a greenfield sync) is never mistaken for one to prune.
      *
      * @return array<int, string>
      */
@@ -118,26 +127,27 @@ class SyncScalingPoliciesStep implements Step
 
     /**
      * The policy names the manifest intends to exist, independent of whether the
-     * ALB / target group resolve right now — the prune set's source of truth.
+     * ALB / target group resolve right now — the prune set's source of truth. Both
+     * the CPU and concurrency policies are always desired, so a briefly-deferred
+     * concurrency policy is never pruned, while a leftover request-count policy
+     * from before this change (not in this set) is.
      *
      * @return array<int, string>
      */
     public static function desiredPolicyNames(): array
     {
-        $names = [Helpers::keyedResourceName(static::CPU_POLICY)];
-
-        if (Manifest::has('tasks.web.autoscaling.request-count-per-target')) {
-            $names[] = Helpers::keyedResourceName(static::REQUEST_COUNT_POLICY);
-        }
-
-        return $names;
+        return [
+            Helpers::keyedResourceName(static::CPU_POLICY),
+            Helpers::keyedResourceName(static::CONCURRENCY_POLICY),
+        ];
     }
 
     /**
-     * The scaling policies for the app: CPU always, plus request-count once its
-     * target value is configured and the ALB + target group are resolvable.
+     * The scaling policies for the app: CPU always, plus request concurrency once
+     * the ALB + target group are resolvable (they carry the live ids its metric
+     * dimensions need).
      *
-     * @return array<int, ScalingPolicy>
+     * @return array<int, TargetTrackingPolicy>
      */
     public static function policies(): array
     {
@@ -149,34 +159,31 @@ class SyncScalingPoliciesStep implements Step
             ),
         ];
 
-        if (Manifest::has('tasks.web.autoscaling.request-count-per-target') && ($resourceLabel = static::resourceLabel()) !== null) {
-            $policies[] = new ScalingPolicy(
-                policyName: Helpers::keyedResourceName(static::REQUEST_COUNT_POLICY),
-                metricType: 'ALBRequestCountPerTarget',
-                targetValue: (float) Manifest::get('tasks.web.autoscaling.request-count-per-target'),
-                resourceLabel: $resourceLabel,
-            );
+        if (($concurrency = static::concurrencyPolicy()) instanceof WebConcurrencyPolicy) {
+            $policies[] = $concurrency;
         }
 
         return $policies;
     }
 
     /**
-     * {alb-arn-suffix}/{tg-arn-suffix} — tells ALBRequestCountPerTarget which
-     * target group's per-target request rate to track. Null when the ALB or
-     * target group don't exist yet (greenfield first sync), so the request-count
-     * policy is deferred to the next sync rather than failing the whole run.
+     * The request-concurrency policy, or null when the ALB / target group don't
+     * exist yet (greenfield first sync) — deferred to the next sync rather than
+     * failing the whole run.
      */
-    public static function resourceLabel(): ?string
+    public static function concurrencyPolicy(): ?WebConcurrencyPolicy
     {
         try {
-            return sprintf(
-                '%s/%s',
-                Dashboard::loadBalancerDimension((new LoadBalancer())->arn()),
-                Dashboard::targetGroupDimension((new TargetGroup())->arn()),
-            );
+            $loadBalancerDimension = Dashboard::loadBalancerDimension((new LoadBalancer())->arn());
+            $targetGroupDimension = Dashboard::targetGroupDimension((new TargetGroup())->arn());
         } catch (ResourceDoesNotExistException) {
             return null;
         }
+
+        return new WebConcurrencyPolicy(
+            policyName: Helpers::keyedResourceName(static::CONCURRENCY_POLICY),
+            loadBalancerDimension: $loadBalancerDimension,
+            targetGroupDimension: $targetGroupDimension,
+        );
     }
 }
