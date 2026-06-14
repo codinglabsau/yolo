@@ -6,6 +6,7 @@ namespace Codinglabs\Yolo\Tui\Panels;
 
 use Closure;
 use Codinglabs\Yolo\Concerns\RendersServiceStatus;
+use Symfony\Component\Console\Output\OutputInterface;
 
 /**
  * The landing tab — the live status the `yolo status` command shows (per-group
@@ -18,6 +19,8 @@ class StatusPanel implements Panel
 
     /** @var array<int, array<string, mixed>> */
     protected array $statuses = [];
+
+    public function __construct(public OutputInterface $output) {}
 
     public function title(): string
     {

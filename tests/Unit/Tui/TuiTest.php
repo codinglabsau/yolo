@@ -44,7 +44,9 @@ function stubPanel(string $title, string $hotkey): Panel
 
 function tui(array $panels): Tui
 {
-    return new Tui(new Screen(new BufferedOutput()), new Keyboard(), 'production', $panels);
+    $output = new BufferedOutput();
+
+    return new Tui(new Screen($output), new Keyboard(), 'production', $panels, $output);
 }
 
 function dotStatus(ServerGroup $group, int $running, int $desired, ?string $rollout = null): array

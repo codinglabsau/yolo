@@ -6,6 +6,7 @@ use Closure;
 use Laravel\Prompts\Prompt;
 use Codinglabs\Yolo\Tui\Panels\Panel;
 use Codinglabs\Yolo\Concerns\RendersServiceStatus;
+use Symfony\Component\Console\Output\OutputInterface;
 
 /**
  * The dashboard shell — the status command's live-render loop, generalised into a
@@ -31,6 +32,7 @@ class Tui
         protected Keyboard $keyboard,
         protected string $environment,
         protected array $panels,
+        public OutputInterface $output,
         protected int $active = 0,
         protected bool $splash = true,
     ) {}

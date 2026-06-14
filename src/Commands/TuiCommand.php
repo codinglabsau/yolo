@@ -6,7 +6,11 @@ use Codinglabs\Yolo\Tui\Tui;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Tui\Screen;
 use Codinglabs\Yolo\Tui\Keyboard;
+use Codinglabs\Yolo\Tui\Panels\LogsPanel;
 use Codinglabs\Yolo\Tui\Panels\StatusPanel;
+use Codinglabs\Yolo\Tui\Panels\ManifestPanel;
+use Codinglabs\Yolo\Tui\Panels\ServicesPanel;
+use Codinglabs\Yolo\Tui\Panels\DeploymentsPanel;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -65,13 +69,20 @@ class TuiCommand extends Command
             return self::FAILURE;
         }
 
+        $environment = (string) $this->argument('environment');
+
         return (new Tui(
             screen: new Screen($this->output),
             keyboard: new Keyboard(),
-            environment: (string) $this->argument('environment'),
+            environment: $environment,
             panels: [
-                new StatusPanel(),
+                new StatusPanel($this->output),
+                new ServicesPanel($environment, $this->output),
+                new DeploymentsPanel($environment, $this->output),
+                new LogsPanel(),
+                new ManifestPanel(),
             ],
+            output: $this->output,
         ))->run();
     }
 
