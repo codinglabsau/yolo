@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Codinglabs\Yolo\Tui\Keyboard;
 
 it('decodes arrow escape sequences', function (): void {

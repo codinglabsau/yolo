@@ -6,6 +6,7 @@ use Aws\Command as AwsCommand;
 use GuzzleHttp\Promise\Create;
 use Aws\Exception\AwsException;
 use Codinglabs\Yolo\Aws\CloudWatchLogs;
+use GuzzleHttp\Promise\PromiseInterface;
 use Codinglabs\Yolo\Tui\Panels\LogsPanel;
 use Aws\CloudWatchLogs\CloudWatchLogsClient;
 
@@ -15,7 +16,7 @@ function cloudWatchLogsMock(Result|AwsException $entry): CloudWatchLogsClient
         'region' => 'ap-southeast-2',
         'version' => 'latest',
         'credentials' => false,
-        'handler' => fn ($cmd, $req) => $entry instanceof AwsException
+        'handler' => fn ($cmd, $req): PromiseInterface => $entry instanceof AwsException
             ? Create::rejectionFor($entry)
             : Create::promiseFor($entry),
     ]);

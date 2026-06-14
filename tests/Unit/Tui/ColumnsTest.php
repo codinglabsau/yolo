@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Codinglabs\Yolo\Tui\Theme;
 use Codinglabs\Yolo\Tui\Columns;
 

@@ -25,6 +25,8 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | [`status <env>`](#yolo-status) | Live dashboard of services, load, scaling and any in-progress deploy |
 | [`run <env>`](#yolo-run) | Open a shell / run a command in a running container |
 | [`scale <env> [count]`](#yolo-scale) | Adjust the web service's task count out of band |
+| [`services <env>`](#yolo-services) | View and manage the services an environment offers |
+| [`tui [env]`](#yolo-tui) | Open the interactive dashboard |
 | [`sync <env>`](#yolo-sync) | Provision all resources (account → environment → app) |
 | [`sync:account <env>`](#yolo-sync-account) | Provision account-global resources |
 | [`sync:environment <env>`](#yolo-sync-environment) | Provision environment-shared resources |
@@ -334,6 +336,52 @@ yolo scale production                            # prompt for a fixed count
 ```
 
 **Reducing capacity** (a bound below the live value) is confirm-gated and defaults to *no*. See [Scaling](/guide/scaling).
+
+---
+
+## `yolo services`
+
+View and manage the [services](/guide/provisioning#the-service-lifecycle) an environment offers — the two-key gate (the env manifest offers a service, an app claims it) made visible and editable.
+
+```bash
+yolo services <environment> [--json] [--add=<service>] [--set key=value] [--remove=<service>]
+```
+
+| Option | Value | Description |
+|---|---|---|
+| `--json` | flag | Print the service state as JSON and exit — no prompts (for agents/CI). |
+| `--add` | service | Offer a service non-interactively (pair with `--set`). |
+| `--set` | `key=value` | An offer field for `--add`, repeatable (e.g. `--set version=29.0 --set nodes=3`). |
+| `--remove` | service | Withdraw a service offer non-interactively. |
+
+Run with no options for an interactive table — each service's offer, the running apps that claim it, and its lifecycle state — with add / edit / remove. The add/edit prompts are generated from each service's offer fields, so a new service needs no command changes. App-side-only services (`rekognition`, `mediaconvert`) are listed but not offerable at the environment tier.
+
+Editing writes and uploads the [environment manifest](/reference/manifest); the next [`sync:environment`](#yolo-sync-environment) reconciles AWS to it. A service can't be withdrawn while a running app still claims it (the same guard as [`environment:manifest:push`](#yolo-environment-manifest-push)).
+
+```bash
+yolo services production                                          # interactive
+yolo services production --json                                   # read state
+yolo services production --add=typesense --set version=29.0 --set nodes=3
+yolo services production --remove=typesense
+```
+
+---
+
+## `yolo tui`
+
+Open the [interactive dashboard](/guide/tui) — a tabbed terminal UI over the environment.
+
+```bash
+yolo tui [environment]
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `environment` | no | The environment name. Prompts when omitted (auto-selects the only one). |
+
+Tabs: **Status** (live vitals, reusing [`status`](#yolo-status)), **Services** (the [`services`](#yolo-services) gate, ⏎ to manage), **Deployments** (ECR history + interactive [`rollback`](#yolo-rollback), and live rollout progress when one's in flight), **Logs** (tail CloudWatch per group), and **Manifest** (a read view of the env + app manifests). A global health bar stays on top and flags any in-progress deploy whoever triggered it. `tui` adds no new powers — it's the live cockpit over the existing commands.
+
+Navigate with `◂ ▸` / `Tab` / number keys / a tab's hotkey; `q` quits. It's interactive only — for a one-off frame in a script use [`status --snapshot`](#yolo-status).
 
 ---
 

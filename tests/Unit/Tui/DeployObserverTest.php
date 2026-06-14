@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Tui\DeployObserver;
 
