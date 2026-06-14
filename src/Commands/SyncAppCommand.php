@@ -145,10 +145,10 @@ class SyncAppCommand extends SyncSteppedCommand
                         // back down. Both steps no-op when it was never enabled.
                         Steps\Sync\App\SyncScalableTargetStep::class,
                         Steps\Sync\App\SyncScalingPoliciesStep::class,
-                        // Opt-in burst scale-out (tasks.web.autoscaling.burst): a high-res
-                        // worker-saturation alarm + step policy for ~10s spike detection.
-                        // Wired whenever the web task exists so switching burst off prunes
-                        // the policy + its self-authored alarm; no-ops when it was never on.
+                        // Burst scale-out: a high-res worker-saturation alarm + step policy
+                        // for ~10s spike detection — unconditional for an Octane app. Wired
+                        // whenever the web task exists so a non-autoscaling/classic web tier
+                        // prunes the policy + its self-authored alarm; no-ops when it doesn't apply.
                         Steps\Sync\App\SyncWebBurstStep::class,
                         // Standalone queue service (own task-def + service +
                         // scale-to-zero autoscaling) — only when tasks.queue extracts

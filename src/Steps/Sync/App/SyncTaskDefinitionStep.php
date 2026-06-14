@@ -189,7 +189,7 @@ class SyncTaskDefinitionStep implements Step
                             ],
                         ],
                     ] : [],
-                    // Burst scaling (tasks.web.autoscaling.burst) reads FrankenPHP's
+                    // Burst scaling reads FrankenPHP's
                     // worker metrics; switch the metrics endpoint on additively through
                     // Octane's Caddyfile {$CADDY_GLOBAL_OPTIONS} placeholder — Caddy reads
                     // it from the OS env (the app .env never reaches Caddy's process), and

@@ -12,12 +12,12 @@ use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
 
 /**
- * Provisions (or tears down) the opt-in web burst scale-out path — a high-res
- * worker-saturation alarm + step-scaling policy ({@see WebBurstPolicy}) — gated on
- * `tasks.web.autoscaling.burst`. Wired into sync:app whenever the web task exists,
- * not only when burst is on, so switching it off (or removing autoscaling) deletes
- * the policy and its self-authored alarm on the next sync rather than orphaning
- * them — App Auto Scaling cascades the step policy when the scalable target is
+ * Provisions (or tears down) the web burst scale-out path — a high-res
+ * worker-saturation alarm + step-scaling policy ({@see WebBurstPolicy}). Burst is
+ * unconditional for an Octane app under autoscaling, so this is wired into sync:app
+ * whenever the web task exists: a web tier that drops autoscaling or runs classic
+ * mode has its policy and self-authored alarm deleted on the next sync rather than
+ * orphaned — App Auto Scaling cascades the step policy when the scalable target is
  * deregistered, but the alarm is standalone and must be deleted explicitly.
  *
  * Skips on a greenfield first sync when the web ECS service doesn't exist yet (the

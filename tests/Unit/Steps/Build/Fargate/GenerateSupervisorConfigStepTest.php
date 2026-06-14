@@ -189,7 +189,7 @@ it('omits the saturation emitter program and script when burst is off', function
     expect(is_file(Paths::build('docker/yolo-saturation.php')))->toBeFalse();
 });
 
-it('adds the saturation emitter program and writes its script when burst is on', function (): void {
+it('adds the saturation emitter program and writes its script for an Octane autoscaling app', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['autoscaling' => ['min' => 2, 'max' => 8]]],

@@ -242,7 +242,7 @@ it('sets no container environment by default', function (): void {
         ->not->toHaveKey('environment');
 });
 
-it('enables the FrankenPHP metrics endpoint on the web container when burst is on', function (): void {
+it('enables the FrankenPHP metrics endpoint on the web container for an Octane autoscaling app', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['autoscaling' => ['min' => 2, 'max' => 8]]],

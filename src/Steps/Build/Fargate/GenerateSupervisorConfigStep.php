@@ -40,7 +40,7 @@ class GenerateSupervisorConfigStep implements Step
         // The web container always runs supervisord (the web server + whatever it hosts).
         $this->writeConfig('docker/supervisord.conf', ServerGroup::WEB);
 
-        // The opt-in burst saturation emitter rides the web container only; its
+        // The burst saturation emitter rides the web container only; its
         // supervisord program is added by config() for the same gate.
         if (Manifest::webBurstEnabled()) {
             $this->writeEmitterScript();
@@ -91,7 +91,7 @@ class GenerateSupervisorConfigStep implements Step
             }
         }
 
-        // The burst saturation emitter (web container only, opt-in) — a stateless loop
+        // The burst saturation emitter (web container only) — a stateless loop
         // that needs no drain window, so a 1s stop wait is plenty.
         if ($group === ServerGroup::WEB && Manifest::webBurstEnabled()) {
             $blocks[] = $this->program('saturation', ProcessCommands::saturationEmitter(), stopwaitsecs: 1);
