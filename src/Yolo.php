@@ -41,6 +41,9 @@ class Yolo
         // Scale
         Commands\ScaleCommand::class,
 
+        // Services (the env service gate)
+        Commands\ServicesCommand::class,
+
         // Sync (scope-grouped: account → environment → app, orchestrated by `sync`)
         Commands\SyncCommand::class,
         Commands\SyncAccountCommand::class,
