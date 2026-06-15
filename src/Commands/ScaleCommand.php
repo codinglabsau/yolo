@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ecs;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\ServerGroup;
+use Codinglabs\Yolo\Contracts\AdminCommand;
 use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
 use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Symfony\Component\Console\Input\InputOption;
@@ -36,7 +37,7 @@ use function Laravel\Prompts\confirm;
  *   yolo scale production --queue --min=0 --max=20    # queue bounds (min 0 = scale to zero)
  *   yolo scale production --scheduler …               # error — the scheduler is a singleton
  */
-class ScaleCommand extends Command
+class ScaleCommand extends Command implements AdminCommand
 {
     protected function configure(): void
     {
