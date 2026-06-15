@@ -330,6 +330,8 @@ budget:
 
 Spend is read from AWS Cost Explorer via the app's `yolo:app` tag; it shows once that tag is [activated as a cost-allocation tag](/reference/commands#yolo-status-budget) in Billing.
 
+The budget block is **two-tier**: the same `budget` shape can also be declared in the [environment manifest](#the-environment-manifest-yolo-environment-environment-yml), where it caps the whole environment (every app + shared infra, attributed via the `yolo:environment` tag) and is reported by [`status:environment`](/reference/commands#yolo-status-environment). App-tier `budget` lives in `yolo.yml`; env-tier `budget` in `yolo-environment-<env>.yml`.
+
 ---
 
 ## `tasks.web.*`

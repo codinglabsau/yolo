@@ -114,6 +114,11 @@ it('accepts a declared ivs service', function (): void {
     expect(EnvManifest::parse("services:\n  ivs: {}\n"))->toBe(['services' => ['ivs' => []]]);
 });
 
+it('accepts an env-tier budget block', function (): void {
+    expect(EnvManifest::parse("budget:\n  amount: 500\n  strategy: balanced\n"))
+        ->toBe(['budget' => ['amount' => 500, 'strategy' => 'balanced']]);
+});
+
 it('rejects a scalar offer — the allow-list cannot catch a leaf, the definition validates the shape', function (): void {
     expect(fn (): array => EnvManifest::parse("services:\n  ivs: true\n"))
         ->toThrow(IntegrityCheckException::class, 'services.ivs');
