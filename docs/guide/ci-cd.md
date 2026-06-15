@@ -28,7 +28,7 @@ environments:
 When a GitHub repository is detected, `yolo sync` sets up the OIDC trust across two scopes:
 
 - **`sync:account`** provisions the account's GitHub Actions OIDC identity provider (`token.actions.githubusercontent.com`) — an account-level singleton shared by every app.
-- **`sync:app`** provisions the deployer role `yolo-{env}-{app}-deployer`, whose trust only lets the environment's repo + ref assume it, plus a permission policy scoped to exactly what `yolo deploy` does (ECR push, ECS register/update, `iam:PassRole` on the task + execution roles, S3 env/asset access, Route 53 record changes, and — when the app uses the shared Valkey cache — reading the cluster endpoint to bake `REDIS_HOST`).
+- **`sync:app`** provisions the deployer role `yolo-{env}-{app}-deployer`, whose trust only lets the environment's repo + ref assume it, plus a permission policy scoped to exactly what `yolo deploy` writes (ECR push, ECS register/update, `iam:PassRole` on the task + execution roles, S3 env/asset access, Route 53 record changes, and — when the app uses the shared Valkey cache — reading the cluster endpoint to bake `REDIS_HOST`). It also attaches AWS-managed **`ReadOnlyAccess`** so the pre-deploy [in-sync check](#yolo-deploy-refuses-to-run-against-drift) can inspect every service's live state under the deploy role. A `Deny` in the deployer policy keeps the broad object read `ReadOnlyAccess` grants from reaching the env-shared `.env` or other apps' secrets, so the deploy role still can't read what it shouldn't.
 
 A plain `yolo sync <env>` does both. Re-run it whenever you change the `branch`/`tag`/`repository` for an environment.
 
@@ -58,41 +58,18 @@ In CI, YOLO defers to the AWS SDK's default credential chain, so the assumed-rol
 Pair `tag: 'v*'` with a GitHub protected-tag ruleset (only maintainers may cut `v*` tags). The AWS trust then just confirms "a tag push from this repo", and GitHub enforces who can trigger it.
 :::
 
-## Gate CI on drift with `yolo sync --check`
+## `yolo deploy` refuses to run against drift
 
-`yolo deploy` ships your code; `yolo sync --check` guards the infrastructure behind it. Run it in CI to fail a pipeline the moment your live AWS resources drift from `yolo.yml` — someone hand-edited a resource in the console, or a manifest change merged without anyone running `yolo sync`.
+Before it builds, `yolo deploy` runs a full `sync --check` (account → environment → app) and **aborts if anything has drifted** from the manifest. A deploy only rolls a new task-definition revision onto the *existing* infrastructure — it never reconciles it — so this stops a deploy landing on a stale target group, a changed task role, an un-provisioned listener, or a shared foundation (VPC/ALB/OIDC) that no longer matches `yolo.yml`. It also fires sync's claim gate, so an app that claims an env service the environment doesn't offer (e.g. typesense) is refused with a precise message. The check plans only (never writes), runs *before* the build so a drift fails fast without burning one, prints the full diff, then refuses with `Refusing to deploy — <env> is not in sync`. Reconcile with `yolo sync <env>` and redeploy.
 
-`--check` runs the same read-only [plan pass](/guide/provisioning#plan-confirm-apply) `sync` always shows before its confirm, and prints the same diff, but **never applies** and exits non-zero when there are pending changes:
+Whole-stack rather than app-only is deliberate: a deploy is the natural — and for most setups the only — moment drift is checked, so the gate covers the shared foundation the app sits on, not just the app's own slice. This is why the deployer role carries `ReadOnlyAccess`: the check reads across every service, under whatever identity is deploying. No extra workflow step is needed — the gate is part of `yolo deploy` itself.
 
 | Exit code | Meaning |
 |---|---|
-| `0` | In sync — no pending changes. |
-| non-zero | Drift detected, **or** the check itself errored (bad credentials, an AWS API failure, an invalid manifest). |
+| `0` | In sync — the build and rollout proceed. |
+| non-zero | Drift detected (deploy refused), **or** the check itself errored — bad credentials, an AWS API failure, an invalid manifest, or a claimed service the environment doesn't offer. |
 
-Either way, a non-zero exit means the job should fail and a human should read the printed plan.
-
-::: warning Use read-capable credentials, not the deployer role
-`--check` is a `sync` operation, not a deploy: it `Describe`s every resource across the stack to compute drift, so it needs **read access to the whole provisioned surface** — far broader than the deploy-scoped deployer role above. Run the check with a read-capable identity (your SSO role, or one granted AWS's managed `ReadOnlyAccess`), separate from the narrow deploy role. Pointed at the deployer role it would `AccessDenied` and fail for the wrong reason.
-:::
-
-```yaml
-# A scheduled (or pre-deploy) drift check — note the read-capable role
-permissions:
-  id-token: write
-  contents: read
-
-steps:
-  - uses: actions/checkout@v4
-
-  - uses: aws-actions/configure-aws-credentials@v4
-    with:
-      role-to-assume: arn:aws:iam::<account-id>:role/<read-capable-role>
-      aws-region: <region>
-
-  - run: vendor/bin/yolo sync production --check --no-progress
-```
-
-See the [`sync` reference](/reference/commands#sync-options) for the full option list.
+The fix is always the same: run `yolo sync <env>` to reconcile, then deploy again. The same check is available standalone as [`yolo sync <env> --check`](/reference/commands#sync-options) if you ever want to probe for drift without deploying — but you don't need to wire anything up; the gate is part of every deploy.
 
 ## Other auth methods
 

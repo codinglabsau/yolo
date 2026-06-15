@@ -14,9 +14,10 @@ class DeployCommand extends SteppedCommand
     use RendersServiceStatus;
 
     protected array $steps = [
-        // Republish the app's claim file first — claims must lead the code
-        // that consumes a service, and a deploy against an environment that
-        // was never synced fails fast here with instructions.
+        // Republish the app's claim file first — claims must lead the code that
+        // consumes a service. (A deploy against an unsynced environment is already
+        // refused up front by the EnsureInSyncStep gate in handle(); this step's
+        // job here is the republish itself, not the fail-fast.)
         Steps\Sync\App\PublishAppManifestStep::class,
         Steps\Deploy\PushAssetsToS3Step::class,
         Steps\Deploy\RegisterTaskDefinitionRevisionStep::class,
@@ -41,6 +42,11 @@ class DeployCommand extends SteppedCommand
     #[\Override]
     public function handle(): int
     {
+        // Refuse to deploy into an environment that has drifted from its declared
+        // state — runs the full `sync --check` plan before the build, so a drifted
+        // environment fails fast without burning one, and throws to abort on drift.
+        (new Steps\Deploy\EnsureInSyncStep())([]);
+
         $build = (new BuildCommand())->execute($this->input, $this->output);
 
         if ($build !== self::SUCCESS) {

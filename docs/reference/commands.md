@@ -188,7 +188,7 @@ The image-building steps only run when the manifest declares `tasks`. See [Build
 
 ## `yolo deploy`
 
-Build, push, and deploy the application — runs [`build`](#yolo-build) first, then the zero-downtime rollout.
+Build, push, and deploy the application — runs an in-sync check and [`build`](#yolo-build) first, then the zero-downtime rollout.
 
 ```bash
 yolo deploy <environment> [--app-version=<tag>] [--group=<groups>] [--no-progress]
@@ -204,7 +204,9 @@ yolo deploy <environment> [--app-version=<tag>] [--group=<groups>] [--no-progres
 | `--group` | comma-separated | all the app runs | Service groups to roll (`web,queue,scheduler`). Defaults to every service the app runs. |
 | `--no-progress` | flag | off | Hide the live progress output. |
 
-After building, `deploy` republishes the app's claim file (`apps/{app}.yml` in the env config bucket — see [the environment declaration](/guide/provisioning#the-environment-declaration)), pushes assets to S3, registers a new task-definition revision **for each service group** (web plus any standalone queue/scheduler), runs `deploy` hooks as a one-off task, rolls each ECS service onto its new revision, waits for the web service to go healthy (the deployment circuit breaker auto-rolls-back on failure), then UPSERTs Route 53 records. It always waits for the rollout to stabilise — there is no opt-out flag. `--group` narrows the rollout to a subset of services (the shared image is built either way); a deploy that omits `web` skips the ALB health wait, relying on the circuit breaker.
+Before it builds, `deploy` runs a full [`sync --check`](#yolo-sync) (account → environment → app) and **refuses to deploy if anything has drifted** — a deploy only rolls a new task-definition revision onto the *existing* infrastructure, so it must never land on a stale target group, a changed task role, an un-provisioned listener, or a shared foundation (VPC/ALB) that no longer matches the manifest. It also fires sync's claim gate, so an app that claims an env service the environment doesn't offer is refused with a precise message. The check plans only (never writes) and runs before the build so a drift fails fast without burning one; it prints the diff, then aborts with `Refusing to deploy — <env> is not in sync`. Reconcile with [`yolo sync <env>`](#yolo-sync) and redeploy. In CI this runs under the deployer role, which carries AWS-managed `ReadOnlyAccess` for exactly this (see [CI/CD](/guide/ci-cd#yolo-deploy-refuses-to-run-against-drift)).
+
+Once in sync, `deploy` builds, then republishes the app's claim file (`apps/{app}.yml` in the env config bucket — see [the environment declaration](/guide/provisioning#the-environment-declaration)), pushes assets to S3, registers a new task-definition revision **for each service group** (web plus any standalone queue/scheduler), runs `deploy` hooks as a one-off task, rolls each ECS service onto its new revision, waits for the web service to go healthy (the deployment circuit breaker auto-rolls-back on failure), then UPSERTs Route 53 records. It always waits for the rollout to stabilise — there is no opt-out flag. `--group` narrows the rollout to a subset of services (the shared image is built either way); a deploy that omits `web` skips the ALB health wait, relying on the circuit breaker.
 
 Once the rollout settles, `deploy` prints a recap — the same per-group summary table and CloudWatch dashboard link [`status`](#yolo-status) shows — so you can see what's now running and the new revision of each service.
 
