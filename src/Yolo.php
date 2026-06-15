@@ -40,6 +40,7 @@ class Yolo
         Commands\StatusLogsCommand::class,
         Commands\StatusEventsCommand::class,
         Commands\StatusAlarmsCommand::class,
+        Commands\StatusBudgetCommand::class,
 
         // Exec
         Commands\RunCommand::class,

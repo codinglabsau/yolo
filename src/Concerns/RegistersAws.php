@@ -23,6 +23,7 @@ use Aws\CloudWatch\CloudWatchClient;
 use Aws\ElastiCache\ElastiCacheClient;
 use Aws\EventBridge\EventBridgeClient;
 use Aws\Credentials\CredentialProvider;
+use Aws\CostExplorer\CostExplorerClient;
 use GuzzleHttp\Exception\ConnectException;
 use Aws\CloudWatchLogs\CloudWatchLogsClient;
 use Aws\ServiceDiscovery\ServiceDiscoveryClient;
@@ -48,6 +49,7 @@ trait RegistersAws
         'cloudWatch',
         'cloudWatchLogs',
         'cloudFront',
+        'costExplorer',
         'ec2',
         'elastiCache',
         'ecr',
@@ -98,6 +100,8 @@ trait RegistersAws
         Helpers::app()->singleton('cloudWatchLogs', fn (): CloudWatchLogsClient => new CloudWatchLogsClient($arguments));
         // CloudFront is a global service — its control-plane API only lives in us-east-1.
         Helpers::app()->singleton('cloudFront', fn (): CloudFrontClient => new CloudFrontClient([...$arguments, 'region' => 'us-east-1']));
+        // Cost Explorer is a global service — its API only lives in us-east-1.
+        Helpers::app()->singleton('costExplorer', fn (): CostExplorerClient => new CostExplorerClient([...$arguments, 'region' => 'us-east-1']));
         Helpers::app()->singleton('ec2', fn (): Ec2Client => new Ec2Client($arguments));
         Helpers::app()->singleton('elastiCache', fn (): ElastiCacheClient => new ElastiCacheClient($arguments));
         Helpers::app()->singleton('ecr', fn (): EcrClient => new EcrClient($arguments));
