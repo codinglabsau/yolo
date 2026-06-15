@@ -32,10 +32,14 @@ class Yolo
         // Rollback
         Commands\RollbackCommand::class,
 
-        // Status (scope-grouped: app-tier `status`/`status:app`, env-tier roll-up)
+        // Status (scope-grouped: app-tier `status`/`status:app`, env-tier roll-up,
+        // and the incident read surfaces — logs / events / alarms)
         Commands\StatusCommand::class,
         Commands\StatusAppCommand::class,
         Commands\StatusEnvironmentCommand::class,
+        Commands\StatusLogsCommand::class,
+        Commands\StatusEventsCommand::class,
+        Commands\StatusAlarmsCommand::class,
 
         // Exec
         Commands\RunCommand::class,

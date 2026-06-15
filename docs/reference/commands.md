@@ -25,6 +25,9 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | [`status <env>`](#yolo-status) | Snapshot of one app's services, load, scaling and any in-progress deploy |
 | [`status:app <env>`](#yolo-status-app) | App-tier status (the same as `status`, under the scope namespace) |
 | [`status:environment <env>`](#yolo-status-environment) | Roll up every app's status across an environment |
+| [`status:logs <env>`](#yolo-status-logs) | Recent CloudWatch logs per service group |
+| [`status:events <env>`](#yolo-status-events) | Recent ECS service events per group |
+| [`status:alarms <env>`](#yolo-status-alarms) | The app's CloudWatch alarms and their state |
 | [`run <env>`](#yolo-run) | Open a shell / run a command in a running container |
 | [`scale <env> [count]`](#yolo-scale) | Adjust the web service's task count out of band |
 | [`services <env>`](#yolo-services) | View and manage the services an environment offers |
@@ -301,6 +304,52 @@ yolo status:environment <environment> [--json]
 | `--json` | flag | off | Emit the roll-up as JSON (`{environment, apps}`) and exit — machine-readable for the `/yolo` skill and scripts. Exits non-zero if any app has a failed deploy. |
 
 It renders an **App / Web / Rollout / Version** table — one row per live app — and exits non-zero if any app's deploy is currently failed, so it's usable as an environment-wide health probe. With no live apps it says so and exits zero. `--json` emits `{environment, apps[]}`, each app carrying `{app, exists, tasks, revision, version, rollout}`.
+
+---
+
+## `yolo status:logs`
+
+Recent CloudWatch logs per service group — the incident read surface for "what is it saying right now".
+
+```bash
+yolo status:logs <environment> [--json]
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `environment` | yes | The environment name |
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--json` | flag | off | Emit recent logs as JSON (`{app, environment, groups}`) and exit — machine-readable for the `/yolo` skill and scripts. |
+
+One block per group (web / queue / scheduler), each the recent log events with timestamps (or "no recent log events"). `--json` carries each group's raw `{timestamp, message}` events.
+
+---
+
+## `yolo status:events`
+
+Recent ECS service events per group — the deploy / placement narrative ECS keeps (capacity, health-check, steady-state messages).
+
+```bash
+yolo status:events <environment> [--json]
+```
+
+Arguments and options as [`status:logs`](#yolo-status-logs). `--json` carries each group's `{createdAt, message}` events.
+
+---
+
+## `yolo status:alarms`
+
+The app's CloudWatch alarms and their current state — the incident read surface for "is anything actually firing".
+
+```bash
+yolo status:alarms <environment> [--json]
+```
+
+Arguments and options as [`status:logs`](#yolo-status-logs), with `--json` emitting `{app, environment, alarms}` (each alarm `{name, state, reason}`).
+
+Each alarm is shown as `OK` / `ALARM` / `?` (insufficient data) with its name and state reason. It **exits non-zero when any alarm is in `ALARM`**, so it doubles as a health probe; with no alarms for the app it says so and exits zero.
 
 ---
 
