@@ -7,6 +7,7 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Symfony\Component\Process\Process;
 use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
+use Codinglabs\Yolo\Contracts\DeployerCommand;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Input\InputArgument;
@@ -14,7 +15,7 @@ use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\error;
 
-class RunCommand extends Command
+class RunCommand extends Command implements DeployerCommand
 {
     protected function configure(): void
     {

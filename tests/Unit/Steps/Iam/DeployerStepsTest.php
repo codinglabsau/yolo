@@ -36,7 +36,11 @@ function existingDeployerRole(?string $trustSubject = null): array
     ];
 }
 
-/** A URL-encoded OIDC trust document scoped to the given `sub` claim. */
+/**
+ * A URL-encoded deployer trust document scoped to the given OIDC `sub` claim —
+ * the reconciled shape: the GitHub OIDC web-identity statement (CI) plus the
+ * same-account assumption statement (local Deployer-tier minting).
+ */
 function deployerTrustDocument(string $subject): string
 {
     return rawurlencode(json_encode([
@@ -50,6 +54,11 @@ function deployerTrustDocument(string $subject): string
                     'StringEquals' => ['token.actions.githubusercontent.com:aud' => 'sts.amazonaws.com'],
                     'StringLike' => ['token.actions.githubusercontent.com:sub' => $subject],
                 ],
+            ],
+            [
+                'Effect' => 'Allow',
+                'Principal' => ['AWS' => 'arn:aws:iam::111111111111:root'],
+                'Action' => 'sts:AssumeRole',
             ],
         ],
     ]));
