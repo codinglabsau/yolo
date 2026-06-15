@@ -10,7 +10,10 @@ These are **read-only and safe** to run when you need live state: `status <env> 
 
 ### Machine-readable state (the data-pipe)
 
-- `yolo status <env> --json` → `{app, environment, groups[]}`; each group (`web`/`queue`/`scheduler`) carries `tasks{running,desired,pending}`, `spec{cpu,memory,launch}`, `revision`, `version`, `rollout{state,reason}`, `scaling`, `cpuTarget`, `load`. **Exits non-zero if a deploy is currently failed.**
+- `yolo status <env> --json` → `{app, environment, groups[], queues[]}`; each group (`web`/`queue`/`scheduler`) carries `tasks{running,desired,pending}`, `spec{cpu,memory,launch}`, `revision`, `version`, `rollout{state,reason}`, `scaling`, `cpuTarget`, `load` (latest reading **plus** a `series` per metric for the trend). `queues[]` is the app-level SQS backlog. **Exits non-zero if a deploy is currently failed.**
+- `yolo status:environment <env> --json` → `{environment, apps[]}`, one compact row per live app — the env-wide roll-up.
+- `yolo status:logs` / `status:events` / `status:alarms <env> --json` → the incident reads (recent logs / ECS events / alarm state); `status:alarms` exits non-zero on any firing alarm.
+- `yolo status:budget <env> --json` → `{currency, spend, budget{amount,strategy}}`; month-to-date spend vs the declared cap (`spend` is null until the `yolo:app` cost-allocation tag is active). Advisory — YOLO never enforces it.
 - `yolo audit <env> --json` → `{environment, liveApps[], okCount, unexpectedCount, resources[]}`; each resource has `{scope, status, type, name, app, reason, arn}` where `status` is `ok`/`unexpected`. Ownership/inventory check, not a config check.
 - `yolo sync <env> --check` → read-only plan; **non-zero exit on drift** from the manifest. The CI drift gate.
 - `yolo services <env> --json` → which env-shared services are offered and which apps claim them.
@@ -23,7 +26,10 @@ These are **read-only and safe** to run when you need live state: `status <env> 
 | `build <env>` | Build + push the container image to ECR |
 | `deploy <env>` | Build, then zero-downtime rollout (circuit breaker auto-rolls-back on failure) |
 | `rollback <env>` | Re-deploy a prior ECR version, no build (DB is **not** reverted) |
-| `status <env>` | Live dashboard (`--snapshot` one frame, `--json` machine-readable) |
+| `status <env>` | One-shot snapshot (`--json` machine-readable); live cockpit is `tui` |
+| `status:environment <env>` | Roll up every app's status across the environment |
+| `status:logs\|:events\|:alarms <env>` | Incident reads — recent logs / ECS events / alarm state |
+| `status:budget <env>` | Month-to-date spend vs the declared `budget` (advisory) |
 | `run <env>` | Shell / one-off command in a running container (ECS Exec) |
 | `scale <env> [count]` | Adjust capacity out of band (`--web`/`--queue`, `--min`/`--max`) |
 | `services <env>` | View/manage env-shared services |
@@ -39,6 +45,7 @@ These are **read-only and safe** to run when you need live state: `status <env> 
 - Required keys per environment: `name`, `region`, `account-id`. Topology is encoded by what's declared.
 - `tasks.web` / `tasks.queue` / `tasks.scheduler` — declaring a task provisions its ECS service; bundling vs standalone is derived from presence. `tasks.web.autoscaling` (with `min`/`max`) turns on web target-tracking autoscaling (on by default from `init`, bounds 1–4).
 - Multi-tenancy is a manifest concern (`tenants`), fanned out at the step level — there is no `sync:tenant`/`deploy:tenant` verb; narrow with `--tenant=<id>`.
+- `budget` (optional): `budget.amount` (USD/month) + `budget.strategy` (`lean`/`balanced`/`conservative`) — advisory only, read by `status:budget` and the skill; never enforced.
 - This is the **Fargate** YOLO. There is no EC2/ASG/CodeDeploy/AMI/`image:create`/`stage`/instance-type — if you see those referenced anywhere, it's stale alpha-era material.
 
 When unsure of a flag, run `vendor/bin/yolo <command> --help`.
