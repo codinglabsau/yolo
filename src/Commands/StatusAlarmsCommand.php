@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Contracts\ReadOnlyCommand;
 use Symfony\Component\Console\Input\InputOption;
 use Codinglabs\Yolo\Concerns\RendersIncidentReads;
 use Symfony\Component\Console\Input\InputArgument;
@@ -15,7 +16,7 @@ use function Laravel\Prompts\intro;
  * "is anything actually firing". Exits non-zero when any alarm is in ALARM, so
  * it doubles as a health probe; `--json` is the form the `/yolo` skill consumes.
  */
-class StatusAlarmsCommand extends Command
+class StatusAlarmsCommand extends Command implements ReadOnlyCommand
 {
     use RendersIncidentReads;
 

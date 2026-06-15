@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\CostExplorer;
+use Codinglabs\Yolo\Contracts\ReadOnlyCommand;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Input\InputArgument;
 
@@ -16,7 +17,7 @@ use function Laravel\Prompts\intro;
  * recommendations by them. Spend comes from Cost Explorer via the `yolo:app`
  * cost-allocation tag, so it shows "—" until that tag is activated in Billing.
  */
-class StatusBudgetCommand extends Command
+class StatusBudgetCommand extends Command implements ReadOnlyCommand
 {
     protected function configure(): void
     {

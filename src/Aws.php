@@ -590,6 +590,22 @@ class Aws
         return static::sts()->getCallerIdentity()['Account'];
     }
 
+    /**
+     * Assume an IAM role and return its temporary credentials. Used to mint a
+     * tier-scoped token (the assumed role's policy caps what YOLO can do) on top
+     * of the developer's own profile credentials — get-session-token creds can
+     * chain into AssumeRole, so the existing profile flow is unchanged.
+     *
+     * @return array<string, mixed> the Credentials sub-array (AccessKeyId, SecretAccessKey, SessionToken, Expiration)
+     */
+    public static function assumeRole(string $roleArn, string $sessionName = 'yolo'): array
+    {
+        return static::sts()->assumeRole([
+            'RoleArn' => $roleArn,
+            'RoleSessionName' => $sessionName,
+        ])['Credentials'];
+    }
+
     public static function acm(): AcmClient
     {
         return Helpers::app('acm');

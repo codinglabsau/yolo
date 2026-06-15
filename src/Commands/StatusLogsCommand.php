@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Contracts\ReadOnlyCommand;
 use Symfony\Component\Console\Input\InputOption;
 use Codinglabs\Yolo\Concerns\RendersIncidentReads;
 use Symfony\Component\Console\Input\InputArgument;
@@ -14,7 +15,7 @@ use function Laravel\Prompts\intro;
  * "what is it saying right now". `--json` is the machine-readable form the
  * `/yolo` skill consumes.
  */
-class StatusLogsCommand extends Command
+class StatusLogsCommand extends Command implements ReadOnlyCommand
 {
     use RendersIncidentReads;
 

@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Contracts\ReadOnlyCommand;
 use Symfony\Component\Console\Input\InputOption;
 use Codinglabs\Yolo\Concerns\RendersServiceStatus;
 use Symfony\Component\Console\Input\InputArgument;
@@ -16,7 +17,7 @@ use function Laravel\Prompts\intro;
  * command is the quick "what's up right now" check, and the `--json` form is the
  * machine-readable contract the `/yolo` skill and scripts consume.
  */
-class StatusCommand extends Command
+class StatusCommand extends Command implements ReadOnlyCommand
 {
     use RendersServiceStatus;
 

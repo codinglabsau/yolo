@@ -1,0 +1,195 @@
+<?php
+
+use Aws\Result;
+use Aws\MockHandler;
+use Aws\Sts\StsClient;
+use Codinglabs\Yolo\Aws;
+use Laravel\Prompts\Prompt;
+use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Enums\Iam;
+use Aws\Credentials\Credentials;
+use Codinglabs\Yolo\Commands\Command;
+use Codinglabs\Yolo\Commands\RunCommand;
+use Codinglabs\Yolo\Commands\SyncCommand;
+use Codinglabs\Yolo\Commands\AuditCommand;
+use Codinglabs\Yolo\Commands\BuildCommand;
+use Codinglabs\Yolo\Commands\ScaleCommand;
+use Codinglabs\Yolo\Commands\DeployCommand;
+use Codinglabs\Yolo\Commands\StatusCommand;
+use Codinglabs\Yolo\Commands\AuditAppCommand;
+use Codinglabs\Yolo\Commands\StatusAppCommand;
+use Codinglabs\Yolo\Contracts\ReadOnlyCommand;
+use Codinglabs\Yolo\Commands\StatusLogsCommand;
+use Codinglabs\Yolo\Commands\StatusAlarmsCommand;
+use Codinglabs\Yolo\Commands\StatusBudgetCommand;
+use Codinglabs\Yolo\Commands\StatusEventsCommand;
+use Symfony\Component\Console\Output\BufferedOutput;
+use Codinglabs\Yolo\Commands\AuditEnvironmentCommand;
+use Codinglabs\Yolo\Commands\StatusEnvironmentCommand;
+
+/**
+ * Bind an STS client whose AssumeRole call records its args and then resolves to
+ * the supplied Result (a Credentials payload) or throws the supplied exception
+ * (the fail-open path). The callable form is the SDK's documented mock hook.
+ *
+ * @param  array<int, array<string, mixed>>  $captured
+ */
+function bindAssumeRoleStsClient(array &$captured, Result|Throwable $response): void
+{
+    $mock = new MockHandler();
+    $mock->append(function ($command, $request) use (&$captured, $response): Result|Throwable {
+        $captured[] = ['name' => $command->getName(), 'args' => $command->toArray()];
+
+        return $response;
+    });
+
+    Helpers::app()->instance('sts', new StsClient([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+}
+
+function assumeRoleResult(): Result
+{
+    return new Result([
+        'Credentials' => [
+            'AccessKeyId' => 'ASIA-OBSERVER',
+            'SecretAccessKey' => 'observer-secret',
+            'SessionToken' => 'observer-session-token',
+            'Expiration' => '2026-01-01T00:00:00Z',
+        ],
+    ]);
+}
+
+function mint(Command $command): void
+{
+    (new ReflectionMethod($command, 'mintTierCredentials'))->invoke($command);
+}
+
+function tierOf(Command $command): ?Iam
+{
+    return (new ReflectionMethod($command, 'awsTier'))->invoke($command);
+}
+
+beforeEach(function (): void {
+    // The container is a process singleton with no global reset, so a minted
+    // binding from one case would otherwise leak into the next — forget it.
+    Helpers::app()->forgetInstance('yoloAssumedCredentials');
+
+    $buffer = new BufferedOutput();
+    Prompt::setOutput($buffer);
+    test()->promptOutput = $buffer;
+
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+    ]);
+});
+
+it('returns the assumed-role Credentials and sends the role ARN + session name', function (): void {
+    $captured = [];
+    bindAssumeRoleStsClient($captured, assumeRoleResult());
+
+    $credentials = Aws::assumeRole('arn:aws:iam::111111111111:role/yolo-testing-observer-role', 'yolo-observer-role');
+
+    expect($credentials)->toMatchArray([
+        'AccessKeyId' => 'ASIA-OBSERVER',
+        'SecretAccessKey' => 'observer-secret',
+        'SessionToken' => 'observer-session-token',
+    ]);
+
+    expect($captured)->toHaveCount(1)
+        ->and($captured[0]['name'])->toBe('AssumeRole')
+        ->and($captured[0]['args']['RoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-observer-role')
+        ->and($captured[0]['args']['RoleSessionName'])->toBe('yolo-observer-role');
+});
+
+it('marks every read command as a ReadOnlyCommand that runs under the Observer tier', function (Command $command): void {
+    expect($command)->toBeInstanceOf(ReadOnlyCommand::class);
+    expect(tierOf($command))->toBe(Iam::OBSERVER_ROLE);
+})->with([
+    'status' => fn (): Command => new StatusCommand(),
+    'status:app' => fn (): Command => new StatusAppCommand(),
+    'status:environment' => fn (): Command => new StatusEnvironmentCommand(),
+    'status:logs' => fn (): Command => new StatusLogsCommand(),
+    'status:events' => fn (): Command => new StatusEventsCommand(),
+    'status:alarms' => fn (): Command => new StatusAlarmsCommand(),
+    'status:budget' => fn (): Command => new StatusBudgetCommand(),
+    'audit' => fn (): Command => new AuditCommand(),
+    'audit:app' => fn (): Command => new AuditAppCommand(),
+    'audit:environment' => fn (): Command => new AuditEnvironmentCommand(),
+]);
+
+it('leaves every mutating command un-tiered (runs on the developer profile unchanged)', function (Command $command): void {
+    expect($command)->not->toBeInstanceOf(ReadOnlyCommand::class);
+    expect(tierOf($command))->toBeNull();
+})->with([
+    'sync' => fn (): Command => new SyncCommand(),
+    'deploy' => fn (): Command => new DeployCommand(),
+    'build' => fn (): Command => new BuildCommand(),
+    'scale' => fn (): Command => new ScaleCommand(),
+    'run' => fn (): Command => new RunCommand(),
+]);
+
+it('is a no-op for an un-tiered command — never assumes a role, never overrides credentials', function (): void {
+    $captured = [];
+    bindAssumeRoleStsClient($captured, assumeRoleResult());
+
+    mint(new SyncCommand());
+
+    expect($captured)->toBeEmpty();
+    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
+});
+
+it('self-activates: a read command does not mint while the Observer role is unprovisioned', function (): void {
+    // No role in the account yet (the brand-new role is provisioned nowhere) —
+    // ObserverRole::exists() is false, so the mint is skipped entirely.
+    bindMockIamClient([]);
+
+    $captured = [];
+    bindAssumeRoleStsClient($captured, assumeRoleResult());
+
+    mint(new StatusCommand());
+
+    expect($captured)->toBeEmpty();
+    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
+});
+
+it('mints the Observer credentials once the role is provisioned', function (): void {
+    bindMockIamClient(['yolo-testing-observer-role' => 'arn:aws:iam::111111111111:role/yolo-testing-observer-role']);
+
+    $captured = [];
+    bindAssumeRoleStsClient($captured, assumeRoleResult());
+
+    mint(new StatusCommand());
+
+    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeTrue();
+
+    $credentials = Helpers::app('yoloAssumedCredentials');
+    expect($credentials)->toBeInstanceOf(Credentials::class)
+        ->and($credentials->getAccessKeyId())->toBe('ASIA-OBSERVER')
+        ->and($credentials->getSecretKey())->toBe('observer-secret')
+        ->and($credentials->getSecurityToken())->toBe('observer-session-token');
+
+    // It assumed exactly the env's observer role, named for the tier.
+    expect($captured)->toHaveCount(1)
+        ->and($captured[0]['args']['RoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-observer-role')
+        ->and($captured[0]['args']['RoleSessionName'])->toBe('yolo-observer-role');
+});
+
+it('fails open: an AssumeRole failure leaves YOLO on the profile credentials and warns', function (): void {
+    bindMockIamClient(['yolo-testing-observer-role' => 'arn:aws:iam::111111111111:role/yolo-testing-observer-role']);
+
+    $captured = [];
+    bindAssumeRoleStsClient($captured, new RuntimeException('access denied assuming role'));
+
+    // No exception escapes — the run continues.
+    mint(new StatusCommand());
+
+    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
+
+    expect(test()->promptOutput->fetch())
+        ->toContain('observer-role')
+        ->toContain('continuing on the profile credentials');
+});
