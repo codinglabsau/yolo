@@ -50,3 +50,5 @@ These commands are read-only and scriptable (non-zero exit signals a problem):
 ## Safety
 
 The skill is read-first. It will run the `--json` reads and `sync --check` freely, but it **never** runs a mutation — `deploy`, `rollback`, [`scale`](/guide/scaling), `sync` (apply), `env:push` — on its own. It prepares the command for you to run, or lands the change as a PR for a human to merge and deploy. This matches YOLO's own approve-before-apply posture for [provisioning](/guide/provisioning).
+
+That read-first posture is also enforced below the convention line. Once the [`yolo-{env}-observer-role`](/guide/provisioning) is provisioned, YOLO's read commands (`status`, `audit` and friends) **mint a scoped token** by assuming that role — the developer still authenticates as themselves, but the command is capped to the read-only observer policy by construction, so it can't mutate even if the developer's own identity could. It's self-activating (a no-op until the role exists) and fail-open (any problem minting falls back to the developer's profile rather than blocking the read).

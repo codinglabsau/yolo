@@ -5,18 +5,23 @@ namespace Codinglabs\Yolo\Commands;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\Iam;
+use Aws\Credentials\Credentials;
 use Codinglabs\Yolo\Audit\Audit;
 use Codinglabs\Yolo\EnvManifest;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Concerns\RegistersAws;
+use Codinglabs\Yolo\Contracts\ReadOnlyCommand;
 use Codinglabs\Yolo\Concerns\HasAfterCallbacks;
+use Codinglabs\Yolo\Resources\Iam\ObserverRole;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Codinglabs\Yolo\Concerns\ChecksIfCommandsShouldBeRunning;
 use Symfony\Component\Console\Command\Command as SymfonyCommand;
 
 use function Laravel\Prompts\error;
+use function Laravel\Prompts\warning;
 
 abstract class Command extends SymfonyCommand
 {
@@ -77,6 +82,12 @@ abstract class Command extends SymfonyCommand
         if (! $this->ensureAccountMatchesProfile()) {
             return 1;
         }
+
+        // Cap this run to its YOLO tier: mint an assumed-role token scoped to the
+        // tier's policy (the developer authenticates as themselves; YOLO can never
+        // exceed the tier). Self-activating + fail-open — a no-op until the tier
+        // role is provisioned.
+        $this->mintTierCredentials();
 
         $exitCode = (int) (Helpers::app()->call([$this, 'handle']) ?: 0);
 
@@ -357,6 +368,65 @@ abstract class Command extends SymfonyCommand
         }
 
         return true;
+    }
+
+    /**
+     * The YOLO permission tier this command runs under, or null to run on the
+     * developer's own profile credentials unchanged. Read commands override this
+     * to the read-only Observer tier; deploy/sync tiers (Deployer/Admin) are a
+     * follow-up. The base default is null, so an un-tiered command is untouched.
+     */
+    protected function awsTier(): ?Iam
+    {
+        return $this instanceof ReadOnlyCommand ? Iam::OBSERVER_ROLE : null;
+    }
+
+    /**
+     * Cap this run to its tier: assume the tier's role (whose policy is the tier)
+     * and re-register every AWS client against the resulting scoped credentials,
+     * so YOLO can never exceed the tier even though the developer authenticated as
+     * their (broader) self — privilege escalation impossible by construction.
+     *
+     * Self-activating: a no-op until the tier role is provisioned (the developer
+     * keeps running on their profile until they opt in by syncing the role).
+     * Fail-open: any problem minting leaves YOLO on the profile credentials it
+     * already validated, so a misconfigured role/trust never bricks a command.
+     */
+    protected function mintTierCredentials(): void
+    {
+        $tier = $this->awsTier();
+
+        if (! $tier instanceof Iam) {
+            return;
+        }
+
+        try {
+            $role = match ($tier) {
+                Iam::OBSERVER_ROLE => new ObserverRole(),
+                default => null,
+            };
+
+            if (! $role instanceof ObserverRole || ! $role->exists()) {
+                return;
+            }
+
+            $credentials = Aws::assumeRole($role->arn(), sprintf('yolo-%s', $tier->value));
+
+            Helpers::app()->instance('yoloAssumedCredentials', new Credentials(
+                $credentials['AccessKeyId'],
+                $credentials['SecretAccessKey'],
+                $credentials['SessionToken'] ?? null,
+            ));
+
+            static::forgetAwsClients();
+            $this->registerAwsServices();
+        } catch (\Throwable $e) {
+            warning(sprintf(
+                'Could not assume the %s role (%s); continuing on the profile credentials.',
+                $tier->value,
+                $e->getMessage(),
+            ));
+        }
     }
 
     protected function argument(string $key)

@@ -125,6 +125,14 @@ trait RegistersAws
 
     protected static function awsCredentials(): callable|array|null
     {
+        // Once YOLO has minted a scoped tier token (mintTierCredentials), every
+        // client re-registers against those assumed-role credentials, capping the
+        // run to the tier's policy. Until then this binding is unset and the normal
+        // profile/CI/task-role resolution below applies.
+        if (Helpers::app()->bound('yoloAssumedCredentials')) {
+            return Helpers::app('yoloAssumedCredentials');
+        }
+
         if (Aws::runningInAws()) {
             // On AWS we use the instance/task IAM role — defer to the SDK default
             // credential chain (IMDS / container credentials).
