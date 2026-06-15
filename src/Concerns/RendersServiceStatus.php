@@ -68,7 +68,7 @@ trait RendersServiceStatus
             'rolloutState' => null,
             'rolloutReason' => null,
             'scaling' => null,
-            'load' => ['cpu' => null, 'memory' => null, 'requests' => null, 'response' => null],
+            'load' => static::emptyLoad(),
             'cpuTarget' => null,
         ];
 
@@ -177,10 +177,13 @@ trait RendersServiceStatus
     }
 
     /**
-     * Current load for a service: ECS CPU/memory utilisation (avg, last 5 min)
-     * and — for the web service only — ALB request rate and response time.
+     * Current load for a service: ECS CPU/memory utilisation and — for the web
+     * service only — ALB request rate and response time. Each metric is read as a
+     * 1-minute series over the last 5 min: the last point is the live reading, the
+     * series feeds the sparkline and the `/yolo` skill's trend view (so it's one
+     * CloudWatch round-trip per metric, not two).
      *
-     * @return array{cpu: ?float, memory: ?float, requests: ?float, response: ?float}
+     * @return array{cpu: ?float, memory: ?float, requests: ?float, response: ?float, series: array{cpu: array<int, float>, memory: array<int, float>, requests: array<int, float>, response: array<int, float>}}
      */
     protected static function gatherLoad(ServerGroup $group, string $cluster, string $serviceName): array
     {
@@ -189,12 +192,14 @@ trait RendersServiceStatus
             ['Name' => 'ServiceName', 'Value' => $serviceName],
         ];
 
-        $load = [
-            'cpu' => CloudWatch::metricStatistic('AWS/ECS', 'CPUUtilization', $dimensions, 'Average'),
-            'memory' => CloudWatch::metricStatistic('AWS/ECS', 'MemoryUtilization', $dimensions, 'Average'),
-            'requests' => null,
-            'response' => null,
-        ];
+        $cpu = CloudWatch::metricSeries('AWS/ECS', 'CPUUtilization', $dimensions, 'Average');
+        $memory = CloudWatch::metricSeries('AWS/ECS', 'MemoryUtilization', $dimensions, 'Average');
+
+        $load = static::emptyLoad();
+        $load['cpu'] = static::latestOf($cpu);
+        $load['memory'] = static::latestOf($memory);
+        $load['series']['cpu'] = $cpu;
+        $load['series']['memory'] = $memory;
 
         if ($group !== ServerGroup::WEB) {
             return $load;
@@ -204,12 +209,45 @@ trait RendersServiceStatus
 
         if ($targetGroup !== null) {
             $albDimensions = [['Name' => 'TargetGroup', 'Value' => $targetGroup]];
-            // Request count per target over the last minute → a current per-minute rate.
-            $load['requests'] = CloudWatch::metricStatistic('AWS/ApplicationELB', 'RequestCountPerTarget', $albDimensions, 'Sum', 60, 300);
-            $load['response'] = CloudWatch::metricStatistic('AWS/ApplicationELB', 'TargetResponseTime', $albDimensions, 'Average', 60, 300);
+            // RequestCountPerTarget summed per minute → a per-minute request rate.
+            $requests = CloudWatch::metricSeries('AWS/ApplicationELB', 'RequestCountPerTarget', $albDimensions, 'Sum');
+            $response = CloudWatch::metricSeries('AWS/ApplicationELB', 'TargetResponseTime', $albDimensions, 'Average');
+
+            $load['requests'] = static::latestOf($requests);
+            $load['response'] = static::latestOf($response);
+            $load['series']['requests'] = $requests;
+            $load['series']['response'] = $response;
         }
 
         return $load;
+    }
+
+    /**
+     * The zero-value load shape, so every row (even a cold service) carries the
+     * same keys and the `--json` contract is stable.
+     *
+     * @return array{cpu: ?float, memory: ?float, requests: ?float, response: ?float, series: array{cpu: array<int, float>, memory: array<int, float>, requests: array<int, float>, response: array<int, float>}}
+     */
+    protected static function emptyLoad(): array
+    {
+        return [
+            'cpu' => null,
+            'memory' => null,
+            'requests' => null,
+            'response' => null,
+            'series' => ['cpu' => [], 'memory' => [], 'requests' => [], 'response' => []],
+        ];
+    }
+
+    /**
+     * The live reading from a metric series: its last (newest) point, or null when
+     * the series is empty.
+     *
+     * @param  array<int, float>  $series
+     */
+    protected static function latestOf(array $series): ?float
+    {
+        return $series === [] ? null : $series[array_key_last($series)];
     }
 
     /**
@@ -412,10 +450,12 @@ trait RendersServiceStatus
     }
 
     /**
-     * `cpu 43%/65% · mem 38% · 410 rpm · 126 ms`. Missing metrics render "—";
-     * request rate / response time only apply to the web service.
+     * `cpu 43%/65% ▁▂▃▅▇ · mem 38% ▂▂▃▃▄ · 410 rpm ▁▃▂▅█ · 126 ms`. Missing metrics
+     * render "—"; request rate / response time only apply to the web service. Each
+     * metric trails a sparkline of its recent series when one is present (it isn't
+     * in the pure-formatter tests, which pass plain readings).
      *
-     * @param  array{cpu: ?float, memory: ?float, requests: ?float, response: ?float}  $load
+     * @param  array{cpu: ?float, memory: ?float, requests: ?float, response: ?float, series?: array<string, array<int, float>>}  $load
      */
     public static function formatLoad(array $load, ?float $cpuTarget, ServerGroup $group): string
     {
@@ -425,11 +465,17 @@ trait RendersServiceStatus
                 ? sprintf('cpu %s%%', static::trimFloat($load['cpu']))
                 : sprintf('cpu %s%%/%s%%', static::trimFloat($load['cpu']), static::trimFloat($cpuTarget)));
 
-        $parts = [$cpu, $load['memory'] === null ? 'mem —' : sprintf('mem %s%%', static::trimFloat($load['memory']))];
+        $cpu .= static::sparkSuffix($load['series']['cpu'] ?? []);
+
+        $memory = $load['memory'] === null
+            ? 'mem —'
+            : sprintf('mem %s%%', static::trimFloat($load['memory'])) . static::sparkSuffix($load['series']['memory'] ?? []);
+
+        $parts = [$cpu, $memory];
 
         if ($group === ServerGroup::WEB) {
             if ($load['requests'] !== null) {
-                $parts[] = sprintf('%s rpm', static::trimFloat($load['requests']));
+                $parts[] = sprintf('%s rpm', static::trimFloat($load['requests'])) . static::sparkSuffix($load['series']['requests'] ?? []);
             }
 
             if ($load['response'] !== null) {
@@ -438,6 +484,46 @@ trait RendersServiceStatus
         }
 
         return implode(' · ', $parts);
+    }
+
+    /**
+     * A space-prefixed gray sparkline for trailing a load reading, or an empty
+     * string when there's no series — so a missing trend adds nothing.
+     *
+     * @param  array<int, float>  $series
+     */
+    protected static function sparkSuffix(array $series): string
+    {
+        $spark = static::sparkline($series);
+
+        return $spark === '' ? '' : sprintf(' <fg=gray>%s</>', $spark);
+    }
+
+    /**
+     * A compact `▁▂▃▄▅▆▇█` sparkline of a numeric series, scaled to its own
+     * min/max. Empty series → empty string; a flat series → all-low bars. Pure —
+     * unit-tested directly.
+     *
+     * @param  array<int, float>  $series
+     */
+    public static function sparkline(array $series): string
+    {
+        if ($series === []) {
+            return '';
+        }
+
+        $ticks = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+        $min = min($series);
+        $range = max($series) - $min;
+
+        return implode('', array_map(
+            function (float $value) use ($ticks, $min, $range): string {
+                $index = $range <= 0.0 ? 0 : (int) round(($value - $min) / $range * (count($ticks) - 1));
+
+                return $ticks[$index];
+            },
+            $series,
+        ));
     }
 
     /**
