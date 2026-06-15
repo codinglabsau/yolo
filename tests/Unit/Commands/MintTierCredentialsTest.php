@@ -23,10 +23,13 @@ use Codinglabs\Yolo\Commands\StatusAppCommand;
 use Codinglabs\Yolo\Contracts\DeployerCommand;
 use Codinglabs\Yolo\Contracts\ReadOnlyCommand;
 use Codinglabs\Yolo\Commands\StatusLogsCommand;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Input\InputOption;
 use Codinglabs\Yolo\Commands\StatusAlarmsCommand;
 use Codinglabs\Yolo\Commands\StatusBudgetCommand;
 use Codinglabs\Yolo\Commands\StatusEventsCommand;
 use Codinglabs\Yolo\Commands\SyncEnvironmentCommand;
+use Symfony\Component\Console\Input\InputDefinition;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Codinglabs\Yolo\Commands\AuditEnvironmentCommand;
 use Codinglabs\Yolo\Commands\StatusEnvironmentCommand;
@@ -34,7 +37,7 @@ use Codinglabs\Yolo\Commands\StatusEnvironmentCommand;
 /**
  * Bind an STS client whose AssumeRole call records its args and then resolves to
  * the supplied Result (a Credentials payload) or throws the supplied exception
- * (the fail-open path). The callable form is the SDK's documented mock hook.
+ * (the fail-closed refusal path). The callable form is the SDK's documented mock hook.
  *
  * @param  array<int, array<string, mixed>>  $captured
  */
@@ -67,14 +70,41 @@ function assumeRoleResult(): Result
     ]);
 }
 
-function mint(Command $command): void
+function mint(Command $command): ?int
 {
-    (new ReflectionMethod($command, 'mintTierCredentials'))->invoke($command);
+    return (new ReflectionMethod($command, 'mintTierCredentials'))->invoke($command);
 }
 
 function tierOf(Command $command): ?Iam
 {
     return (new ReflectionMethod($command, 'awsTier'))->invoke($command);
+}
+
+/** Bind the global --dangerously-skip-permissions flag onto a command's input. */
+function withBreakGlass(Command $command): Command
+{
+    $definition = new InputDefinition([
+        new InputOption('dangerously-skip-permissions', null, InputOption::VALUE_NONE),
+    ]);
+    $command->input = new ArrayInput(['--dangerously-skip-permissions' => true], $definition);
+
+    return $command;
+}
+
+/** A tiered command must refuse (and bind nothing) when its role can't be assumed. */
+function expectRefusesWithoutRole(Command $command, string $roleName): void
+{
+    bindMockIamClient([]);
+
+    $captured = [];
+    bindAssumeRoleStsClient($captured, assumeRoleResult());
+
+    expect(mint($command))->toBe(Command::FAILURE);
+    expect($captured)->toBeEmpty();
+    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
+    expect(test()->promptOutput->fetch())
+        ->toContain($roleName)
+        ->toContain('--dangerously-skip-permissions');
 }
 
 beforeEach(function (): void {
@@ -173,18 +203,16 @@ it('is a no-op for an un-tiered command — never assumes a role, never override
     expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
 });
 
-it('self-activates: a read command does not mint while the Observer role is unprovisioned', function (): void {
-    // No role in the account yet (the brand-new role is provisioned nowhere) —
-    // ObserverRole::exists() is false, so the mint is skipped entirely.
-    bindMockIamClient([]);
+it('fails closed: a read command refuses when the observer role is not provisioned', function (): void {
+    expectRefusesWithoutRole(new StatusCommand(), 'yolo-testing-observer-role');
+});
 
-    $captured = [];
-    bindAssumeRoleStsClient($captured, assumeRoleResult());
+it('fails closed: a deploy refuses when the deployer role is not provisioned', function (): void {
+    expectRefusesWithoutRole(new DeployCommand(), 'yolo-testing-my-app-deployer');
+});
 
-    mint(new StatusCommand());
-
-    expect($captured)->toBeEmpty();
-    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
+it('fails closed: a sync refuses when the admin role is not provisioned', function (): void {
+    expectRefusesWithoutRole(new SyncEnvironmentCommand(), 'yolo-testing-admin-role');
 });
 
 it('mints the Observer credentials once the role is provisioned', function (): void {
@@ -225,18 +253,6 @@ it('mints the Deployer credentials for a deploy once the app deployer role is pr
         ->and($captured[0]['args']['RoleSessionName'])->toBe('yolo-deployer');
 });
 
-it('self-activates for the Deployer tier too: no mint until the deployer role exists', function (): void {
-    bindMockIamClient([]);
-
-    $captured = [];
-    bindAssumeRoleStsClient($captured, assumeRoleResult());
-
-    mint(new DeployCommand());
-
-    expect($captured)->toBeEmpty();
-    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
-});
-
 it('mints the Admin credentials for a sync once the env admin role is provisioned', function (): void {
     bindMockIamClient(['yolo-testing-admin-role' => 'arn:aws:iam::111111111111:role/yolo-testing-admin-role']);
 
@@ -253,30 +269,32 @@ it('mints the Admin credentials for a sync once the env admin role is provisione
         ->and($captured[0]['args']['RoleSessionName'])->toBe('yolo-admin-role');
 });
 
-it('self-activates for the Admin tier too: the first sync runs on the profile before the role exists', function (): void {
-    bindMockIamClient([]);
-
-    $captured = [];
-    bindAssumeRoleStsClient($captured, assumeRoleResult());
-
-    mint(new SyncEnvironmentCommand());
-
-    expect($captured)->toBeEmpty();
-    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
-});
-
-it('fails open: an AssumeRole failure leaves YOLO on the profile credentials and warns', function (): void {
+it('fails closed: refuses when the role exists but cannot be assumed (broken trust / lost grant)', function (): void {
     bindMockIamClient(['yolo-testing-observer-role' => 'arn:aws:iam::111111111111:role/yolo-testing-observer-role']);
 
     $captured = [];
     bindAssumeRoleStsClient($captured, new RuntimeException('access denied assuming role'));
 
-    // No exception escapes — the run continues.
-    mint(new StatusCommand());
-
+    // No silent fall-through to the full identity — the command aborts.
+    expect(mint(new StatusCommand()))->toBe(Command::FAILURE);
     expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
 
     expect(test()->promptOutput->fetch())
-        ->toContain('observer-role')
-        ->toContain('continuing on the profile credentials');
+        ->toContain('Refusing to run')
+        ->toContain('--dangerously-skip-permissions');
+});
+
+it('break-glass: --dangerously-skip-permissions skips the cap and runs on the full identity', function (): void {
+    // The admin role exists, but break-glass means it is never assumed.
+    bindMockIamClient(['yolo-testing-admin-role' => 'arn:aws:iam::111111111111:role/yolo-testing-admin-role']);
+
+    $captured = [];
+    bindAssumeRoleStsClient($captured, assumeRoleResult());
+
+    expect(mint(withBreakGlass(new SyncEnvironmentCommand())))->toBeNull();
+
+    // No assume attempted, no scoped credentials bound — the full profile identity stands.
+    expect($captured)->toBeEmpty();
+    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
+    expect(test()->promptOutput->fetch())->toContain('UNCAPPED');
 });

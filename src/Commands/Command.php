@@ -90,9 +90,11 @@ abstract class Command extends SymfonyCommand
 
         // Cap this run to its YOLO tier: mint an assumed-role token scoped to the
         // tier's policy (the developer authenticates as themselves; YOLO can never
-        // exceed the tier). Self-activating + fail-open — a no-op until the tier
-        // role is provisioned.
-        $this->mintTierCredentials();
+        // exceed the tier). Fail-closed — if the cap can't be applied the command
+        // refuses, unless --dangerously-skip-permissions is set.
+        if (($abort = $this->mintTierCredentials()) !== null) {
+            return $abort;
+        }
 
         $exitCode = (int) (Helpers::app()->call([$this, 'handle']) ?: 0);
 
@@ -398,31 +400,41 @@ abstract class Command extends SymfonyCommand
      * so YOLO can never exceed the tier even though the developer authenticated as
      * their (broader) self — privilege escalation impossible by construction.
      *
-     * Self-activating: a no-op until the tier role is provisioned (the developer
-     * keeps running on their profile until they opt in by syncing the role).
-     * Fail-open: any problem minting leaves YOLO on the profile credentials it
-     * already validated, so a misconfigured role/trust never bricks a command.
+     * Fail-closed: there is no "run on the full profile because the role is
+     * missing" path. Assuming the role is the only way through — if it can't be
+     * assumed (a fresh environment with no role yet, a broken trust, a missing
+     * grant) the command refuses and points at the bootstrap flag. The single
+     * deliberate escape is --dangerously-skip-permissions, which skips the cap and
+     * runs on the full profile identity (bootstrap / break-glass / diagnostics).
+     *
+     * Returns null to proceed, or an exit code to abort the command.
      */
-    protected function mintTierCredentials(): void
+    protected function mintTierCredentials(): ?int
     {
         $tier = $this->awsTier();
 
         if (! $tier instanceof Iam) {
-            return;
+            return null;
+        }
+
+        if ($this->skipsPermissions()) {
+            warning('--dangerously-skip-permissions: running UNCAPPED as your full AWS identity. The YOLO permission tier is bypassed.');
+
+            return null;
+        }
+
+        $role = match ($tier) {
+            Iam::OBSERVER_ROLE => new ObserverRole(),
+            Iam::DEPLOYER_ROLE => new DeployerRole(),
+            Iam::ADMIN_ROLE => new AdminRole(),
+            default => null,
+        };
+
+        if (! $role instanceof Resource) {
+            return null;
         }
 
         try {
-            $role = match ($tier) {
-                Iam::OBSERVER_ROLE => new ObserverRole(),
-                Iam::DEPLOYER_ROLE => new DeployerRole(),
-                Iam::ADMIN_ROLE => new AdminRole(),
-                default => null,
-            };
-
-            if (! $role instanceof Resource || ! $role->exists()) {
-                return;
-            }
-
             $credentials = Aws::assumeRole($role->arn(), sprintf('yolo-%s', $tier->value));
 
             Helpers::app()->instance('yoloAssumedCredentials', new Credentials(
@@ -433,13 +445,32 @@ abstract class Command extends SymfonyCommand
 
             static::forgetAwsClients();
             $this->registerAwsServices();
+
+            return null;
         } catch (\Throwable $e) {
-            warning(sprintf(
-                'Could not assume the %s role (%s); continuing on the profile credentials.',
-                $tier->value,
+            error(sprintf(
+                "Refusing to run '%s' on your full AWS identity: could not assume %s (%s).\n"
+                . 'Bootstrap a fresh environment once with --dangerously-skip-permissions; otherwise check the role exists and that your identity may assume it.',
+                $this->getName(),
+                $role->name(),
                 $e->getMessage(),
             ));
+
+            return self::FAILURE;
         }
+    }
+
+    /**
+     * The global --dangerously-skip-permissions break-glass flag: skip the tier
+     * cap and run on the developer's full profile identity. Registered on the
+     * application (see Yolo), so guard against input not yet bound (direct unit
+     * invocation) before reading it.
+     */
+    protected function skipsPermissions(): bool
+    {
+        return isset($this->input)
+            && $this->input->hasOption('dangerously-skip-permissions')
+            && (bool) $this->input->getOption('dangerously-skip-permissions');
     }
 
     protected function argument(string $key)

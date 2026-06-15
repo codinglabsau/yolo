@@ -6,6 +6,8 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 
 - **`<environment>`** — almost every command takes a required `environment` argument naming a key under `environments` in your `yolo.yml` (e.g. `production`, `staging`).
 - **AWS authentication** — outside CI, YOLO reads a named AWS profile from `YOLO_<ENVIRONMENT>_AWS_PROFILE` in your local `.env`. Before any AWS call it verifies (via STS) that the profile resolves to the `account-id` declared in the manifest. The `default` profile is rejected. In CI it falls back to the AWS SDK default credential chain (GitHub OIDC, SSO).
+- **Permission tiers** — you authenticate as yourself; YOLO then assumes a scoped role per command and runs capped to it, so it can never exceed what the command needs: read commands (`status`, `audit`) → the read-only observer role, the deploy lifecycle (`deploy`, `build`, `run`) → the app deployer role, and provisioning (`sync`, `scale`) → the `yolo-*`-scoped admin role. The guard is **fail-closed** — a command refuses if it can't assume its role rather than running on your full identity. See [provisioning](/guide/provisioning).
+- **`--dangerously-skip-permissions`** — a global flag that bypasses the tier cap and runs on your full AWS identity (with a loud warning). It's the deliberate escape for **bootstrapping a fresh environment** (the first `yolo sync <env> --dangerously-skip-permissions` creates the tier roles) and for break-glass / diagnostics. Avoid it otherwise.
 - **Required manifest keys** — every command except `init` checks that `name`, `region`, and `account-id` are declared, and fails fast if not.
 
 ## Commands at a glance
