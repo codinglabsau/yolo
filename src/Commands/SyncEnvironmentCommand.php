@@ -50,6 +50,10 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 // pre-deploy `sync --check` gate can read the whole stack under the
                 // deploy role, scoped to exactly the services YOLO provisions.
                 Steps\Sync\Environment\SyncYoloObserverPolicyStep::class,
+                // The read-only role an operator/agent assumes for safe inspection
+                // (LPX-635) — created, then the observer policy attached to it.
+                Steps\Sync\Environment\SyncObserverRoleStep::class,
+                Steps\Sync\Environment\AttachObserverRolePolicyStep::class,
                 // env config bucket + the environment's declaration. The bucket
                 // holds the env manifest (yolo-environment-{environment}.yml) and the env-shared .env;
                 // the manifest is seeded exactly once, then owned by the operator
