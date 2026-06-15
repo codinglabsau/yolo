@@ -24,6 +24,7 @@ use Aws\ElastiCache\ElastiCacheClient;
 use Aws\EventBridge\EventBridgeClient;
 use Aws\Credentials\CredentialProvider;
 use Aws\CostExplorer\CostExplorerClient;
+use Aws\Credentials\CredentialsInterface;
 use GuzzleHttp\Exception\ConnectException;
 use Aws\CloudWatchLogs\CloudWatchLogsClient;
 use Aws\ServiceDiscovery\ServiceDiscoveryClient;
@@ -123,7 +124,7 @@ trait RegistersAws
         Helpers::app()->singleton('wafV2', fn (): WAFV2Client => new WAFV2Client($arguments));
     }
 
-    protected static function awsCredentials(): callable|array|null
+    protected static function awsCredentials(): CredentialsInterface|callable|array|null
     {
         // Once YOLO has minted a scoped tier token (mintTierCredentials), every
         // client re-registers against those assumed-role credentials, capping the

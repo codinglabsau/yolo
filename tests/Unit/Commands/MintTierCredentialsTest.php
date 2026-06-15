@@ -91,6 +91,18 @@ beforeEach(function (): void {
     ]);
 });
 
+afterEach(function (): void {
+    // A successful mint re-registers the full AWS client set into the shared
+    // process container (Container::getInstance() is never reset between tests).
+    // Forget those singleton bindings and the minted credentials so they don't
+    // leak into a later file's clean-slate assertion (RegistersAwsBindingsTest).
+    foreach (Command::AWS_CLIENT_BINDINGS as $client) {
+        unset(Helpers::app()[$client]);
+    }
+
+    Helpers::app()->forgetInstance('yoloAssumedCredentials');
+});
+
 it('returns the assumed-role Credentials and sends the role ARN + session name', function (): void {
     $captured = [];
     bindAssumeRoleStsClient($captured, assumeRoleResult());
@@ -197,6 +209,11 @@ it('mints the Observer credentials once the role is provisioned', function (): v
 
     expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeTrue();
 
+    // The re-registration after minting must succeed silently — a TypeError there
+    // (e.g. awsCredentials() rejecting the Credentials object) is swallowed by the
+    // fail-open catch, leaving the binding set but the run on profile credentials.
+    expect(test()->promptOutput->fetch())->not->toContain('continuing on the profile credentials');
+
     $credentials = Helpers::app('yoloAssumedCredentials');
     expect($credentials)->toBeInstanceOf(Credentials::class)
         ->and($credentials->getAccessKeyId())->toBe('ASIA-OBSERVER')
@@ -218,6 +235,7 @@ it('mints the Deployer credentials for a deploy once the app deployer role is pr
     mint(new DeployCommand());
 
     expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeTrue();
+    expect(test()->promptOutput->fetch())->not->toContain('continuing on the profile credentials');
 
     // It assumed exactly this app's deployer role, named for the tier.
     expect($captured)->toHaveCount(1)
@@ -246,6 +264,7 @@ it('mints the Admin credentials for a sync once the env admin role is provisione
     mint(new SyncEnvironmentCommand());
 
     expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeTrue();
+    expect(test()->promptOutput->fetch())->not->toContain('continuing on the profile credentials');
 
     // It assumed exactly the env's admin role, named for the tier.
     expect($captured)->toHaveCount(1)
