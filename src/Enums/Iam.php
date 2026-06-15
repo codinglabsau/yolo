@@ -14,4 +14,5 @@ enum Iam: string
     case DEPLOYER_ROLE = 'deployer';
     case DEPLOYER_POLICY = 'deployer-policy';
     case OBSERVER_POLICY = 'observer';
+    case OBSERVER_ROLE = 'observer-role';
 }
