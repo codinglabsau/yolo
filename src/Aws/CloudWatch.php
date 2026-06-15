@@ -20,6 +20,31 @@ class CloudWatch
     }
 
     /**
+     * Every alarm whose name starts with the given prefix, reduced to
+     * {name, state, reason} — the app's alarms for `yolo status:alarms`. Empty
+     * when the read fails or none match, so the caller degrades gracefully.
+     *
+     * @return array<int, array{name: string, state: ?string, reason: ?string}>
+     */
+    public static function alarmsWithPrefix(string $prefix): array
+    {
+        try {
+            $alarms = Aws::cloudWatch()->describeAlarms()['MetricAlarms'] ?? [];
+        } catch (AwsException) {
+            return [];
+        }
+
+        return array_values(array_map(
+            fn (array $alarm): array => [
+                'name' => $alarm['AlarmName'] ?? '',
+                'state' => $alarm['StateValue'] ?? null,
+                'reason' => $alarm['StateReason'] ?? null,
+            ],
+            array_filter($alarms, fn (array $alarm): bool => str_starts_with((string) ($alarm['AlarmName'] ?? ''), $prefix)),
+        ));
+    }
+
+    /**
      * The decoded body of a dashboard, addressed by name. Returns the parsed
      * `{ "widgets": [...] }` document so callers diff an array, not a JSON string.
      * Translates the SDK's not-found error to the project's standard signal.
