@@ -15,11 +15,12 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * YOLO-managed customer-managed IAM policy granting **read-only** access to exactly
- * the AWS services YOLO provisions — the inspection surface a `sync`/`audit` plan
- * pass reads to compute drift. Deliberately NOT AWS's managed ReadOnlyAccess: that
- * grants read on the entire AWS surface (~300 services) and `s3:GetObject` on every
- * bucket; this grants read on YOLO's finite service set only, with object reads
- * scoped to non-secret config.
+ * the AWS surface YOLO inspects: the services a `sync`/`audit` plan pass reads to
+ * compute drift, plus the operator-facing `status` reads (the Logs tab tails
+ * CloudWatch Logs; `status:budget` reads month-to-date spend from Cost Explorer).
+ * Deliberately NOT AWS's managed ReadOnlyAccess: that grants read on the entire AWS
+ * surface (~300 services) and `s3:GetObject` on every bucket; this grants read on
+ * YOLO's finite service set only, with object reads scoped to non-secret config.
  *
  * Env-scoped and shared: one `yolo-{env}-observer` per environment, attached to
  * every app's deployer role (AttachDeployerRolePoliciesStep) so the deploy-time
@@ -141,9 +142,19 @@ class ObserverPolicy implements Resource, SynchronisesConfiguration
                         'cloudwatch:List*',
                         'logs:Describe*',
                         'logs:Get*',
+                        // FilterLogEvents is NOT a Get* action — the Logs tab
+                        // (status:logs) tails a group's streams through it, so the
+                        // tier would AccessDenied without this.
+                        'logs:Filter*',
                         'logs:ListTagsForResource',
                         'events:Describe*',
                         'events:List*',
+                        // cost — month-to-date spend by app for the budget read
+                        // (status:budget). Cost Explorer has no resource-level
+                        // permissions, so its reads sit on "*" like the rest.
+                        'ce:Describe*',
+                        'ce:Get*',
+                        'ce:List*',
                         // waf / service discovery / tagging / identity
                         'wafv2:Get*',
                         'wafv2:List*',
