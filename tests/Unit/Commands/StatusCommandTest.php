@@ -135,6 +135,39 @@ it('formats live load against the CPU target, with web-only request/response', f
         ->toBe('cpu — · mem 12%');
 });
 
+it('renders a sparkline scaled to the series, and nothing for an empty one', function (): void {
+    expect(StatusCommand::sparkline([]))->toBe('');
+    // A flat series has no range, so it sits on the lowest bar.
+    expect(StatusCommand::sparkline([5.0, 5.0, 5.0]))->toBe('▁▁▁');
+    // Min maps to the lowest bar, max to the highest, in series order.
+    $spark = StatusCommand::sparkline([0.0, 50.0, 100.0]);
+    expect(mb_strlen($spark))->toBe(3);
+    expect(mb_substr($spark, 0, 1))->toBe('▁');
+    expect(mb_substr($spark, -1))->toBe('█');
+});
+
+it('trails a load reading with a gray sparkline when a series is present', function (): void {
+    $load = [
+        'cpu' => 43.2,
+        'memory' => 38.0,
+        'requests' => 410.0,
+        'response' => 0.126,
+        'series' => [
+            'cpu' => [10.0, 20.0, 43.2],
+            'memory' => [38.0, 38.0, 38.0],
+            'requests' => [100.0, 300.0, 410.0],
+            'response' => [0.1, 0.12, 0.126],
+        ],
+    ];
+
+    expect(StatusCommand::formatLoad($load, 65.0, ServerGroup::WEB))
+        ->toContain('cpu 43.2%/65%')
+        ->toContain('mem 38%')
+        ->toContain('410 rpm')
+        ->toContain('<fg=gray>')   // sparklines render gray
+        ->toContain('▁');          // low bar from the flat memory series / cpu start
+});
+
 it('colours the rollout state', function (): void {
     expect(StatusCommand::formatRolloutState('IN_PROGRESS'))->toContain('IN PROGRESS')->toContain('blue');
     expect(StatusCommand::formatRolloutState('COMPLETED'))->toContain('COMPLETED')->toContain('green');

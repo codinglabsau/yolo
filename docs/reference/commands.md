@@ -259,11 +259,11 @@ It renders three panels, read live from ECS, Application Auto Scaling and CloudW
 
 - **Deployment in progress** (only when a rollout is mid-flight) — a progress bar of new-revision tasks per rolling group, its rollout state, the revision, and how long it's been running.
 - **Services** — one row per group (web / queue / scheduler) with the task spec (vCPU/memory/launch type), running/desired task count, scaling bounds + policies (`1–4 auto (cpu 65%, req 1200)`, or `fixed` / `singleton`), and the deployed revision + app version.
-- **Load** (last 5 min) — ECS CPU/memory per group, shown against the CPU scaling target so headroom is obvious, plus the web service's ALB request rate and response time.
+- **Load** (last 5 min) — ECS CPU/memory per group, shown against the CPU scaling target so headroom is obvious, plus the web service's ALB request rate and response time. Each reading trails a small `▁▂▃▅▇` sparkline of its recent trend.
 
 Below the panels is a clickable deep link to the app's CloudWatch dashboard for the full metrics view.
 
-It **renders once and exits**, returning a non-zero exit code if a deployment is currently failed — so it doubles as a lightweight health probe. For the live, polling cockpit (it redraws and picks up deploys as they start), open [`yolo tui`](/guide/tui); its Status tab is this same picture, kept fresh. `--json` emits the same state as a structured payload rather than the panels — the machine-readable contract the `/yolo` skill (and any script) consumes.
+It **renders once and exits**, returning a non-zero exit code if a deployment is currently failed — so it doubles as a lightweight health probe. For the live, polling cockpit (it redraws and picks up deploys as they start), open [`yolo tui`](/guide/tui); its Status tab is this same picture, kept fresh. `--json` emits the same state as a structured payload rather than the panels — the machine-readable contract the `/yolo` skill (and any script) consumes. Each group's `load` carries both the latest reading and a `series` of its recent datapoints per metric (`load.series.cpu`, `.memory`, `.requests`, `.response`), so a consumer sees the trend, not just a lone number.
 
 ---
 
