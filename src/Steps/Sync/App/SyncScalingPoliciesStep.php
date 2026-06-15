@@ -17,6 +17,7 @@ use Codinglabs\Yolo\Resources\CloudWatch\Dashboard;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\ScalingPolicy;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\ScalableTarget;
+use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\TargetTrackingPolicy;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebConcurrencyPolicy;
 
@@ -29,21 +30,32 @@ use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebConcurrencyPolicy;
  *  - the CPU policy ({@see ScalingPolicy}, ECSServiceAverageCPUUtilization) — the
  *    safety net for load that pegs CPU without raising concurrency.
  *
- * Application Auto Scaling takes the max desired across both, so they compose
- * rather than fight. There is no per-app tuning to switch on: replacing the old
- * opt-in `request-count-per-target` policy, concurrency works out of the box.
+ * Application Auto Scaling takes the max desired across every policy on the target,
+ * so they compose rather than fight. There is no per-app tuning to switch on —
+ * concurrency works out of the box.
  *
- * Reconciles desired against live: it upserts the policies the manifest wants and
- * prunes any live policy it no longer does — so the now-removed request-count
- * policy (and the alarms AWS generated for it) is deleted on the next sync.
+ * Reconciles desired against live: it upserts its two policies and prunes any live
+ * policy that ISN'T part of YOLO's managed set for this scalable target — the union
+ * of this step's policies and the burst policy ({@see WebBurstPolicy}), which a
+ * sibling step ({@see SyncWebBurstStep}) writes onto the same target. Pruning
+ * against that full set — not just this step's two — keeps burst while still
+ * reconciling away anything that doesn't belong: a policy added out-of-band (e.g.
+ * via the console) that would silently skew scaling since AAS maxes across every
+ * policy, or one a past YOLO version created and no longer manages. The set is
+ * sourced from the owning policy classes, so no retired policy name is ever
+ * hardcoded — a removed policy is pruned because it's absent from the current set,
+ * not because YOLO remembers it. `yolo sync --check` surfaces the prune as drift
+ * before it's applied.
  *
  * Skips on a greenfield first sync when the ECS service doesn't exist yet, and
  * silently defers the concurrency policy when the ALB / target group aren't
  * resolvable yet (it needs them to build its metric dimensions; it lands on the
  * next sync once they are — never throwing in the plan pass). The CPU policy has
- * no such dependency and is always present. When the whole autoscaling block is
- * removed this step no-ops — SyncScalableTargetStep deregisters the scalable
- * target, which cascades every policy and alarm.
+ * no such dependency and is always present. The managed set is keyed by name
+ * independently of resolution, so a merely-deferred concurrency policy is never
+ * mistaken for an orphan. When the whole autoscaling block is removed this step
+ * no-ops — SyncScalableTargetStep deregisters the scalable target, which cascades
+ * every policy and alarm.
  */
 class SyncScalingPoliciesStep implements Step
 {
@@ -110,10 +122,11 @@ class SyncScalingPoliciesStep implements Step
     }
 
     /**
-     * Live policies on the scalable target that the manifest no longer wants.
-     * Diffed against desiredPolicyNames() — the manifest's intent — NOT policies(),
-     * so the concurrency policy that's merely deferred (its ALB/TG not resolvable on
-     * a greenfield sync) is never mistaken for one to prune.
+     * Live policies on the scalable target that aren't part of YOLO's managed set —
+     * the live set minus managedPolicyNames(). Catches a policy added out-of-band
+     * (e.g. via the console, which would otherwise skew autoscaling silently) and
+     * one a past YOLO version left behind, while never touching the burst policy a
+     * sibling step owns on the same target.
      *
      * @return array<int, string>
      */
@@ -121,24 +134,26 @@ class SyncScalingPoliciesStep implements Step
     {
         return array_values(array_diff(
             ApplicationAutoScaling::policyNames(ScalableTarget::resourceId()),
-            static::desiredPolicyNames(),
+            static::managedPolicyNames(),
         ));
     }
 
     /**
-     * The policy names the manifest intends to exist, independent of whether the
-     * ALB / target group resolve right now — the prune set's source of truth. Both
-     * the CPU and concurrency policies are always desired, so a briefly-deferred
-     * concurrency policy is never pruned, while a leftover request-count policy
-     * from before this change (not in this set) is.
+     * Every policy name YOLO manages on the web scalable target — the prune set's
+     * source of truth. The union of this step's policies (CPU + concurrency) and the
+     * burst policy a sibling step ({@see SyncWebBurstStep}) writes onto the same
+     * target. Keyed by name independently of whether each resolves or exists right
+     * now, so a briefly-deferred concurrency policy is never pruned; sourced from the
+     * owning classes, so no retired policy name is ever hardcoded.
      *
      * @return array<int, string>
      */
-    public static function desiredPolicyNames(): array
+    public static function managedPolicyNames(): array
     {
         return [
             Helpers::keyedResourceName(static::CPU_POLICY),
             Helpers::keyedResourceName(static::CONCURRENCY_POLICY),
+            (new WebBurstPolicy())->policyName(),
         ];
     }
 
