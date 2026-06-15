@@ -2,8 +2,8 @@
 
 use Aws\Result;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Resources\Iam\YoloObserver;
-use Codinglabs\Yolo\Steps\Sync\Environment\SyncYoloObserverPolicyStep;
+use Codinglabs\Yolo\Resources\Iam\ObserverPolicy;
+use Codinglabs\Yolo\Steps\Sync\Environment\SyncObserverPolicyStep;
 
 beforeEach(function (): void {
     writeManifest([
@@ -17,7 +17,7 @@ it('creates the env-shared observer policy when absent', function (): void {
         'ListPolicies' => new Result(['Policies' => []]),
     ], $captured);
 
-    expect((new SyncYoloObserverPolicyStep())([]))->toBe(StepResult::CREATED);
+    expect((new SyncObserverPolicyStep())([]))->toBe(StepResult::CREATED);
 
     $create = collect($captured)->firstWhere('name', 'CreatePolicy');
     expect($create)->not->toBeNull();
@@ -30,7 +30,7 @@ it('would-create the observer policy on a dry-run without writing', function ():
         'ListPolicies' => new Result(['Policies' => []]),
     ], $captured);
 
-    expect((new SyncYoloObserverPolicyStep())(['dry-run' => true]))->toBe(StepResult::WOULD_CREATE);
+    expect((new SyncObserverPolicyStep())(['dry-run' => true]))->toBe(StepResult::WOULD_CREATE);
     expect(array_column($captured, 'name'))->not->toContain('CreatePolicy');
 });
 
@@ -43,7 +43,7 @@ it('stays in sync without re-versioning when the live document already matches',
             'DefaultVersionId' => 'v1',
         ]]]),
         'GetPolicyVersion' => new Result(['PolicyVersion' => [
-            'Document' => rawurlencode(json_encode((new YoloObserver())->document())),
+            'Document' => rawurlencode(json_encode((new ObserverPolicy())->document())),
         ]]),
         'ListPolicyTags' => new Result(['Tags' => [
             ['Key' => 'Name', 'Value' => 'yolo-testing-observer'],
@@ -52,6 +52,6 @@ it('stays in sync without re-versioning when the live document already matches',
         ]]),
     ], $captured);
 
-    expect((new SyncYoloObserverPolicyStep())([]))->toBe(StepResult::SYNCED);
+    expect((new SyncObserverPolicyStep())([]))->toBe(StepResult::SYNCED);
     expect(array_column($captured, 'name'))->not->toContain('CreatePolicyVersion');
 });

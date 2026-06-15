@@ -1,7 +1,7 @@
 <?php
 
 use Codinglabs\Yolo\Enums\Scope;
-use Codinglabs\Yolo\Resources\Iam\YoloObserver;
+use Codinglabs\Yolo\Resources\Iam\ObserverPolicy;
 
 beforeEach(function (): void {
     writeManifest([
@@ -12,18 +12,18 @@ beforeEach(function (): void {
 /** Every action the policy grants, flattened across statements. */
 function observerActions(): array
 {
-    return collect((new YoloObserver())->document()['Statement'])
+    return collect((new ObserverPolicy())->document()['Statement'])
         ->flatMap(fn (array $statement): array => (array) $statement['Action'])
         ->all();
 }
 
 it('is an env-scoped policy named yolo-{env}-observer (shared by every app in the environment)', function (): void {
-    expect((new YoloObserver())->scope())->toBe(Scope::Env);
-    expect((new YoloObserver())->name())->toBe('yolo-testing-observer');
+    expect((new ObserverPolicy())->scope())->toBe(Scope::Env);
+    expect((new ObserverPolicy())->name())->toBe('yolo-testing-observer');
 });
 
 it('grants read-only wildcards for the services YOLO provisions, on * (unscopeable describe/list ops)', function (): void {
-    $statement = collect((new YoloObserver())->document()['Statement'])
+    $statement = collect((new ObserverPolicy())->document()['Statement'])
         ->first(fn (array $s): bool => $s['Resource'] === '*' && in_array('ecs:Describe*', (array) $s['Action'], true));
 
     expect($statement)->not->toBeNull();
@@ -56,7 +56,7 @@ it('grants no write actions — read-only by construction', function (): void {
 });
 
 it('scopes IAM document reads to YOLO-managed identities, never the whole account', function (): void {
-    $statement = collect((new YoloObserver())->document()['Statement'])
+    $statement = collect((new ObserverPolicy())->document()['Statement'])
         ->first(fn (array $s): bool => in_array('iam:GetPolicyVersion', (array) $s['Action'], true));
 
     expect($statement['Resource'])->toBe([
@@ -66,14 +66,14 @@ it('scopes IAM document reads to YOLO-managed identities, never the whole accoun
     ]);
 
     // The unscopeable IAM collection ops (list the account) are the only IAM on *.
-    $onStar = collect((new YoloObserver())->document()['Statement'])
+    $onStar = collect((new ObserverPolicy())->document()['Statement'])
         ->first(fn (array $s): bool => $s['Resource'] === '*');
 
     expect($onStar['Action'])->not->toContain('iam:GetPolicyVersion', 'iam:GetRole');
 });
 
 it('scopes s3 object reads to the env-shared config only — never secrets', function (): void {
-    $objectStatement = collect((new YoloObserver())->document()['Statement'])
+    $objectStatement = collect((new ObserverPolicy())->document()['Statement'])
         ->first(fn (array $s): bool => in_array('s3:GetObject', (array) $s['Action'], true));
 
     // GetObject is granted on exactly the env manifest + app claim files — config,
@@ -88,13 +88,13 @@ it('scopes s3 object reads to the env-shared config only — never secrets', fun
 
     // s3:GetObject is never granted on * — the boundary that keeps the observer out
     // of every other bucket's objects.
-    $onStar = collect((new YoloObserver())->document()['Statement'])
+    $onStar = collect((new ObserverPolicy())->document()['Statement'])
         ->first(fn (array $s): bool => $s['Resource'] === '*');
     expect($onStar['Action'])->not->toContain('s3:GetObject');
 });
 
 it('scopes s3 bucket-config reads to YOLO-named buckets and excludes object contents', function (): void {
-    $bucketStatement = collect((new YoloObserver())->document()['Statement'])
+    $bucketStatement = collect((new ObserverPolicy())->document()['Statement'])
         ->first(fn (array $s): bool => $s['Resource'] === 'arn:aws:s3:::yolo-*');
 
     expect($bucketStatement['Action'])->toContain('s3:GetBucket*', 's3:ListBucket');

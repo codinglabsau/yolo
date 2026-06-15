@@ -4,7 +4,7 @@ namespace Codinglabs\Yolo\Steps\Sync\Environment;
 
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Resources\Iam\YoloObserver;
+use Codinglabs\Yolo\Resources\Iam\ObserverPolicy;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
 
 /**
@@ -16,12 +16,12 @@ use Codinglabs\Yolo\Concerns\SynchronisesResource;
  * Document drift (a YOLO upgrade that reads a new service) surfaces as a plan-time
  * Change via SynchronisesPolicyDocument, so the plan flags it and apply re-versions.
  */
-class SyncYoloObserverPolicyStep implements Step
+class SyncObserverPolicyStep implements Step
 {
     use SynchronisesResource;
 
     public function __invoke(array $options): StepResult
     {
-        return $this->syncResource(new YoloObserver(), $options);
+        return $this->syncResource(new ObserverPolicy(), $options);
     }
 }

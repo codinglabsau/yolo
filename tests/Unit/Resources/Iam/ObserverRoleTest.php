@@ -1,7 +1,7 @@
 <?php
 
 use Codinglabs\Yolo\Enums\Scope;
-use Codinglabs\Yolo\Resources\Iam\YoloObserverRole;
+use Codinglabs\Yolo\Resources\Iam\ObserverRole;
 
 beforeEach(function (): void {
     writeManifest([
@@ -10,12 +10,12 @@ beforeEach(function (): void {
 });
 
 it('is an env-scoped role named yolo-{env}-observer-role (shared by the environment)', function (): void {
-    expect((new YoloObserverRole())->scope())->toBe(Scope::Env);
-    expect((new YoloObserverRole())->name())->toBe('yolo-testing-observer-role');
+    expect((new ObserverRole())->scope())->toBe(Scope::Env);
+    expect((new ObserverRole())->name())->toBe('yolo-testing-observer-role');
 });
 
 it('trusts the account principal, so an identity granted sts:AssumeRole can assume it', function (): void {
-    $statement = (new YoloObserverRole())->assumeRolePolicyDocument()['Statement'][0];
+    $statement = (new ObserverRole())->assumeRolePolicyDocument()['Statement'][0];
 
     expect($statement)->toMatchArray([
         'Effect' => 'Allow',

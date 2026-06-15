@@ -4,8 +4,8 @@ namespace Codinglabs\Yolo\Steps\Sync\Environment;
 
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Resources\Iam\ObserverRole;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
-use Codinglabs\Yolo\Resources\Iam\YoloObserverRole;
 
 /**
  * Provisions the env-shared read-only `yolo-{env}-observer-role` (LPX-635) an
@@ -19,6 +19,6 @@ class SyncObserverRoleStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        return $this->syncResource(new YoloObserverRole(), $options);
+        return $this->syncResource(new ObserverRole(), $options);
     }
 }

@@ -136,7 +136,7 @@ it('grants object access on this app\'s claim file in the env config bucket, sco
 
     // The env config bucket root is never granted at the object or bucket level —
     // that read is the permission gating env-secret control. (The read surface the
-    // sync-check gate needs lives in the separate YoloObserver policy, scoped to
+    // sync-check gate needs lives in the separate ObserverPolicy policy, scoped to
     // non-secret config — never granted here.)
     $allResources = collect((new DeployerPolicy())->document()['Statement'])
         ->flatMap(fn (array $statement): array => (array) $statement['Resource']);
