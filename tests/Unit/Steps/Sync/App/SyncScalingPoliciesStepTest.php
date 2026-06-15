@@ -4,6 +4,7 @@ use Aws\Result;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Steps\Sync\App\SyncScalingPoliciesStep;
+use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
 
 /**
  * A live CPU policy whose config matches the manifest default, so it reports no
@@ -148,42 +149,76 @@ it('skips entirely when autoscaling is removed from the manifest', function (): 
     expect($aa)->toBeEmpty();
 });
 
-it('prunes a leftover request-count policy the manifest no longer wants', function (): void {
+it('prunes a policy added out-of-band while keeping burst and its own policies', function (): void {
+    // Sync converges the scalable target to YOLO's managed set. A policy added via
+    // the console would otherwise skew autoscaling silently (AAS maxes desired across
+    // every policy on a target), so it's reconciled away — but the burst policy (a
+    // sibling step's, on the SAME target) and the step's own cpu + concurrency stay.
     $cpu = Helpers::keyedResourceName('cpu-scaling-policy');
     $concurrency = Helpers::keyedResourceName('concurrency-scaling-policy');
-    $requestCount = Helpers::keyedResourceName('request-count-scaling-policy');
+    $burst = (new WebBurstPolicy())->policyName();
+    $rogue = Helpers::keyedResourceName('hand-added-policy');
 
     $ecs = [];
     $aa = [];
     bindRoutedEcsClient(['DescribeServices' => new Result(['services' => [['status' => 'ACTIVE', 'serviceArn' => 'arn']]])], $ecs);
     bindResolvableLoadBalancer();
     bindMockApplicationAutoScalingClient([
-        'DescribeScalingPolicies' => new Result(['ScalingPolicies' => [matchingCpuPolicy($cpu), matchingConcurrencyPolicy($concurrency), ['PolicyName' => $requestCount]]]),
+        'DescribeScalingPolicies' => new Result(['ScalingPolicies' => [
+            matchingCpuPolicy($cpu),
+            matchingConcurrencyPolicy($concurrency),
+            ['PolicyName' => $burst],
+            ['PolicyName' => $rogue],
+        ]]),
         'DeleteScalingPolicy' => new Result([]),
     ], $aa);
 
     expect((new SyncScalingPoliciesStep())([]))->toBe(StepResult::DELETED);
 
-    $delete = collect($aa)->firstWhere('name', 'DeleteScalingPolicy');
-    expect($delete)->not->toBeNull();
-    expect($delete['args']['PolicyName'])->toBe($requestCount);
+    // Exactly the rogue policy is deleted; burst and the step's own two are kept.
+    $deletes = collect($aa)->where('name', 'DeleteScalingPolicy');
+    expect($deletes)->toHaveCount(1);
+    expect($deletes->first()['args']['PolicyName'])->toBe($rogue);
 });
 
-it('would-prune on a dry-run without deleting', function (): void {
+it('would-prune an out-of-band policy on a dry-run without deleting', function (): void {
     $cpu = Helpers::keyedResourceName('cpu-scaling-policy');
     $concurrency = Helpers::keyedResourceName('concurrency-scaling-policy');
-    $requestCount = Helpers::keyedResourceName('request-count-scaling-policy');
+    $rogue = Helpers::keyedResourceName('hand-added-policy');
 
     $ecs = [];
     $aa = [];
     bindRoutedEcsClient(['DescribeServices' => new Result(['services' => [['status' => 'ACTIVE', 'serviceArn' => 'arn']]])], $ecs);
     bindResolvableLoadBalancer();
     bindMockApplicationAutoScalingClient([
-        'DescribeScalingPolicies' => new Result(['ScalingPolicies' => [matchingCpuPolicy($cpu), matchingConcurrencyPolicy($concurrency), ['PolicyName' => $requestCount]]]),
+        'DescribeScalingPolicies' => new Result(['ScalingPolicies' => [matchingCpuPolicy($cpu), matchingConcurrencyPolicy($concurrency), ['PolicyName' => $rogue]]]),
         'DeleteScalingPolicy' => new Result([]),
     ], $aa);
 
+    // `yolo sync --check` surfaces the drift; nothing is actually deleted.
     expect((new SyncScalingPoliciesStep())(['dry-run' => true]))->toBe(StepResult::WOULD_DELETE);
+    expect(collect($aa)->pluck('name'))->not->toContain('DeleteScalingPolicy');
+});
+
+it('does not prune the burst policy that lives on the same scalable target', function (): void {
+    // Regression: burst is owned by SyncWebBurstStep but attaches to the SAME web
+    // scalable target. It's in the managed set (name sourced from WebBurstPolicy), so
+    // it's never pruned-then-recreated — no churn, no new ARN, no dry-run misreport.
+    $cpu = Helpers::keyedResourceName('cpu-scaling-policy');
+    $concurrency = Helpers::keyedResourceName('concurrency-scaling-policy');
+    $burst = (new WebBurstPolicy())->policyName();
+
+    $ecs = [];
+    $aa = [];
+    bindRoutedEcsClient(['DescribeServices' => new Result(['services' => [['status' => 'ACTIVE', 'serviceArn' => 'arn']]])], $ecs);
+    bindResolvableLoadBalancer();
+    bindMockApplicationAutoScalingClient([
+        'DescribeScalingPolicies' => new Result(['ScalingPolicies' => [matchingCpuPolicy($cpu), matchingConcurrencyPolicy($concurrency), ['PolicyName' => $burst]]]),
+        'DeleteScalingPolicy' => new Result([]),
+    ], $aa);
+
+    expect((new SyncScalingPoliciesStep())(['dry-run' => true]))->toBe(StepResult::SYNCED);
+    expect(SyncScalingPoliciesStep::orphans())->not->toContain($burst);
     expect(collect($aa)->pluck('name'))->not->toContain('DeleteScalingPolicy');
 });
 
@@ -194,8 +229,8 @@ it('does not prune the concurrency policy when it is only deferred (ALB/TG unres
     $ecs = [];
     $aa = [];
     bindRoutedEcsClient(['DescribeServices' => new Result(['services' => [['status' => 'ACTIVE', 'serviceArn' => 'arn']]])], $ecs);
-    // ALB / target group don't resolve → concurrency is deferred, not removed:
-    // desiredPolicyNames() still wants it, so a live one must NOT be pruned.
+    // ALB / target group don't resolve → concurrency is deferred this run, but it's
+    // still in the managed name set, so a live one is never pruned.
     bindUnresolvableLoadBalancer();
     bindMockApplicationAutoScalingClient([
         'DescribeScalingPolicies' => new Result(['ScalingPolicies' => [matchingCpuPolicy($cpu), ['PolicyName' => $concurrency]]]),
