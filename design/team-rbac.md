@@ -118,6 +118,33 @@ The resources are already tagged for either. Recommendation: **per-app roles** t
 they read plainly in `audit`/`sync` and match the existing deployer shape; revisit ABAC if
 role count becomes unwieldy.
 
+## Folded in: per-app deployer S3 least-privilege
+
+Per-app scoping is not only about *who may assume the deployer role* — the role's
+**permission policy** (`DeployerPolicy`) must also grant the **minimal** S3 set each deploy
+step actually exercises on the app's own buckets, and no more. There is a known deployer
+permission error on the app bucket to resolve as part of this.
+
+The buckets are already per-app (`AssetBucket`, `S3ConfigBucket`, `S3Bucket` are all
+`Scope::App`). Today the policy grants a **uniform, symmetric** `GetObject` + `PutObject` +
+`ListBucket` set across *both* the asset and config buckets — broader than, and not aligned
+to, what each step does:
+
+| Step | Bucket | Minimal actions it needs | Scope |
+| --- | --- | --- | --- |
+| `PushAssetsToS3Step` | asset | `s3:PutObject` (covers CreateMultipartUpload / UploadPart / CompleteMultipartUpload + the immutable `CacheControl`), `s3:AbortMultipartUpload`, `s3:ListMultipartUploadParts` | **write-only**, `assetBucket/builds/*` — no read, no `ListBucket` |
+| `RetrieveEnvFileStep` (build) | config | `s3:GetObject` | **read-only**, the env-file key |
+
+So the target shape is: **asset = write-only on `builds/*`**, **config = read-only on the env
+file** — not the current read + write + list on both. This is the same least-privilege
+discipline `DeployerPolicy` already applies to ECS/ECR/Route 53, extended to S3.
+
+**Action for the build:** recompute the S3 statements per step and resolve the AccessDenied.
+The exact failing action/step should be confirmed against a real deploy log so the fix is
+surgical — multipart upload is already covered by `s3:PutObject`, so the error is likely a
+narrower gap (a specific key prefix, `GetBucketLocation`, or the optional storage bucket),
+not the bulk of the push.
+
 ## Lever A — make the cap real (fail-closed)
 
 Replace the fail-open no-op in `mintTierCredentials()` with a single path:
@@ -205,3 +232,5 @@ detail for whichever break-glass path we lean on.
    fail-closed assertion, or stage it after groups land and are populated?
 4. **Account-tier admin** — is account scope a single `yolo-account-admin` group (a tiny set
    of people), or does it warrant finer split?
+5. **Deployer S3 least-privilege** — what is the exact AccessDenied (step + action) on the app
+   bucket? Confirming it from a deploy log lets the recompute be surgical rather than a guess.
