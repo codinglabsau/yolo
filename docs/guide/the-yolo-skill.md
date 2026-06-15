@@ -20,7 +20,7 @@ There is deliberately **no dotfiles / hand-copied skill** — the package is the
 
 ## The guideline (works today)
 
-Laravel Boost composes `resources/boost/guidelines/*.blade.php` from every installed package into your app's AI context. Because the file lives in YOLO's package, **any app that requires YOLO automatically gets it** — no install step. It orients the agent on the command surface, the manifest essentials, the read-only `--json` data-pipe, and the safety rule that infrastructure mutations are human-gated.
+Laravel Boost discovers `resources/boost/guidelines/*.blade.php` in your **direct** Composer dependencies — no service provider or registration needed; the directory existing in `vendor/codinglabsau/yolo/` is the whole mechanism. It's **opt-in at install time**, not automatic on `composer require`: run `boost:install` (or re-run it after adding YOLO) and tick **`codinglabsau/yolo`** in the *"Which third-party AI guidelines do you want to install?"* prompt. Boost then composes the guideline into your app's `CLAUDE.md` / `AGENTS.md`. It orients the agent on the command surface, the manifest essentials, the read-only `--json` data-pipe, and the safety rule that infrastructure mutations are human-gated.
 
 ## The skill
 
