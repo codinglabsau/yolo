@@ -61,7 +61,7 @@ class Tui
             while (! $this->quit) {
                 $statuses = static::gatherServiceStatuses(withLoad: true);
                 $this->panels[$this->active]->gather();
-                $this->screen->paint($this->frame($statuses, $this->screen->width()));
+                $this->screen->paint($this->frame($statuses, $this->screen->width(), $this->screen->height()));
 
                 $deadline = microtime(true) + 3.0;
 
@@ -110,24 +110,33 @@ class Tui
     }
 
     /**
-     * Compose the whole frame — global health bar, tab bar, active panel body, footer.
+     * Compose the whole frame, fitted to exactly $height rows: the global health
+     * bar + tab bar above, the active panel body in the remaining budget, and the
+     * footer pinned to the bottom row. The body gets only the rows left after the
+     * chrome, so a long panel (logs) clips/scrolls instead of overflowing.
      *
      * @param  array<int, array<string, mixed>>  $statuses
      * @return array<int, string>
      */
-    public function frame(array $statuses, int $width): array
+    public function frame(array $statuses, int $width, int $height): array
     {
         $panel = $this->panels[$this->active];
 
-        return [
+        $top = [
             '',
             self::globalBar($this->environment, $statuses),
             self::tabBar($this->panels, $this->active),
             '',
-            ...$panel->render($width),
+        ];
+
+        $bottom = [
             '',
             self::footer($panel, count($this->panels)),
         ];
+
+        $budget = Layout::bodyBudget(count($top), count($bottom), $height);
+
+        return Layout::fit($top, $panel->render($width, $budget), $bottom, $height);
     }
 
     /**

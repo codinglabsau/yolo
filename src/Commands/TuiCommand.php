@@ -64,7 +64,7 @@ class TuiCommand extends Command
     public function handle(): int
     {
         if (! $this->input->isInteractive() || ! $this->output->isDecorated()) {
-            error('yolo tui is an interactive dashboard — run it in a real terminal (use `yolo status --snapshot` for a one-off frame).');
+            error('yolo tui is an interactive dashboard — run it in a real terminal (use `yolo status` for a one-off frame).');
 
             return self::FAILURE;
         }

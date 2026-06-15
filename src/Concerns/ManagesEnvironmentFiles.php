@@ -8,6 +8,8 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Aws\S3;
 use Illuminate\Support\Arr;
+use Codinglabs\Yolo\EnvManifest;
+use Symfony\Component\Yaml\Yaml;
 use Aws\S3\Exception\S3Exception;
 
 use function Laravel\Prompts\info;
@@ -74,6 +76,26 @@ trait ManagesEnvironmentFiles
             'Bucket' => Paths::s3EnvConfigBucket(),
             'Key' => $key,
         ])['Body'];
+    }
+
+    /**
+     * Validate a mutated env manifest and upload it to the env config bucket, then
+     * drop the memoised copy. The whole document is re-validated (running each
+     * service's validateOffer) before it leaves the machine, so a misshapen edit
+     * can never reach the bucket. Shared by the services gate and the TUI's inline
+     * manifest edits — the one place an env-manifest write is defined.
+     *
+     * @param  array<string, mixed>  $manifest
+     */
+    protected function uploadEnvManifest(array $manifest): void
+    {
+        $yaml = Yaml::dump($manifest, 6, 2);
+
+        EnvManifest::parse($yaml);
+
+        $this->upload(EnvManifest::filename(), $yaml, EnvManifest::filename());
+
+        EnvManifest::reset();
     }
 
     protected function upload(string $key, string $body, string $from): void

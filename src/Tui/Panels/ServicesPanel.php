@@ -37,7 +37,7 @@ class ServicesPanel implements Panel
         $this->rows = ServicesCommand::rows();
     }
 
-    public function render(int $width): array
+    public function render(int $width, int $height): array
     {
         $lines = [Columns::row([
             ['service', 14, Theme::Muted],
