@@ -18,6 +18,7 @@ use Codinglabs\Yolo\Commands\DeployCommand;
 use Codinglabs\Yolo\Commands\StatusCommand;
 use Codinglabs\Yolo\Commands\AuditAppCommand;
 use Codinglabs\Yolo\Commands\StatusAppCommand;
+use Codinglabs\Yolo\Contracts\DeployerCommand;
 use Codinglabs\Yolo\Contracts\ReadOnlyCommand;
 use Codinglabs\Yolo\Commands\StatusLogsCommand;
 use Codinglabs\Yolo\Commands\StatusAlarmsCommand;
@@ -121,15 +122,23 @@ it('marks every read command as a ReadOnlyCommand that runs under the Observer t
     'audit:environment' => fn (): Command => new AuditEnvironmentCommand(),
 ]);
 
-it('leaves every mutating command un-tiered (runs on the developer profile unchanged)', function (Command $command): void {
+it('runs the deploy lifecycle under the Deployer tier', function (Command $command): void {
+    expect($command)->toBeInstanceOf(DeployerCommand::class);
     expect($command)->not->toBeInstanceOf(ReadOnlyCommand::class);
+    expect(tierOf($command))->toBe(Iam::DEPLOYER_ROLE);
+})->with([
+    'deploy' => fn (): Command => new DeployCommand(),
+    'build' => fn (): Command => new BuildCommand(),
+    'run' => fn (): Command => new RunCommand(),
+]);
+
+it('leaves the provisioning commands un-tiered for now (Admin tier is a follow-up)', function (Command $command): void {
+    expect($command)->not->toBeInstanceOf(ReadOnlyCommand::class);
+    expect($command)->not->toBeInstanceOf(DeployerCommand::class);
     expect(tierOf($command))->toBeNull();
 })->with([
     'sync' => fn (): Command => new SyncCommand(),
-    'deploy' => fn (): Command => new DeployCommand(),
-    'build' => fn (): Command => new BuildCommand(),
     'scale' => fn (): Command => new ScaleCommand(),
-    'run' => fn (): Command => new RunCommand(),
 ]);
 
 it('is a no-op for an un-tiered command — never assumes a role, never overrides credentials', function (): void {
@@ -176,6 +185,34 @@ it('mints the Observer credentials once the role is provisioned', function (): v
     expect($captured)->toHaveCount(1)
         ->and($captured[0]['args']['RoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-observer-role')
         ->and($captured[0]['args']['RoleSessionName'])->toBe('yolo-observer-role');
+});
+
+it('mints the Deployer credentials for a deploy once the app deployer role is provisioned', function (): void {
+    bindMockIamClient(['yolo-testing-my-app-deployer' => 'arn:aws:iam::111111111111:role/yolo-testing-my-app-deployer']);
+
+    $captured = [];
+    bindAssumeRoleStsClient($captured, assumeRoleResult());
+
+    mint(new DeployCommand());
+
+    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeTrue();
+
+    // It assumed exactly this app's deployer role, named for the tier.
+    expect($captured)->toHaveCount(1)
+        ->and($captured[0]['args']['RoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-my-app-deployer')
+        ->and($captured[0]['args']['RoleSessionName'])->toBe('yolo-deployer');
+});
+
+it('self-activates for the Deployer tier too: no mint until the deployer role exists', function (): void {
+    bindMockIamClient([]);
+
+    $captured = [];
+    bindAssumeRoleStsClient($captured, assumeRoleResult());
+
+    mint(new DeployCommand());
+
+    expect($captured)->toBeEmpty();
+    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
 });
 
 it('fails open: an AssumeRole failure leaves YOLO on the profile credentials and warns', function (): void {

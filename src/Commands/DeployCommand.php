@@ -3,13 +3,14 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Steps;
+use Codinglabs\Yolo\Contracts\DeployerCommand;
 use Symfony\Component\Console\Input\InputOption;
 use Codinglabs\Yolo\Concerns\RendersServiceStatus;
 use Symfony\Component\Console\Input\InputArgument;
 
 use function Laravel\Prompts\intro;
 
-class DeployCommand extends SteppedCommand
+class DeployCommand extends SteppedCommand implements DeployerCommand
 {
     use RendersServiceStatus;
 

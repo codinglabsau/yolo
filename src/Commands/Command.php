@@ -11,9 +11,12 @@ use Codinglabs\Yolo\Audit\Audit;
 use Codinglabs\Yolo\EnvManifest;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServerGroup;
+use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Concerns\RegistersAws;
+use Codinglabs\Yolo\Contracts\DeployerCommand;
 use Codinglabs\Yolo\Contracts\ReadOnlyCommand;
 use Codinglabs\Yolo\Concerns\HasAfterCallbacks;
+use Codinglabs\Yolo\Resources\Iam\DeployerRole;
 use Codinglabs\Yolo\Resources\Iam\ObserverRole;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -372,13 +375,18 @@ abstract class Command extends SymfonyCommand
 
     /**
      * The YOLO permission tier this command runs under, or null to run on the
-     * developer's own profile credentials unchanged. Read commands override this
-     * to the read-only Observer tier; deploy/sync tiers (Deployer/Admin) are a
-     * follow-up. The base default is null, so an un-tiered command is untouched.
+     * developer's own profile credentials unchanged. Read commands run under the
+     * read-only Observer tier; the deploy lifecycle runs under the Deployer tier.
+     * The Admin tier (sync/scale) is a follow-up. The base default is null, so an
+     * un-tiered command is untouched.
      */
     protected function awsTier(): ?Iam
     {
-        return $this instanceof ReadOnlyCommand ? Iam::OBSERVER_ROLE : null;
+        return match (true) {
+            $this instanceof ReadOnlyCommand => Iam::OBSERVER_ROLE,
+            $this instanceof DeployerCommand => Iam::DEPLOYER_ROLE,
+            default => null,
+        };
     }
 
     /**
@@ -403,10 +411,11 @@ abstract class Command extends SymfonyCommand
         try {
             $role = match ($tier) {
                 Iam::OBSERVER_ROLE => new ObserverRole(),
+                Iam::DEPLOYER_ROLE => new DeployerRole(),
                 default => null,
             };
 
-            if (! $role instanceof ObserverRole || ! $role->exists()) {
+            if (! $role instanceof Resource || ! $role->exists()) {
                 return;
             }
 

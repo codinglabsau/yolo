@@ -33,7 +33,7 @@ it('names the deployer role per app and environment', function (): void {
     expect((new DeployerRole())->name())->toBe('yolo-testing-my-app-deployer');
 });
 
-it('federates to the GitHub OIDC provider scoped to the repo and branch', function (): void {
+it('federates to the GitHub OIDC provider scoped to the repo and branch, and trusts same-account assumption for local deploys', function (): void {
     deployerManifest(['branch' => 'release']);
 
     expect((new DeployerRole())->assumeRolePolicyDocument())->toBe([
@@ -52,8 +52,25 @@ it('federates to the GitHub OIDC provider scoped to the repo and branch', functi
                     ],
                 ],
             ],
+            [
+                'Effect' => 'Allow',
+                'Principal' => ['AWS' => 'arn:aws:iam::111111111111:root'],
+                'Action' => 'sts:AssumeRole',
+            ],
         ],
     ]);
+});
+
+it('keeps the OIDC web-identity statement first so the sub-claim reconciler still finds the ref', function (): void {
+    deployerManifest(['branch' => 'develop']);
+
+    $statements = (new DeployerRole())->assumeRolePolicyDocument()['Statement'];
+
+    // The trust-drift reconciler reads Statement[0]'s :sub condition; the
+    // same-account statement must never displace it.
+    expect($statements[0]['Action'])->toBe('sts:AssumeRoleWithWebIdentity')
+        ->and($statements[1]['Action'])->toBe('sts:AssumeRole')
+        ->and($statements[1]['Principal'])->toBe(['AWS' => 'arn:aws:iam::111111111111:root']);
 });
 
 it('defaults to the main branch when no ref is set', function (): void {

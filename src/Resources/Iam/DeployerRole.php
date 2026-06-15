@@ -88,6 +88,8 @@ class DeployerRole implements Resource, SynchronisesConfiguration
             'Version' => '2012-10-17',
             'Statement' => [
                 [
+                    // CI deploys (the primary path): the GitHub OIDC provider,
+                    // scoped to one repo + ref — keyless and unchanged.
                     'Effect' => 'Allow',
                     'Principal' => ['Federated' => (new GithubOidcProvider())->arn()],
                     'Action' => 'sts:AssumeRoleWithWebIdentity',
@@ -99,6 +101,17 @@ class DeployerRole implements Resource, SynchronisesConfiguration
                             sprintf('%s:sub', GithubOidcProvider::URL) => $this->subjectClaim(),
                         ],
                     ],
+                ],
+                [
+                    // Local deploys (the Deployer tier): same-account assumption,
+                    // so a developer running `yolo deploy` mints exactly this role's
+                    // deploy-time policy on top of their own identity — capped to
+                    // deploy, never their broader profile. The real gate is the
+                    // identity-based `sts:AssumeRole` grant on the assuming
+                    // principal (the same account-root model as the observer role).
+                    'Effect' => 'Allow',
+                    'Principal' => ['AWS' => sprintf('arn:aws:iam::%s:root', Aws::accountId())],
+                    'Action' => 'sts:AssumeRole',
                 ],
             ],
         ];

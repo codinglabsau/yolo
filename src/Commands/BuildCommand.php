@@ -5,12 +5,13 @@ namespace Codinglabs\Yolo\Commands;
 use Carbon\Carbon;
 use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Contracts\DeployerCommand;
 use Symfony\Component\Console\Input\InputArgument;
 
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\intro;
 
-class BuildCommand extends SteppedCommand
+class BuildCommand extends SteppedCommand implements DeployerCommand
 {
     protected array $steps = [
         Steps\Build\PurgeBuildStep::class,
