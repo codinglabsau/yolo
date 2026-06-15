@@ -45,6 +45,11 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 // its own.
                 Steps\Sync\Environment\SyncEcsExecutionRoleStep::class,
                 Steps\Sync\Environment\AttachEcsExecutionRolePoliciesStep::class,
+                // env-shared read-only inspection policy (yolo-{env}-observer): the
+                // drift-check surface every app's deployer role attaches so the
+                // pre-deploy `sync --check` gate can read the whole stack under the
+                // deploy role, scoped to exactly the services YOLO provisions.
+                Steps\Sync\Environment\SyncYoloObserverPolicyStep::class,
                 // env config bucket + the environment's declaration. The bucket
                 // holds the env manifest (yolo-environment-{environment}.yml) and the env-shared .env;
                 // the manifest is seeded exactly once, then owned by the operator

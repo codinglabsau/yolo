@@ -13,4 +13,5 @@ enum Iam: string
     case ECS_EXECUTION_ROLE = 'ecs-execution-role';
     case DEPLOYER_ROLE = 'deployer';
     case DEPLOYER_POLICY = 'deployer-policy';
+    case OBSERVER_POLICY = 'observer';
 }

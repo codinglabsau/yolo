@@ -183,6 +183,7 @@ it('reports the policy attachment as synced when it is already attached', functi
     bindRoutedIamClient([
         'ListAttachedRolePolicies' => new Result(['AttachedPolicies' => [
             ['PolicyName' => 'yolo-testing-my-app-deployer-policy', 'PolicyArn' => 'arn:aws:iam::111111111111:policy/yolo-testing-my-app-deployer-policy'],
+            ['PolicyName' => 'yolo-testing-observer', 'PolicyArn' => 'arn:aws:iam::111111111111:policy/yolo-testing-observer'],
         ]]),
     ], $captured);
 
@@ -203,6 +204,31 @@ it('attaches the deployer policy to the deployer role', function (): void {
     $attach = collect($captured)->firstWhere('name', 'AttachRolePolicy');
     expect($attach['args']['RoleName'])->toBe('yolo-testing-my-app-deployer');
     expect($attach['args']['PolicyArn'])->toBe('arn:aws:iam::111111111111:policy/yolo-testing-my-app-deployer-policy');
+});
+
+it('attaches the env-shared YoloObserver policy so the pre-deploy sync check can read the whole stack', function (): void {
+    // The deploy-time `sync --check` gate plans the whole stack under the deployer
+    // role; the env-shared yolo-{env}-observer policy carries the read surface for
+    // exactly the services YOLO provisions, so a missing read can't AccessDenied-
+    // abort a deploy — and the deployer inherits it without a new direct grant.
+    manifestWithDeployer();
+
+    $captured = [];
+    // Neither policy attached yet → both get attached.
+    bindRoutedIamClient([
+        'ListPolicies' => new Result(['Policies' => [existingDeployerPolicy()]]),
+    ], $captured);
+
+    expect((new AttachDeployerRolePoliciesStep())([]))->toBe(StepResult::SYNCED);
+
+    $attachedArns = collect($captured)
+        ->where('name', 'AttachRolePolicy')
+        ->pluck('args.PolicyArn');
+
+    expect($attachedArns)->toContain(
+        'arn:aws:iam::111111111111:policy/yolo-testing-my-app-deployer-policy',
+        'arn:aws:iam::111111111111:policy/yolo-testing-observer',
+    );
 });
 
 it('does not create a new policy version when the deployer document is unchanged', function (): void {
