@@ -313,6 +313,25 @@ On a web app, omitting `session` gives you the `redis` default; set a driver to 
 
 ---
 
+## `budget`
+
+An advisory monthly spend target for the app. YOLO **never enforces** it — it never acts on your account on its own. The budget is read by [`yolo status:budget`](/reference/commands#yolo-status-budget) (spend vs cap) and by the [`/yolo` skill](/guide/the-yolo-skill), which weights its recommendations by the `strategy`.
+
+```yaml
+budget:
+  amount: 100          # USD per month (advisory cap)
+  strategy: balanced   # lean | balanced | conservative (default: balanced)
+```
+
+| Key | Default | Description |
+|---|---|---|
+| `budget.amount` | — | The monthly spend target in USD. Optional; omit it and `status:budget` reports spend with "no budget set". |
+| `budget.strategy` | `balanced` | How aggressively the `/yolo` skill should trade cost against headroom — `lean` (cost-first), `balanced`, or `conservative` (headroom-first). |
+
+Spend is read from AWS Cost Explorer via the app's `yolo:app` tag; it shows once that tag is [activated as a cost-allocation tag](/reference/commands#yolo-status-budget) in Billing.
+
+---
+
 ## `tasks.web.*`
 
 Declaring `tasks.web` makes the app a Fargate web service. Omit `tasks` entirely for a build-only / headless app with no container.

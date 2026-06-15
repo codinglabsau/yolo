@@ -28,6 +28,7 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | [`status:logs <env>`](#yolo-status-logs) | Recent CloudWatch logs per service group |
 | [`status:events <env>`](#yolo-status-events) | Recent ECS service events per group |
 | [`status:alarms <env>`](#yolo-status-alarms) | The app's CloudWatch alarms and their state |
+| [`status:budget <env>`](#yolo-status-budget) | Month-to-date spend against the app's declared budget |
 | [`run <env>`](#yolo-run) | Open a shell / run a command in a running container |
 | [`scale <env> [count]`](#yolo-scale) | Adjust the web service's task count out of band |
 | [`services <env>`](#yolo-services) | View and manage the services an environment offers |
@@ -352,6 +353,26 @@ yolo status:alarms <environment> [--json]
 Arguments and options as [`status:logs`](#yolo-status-logs), with `--json` emitting `{app, environment, alarms}` (each alarm `{name, state, reason}`).
 
 Each alarm is shown as `OK` / `ALARM` / `?` (insufficient data) with its name and state reason. It **exits non-zero when any alarm is in `ALARM`**, so it doubles as a health probe; with no alarms for the app it says so and exits zero.
+
+---
+
+## `yolo status:budget`
+
+Month-to-date spend for the app against its declared [`budget`](/reference/manifest#budget). YOLO **never enforces** a budget (it never acts) — this reports spend, the cap and the `budget.strategy`, and the [`/yolo` skill](/guide/the-yolo-skill) weights its recommendations by them.
+
+```bash
+yolo status:budget <environment> [--json]
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `environment` | yes | The environment name |
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--json` | flag | off | Emit the budget state as JSON (`{app, environment, currency, spend, budget}`) and exit — machine-readable for the `/yolo` skill and scripts. |
+
+Spend comes from **AWS Cost Explorer**, attributed to the app via its `yolo:app` tag. Cost Explorer is a global service (queried in us-east-1) that only attributes cost by a tag once that tag is **activated as a cost-allocation tag** in the Billing console, and its data lags ~24h — so until activation the spend shows as `—` (the command never errors on it). The line reads `$42.10 / $100.00 · 42% · strategy: balanced`, or `… · no budget set …` when the manifest declares no cap.
 
 ---
 

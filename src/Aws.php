@@ -20,6 +20,7 @@ use Aws\CloudFront\CloudFrontClient;
 use Aws\CloudWatch\CloudWatchClient;
 use Aws\ElastiCache\ElastiCacheClient;
 use Aws\EventBridge\EventBridgeClient;
+use Aws\CostExplorer\CostExplorerClient;
 use Aws\CloudWatchLogs\CloudWatchLogsClient;
 use Aws\ServiceDiscovery\ServiceDiscoveryClient;
 use Aws\ApplicationAutoScaling\ApplicationAutoScalingClient;
@@ -602,6 +603,11 @@ class Aws
     public static function cloudFront(): CloudFrontClient
     {
         return Helpers::app('cloudFront');
+    }
+
+    public static function costExplorer(): CostExplorerClient
+    {
+        return Helpers::app('costExplorer');
     }
 
     public static function cloudWatch(): CloudWatchClient

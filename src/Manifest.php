@@ -36,6 +36,7 @@ class Manifest
         'cache.store',
         'session.driver',
         'task-role-policies',
+        'budget', 'budget.amount', 'budget.strategy',
         // Each task group has a fixed, known shape, so every key is listed
         // explicitly: an unrecognised key under tasks.web / tasks.queue /
         // tasks.scheduler hard-fails rather than being silently accepted by a
