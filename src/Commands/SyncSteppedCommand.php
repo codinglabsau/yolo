@@ -2,10 +2,11 @@
 
 namespace Codinglabs\Yolo\Commands;
 
+use Codinglabs\Yolo\Contracts\AdminCommand;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Input\InputArgument;
 
-abstract class SyncSteppedCommand extends SteppedCommand
+abstract class SyncSteppedCommand extends SteppedCommand implements AdminCommand
 {
     #[\Override]
     public function handle(): int

@@ -54,6 +54,14 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 // (LPX-635) — created, then the observer policy attached to it.
                 Steps\Sync\Environment\SyncObserverRoleStep::class,
                 Steps\Sync\Environment\AttachObserverRolePolicyStep::class,
+                // The Admin tier (LPX-680): the write surface (yolo-{env}-admin)
+                // and the role an operator assumes to run `yolo sync` / `yolo scale`
+                // capped to YOLO's blast radius. The role carries the observer
+                // (read) + admin (write) policies. Self-activating — the first sync
+                // creates these on the profile, every sync after mints the role.
+                Steps\Sync\Environment\SyncAdminPolicyStep::class,
+                Steps\Sync\Environment\SyncAdminRoleStep::class,
+                Steps\Sync\Environment\AttachAdminRolePolicyStep::class,
                 // env config bucket + the environment's declaration. The bucket
                 // holds the env manifest (yolo-environment-{environment}.yml) and the env-shared .env;
                 // the manifest is seeded exactly once, then owned by the operator

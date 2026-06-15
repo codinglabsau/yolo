@@ -16,6 +16,8 @@ use Codinglabs\Yolo\Commands\BuildCommand;
 use Codinglabs\Yolo\Commands\ScaleCommand;
 use Codinglabs\Yolo\Commands\DeployCommand;
 use Codinglabs\Yolo\Commands\StatusCommand;
+use Codinglabs\Yolo\Contracts\AdminCommand;
+use Codinglabs\Yolo\Commands\SyncAppCommand;
 use Codinglabs\Yolo\Commands\AuditAppCommand;
 use Codinglabs\Yolo\Commands\StatusAppCommand;
 use Codinglabs\Yolo\Contracts\DeployerCommand;
@@ -24,6 +26,7 @@ use Codinglabs\Yolo\Commands\StatusLogsCommand;
 use Codinglabs\Yolo\Commands\StatusAlarmsCommand;
 use Codinglabs\Yolo\Commands\StatusBudgetCommand;
 use Codinglabs\Yolo\Commands\StatusEventsCommand;
+use Codinglabs\Yolo\Commands\SyncEnvironmentCommand;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Codinglabs\Yolo\Commands\AuditEnvironmentCommand;
 use Codinglabs\Yolo\Commands\StatusEnvironmentCommand;
@@ -132,20 +135,39 @@ it('runs the deploy lifecycle under the Deployer tier', function (Command $comma
     'run' => fn (): Command => new RunCommand(),
 ]);
 
-it('leaves the provisioning commands un-tiered for now (Admin tier is a follow-up)', function (Command $command): void {
+it('runs the provisioning commands under the Admin tier', function (Command $command): void {
+    expect($command)->toBeInstanceOf(AdminCommand::class);
     expect($command)->not->toBeInstanceOf(ReadOnlyCommand::class);
     expect($command)->not->toBeInstanceOf(DeployerCommand::class);
-    expect(tierOf($command))->toBeNull();
+    expect(tierOf($command))->toBe(Iam::ADMIN_ROLE);
 })->with([
     'sync' => fn (): Command => new SyncCommand(),
+    'sync:environment' => fn (): Command => new SyncEnvironmentCommand(),
+    'sync:app' => fn (): Command => new SyncAppCommand(),
     'scale' => fn (): Command => new ScaleCommand(),
 ]);
 
 it('is a no-op for an un-tiered command — never assumes a role, never overrides credentials', function (): void {
+    // An un-tiered command (no tier marker) — awsTier() returns null.
+    $untiered = new class() extends Command
+    {
+        protected function configure(): void
+        {
+            $this->setName('untiered-fixture');
+        }
+
+        public function handle(): int
+        {
+            return self::SUCCESS;
+        }
+    };
+
+    expect(tierOf($untiered))->toBeNull();
+
     $captured = [];
     bindAssumeRoleStsClient($captured, assumeRoleResult());
 
-    mint(new SyncCommand());
+    mint($untiered);
 
     expect($captured)->toBeEmpty();
     expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
@@ -210,6 +232,34 @@ it('self-activates for the Deployer tier too: no mint until the deployer role ex
     bindAssumeRoleStsClient($captured, assumeRoleResult());
 
     mint(new DeployCommand());
+
+    expect($captured)->toBeEmpty();
+    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
+});
+
+it('mints the Admin credentials for a sync once the env admin role is provisioned', function (): void {
+    bindMockIamClient(['yolo-testing-admin-role' => 'arn:aws:iam::111111111111:role/yolo-testing-admin-role']);
+
+    $captured = [];
+    bindAssumeRoleStsClient($captured, assumeRoleResult());
+
+    mint(new SyncEnvironmentCommand());
+
+    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeTrue();
+
+    // It assumed exactly the env's admin role, named for the tier.
+    expect($captured)->toHaveCount(1)
+        ->and($captured[0]['args']['RoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-admin-role')
+        ->and($captured[0]['args']['RoleSessionName'])->toBe('yolo-admin-role');
+});
+
+it('self-activates for the Admin tier too: the first sync runs on the profile before the role exists', function (): void {
+    bindMockIamClient([]);
+
+    $captured = [];
+    bindAssumeRoleStsClient($captured, assumeRoleResult());
+
+    mint(new SyncEnvironmentCommand());
 
     expect($captured)->toBeEmpty();
     expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
