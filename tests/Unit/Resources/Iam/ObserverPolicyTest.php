@@ -17,6 +17,27 @@ function observerActions(): array
         ->all();
 }
 
+/** Does the policy grant an action, honouring `service:Verb*` wildcards? */
+function observerGrants(string $action): bool
+{
+    [$service, $verb] = explode(':', $action, 2);
+
+    return collect(observerActions())->contains(function (string $granted) use ($service, $verb): bool {
+        [$grantedService, $grantedVerb] = explode(':', $granted, 2);
+
+        if ($grantedService !== $service) {
+            return false;
+        }
+
+        if ($grantedVerb === '*' || $grantedVerb === $verb) {
+            return true;
+        }
+
+        return str_ends_with($grantedVerb, '*')
+            && str_starts_with($verb, rtrim($grantedVerb, '*'));
+    });
+}
+
 it('is an env-scoped policy named yolo-{env}-observer (shared by every app in the environment)', function (): void {
     expect((new ObserverPolicy())->scope())->toBe(Scope::Env);
     expect((new ObserverPolicy())->name())->toBe('yolo-testing-observer');
@@ -41,6 +62,16 @@ it('grants read-only wildcards for the services YOLO provisions, on * (unscopeab
         'servicediscovery:List*',
         'sts:GetCallerIdentity',
     );
+});
+
+it('grants the operator-facing status reads its read-only commands invoke (logs tail + month-to-date spend)', function (): void {
+    // status:logs tails CloudWatch Logs via FilterLogEvents — NOT a logs:Get* action,
+    // so logs:Get* alone leaves the observer tier AccessDenied on the Logs tab.
+    expect(observerGrants('logs:FilterLogEvents'))->toBeTrue();
+
+    // status:budget reads month-to-date spend from Cost Explorer — its own service,
+    // granted nowhere else in the read surface.
+    expect(observerGrants('ce:GetCostAndUsage'))->toBeTrue();
 });
 
 it('grants no write actions — read-only by construction', function (): void {

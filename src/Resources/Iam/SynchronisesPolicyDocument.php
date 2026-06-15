@@ -8,9 +8,9 @@ use Codinglabs\Yolo\Aws\Iam as IamClient;
 
 /**
  * Shared document-drift reconciliation for the YOLO-managed customer-managed IAM
- * policies (DeployerPolicy, EcsTaskPolicy). IAM has no in-place document update —
- * a changed policy document is pushed by creating a new version and setting it as
- * default.
+ * policies (DeployerPolicy, EcsTaskPolicy, ObserverPolicy, AdminPolicy). IAM has no
+ * in-place document update — a changed policy document is pushed by creating a new
+ * version and setting it as default.
  *
  * This is wired through SynchronisesConfiguration — NOT a bespoke side-effect the
  * sync step calls under `! dry-run` — on purpose. SyncSteppedCommand computes a
