@@ -242,14 +242,20 @@ it('sets no container environment by default', function (): void {
         ->not->toHaveKey('environment');
 });
 
-it('enables the FrankenPHP metrics endpoint on the web container for an Octane autoscaling app', function (): void {
+it('sets no container environment for an Octane autoscaling app (burst metrics move to the Caddyfile)', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['autoscaling' => ['min' => 2, 'max' => 8]]],
     ]);
 
-    // The burst saturation emitter reads FrankenPHP's metrics; CADDY_GLOBAL_OPTIONS
-    // turns the endpoint on additively (Caddy reads it from the OS env).
-    expect(SyncTaskDefinitionStep::payload()['containerDefinitions'][0]['environment'])
-        ->toBe([['name' => 'CADDY_GLOBAL_OPTIONS', 'value' => 'servers { metrics }']]);
+    bindMockIamClient([
+        'yolo-testing-my-app-ecs-task-role' => 'arn:aws:iam::111111111111:role/yolo-testing-my-app-ecs-task-role',
+        'yolo-testing-ecs-execution-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role',
+    ]);
+
+    // Burst metrics are enabled by a custom Caddyfile (--caddyfile), not a task env var:
+    // octane:start overwrites CADDY_GLOBAL_OPTIONS, so setting it on the container is a
+    // no-op. The web container therefore carries no environment for it.
+    expect(SyncTaskDefinitionStep::payload()['containerDefinitions'][0])
+        ->not->toHaveKey('environment');
 });

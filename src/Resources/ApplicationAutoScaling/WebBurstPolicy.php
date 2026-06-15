@@ -37,9 +37,11 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * CloudWatch Logs auto-extracts), so there's no PutMetricData call, no AWS SDK in
  * the container and no new IAM — the saturation emitter ({@see
  * \Codinglabs\Yolo\Steps\Build\Fargate\GenerateSupervisorConfigStep}) just writes
- * to stdout, which already ships to CloudWatch Logs. Enabling FrankenPHP's metrics
- * endpoint is a single `CADDY_GLOBAL_OPTIONS` env var, set on the web task only
- * when burst applies (autoscaling enabled).
+ * to stdout, which already ships to CloudWatch Logs. FrankenPHP's metrics endpoint is
+ * enabled by a Caddyfile YOLO generates (the app's Octane stub plus the
+ * `servers { metrics }` global option) and runs via `octane:start --caddyfile` — Octane
+ * overwrites `CADDY_GLOBAL_OPTIONS`, so a task env var can't switch it on. Built only
+ * for an autoscaling Octane web tier (see GenerateSupervisorConfigStep).
  *
  * Scale-*in* is left entirely to the target-tracking policies (slow, safe) — this
  * is scale-out only, so it can only ever add capacity faster, never fight them.

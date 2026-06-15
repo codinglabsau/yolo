@@ -21,7 +21,47 @@ beforeEach(function (): void {
     if (is_file(Paths::build('docker/yolo-saturation.php'))) {
         unlink(Paths::build('docker/yolo-saturation.php'));
     }
+    if (is_file(Paths::build('docker/Caddyfile'))) {
+        unlink(Paths::build('docker/Caddyfile'));
+    }
+
+    // GenerateSupervisorConfigStep builds the metrics Caddyfile from the app's installed
+    // Octane stub; the fixture app has no real vendor/, so plant a representative one for
+    // the autoscaling cases. The stub-missing case deletes it.
+    plantOctaneCaddyfileStub();
 });
+
+function plantOctaneCaddyfileStub(): void
+{
+    $stub = Paths::base('vendor/laravel/octane/src/Commands/stubs/Caddyfile');
+
+    if (! is_dir(dirname($stub))) {
+        mkdir(dirname($stub), 0755, true);
+    }
+
+    file_put_contents($stub, <<<'STUB'
+{
+	{$CADDY_GLOBAL_OPTIONS}
+
+	admin {$CADDY_SERVER_ADMIN_HOST}:{$CADDY_SERVER_ADMIN_PORT}
+
+	frankenphp {
+		worker {
+			file "{$APP_PUBLIC_PATH}/frankenphp-worker.php"
+			{$CADDY_SERVER_WORKER_DIRECTIVE}
+			{$CADDY_SERVER_WATCH_DIRECTIVES}
+		}
+	}
+}
+
+{$CADDY_SERVER_SERVER_NAME} {
+	route {
+		root * "{$APP_PUBLIC_PATH}"
+		php_server
+	}
+}
+STUB);
+}
 
 function generatedSupervisorConfig(): string
 {
@@ -216,4 +256,145 @@ it('adds the saturation emitter program and writes its script for an Octane auto
     // breaks it is caught here, not on a deploy.
     exec('php -l ' . escapeshellarg(Paths::build('docker/yolo-saturation.php')), $output, $code);
     expect($code)->toBe(0);
+});
+
+it('generates a metrics-enabled Caddyfile from the app Octane stub for an autoscaling app', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => ['min' => 2, 'max' => 8]]],
+    ]);
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    $caddyfile = file_get_contents(Paths::build('docker/Caddyfile'));
+
+    // It's the app's own Octane stub (its placeholders intact, so Octane still fills
+    // them) with only the metrics global option added — not a takeover.
+    expect($caddyfile)
+        ->toContain('servers {')
+        ->toContain('metrics')
+        ->toContain('{$CADDY_GLOBAL_OPTIONS}')
+        ->toContain('frankenphp {');
+});
+
+it('runs octane against the metrics Caddyfile via --caddyfile when autoscaling', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => true]],
+    ]);
+
+    expect(generatedSupervisorConfig())
+        ->toContain('command=php artisan octane:start --host=0.0.0.0 --port=8000 --caddyfile=/app/docker/Caddyfile');
+});
+
+it('writes no Caddyfile and passes no --caddyfile when the web tier is not autoscaling', function (): void {
+    // The default manifest is octane without autoscaling.
+    $config = generatedSupervisorConfig();
+
+    expect($config)->not->toContain('--caddyfile');
+    expect(is_file(Paths::build('docker/Caddyfile')))->toBeFalse();
+});
+
+it('writes no Caddyfile in classic mode even when autoscaling', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['octane' => false, 'autoscaling' => true]],
+    ]);
+
+    $config = generatedSupervisorConfig();
+
+    // Classic mode runs frankenphp php-server, not octane:start — no Caddyfile, no flag.
+    expect($config)->toContain('command=frankenphp php-server');
+    expect($config)->not->toContain('--caddyfile');
+    expect(is_file(Paths::build('docker/Caddyfile')))->toBeFalse();
+});
+
+it('hard-fails the build when the Octane Caddyfile stub is missing for an autoscaling app', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => true]],
+    ]);
+
+    unlink(Paths::base('vendor/laravel/octane/src/Commands/stubs/Caddyfile'));
+
+    expect(fn (): mixed => (new GenerateSupervisorConfigStep('testing'))())
+        ->toThrow(RuntimeException::class, 'laravel/octane');
+});
+
+it('parses FrankenPHP thread saturation from a real metrics payload', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => true]],
+    ]);
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    // Requiring the generated emitter is safe — its loop only runs when the file is the
+    // executed script, so this just defines the parser for a direct call.
+    require_once Paths::build('docker/yolo-saturation.php');
+
+    $payload = <<<'METRICS'
+# HELP frankenphp_busy_threads Number of busy PHP threads
+# TYPE frankenphp_busy_threads gauge
+frankenphp_busy_threads 6
+# HELP frankenphp_total_threads Total number of PHP threads
+# TYPE frankenphp_total_threads gauge
+frankenphp_total_threads 8
+METRICS;
+
+    // 6 of 8 threads busy = 75%. The HELP/TYPE comment lines for the same metric names
+    // must not be mistaken for the gauge lines.
+    expect(yolo_parse_saturation($payload))->toBe(75.0);
+
+    // No gauges (metrics off) reads as null, so the emitter stays silent rather than
+    // emitting a bogus datapoint.
+    expect(yolo_parse_saturation("frankenphp_other 1\n"))->toBeNull();
+});
+
+it('does not double-inject metrics when the Octane stub already enables them', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => true]],
+    ]);
+
+    // A future Octane stub that already turns metrics on.
+    file_put_contents(Paths::base('vendor/laravel/octane/src/Commands/stubs/Caddyfile'), <<<'STUB'
+{
+	servers {
+		metrics
+	}
+	{$CADDY_GLOBAL_OPTIONS}
+}
+
+{$CADDY_SERVER_SERVER_NAME} {
+	route {
+		php_server
+	}
+}
+STUB);
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    // Exactly one servers block — the existing one, not a second injected copy.
+    expect(substr_count(file_get_contents(Paths::build('docker/Caddyfile')), 'servers {'))->toBe(1);
+});
+
+it('hard-fails when the Octane stub has no global options block to enable metrics in', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => true]],
+    ]);
+
+    // A stub with no leading global-options block (only a site block) — there's nowhere
+    // safe to add the metrics option, so the build refuses rather than ship it dark.
+    file_put_contents(Paths::base('vendor/laravel/octane/src/Commands/stubs/Caddyfile'), <<<'STUB'
+{$CADDY_SERVER_SERVER_NAME} {
+	route {
+		php_server
+	}
+}
+STUB);
+
+    expect(fn (): mixed => (new GenerateSupervisorConfigStep('testing'))())
+        ->toThrow(RuntimeException::class, 'global options block');
 });

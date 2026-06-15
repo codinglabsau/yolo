@@ -31,6 +31,7 @@ class BuildCommand extends SteppedCommand implements DeployerCommand
         Steps\Build\Fargate\BuildDockerImageStep::class,
         Steps\Build\Fargate\CheckSchedulerRuntimeStep::class,
         Steps\Build\Fargate\CheckSsrRuntimeStep::class,
+        Steps\Build\Fargate\CheckMetricsRuntimeStep::class,
         Steps\Build\Fargate\PushDockerImageStep::class,
     ];
 

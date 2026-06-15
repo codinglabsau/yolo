@@ -8,28 +8,32 @@
 // no IAM. Fails safe: if FrankenPHP's metrics endpoint isn't reachable it emits
 // nothing, and the target-tracking policies still own scaling.
 
-$service = '{{service}}';
-$floor = {{floor}};
+// The emit loop only runs when the script is executed directly (php yolo-saturation.php),
+// so the parsing functions below can be required and unit-tested without spinning it.
+if (PHP_SAPI === 'cli' && isset($argv[0]) && realpath($argv[0]) === __FILE__) {
+    $service = '{{service}}';
+    $floor = {{floor}};
 
-while (true) {
-    $saturation = yolo_worker_saturation();
+    while (true) {
+        $saturation = yolo_worker_saturation();
 
-    if ($saturation !== null && $saturation >= $floor) {
-        echo json_encode([
-            '_aws' => [
-                'Timestamp' => (int) round(microtime(true) * 1000),
-                'CloudWatchMetrics' => [[
-                    'Namespace' => '{{namespace}}',
-                    'Dimensions' => [['{{dimension}}']],
-                    'Metrics' => [['Name' => '{{metric}}', 'Unit' => 'Percent', 'StorageResolution' => 1]],
-                ]],
-            ],
-            '{{dimension}}' => $service,
-            '{{metric}}' => round($saturation, 1),
-        ]) . "\n";
+        if ($saturation !== null && $saturation >= $floor) {
+            echo json_encode([
+                '_aws' => [
+                    'Timestamp' => (int) round(microtime(true) * 1000),
+                    'CloudWatchMetrics' => [[
+                        'Namespace' => '{{namespace}}',
+                        'Dimensions' => [['{{dimension}}']],
+                        'Metrics' => [['Name' => '{{metric}}', 'Unit' => 'Percent', 'StorageResolution' => 1]],
+                    ]],
+                ],
+                '{{dimension}}' => $service,
+                '{{metric}}' => round($saturation, 1),
+            ]) . "\n";
+        }
+
+        sleep(10);
     }
-
-    sleep(10);
 }
 
 /** FrankenPHP busy-thread saturation as a percentage, or null when unavailable. */
@@ -38,10 +42,16 @@ function yolo_worker_saturation(): ?float
     $context = stream_context_create(['http' => ['timeout' => 2]]);
     $metrics = @file_get_contents('http://localhost:2019/metrics', false, $context);
 
-    if ($metrics === false) {
-        return null;
-    }
+    return $metrics === false ? null : yolo_parse_saturation($metrics);
+}
 
+/**
+ * Parse FrankenPHP's Prometheus metrics into busy/total thread saturation as a
+ * percentage, or null when the gauges are absent (metrics off, or nothing useful
+ * returned). Split from the fetch so it can be unit-tested against a real payload.
+ */
+function yolo_parse_saturation(string $metrics): ?float
+{
     // Tolerate an optional Prometheus label set (`frankenphp_busy_threads{} 5`).
     if (! preg_match('/^frankenphp_busy_threads(?:\{[^}]*\})?\s+([0-9.]+)/m', $metrics, $busy)) {
         return null;

@@ -40,7 +40,20 @@ class ProcessCommands
             return sprintf('frankenphp php-server --listen 0.0.0.0:%d --root public/', $port);
         }
 
-        return sprintf('php artisan octane:start --host=0.0.0.0 --port=%d', $port);
+        $command = sprintf('php artisan octane:start --host=0.0.0.0 --port=%d', $port);
+
+        // Burst autoscaling reads FrankenPHP's worker metrics, which Octane only exposes
+        // when Caddy metrics are enabled. octane:start rebuilds CADDY_GLOBAL_OPTIONS for
+        // the frankenphp child from a fixed whitelist, discarding whatever value the task
+        // sets — so a container env var can't switch metrics on. The surviving channel is
+        // a custom Caddyfile: GenerateSupervisorConfigStep writes the app's own Octane stub
+        // with `servers { metrics }` added to docker/Caddyfile, and --caddyfile runs it.
+        // Web autoscaling only; classic mode returned above and never reaches here.
+        if (Manifest::usesMetricsCaddyfile()) {
+            $command .= ' --caddyfile=/app/docker/Caddyfile';
+        }
+
+        return $command;
     }
 
     public static function queue(): string

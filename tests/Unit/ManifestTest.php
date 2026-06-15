@@ -196,6 +196,35 @@ describe('autoscaling', function (): void {
     });
 });
 
+describe('metrics caddyfile', function (): void {
+    it('applies for an autoscaling Octane web tier', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => ['autoscaling' => true]],
+        ]);
+
+        expect(Manifest::usesMetricsCaddyfile())->toBeTrue();
+    });
+
+    it('does not apply in classic mode, where worker metrics never exist', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => ['octane' => false, 'autoscaling' => true]],
+        ]);
+
+        expect(Manifest::usesMetricsCaddyfile())->toBeFalse();
+    });
+
+    it('does not apply without autoscaling', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => []],
+        ]);
+
+        expect(Manifest::usesMetricsCaddyfile())->toBeFalse();
+    });
+});
+
 describe('task-role-policies', function (): void {
     it('defaults to no additional policies', function (): void {
         writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
