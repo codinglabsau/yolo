@@ -135,44 +135,14 @@ it('grants object access on this app\'s claim file in the env config bucket, sco
     expect($claimStatement['Action'])->toBe(['s3:GetObject', 's3:PutObject']);
 
     // The env config bucket root is never granted at the object or bucket level —
-    // that read is the permission gating env-secret control. (Null-coalesce because
-    // the env-secret Deny below is keyed on NotResource, not Resource.)
+    // that read is the permission gating env-secret control. (The read surface the
+    // sync-check gate needs lives in the separate YoloObserver policy, scoped to
+    // non-secret config — never granted here.)
     $allResources = collect((new DeployerPolicy())->document()['Statement'])
-        ->flatMap(fn (array $statement): array => (array) ($statement['Resource'] ?? []));
+        ->flatMap(fn (array $statement): array => (array) $statement['Resource']);
 
     expect($allResources)->not->toContain('arn:aws:s3:::yolo-111111111111-testing-config');
     expect($allResources)->not->toContain('arn:aws:s3:::yolo-111111111111-testing-config/*');
-});
-
-it('denies object reads outside the app\'s own objects and the env-shared config the sync check needs, so ReadOnlyAccess cannot reach env-shared secrets', function (): void {
-    // The deployer role carries AWS-managed ReadOnlyAccess (so the pre-deploy
-    // `sync --check` gate can read every service). ReadOnlyAccess grants
-    // s3:GetObject on every bucket — this Deny claws it back to the app's own
-    // objects plus the env-shared *config* the gate legitimately reads (the env
-    // manifest + app claim files), leaving the env-shared `.env` and other apps'
-    // secrets unreadable.
-    $deny = collect((new DeployerPolicy())->document()['Statement'])
-        ->first(fn (array $statement): bool => ($statement['Effect'] ?? null) === 'Deny'
-            && in_array('s3:GetObject', (array) ($statement['Action'] ?? []), true));
-
-    expect($deny)->not->toBeNull();
-    expect($deny['Action'])->toContain('s3:GetObject', 's3:GetObjectVersion');
-
-    // Scoped via NotResource — deny everywhere except the carve-outs. An IAM
-    // statement carries Resource or NotResource, never both.
-    expect($deny)->not->toHaveKey('Resource');
-    expect($deny['NotResource'])->toBe([
-        'arn:aws:s3:::yolo-111111111111-testing-my-app-assets/*',
-        'arn:aws:s3:::yolo-111111111111-testing-my-app-config/*',
-        'arn:aws:s3:::yolo-111111111111-testing-config/apps/*',
-        'arn:aws:s3:::yolo-111111111111-testing-config/yolo-environment-testing.yml',
-    ]);
-
-    // The env-shared `.env` lives at the env config bucket root — it is NOT carved
-    // out, so the Deny still covers it. This is the secret boundary the deployer
-    // must never cross, even with ReadOnlyAccess attached.
-    expect($deny['NotResource'])->not->toContain('arn:aws:s3:::yolo-111111111111-testing-config/.env');
-    expect($deny['NotResource'])->not->toContain('arn:aws:s3:::yolo-111111111111-testing-config/*');
 });
 
 it('grants elasticache:DescribeReplicationGroups on * when the app uses the redis cache store', function (): void {

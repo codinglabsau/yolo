@@ -183,7 +183,7 @@ it('reports the policy attachment as synced when it is already attached', functi
     bindRoutedIamClient([
         'ListAttachedRolePolicies' => new Result(['AttachedPolicies' => [
             ['PolicyName' => 'yolo-testing-my-app-deployer-policy', 'PolicyArn' => 'arn:aws:iam::111111111111:policy/yolo-testing-my-app-deployer-policy'],
-            ['PolicyName' => 'ReadOnlyAccess', 'PolicyArn' => 'arn:aws:iam::aws:policy/ReadOnlyAccess'],
+            ['PolicyName' => 'yolo-testing-observer', 'PolicyArn' => 'arn:aws:iam::111111111111:policy/yolo-testing-observer'],
         ]]),
     ], $captured);
 
@@ -206,11 +206,11 @@ it('attaches the deployer policy to the deployer role', function (): void {
     expect($attach['args']['PolicyArn'])->toBe('arn:aws:iam::111111111111:policy/yolo-testing-my-app-deployer-policy');
 });
 
-it('attaches AWS-managed ReadOnlyAccess so the pre-deploy sync check can read every service', function (): void {
-    // The deploy-time `sync:app --check` gate plans the whole app under the deployer
-    // role; ReadOnlyAccess covers every Describe/Get/List the plan makes so a missing
-    // read can't AccessDenied-abort a deploy. (The env-secret boundary it would breach
-    // is restored by a Deny in DeployerPolicy — see DeployerPolicyTest.)
+it('attaches the env-shared YoloObserver policy so the pre-deploy sync check can read the whole stack', function (): void {
+    // The deploy-time `sync --check` gate plans the whole stack under the deployer
+    // role; the env-shared yolo-{env}-observer policy carries the read surface for
+    // exactly the services YOLO provisions, so a missing read can't AccessDenied-
+    // abort a deploy — and the deployer inherits it without a new direct grant.
     manifestWithDeployer();
 
     $captured = [];
@@ -227,7 +227,7 @@ it('attaches AWS-managed ReadOnlyAccess so the pre-deploy sync check can read ev
 
     expect($attachedArns)->toContain(
         'arn:aws:iam::111111111111:policy/yolo-testing-my-app-deployer-policy',
-        'arn:aws:iam::aws:policy/ReadOnlyAccess',
+        'arn:aws:iam::111111111111:policy/yolo-testing-observer',
     );
 });
 

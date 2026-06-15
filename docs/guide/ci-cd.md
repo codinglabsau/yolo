@@ -25,12 +25,13 @@ environments:
 
 ## What `yolo sync` provisions for CI
 
-When a GitHub repository is detected, `yolo sync` sets up the OIDC trust across two scopes:
+When a GitHub repository is detected, `yolo sync` sets up the OIDC trust across the scopes:
 
 - **`sync:account`** provisions the account's GitHub Actions OIDC identity provider (`token.actions.githubusercontent.com`) — an account-level singleton shared by every app.
-- **`sync:app`** provisions the deployer role `yolo-{env}-{app}-deployer`, whose trust only lets the environment's repo + ref assume it, plus a permission policy scoped to exactly what `yolo deploy` writes (ECR push, ECS register/update, `iam:PassRole` on the task + execution roles, S3 env/asset access, Route 53 record changes, and — when the app uses the shared Valkey cache — reading the cluster endpoint to bake `REDIS_HOST`). It also attaches AWS-managed **`ReadOnlyAccess`** so the pre-deploy [in-sync check](#yolo-deploy-refuses-to-run-against-drift) can inspect every service's live state under the deploy role. A `Deny` in the deployer policy keeps the broad object read `ReadOnlyAccess` grants from reaching the env-shared `.env` or other apps' secrets, so the deploy role still can't read what it shouldn't.
+- **`sync:environment`** provisions the env-shared **`yolo-{env}-observer`** policy — read-only access scoped to exactly the services YOLO provisions (not AWS's everything). It's the inspection surface the pre-deploy [in-sync check](#yolo-deploy-refuses-to-run-against-drift) reads, shared by every app's deployer role (and reusable by an operator/admin role).
+- **`sync:app`** provisions the deployer role `yolo-{env}-{app}-deployer`, whose trust only lets the environment's repo + ref assume it, plus a permission policy scoped to exactly what `yolo deploy` writes (ECR push, ECS register/update, `iam:PassRole` on the task + execution roles, S3 env/asset access, Route 53 record changes, and — when the app uses the shared Valkey cache — reading the cluster endpoint to bake `REDIS_HOST`). It also attaches the env's `yolo-{env}-observer` policy, so the deployer inherits the read surface the in-sync check needs without any new direct grant — and never the blast radius of AWS-managed `ReadOnlyAccess`. Object reads in the observer are scoped to non-secret config (the env manifest + app claim files), so the deploy role still can't read the env-shared `.env` or other apps' secrets.
 
-A plain `yolo sync <env>` does both. Re-run it whenever you change the `branch`/`tag`/`repository` for an environment.
+A plain `yolo sync <env>` does all of it. Re-run it whenever you change the `branch`/`tag`/`repository` for an environment.
 
 ## The consumer workflow
 
@@ -62,7 +63,7 @@ Pair `tag: 'v*'` with a GitHub protected-tag ruleset (only maintainers may cut `
 
 Before it builds, `yolo deploy` runs a full `sync --check` (account → environment → app) and **aborts if anything has drifted** from the manifest. A deploy only rolls a new task-definition revision onto the *existing* infrastructure — it never reconciles it — so this stops a deploy landing on a stale target group, a changed task role, an un-provisioned listener, or a shared foundation (VPC/ALB/OIDC) that no longer matches `yolo.yml`. It also fires sync's claim gate, so an app that claims an env service the environment doesn't offer (e.g. typesense) is refused with a precise message. The check plans only (never writes), runs *before* the build so a drift fails fast without burning one, prints the full diff, then refuses with `Refusing to deploy — <env> is not in sync`. Reconcile with `yolo sync <env>` and redeploy.
 
-Whole-stack rather than app-only is deliberate: a deploy is the natural — and for most setups the only — moment drift is checked, so the gate covers the shared foundation the app sits on, not just the app's own slice. This is why the deployer role carries `ReadOnlyAccess`: the check reads across every service, under whatever identity is deploying. No extra workflow step is needed — the gate is part of `yolo deploy` itself.
+Whole-stack rather than app-only is deliberate: a deploy is the natural — and for most setups the only — moment drift is checked, so the gate covers the shared foundation the app sits on, not just the app's own slice. This is why the deployer role attaches the env's `yolo-{env}-observer` policy: the check reads across every service YOLO provisions, under whatever identity is deploying. No extra workflow step is needed — the gate is part of `yolo deploy` itself.
 
 | Exit code | Meaning |
 |---|---|

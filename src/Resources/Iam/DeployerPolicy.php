@@ -7,7 +7,6 @@ use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Enums\Scope;
-use Codinglabs\Yolo\EnvManifest;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Resources\ResolvesTags;
@@ -114,8 +113,7 @@ class DeployerPolicy implements Resource, SynchronisesConfiguration
 
         $assetBucketArn = (new AssetBucket())->arn();
         $configBucketArn = (new S3ConfigBucket())->arn();
-        $envConfigBucketArn = (new EnvConfigBucket())->arn();
-        $appManifestArn = $envConfigBucketArn . '/' . Paths::s3AppManifestKey();
+        $appManifestArn = (new EnvConfigBucket())->arn() . '/' . Paths::s3AppManifestKey();
 
         $statements = [
             [
@@ -254,32 +252,6 @@ class DeployerPolicy implements Resource, SynchronisesConfiguration
                 'Action' => [
                     's3:GetObject',
                     's3:PutObject',
-                ],
-            ],
-            [
-                // The deployer role also carries AWS-managed ReadOnlyAccess (attached
-                // by AttachDeployerRolePoliciesStep) so the pre-deploy `sync --check`
-                // gate can read every service's live state without an AccessDenied
-                // aborting it. ReadOnlyAccess grants s3:GetObject on *every* bucket —
-                // which would let a deploy read the env-shared `.env` and other apps'
-                // secrets, the one thing this role must never reach. Claw object reads
-                // back to the app's own objects plus the env-shared *config* the gate
-                // legitimately needs: the env manifest and the app claim files
-                // (`apps/*.yml`) — declarations of what each env/app provisions, not
-                // secrets — which the env-tier plan and the claim gate read. The
-                // env-shared `.env` is NOT carved out, so it stays unreadable. Bucket-
-                // level Describe/Get* reads ReadOnlyAccess grants are metadata only and
-                // stay — the plan needs them to diff bucket configuration.
-                'Effect' => 'Deny',
-                'Action' => [
-                    's3:GetObject',
-                    's3:GetObjectVersion',
-                ],
-                'NotResource' => [
-                    sprintf('%s/*', $assetBucketArn),
-                    sprintf('%s/*', $configBucketArn),
-                    sprintf('%s/apps/*', $envConfigBucketArn),
-                    sprintf('%s/%s', $envConfigBucketArn, EnvManifest::filename()),
                 ],
             ],
         ];
