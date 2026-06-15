@@ -3,7 +3,6 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\EnvManifest;
-use Symfony\Component\Yaml\Yaml;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Services\Lifecycle;
 use Symfony\Component\Console\Input\InputOption;
@@ -276,8 +275,7 @@ class ServicesCommand extends Command
 
     /**
      * Write a service offer into the env manifest and upload it. A null offer
-     * removes the service. The whole document is re-validated (which runs the
-     * service's validateOffer) before it leaves the machine.
+     * removes the service. Validation + upload live in uploadEnvManifest().
      *
      * @param  array<string, mixed>|null  $offer
      */
@@ -292,13 +290,7 @@ class ServicesCommand extends Command
             $manifest['services'][$service->value] = $offer;
         }
 
-        $yaml = Yaml::dump($manifest, 6, 2);
-
-        EnvManifest::parse($yaml);
-
-        $this->upload(EnvManifest::filename(), $yaml, EnvManifest::filename());
-
-        EnvManifest::reset();
+        $this->uploadEnvManifest($manifest);
     }
 
     /**

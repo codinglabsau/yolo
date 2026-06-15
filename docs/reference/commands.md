@@ -241,10 +241,10 @@ Once the rollout settles, `rollback` prints the same recap as `deploy`.
 
 ## `yolo status`
 
-Show a live dashboard of the app's running state for an environment — what each service group is running, its current load, scaling configuration, and any deploy in progress.
+Show a snapshot of the app's running state for an environment — what each service group is running, its current load, scaling configuration, and any deploy in progress.
 
 ```bash
-yolo status <environment> [--snapshot] [--json]
+yolo status <environment> [--json]
 ```
 
 | Argument | Required | Description |
@@ -253,10 +253,9 @@ yolo status <environment> [--snapshot] [--json]
 
 | Option | Value | Default | Description |
 |---|---|---|---|
-| `--snapshot` | flag | off | Render one frame and exit instead of running the live dashboard. |
 | `--json` | flag | off | Emit the status as JSON (`{app, environment, groups}`) and exit — machine-readable for the `/yolo` skill and scripts. Exits non-zero if a deployment is currently failed. |
 
-The dashboard has three panels, read live from ECS, Application Auto Scaling and CloudWatch:
+It renders three panels, read live from ECS, Application Auto Scaling and CloudWatch:
 
 - **Deployment in progress** (only when a rollout is mid-flight) — a progress bar of new-revision tasks per rolling group, its rollout state, the revision, and how long it's been running.
 - **Services** — one row per group (web / queue / scheduler) with the task spec (vCPU/memory/launch type), running/desired task count, scaling bounds + policies (`1–4 auto (cpu 65%, req 1200)`, or `fixed` / `singleton`), and the deployed revision + app version.
@@ -264,7 +263,7 @@ The dashboard has three panels, read live from ECS, Application Auto Scaling and
 
 Below the panels is a clickable deep link to the app's CloudWatch dashboard for the full metrics view.
 
-By default it **polls and redraws until you quit** (Ctrl-C), picking up any deploy that starts while it's open — so it doubles as a live deploy watch. `--snapshot` (and any non-interactive shell) renders a single frame and exits instead, returning a non-zero exit code if a deployment is currently failed. `--json` emits the same live state as a structured payload rather than the dashboard — the machine-readable contract the `/yolo` skill (and any script) consumes.
+It **renders once and exits**, returning a non-zero exit code if a deployment is currently failed — so it doubles as a lightweight health probe. For the live, polling cockpit (it redraws and picks up deploys as they start), open [`yolo tui`](/guide/tui); its Status tab is this same picture, kept fresh. `--json` emits the same state as a structured payload rather than the panels — the machine-readable contract the `/yolo` skill (and any script) consumes.
 
 ---
 
@@ -380,9 +379,9 @@ yolo tui [environment]
 |---|---|---|
 | `environment` | no | The environment name. Prompts when omitted (auto-selects the only one). |
 
-Tabs: **Status** (live vitals, reusing [`status`](#yolo-status)), **Services** (the [`services`](#yolo-services) gate, ⏎ to manage), **Deployments** (ECR history + interactive [`rollback`](#yolo-rollback), and live rollout progress when one's in flight), **Logs** (tail CloudWatch per group), and **Manifest** (a read view of the env + app manifests). A global health bar stays on top and flags any in-progress deploy whoever triggered it. `tui` adds no new powers — it's the live cockpit over the existing commands.
+Tabs: **Status** (live vitals, reusing [`status`](#yolo-status)), **Services** (the [`services`](#yolo-services) gate, ⏎ to manage), **Deployments** (ECR history + interactive [`rollback`](#yolo-rollback), and live rollout progress when one's in flight), **Logs** (tail CloudWatch per group), and **Manifest** (the env + app manifests, `e` to edit the env domain). The active tab's body is fitted to the terminal — tall content (logs, deploy history) scrolls. A global health bar stays on top and flags any in-progress deploy whoever triggered it. `tui` adds no new powers — it's the live cockpit over the existing commands.
 
-Navigate with `◂ ▸` / `Tab` / number keys / a tab's hotkey; `q` quits. It's interactive only — for a one-off frame in a script use [`status --snapshot`](#yolo-status).
+Navigate with `◂ ▸` / `Tab` / number keys / a tab's hotkey; `↑ ↓` / `PgUp PgDn` / `Home End` scroll a tab's body; `q` quits. It's interactive only — for a one-off frame in a script use [`status`](#yolo-status) (which renders once and exits) or `status --json`.
 
 ---
 

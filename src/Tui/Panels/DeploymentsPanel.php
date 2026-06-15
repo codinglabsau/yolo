@@ -7,6 +7,7 @@ use Carbon\Carbon;
 use Codinglabs\Yolo\Aws\Ecr;
 use Codinglabs\Yolo\Tui\Theme;
 use Codinglabs\Yolo\Tui\Columns;
+use Codinglabs\Yolo\Tui\Viewport;
 use Codinglabs\Yolo\Tui\DeployObserver;
 use Codinglabs\Yolo\Commands\RollbackCommand;
 use Symfony\Component\Console\Input\ArrayInput;
@@ -17,8 +18,9 @@ use Symfony\Component\Console\Output\OutputInterface;
 /**
  * Deploy history + rollback. When a rollout is in flight (whoever triggered it),
  * the tab shows the live progress and locks the rollback action; otherwise it
- * lists the last deployments from ECR (newest first, the running one marked) and
- * ⏎ launches the interactive rollback (reusing RollbackCommand).
+ * lists the deployments from ECR (newest first, the running one marked) in a
+ * scrollable viewport and ⏎ launches the interactive rollback (reusing
+ * RollbackCommand).
  */
 class DeploymentsPanel implements Panel
 {
@@ -30,7 +32,15 @@ class DeploymentsPanel implements Panel
     /** @var array<int, array<string, mixed>> */
     protected array $statuses = [];
 
-    public function __construct(protected string $environment, protected OutputInterface $output) {}
+    /** Rows the history body occupied last render — drives PgUp/PgDn paging. */
+    protected int $bodyHeight = 0;
+
+    // History reads newest-first, so the viewport opens at the top, not the tail.
+    public function __construct(
+        protected string $environment,
+        protected OutputInterface $output,
+        protected Viewport $viewport = new Viewport(followTail: false),
+    ) {}
 
     public function title(): string
     {
@@ -48,7 +58,7 @@ class DeploymentsPanel implements Panel
         $this->targets = RollbackCommand::rollbackTargets(Ecr::images((new EcrRepository())->name()));
     }
 
-    public function render(int $width): array
+    public function render(int $width, int $height): array
     {
         if (DeployObserver::active($this->statuses)) {
             return [
@@ -60,12 +70,23 @@ class DeploymentsPanel implements Panel
             ];
         }
 
-        return self::historyLines($this->targets, $this->currentVersion());
+        $rows = self::historyLines($this->targets, $this->currentVersion());
+
+        if ($this->targets === []) {
+            return $rows;
+        }
+
+        $header = [Theme::Muted->fg('  recent deployments (from ECR)'), ''];
+
+        $this->bodyHeight = max(0, $height - count($header));
+
+        return [...$header, ...$this->viewport->window($rows, $this->bodyHeight)];
     }
 
     /**
      * The deploy-history rows — version, when it was pushed, and a marker on the
-     * version that's running now.
+     * version that's running now. The full set (the viewport scrolls it); an empty
+     * ECR returns a single empty-state line instead.
      *
      * @param  array<int, array{version: string, pushedAt: int}>  $targets
      * @return array<int, string>
@@ -76,34 +97,40 @@ class DeploymentsPanel implements Panel
             return [Theme::Muted->fg('  No previous versions in ECR.')];
         }
 
-        $lines = [Theme::Muted->fg('  recent deployments (from ECR)'), ''];
-
-        foreach (array_slice($targets, 0, 10) as $target) {
+        return array_map(static function (array $target) use ($current): string {
             $isCurrent = $target['version'] === $current;
 
-            $lines[] = Columns::row([
+            return Columns::row([
                 [$isCurrent ? '●' : ' ', 1, Theme::Healthy],
                 [$target['version'], 18, Theme::Primary],
                 ['pushed ' . Carbon::createFromTimestamp($target['pushedAt'])->diffForHumans(), 30, Theme::Muted],
                 [$isCurrent ? 'current' : '', 8, Theme::Healthy],
             ]);
-        }
-
-        return $lines;
+        }, $targets);
     }
 
     public function hints(): array
     {
-        return ['⏎ roll back'];
+        return ['⏎ roll back', '↑↓ scroll'];
     }
 
     public function onKey(string $key): ?Closure
     {
-        if (($key !== 'enter' && $key !== 'r') || DeployObserver::active($this->statuses)) {
-            return null;
+        match ($key) {
+            'up' => $this->viewport->scrollUp(),
+            'down' => $this->viewport->scrollDown(),
+            'pageup' => $this->viewport->pageUp($this->bodyHeight),
+            'pagedown' => $this->viewport->pageDown($this->bodyHeight),
+            'home' => $this->viewport->toTop(),
+            'end' => $this->viewport->toTail(),
+            default => null,
+        };
+
+        if (($key === 'enter' || $key === 'r') && ! DeployObserver::active($this->statuses)) {
+            return $this->rollback(...);
         }
 
-        return $this->rollback(...);
+        return null;
     }
 
     protected function currentVersion(): ?string

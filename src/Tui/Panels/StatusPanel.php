@@ -37,7 +37,7 @@ class StatusPanel implements Panel
         $this->statuses = static::gatherServiceStatuses(withLoad: true);
     }
 
-    public function render(int $width): array
+    public function render(int $width, int $height): array
     {
         return $this->statusLines($this->statuses, time(), deployments: true, load: true);
     }

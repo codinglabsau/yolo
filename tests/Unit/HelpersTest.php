@@ -93,6 +93,31 @@ describe('keyedEnvName', function (): void {
     });
 });
 
+describe('truncate', function (): void {
+    it('returns a short string unchanged', function (): void {
+        expect(Helpers::truncate('hello', 20))->toBe('hello');
+    });
+
+    it('truncates with an ellipsis to exactly the width', function (): void {
+        $result = Helpers::truncate('hello world', 5);
+
+        expect($result)->toBe('hell…')
+            ->and(mb_strlen($result))->toBe(5);
+    });
+
+    it('folds whitespace runs — tabs and newlines — to single spaces', function (): void {
+        expect(Helpers::truncate("a\tb\n\nc   d", 80))->toBe('a b c d');
+    });
+
+    it('strips raw ANSI escape sequences before measuring', function (): void {
+        expect(Helpers::truncate("\e[31mred\e[0m", 80))->toBe('red');
+    });
+
+    it('returns an empty string for a non-positive width', function (): void {
+        expect(Helpers::truncate('anything', 0))->toBe('');
+    });
+});
+
 describe('payloadHasDifferences', function (): void {
     it('returns false for identical payloads', function (): void {
         $payload = ['key' => 'value', 'nested' => ['a' => 1]];

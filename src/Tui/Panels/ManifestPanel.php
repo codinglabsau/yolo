@@ -10,16 +10,25 @@ use Codinglabs\Yolo\Tui\Theme;
 use Codinglabs\Yolo\EnvManifest;
 use Codinglabs\Yolo\Tui\Columns;
 use Codinglabs\Yolo\Commands\ServicesCommand;
+use Codinglabs\Yolo\Concerns\ManagesEnvironmentFiles;
+use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
+
+use function Laravel\Prompts\info;
+use function Laravel\Prompts\text;
+use function Laravel\Prompts\error;
 
 /**
- * A read view of both manifests for the environment — the operator-owned env
- * manifest (domain + the service offers) and the app's own yolo.yml (name,
- * region, account, claimed services). Service offers are edited from the
- * Services tab; broader env-manifest edits go through `environment:manifest:pull
- * / push`. Read-only here by design — the destructive surface stays explicit.
+ * A view of both manifests for the environment — the operator-owned env manifest
+ * (domain + the service offers) and the app's own yolo.yml (name, region,
+ * account, claimed services). The env `domain` is editable in place (`e`): a
+ * Prompts modal validates and uploads the env manifest, applied on the next
+ * sync:environment. Service offers are edited from the Services tab; the app
+ * yolo.yml is repo-owned and shown read-only.
  */
 class ManifestPanel implements Panel
 {
+    use ManagesEnvironmentFiles;
+
     /** @var array<string, mixed> */
     protected array $env = [];
 
@@ -47,7 +56,7 @@ class ManifestPanel implements Panel
         ];
     }
 
-    public function render(int $width): array
+    public function render(int $width, int $height): array
     {
         $lines = [
             Theme::Primary->bold('  Environment manifest') . Theme::Muted->fg('  ' . EnvManifest::filename()),
@@ -81,11 +90,46 @@ class ManifestPanel implements Panel
 
     public function hints(): array
     {
-        return ['offers: Services tab', 'env:manifest:pull/push'];
+        return ['e edit domain', 'offers → Services tab'];
     }
 
     public function onKey(string $key): ?Closure
     {
-        return null;
+        return ($key === 'e' || $key === 'enter') ? $this->editDomain(...) : null;
+    }
+
+    /**
+     * Edit the environment domain in place: a Prompts modal writes the value back
+     * to the env manifest (validated + uploaded), applied on the next sync. An
+     * empty value clears the domain. Reuses the one env-manifest write path so the
+     * Services gate and this share identical validation.
+     *
+     * @codeCoverageIgnore drives Laravel Prompts + S3; verified by hand
+     */
+    protected function editDomain(): void
+    {
+        $value = trim(text(
+            label: 'Environment domain',
+            default: (string) (EnvManifest::get('domain') ?? ''),
+            hint: 'Applied on the next yolo sync:environment',
+        ));
+
+        $manifest = EnvManifest::current();
+
+        if ($value === '') {
+            unset($manifest['domain']);
+        } else {
+            $manifest['domain'] = $value;
+        }
+
+        try {
+            $this->uploadEnvManifest($manifest);
+        } catch (IntegrityCheckException $exception) {
+            error($exception->getMessage());
+
+            return;
+        }
+
+        info(sprintf('Updated domain in %s. Run `yolo sync:environment` to apply.', EnvManifest::filename()));
     }
 }

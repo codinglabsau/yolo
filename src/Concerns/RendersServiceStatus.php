@@ -19,8 +19,9 @@ use Codinglabs\Yolo\Resources\ApplicationAutoScaling\ScalableTarget;
 
 /**
  * Builds the live `yolo status` picture for each of an app's service groups and
- * renders it as display lines. Shared by StatusCommand (the full polling
- * dashboard) and DeployCommand (the one-shot end-of-deploy recap).
+ * renders it as display lines. Shared by StatusCommand (the one-shot snapshot),
+ * the TUI's Status tab (the live, polling cockpit) and DeployCommand (the
+ * end-of-deploy recap).
  *
  * Every external read is defensive — a missing service, scalable target or
  * metric yields a null/"—" cell rather than crashing the dashboard, so a
@@ -499,7 +500,7 @@ trait RendersServiceStatus
     }
 
     /**
-     * Any deployment failed — used for the snapshot exit code.
+     * Any deployment failed — used for the one-shot status exit code.
      *
      * @param  array<int, array<string, mixed>>  $statuses
      */

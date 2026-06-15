@@ -18,6 +18,13 @@ it('decodes the control keys by name', function (): void {
         ->and(Keyboard::decode("\e"))->toBe('esc');
 });
 
+it('decodes the paging and home/end keys', function (): void {
+    expect(Keyboard::decode("\e[5~"))->toBe('pageup')
+        ->and(Keyboard::decode("\e[6~"))->toBe('pagedown')
+        ->and(Keyboard::decode("\e[H"))->toBe('home')
+        ->and(Keyboard::decode("\e[F"))->toBe('end');
+});
+
 it('passes printable keys through unchanged', function (): void {
     expect(Keyboard::decode('s'))->toBe('s')
         ->and(Keyboard::decode('q'))->toBe('q');

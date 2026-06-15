@@ -27,7 +27,7 @@ it('renders the gate as a themed table', function (): void {
 
     $panel = new ServicesPanel('testing', new BufferedOutput());
     $panel->gather();
-    $body = implode("\n", $panel->render(120));
+    $body = implode("\n", $panel->render(120, 40));
 
     expect($body)->toContain('typesense')
         ->toContain('convict')                   // used by

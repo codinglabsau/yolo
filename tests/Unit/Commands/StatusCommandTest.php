@@ -10,6 +10,14 @@ use Codinglabs\Yolo\Concerns\RendersServiceStatus;
 // RendersServiceStatus trait, reached here through StatusCommand. They take plain
 // arrays (the shapes AWS returns) so they can be pinned without mocking AWS.
 
+it('is a one-shot command — no full-screen --snapshot, keeps --json', function (): void {
+    $definition = (new StatusCommand())->getDefinition();
+
+    expect((new StatusCommand())->getName())->toBe('status')
+        ->and($definition->hasOption('json'))->toBeTrue()
+        ->and($definition->hasOption('snapshot'))->toBeFalse();
+});
+
 it('clamps the progress bar between empty and full', function (): void {
     expect(StatusCommand::progressBar(0, 4, 8))->toBe(str_repeat('░', 8));
     expect(StatusCommand::progressBar(4, 4, 8))->toBe(str_repeat('█', 8));

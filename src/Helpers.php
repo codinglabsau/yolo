@@ -63,6 +63,30 @@ class Helpers
             : sprintf('%dm %ds', $minutes, $remainder);
     }
 
+    /**
+     * Clamp a string to a visible width for a fixed-height terminal row: strip raw
+     * ANSI/CSI escape sequences, fold every whitespace run (tabs, newlines) to a
+     * single space, and mb-truncate with an ellipsis when it overflows. Operates on
+     * raw text — call it on a log message *before* wrapping it in colour tags, so a
+     * cut never lands mid-tag. One log event in, exactly one row out.
+     */
+    public static function truncate(string $text, int $width): string
+    {
+        $text = trim((string) preg_replace(
+            ['/\e\[[0-9;?]*[ -\/]*[@-~]/', '/\s+/u'],
+            ['', ' '],
+            $text,
+        ));
+
+        if ($width <= 0) {
+            return '';
+        }
+
+        return mb_strlen($text) <= $width
+            ? $text
+            : mb_substr($text, 0, max(0, $width - 1)) . '…';
+    }
+
     public static function keyedEnvName(string $key): ?string
     {
         $environment = strtoupper((string) static::environment());

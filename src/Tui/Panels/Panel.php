@@ -25,11 +25,13 @@ interface Panel
     public function gather(): void;
 
     /**
-     * The body lines for this tab — themed and wrapped to $width, no terminal writes.
+     * The body lines for this tab — themed and wrapped to $width, clipped/scrolled
+     * to at most $height rows (the budget the shell has left after its chrome). No
+     * terminal writes. Height-agnostic panels may over-produce; the shell clips.
      *
      * @return array<int, string>
      */
-    public function render(int $width): array;
+    public function render(int $width, int $height): array;
 
     /**
      * The footer key hints for this tab (e.g. ['↑↓ select', '⏎ actions']).

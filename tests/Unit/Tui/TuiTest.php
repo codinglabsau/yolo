@@ -25,7 +25,7 @@ function stubPanel(string $title, string $hotkey): Panel
 
         public function gather(): void {}
 
-        public function render(int $width): array
+        public function render(int $width, int $height): array
         {
             return ['body:' . $this->label];
         }
@@ -95,6 +95,57 @@ it('quits on q', function (): void {
     $tui->handleKey('q');
 
     expect($tui->quitting())->toBeTrue();
+});
+
+it('fits the frame to the terminal height with the footer pinned to the last row', function (): void {
+    $tui = tui([stubPanel('A', 'a'), stubPanel('B', 'b')]);
+
+    $frame = $tui->frame([dotStatus(ServerGroup::WEB, 1, 1)], 120, 12);
+
+    expect($frame)->toHaveCount(12)
+        ->and($frame[2])->toContain('A')          // tab bar (active tab labelled)
+        ->and($frame[4])->toBe('body:A')          // panel body opens right below the chrome
+        ->and($frame[11])->toContain('q quit');   // footer pinned to the bottom row
+});
+
+it('clips an over-long panel body to the height budget', function (): void {
+    $tall = new class('Tall', 't') implements Panel
+    {
+        public function __construct(public string $label, public string $key) {}
+
+        public function title(): string
+        {
+            return $this->label;
+        }
+
+        public function hotkey(): string
+        {
+            return $this->key;
+        }
+
+        public function gather(): void {}
+
+        public function render(int $width, int $height): array
+        {
+            return array_fill(0, 100, 'row');   // far more than any budget
+        }
+
+        public function hints(): array
+        {
+            return [];
+        }
+
+        public function onKey(string $key): ?Closure
+        {
+            return null;
+        }
+    };
+
+    $frame = (new Tui(new Screen(new BufferedOutput()), new Keyboard(), 'production', [$tall], new BufferedOutput()))
+        ->frame([dotStatus(ServerGroup::WEB, 1, 1)], 120, 10);
+
+    expect($frame)->toHaveCount(10)
+        ->and($frame[9])->not->toBe('row');   // the footer row survived the clip
 });
 
 it('renders the global bar with brand, environment and coloured health dots', function (): void {
