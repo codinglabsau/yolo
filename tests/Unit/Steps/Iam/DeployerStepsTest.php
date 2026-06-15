@@ -206,7 +206,7 @@ it('attaches the deployer policy to the deployer role', function (): void {
     expect($attach['args']['PolicyArn'])->toBe('arn:aws:iam::111111111111:policy/yolo-testing-my-app-deployer-policy');
 });
 
-it('attaches the env-shared YoloObserver policy so the pre-deploy sync check can read the whole stack', function (): void {
+it('attaches the env-shared ObserverPolicy policy so the pre-deploy sync check can read the whole stack', function (): void {
     // The deploy-time `sync --check` gate plans the whole stack under the deployer
     // role; the env-shared yolo-{env}-observer policy carries the read surface for
     // exactly the services YOLO provisions, so a missing read can't AccessDenied-

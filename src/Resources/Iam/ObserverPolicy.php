@@ -38,7 +38,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * id, environment), so the document is pure — no live AWS calls. Document drift is
  * reconciled as a plan-visible Change via SynchronisesPolicyDocument.
  */
-class YoloObserver implements Resource, SynchronisesConfiguration
+class ObserverPolicy implements Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
     use SynchronisesPolicyDocument;

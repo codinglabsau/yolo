@@ -49,7 +49,7 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 // drift-check surface every app's deployer role attaches so the
                 // pre-deploy `sync --check` gate can read the whole stack under the
                 // deploy role, scoped to exactly the services YOLO provisions.
-                Steps\Sync\Environment\SyncYoloObserverPolicyStep::class,
+                Steps\Sync\Environment\SyncObserverPolicyStep::class,
                 // The read-only role an operator/agent assumes for safe inspection
                 // (LPX-635) — created, then the observer policy attached to it.
                 Steps\Sync\Environment\SyncObserverRoleStep::class,

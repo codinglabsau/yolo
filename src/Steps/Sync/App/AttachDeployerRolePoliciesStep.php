@@ -7,8 +7,8 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\Iam\DeployerRole;
-use Codinglabs\Yolo\Resources\Iam\YoloObserver;
 use Codinglabs\Yolo\Resources\Iam\DeployerPolicy;
+use Codinglabs\Yolo\Resources\Iam\ObserverPolicy;
 use Codinglabs\Yolo\Concerns\AttachesRolePolicies;
 
 class AttachDeployerRolePoliciesStep implements Step
@@ -21,7 +21,7 @@ class AttachDeployerRolePoliciesStep implements Step
             return StepResult::SKIPPED;
         }
 
-        // DeployerPolicy = the deploy-time write/read grants. YoloObserver = the
+        // DeployerPolicy = the deploy-time write/read grants. ObserverPolicy = the
         // env-shared read-only surface the pre-deploy `sync --check` gate
         // (EnsureInSyncStep) needs to inspect the whole stack — attaching it means
         // the deployer inherits exactly that read without a new direct grant, and
@@ -30,7 +30,7 @@ class AttachDeployerRolePoliciesStep implements Step
             (new DeployerRole())->name(),
             [
                 $this->customerManagedPolicyArn((new DeployerPolicy())->name()),
-                $this->customerManagedPolicyArn((new YoloObserver())->name()),
+                $this->customerManagedPolicyArn((new ObserverPolicy())->name()),
             ],
             (bool) Arr::get($options, 'dry-run'),
         );
