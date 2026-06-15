@@ -13,6 +13,8 @@ use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Concerns\RegistersAws;
+use Codinglabs\Yolo\Contracts\AdminCommand;
+use Codinglabs\Yolo\Resources\Iam\AdminRole;
 use Codinglabs\Yolo\Contracts\DeployerCommand;
 use Codinglabs\Yolo\Contracts\ReadOnlyCommand;
 use Codinglabs\Yolo\Concerns\HasAfterCallbacks;
@@ -385,6 +387,7 @@ abstract class Command extends SymfonyCommand
         return match (true) {
             $this instanceof ReadOnlyCommand => Iam::OBSERVER_ROLE,
             $this instanceof DeployerCommand => Iam::DEPLOYER_ROLE,
+            $this instanceof AdminCommand => Iam::ADMIN_ROLE,
             default => null,
         };
     }
@@ -412,6 +415,7 @@ abstract class Command extends SymfonyCommand
             $role = match ($tier) {
                 Iam::OBSERVER_ROLE => new ObserverRole(),
                 Iam::DEPLOYER_ROLE => new DeployerRole(),
+                Iam::ADMIN_ROLE => new AdminRole(),
                 default => null,
             };
 
