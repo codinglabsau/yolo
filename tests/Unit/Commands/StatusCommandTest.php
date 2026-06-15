@@ -168,6 +168,51 @@ it('trails a load reading with a gray sparkline when a series is present', funct
         ->toContain('▁');          // low bar from the flat memory series / cpu start
 });
 
+it('formats the queue backlog, gray "empty" when drained', function (): void {
+    expect(StatusCommand::formatBacklog(0))->toContain('empty')->toContain('gray');
+    expect(StatusCommand::formatBacklog(1))->toBe('1 pending');
+    expect(StatusCommand::formatBacklog(12500))->toBe('12,500 pending');
+});
+
+it('lists the solo queue, or landlord + tenants when multi-tenant', function (): void {
+    $probe = new class()
+    {
+        use RendersServiceStatus;
+
+        /** @return array<string, string> */
+        public function names(): array
+        {
+            return self::queueNames();
+        }
+
+        /**
+         * @param  array<int, array{label: string, name: string, backlog: int}>  $queues
+         * @return array<int, string>
+         */
+        public function lines(array $queues): array
+        {
+            return $this->queueLines($queues);
+        }
+    };
+
+    writeManifest([]);
+    expect($probe->names())->toBe(['queue' => 'yolo-testing-my-app']);
+
+    writeManifest(['tenants' => ['acme' => [], 'globex' => []]]);
+    expect($probe->names())->toBe([
+        'landlord' => 'yolo-testing-my-app-landlord',
+        'acme' => 'yolo-testing-my-app-acme',
+        'globex' => 'yolo-testing-my-app-globex',
+    ]);
+
+    // No queues → no panel; a queue → a labelled backlog row.
+    expect($probe->lines([]))->toBe([]);
+    expect(implode("\n", $probe->lines([['label' => 'queue', 'name' => 'yolo-testing-my-app', 'backlog' => 7]])))
+        ->toContain('Queue')
+        ->toContain('queue')
+        ->toContain('7 pending');
+});
+
 it('colours the rollout state', function (): void {
     expect(StatusCommand::formatRolloutState('IN_PROGRESS'))->toContain('IN PROGRESS')->toContain('blue');
     expect(StatusCommand::formatRolloutState('COMPLETED'))->toContain('COMPLETED')->toContain('green');

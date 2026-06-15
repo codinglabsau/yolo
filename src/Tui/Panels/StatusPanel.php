@@ -20,6 +20,9 @@ class StatusPanel implements Panel
     /** @var array<int, array<string, mixed>> */
     protected array $statuses = [];
 
+    /** @var array<int, array{label: string, name: string, backlog: int}> */
+    protected array $queues = [];
+
     public function __construct(public OutputInterface $output) {}
 
     public function title(): string
@@ -35,11 +38,12 @@ class StatusPanel implements Panel
     public function gather(): void
     {
         $this->statuses = static::gatherServiceStatuses(withLoad: true);
+        $this->queues = static::gatherQueueBacklogs();
     }
 
     public function render(int $width, int $height): array
     {
-        return $this->statusLines($this->statuses, time(), deployments: true, load: true);
+        return $this->statusLines($this->statuses, time(), deployments: true, load: true, queues: $this->queues);
     }
 
     public function hints(): array

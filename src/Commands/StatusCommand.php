@@ -32,6 +32,7 @@ class StatusCommand extends Command
     public function handle(): int
     {
         $statuses = static::gatherServiceStatuses();
+        $queues = static::gatherQueueBacklogs();
 
         // `--json` is the machine-readable contract: emit the structured payload
         // and exit non-zero if a deploy is failed so it stays scriptable.
@@ -40,6 +41,7 @@ class StatusCommand extends Command
                 'app' => Manifest::current()['name'] ?? null,
                 'environment' => $this->argument('environment'),
                 'groups' => static::jsonStatuses($statuses),
+                'queues' => $queues,
             ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
             return static::anyDeploymentFailed($statuses) ? 1 : 0;
@@ -47,7 +49,7 @@ class StatusCommand extends Command
 
         intro(sprintf('yolo status · %s · %s', Manifest::current()['name'] ?? '', $this->argument('environment')));
 
-        foreach ($this->statusLines($statuses, time()) as $line) {
+        foreach ($this->statusLines($statuses, time(), queues: $queues) as $line) {
             $this->output->writeln($line);
         }
 

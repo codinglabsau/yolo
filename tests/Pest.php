@@ -7,6 +7,7 @@ use Aws\Ec2\Ec2Client;
 use Aws\Ecr\EcrClient;
 use Aws\Ecs\EcsClient;
 use Aws\Iam\IamClient;
+use Aws\Sqs\SqsClient;
 use Aws\CommandInterface;
 use Aws\WAFV2\WAFV2Client;
 use Codinglabs\Yolo\Helpers;
@@ -371,6 +372,39 @@ function bindMockCloudWatchClient(array $byCommand, array &$captured): void
     };
 
     Helpers::app()->instance('cloudWatch', new CloudWatchClient([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+}
+
+/**
+ * Bind a mock SQS client with command-routed responses, capturing every call.
+ * Mirrors bindMockCloudWatchClient.
+ *
+ * @param  array<string, Result|Throwable>  $byCommand
+ * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+ */
+function bindMockSqsClient(array $byCommand, array &$captured): void
+{
+    $mock = new class($byCommand, $captured) extends MockHandler
+    {
+        public function __construct(protected array $byCommand, protected array &$captured) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            $this->captured[] = ['name' => $cmd->getName(), 'args' => $cmd->toArray()];
+
+            $entry = $this->byCommand[$cmd->getName()] ?? new Result();
+
+            return $entry instanceof Throwable
+                ? Create::rejectionFor($entry)
+                : Create::promiseFor($entry);
+        }
+    };
+
+    Helpers::app()->instance('sqs', new SqsClient([
         'region' => 'ap-southeast-2',
         'version' => 'latest',
         'credentials' => false,

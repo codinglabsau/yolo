@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Concerns;
 
 use Codinglabs\Yolo\Aws\Ecs;
+use Codinglabs\Yolo\Aws\Sqs;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\CloudWatch;
@@ -248,6 +249,51 @@ trait RendersServiceStatus
     protected static function latestOf(array $series): ?float
     {
         return $series === [] ? null : $series[array_key_last($series)];
+    }
+
+    /**
+     * Each of the app's SQS queues and its current backlog (visible messages). A
+     * solo app has one queue; a multi-tenant app has the landlord queue plus one
+     * per tenant. Surfaced app-level (not per ECS group) so the backlog shows even
+     * when the queue worker is bundled into the web container. A queue that isn't
+     * provisioned yet is skipped.
+     *
+     * @return array<int, array{label: string, name: string, backlog: int}>
+     */
+    protected static function gatherQueueBacklogs(): array
+    {
+        $queues = [];
+
+        foreach (static::queueNames() as $label => $name) {
+            $backlog = Sqs::approximateMessages($name);
+
+            if ($backlog !== null) {
+                $queues[] = ['label' => $label, 'name' => $name, 'backlog' => $backlog];
+            }
+        }
+
+        return $queues;
+    }
+
+    /**
+     * The app's queue names, keyed by a short label: `queue` for a solo app, or
+     * `landlord` plus each tenant id for a multi-tenant one.
+     *
+     * @return array<string, string>
+     */
+    protected static function queueNames(): array
+    {
+        if (! Manifest::isMultitenanted()) {
+            return ['queue' => Helpers::keyedResourceName()];
+        }
+
+        $names = ['landlord' => Helpers::keyedResourceName('landlord')];
+
+        foreach (array_keys(Manifest::tenants()) as $tenantId) {
+            $names[$tenantId] = Helpers::keyedResourceName($tenantId);
+        }
+
+        return $names;
     }
 
     /**
@@ -527,6 +573,17 @@ trait RendersServiceStatus
     }
 
     /**
+     * `empty` (gray) for a drained queue, else `N pending`. Backlog alone can't
+     * say "healthy" without knowing throughput, so it's reported, not alarmed.
+     */
+    public static function formatBacklog(int $backlog): string
+    {
+        return $backlog === 0
+            ? '<fg=gray>empty</>'
+            : sprintf('%s pending', number_format($backlog));
+    }
+
+    /**
      * A `███████░░░░░` bar of the new revision's running/desired ratio.
      */
     public static function progressBar(int $running, int $desired, int $width = 12): string
@@ -631,13 +688,15 @@ trait RendersServiceStatus
 
     /**
      * The full set of display lines for a status frame. `deployments` puts the
-     * in-progress rollout bars on top; `load` adds the per-group load panel. The
-     * end-of-deploy recap turns both off and shows just the summary + link.
+     * in-progress rollout bars on top; `load` adds the per-group load panel;
+     * `$queues` (when passed) adds the queue-backlog panel. The end-of-deploy
+     * recap turns deployments/load off and shows just the summary + link.
      *
      * @param  array<int, array<string, mixed>>  $statuses
+     * @param  array<int, array{label: string, name: string, backlog: int}>  $queues
      * @return array<int, string>
      */
-    protected function statusLines(array $statuses, int $now, bool $deployments = true, bool $load = true): array
+    protected function statusLines(array $statuses, int $now, bool $deployments = true, bool $load = true, array $queues = []): array
     {
         $lines = [];
 
@@ -650,6 +709,8 @@ trait RendersServiceStatus
         if ($load) {
             $lines = [...$lines, ...$this->loadLines($statuses)];
         }
+
+        $lines = [...$lines, ...$this->queueLines($queues)];
 
         return [...$lines, ...$this->dashboardLink()];
     }
@@ -755,6 +816,29 @@ trait RendersServiceStatus
                 $status['group']->value,
                 static::formatLoad($status['load'], $status['cpuTarget'], $status['group']),
             );
+        }
+
+        return $lines;
+    }
+
+    /**
+     * The queue-backlog panel — one row per SQS queue (solo: one; multi-tenant:
+     * landlord + per tenant), shown regardless of whether the worker is its own
+     * service or bundled into web. Empty when the app has no readable queue.
+     *
+     * @param  array<int, array{label: string, name: string, backlog: int}>  $queues
+     * @return array<int, string>
+     */
+    protected function queueLines(array $queues): array
+    {
+        if ($queues === []) {
+            return [];
+        }
+
+        $lines = ['', '  <options=bold>Queue</> <fg=gray>(backlog)</>'];
+
+        foreach ($queues as $queue) {
+            $lines[] = sprintf('  %-10s %s', $queue['label'], static::formatBacklog($queue['backlog']));
         }
 
         return $lines;
