@@ -26,12 +26,32 @@ class CostExplorer
      */
     public static function monthToDateByApp(string $app): ?float
     {
+        return static::monthToDateByTag('yolo:app', $app);
+    }
+
+    /**
+     * Month-to-date unblended spend (USD) across an entire environment — every
+     * resource tagged `yolo:environment=<env>` (all apps plus the shared infra).
+     * Same caveats and null-on-no-data behaviour as the per-app read.
+     */
+    public static function monthToDateByEnvironment(string $environment): ?float
+    {
+        return static::monthToDateByTag('yolo:environment', $environment);
+    }
+
+    /**
+     * Month-to-date unblended spend (USD) for everything carrying one tag
+     * key=value, or null when Cost Explorer has no data (tag not activated for
+     * cost allocation yet, or no spend) or the read fails.
+     */
+    protected static function monthToDateByTag(string $key, string $value): ?float
+    {
         try {
             $results = Aws::costExplorer()->getCostAndUsage([
                 'TimePeriod' => static::monthToDate(),
                 'Granularity' => 'MONTHLY',
                 'Metrics' => ['UnblendedCost'],
-                'Filter' => ['Tags' => ['Key' => 'yolo:app', 'Values' => [$app]]],
+                'Filter' => ['Tags' => ['Key' => $key, 'Values' => [$value]]],
             ])['ResultsByTime'] ?? [];
         } catch (AwsException) {
             return null;

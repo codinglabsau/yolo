@@ -66,7 +66,7 @@ class EnvManifest
             }
         }
 
-        return ['domain', 'services', ...$serviceKeys];
+        return ['domain', 'services', 'budget', 'budget.amount', 'budget.strategy', ...$serviceKeys];
     }
 
     /** @var array<string, mixed>|null */

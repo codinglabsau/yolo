@@ -304,9 +304,11 @@ yolo status:environment <environment> [--json]
 
 | Option | Value | Default | Description |
 |---|---|---|---|
-| `--json` | flag | off | Emit the roll-up as JSON (`{environment, apps}`) and exit — machine-readable for the `/yolo` skill and scripts. Exits non-zero if any app has a failed deploy. |
+| `--json` | flag | off | Emit the roll-up as JSON (`{environment, apps, budget}`) and exit — machine-readable for the `/yolo` skill and scripts. Exits non-zero if any app has a failed deploy. |
 
-It renders an **App / Web / Rollout / Version** table — one row per live app — and exits non-zero if any app's deploy is currently failed, so it's usable as an environment-wide health probe. With no live apps it says so and exits zero. `--json` emits `{environment, apps[]}`, each app carrying `{app, exists, tasks, revision, version, rollout}`.
+It renders an **App / Web / Rollout / Version** table — one row per live app — and exits non-zero if any app's deploy is currently failed, so it's usable as an environment-wide health probe. With no live apps it says so and exits zero. `--json` emits `{environment, apps[], budget}`, each app carrying `{app, exists, tasks, revision, version, rollout}`.
+
+It also reports the **env-tier budget** — the other half of the [two-tier budget](/reference/manifest#budget): total month-to-date spend across the whole environment (every app + shared infra, via the `yolo:environment` tag) against the cap declared in the [environment manifest](/reference/manifest). `budget` is `{currency, amount, strategy, spend}`, with `spend` null until the tag is activated for cost allocation (same as [`status:budget`](#yolo-status-budget)).
 
 ---
 
