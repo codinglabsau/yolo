@@ -79,31 +79,7 @@ trait RendersServiceStatus
             return $row;
         }
 
-        $row['exists'] = true;
-        $row['running'] = (int) ($service['runningCount'] ?? 0);
-        $row['desired'] = (int) ($service['desiredCount'] ?? 0);
-        $row['pending'] = (int) ($service['pendingCount'] ?? 0);
-        $row['launch'] = static::launchType($service);
-
-        $primary = collect($service['deployments'] ?? [])->firstWhere('status', 'PRIMARY');
-
-        if ($primary !== null) {
-            $taskDefinitionArn = $primary['taskDefinition'] ?? null;
-
-            $row['primary'] = $primary;
-            $row['rolloutState'] = $primary['rolloutState'] ?? null;
-            $row['rolloutReason'] = $primary['rolloutStateReason'] ?? null;
-            $row['revision'] = static::revisionLabel($taskDefinitionArn);
-
-            try {
-                $taskDefinition = $taskDefinitionArn === null ? [] : Ecs::taskDefinition($taskDefinitionArn);
-                $row['cpu'] = $taskDefinition['cpu'] ?? null;
-                $row['memory'] = $taskDefinition['memory'] ?? null;
-                $row['version'] = static::versionFromImage($taskDefinition['containerDefinitions'][0]['image'] ?? '');
-            } catch (ResourceDoesNotExistException) {
-                // leave the task-def-derived fields null
-            }
-        }
+        $row = [...$row, 'exists' => true, ...static::serviceCore($service)];
 
         $row['scaling'] = static::gatherScaling($group);
         $row['cpuTarget'] = static::cpuTargetFrom($row['scaling']);
@@ -113,6 +89,105 @@ trait RendersServiceStatus
         }
 
         return $row;
+    }
+
+    /**
+     * Map a live ECS service to the status fields shared by the per-group status
+     * and the per-app env roll-up: task counts, launch type, the primary
+     * deployment + its rollout state/revision, and the spec/version read from the
+     * task definition (a missing task def leaves those null, never throws).
+     *
+     * @param  array<string, mixed>  $service
+     * @return array<string, mixed>
+     */
+    protected static function serviceCore(array $service): array
+    {
+        $core = [
+            'running' => (int) ($service['runningCount'] ?? 0),
+            'desired' => (int) ($service['desiredCount'] ?? 0),
+            'pending' => (int) ($service['pendingCount'] ?? 0),
+            'launch' => static::launchType($service),
+            'primary' => null,
+            'rolloutState' => null,
+            'rolloutReason' => null,
+            'revision' => null,
+            'cpu' => null,
+            'memory' => null,
+            'version' => null,
+        ];
+
+        $primary = collect($service['deployments'] ?? [])->firstWhere('status', 'PRIMARY');
+
+        if ($primary === null) {
+            return $core;
+        }
+
+        $taskDefinitionArn = $primary['taskDefinition'] ?? null;
+
+        $core['primary'] = $primary;
+        $core['rolloutState'] = $primary['rolloutState'] ?? null;
+        $core['rolloutReason'] = $primary['rolloutStateReason'] ?? null;
+        $core['revision'] = static::revisionLabel($taskDefinitionArn);
+
+        try {
+            $taskDefinition = $taskDefinitionArn === null ? [] : Ecs::taskDefinition($taskDefinitionArn);
+            $core['cpu'] = $taskDefinition['cpu'] ?? null;
+            $core['memory'] = $taskDefinition['memory'] ?? null;
+            $core['version'] = static::versionFromImage($taskDefinition['containerDefinitions'][0]['image'] ?? '');
+        } catch (ResourceDoesNotExistException) {
+            // leave the task-def-derived fields null
+        }
+
+        return $core;
+    }
+
+    /**
+     * A compact health row per app in an environment — the env-tier roll-up
+     * behind `status:environment`. Each app's web service is the headline (task
+     * counts, rollout, version); apps are discovered from live ECS clusters, and
+     * cluster/service names follow the `yolo-{env}-{app}` convention so no
+     * per-app manifest is needed.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    protected static function gatherEnvStatuses(string $environment): array
+    {
+        return array_map(
+            fn (string $app): array => static::gatherAppRollup($environment, $app),
+            Ecs::liveApps($environment),
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected static function gatherAppRollup(string $environment, string $app): array
+    {
+        $cluster = "yolo-{$environment}-{$app}";
+
+        $row = [
+            'app' => $app,
+            'exists' => false,
+            'running' => 0,
+            'desired' => 0,
+            'pending' => 0,
+            'launch' => 'FARGATE',
+            'primary' => null,
+            'rolloutState' => null,
+            'rolloutReason' => null,
+            'revision' => null,
+            'cpu' => null,
+            'memory' => null,
+            'version' => null,
+        ];
+
+        try {
+            $service = Ecs::service($cluster, "{$cluster}-web");
+        } catch (ResourceDoesNotExistException) {
+            return $row;
+        }
+
+        return [...$row, 'exists' => true, ...static::serviceCore($service)];
     }
 
     /**
@@ -359,6 +434,33 @@ trait RendersServiceStatus
             'cpuTarget' => $status['cpuTarget'],
             'load' => $status['load'],
         ];
+    }
+
+    /**
+     * The machine-readable env roll-up — one compact entry per app for
+     * `status:environment --json`. Pure: flattens the gathered app rows and drops
+     * the raw `primary` deployment blob (DateTimeInterface timestamps).
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    public static function jsonEnvStatuses(array $rows): array
+    {
+        return array_map(static fn (array $row): array => [
+            'app' => $row['app'],
+            'exists' => (bool) $row['exists'],
+            'tasks' => [
+                'running' => (int) $row['running'],
+                'desired' => (int) $row['desired'],
+                'pending' => (int) $row['pending'],
+            ],
+            'revision' => $row['revision'],
+            'version' => $row['version'],
+            'rollout' => [
+                'state' => $row['rolloutState'],
+                'reason' => $row['rolloutReason'],
+            ],
+        ], $rows);
     }
 
     /**
@@ -792,6 +894,51 @@ trait RendersServiceStatus
             static::formatSpec($status['cpu'], $status['memory'], $status['launch']),
             static::formatTasks($status['running'], $status['desired'], $status['pending']),
             static::formatScaling($status['scaling'], $status['group']),
+            $version,
+        ];
+    }
+
+    /**
+     * The env roll-up table — one row per app (its web service's task health,
+     * rollout state and version), for `status:environment`.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<int, string>
+     */
+    protected function envRollupLines(array $rows): array
+    {
+        $buffer = new BufferedOutput($this->output->getVerbosity(), $this->output->isDecorated(), clone $this->output->getFormatter());
+
+        $table = new Table($buffer);
+        $table->setHeaders(['App', 'Web', 'Rollout', 'Version']);
+
+        foreach ($rows as $row) {
+            $table->addRow($this->envRollupRow($row));
+        }
+
+        $table->render();
+
+        return explode("\n", rtrim($buffer->fetch(), "\n"));
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return array<int, string>
+     */
+    protected function envRollupRow(array $row): array
+    {
+        if (! $row['exists']) {
+            return [$row['app'], '<fg=gray>—</>', '<fg=gray>not deployed</>', '<fg=gray>—</>'];
+        }
+
+        $version = $row['version'] === null
+            ? ($row['revision'] ?? '—')
+            : sprintf('%s · %s', $row['revision'] ?? '—', $row['version']);
+
+        return [
+            $row['app'],
+            static::formatTasks($row['running'], $row['desired'], $row['pending']),
+            static::formatRolloutState($row['rolloutState']),
             $version,
         ];
     }

@@ -22,7 +22,9 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | [`build <env>`](#yolo-build) | Build and push the container image |
 | [`deploy <env>`](#yolo-deploy) | Build, then roll out a zero-downtime deploy |
 | [`rollback <env>`](#yolo-rollback) | Re-deploy a previously-built version from ECR, without a build |
-| [`status <env>`](#yolo-status) | Live dashboard of services, load, scaling and any in-progress deploy |
+| [`status <env>`](#yolo-status) | Snapshot of one app's services, load, scaling and any in-progress deploy |
+| [`status:app <env>`](#yolo-status-app) | App-tier status (the same as `status`, under the scope namespace) |
+| [`status:environment <env>`](#yolo-status-environment) | Roll up every app's status across an environment |
 | [`run <env>`](#yolo-run) | Open a shell / run a command in a running container |
 | [`scale <env> [count]`](#yolo-scale) | Adjust the web service's task count out of band |
 | [`services <env>`](#yolo-services) | View and manage the services an environment offers |
@@ -265,6 +267,40 @@ It renders up to four panels, read live from ECS, Application Auto Scaling, Clou
 Below the panels is a clickable deep link to the app's CloudWatch dashboard for the full metrics view.
 
 It **renders once and exits**, returning a non-zero exit code if a deployment is currently failed — so it doubles as a lightweight health probe. For the live, polling cockpit (it redraws and picks up deploys as they start), open [`yolo tui`](/guide/tui); its Status tab is this same picture, kept fresh. `--json` emits the same state as a structured payload rather than the panels — the machine-readable contract the `/yolo` skill (and any script) consumes. Each group's `load` carries both the latest reading and a `series` of its recent datapoints per metric (`load.series.cpu`, `.memory`, `.requests`, `.response`), so a consumer sees the trend, not just a lone number; `queues` lists each queue's `{label, name, backlog}`.
+
+`status` is the **app tier** of a scope-first namespace it shares with `status:app` and `status:environment`, mirroring [`sync:*`](#yolo-sync) and [`audit:*`](#yolo-audit).
+
+---
+
+## `yolo status:app`
+
+The app-tier status under the scope-first namespace — **identical to bare [`status`](#yolo-status)** (the app scope is the default). It exists so `status:app` and `status:environment` read as a pair, the way `sync:*` and `audit:*` do.
+
+```bash
+yolo status:app <environment> [--json]
+```
+
+Arguments and options as [`status`](#yolo-status).
+
+---
+
+## `yolo status:environment`
+
+Roll up **every app's status** across an environment — a compact health row per app (its web service's task counts, rollout state and version), discovered from the live ECS clusters in the environment's `yolo-{env}-` namespace. The per-app detail (load, scaling, queues) is [`status`](#yolo-status) / [`status:app`](#yolo-status-app).
+
+```bash
+yolo status:environment <environment> [--json]
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `environment` | yes | The environment name |
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--json` | flag | off | Emit the roll-up as JSON (`{environment, apps}`) and exit — machine-readable for the `/yolo` skill and scripts. Exits non-zero if any app has a failed deploy. |
+
+It renders an **App / Web / Rollout / Version** table — one row per live app — and exits non-zero if any app's deploy is currently failed, so it's usable as an environment-wide health probe. With no live apps it says so and exits zero. `--json` emits `{environment, apps[]}`, each app carrying `{app, exists, tasks, revision, version, rollout}`.
 
 ---
 
