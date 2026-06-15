@@ -2,6 +2,7 @@
 
 namespace Codinglabs\Yolo\Steps\Build\Fargate;
 
+use RuntimeException;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
@@ -44,6 +45,15 @@ class GenerateSupervisorConfigStep implements Step
         // supervisord program is added by config() for the same gate.
         if (Manifest::isAutoscaling()) {
             $this->writeEmitterScript();
+
+            // Octane (worker mode) only registers FrankenPHP's worker metrics when Caddy
+            // metrics are on, and octane:start ignores the container's CADDY_GLOBAL_OPTIONS
+            // — so YOLO ships its own Caddyfile (the app's Octane stub + `servers { metrics
+            // }`) that octane:start runs via --caddyfile (ProcessCommands::web). Classic
+            // mode has no Octane stub and never passes --caddyfile, so it's skipped.
+            if (Manifest::usesOctane()) {
+                $this->writeCaddyfile();
+            }
         }
 
         // A standalone queue only needs supervisord when it co-hosts the scheduler
@@ -118,6 +128,64 @@ class GenerateSupervisorConfigStep implements Step
         $path = Paths::build('docker/yolo-saturation.php');
         $this->filesystem->ensureDirectoryExists(dirname($path));
         $this->filesystem->put($path, $script);
+    }
+
+    /**
+     * Write the web Caddyfile into the build context for an autoscaling Octane app.
+     * Burst scaling needs FrankenPHP's worker metrics, which Caddy only collects when
+     * the `servers { metrics }` global option is set — and octane:start rebuilds the
+     * CADDY_GLOBAL_OPTIONS env var YOLO would use to inject it, so a task env var can't
+     * turn metrics on. The surviving channel is a custom Caddyfile passed to
+     * octane:start via --caddyfile (ProcessCommands::web). Rather than carry a full copy
+     * of Octane's stub (which would drift across Octane versions), this reads the app's
+     * OWN installed stub and adds only the one metrics line, so it stays in lock-step
+     * with whatever Octane the image ships.
+     */
+    protected function writeCaddyfile(): void
+    {
+        $stub = Paths::base('vendor/laravel/octane/src/Commands/stubs/Caddyfile');
+
+        if (! $this->filesystem->exists($stub)) {
+            throw new RuntimeException(
+                'Build aborted: web autoscaling needs FrankenPHP metrics, enabled through a '
+                . 'Caddyfile built from Octane\'s stub — but '
+                . 'vendor/laravel/octane/src/Commands/stubs/Caddyfile is missing. Run '
+                . '`composer install` so laravel/octane is present before building, or turn '
+                . 'web autoscaling off.'
+            );
+        }
+
+        $path = Paths::build('docker/Caddyfile');
+        $this->filesystem->ensureDirectoryExists(dirname($path));
+        $this->filesystem->put($path, $this->injectMetrics((string) $this->filesystem->get($stub)));
+    }
+
+    /**
+     * Add the `servers { metrics }` global option to a Caddyfile. A Caddyfile's global
+     * options block is its leading block — the only one whose opener is a bare `{` — so
+     * the directive is inserted just inside it. A stub that already enables metrics (a
+     * future Octane, or a re-run) is returned untouched; a stub with no global block
+     * hard-fails rather than silently shipping a metrics-less Caddyfile that would leave
+     * burst scaling dark.
+     */
+    protected function injectMetrics(string $caddyfile): string
+    {
+        if (preg_match('/servers\s*\{[^}]*\bmetrics\b/s', $caddyfile) === 1) {
+            return $caddyfile;
+        }
+
+        $count = 0;
+        $injected = preg_replace('/^\{$/m', "{\n\tservers {\n\t\tmetrics\n\t}", $caddyfile, 1, $count);
+
+        if ($injected === null || $count !== 1) {
+            throw new RuntimeException(
+                'Build aborted: could not find the Caddyfile global options block to enable '
+                . 'FrankenPHP metrics (Octane\'s stub format may have changed). Refusing to '
+                . 'ship a build that would silently leave burst scaling dark.'
+            );
+        }
+
+        return $injected;
     }
 
     /**
