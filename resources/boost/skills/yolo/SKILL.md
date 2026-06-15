@@ -1,0 +1,117 @@
+---
+name: yolo
+description: Operate a YOLO-deployed Laravel app on AWS Fargate — read live service/infra state and reason about health, drift, scaling and cost. Use when asked to check, audit, diagnose, or propose changes to a YOLO environment (status, deploys, autoscaling, infra drift, manifest hygiene). Read-first; every mutation is human-gated.
+allowed-tools:
+  - Bash
+  - Read
+  - Grep
+  - Glob
+  - Edit
+  - Write
+---
+
+# YOLO
+
+[YOLO](https://github.com/codinglabsau/yolo) deploys Laravel apps to **AWS Fargate (ECS)**. This skill is the *brain*; the `vendor/bin/yolo` CLI is a **dumb data-pipe**. You read its machine-readable output, reason about it, and **propose** changes — you never let YOLO act on its own, and **YOLO never calls Claude**. You are the only agent in this loop.
+
+## The one rule that matters
+
+**Read freely. Never mutate AWS without explicit human approval.**
+
+- **Safe to run unprompted** (read-only, no AWS writes): `status --json`, `audit --json`, `services --json`, `sync <env> --check`.
+- **Mutations — never run these yourself.** `sync` (apply), `deploy`, `rollback`, `scale`, `env:push`, `environment:*:push`, `services --add/--remove/--set`. Prepare them, explain them, and hand them to the human to run — or land the change as a **PR** (edit `yolo.yml`, open the PR) and let a human merge and deploy.
+- Even with approval, honour YOLO's own confirm gates — don't reach for `--force`/`-f` unless the human explicitly asked for an unattended apply.
+
+This mirrors the operator's standing rule: infrastructure commands never run against a real account without explicit confirmation.
+
+## Prerequisites
+
+- `codinglabsau/yolo` installed (`vendor/bin/yolo` exists) and a `yolo.yml` manifest in the project root.
+- AWS auth resolves outside CI from `YOLO_<ENV>_AWS_PROFILE` in `.env`; YOLO STS-verifies the profile matches the manifest `account-id` before any call. If a command errors on auth, surface it — don't try to "fix" credentials.
+- `<env>` is a key under `environments` in `yolo.yml` (usually `production` / `staging`). Read the manifest first if you don't know the env names.
+
+## The data surface
+
+These are your eyes. All exit non-zero on a problem, so they're scriptable.
+
+### `yolo status <env> --json`
+
+Live ECS / Auto Scaling / CloudWatch state. **Exits non-zero if a deployment is currently failed.**
+
+```json
+{
+  "app": "myapp",
+  "environment": "production",
+  "groups": [
+    {
+      "group": "web",
+      "exists": true,
+      "tasks": { "running": 3, "desired": 3, "pending": 0 },
+      "spec": { "cpu": "512", "memory": "1024", "launch": "FARGATE" },
+      "revision": "web:42",
+      "version": "26.24.1.0930",
+      "rollout": { "state": "COMPLETED", "reason": null },
+      "scaling": { "min": 1, "max": 4, "policies": ["cpu 65%", "req 1200"] },
+      "cpuTarget": 65,
+      "load": { "cpu": 18.4, "memory": 41.2, "requestRate": 7.1, "responseTime": 0.12 }
+    }
+  ]
+}
+```
+
+One object per service group (`web` / `queue` / `scheduler`). Health signals: `tasks.running` vs `tasks.desired`, `rollout.state`, and `load` against `cpuTarget`.
+
+### `yolo audit <env> --json`
+
+Ownership/inventory check (not a config check). Flags anything tagged into the env's namespace that YOLO can't account for.
+
+```json
+{
+  "environment": "production",
+  "liveApps": ["myapp", "otherapp"],
+  "okCount": 23,
+  "unexpectedCount": 1,
+  "resources": [
+    {
+      "scope": "app",
+      "status": "unexpected",
+      "type": "AWS::S3::Bucket",
+      "name": "stray-bucket",
+      "app": null,
+      "reason": "no ownership tag",
+      "arn": "arn:aws:s3:::stray-bucket"
+    }
+  ]
+}
+```
+
+`status` is `ok` or `unexpected`; `reason` on an unexpected row is one of `no ownership tag`, `service no longer provisioned`, `app cluster gone`. `--unexpected` narrows to just the rows needing attention. Scope-narrow with `audit:environment <env>` / `audit:app <env> <app>`.
+
+### `yolo sync <env> --check`
+
+Read-only plan pass. Prints the full diff (Will create / Pending changes / Skipping) and **exits non-zero when infra has drifted** from the manifest (zero when in sync). This is the drift detector — parse the printed plan, trust the exit code.
+
+### `yolo services <env> --json`
+
+The service-lifecycle gate as data: which env-shared services (IVS, Typesense, …) are offered and which apps claim them.
+
+## Workflows
+
+**Bare `/yolo` — full sweep.** Read the manifest for env names, then for each env run `status --json` + `audit --json` (+ `sync --check` for drift). Report a tight health summary: per-group task health, any in-flight or failed rollout, autoscaling headroom (load vs `cpuTarget`), unexpected resources, and drift. End with **green / needs-attention** and a short list of any proposals. Change nothing.
+
+**`/yolo <question>` — specific ask.** Pull only the data the question needs (e.g. "is prod scaling ok?" → `status --json`, look at `scaling`/`load`/`cpuTarget`). Answer from the data; cite the numbers.
+
+**`/loop /yolo` — attended copilot.** Quiet when everything's green; speak up only when a signal crosses a line (failed rollout, drift appears, tasks stuck pending, load pinned above target). Stay read-only.
+
+**Proposing a change.** When the data warrants a change (scale bounds, a manifest fix, drift to reconcile): describe *what* and *why* with the numbers behind it, then either (a) hand the human the exact `yolo` command to run, or (b) edit `yolo.yml` and open a PR. One change per PR. Never run the mutation yourself.
+
+## Reasoning notes
+
+- **Scaling.** `scaling.policies` shows the active target-tracking policies; `load.cpu` against `cpuTarget` is the headroom read. Bounds live in the manifest (`tasks.web.autoscaling.min/max`), so a scaling proposal is a manifest edit, applied by the next sync — not a raw `scale` call, unless it's a deliberate out-of-band nudge.
+- **Drift vs inventory.** `sync --check` catches *config* drift (attributes vs manifest). `audit` catches *ownership* surprises (untagged or orphaned resources). They answer different questions — run both for a real sweep.
+- **A failed deploy** shows as `rollout.state` failed and a non-zero `status` exit. YOLO's circuit breaker auto-rolls-back a broken rollout, so a failed state is usually already reverting — confirm with a second read before proposing anything.
+- **Don't infer cost or budget yet** — there's no cost surface in this version. Stick to what the JSON gives you.
+
+## Full reference
+
+The complete command and manifest reference ships as a Boost guideline (`resources/boost/guidelines/yolo.blade.php`) and, for humans, at the [docs site](https://github.com/codinglabsau/yolo). When in doubt about a flag, `vendor/bin/yolo <command> --help`.

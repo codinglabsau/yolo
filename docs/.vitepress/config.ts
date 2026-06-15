@@ -48,6 +48,7 @@ export default defineConfig({
           { text: 'Multi-Tenancy', link: '/guide/multi-tenancy' },
           { text: 'Scaling', link: '/guide/scaling' },
           { text: 'Interactive Dashboard', link: '/guide/tui' },
+          { text: 'The /yolo Skill', link: '/guide/the-yolo-skill' },
           { text: 'CI/CD', link: '/guide/ci-cd' },
         ],
       },
