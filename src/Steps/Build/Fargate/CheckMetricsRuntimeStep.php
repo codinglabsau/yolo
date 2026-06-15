@@ -39,7 +39,7 @@ class CheckMetricsRuntimeStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::isAutoscaling() || ! Manifest::usesOctane()) {
+        if (! Manifest::usesMetricsCaddyfile()) {
             return StepResult::SKIPPED;
         }
 

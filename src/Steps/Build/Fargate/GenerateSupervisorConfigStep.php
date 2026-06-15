@@ -41,19 +41,19 @@ class GenerateSupervisorConfigStep implements Step
         // The web container always runs supervisord (the web server + whatever it hosts).
         $this->writeConfig('docker/supervisord.conf', ServerGroup::WEB);
 
-        // The burst saturation emitter rides the web container only; its
-        // supervisord program is added by config() for the same gate.
+        // The saturation emitter rides with the burst alarm — present wherever the web
+        // tier autoscales (its supervisord program is added by config() for the same
+        // gate). In classic mode no metrics ever flow, so it's an inert no-op there.
         if (Manifest::isAutoscaling()) {
             $this->writeEmitterScript();
+        }
 
-            // Octane (worker mode) only registers FrankenPHP's worker metrics when Caddy
-            // metrics are on, and octane:start ignores the container's CADDY_GLOBAL_OPTIONS
-            // — so YOLO ships its own Caddyfile (the app's Octane stub + `servers { metrics
-            // }`) that octane:start runs via --caddyfile (ProcessCommands::web). Classic
-            // mode has no Octane stub and never passes --caddyfile, so it's skipped.
-            if (Manifest::usesOctane()) {
-                $this->writeCaddyfile();
-            }
+        // The metrics Caddyfile additionally needs Octane (worker mode) — its worker
+        // gauges are the burst signal, and octane:start runs it via --caddyfile
+        // (ProcessCommands::web). The shared gate keeps generation, the flag and the
+        // build preflight (CheckMetricsRuntimeStep) in lock-step.
+        if (Manifest::usesMetricsCaddyfile()) {
+            $this->writeCaddyfile();
         }
 
         // A standalone queue only needs supervisord when it co-hosts the scheduler

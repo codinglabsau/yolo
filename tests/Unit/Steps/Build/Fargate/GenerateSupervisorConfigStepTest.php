@@ -350,3 +350,51 @@ METRICS;
     // emitting a bogus datapoint.
     expect(yolo_parse_saturation("frankenphp_other 1\n"))->toBeNull();
 });
+
+it('does not double-inject metrics when the Octane stub already enables them', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => true]],
+    ]);
+
+    // A future Octane stub that already turns metrics on.
+    file_put_contents(Paths::base('vendor/laravel/octane/src/Commands/stubs/Caddyfile'), <<<'STUB'
+{
+	servers {
+		metrics
+	}
+	{$CADDY_GLOBAL_OPTIONS}
+}
+
+{$CADDY_SERVER_SERVER_NAME} {
+	route {
+		php_server
+	}
+}
+STUB);
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    // Exactly one servers block — the existing one, not a second injected copy.
+    expect(substr_count(file_get_contents(Paths::build('docker/Caddyfile')), 'servers {'))->toBe(1);
+});
+
+it('hard-fails when the Octane stub has no global options block to enable metrics in', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => true]],
+    ]);
+
+    // A stub with no leading global-options block (only a site block) — there's nowhere
+    // safe to add the metrics option, so the build refuses rather than ship it dark.
+    file_put_contents(Paths::base('vendor/laravel/octane/src/Commands/stubs/Caddyfile'), <<<'STUB'
+{$CADDY_SERVER_SERVER_NAME} {
+	route {
+		php_server
+	}
+}
+STUB);
+
+    expect(fn (): mixed => (new GenerateSupervisorConfigStep('testing'))())
+        ->toThrow(RuntimeException::class, 'global options block');
+});
