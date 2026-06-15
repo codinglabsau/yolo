@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Commands\StatusCommand;
+use Codinglabs\Yolo\Commands\StatusAppCommand;
 use Codinglabs\Yolo\Concerns\RendersServiceStatus;
+use Codinglabs\Yolo\Commands\StatusEnvironmentCommand;
 
 // The status dashboard's display logic lives in pure static helpers on the
 // RendersServiceStatus trait, reached here through StatusCommand. They take plain
@@ -330,4 +332,47 @@ it('serialises a not-yet-deployed group without choking on null spec', function 
         'scaling' => null,
         'rollout' => ['state' => null, 'reason' => null],
     ]);
+});
+
+it('registers status:app and status:environment under the scope namespace', function (): void {
+    $app = new StatusAppCommand();
+    expect($app->getName())->toBe('status:app')
+        ->and($app->getDefinition()->hasOption('json'))->toBeTrue();
+
+    $env = new StatusEnvironmentCommand();
+    expect($env->getName())->toBe('status:environment')
+        ->and($env->getDefinition()->hasOption('json'))->toBeTrue()
+        ->and($env->getDefinition()->hasArgument('environment'))->toBeTrue();
+});
+
+it('serialises the env roll-up into a clean json shape, dropping the deployment blob', function (): void {
+    $rows = [[
+        'app' => 'shop',
+        'exists' => true,
+        'running' => 3,
+        'desired' => 3,
+        'pending' => 0,
+        'launch' => 'FARGATE',
+        'primary' => ['createdAt' => new DateTimeImmutable('@1000')],
+        'rolloutState' => 'COMPLETED',
+        'rolloutReason' => null,
+        'revision' => 'web:42',
+        'cpu' => '512',
+        'memory' => '1024',
+        'version' => '20260605-1',
+    ]];
+
+    $json = StatusCommand::jsonEnvStatuses($rows);
+
+    expect($json)->toBe([[
+        'app' => 'shop',
+        'exists' => true,
+        'tasks' => ['running' => 3, 'desired' => 3, 'pending' => 0],
+        'revision' => 'web:42',
+        'version' => '20260605-1',
+        'rollout' => ['state' => 'COMPLETED', 'reason' => null],
+    ]]);
+
+    expect($json[0])->not->toHaveKey('primary');
+    expect(json_encode($json))->toBeJson();
 });
