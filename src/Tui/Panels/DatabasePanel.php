@@ -6,6 +6,7 @@ namespace Codinglabs\Yolo\Tui\Panels;
 
 use Codinglabs\Yolo\Arn;
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Tui\Chart;
 use Codinglabs\Yolo\Tui\Theme;
@@ -93,7 +94,7 @@ class DatabasePanel implements Panel
         }
 
         $header = [...self::details($host, $target), ''];
-        $footer = ['', Theme::Muted->fg('  ' . self::consoleUrl($target))];
+        $footer = ['', Theme::Muted->fg('  ' . Helpers::truncate(self::consoleUrl($target), max(0, $width - 2)))];
 
         $this->bodyHeight = max(0, $height - count($header) - count($footer));
 

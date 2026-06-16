@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Tui\Panels;
 
 use Codinglabs\Yolo\Arn;
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Tui\Chart;
 use Codinglabs\Yolo\Tui\Theme;
@@ -79,7 +80,7 @@ class ServicesPanel implements Panel
                 ...$lines,
                 ...self::typesenseBlock($this->typesense, $width),
                 '',
-                Theme::Muted->fg('  ' . self::consoleUrl($this->typesense['cluster'])),
+                Theme::Muted->fg('  ' . Helpers::truncate(self::consoleUrl($this->typesense['cluster']), max(0, $width - 2))),
             ];
         }
 

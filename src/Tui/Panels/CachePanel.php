@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo\Tui\Panels;
 
 use Codinglabs\Yolo\Arn;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Tui\Chart;
 use Codinglabs\Yolo\Tui\Theme;
 use Aws\Exception\AwsException;
@@ -95,7 +96,7 @@ class CachePanel implements Panel
         }
 
         $header = [...self::details($this->status, $this->endpoint), ''];
-        $footer = ['', Theme::Muted->fg('  ' . (ConsoleUrl::for(Arn::parse($this->arn)) ?? ''))];
+        $footer = ['', Theme::Muted->fg('  ' . Helpers::truncate(ConsoleUrl::for(Arn::parse($this->arn)) ?? '', max(0, $width - 2)))];
 
         $this->bodyHeight = max(0, $height - count($header) - count($footer));
 

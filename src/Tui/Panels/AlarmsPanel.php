@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Codinglabs\Yolo\Tui\Panels;
 
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Tui\Theme;
 use Codinglabs\Yolo\ConsoleUrl;
@@ -58,13 +59,37 @@ class AlarmsPanel implements Panel
 
         $body = $this->alarms === []
             ? [Theme::Muted->fg('  No alarms for this app.')]
-            : $this->alarmLines($this->alarms);
+            : array_map(fn (array $alarm): string => self::alarmRow($alarm, $width), $this->alarms);
 
-        $footer = ['', Theme::Muted->fg('  ' . $this->consoleUrl)];
+        $footer = ['', Theme::Muted->fg('  ' . Helpers::truncate($this->consoleUrl, max(0, $width - 2)))];
 
         $this->bodyHeight = max(0, $height - count($header) - count($footer));
 
         return [...$header, ...$this->viewport->window($body, $this->bodyHeight), ...$footer];
+    }
+
+    /**
+     * One alarm as a single fixed-width row — the state badge, the name and (room
+     * permitting) the reason, truncated to the panel width. A raw CloudWatch
+     * StateReason can run to hundreds of characters; left unbounded it wraps to a
+     * second physical row, the frame overruns the screen, and the terminal scrolls
+     * the global bar + tab bar out of view. (The `status:alarms` command keeps the
+     * full reason — it's one-shot, not a fixed-height frame.)
+     *
+     * @param  array{name: string, state: ?string, reason: ?string}  $alarm
+     */
+    public static function alarmRow(array $alarm, int $width): string
+    {
+        // 2-space indent + the 5-column state badge + a space = 8 fixed columns.
+        $budget = max(10, $width - 8);
+        $name = Helpers::truncate($alarm['name'], $budget);
+        $remaining = $budget - mb_strlen($name);
+
+        $reason = ($alarm['reason'] ?? '') !== '' && $remaining > 4
+            ? Theme::Muted->fg(Helpers::truncate(' — ' . $alarm['reason'], $remaining))
+            : '';
+
+        return '  ' . static::formatAlarmState($alarm['state']) . ' ' . Theme::Text->fg($name) . $reason;
     }
 
     public function hints(): array
