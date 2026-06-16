@@ -133,7 +133,7 @@ class GenerateSupervisorConfigStep implements Step
     /**
      * Write the web Caddyfile into the build context for an autoscaling Octane app.
      * Burst scaling needs FrankenPHP's worker metrics, which Caddy only collects when
-     * the `servers { metrics }` global option is set — and octane:start rebuilds the
+     * its top-level `metrics` global option is set — and octane:start rebuilds the
      * CADDY_GLOBAL_OPTIONS env var YOLO would use to inject it, so a task env var can't
      * turn metrics on. The surviving channel is a custom Caddyfile passed to
      * octane:start via --caddyfile (ProcessCommands::web). Rather than carry a full copy
@@ -161,21 +161,24 @@ class GenerateSupervisorConfigStep implements Step
     }
 
     /**
-     * Add the `servers { metrics }` global option to a Caddyfile. A Caddyfile's global
-     * options block is its leading block — the only one whose opener is a bare `{` — so
-     * the directive is inserted just inside it. A stub that already enables metrics (a
-     * future Octane, or a re-run) is returned untouched; a stub with no global block
-     * hard-fails rather than silently shipping a metrics-less Caddyfile that would leave
-     * burst scaling dark.
+     * Add Caddy's top-level `metrics` global option to a Caddyfile. This — not the
+     * per-server `servers { metrics }` form — is what registers FrankenPHP's worker
+     * gauges (frankenphp_busy_threads / _total_threads) into the global registry the
+     * `/metrics` endpoint serves; the per-server form only surfaces caddy_http_* and
+     * leaves the burst signal dark. A Caddyfile's global options block is its leading
+     * block — the only one whose opener is a bare `{` — so the directive is inserted just
+     * inside it. A stub that already enables metrics (a future Octane, or a re-run) is
+     * returned untouched; a stub with no global block hard-fails rather than silently
+     * shipping a metrics-less Caddyfile that would leave burst scaling dark.
      */
     protected function injectMetrics(string $caddyfile): string
     {
-        if (preg_match('/servers\s*\{[^}]*\bmetrics\b/s', $caddyfile) === 1) {
+        if (preg_match('/^\s*metrics\b/m', $caddyfile) === 1) {
             return $caddyfile;
         }
 
         $count = 0;
-        $injected = preg_replace('/^\{$/m', "{\n\tservers {\n\t\tmetrics\n\t}", $caddyfile, 1, $count);
+        $injected = preg_replace('/^\{$/m', "{\n\tmetrics", $caddyfile, 1, $count);
 
         if ($injected === null || $count !== 1) {
             throw new RuntimeException(

@@ -13,7 +13,7 @@ use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
 
 /**
  * Burst autoscaling needs FrankenPHP's worker metrics, which Caddy only collects when
- * the `servers { metrics }` global option is set. octane:start rebuilds the
+ * its top-level `metrics` global option is set. octane:start rebuilds the
  * CADDY_GLOBAL_OPTIONS env var, so YOLO ships a custom Caddyfile carrying that option
  * (GenerateSupervisorConfigStep) and runs it via --caddyfile (ProcessCommands::web).
  * This probes the freshly-built image for that baked Caddyfile and hard-fails the build

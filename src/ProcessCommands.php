@@ -47,7 +47,8 @@ class ProcessCommands
         // the frankenphp child from a fixed whitelist, discarding whatever value the task
         // sets — so a container env var can't switch metrics on. The surviving channel is
         // a custom Caddyfile: GenerateSupervisorConfigStep writes the app's own Octane stub
-        // with `servers { metrics }` added to docker/Caddyfile, and --caddyfile runs it.
+        // with the top-level `metrics` global option added to docker/Caddyfile, and
+        // --caddyfile runs it.
         // Web autoscaling only; classic mode returned above and never reaches here.
         if (Manifest::usesMetricsCaddyfile()) {
             $command .= ' --caddyfile=/app/docker/Caddyfile';

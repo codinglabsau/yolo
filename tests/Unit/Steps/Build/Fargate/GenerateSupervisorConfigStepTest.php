@@ -269,12 +269,14 @@ it('generates a metrics-enabled Caddyfile from the app Octane stub for an autosc
     $caddyfile = file_get_contents(Paths::build('docker/Caddyfile'));
 
     // It's the app's own Octane stub (its placeholders intact, so Octane still fills
-    // them) with only the metrics global option added — not a takeover.
+    // them) with only the top-level `metrics` global option added — not a takeover, and
+    // not the per-server `servers { metrics }` form (that surfaces caddy_http_* but
+    // leaves FrankenPHP's worker gauges — the burst signal — dark).
     expect($caddyfile)
-        ->toContain('servers {')
-        ->toContain('metrics')
+        ->toMatch('/^\s*metrics\s*$/m')
         ->toContain('{$CADDY_GLOBAL_OPTIONS}')
-        ->toContain('frankenphp {');
+        ->toContain('frankenphp {')
+        ->not->toContain('servers {');
 });
 
 it('runs octane against the metrics Caddyfile via --caddyfile when autoscaling', function (): void {
@@ -360,9 +362,7 @@ it('does not double-inject metrics when the Octane stub already enables them', f
     // A future Octane stub that already turns metrics on.
     file_put_contents(Paths::base('vendor/laravel/octane/src/Commands/stubs/Caddyfile'), <<<'STUB'
 {
-	servers {
-		metrics
-	}
+	metrics
 	{$CADDY_GLOBAL_OPTIONS}
 }
 
@@ -375,8 +375,8 @@ STUB);
 
     (new GenerateSupervisorConfigStep('testing'))();
 
-    // Exactly one servers block — the existing one, not a second injected copy.
-    expect(substr_count(file_get_contents(Paths::build('docker/Caddyfile')), 'servers {'))->toBe(1);
+    // Exactly one metrics directive — the existing one, not a second injected copy.
+    expect(preg_match_all('/^\s*metrics\s*$/m', file_get_contents(Paths::build('docker/Caddyfile'))))->toBe(1);
 });
 
 it('hard-fails when the Octane stub has no global options block to enable metrics in', function (): void {
