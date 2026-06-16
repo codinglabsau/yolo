@@ -39,8 +39,10 @@ use Codinglabs\Yolo\Steps\Build\Fargate\GenerateSupervisorConfigStep;
  * its own FrankenPHP worker gauges and puts a high-res datapoint, but only while it's
  * at or above the emit floor and only as often as a scale can act (it snoozes the
  * cooldown after a tripping datapoint — one breach already steps the count out). So
- * CloudWatch is touched only during a spike: near-zero cost, but seconds-fresh rather
- * than the ~30-90s a log-pipeline (EMF) datapoint takes to surface as a metric. The
+ * CloudWatch is touched only during a spike: near-zero cost, and the datapoint lands
+ * synchronously — no riding the logs pipeline, whose flush cadence the ECS awslogs
+ * driver won't let you tune (AWS recommends ≤5s for high-res EMF alarms) and whose
+ * extraction is async, so an EMF datapoint surfaces on a cadence you don't control. The
  * task role carries a single namespace-scoped `cloudwatch:PutMetricData` grant ({@see
  * \Codinglabs\Yolo\Resources\Iam\EcsTaskPolicy}). FrankenPHP's metrics endpoint is
  * enabled by a Caddyfile YOLO generates (the app's Octane stub plus the top-level
