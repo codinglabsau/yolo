@@ -33,13 +33,19 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  *    action is scoped to `yolo-*`, and AttachRolePolicy is conditioned so only a
  *    `yolo-*` customer-managed policy can be attached — the holder can NOT attach
  *    AWS-managed AdministratorAccess to a role and assume it.
- *  - RESIDUAL (the open decision for review): because sync must reconcile its own
- *    yolo-* policies, the tier can rewrite a `yolo-*` policy document and re-attach
- *    it — a determined holder could self-escalate within `yolo-*`. Closing that
- *    fully needs a permissions boundary on every YOLO-created role (so nothing
- *    YOLO mints can exceed the boundary) — deliberately NOT built here; it's
- *    Steve's call whether the blast-radius cap above is sufficient or the boundary
- *    is warranted. See the PR.
+ *  - RESIDUAL (open decision for review): the cap is not airtight against a
+ *    determined holder of the tier. Two self-escalation levers remain, both
+ *    intrinsic to what sync must legitimately do within `yolo-*`:
+ *      (1) sync reconciles its own `yolo-*` policies, so the tier can rewrite a
+ *          `yolo-*` policy document and re-attach it; and
+ *      (2) sync manages `yolo-*` bucket policies (the asset bucket's CloudFront
+ *          OAC policy needs `s3:PutBucketPolicy`), so the same grant lets the tier
+ *          rewrite the config bucket's policy to grant itself `s3:GetObject` on the
+ *          env-shared `.env` it otherwise can't read.
+ *    Closing either fully needs a permissions boundary on every YOLO-created role
+ *    (so nothing YOLO mints can exceed the boundary) — deliberately NOT built here.
+ *    Whether the blast-radius cap above suffices or the boundary is warranted is a
+ *    deployment decision; see the PR.
  *
  * Per-service write *wildcards* (`ecs:Create*`, `ecs:Delete*`, …) mirror
  * ObserverPolicy's read-wildcard discipline: a new sync write within a service

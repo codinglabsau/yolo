@@ -1,6 +1,8 @@
 <?php
 
 use Codinglabs\Yolo\Helpers;
+use Aws\Credentials\Credentials;
+use Aws\Credentials\CredentialsInterface;
 use Codinglabs\Yolo\Concerns\RegistersAws;
 
 /**
@@ -13,7 +15,7 @@ function credentialsProxy(): object
     {
         use RegistersAws;
 
-        public static function credentials(): callable|array|null
+        public static function credentials(): CredentialsInterface|callable|array|null
         {
             return self::awsCredentials();
         }
@@ -38,6 +40,10 @@ beforeEach(function (): void {
 afterEach(function (): void {
     putenv('CI');
     unset($_ENV['CI'], $_SERVER['CI']);
+
+    // The minted-credentials binding is a process singleton — forget it so a
+    // case that binds it can't leak the Credentials object into a sibling.
+    Helpers::app()->forgetInstance('yoloAssumedCredentials');
 });
 
 function setEnv(array $values): void
@@ -55,6 +61,19 @@ it('defers to the SDK default credential chain in CI', function (): void {
     setEnv(['CI' => 'true']);
 
     expect(credentialsProxy()::credentials())->toBeNull();
+});
+
+it('returns the minted tier Credentials object once a tier has assumed a role', function (): void {
+    // After mintTierCredentials() binds the assumed-role Credentials, every client
+    // re-registers against them. awsCredentials() must hand back that object — a
+    // CredentialsInterface, which the SDK accepts but the old callable|array|null
+    // return type rejected with a TypeError (silently swallowed → ran on profile).
+    $credentials = new Credentials('ASIA-ADMIN', 'admin-secret', 'admin-session-token');
+    Helpers::app()->instance('yoloAssumedCredentials', $credentials);
+
+    expect(credentialsProxy()::credentials())
+        ->toBeInstanceOf(CredentialsInterface::class)
+        ->toBe($credentials);
 });
 
 it('requires an AWS profile for a genuinely local run', function (): void {

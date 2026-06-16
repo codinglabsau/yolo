@@ -37,17 +37,17 @@ beforeEach(function (): void {
 
 it('returns true when the manifest account matches the resolved STS account', function (): void {
     writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 
-    bindMockStsClient('848509375702');
+    bindMockStsClient('111111111111');
 
     expect(invokeAccountGuard())->toBeTrue();
 });
 
 it('returns false and surfaces both account IDs + env var name on mismatch', function (): void {
     writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 
     bindMockStsClient('999999999999');
@@ -56,7 +56,7 @@ it('returns false and surfaces both account IDs + env var name on mismatch', fun
 
     $output = test()->promptOutput->fetch();
 
-    expect($output)->toContain('848509375702')
+    expect($output)->toContain('111111111111')
         ->and($output)->toContain('999999999999')
         ->and($output)->toContain('YOLO_TESTING_AWS_PROFILE');
 });

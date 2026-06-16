@@ -28,7 +28,7 @@ beforeEach(function (): void {
 
 it('returns true for a manifest declaring name, region, and account-id', function (): void {
     writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 
     expect(invokeManifestIntegrity())->toBeTrue();
@@ -38,7 +38,7 @@ it('bails when the top-level name is missing', function (): void {
     writeRawManifest([
         'environments' => [
             'testing' => [
-                'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+                'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             ],
         ],
     ]);
@@ -50,7 +50,7 @@ it('bails when the top-level name is missing', function (): void {
 
 it('bails when region is missing', function (): void {
     writeManifest([
-        'account-id' => '848509375702',
+        'account-id' => '111111111111',
     ]);
 
     expect(invokeManifestIntegrity())->toBeFalse();
@@ -70,7 +70,7 @@ it('bails when account-id is missing', function (): void {
 
 it('bails on an unknown environment key', function (): void {
     writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'flavour' => 'spicy',
     ]);
 
@@ -80,7 +80,7 @@ it('bails on an unknown environment key', function (): void {
 
 it('bails on a legacy aws.* namespaced manifest with the fully-qualified key path and a docs link', function (): void {
     writeManifest([
-        'aws' => ['account-id' => '848509375702', 'region' => 'ap-southeast-2'],
+        'aws' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
     ]);
 
     expect(invokeManifestIntegrity())->toBeFalse();
@@ -92,7 +92,7 @@ it('bails on a legacy aws.* namespaced manifest with the fully-qualified key pat
 
 it('bails on a key at the wrong level (cache.store under a misplaced parent)', function (): void {
     writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'cache' => ['store' => 'redis', 'driver' => 'redis'],
     ]);
 
@@ -102,7 +102,7 @@ it('bails on a key at the wrong level (cache.store under a misplaced parent)', f
 
 it('accepts a supported session.driver', function (): void {
     writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'session' => ['driver' => 'database'],
     ]);
 
@@ -111,7 +111,7 @@ it('accepts a supported session.driver', function (): void {
 
 it('bails on an unknown session.driver', function (): void {
     writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'session' => ['driver' => 'mysql'],
     ]);
 
@@ -121,7 +121,7 @@ it('bails on an unknown session.driver', function (): void {
 
 it('bails when session.driver is redis but cache.store is off', function (): void {
     writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'session' => ['driver' => 'redis'],
     ]);
 
@@ -131,7 +131,7 @@ it('bails when session.driver is redis but cache.store is off', function (): voi
 
 it('accepts session.driver redis when cache.store is redis', function (): void {
     writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2', 'cache' => ['store' => 'redis'],
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'cache' => ['store' => 'redis'],
         'session' => ['driver' => 'redis'],
     ]);
 
@@ -140,7 +140,7 @@ it('accepts session.driver redis when cache.store is redis', function (): void {
 
 it('accepts a services list of known service names', function (): void {
     writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'services' => ['ivs'],
     ]);
 
@@ -149,7 +149,7 @@ it('accepts a services list of known service names', function (): void {
 
 it('bails on an unknown service name', function (): void {
     writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'services' => ['ivs', 'memcached'],
     ]);
 
@@ -159,7 +159,7 @@ it('bails on an unknown service name', function (): void {
 
 it('bails when services carries config — service shape belongs in the environment manifest', function (): void {
     writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'services' => ['ivs' => ['log-retention-days' => 30]],
     ]);
 
@@ -171,7 +171,7 @@ it('bails when services carries config — service shape belongs in the environm
 
 it('bails when services is not a list at all', function (): void {
     writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'services' => 'ivs',
     ]);
 
@@ -181,7 +181,7 @@ it('bails when services is not a list at all', function (): void {
 
 it('bails on duplicate services entries', function (): void {
     writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'services' => ['ivs', 'ivs'],
     ]);
 
@@ -191,7 +191,7 @@ it('bails on duplicate services entries', function (): void {
 
 it('bails on the removed ivs key — services: [ivs] replaced it', function (): void {
     writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'ivs' => true,
     ]);
 
@@ -201,7 +201,7 @@ it('bails on the removed ivs key — services: [ivs] replaced it', function (): 
 
 it('bails on the removed mediaconvert key — services: [mediaconvert] replaced it', function (): void {
     writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'mediaconvert' => true,
     ]);
 
@@ -211,7 +211,7 @@ it('bails on the removed mediaconvert key — services: [mediaconvert] replaced 
 
 it('accepts every known service as a consumed service', function (): void {
     writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'services' => ['ivs', 'mediaconvert', 'rekognition'],
     ]);
 
@@ -220,7 +220,7 @@ it('accepts every known service as a consumed service', function (): void {
 
 it('accepts the known shape of every task group', function (): void {
     writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => [
             'web' => [
                 'port' => 8000, 'cpu' => '512', 'memory' => '1024', 'platform' => 'linux/amd64',
@@ -244,7 +244,7 @@ it('accepts the known shape of every task group', function (): void {
 
 it('bails on an unrecognised key inside a task group', function (): void {
     writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['nonsense' => true]],
     ]);
 
@@ -254,7 +254,7 @@ it('bails on an unrecognised key inside a task group', function (): void {
 
 it('bails when the scheduler rides a queue explicitly set to scale to zero', function (): void {
     writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => [], 'queue' => ['min' => 0]],
     ]);
 
@@ -267,7 +267,7 @@ it('bails when the scheduler rides a queue explicitly set to scale to zero', fun
 
 it('accepts a scheduler-hosting queue with a standing floor of one', function (): void {
     writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => [], 'queue' => ['min' => 1]],
     ]);
 
@@ -276,7 +276,7 @@ it('accepts a scheduler-hosting queue with a standing floor of one', function ()
 
 it('accepts a scheduler-hosting queue with no explicit floor (defaults to one)', function (): void {
     writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => [], 'queue' => []],
     ]);
 
@@ -285,7 +285,7 @@ it('accepts a scheduler-hosting queue with no explicit floor (defaults to one)',
 
 it('accepts a scale-to-zero queue when the scheduler is its own service', function (): void {
     writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => [], 'queue' => ['min' => 0], 'scheduler' => []],
     ]);
 
@@ -294,7 +294,7 @@ it('accepts a scale-to-zero queue when the scheduler is its own service', functi
 
 it('accepts a task-role-policies list', function (): void {
     writeManifest([
-        'account-id' => '848509375702', 'region' => 'ap-southeast-2',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'task-role-policies' => ['arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess'],
     ]);
 
@@ -305,7 +305,7 @@ it('rejects the reserved app name `services` — it collides with the env servic
     file_put_contents(BASE_PATH . '/yolo.yml', Yaml::dump([
         'name' => 'services',
         'environments' => [
-            'testing' => ['account-id' => '848509375702', 'region' => 'ap-southeast-2'],
+            'testing' => ['account-id' => '111111111111', 'region' => 'ap-southeast-2'],
         ],
     ], 10, 2));
     Helpers::app()->instance('environment', 'testing');
