@@ -136,17 +136,13 @@ class ObserverPolicy implements Resource, SynchronisesConfiguration
                         'route53:List*',
                         'acm:Describe*',
                         'acm:List*',
-                        // observability
+                        // observability — CloudWatch metrics + EventBridge. The
+                        // CloudWatch Logs reads live in logsStatements() (their own
+                        // statement) so the per-app observer variant can fence log
+                        // content to one app's group.
                         'cloudwatch:Describe*',
                         'cloudwatch:Get*',
                         'cloudwatch:List*',
-                        'logs:Describe*',
-                        'logs:Get*',
-                        // FilterLogEvents is NOT a Get* action — the Logs tab
-                        // (status:logs) tails a group's streams through it, so the
-                        // tier would AccessDenied without this.
-                        'logs:Filter*',
-                        'logs:ListTagsForResource',
                         'events:Describe*',
                         'events:List*',
                         // cost — month-to-date spend by app for the budget read
@@ -194,6 +190,20 @@ class ObserverPolicy implements Resource, SynchronisesConfiguration
                     ],
                 ],
                 [
+                    // Grant-group reads, scoped to yolo-* groups. The deploy-time
+                    // `sync --check` gate runs every sync step's plan pass under
+                    // this read tier (the deployer role carries this policy),
+                    // including the group steps — so the read tier must inspect the
+                    // groups + their inline assume policy without an AccessDenied.
+                    'Effect' => 'Allow',
+                    'Resource' => sprintf('arn:aws:iam::%s:group/yolo-*', $accountId),
+                    'Action' => [
+                        'iam:GetGroup',
+                        'iam:GetGroupPolicy',
+                        'iam:ListGroupPolicies',
+                    ],
+                ],
+                [
                     // Bucket-level configuration reads (tagging, versioning, policy,
                     // CORS, lifecycle, public-access-block, …) the plan diffs — scoped
                     // to YOLO-named buckets by the bucket ARN, which excludes object
@@ -221,6 +231,35 @@ class ObserverPolicy implements Resource, SynchronisesConfiguration
                     'Action' => [
                         's3:GetObject',
                     ],
+                ],
+                ...$this->logsStatements(),
+            ],
+        ];
+    }
+
+    /**
+     * CloudWatch Logs reads, isolated in their own statement(s) so the per-app
+     * variant can override them. The env observer reads log content across the
+     * whole account-wide log surface (Describe/Get/Filter on "*", since
+     * DescribeLogGroups has no resource-level form); {@see AppObserverPolicy}
+     * overrides this to fence the *content* reads to one app's log group — the
+     * only observer read AWS lets you scope to a resource.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function logsStatements(): array
+    {
+        return [
+            [
+                'Effect' => 'Allow',
+                'Resource' => '*',
+                'Action' => [
+                    'logs:Describe*',
+                    'logs:Get*',
+                    // FilterLogEvents is NOT a Get* action — the Logs tab
+                    // (status:logs) tails a group's streams through it.
+                    'logs:Filter*',
+                    'logs:ListTagsForResource',
                 ],
             ],
         ];

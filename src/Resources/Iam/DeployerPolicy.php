@@ -212,32 +212,30 @@ class DeployerPolicy implements Resource, SynchronisesConfiguration
                 ],
             ],
             [
-                // Pull the environment file (build) and push the public asset tree
-                // (deploy) — object operations on the config + asset buckets.
+                // Push the public asset tree (deploy) — write-only on the per-deploy
+                // builds/{version}/ prefix. s3:PutObject authorises the whole
+                // multipart chain (CreateMultipartUpload / UploadPart /
+                // CompleteMultipartUpload) plus the immutable CacheControl;
+                // abort + list-parts cover a Transfer-manager retry. No read, no
+                // ListBucket, no GetBucketLocation: PushAssetsToS3Step streams local
+                // files up through a region-pinned client and never reads or lists
+                // the destination.
                 'Effect' => 'Allow',
-                'Resource' => [
-                    sprintf('%s/*', $assetBucketArn),
-                    sprintf('%s/*', $configBucketArn),
-                ],
+                'Resource' => sprintf('%s/builds/*', $assetBucketArn),
                 'Action' => [
-                    's3:GetObject',
                     's3:PutObject',
                     's3:AbortMultipartUpload',
                     's3:ListMultipartUploadParts',
                 ],
             ],
             [
-                // Bucket-level operations the asset transfer + env pull need.
+                // Pull the environment file (build) — read-only on exactly this app's
+                // env-file object. RetrieveEnvFileStep GetObjects one key; it never
+                // writes the config bucket (env:push is a separate, non-deploy
+                // command) and never lists it.
                 'Effect' => 'Allow',
-                'Resource' => [
-                    $assetBucketArn,
-                    $configBucketArn,
-                ],
-                'Action' => [
-                    's3:ListBucket',
-                    's3:ListBucketMultipartUploads',
-                    's3:GetBucketLocation',
-                ],
+                'Resource' => sprintf('%s/%s', $configBucketArn, Paths::s3AppEnvKey()),
+                'Action' => ['s3:GetObject'],
             ],
             [
                 // Publish this app's claim file into the env config bucket on

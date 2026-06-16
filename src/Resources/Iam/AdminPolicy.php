@@ -246,6 +246,35 @@ class AdminPolicy implements Resource, SynchronisesConfiguration
                     ],
                 ],
                 [
+                    // Grant groups (LPX-680): sync provisions and reconciles the
+                    // YOLO grant groups + their inline assume-role policy, and an
+                    // admin manages their membership via `yolo permissions`. Scoped
+                    // to yolo-* groups — the tier can never touch a non-YOLO group.
+                    // AddUserToGroup authorises on the group, so a member of
+                    // yolo-{env}-admins can grant access to others, including admin
+                    // (a deliberate property for a small senior team).
+                    'Effect' => 'Allow',
+                    'Resource' => sprintf('arn:aws:iam::%s:group/yolo-*', $accountId),
+                    'Action' => [
+                        'iam:CreateGroup', 'iam:DeleteGroup', 'iam:GetGroup',
+                        'iam:GetGroupPolicy', 'iam:PutGroupPolicy', 'iam:DeleteGroupPolicy',
+                        'iam:ListGroupPolicies',
+                        'iam:AddUserToGroup', 'iam:RemoveUserFromGroup',
+                    ],
+                ],
+                [
+                    // The picker reads for `yolo permissions`: list IAM users and a
+                    // user's current groups. Unscopeable collection ops with no
+                    // resource-level form, so they sit on "*" — read-only, never a
+                    // write, the one IAM exception to the yolo-* fence.
+                    'Effect' => 'Allow',
+                    'Resource' => '*',
+                    'Action' => [
+                        'iam:ListUsers',
+                        'iam:ListGroupsForUser',
+                    ],
+                ],
+                [
                     // Hand YOLO's task + execution roles to ECS when sync creates a
                     // service / registers a task definition. Env-scoped admin syncs
                     // every app in the environment, so it's the yolo-* role set (the

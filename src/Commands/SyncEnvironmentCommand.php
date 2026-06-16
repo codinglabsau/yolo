@@ -62,6 +62,11 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 Steps\Sync\Environment\SyncAdminPolicyStep::class,
                 Steps\Sync\Environment\SyncAdminRoleStep::class,
                 Steps\Sync\Environment\AttachAdminRolePolicyStep::class,
+                // Grant groups (LPX-680): membership is the access lever. The
+                // env-wide observers + admins groups each allow sts:AssumeRole on
+                // their tier role; YOLO owns the group + policy, never membership.
+                Steps\Sync\Environment\SyncObserversGroupStep::class,
+                Steps\Sync\Environment\SyncAdminsGroupStep::class,
                 // env config bucket + the environment's declaration. The bucket
                 // holds the env manifest (yolo-environment-{environment}.yml) and the env-shared .env;
                 // the manifest is seeded exactly once, then owned by the operator

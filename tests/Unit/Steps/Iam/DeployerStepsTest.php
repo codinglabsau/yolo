@@ -192,12 +192,13 @@ it('reports the policy attachment as synced when it is already attached', functi
     bindRoutedIamClient([
         'ListAttachedRolePolicies' => new Result(['AttachedPolicies' => [
             ['PolicyName' => 'yolo-testing-my-app-deployer-policy', 'PolicyArn' => 'arn:aws:iam::111111111111:policy/yolo-testing-my-app-deployer-policy'],
-            ['PolicyName' => 'yolo-testing-observer', 'PolicyArn' => 'arn:aws:iam::111111111111:policy/yolo-testing-observer'],
+            ['PolicyName' => 'yolo-testing-my-app-observer', 'PolicyArn' => 'arn:aws:iam::111111111111:policy/yolo-testing-my-app-observer'],
         ]]),
     ], $captured);
 
     expect((new AttachDeployerRolePoliciesStep())([]))->toBe(StepResult::SYNCED);
     expect(array_column($captured, 'name'))->not->toContain('AttachRolePolicy');
+    expect(array_column($captured, 'name'))->not->toContain('DetachRolePolicy');
 });
 
 it('attaches the deployer policy to the deployer role', function (): void {
@@ -215,11 +216,11 @@ it('attaches the deployer policy to the deployer role', function (): void {
     expect($attach['args']['PolicyArn'])->toBe('arn:aws:iam::111111111111:policy/yolo-testing-my-app-deployer-policy');
 });
 
-it('attaches the env-shared ObserverPolicy policy so the pre-deploy sync check can read the whole stack', function (): void {
-    // The deploy-time `sync --check` gate plans the whole stack under the deployer
-    // role; the env-shared yolo-{env}-observer policy carries the read surface for
-    // exactly the services YOLO provisions, so a missing read can't AccessDenied-
-    // abort a deploy — and the deployer inherits it without a new direct grant.
+it('attaches the per-app observer policy so the pre-deploy sync check reads env + this app only (logs fenced)', function (): void {
+    // The deploy-time `sync --check` gate plans account -> env -> THIS app under the
+    // deployer role; the per-app yolo-{env}-{app}-observer policy carries that read
+    // surface with log content fenced to this app, so a deploy grant never reads
+    // another app's logs — and a missing read still can't AccessDenied-abort a deploy.
     manifestWithDeployer();
 
     $captured = [];
@@ -236,8 +237,31 @@ it('attaches the env-shared ObserverPolicy policy so the pre-deploy sync check c
 
     expect($attachedArns)->toContain(
         'arn:aws:iam::111111111111:policy/yolo-testing-my-app-deployer-policy',
-        'arn:aws:iam::111111111111:policy/yolo-testing-observer',
+        'arn:aws:iam::111111111111:policy/yolo-testing-my-app-observer',
     );
+});
+
+it('detaches the old env-wide observer policy when reconciling an adopted deployer role', function (): void {
+    // Migration: a deployer adopted before per-app observer carries the env-wide
+    // yolo-{env}-observer. Reconcile detaches it and attaches the app-fenced one,
+    // so the deployer converges to env reads with this app's logs only.
+    manifestWithDeployer();
+
+    $captured = [];
+    bindRoutedIamClient([
+        'ListPolicies' => new Result(['Policies' => [existingDeployerPolicy()]]),
+        'ListAttachedRolePolicies' => new Result(['AttachedPolicies' => [
+            ['PolicyName' => 'yolo-testing-my-app-deployer-policy', 'PolicyArn' => 'arn:aws:iam::111111111111:policy/yolo-testing-my-app-deployer-policy'],
+            ['PolicyName' => 'yolo-testing-observer', 'PolicyArn' => 'arn:aws:iam::111111111111:policy/yolo-testing-observer'],
+        ]]),
+    ], $captured);
+
+    expect((new AttachDeployerRolePoliciesStep())([]))->toBe(StepResult::SYNCED);
+
+    expect(collect($captured)->where('name', 'AttachRolePolicy')->pluck('args.PolicyArn'))
+        ->toContain('arn:aws:iam::111111111111:policy/yolo-testing-my-app-observer');
+    expect(collect($captured)->where('name', 'DetachRolePolicy')->pluck('args.PolicyArn'))
+        ->toContain('arn:aws:iam::111111111111:policy/yolo-testing-observer');
 });
 
 it('does not create a new policy version when the deployer document is unchanged', function (): void {

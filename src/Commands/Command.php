@@ -18,13 +18,16 @@ use Codinglabs\Yolo\Resources\Iam\AdminRole;
 use Codinglabs\Yolo\Contracts\DeployerCommand;
 use Codinglabs\Yolo\Contracts\ReadOnlyCommand;
 use Codinglabs\Yolo\Concerns\HasAfterCallbacks;
+use Codinglabs\Yolo\Contracts\ReadsEnvironment;
 use Codinglabs\Yolo\Resources\Iam\DeployerRole;
 use Codinglabs\Yolo\Resources\Iam\ObserverRole;
+use Codinglabs\Yolo\Resources\Iam\AppObserverRole;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Codinglabs\Yolo\Concerns\ChecksIfCommandsShouldBeRunning;
 use Symfony\Component\Console\Command\Command as SymfonyCommand;
 
+use function Laravel\Prompts\text;
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\warning;
 
@@ -90,9 +93,11 @@ abstract class Command extends SymfonyCommand
 
         // Cap this run to its YOLO tier: mint an assumed-role token scoped to the
         // tier's policy (the developer authenticates as themselves; YOLO can never
-        // exceed the tier). Self-activating + fail-open — a no-op until the tier
-        // role is provisioned.
-        $this->mintTierCredentials();
+        // exceed the tier). Fail-closed — if the cap can't be applied the command
+        // refuses, unless --dangerously-skip-permissions is set.
+        if (($abort = $this->mintTierCredentials()) !== null) {
+            return $abort;
+        }
 
         $exitCode = (int) (Helpers::app()->call([$this, 'handle']) ?: 0);
 
@@ -398,32 +403,61 @@ abstract class Command extends SymfonyCommand
      * so YOLO can never exceed the tier even though the developer authenticated as
      * their (broader) self — privilege escalation impossible by construction.
      *
-     * Self-activating: a no-op until the tier role is provisioned (the developer
-     * keeps running on their profile until they opt in by syncing the role).
-     * Fail-open: any problem minting leaves YOLO on the profile credentials it
-     * already validated, so a misconfigured role/trust never bricks a command.
+     * Fail-closed: there is no "run on the full profile because the role is
+     * missing" path. Assuming the role is the only way through — if it can't be
+     * assumed (a fresh environment with no role yet, a broken trust, a missing
+     * grant) the command refuses and points at the bootstrap flag. The single
+     * deliberate escape is --dangerously-skip-permissions, which skips the cap and
+     * runs on the full profile identity (bootstrap / break-glass / diagnostics).
+     *
+     * Returns null to proceed, or an exit code to abort the command.
      */
-    protected function mintTierCredentials(): void
+    protected function mintTierCredentials(): ?int
     {
         $tier = $this->awsTier();
 
         if (! $tier instanceof Iam) {
-            return;
+            return null;
+        }
+
+        if ($this->skipsPermissions()) {
+            warning('--dangerously-skip-permissions: running UNCAPPED as your full AWS identity. The YOLO permission tier is bypassed.');
+
+            return null;
+        }
+
+        $role = match ($tier) {
+            Iam::OBSERVER_ROLE => $this->observerRole(),
+            Iam::DEPLOYER_ROLE => new DeployerRole(),
+            Iam::ADMIN_ROLE => new AdminRole(),
+            default => null,
+        };
+
+        if (! $role instanceof Resource) {
+            return null;
         }
 
         try {
-            $role = match ($tier) {
-                Iam::OBSERVER_ROLE => new ObserverRole(),
-                Iam::DEPLOYER_ROLE => new DeployerRole(),
-                Iam::ADMIN_ROLE => new AdminRole(),
-                default => null,
-            };
+            // Resolve the ARN first — a missing role fails closed here, before any
+            // MFA prompt, so "role not provisioned" never asks for a code.
+            $roleArn = $role->arn();
+            $sessionName = sprintf('yolo-%s', $tier->value);
 
-            if (! $role instanceof Resource || ! $role->exists()) {
-                return;
+            if ($tier === Iam::ADMIN_ROLE) {
+                if (($mfaSerial = $this->resolveMfaSerial()) === null) {
+                    error(sprintf(
+                        "Refusing to mint the admin tier: no MFA device found for your identity.\n"
+                        . 'Attach an MFA device, or set YOLO_%s_MFA_SERIAL to its ARN. Admin requires MFA so escalating to it is always an explicit human act.',
+                        strtoupper((string) Helpers::environment()),
+                    ));
+
+                    return self::FAILURE;
+                }
+
+                $credentials = Aws::assumeRole($roleArn, $sessionName, $mfaSerial, $this->promptMfaCode());
+            } else {
+                $credentials = Aws::assumeRole($roleArn, $sessionName);
             }
-
-            $credentials = Aws::assumeRole($role->arn(), sprintf('yolo-%s', $tier->value));
 
             Helpers::app()->instance('yoloAssumedCredentials', new Credentials(
                 $credentials['AccessKeyId'],
@@ -433,13 +467,78 @@ abstract class Command extends SymfonyCommand
 
             static::forgetAwsClients();
             $this->registerAwsServices();
+
+            return null;
         } catch (\Throwable $e) {
-            warning(sprintf(
-                'Could not assume the %s role (%s); continuing on the profile credentials.',
-                $tier->value,
+            error(sprintf(
+                "Refusing to run '%s' on your full AWS identity: could not assume %s (%s).\n"
+                . 'Bootstrap a fresh environment once with --dangerously-skip-permissions; otherwise check the role exists and that your identity may assume it.',
+                $this->getName(),
+                $role->name(),
                 $e->getMessage(),
             ));
+
+            return self::FAILURE;
         }
+    }
+
+    /**
+     * The MFA device serial for the admin-tier assume. An explicit
+     * `YOLO_{ENV}_MFA_SERIAL` override wins (no extra IAM permission needed);
+     * otherwise auto-discover the caller's first device (needs
+     * `iam:ListMFADevices`). Null when neither resolves — admin then refuses.
+     */
+    protected function resolveMfaSerial(): ?string
+    {
+        if ($serial = Helpers::keyedEnv('MFA_SERIAL')) {
+            return $serial;
+        }
+
+        return Aws::callerMfaSerial();
+    }
+
+    /**
+     * Prompt for the fresh 6-digit TOTP that gates an admin-tier assume — the
+     * human factor an agent running as the operator can't generate.
+     */
+    protected function promptMfaCode(): string
+    {
+        return text(
+            label: 'MFA code (admin tier)',
+            placeholder: '123456',
+            required: true,
+            validate: fn (string $value): ?string => preg_match('/^\d{6}$/', $value) === 1
+                ? null
+                : 'Enter the 6-digit code from your MFA device.',
+            hint: 'Admin requires MFA — it proves a human, not an agent, is escalating.',
+        );
+    }
+
+    /**
+     * Pick the observer role for a read command. The default is the per-app
+     * observer role (log content fenced to this app's group), so a read grant can
+     * name one app. The env-wide reads — status:environment and every audit verb
+     * (audit tag-queries the whole env) — declare {@see ReadsEnvironment} and cap
+     * to the broader env observer role instead.
+     */
+    protected function observerRole(): Resource
+    {
+        return $this instanceof ReadsEnvironment
+            ? new ObserverRole()
+            : new AppObserverRole();
+    }
+
+    /**
+     * The global --dangerously-skip-permissions break-glass flag: skip the tier
+     * cap and run on the developer's full profile identity. Registered on the
+     * application (see Yolo), so guard against input not yet bound (direct unit
+     * invocation) before reading it.
+     */
+    protected function skipsPermissions(): bool
+    {
+        return isset($this->input)
+            && $this->input->hasOption('dangerously-skip-permissions')
+            && (bool) $this->input->getOption('dangerously-skip-permissions');
     }
 
     protected function argument(string $key)

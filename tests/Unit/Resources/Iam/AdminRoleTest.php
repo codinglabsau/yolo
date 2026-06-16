@@ -26,3 +26,13 @@ it('trusts the account principal via sts:AssumeRole, so a granted operator can a
     // Same-account assumption — never the GitHub OIDC web-identity trust.
     expect($statement['Action'])->not->toBe('sts:AssumeRoleWithWebIdentity');
 });
+
+it('requires MFA to assume — so escalating to admin is always explicit, AWS-enforced', function (): void {
+    $statement = (new AdminRole())->assumeRolePolicyDocument()['Statement'][0];
+
+    // The admin tier is the only one with this condition: a direct AssumeRole
+    // without MFA is denied, so the gate can't be bypassed by going around YOLO.
+    expect($statement['Condition'])->toBe([
+        'Bool' => ['aws:MultiFactorAuthPresent' => 'true'],
+    ]);
+});

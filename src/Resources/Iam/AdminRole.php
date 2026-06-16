@@ -98,6 +98,16 @@ class AdminRole implements Resource, SynchronisesConfiguration
                     'Effect' => 'Allow',
                     'Principal' => ['AWS' => sprintf('arn:aws:iam::%s:root', Aws::accountId())],
                     'Action' => 'sts:AssumeRole',
+                    // The admin tier is the only one that requires MFA to assume —
+                    // so escalating to it is an explicit human act, never implicit.
+                    // YOLO passes a fresh TOTP at mint time (mintTierCredentials),
+                    // which an agent running as the operator can't generate. It's
+                    // AWS-enforced, not a CLI prompt: a direct AssumeRole without
+                    // MFA is denied here, so the gate can't be bypassed by going
+                    // around YOLO. Observer/deployer carry no such condition.
+                    'Condition' => [
+                        'Bool' => ['aws:MultiFactorAuthPresent' => 'true'],
+                    ],
                 ],
             ],
         ];

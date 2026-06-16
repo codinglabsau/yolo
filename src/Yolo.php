@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo;
 
 use Illuminate\Container\Container;
 use Symfony\Component\Console\Application;
+use Symfony\Component\Console\Input\InputOption;
 
 class Yolo
 {
@@ -48,6 +49,9 @@ class Yolo
         // Scale
         Commands\ScaleCommand::class,
 
+        // Access management (team RBAC — edits YOLO grant-group membership)
+        Commands\PermissionsCommand::class,
+
         // Services (the env service gate)
         Commands\ServicesCommand::class,
 
@@ -68,6 +72,16 @@ class Yolo
         Container::setInstance(new Container());
 
         $this->app = new Application('YOLO, so deploy today 🚀', Helpers::version());
+
+        // Global break-glass flag: skip the per-command tier capping and run on the
+        // developer's full profile identity. Registered on the application so every
+        // command accepts it; only the tiered commands act on it (see Command).
+        $this->app->getDefinition()->addOption(new InputOption(
+            'dangerously-skip-permissions',
+            null,
+            InputOption::VALUE_NONE,
+            'Bypass the YOLO permission tier and run as your full AWS identity (uncapped) — bootstrap / break-glass only',
+        ));
 
         $this->registerCommands();
     }
