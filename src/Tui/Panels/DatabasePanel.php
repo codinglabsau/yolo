@@ -16,11 +16,12 @@ use Codinglabs\Yolo\Aws\CloudWatch;
 use Codinglabs\Yolo\Resources\CloudWatch\Dashboard;
 
 /**
- * The app's database at a glance — the RDS instance/cluster behind DB_HOST, with
- * CPU, connections, freeable memory and read latency over the last hour. YOLO
- * doesn't manage the database; it resolves the endpoint from the environment's
- * .env (DB_HOST), so the tab is empty until `yolo env:push` and skips a non-RDS
- * host (external DB, RDS Proxy) it can't read metrics for. Read-only.
+ * The app's database at a glance — the RDS instance/cluster declared in the
+ * manifest (`database.identifier`), with CPU, connections, freeable memory and
+ * read latency over the last hour. YOLO doesn't manage the database; it reads the
+ * identifier from the manifest — never the app's secret `.env`, which the observer
+ * tier this panel runs under can't read anyway — so the tab is empty until a
+ * database is declared. Read-only.
  */
 class DatabasePanel implements Panel
 {
@@ -30,8 +31,6 @@ class DatabasePanel implements Panel
 
     /** @var array{cpu: array<int, float>, connections: array<int, float>, memory: array<int, float>, readLatency: array<int, float>, writeLatency: array<int, float>} */
     private const array EMPTY_SERIES = ['cpu' => [], 'connections' => [], 'memory' => [], 'readLatency' => [], 'writeLatency' => []];
-
-    protected ?string $host = null;
 
     /** @var array{identifier: string, cluster: bool}|null */
     protected ?array $target = null;
@@ -55,8 +54,7 @@ class DatabasePanel implements Panel
 
     public function gather(): void
     {
-        $this->host = Dashboard::databaseHost();
-        $this->target = Dashboard::rdsTarget($this->host);
+        $this->target = Dashboard::rdsTarget();
         $this->series = self::EMPTY_SERIES;
 
         if ($this->target === null) {
@@ -77,23 +75,13 @@ class DatabasePanel implements Panel
 
     public function render(int $width, int $height): array
     {
-        $host = $this->host;
-
-        if ($host === null) {
-            return [Theme::Muted->fg("  No DB_HOST in this environment's .env — run `yolo env:push` first.")];
-        }
-
         $target = $this->target;
 
         if ($target === null) {
-            return [
-                Theme::Text->fg('  ' . $host),
-                '',
-                Theme::Muted->fg('  Not an RDS endpoint (external DB or RDS Proxy) — no metrics to read.'),
-            ];
+            return [Theme::Muted->fg('  No database declared — set `database.identifier` in yolo.yml to chart RDS metrics.')];
         }
 
-        $header = [...self::details($host, $target), ''];
+        $header = [...self::details($target), ''];
         $footer = ['', Theme::Muted->fg('  ' . Helpers::truncate(self::consoleUrl($target), max(0, $width - 2)))];
 
         $this->bodyHeight = max(0, $height - count($header) - count($footer));
@@ -102,16 +90,15 @@ class DatabasePanel implements Panel
     }
 
     /**
-     * The endpoint / identifier / kind summary. Pure.
+     * The identifier / kind summary. Pure.
      *
      * @param  array{identifier: string, cluster: bool}  $target
      * @return array<int, string>
      */
-    public static function details(string $host, array $target): array
+    public static function details(array $target): array
     {
         return [
             Theme::Primary->bold('  database') . Theme::Muted->fg('  ' . ($target['cluster'] ? 'Aurora cluster' : 'instance')),
-            Theme::Muted->fg('  endpoint  ') . Theme::Text->fg($host),
             Theme::Muted->fg('  id        ') . Theme::Text->fg($target['identifier']),
         ];
     }

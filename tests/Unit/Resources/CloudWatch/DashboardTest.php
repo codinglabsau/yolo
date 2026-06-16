@@ -90,19 +90,23 @@ it('names the dashboard per app + environment', function (): void {
     expect((new Dashboard())->name())->toBe('yolo-testing-my-app-dashboard');
 });
 
-it('maps an Aurora endpoint to a cluster target, an instance endpoint to an instance target', function (): void {
-    expect(Dashboard::rdsTarget('my-cluster.cluster-cabc123.ap-southeast-2.rds.amazonaws.com'))
-        ->toBe(['identifier' => 'my-cluster', 'cluster' => true]);
+it('reads the RDS target from the manifest — identifier plus the optional cluster flag (default instance)', function (): void {
+    // Sourced from the manifest, never the app's secret .env, so the dashboard's
+    // writer (admin, barred from reading secrets) and the deploy gate resolve the
+    // SAME target — no identity-dependent drift.
+    writeManifest(['database' => ['identifier' => 'my-cluster', 'cluster' => true]]);
+    expect(Dashboard::rdsTarget())->toBe(['identifier' => 'my-cluster', 'cluster' => true]);
 
-    expect(Dashboard::rdsTarget('my-db.cabc123.ap-southeast-2.rds.amazonaws.com'))
-        ->toBe(['identifier' => 'my-db', 'cluster' => false]);
+    writeManifest(['database' => ['identifier' => 'my-db']]);
+    expect(Dashboard::rdsTarget())->toBe(['identifier' => 'my-db', 'cluster' => false]);
 });
 
-it('returns no RDS target for a non-RDS, proxy or absent host', function (): void {
-    expect(Dashboard::rdsTarget(null))->toBeNull();
-    expect(Dashboard::rdsTarget('127.0.0.1'))->toBeNull();
-    expect(Dashboard::rdsTarget('db.internal.example.com'))->toBeNull();
-    expect(Dashboard::rdsTarget('my-proxy.proxy-cabc.ap-southeast-2.rds.amazonaws.com'))->toBeNull();
+it('returns no RDS target when the manifest declares no database, omitting the section', function (): void {
+    writeManifest([]);
+    expect(Dashboard::rdsTarget())->toBeNull();
+
+    writeManifest(['database' => ['identifier' => '']]);
+    expect(Dashboard::rdsTarget())->toBeNull();
 });
 
 it('parses the CloudWatch dimension suffix out of ELB ARNs', function (): void {

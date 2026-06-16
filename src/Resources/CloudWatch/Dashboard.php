@@ -2,7 +2,6 @@
 
 namespace Codinglabs\Yolo\Resources\CloudWatch;
 
-use Dotenv\Dotenv;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Change;
@@ -28,7 +27,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * service YOLO provisions for the app — the ECS service (web + in-task queue &
  * scheduler), the ALB it sits behind, its SQS queues, the asset CloudFront
  * distribution, its S3 buckets and its log groups — plus the RDS database it
- * connects to (derived deterministically from DB_HOST in the app's env file).
+ * connects to (declared in the manifest as `database.identifier`; see rdsTarget()).
  *
  * A standalone reconciler, NOT a Resource: a dashboard carries no meaningful tags
  * (CloudWatch only tags alarms / Contributor Insights rules) and PutDashboard is a
@@ -38,7 +37,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * change.
  *
  * The widget body is built from a resolved context: names are derived (ECS, SQS,
- * S3, log groups), the RDS identifier comes from the env file, and the three
+ * S3, log groups), the RDS identifier comes from the manifest, and the three
  * AWS-assigned identifiers (the ALB and target-group ARN suffixes and the
  * CloudFront distribution id) are looked up live and their widget groups omitted
  * if the backing resource doesn't exist yet — so on a greenfield first sync those
@@ -159,7 +158,7 @@ class Dashboard
 
     /**
      * Resolve every value the body needs. Names are derived; the RDS identifier
-     * comes from the env; the three AWS-assigned identifiers are looked up live
+     * comes from the manifest; the three AWS-assigned identifiers are looked up live
      * and left null (→ widget omitted) when their resource doesn't exist yet.
      *
      * @return array<string, mixed>
@@ -182,7 +181,7 @@ class Dashboard
             'distributionId' => $web ? static::tryResolve(fn () => CloudFront::distributionByComment((new AssetDistribution())->name())['Id']) : null,
             'queuePrefix' => Helpers::keyedResourceName() . '-',
             'queues' => static::queueNames(),
-            'rds' => static::rdsTarget(static::databaseHost()),
+            'rds' => static::rdsTarget(),
             'buckets' => static::bucketNames(),
             'taskLogGroup' => $web ? (new TaskLogGroup())->name() : null,
             // Each service definition contributes its own context entries —
@@ -253,47 +252,28 @@ class Dashboard
     }
 
     /**
-     * DB_HOST from the app's env file (stored in the config bucket). Returns
-     * null when the env isn't there yet (pre-env:push) — the RDS section is then
-     * simply omitted.
-     */
-    public static function databaseHost(): ?string
-    {
-        try {
-            $body = Aws::s3()->getObject([
-                'Bucket' => Paths::s3ConfigBucket(),
-                'Key' => Paths::s3AppEnvKey(),
-            ])['Body'];
-
-            return Dotenv::parse((string) $body)['DB_HOST'] ?? null;
-        } catch (\Throwable) {
-            return null;
-        }
-    }
-
-    /**
-     * Map an RDS endpoint hostname to its CloudWatch metric target. An Aurora
-     * endpoint (`{cluster}.cluster-{hash}.{region}.rds.amazonaws.com`) keys on
-     * DBClusterIdentifier + Role=WRITER; a plain instance keys on
-     * DBInstanceIdentifier. A non-RDS host (external DB, RDS Proxy, localhost)
-     * returns null so the section is dropped rather than pointing at nothing.
+     * The RDS metric target for the Database section, DECLARED in the manifest
+     * (`database.identifier`, plus `database.cluster: true` for an Aurora cluster
+     * writer — defaults to a plain instance). Read from the manifest, never the
+     * app's secret `.env`: the dashboard is written by `yolo sync` (the admin tier,
+     * deliberately barred from reading secrets) and checked by the deploy gate and
+     * the status observer — so its desired body MUST resolve identically under
+     * every tier, which a secret read can't guarantee. Null when no database is
+     * declared, omitting the section.
      *
      * @return array{identifier: string, cluster: bool}|null
      */
-    public static function rdsTarget(?string $host): ?array
+    public static function rdsTarget(): ?array
     {
-        if ($host === null || ! str_ends_with($host, '.rds.amazonaws.com')) {
-            return null;
-        }
+        $identifier = Manifest::get('database.identifier');
 
-        // RDS Proxy endpoints don't map to a DB metric identifier.
-        if (str_contains($host, '.proxy-')) {
+        if (! is_string($identifier) || $identifier === '') {
             return null;
         }
 
         return [
-            'identifier' => strtok($host, '.'),
-            'cluster' => str_contains($host, '.cluster-'),
+            'identifier' => $identifier,
+            'cluster' => (bool) Manifest::get('database.cluster', false),
         ];
     }
 

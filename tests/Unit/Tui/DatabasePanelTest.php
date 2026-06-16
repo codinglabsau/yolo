@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 use Codinglabs\Yolo\Tui\Panels\DatabasePanel;
 
-it('summarises the endpoint, id and kind', function (): void {
-    $instance = implode("\n", DatabasePanel::details('mydb.abc.ap-southeast-2.rds.amazonaws.com', ['identifier' => 'mydb', 'cluster' => false]));
-    $cluster = implode("\n", DatabasePanel::details('c.cluster-x.ap-southeast-2.rds.amazonaws.com', ['identifier' => 'c', 'cluster' => true]));
+it('summarises the id and kind', function (): void {
+    $instance = implode("\n", DatabasePanel::details(['identifier' => 'mydb', 'cluster' => false]));
+    $cluster = implode("\n", DatabasePanel::details(['identifier' => 'c', 'cluster' => true]));
 
     expect($instance)->toContain('mydb')->toContain('instance')
         ->and($cluster)->toContain('Aurora cluster');
