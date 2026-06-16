@@ -49,10 +49,23 @@ class EnsureInSyncStep implements Step
         $output = Helpers::app('output');
 
         // Buffer the whole sub-plan so an in-sync deploy stays quiet; only a
-        // refusal surfaces the full drift diff sync produced.
+        // refusal — or a crash — surfaces what sync produced.
         $buffer = new BufferedOutput($output->getVerbosity(), $output->isDecorated());
 
-        if ($this->check($environment, $buffer) === SyncCommand::SUCCESS) {
+        try {
+            $result = $this->check($environment, $buffer);
+        } catch (\Throwable $e) {
+            // The plan threw instead of returning a verdict — a plan step crashed
+            // (e.g. an AWS read the deploy identity can't make), and the per-step
+            // detail was already printed into the buffer by the plan runner. Flush
+            // it before the bare "Plan failed for N step(s)" bubbles up, or the
+            // operator is left with no idea which step failed or why.
+            $output->write($buffer->fetch());
+
+            throw $e;
+        }
+
+        if ($result === SyncCommand::SUCCESS) {
             info(sprintf('%s is in sync.', $environment));
 
             return StepResult::SYNCED;

@@ -82,3 +82,25 @@ it('surfaces the sync plan diff before refusing so the operator sees what drifte
 
     expect($output->fetch())->toContain('Pending changes: target group');
 });
+
+it('flushes the buffered sub-plan when a plan step crashes, so the failing step is named not swallowed', function (): void {
+    $output = new BufferedOutput();
+    Helpers::app()->instance('output', $output);
+
+    // The plan runner prints the per-step failure into the (buffered) output, THEN
+    // throws the bare summary. Before the fix the buffer was only flushed on a
+    // drift *return*, so a crashing plan left the operator with just "Plan failed".
+    $step = new class() extends EnsureInSyncStep
+    {
+        #[Override]
+        protected function check(string $environment, OutputInterface $output): int
+        {
+            $output->write('app · Sync s3 bucket — S3Exception: AccessDenied');
+
+            throw new RuntimeException('Plan failed for 1 step(s).');
+        }
+    };
+
+    expect(fn (): StepResult => $step([]))->toThrow(RuntimeException::class, 'Plan failed for 1 step(s).');
+    expect($output->fetch())->toContain('app · Sync s3 bucket — S3Exception: AccessDenied');
+});
