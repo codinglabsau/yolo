@@ -69,56 +69,27 @@ it('names the app bucket from the manifest bucket key', function (): void {
     expect((new S3Bucket())->name())->toBe('my-app-bucket');
 });
 
-it('reconciles the bucket CORS through sync', function (): void {
-    expect(new S3Bucket())->toBeInstanceOf(SynchronisesConfiguration::class);
+it('is create-only — never a SynchronisesConfiguration, so an existing bucket is never reconciled', function (): void {
+    expect(new S3Bucket())->not->toBeInstanceOf(SynchronisesConfiguration::class);
 });
 
-it('applies the managed CORS ruleset when the bucket has none', function (): void {
-    $recorder = bindRecordingAppBucketS3Client(['GetBucketCors' => new Result([])]);
-
-    $changes = (new S3Bucket())->synchroniseConfiguration();
-
-    expect($changes)->toHaveCount(1);
-    expect($changes[0]->attribute)->toBe('cors');
-    expect($changes[0]->from)->toBeNull();
-
-    $put = collect($recorder->captured)->firstWhere('name', 'PutBucketCors');
-    expect($put)->not->toBeNull();
-    expect($put['args']['CORSConfiguration']['CORSRules'])->toBe(managedAppBucketCors());
+it('reconciles no tags on an existing bucket (reference-only)', function (): void {
+    expect((new S3Bucket())->synchroniseTags(apply: true))->toBe([]);
+    expect((new S3Bucket())->synchroniseTags(apply: false))->toBe([]);
 });
 
-it('reports the CORS drift without writing under apply:false', function (): void {
-    $recorder = bindRecordingAppBucketS3Client(['GetBucketCors' => new Result([])]);
-
-    expect((new S3Bucket())->synchroniseConfiguration(apply: false))->toHaveCount(1);
-    expect(array_column($recorder->captured, 'name'))->not->toContain('PutBucketCors');
-});
-
-it('writes nothing when the live CORS already matches the managed ruleset', function (): void {
-    // Guards the ExposeHeaders-omission gotcha: the desired ruleset must round-trip
-    // through GetBucketCors with no phantom drift.
+it('stamps Block Public Access, the managed CORS ruleset and tags at create — and only at create', function (): void {
     $recorder = bindRecordingAppBucketS3Client([
-        'GetBucketCors' => new Result(['CORSRules' => managedAppBucketCors()]),
+        'HeadBucket' => new Result(['@metadata' => ['statusCode' => 200]]), // the BucketExists waiter
     ]);
 
-    expect((new S3Bucket())->synchroniseConfiguration())->toBe([]);
-    expect(array_column($recorder->captured, 'name'))->not->toContain('PutBucketCors');
-});
+    (new S3Bucket())->create();
 
-it('overwrites a Vapor-style CORS config with the managed ruleset', function (): void {
-    // Vapor's default lacks HEAD and MaxAgeSeconds, so YOLO takes ownership.
-    $recorder = bindRecordingAppBucketS3Client([
-        'GetBucketCors' => new Result(['CORSRules' => [[
-            'AllowedOrigins' => ['*'],
-            'AllowedMethods' => ['GET', 'PUT'],
-            'AllowedHeaders' => ['*'],
-        ]]]),
-    ]);
-
-    $changes = (new S3Bucket())->synchroniseConfiguration();
-
-    expect($changes)->toHaveCount(1);
-    expect($changes[0]->from)->toBe('present');
+    expect(array_column($recorder->captured, 'name'))
+        ->toContain('CreateBucket')
+        ->toContain('PutPublicAccessBlock')
+        ->toContain('PutBucketTagging')
+        ->toContain('PutBucketCors');
 
     $put = collect($recorder->captured)->firstWhere('name', 'PutBucketCors');
     expect($put['args']['CORSConfiguration']['CORSRules'])->toBe(managedAppBucketCors());

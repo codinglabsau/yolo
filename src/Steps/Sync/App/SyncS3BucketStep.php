@@ -21,10 +21,11 @@ class SyncS3BucketStep implements Step
             return StepResult::SKIPPED;
         }
 
-        // Create-or-sync: an existing bucket has its CORS (browser-upload ruleset)
-        // and tags reconciled; Block Public Access stays create-only (it lives in
-        // S3Bucket::create(), never in the sync path), so a live public bucket is
-        // never flipped under foot.
+        // Create-only: a missing bucket is created with its attributes (BPA, CORS,
+        // tags) set once; an existing or brought-in bucket is left completely
+        // alone — no reconcile — so YOLO needs no S3 permission on a bucket it
+        // doesn't own (S3Bucket::synchroniseTags is a no-op and it's not a
+        // SynchronisesConfiguration, so syncResource is a clean no-op when it exists).
         return $this->syncResource(new S3Bucket(), $options);
     }
 }

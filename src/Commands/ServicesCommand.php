@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\EnvManifest;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Services\Lifecycle;
+use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Input\InputArgument;
 use Codinglabs\Yolo\Concerns\ManagesEnvironmentFiles;
@@ -166,24 +167,73 @@ class ServicesCommand extends Command
 
     protected function manage(Service $service): void
     {
-        // App-side services are claimed in the consuming app's own yolo.yml (a
-        // per-app IAM grant), not offered at the environment tier — there's no env
-        // offer to edit here, so point the operator at the right place.
-        if (! $service->definition()->envBacked()) {
-            note(sprintf(
-                "%s is an app-side service — enable it by adding \"%s\" to environments.%s.services in this app's yolo.yml, then deploy.",
-                $service->value,
-                $service->value,
+        $enabled = Manifest::usesService($service);
+
+        $action = select(label: $service->value, options: array_filter([
+            'toggle' => $enabled ? 'Disable for this app' : 'Enable for this app',
+            'offer' => $service->definition()->envBacked() ? 'Configure environment offer…' : null,
+            'cancel' => 'Cancel',
+        ]));
+
+        match ($action) {
+            'toggle' => $this->toggleClaim($service, $enabled),
+            'offer' => $this->manageOffer($service),
+            default => null,
+        };
+    }
+
+    /**
+     * Enable or disable a service for THIS app — write its claim into the app's
+     * yolo.yml services list, then offer to sync the change to AWS straight away.
+     */
+    protected function toggleClaim(Service $service, bool $enabled): void
+    {
+        $services = Manifest::services();
+
+        $next = $enabled
+            ? array_values(array_diff($services, [$service->value]))
+            : array_values(array_unique([...$services, $service->value]));
+
+        if (! Manifest::setServiceList($next)) {
+            error(sprintf(
+                "Couldn't edit yolo.yml automatically — set environments.%s.services to [%s] by hand, then run `yolo sync:app %s`.",
+                $this->argument('environment'),
+                implode(', ', $next),
                 $this->argument('environment'),
             ));
 
             return;
         }
 
+        info(sprintf('%s %s for this app.', $enabled ? 'Disabled' : 'Enabled', $service->value));
+
+        $this->offerToSync();
+    }
+
+    /** Tell the operator to sync — and, if they want, run it right now. */
+    protected function offerToSync(): void
+    {
+        $environment = $this->argument('environment');
+
+        if (! confirm(label: sprintf('Run `yolo sync:app %s` now to apply?', $environment), default: true)) {
+            note(sprintf('Run `yolo sync:app %s` when you\'re ready to apply the change.', $environment));
+
+            return;
+        }
+
+        $this->getApplication()?->find('sync:app')->run(
+            new ArrayInput(['environment' => $environment]),
+            $this->output,
+        );
+    }
+
+    /** Configure the environment-tier offer (shape) of an env-backed service. */
+    protected function manageOffer(Service $service): void
+    {
         $offered = EnvManifest::has($service->envManifestKey());
 
-        $action = select(label: $service->value, options: array_filter([
-            'edit' => $offered ? 'Edit the environment offer' : 'Offer in this environment',
+        $action = select(label: $service->value . ' · environment offer', options: array_filter([
+            'edit' => $offered ? 'Edit the offer' : 'Offer in this environment',
             'remove' => $offered ? 'Withdraw the offer' : null,
             'cancel' => 'Cancel',
         ]));

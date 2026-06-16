@@ -66,6 +66,13 @@ function s3NotFound(): S3Exception
     ]);
 }
 
+function s3Forbidden(): S3Exception
+{
+    return new S3Exception('Forbidden', new Command('HeadBucket'), [
+        'response' => new Response(403),
+    ]);
+}
+
 beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
@@ -202,44 +209,7 @@ it('applies the browser-upload CORS to a newly created app bucket', function ():
         ->toContain('PutBucketCors');
 });
 
-it('reconciles CORS onto an existing app bucket without flipping public access', function (): void {
-    writeManifest([
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
-    ]);
-
-    $captured = [];
-
-    bindMockS3Client([
-        'HeadBucket' => new Result(),       // exists
-        'GetBucketCors' => new Result([]),  // no CORS yet → drift
-    ], $captured);
-
-    expect((new SyncS3BucketStep())([]))->toBe(StepResult::SYNCED);
-    expect(array_column($captured, 'name'))
-        ->toContain('PutBucketCors')
-        ->not->toContain('PutPublicAccessBlock');   // BPA stays create-only
-});
-
-it('reports CORS drift but writes nothing on a dry-run of an existing app bucket', function (): void {
-    writeManifest([
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
-    ]);
-
-    $captured = [];
-
-    bindMockS3Client([
-        'HeadBucket' => new Result(),       // exists
-        'GetBucketCors' => new Result([]),  // drift
-    ], $captured);
-
-    expect((new SyncS3BucketStep())(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC);
-    expect(array_column($captured, 'name'))
-        ->not->toContain('PutBucketCors')
-        ->not->toContain('PutPublicAccessBlock')
-        ->not->toContain('PutBucketTagging');
-});
-
-it('writes no CORS when an existing app bucket already matches the managed ruleset', function (): void {
+it('leaves an existing app bucket completely untouched — create-only, never reconciled', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
     ]);
@@ -248,16 +218,39 @@ it('writes no CORS when an existing app bucket already matches the managed rules
 
     bindMockS3Client([
         'HeadBucket' => new Result(),   // exists
-        'GetBucketCors' => new Result(['CORSRules' => [[
-            'AllowedOrigins' => ['*'],
-            'AllowedMethods' => ['GET', 'PUT', 'HEAD'],
-            'AllowedHeaders' => ['*'],
-            'MaxAgeSeconds' => 3600,
-        ]]]),
     ], $captured);
 
     expect((new SyncS3BucketStep())([]))->toBe(StepResult::SYNCED);
-    expect(array_column($captured, 'name'))->not->toContain('PutBucketCors');
+
+    // Reference-only after create: no attribute is read or written on an existing
+    // bucket — not CORS, not tags, not BPA — so the tier needs no S3 perm on it.
+    expect(array_column($captured, 'name'))
+        ->not->toContain('GetBucketCors')
+        ->not->toContain('PutBucketCors')
+        ->not->toContain('GetBucketTagging')
+        ->not->toContain('PutBucketTagging')
+        ->not->toContain('PutPublicAccessBlock');
+});
+
+it('treats a 403 on the existence check as an unowned bucket and leaves it alone', function (): void {
+    // The capped admin tier has no S3 perms on a custom-named (non yolo-*) bucket,
+    // so HeadBucket comes back 403 — which means "exists, not ours". The step must
+    // skip it cleanly, never hard-fail the sync (this is the real codinglabsio case).
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'codinglabsio',
+    ]);
+
+    $captured = [];
+
+    bindMockS3Client([
+        'HeadBucket' => s3Forbidden(),
+    ], $captured);
+
+    expect((new SyncS3BucketStep())([]))->toBe(StepResult::SYNCED);
+    expect(array_column($captured, 'name'))
+        ->not->toContain('CreateBucket')
+        ->not->toContain('PutBucketCors')
+        ->not->toContain('PutPublicAccessBlock');
 });
 
 it('never puts a bucket policy on the config bucket (log-delivery belongs to S3LogsBucket)', function (): void {

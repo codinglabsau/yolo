@@ -265,6 +265,114 @@ class Manifest
     }
 
     /**
+     * Surgically rewrite this environment's app `services` claim list to $services
+     * as an inline flow list (`services: [a, b]`) — preserving every other byte of
+     * yolo.yml (comments, ordering, quoting), unlike the put() re-dump. Drops the
+     * key for an empty list. Verifies the result parses to exactly the intended
+     * services before committing, so an unanticipated layout never corrupts the
+     * file: on any doubt it writes nothing and returns false, and the caller falls
+     * back to telling the operator to edit by hand.
+     *
+     * @param  array<int, string>  $services
+     */
+    public static function setServiceList(array $services): bool
+    {
+        $services = array_values($services);
+        $raw = (string) file_get_contents(Paths::manifest());
+
+        $rewritten = static::rewriteServiceList($raw, $services);
+
+        if ($rewritten === null) {
+            return false;
+        }
+
+        // Safety net: only commit a result that parses and yields exactly the
+        // intended services — never leave a corrupt manifest from an odd layout.
+        try {
+            $written = Arr::get(Yaml::parse($rewritten) ?? [], sprintf('environments.%s.services', Helpers::environment()), []);
+        } catch (\Throwable) {
+            return false;
+        }
+
+        if (array_values((array) $written) !== $services) {
+            return false;
+        }
+
+        return file_put_contents(Paths::manifest(), $rewritten) !== false;
+    }
+
+    /**
+     * The pure line-surgery behind setServiceList — returns the rewritten YAML, or
+     * null when the `services` key (or its env block, for an insert) can't be
+     * located. Replaces an existing inline or block list in place, drops any
+     * "- item" children, inserts the key as the env block's first child when
+     * absent, and removes the key for an empty list.
+     *
+     * @param  array<int, string>  $services
+     */
+    protected static function rewriteServiceList(string $raw, array $services): ?string
+    {
+        $lines = explode("\n", $raw);
+        $path = ['environments', Helpers::environment(), 'services'];
+        $parentPath = ['environments', Helpers::environment()];
+        $value = $services === [] ? null : '[' . implode(', ', $services) . ']';
+
+        $stack = [];
+        $parentLine = null;
+        $parentIndent = null;
+
+        foreach ($lines as $index => $line) {
+            if (! preg_match('/^(\s*)([A-Za-z0-9_.-]+):(.*)$/', $line, $matches)) {
+                continue;
+            }
+
+            $indent = strlen($matches[1]);
+
+            while ($stack !== [] && end($stack)[0] >= $indent) {
+                array_pop($stack);
+            }
+
+            $stack[] = [$indent, $matches[2]];
+            $currentPath = array_map(fn (array $entry): string => $entry[1], $stack);
+
+            if ($currentPath === $path) {
+                $children = 0;
+
+                while (isset($lines[$index + 1 + $children]) && preg_match('/^\s*-\s/', $lines[$index + 1 + $children])) {
+                    $children++;
+                }
+
+                if ($value === null) {
+                    array_splice($lines, $index, 1 + $children);
+                } else {
+                    preg_match('/^(\s*[A-Za-z0-9_.-]+:)(\s*)(.*?)(\s*(?:#.*)?)$/', $line, $leaf);
+                    $lines[$index] = $leaf[1] . ' ' . $value . ($leaf[4] ?? '');
+                    array_splice($lines, $index + 1, $children);
+                }
+
+                return implode("\n", $lines);
+            }
+
+            if ($currentPath === $parentPath && trim((string) preg_replace('/#.*$/', '', $matches[3])) === '') {
+                $parentLine = $index;
+                $parentIndent = $indent;
+            }
+        }
+
+        if ($value === null) {
+            return $raw; // nothing to remove — already absent
+        }
+
+        if ($parentLine !== null) {
+            array_splice($lines, $parentLine + 1, 0, str_repeat(' ', $parentIndent + 2) . 'services: ' . $value);
+
+            return implode("\n", $lines);
+        }
+
+        return null;
+    }
+
+    /**
      * Render a scalar as a YAML value — bare where safe, double-quoted when it
      * contains characters that would otherwise change the parse.
      */
