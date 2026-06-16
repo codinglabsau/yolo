@@ -27,6 +27,12 @@ class Ivs extends ServiceDefinition
         return 'Live, low-latency video streaming (Amazon IVS)';
     }
 
+    #[\Override]
+    public function implications(): string
+    {
+        return 'IVS provisions a shared event-logging pipeline for the environment (an EventBridge rule + CloudWatch log group) — negligible cost; the app drives IVS channels itself at runtime.';
+    }
+
     public function envBacked(): bool
     {
         return true;

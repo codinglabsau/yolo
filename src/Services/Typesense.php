@@ -85,6 +85,18 @@ class Typesense extends ServiceDefinition
         return ['version', 'nodes', 'cpu', 'memory'];
     }
 
+    #[\Override]
+    public function offerDefaults(): array
+    {
+        return ['nodes' => 3, 'cpu' => 256, 'memory' => 1024];
+    }
+
+    #[\Override]
+    public function implications(): string
+    {
+        return 'Typesense runs a 3- or 5-node search cluster on Fargate, shared by every app in this environment — one task per node, billed continuously while provisioned. It comes up over a few minutes on the next sync, and changing the node count rolls the cluster one node at a time.';
+    }
+
     /**
      * The manifest entry follows the tasks.* conventions: `version` is the
      * one required decision (an environment never runs an implicit search
