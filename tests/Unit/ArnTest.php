@@ -1,6 +1,6 @@
 <?php
 
-use Codinglabs\Yolo\Audit\Arn;
+use Codinglabs\Yolo\Arn;
 
 it('parses an EC2 instance ARN', function (): void {
     $arn = Arn::parse('arn:aws:ec2:ap-southeast-2:111122223333:instance/i-0abc123');

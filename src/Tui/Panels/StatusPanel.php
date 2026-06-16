@@ -4,14 +4,13 @@ declare(strict_types=1);
 
 namespace Codinglabs\Yolo\Tui\Panels;
 
-use Closure;
 use Codinglabs\Yolo\Concerns\RendersServiceStatus;
 use Symfony\Component\Console\Output\OutputInterface;
 
 /**
- * The landing tab — the live status the `yolo status` command shows (per-group
- * vitals, load, and any in-flight rollout), reusing the proven RendersServiceStatus
- * renderer. Read-only; the global bar above it carries the at-a-glance health.
+ * The landing tab — the one-shot `yolo status --snapshot` picture (per-group vitals,
+ * load, and any in-flight rollout), reusing the proven RendersServiceStatus renderer.
+ * Read-only; the global bar above it carries the at-a-glance health.
  */
 class StatusPanel implements Panel
 {
@@ -27,12 +26,12 @@ class StatusPanel implements Panel
 
     public function title(): string
     {
-        return 'Status';
+        return 'Overview';
     }
 
     public function hotkey(): string
     {
-        return 's';
+        return 'o';
     }
 
     public function gather(): void
@@ -51,8 +50,5 @@ class StatusPanel implements Panel
         return ['live'];
     }
 
-    public function onKey(string $key): ?Closure
-    {
-        return null;
-    }
+    public function onKey(string $key): void {}
 }

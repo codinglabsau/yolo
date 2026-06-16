@@ -21,7 +21,7 @@ use Codinglabs\Yolo\Resources\ApplicationAutoScaling\ScalableTarget;
 /**
  * Builds the live `yolo status` picture for each of an app's service groups and
  * renders it as display lines. Shared by StatusCommand (the one-shot snapshot),
- * the TUI's Status tab (the live, polling cockpit) and DeployCommand (the
+ * the dashboard's Overview tab (the live, polling cockpit) and DeployCommand (the
  * end-of-deploy recap).
  *
  * Every external read is defensive — a missing service, scalable target or
@@ -255,21 +255,22 @@ trait RendersServiceStatus
     /**
      * Current load for a service: ECS CPU/memory utilisation and — for the web
      * service only — ALB request rate and response time. Each metric is read as a
-     * 1-minute series over the last 5 min: the last point is the live reading, the
-     * series feeds the sparkline and the `/yolo` skill's trend view (so it's one
-     * CloudWatch round-trip per metric, not two).
+     * 1-minute series over the last $lookback seconds (5 min by default; the
+     * Metrics dashboard tab passes a longer window): the last point is the live
+     * reading, the series feeds the sparkline / braille charts and the `/yolo`
+     * skill's trend view (so it's one CloudWatch round-trip per metric, not two).
      *
      * @return array{cpu: ?float, memory: ?float, requests: ?float, response: ?float, series: array{cpu: array<int, float>, memory: array<int, float>, requests: array<int, float>, response: array<int, float>}}
      */
-    protected static function gatherLoad(ServerGroup $group, string $cluster, string $serviceName): array
+    protected static function gatherLoad(ServerGroup $group, string $cluster, string $serviceName, int $lookback = 300): array
     {
         $dimensions = [
             ['Name' => 'ClusterName', 'Value' => $cluster],
             ['Name' => 'ServiceName', 'Value' => $serviceName],
         ];
 
-        $cpu = CloudWatch::metricSeries('AWS/ECS', 'CPUUtilization', $dimensions, 'Average');
-        $memory = CloudWatch::metricSeries('AWS/ECS', 'MemoryUtilization', $dimensions, 'Average');
+        $cpu = CloudWatch::metricSeries('AWS/ECS', 'CPUUtilization', $dimensions, 'Average', 60, $lookback);
+        $memory = CloudWatch::metricSeries('AWS/ECS', 'MemoryUtilization', $dimensions, 'Average', 60, $lookback);
 
         $load = static::emptyLoad();
         $load['cpu'] = static::latestOf($cpu);
@@ -286,8 +287,8 @@ trait RendersServiceStatus
         if ($targetGroup !== null) {
             $albDimensions = [['Name' => 'TargetGroup', 'Value' => $targetGroup]];
             // RequestCountPerTarget summed per minute → a per-minute request rate.
-            $requests = CloudWatch::metricSeries('AWS/ApplicationELB', 'RequestCountPerTarget', $albDimensions, 'Sum');
-            $response = CloudWatch::metricSeries('AWS/ApplicationELB', 'TargetResponseTime', $albDimensions, 'Average');
+            $requests = CloudWatch::metricSeries('AWS/ApplicationELB', 'RequestCountPerTarget', $albDimensions, 'Sum', 60, $lookback);
+            $response = CloudWatch::metricSeries('AWS/ApplicationELB', 'TargetResponseTime', $albDimensions, 'Average', 60, $lookback);
 
             $load['requests'] = static::latestOf($requests);
             $load['response'] = static::latestOf($response);
@@ -296,6 +297,26 @@ trait RendersServiceStatus
         }
 
         return $load;
+    }
+
+    /**
+     * Wide metric series for the Metrics dashboard tab — the same ECS CPU/Memory
+     * (and, for web, ALB request/response) reads as gatherLoad, but over a longer
+     * window so the braille charts have enough datapoints to show a trend: one
+     * 1-minute series per metric over the last $minutes, oldest→newest. A cold or
+     * missing service yields empty series (CloudWatch returns no datapoints), which
+     * the chart renders as a "no data" frame rather than crashing.
+     *
+     * @return array<int, array{group: ServerGroup, load: array{cpu: ?float, memory: ?float, requests: ?float, response: ?float, series: array{cpu: array<int, float>, memory: array<int, float>, requests: array<int, float>, response: array<int, float>}}}>
+     */
+    public static function gatherMetricsSeries(int $minutes = 60): array
+    {
+        $cluster = (new EcsCluster())->name();
+
+        return array_map(static fn (ServerGroup $group): array => [
+            'group' => $group,
+            'load' => static::gatherLoad($group, $cluster, (new EcsService($group))->name(), $minutes * 60),
+        ], Manifest::serverGroups());
     }
 
     /**

@@ -2,7 +2,6 @@
 
 namespace Codinglabs\Yolo\Tui\Panels;
 
-use Closure;
 use Carbon\Carbon;
 use Codinglabs\Yolo\Aws\Ecr;
 use Codinglabs\Yolo\Tui\Theme;
@@ -10,17 +9,15 @@ use Codinglabs\Yolo\Tui\Columns;
 use Codinglabs\Yolo\Tui\Viewport;
 use Codinglabs\Yolo\Tui\DeployObserver;
 use Codinglabs\Yolo\Commands\RollbackCommand;
-use Symfony\Component\Console\Input\ArrayInput;
 use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
 use Codinglabs\Yolo\Concerns\RendersServiceStatus;
 use Symfony\Component\Console\Output\OutputInterface;
 
 /**
- * Deploy history + rollback. When a rollout is in flight (whoever triggered it),
- * the tab shows the live progress and locks the rollback action; otherwise it
- * lists the deployments from ECR (newest first, the running one marked) in a
- * scrollable viewport and ⏎ launches the interactive rollback (reusing
- * RollbackCommand).
+ * Deploy history. When a rollout is in flight (whoever triggered it) the tab shows
+ * the live progress; otherwise it lists the deployments from ECR (newest first, the
+ * running one marked) in a scrollable viewport. Read-only — rolling back is `yolo
+ * rollback`.
  */
 class DeploymentsPanel implements Panel
 {
@@ -37,7 +34,6 @@ class DeploymentsPanel implements Panel
 
     // History reads newest-first, so the viewport opens at the top, not the tail.
     public function __construct(
-        protected string $environment,
         protected OutputInterface $output,
         protected Viewport $viewport = new Viewport(followTail: false),
     ) {}
@@ -65,8 +61,6 @@ class DeploymentsPanel implements Panel
                 Theme::Active->bold('  ⟳ deploy in progress'),
                 '',
                 ...$this->statusLines($this->statuses, time(), deployments: true, load: false),
-                '',
-                Theme::Muted->fg('  rollback disabled until the rollout settles'),
             ];
         }
 
@@ -111,10 +105,10 @@ class DeploymentsPanel implements Panel
 
     public function hints(): array
     {
-        return ['⏎ roll back', '↑↓ scroll'];
+        return ['↑↓ scroll'];
     }
 
-    public function onKey(string $key): ?Closure
+    public function onKey(string $key): void
     {
         match ($key) {
             'up' => $this->viewport->scrollUp(),
@@ -125,12 +119,6 @@ class DeploymentsPanel implements Panel
             'end' => $this->viewport->toTail(),
             default => null,
         };
-
-        if (($key === 'enter' || $key === 'r') && ! DeployObserver::active($this->statuses)) {
-            return $this->rollback(...);
-        }
-
-        return null;
     }
 
     protected function currentVersion(): ?string
@@ -142,18 +130,5 @@ class DeploymentsPanel implements Panel
         }
 
         return null;
-    }
-
-    /**
-     * Launch the interactive rollback — the same picker + guards as `yolo rollback`.
-     *
-     * @codeCoverageIgnore drives Laravel Prompts; verified by hand
-     */
-    protected function rollback(): void
-    {
-        $command = new RollbackCommand();
-        $command->input = new ArrayInput(['environment' => $this->environment], $command->getDefinition());
-        $command->output = $this->output;
-        $command->handle();
     }
 }

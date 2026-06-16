@@ -71,7 +71,7 @@ class ServicesCommand extends Command
 
     /**
      * The full service state — the data behind both the table and `--json`, and
-     * reused by the TUI Services panel. Reads the env manifest (offered) and the
+     * reused by the Services dashboard tab. Reads the env manifest (offered) and the
      * published-claim registry (used by); the display state is derived so the
      * manual-edit "conflict" case surfaces as a row rather than throwing.
      *

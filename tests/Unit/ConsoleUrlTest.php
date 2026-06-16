@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use Codinglabs\Yolo\Audit\Arn;
-use Codinglabs\Yolo\Audit\ConsoleUrl;
+use Codinglabs\Yolo\Arn;
+use Codinglabs\Yolo\ConsoleUrl;
 
 function consoleUrl(string $arn): ?string
 {
@@ -53,7 +53,24 @@ it('builds a deep link for each supported service', function (string $arn, strin
         'arn:aws:sqs:ap-southeast-2:111:yolo-production-codinglabs-default',
         'https://ap-southeast-2.console.aws.amazon.com/sqs/v3/home?region=ap-southeast-2#/queues/https%3A%2F%2Fsqs.ap-southeast-2.amazonaws.com%2F111%2Fyolo-production-codinglabs-default',
     ],
+    'rds instance' => [
+        'arn:aws:rds:ap-southeast-2:111:db:yolo-production',
+        'https://ap-southeast-2.console.aws.amazon.com/rds/home?region=ap-southeast-2#database:id=yolo-production;is-cluster=false',
+    ],
+    'rds aurora cluster' => [
+        'arn:aws:rds:ap-southeast-2:111:cluster:yolo-production-aurora',
+        'https://ap-southeast-2.console.aws.amazon.com/rds/home?region=ap-southeast-2#database:id=yolo-production-aurora;is-cluster=true',
+    ],
+    'elasticache replication group' => [
+        'arn:aws:elasticache:ap-southeast-2:111:replicationgroup:yolo-production-cache',
+        'https://ap-southeast-2.console.aws.amazon.com/elasticache/home?region=ap-southeast-2#/redis/yolo-production-cache',
+    ],
 ]);
+
+it('builds a region-wide CloudWatch alarms link', function (): void {
+    expect(ConsoleUrl::cloudWatchAlarms('ap-southeast-2'))
+        ->toBe('https://ap-southeast-2.console.aws.amazon.com/cloudwatch/home?region=ap-southeast-2#alarmsV2:');
+});
 
 it('applies the CloudWatch console encoding to a log-group name and strips the describe-ARN suffix', function (): void {
     expect(consoleUrl('arn:aws:logs:ap-southeast-2:111:log-group:/aws/ivs/yolo-x:*'))

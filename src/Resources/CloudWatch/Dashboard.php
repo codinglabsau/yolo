@@ -182,7 +182,7 @@ class Dashboard
             'distributionId' => $web ? static::tryResolve(fn () => CloudFront::distributionByComment((new AssetDistribution())->name())['Id']) : null,
             'queuePrefix' => Helpers::keyedResourceName() . '-',
             'queues' => static::queueNames(),
-            'rds' => static::rdsTarget($this->databaseHost()),
+            'rds' => static::rdsTarget(static::databaseHost()),
             'buckets' => static::bucketNames(),
             'taskLogGroup' => $web ? (new TaskLogGroup())->name() : null,
             // Each service definition contributes its own context entries —
@@ -257,7 +257,7 @@ class Dashboard
      * null when the env isn't there yet (pre-env:push) — the RDS section is then
      * simply omitted.
      */
-    protected function databaseHost(): ?string
+    public static function databaseHost(): ?string
     {
         try {
             $body = Aws::s3()->getObject([

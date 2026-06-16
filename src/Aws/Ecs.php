@@ -2,8 +2,8 @@
 
 namespace Codinglabs\Yolo\Aws;
 
+use Codinglabs\Yolo\Arn;
 use Codinglabs\Yolo\Aws;
-use Codinglabs\Yolo\Audit\Arn;
 use Aws\Exception\AwsException;
 use Codinglabs\Yolo\Audit\Audit;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;

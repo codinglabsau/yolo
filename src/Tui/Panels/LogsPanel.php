@@ -2,7 +2,6 @@
 
 namespace Codinglabs\Yolo\Tui\Panels;
 
-use Closure;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Tui\Theme;
@@ -89,7 +88,7 @@ class LogsPanel implements Panel
         return ['g cycle group', '↑↓ scroll', '⌂ tail'];
     }
 
-    public function onKey(string $key): ?Closure
+    public function onKey(string $key): void
     {
         match ($key) {
             'g' => $this->cycleGroup(),
@@ -101,8 +100,6 @@ class LogsPanel implements Panel
             'end' => $this->viewport->toTail(),
             default => null,
         };
-
-        return null;
     }
 
     /** Move to the next service group and snap back to the live tail. */

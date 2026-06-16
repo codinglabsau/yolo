@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Codinglabs\Yolo\Tui\Panels;
 
-use Closure;
-
 /**
  * A TUI tab. The shell owns the loop, the global health bar and the tab bar; a
  * Panel owns one tab's body and its key handling. render() returns ANSI-tagged
@@ -41,9 +39,9 @@ interface Panel
     public function hints(): array;
 
     /**
-     * Handle a keypress while this tab is active. Return a closure for the shell
-     * to run as a modal (it pauses the loop, drops to cooked mode for Laravel
-     * Prompts, then resumes), or null when the key is handled in place or ignored.
+     * Handle a keypress while this tab is active — navigation only (scrolling, or
+     * cycling a group). A panel mutates its own view state; the dashboard is
+     * read-only, so a key never dispatches an action.
      */
-    public function onKey(string $key): ?Closure;
+    public function onKey(string $key): void;
 }

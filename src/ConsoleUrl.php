@@ -1,9 +1,9 @@
 <?php
 
-namespace Codinglabs\Yolo\Audit;
+namespace Codinglabs\Yolo;
 
 /**
- * Best-effort AWS Console deep link for an audited resource, built from its ARN.
+ * Best-effort AWS Console deep link for a resource, built from its ARN.
  *
  * There is no AWS API that maps an ARN to a console URL, and every service has
  * its own URL scheme, so this is a per-service template table. A service we have
@@ -38,6 +38,8 @@ class ConsoleUrl
             'cloudfront' => $arn->resourceType === 'distribution'
                 ? sprintf('https://console.aws.amazon.com/cloudfront/v4/home#/distributions/%s', $arn->resourceId)
                 : null,
+            'rds' => static::rds($arn),
+            'elasticache' => static::elastiCache($arn),
             default => null,
         };
     }
@@ -134,5 +136,35 @@ class ConsoleUrl
             'oidc-provider' => 'https://console.aws.amazon.com/iam/home#/identity_providers',
             default => null,
         };
+    }
+
+    protected static function rds(Arn $arn): ?string
+    {
+        // The RDS console keys off the identifier plus a cluster flag; YOLO meets
+        // `db` (a plain instance) and `cluster` (Aurora) here.
+        return match ($arn->resourceType) {
+            'db' => static::regional($arn, sprintf('rds/home#database:id=%s;is-cluster=false', $arn->resourceId)),
+            'cluster' => static::regional($arn, sprintf('rds/home#database:id=%s;is-cluster=true', $arn->resourceId)),
+            default => null,
+        };
+    }
+
+    protected static function elastiCache(Arn $arn): ?string
+    {
+        // The shared Valkey cache is a single replication group; the console lists
+        // it under the Redis/Valkey OSS view.
+        return $arn->resourceType === 'replicationgroup'
+            ? static::regional($arn, sprintf('elasticache/home#/redis/%s', $arn->resourceId))
+            : null;
+    }
+
+    /**
+     * The CloudWatch alarms list for a region — the Alarms tab's "see everything"
+     * link. No per-alarm ARN is threaded through the dashboard, so this region-wide
+     * deep link is the closest stable target.
+     */
+    public static function cloudWatchAlarms(string $region): string
+    {
+        return sprintf('https://%s.console.aws.amazon.com/cloudwatch/home?region=%s#alarmsV2:', $region, $region);
     }
 }
