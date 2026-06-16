@@ -10,7 +10,6 @@ use Codinglabs\Yolo\Aws\S3;
 use Codinglabs\Yolo\Enums\Scope;
 use Aws\S3\Exception\S3Exception;
 use Codinglabs\Yolo\Resources\Resource;
-use Codinglabs\Yolo\Resources\ResolvesTags;
 
 /**
  * The optional application data bucket (AWS_BUCKET) — user-facing storage for the
@@ -19,10 +18,12 @@ use Codinglabs\Yolo\Resources\ResolvesTags;
  *
  * **Create-only — never reconciled.** The bucket name is whatever the manifest
  * says (typically a custom, pre-existing bucket brought into the app), so YOLO
- * sets its attributes (Block Public Access, CORS for the cross-origin upload PUT,
- * tags) ONCE at create time and then leaves it completely alone. An app may
- * already serve public objects or own its own CORS, and a brought-in bucket isn't
- * YOLO's to reconcile — so there is no post-create sync of any attribute.
+ * sets its functional attributes (Block Public Access, CORS for the cross-origin
+ * upload PUT) ONCE at create time and then leaves it completely alone. It is
+ * deliberately never YOLO-tagged (see tags()), so it stays out of the tag-based
+ * `yolo audit`. An app may already serve public objects or own its own CORS, and a
+ * brought-in bucket isn't YOLO's to reconcile — so there is no post-create sync of
+ * any attribute.
  *
  * This is also why a 403 on the existence check reads as "exists, hands-off"
  * (see exists()): a custom-named bucket is outside the `yolo-*` scope the tier
@@ -32,11 +33,20 @@ use Codinglabs\Yolo\Resources\ResolvesTags;
  */
 class S3Bucket implements Resource
 {
-    use ResolvesTags;
-
     public function name(): string
     {
         return Paths::s3AppBucket();
+    }
+
+    /**
+     * Deliberately untagged. The app data bucket is client-managed — applying a
+     * `yolo:*` ownership tag would both claim a bucket YOLO doesn't own and pull it
+     * into the tag-based `yolo audit`, which we explicitly don't want. No tags ⇒ it
+     * never appears there.
+     */
+    public function tags(): array
+    {
+        return [];
     }
 
     public function scope(): Scope
@@ -77,17 +87,15 @@ class S3Bucket implements Resource
             'Bucket' => $this->name(),
         ]);
 
-        // Attributes are set ONCE, here. Block Public Access is secure-by-default
-        // for a freshly-created bucket; CORS lets the browser→S3 presigned PUT work
-        // without Vapor (permissive origins — the signed URL is the real gate);
-        // tags let `yolo audit` attribute the bucket. None of these is ever
-        // reconciled afterwards.
+        // Functional attributes are set ONCE, here. Block Public Access is
+        // secure-by-default for a freshly-created bucket; CORS lets the browser→S3
+        // presigned PUT work without Vapor (permissive origins — the signed URL is
+        // the real gate). No YOLO tags are applied (client-managed; see tags()), so
+        // the bucket stays out of the audit. Neither attribute is ever reconciled.
         Aws::s3()->putPublicAccessBlock([
             'Bucket' => $this->name(),
             'PublicAccessBlockConfiguration' => Aws::publicAccessBlockConfiguration(),
         ]);
-
-        Aws::synchroniseS3Tags($this->name(), $this->tags(), apply: true);
 
         Aws::s3()->putBucketCors([
             'Bucket' => $this->name(),

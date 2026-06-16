@@ -73,12 +73,15 @@ it('is create-only — never a SynchronisesConfiguration, so an existing bucket 
     expect(new S3Bucket())->not->toBeInstanceOf(SynchronisesConfiguration::class);
 });
 
-it('reconciles no tags on an existing bucket (reference-only)', function (): void {
+it('is never YOLO-tagged — client-managed, so it stays out of the tag-based audit', function (): void {
+    // No ownership tag is ever produced or applied: tags() is empty and the sync
+    // path reconciles nothing.
+    expect((new S3Bucket())->tags())->toBe([]);
     expect((new S3Bucket())->synchroniseTags(apply: true))->toBe([]);
     expect((new S3Bucket())->synchroniseTags(apply: false))->toBe([]);
 });
 
-it('stamps Block Public Access, the managed CORS ruleset and tags at create — and only at create', function (): void {
+it('stamps Block Public Access and the managed CORS ruleset at create — and never tags the bucket', function (): void {
     $recorder = bindRecordingAppBucketS3Client([
         'HeadBucket' => new Result(['@metadata' => ['statusCode' => 200]]), // the BucketExists waiter
     ]);
@@ -88,8 +91,8 @@ it('stamps Block Public Access, the managed CORS ruleset and tags at create — 
     expect(array_column($recorder->captured, 'name'))
         ->toContain('CreateBucket')
         ->toContain('PutPublicAccessBlock')
-        ->toContain('PutBucketTagging')
-        ->toContain('PutBucketCors');
+        ->toContain('PutBucketCors')
+        ->not->toContain('PutBucketTagging');   // client-managed → never tagged
 
     $put = collect($recorder->captured)->firstWhere('name', 'PutBucketCors');
     expect($put['args']['CORSConfiguration']['CORSRules'])->toBe(managedAppBucketCors());
