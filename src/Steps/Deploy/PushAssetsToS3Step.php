@@ -44,7 +44,10 @@ class PushAssetsToS3Step implements Step
             client: Aws::s3(),
             source: static::uploadableFiles($public),
             dest: sprintf('s3://%s/builds/%s', (new AssetBucket())->name(), $appVersion),
-            options: ['base_dir' => $public, 'before' => static::applyCacheControl(...)],
+            // The asset tree is many small files (Vite chunks, icons, svgs), so
+            // it's latency-bound, not bandwidth-bound — lift the upload concurrency
+            // well above the SDK's conservative default of 5 to shrink the push.
+            options: ['base_dir' => $public, 'concurrency' => 25, 'before' => static::applyCacheControl(...)],
         ))->transfer();
 
         return StepResult::SUCCESS;
