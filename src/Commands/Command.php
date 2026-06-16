@@ -410,6 +410,15 @@ abstract class Command extends SymfonyCommand
      * deliberate escape is --dangerously-skip-permissions, which skips the cap and
      * runs on the full profile identity (bootstrap / break-glass / diagnostics).
      *
+     * A nested in-process run inherits the parent's already-minted cap rather than
+     * re-minting: the deploy → `sync --check` gate runs an admin-tier SyncCommand
+     * inside a deployer-capped deploy, and re-minting would try to climb deployer →
+     * admin — an escalation the tier model forbids by construction, and one that
+     * can't even resolve an MFA device from inside a role session, turning the
+     * read-only drift check into an auth refusal. The parent tier is the ceiling
+     * and the deployer cap already carries the per-app observer read surface the
+     * check needs, so the nested run proceeds on the inherited credentials.
+     *
      * Returns null to proceed, or an exit code to abort the command.
      */
     protected function mintTierCredentials(): ?int
@@ -423,6 +432,12 @@ abstract class Command extends SymfonyCommand
         if ($this->skipsPermissions()) {
             warning('--dangerously-skip-permissions: running UNCAPPED as your full AWS identity. The YOLO permission tier is bypassed.');
 
+            return null;
+        }
+
+        // Already capped by a parent run (the deploy → `sync --check` gate): inherit
+        // those credentials instead of re-minting and escalating past the cap.
+        if (Helpers::app()->bound('yoloAssumedCredentials')) {
             return null;
         }
 
