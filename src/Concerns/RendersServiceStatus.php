@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Aws\Ecs;
 use Codinglabs\Yolo\Aws\Sqs;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Tui\Chart;
 use Codinglabs\Yolo\Aws\CloudWatch;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Symfony\Component\Console\Helper\Table;
@@ -85,7 +86,9 @@ trait RendersServiceStatus
         $row['cpuTarget'] = static::cpuTargetFrom($row['scaling']);
 
         if ($withLoad) {
-            $row['load'] = static::gatherLoad($group, $cluster, $serviceName);
+            // A 15-minute window (vs the live reading's last minute) gives the
+            // inline braille sparkline ~15 datapoints to draw a readable trend.
+            $row['load'] = static::gatherLoad($group, $cluster, $serviceName, 900);
         }
 
         return $row;
@@ -619,10 +622,10 @@ trait RendersServiceStatus
     }
 
     /**
-     * `cpu 43%/65% ▁▂▃▅▇ · mem 38% ▂▂▃▃▄ · 410 rpm ▁▃▂▅█ · 126 ms`. Missing metrics
+     * `cpu 43%/65% ⢀⡠⠔ · mem 38% ⠒⠒⠒ · 410 rpm ⡠⠔⠊ · 126 ms`. Missing metrics
      * render "—"; request rate / response time only apply to the web service. Each
-     * metric trails a sparkline of its recent series when one is present (it isn't
-     * in the pure-formatter tests, which pass plain readings).
+     * metric trails a braille sparkline of its recent series when one is present (it
+     * isn't in the pure-formatter tests, which pass plain readings).
      *
      * @param  array{cpu: ?float, memory: ?float, requests: ?float, response: ?float, series?: array<string, array<int, float>>}  $load
      */
@@ -669,8 +672,11 @@ trait RendersServiceStatus
     }
 
     /**
-     * A compact `▁▂▃▄▅▆▇█` sparkline of a numeric series, scaled to its own
-     * min/max. Empty series → empty string; a flat series → all-low bars. Pure —
+     * A compact single-row braille sparkline of a numeric series, scaled to its own
+     * min/max — two datapoints per character (four vertical levels), so a 15-point
+     * series reads in ~8 characters: denser than one block per point and narrow
+     * enough to sit inline beside the other load metrics. Empty series → empty
+     * string; a flat series draws a low baseline rather than going blank. Pure —
      * unit-tested directly.
      *
      * @param  array<int, float>  $series
@@ -681,18 +687,12 @@ trait RendersServiceStatus
             return '';
         }
 
-        $ticks = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
         $min = min($series);
-        $range = max($series) - $min;
+        $max = max($series);
 
-        return implode('', array_map(
-            function (float $value) use ($ticks, $min, $range): string {
-                $index = $range <= 0.0 ? 0 : (int) round(($value - $min) / $range * (count($ticks) - 1));
-
-                return $ticks[$index];
-            },
-            $series,
-        ));
+        // A flat series has no range; nudge the ceiling up so it renders along the
+        // bottom (Chart::plot blanks a zero-range series) rather than disappearing.
+        return Chart::plot($series, (int) ceil(count($series) / 2), 1, $min, $max === $min ? $min + 1 : $max)[0];
     }
 
     /**
@@ -976,7 +976,7 @@ trait RendersServiceStatus
             return [];
         }
 
-        $lines = ['', '  <options=bold>Load</> <fg=gray>(last 5 min)</>'];
+        $lines = ['', '  <options=bold>Load</> <fg=gray>(last 15 min)</>'];
 
         foreach ($live as $status) {
             $lines[] = sprintf(

@@ -147,15 +147,18 @@ it('formats live load against the CPU target, with web-only request/response', f
         ->toBe('cpu — · mem 12%');
 });
 
-it('renders a sparkline scaled to the series, and nothing for an empty one', function (): void {
+it('renders a single-row braille sparkline scaled to the series, and nothing for an empty one', function (): void {
     expect(StatusCommand::sparkline([]))->toBe('');
-    // A flat series has no range, so it sits on the lowest bar.
-    expect(StatusCommand::sparkline([5.0, 5.0, 5.0]))->toBe('▁▁▁');
-    // Min maps to the lowest bar, max to the highest, in series order.
-    $spark = StatusCommand::sparkline([0.0, 50.0, 100.0]);
-    expect(mb_strlen($spark))->toBe(3);
-    expect(mb_substr($spark, 0, 1))->toBe('▁');
-    expect(mb_substr($spark, -1))->toBe('█');
+
+    // Two datapoints per braille cell → about half as many characters as points.
+    expect(mb_strlen(StatusCommand::sparkline([0.0, 50.0, 100.0])))->toBe(2)
+        ->and(mb_strlen(StatusCommand::sparkline([1.0, 2.0, 3.0, 4.0])))->toBe(2)
+        ->and(StatusCommand::sparkline([0.0, 50.0, 100.0]))->toMatch('/[\x{2800}-\x{28ff}]/u');
+
+    // A flat series draws a low baseline rather than blanking out.
+    $flat = StatusCommand::sparkline([5.0, 5.0, 5.0]);
+    expect(mb_strlen($flat))->toBe(2)
+        ->and($flat)->not->toBe(str_repeat("\u{2800}", 2));   // not blank braille
 });
 
 it('trails a load reading with a gray sparkline when a series is present', function (): void {
@@ -176,8 +179,8 @@ it('trails a load reading with a gray sparkline when a series is present', funct
         ->toContain('cpu 43.2%/65%')
         ->toContain('mem 38%')
         ->toContain('410 rpm')
-        ->toContain('<fg=gray>')   // sparklines render gray
-        ->toContain('▁');          // low bar from the flat memory series / cpu start
+        ->toContain('<fg=gray>')               // sparklines render gray
+        ->toMatch('/[\x{2800}-\x{28ff}]/u');   // a braille sparkline glyph is present
 });
 
 it('formats the queue backlog, gray "empty" when drained', function (): void {
