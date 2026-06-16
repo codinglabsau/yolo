@@ -6,7 +6,8 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 
 - **`<environment>`** — almost every command takes a required `environment` argument naming a key under `environments` in your `yolo.yml` (e.g. `production`, `staging`).
 - **AWS authentication** — outside CI, YOLO reads a named AWS profile from `YOLO_<ENVIRONMENT>_AWS_PROFILE` in your local `.env`. Before any AWS call it verifies (via STS) that the profile resolves to the `account-id` declared in the manifest. The `default` profile is rejected. In CI it falls back to the AWS SDK default credential chain (GitHub OIDC, SSO).
-- **Permission tiers** — you authenticate as yourself; YOLO then assumes a scoped role per command and runs capped to it, so it can never exceed what the command needs: read commands (`status`, `audit`) → the read-only observer role, the deploy lifecycle (`deploy`, `build`, `run`) → the app deployer role, and provisioning (`sync`, `scale`) → the `yolo-*`-scoped admin role. The guard is **fail-closed** — a command refuses if it can't assume its role rather than running on your full identity. See [provisioning](/guide/provisioning).
+- **Permission tiers** — you authenticate as yourself; YOLO then assumes a scoped role per command and runs capped to it, so it can never exceed what the command needs: read commands (`status`, `audit`) → an observer role, the deploy lifecycle (`deploy`, `build`, `run`) → the per-app deployer role, and provisioning (`sync`, `scale`) → the `yolo-*`-scoped admin role. The observer tier is **scope-aware**: a single-app read (`status`, `status:logs`) caps to a **per-app** observer role whose log-content reads are fenced to that app's log group, while an env-wide read (`status:environment`, every `audit`) caps to the env observer role. The guard is **fail-closed** — a command refuses if it can't assume its role rather than running on your full identity. See [provisioning](/guide/provisioning).
+- **Grant groups** — access is granted by **group membership**, not by editing identities. YOLO provisions convention-named IAM groups (`yolo-{env}-observers`, `yolo-{env}-{app}-observers`, `yolo-{env}-{app}-deployers`, `yolo-{env}-admins`), each allowing `sts:AssumeRole` on one tier role. Add a user to a group to grant the tier, remove to revoke — managed with [`permissions`](#yolo-permissions) (or the IAM console). YOLO never creates or owns the users themselves.
 - **`--dangerously-skip-permissions`** — a global flag that bypasses the tier cap and runs on your full AWS identity (with a loud warning). It's the deliberate escape for **bootstrapping a fresh environment** (the first `yolo sync <env> --dangerously-skip-permissions` creates the tier roles) and for break-glass / diagnostics. Avoid it otherwise.
 - **Required manifest keys** — every command except `init` checks that `name`, `region`, and `account-id` are declared, and fails fast if not.
 
@@ -33,6 +34,7 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | [`status:budget <env>`](#yolo-status-budget) | Month-to-date spend against the app's declared budget |
 | [`run <env>`](#yolo-run) | Open a shell / run a command in a running container |
 | [`scale <env> [count]`](#yolo-scale) | Adjust the web service's task count out of band |
+| [`permissions <env>`](#yolo-permissions) | Grant or revoke a team member's access by editing their YOLO group membership |
 | [`services <env>`](#yolo-services) | View and manage the services an environment offers |
 | [`tui [env]`](#yolo-tui) | Open the interactive dashboard |
 | [`sync <env>`](#yolo-sync) | Provision all resources (account → environment → app) |
@@ -452,6 +454,27 @@ yolo scale production                            # prompt for a fixed count
 
 ---
 
+## `yolo permissions`
+
+Grant or revoke a team member's access by editing which YOLO [grant groups](#conventions) they belong to — membership is the entire access lever. Runs in an app's directory like `deploy`/`scale`: it offers the env-wide tiers plus this app's per-app tiers.
+
+```bash
+yolo permissions <environment>
+```
+
+Interactive: pick an IAM user, then a checkbox list pre-ticked with their current grants —
+
+| Tier offered | Group | Grants |
+|---|---|---|
+| Observer — entire environment | `yolo-{env}-observers` | read every app in the environment |
+| Observer — this app only | `yolo-{env}-{app}-observers` | read this app (log content fenced to its log group) |
+| Deployer — this app | `yolo-{env}-{app}-deployers` | deploy this app (only offered when the app has a deployer role) |
+| Admin — entire environment | `yolo-{env}-admins` | `sync` / `scale` / manage access |
+
+Toggling and confirming applies the membership diff — and only ever touches these YOLO groups, never a user's other group memberships. Only groups that have actually been [synced](#yolo-sync) are offered (you can't grant a tier that isn't provisioned). It runs under the **admin** tier, whose policy can manage `yolo-*` group membership, so a member of `yolo-{env}-admins` can grant access to others. To grant deploy on a different app, run it in that app's directory. See [provisioning](/guide/provisioning).
+
+---
+
 ## `yolo services`
 
 View and manage the [services](/guide/provisioning#the-service-lifecycle) an environment offers — the two-key gate (the env manifest offers a service, an app claims it) made visible and editable.
@@ -543,7 +566,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **account**.
 
 ## `yolo sync:environment`
 
-Sync the environment-shared (environment-tier) resources — VPC, subnets, internet gateway and routes, the load balancer security group, the env config bucket holding [the environment's declaration](/guide/provisioning#the-environment-declaration) (env manifest + env-shared `.env`, the manifest seeded once on first sync), the env-backed services gated on [the service lifecycle](/guide/provisioning#the-service-lifecycle) (the IVS event-logging pipeline and the [Typesense search cluster](/guide/provisioning#typesense-the-environment-s-search-cluster) — each provisioned while the env manifest declares it **and** a running app uses it, and planned as a `WOULD DELETE` teardown once that stops being true), the ALB and its `:80` listener, the SNS alarm topic, the shared ECS execution IAM role, the env-shared `yolo-{env}-observer` read-only policy (the drift-check inspection surface every app's deployer role attaches — see [CI/CD](/guide/ci-cd#what-yolo-sync-provisions-for-ci)), the `yolo-{env}-observer-role` an operator or agent assumes for safe **read-only** inspection (it carries that policy — point a `*-readonly` profile at it), and the [WAF web ACL](/guide/provisioning#web-application-firewall) (with its allow/block IP sets) fronting the ALB.
+Sync the environment-shared (environment-tier) resources — VPC, subnets, internet gateway and routes, the load balancer security group, the env config bucket holding [the environment's declaration](/guide/provisioning#the-environment-declaration) (env manifest + env-shared `.env`, the manifest seeded once on first sync), the env-backed services gated on [the service lifecycle](/guide/provisioning#the-service-lifecycle) (the IVS event-logging pipeline and the [Typesense search cluster](/guide/provisioning#typesense-the-environment-s-search-cluster) — each provisioned while the env manifest declares it **and** a running app uses it, and planned as a `WOULD DELETE` teardown once that stops being true), the ALB and its `:80` listener, the SNS alarm topic, the shared ECS execution IAM role, the env-shared `yolo-{env}-observer` read-only policy (the drift-check inspection surface every app's deployer role attaches — see [CI/CD](/guide/ci-cd#what-yolo-sync-provisions-for-ci)), the `yolo-{env}-observer-role` an operator or agent assumes for safe **read-only** inspection (it carries that policy — point a `*-readonly` profile at it), the env-wide [grant groups](#conventions) (`yolo-{env}-observers`, `yolo-{env}-admins`) whose membership grants the read / admin tier, and the [WAF web ACL](/guide/provisioning#web-application-firewall) (with its allow/block IP sets) fronting the ALB.
 
 ```bash
 yolo sync:environment <environment> [--check] [--force] [--no-progress] [--tenant=<id>]
@@ -555,7 +578,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **environment**. These 
 
 ## `yolo sync:app`
 
-Sync a single application's resources for the given environment — S3 buckets, the app's published claim file (`apps/{app}.yml` in the env config bucket), app IAM (deployer role/policy, the per-app ECS task role plus any [`task-role-policies`](/reference/manifest#task-role-policies), and the MediaConvert role when the app uses the [`mediaconvert` service](/reference/manifest#services) — torn down again on the sync after the app stops using it), ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, SQS queues, a CloudWatch dashboard, target-tracking autoscaling (when configured), and — for a solo app — its hosted zone and ACM certificate. For web apps it also provisions the shared [Valkey cache](/guide/provisioning#cache-and-sessions) (`cache.store`, default-on); sessions ride the same cluster by default ([`session.driver: redis`](/guide/provisioning#cache-and-sessions)), so they need no resources of their own.
+Sync a single application's resources for the given environment — S3 buckets, the app's published claim file (`apps/{app}.yml` in the env config bucket), app IAM (deployer role/policy, the per-app **observer** role/policy whose log-content reads are fenced to this app's log group, the per-app ECS task role plus any [`task-role-policies`](/reference/manifest#task-role-policies), and the MediaConvert role when the app uses the [`mediaconvert` service](/reference/manifest#services) — torn down again on the sync after the app stops using it), the per-app [grant groups](#conventions) (`yolo-{env}-{app}-observers` always; `yolo-{env}-{app}-deployers` when the app has a deployer role) whose membership grants read / deploy on this app, ECS cluster/service/task definition, target group + listener rule, CloudFront distribution, SQS queues, a CloudWatch dashboard, target-tracking autoscaling (when configured), and — for a solo app — its hosted zone and ACM certificate. For web apps it also provisions the shared [Valkey cache](/guide/provisioning#cache-and-sessions) (`cache.store`, default-on); sessions ride the same cluster by default ([`session.driver: redis`](/guide/provisioning#cache-and-sessions)), so they need no resources of their own.
 
 ```bash
 yolo sync:app <environment> [--check] [--force] [--no-progress] [--tenant=<id>]
