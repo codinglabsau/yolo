@@ -372,3 +372,25 @@ it('break-glass: --dangerously-skip-permissions skips the cap and runs on the fu
     expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
     expect(test()->promptOutput->fetch())->toContain('UNCAPPED');
 });
+
+it('inherits a parent run\'s cap when nested — never re-mints or escalates to its own tier', function (): void {
+    // The deploy → `sync --check` gate: a parent deploy has already minted (and
+    // capped to) the deployer tier, binding its credentials in the shared container.
+    Helpers::app()->instance('yoloAssumedCredentials', new Credentials('ASIA-DEPLOYER', 'deployer-secret', 'deployer-session'));
+
+    // The nested run is an admin command. Without the inherit guard it would try to
+    // climb deployer → admin (MFA-gated, and unresolvable from inside a role session)
+    // and turn the read-only drift check into an auth refusal. With it, the nested
+    // run proceeds on the parent's credentials — the parent tier is the ceiling.
+    bindMockIamClient(['yolo-testing-admin-role' => 'arn:aws:iam::111111111111:role/yolo-testing-admin-role']);
+
+    $captured = [];
+    bindAssumeRoleStsClient($captured, assumeRoleResult());
+
+    expect(mint(new SyncEnvironmentCommand()))->toBeNull();
+
+    // No assume attempted, no MFA prompt, and the parent's credentials stand untouched.
+    expect($captured)->toBeEmpty();
+    expect(test()->promptOutput->fetch())->not->toContain('MFA');
+    expect(Helpers::app('yoloAssumedCredentials')->getAccessKeyId())->toBe('ASIA-DEPLOYER');
+});
