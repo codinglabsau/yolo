@@ -18,8 +18,10 @@ use Codinglabs\Yolo\Resources\Iam\AdminRole;
 use Codinglabs\Yolo\Contracts\DeployerCommand;
 use Codinglabs\Yolo\Contracts\ReadOnlyCommand;
 use Codinglabs\Yolo\Concerns\HasAfterCallbacks;
+use Codinglabs\Yolo\Contracts\ReadsEnvironment;
 use Codinglabs\Yolo\Resources\Iam\DeployerRole;
 use Codinglabs\Yolo\Resources\Iam\ObserverRole;
+use Codinglabs\Yolo\Resources\Iam\AppObserverRole;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Codinglabs\Yolo\Concerns\ChecksIfCommandsShouldBeRunning;
@@ -424,7 +426,7 @@ abstract class Command extends SymfonyCommand
         }
 
         $role = match ($tier) {
-            Iam::OBSERVER_ROLE => new ObserverRole(),
+            Iam::OBSERVER_ROLE => $this->observerRole(),
             Iam::DEPLOYER_ROLE => new DeployerRole(),
             Iam::ADMIN_ROLE => new AdminRole(),
             default => null,
@@ -458,6 +460,20 @@ abstract class Command extends SymfonyCommand
 
             return self::FAILURE;
         }
+    }
+
+    /**
+     * Pick the observer role for a read command. The default is the per-app
+     * observer role (log content fenced to this app's group), so a read grant can
+     * name one app. The env-wide reads — status:environment and every audit verb
+     * (audit tag-queries the whole env) — declare {@see ReadsEnvironment} and cap
+     * to the broader env observer role instead.
+     */
+    protected function observerRole(): Resource
+    {
+        return $this instanceof ReadsEnvironment
+            ? new ObserverRole()
+            : new AppObserverRole();
     }
 
     /**

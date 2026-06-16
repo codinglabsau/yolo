@@ -215,8 +215,12 @@ it('is a no-op for an un-tiered command — never assumes a role, never override
     expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
 });
 
-it('fails closed: a read command refuses when the observer role is not provisioned', function (): void {
-    expectRefusesWithoutRole(new StatusCommand(), 'yolo-testing-observer-role');
+it('fails closed: an app read refuses when the per-app observer role is not provisioned', function (): void {
+    expectRefusesWithoutRole(new StatusCommand(), 'yolo-testing-my-app-observer-role');
+});
+
+it('fails closed: an env read refuses when the env observer role is not provisioned', function (): void {
+    expectRefusesWithoutRole(new StatusEnvironmentCommand(), 'yolo-testing-observer-role');
 });
 
 it('fails closed: a deploy refuses when the deployer role is not provisioned', function (): void {
@@ -227,8 +231,8 @@ it('fails closed: a sync refuses when the admin role is not provisioned', functi
     expectRefusesWithoutRole(new SyncEnvironmentCommand(), 'yolo-testing-admin-role');
 });
 
-it('mints the Observer credentials once the role is provisioned', function (): void {
-    bindMockIamClient(['yolo-testing-observer-role' => 'arn:aws:iam::111111111111:role/yolo-testing-observer-role']);
+it('mints the per-app Observer credentials for an app read once the role is provisioned', function (): void {
+    bindMockIamClient(['yolo-testing-my-app-observer-role' => 'arn:aws:iam::111111111111:role/yolo-testing-my-app-observer-role']);
 
     $captured = [];
     bindAssumeRoleStsClient($captured, assumeRoleResult());
@@ -248,7 +252,25 @@ it('mints the Observer credentials once the role is provisioned', function (): v
         ->and($credentials->getSecretKey())->toBe('observer-secret')
         ->and($credentials->getSecurityToken())->toBe('observer-session-token');
 
-    // It assumed exactly the env's observer role, named for the tier.
+    // An app read (status) assumes this app's per-app observer role — log content
+    // fenced to the app's log group — under the shared observer session name.
+    expect($captured)->toHaveCount(1)
+        ->and($captured[0]['args']['RoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-my-app-observer-role')
+        ->and($captured[0]['args']['RoleSessionName'])->toBe('yolo-observer-role');
+});
+
+it('mints the env Observer credentials for an env-wide read (status:environment / audit)', function (): void {
+    bindMockIamClient(['yolo-testing-observer-role' => 'arn:aws:iam::111111111111:role/yolo-testing-observer-role']);
+
+    $captured = [];
+    bindAssumeRoleStsClient($captured, assumeRoleResult());
+
+    mint(new StatusEnvironmentCommand());
+
+    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeTrue();
+
+    // An env-wide read (ReadsEnvironment) assumes the broader env observer role —
+    // it reads across every app, so the per-app fence does not apply.
     expect($captured)->toHaveCount(1)
         ->and($captured[0]['args']['RoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-observer-role')
         ->and($captured[0]['args']['RoleSessionName'])->toBe('yolo-observer-role');
@@ -289,7 +311,7 @@ it('mints the Admin credentials for a sync once the env admin role is provisione
 });
 
 it('fails closed: refuses when the role exists but cannot be assumed (broken trust / lost grant)', function (): void {
-    bindMockIamClient(['yolo-testing-observer-role' => 'arn:aws:iam::111111111111:role/yolo-testing-observer-role']);
+    bindMockIamClient(['yolo-testing-my-app-observer-role' => 'arn:aws:iam::111111111111:role/yolo-testing-my-app-observer-role']);
 
     $captured = [];
     bindAssumeRoleStsClient($captured, new RuntimeException('access denied assuming role'));

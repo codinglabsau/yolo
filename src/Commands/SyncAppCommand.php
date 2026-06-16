@@ -94,6 +94,12 @@ class SyncAppCommand extends SyncSteppedCommand
                 Steps\Sync\App\SyncDeployerPolicyStep::class,
                 Steps\Sync\App\SyncDeployerRoleStep::class,
                 Steps\Sync\App\AttachDeployerRolePoliciesStep::class,
+                // app IAM (per-app observer) — the read tier scoped to one app,
+                // log content fenced to this app's log group. Always provisioned
+                // (no GitHub-repo gate) so a read grant can name a single app.
+                Steps\Sync\App\SyncAppObserverPolicyStep::class,
+                Steps\Sync\App\SyncAppObserverRoleStep::class,
+                Steps\Sync\App\AttachAppObserverRolePolicyStep::class,
                 // cert/DNS + queues — runs before Fargate so the SSL certificate
                 // exists before the HTTPS listener that needs it. Solo gets an
                 // env-level apex zone + cert; multi-tenant has none (certs attach

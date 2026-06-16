@@ -57,7 +57,6 @@ it('grants read-only wildcards for the services YOLO provisions, on * (unscopeab
         'cloudfront:List*',
         'route53:List*',
         'cloudwatch:Describe*',
-        'logs:Describe*',
         'wafv2:List*',
         'servicediscovery:List*',
         'sts:GetCallerIdentity',
@@ -72,6 +71,13 @@ it('grants the operator-facing status reads its read-only commands invoke (logs 
     // status:budget reads month-to-date spend from Cost Explorer — its own service,
     // granted nowhere else in the read surface.
     expect(observerGrants('ce:GetCostAndUsage'))->toBeTrue();
+});
+
+it('reads log content env-wide (on *) — the per-app fence lives in AppObserverPolicy', function (): void {
+    $logsStatement = collect((new ObserverPolicy())->document()['Statement'])
+        ->first(fn (array $s): bool => in_array('logs:Filter*', (array) $s['Action'], true));
+
+    expect($logsStatement['Resource'])->toBe('*');
 });
 
 it('grants no write actions — read-only by construction', function (): void {

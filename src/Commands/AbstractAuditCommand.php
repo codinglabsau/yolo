@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Audit\Audit;
 use Illuminate\Support\Collection;
 use Codinglabs\Yolo\Audit\ConsoleUrl;
 use Codinglabs\Yolo\Contracts\ReadOnlyCommand;
+use Codinglabs\Yolo\Contracts\ReadsEnvironment;
 use Symfony\Component\Console\Input\InputOption;
 use Codinglabs\Yolo\Aws\ResourceGroupsTaggingApi;
 use Symfony\Component\Console\Input\InputArgument;
@@ -25,7 +26,7 @@ use function Laravel\Prompts\warning;
  * render are identical across all three; only the row filter and the
  * empty-state message change.
  */
-abstract class AbstractAuditCommand extends Command implements ReadOnlyCommand
+abstract class AbstractAuditCommand extends Command implements ReadOnlyCommand, ReadsEnvironment
 {
     protected function configure(): void
     {

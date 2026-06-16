@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Commands;
 use Codinglabs\Yolo\EnvManifest;
 use Codinglabs\Yolo\Aws\CostExplorer;
 use Codinglabs\Yolo\Contracts\ReadOnlyCommand;
+use Codinglabs\Yolo\Contracts\ReadsEnvironment;
 use Symfony\Component\Console\Input\InputOption;
 use Codinglabs\Yolo\Concerns\RendersServiceStatus;
 use Symfony\Component\Console\Input\InputArgument;
@@ -18,7 +19,7 @@ use function Laravel\Prompts\intro;
  * from the live ECS clusters in the env's namespace. The per-app detail (load,
  * scaling, queues) is `status` / `status:app`.
  */
-class StatusEnvironmentCommand extends Command implements ReadOnlyCommand
+class StatusEnvironmentCommand extends Command implements ReadOnlyCommand, ReadsEnvironment
 {
     use RendersServiceStatus;
 
