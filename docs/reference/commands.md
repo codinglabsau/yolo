@@ -497,7 +497,7 @@ Toggling and confirming applies the membership diff — and only ever touches th
 
 ## `yolo services`
 
-View and manage the [services](/guide/provisioning#the-service-lifecycle) an environment offers — the two-key gate (the env manifest offers a service, an app claims it) made visible and editable.
+View and manage [services](/guide/provisioning#the-service-lifecycle) for an app and its environment. The interactive view is app-centric — a `Service · Description · Status` table where **Status** is whether *this app* uses each service — with enable / disable per service.
 
 ```bash
 yolo services <environment> [--json] [--add=<service>] [--set key=value] [--remove=<service>]
@@ -510,9 +510,12 @@ yolo services <environment> [--json] [--add=<service>] [--set key=value] [--remo
 | `--set` | `key=value` | An offer field for `--add`, repeatable (e.g. `--set version=29.0 --set nodes=3`). |
 | `--remove` | service | Withdraw a service offer non-interactively. |
 
-Run with no options for an interactive table — each service's offer, the running apps that claim it, and its lifecycle state — with add / edit / remove. The add/edit prompts are generated from each service's offer fields, so a new service needs no command changes. App-side-only services (`rekognition`, `mediaconvert`) are listed but not offerable at the environment tier.
+Run with no options for the interactive picker (`Cancel` is the last option). The table lists every service with a one-line description and whether **this app** has it enabled; selecting one lets you:
 
-Editing writes and uploads the [environment manifest](/reference/manifest); the next [`sync:environment`](#yolo-sync-environment) reconciles AWS to it. A service can't be withdrawn while a running app still claims it (the same guard as [`environment:manifest:push`](#yolo-environment-manifest-push)).
+- **Enable / Disable for this app** — write (or remove) the service in this app's `yolo.yml` `services` claim. The write is surgical (it preserves your manifest's comments and formatting). For an app-side service (`mediaconvert`, `rekognition`) that's the whole change, and it offers to run [`sync:app`](#yolo-run) right then.
+- For an **env-backed** service (`typesense`, `ivs`), enabling also walks you through its **environment offer** — e.g. Typesense's version / nodes / CPU / RAM, pre-filled with sensible defaults. The offer is written to a **local copy** of the [environment manifest](/reference/manifest) (not pushed straight to the bucket), the command **warns you of the cost and blast-radius implications**, and then it tells you — and offers — to run `environment:manifest:push <env>` followed by `sync <env>` to apply.
+
+The `--add` / `--set` / `--remove` flags drive the **environment offer** non-interactively (for agents/CI), uploading the env manifest directly. A service still can't be withdrawn while a running app claims it (the same guard as [`environment:manifest:push`](#yolo-environment-manifest-push)).
 
 ```bash
 yolo services production                                          # interactive

@@ -2,8 +2,10 @@
 
 namespace Codinglabs\Yolo\Commands;
 
+use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\EnvManifest;
+use Symfony\Component\Yaml\Yaml;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Services\Lifecycle;
 use Symfony\Component\Console\Input\ArrayInput;
@@ -19,6 +21,7 @@ use function Laravel\Prompts\error;
 use function Laravel\Prompts\table;
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\confirm;
+use function Laravel\Prompts\warning;
 
 /**
  * The two-key service gate, made visible and editable. A table of every service
@@ -169,15 +172,34 @@ class ServicesCommand extends Command
     {
         $enabled = Manifest::usesService($service);
 
+        // App-side services (mediaconvert / rekognition) are a plain app claim —
+        // enabling adds them to yolo.yml, a per-app IAM grant on the next sync.
+        if (! $service->definition()->envBacked()) {
+            $action = select(label: $service->value, options: [
+                'toggle' => $enabled ? 'Disable for this app' : 'Enable for this app',
+                'cancel' => 'Cancel',
+            ]);
+
+            if ($action === 'toggle') {
+                $this->toggleClaim($service, $enabled);
+            }
+
+            return;
+        }
+
+        // Env-backed services (typesense / ivs) carry an env-shared offer (sizing)
+        // in the environment manifest alongside the per-app claim.
         $action = select(label: $service->value, options: array_filter([
-            'toggle' => $enabled ? 'Disable for this app' : 'Enable for this app',
-            'offer' => $service->definition()->envBacked() ? 'Configure environment offer…' : null,
+            'enable' => $enabled ? null : 'Enable for this app',
+            'configure' => $enabled ? 'Reconfigure the environment offer (CPU / RAM / nodes)' : null,
+            'disable' => $enabled ? 'Disable for this app' : null,
             'cancel' => 'Cancel',
         ]));
 
         match ($action) {
-            'toggle' => $this->toggleClaim($service, $enabled),
-            'offer' => $this->manageOffer($service),
+            'enable' => $this->enableEnvBacked($service),
+            'configure' => $this->configureOffer($service),
+            'disable' => $this->toggleClaim($service, true),
             default => null,
         };
     }
@@ -227,46 +249,103 @@ class ServicesCommand extends Command
         );
     }
 
-    /** Configure the environment-tier offer (shape) of an env-backed service. */
-    protected function manageOffer(Service $service): void
+    /**
+     * Enable an env-backed service for THIS app: claim it in yolo.yml, then walk
+     * the operator through its environment offer (sizing) and how to apply it.
+     */
+    protected function enableEnvBacked(Service $service): void
     {
-        $offered = EnvManifest::has($service->envManifestKey());
+        $next = array_values(array_unique([...Manifest::services(), $service->value]));
 
-        $action = select(label: $service->value . ' · environment offer', options: array_filter([
-            'edit' => $offered ? 'Edit the offer' : 'Offer in this environment',
-            'remove' => $offered ? 'Withdraw the offer' : null,
-            'cancel' => 'Cancel',
-        ]));
+        if (! Manifest::setServiceList($next)) {
+            error(sprintf(
+                "Couldn't edit yolo.yml automatically — add \"%s\" to environments.%s.services by hand, then run `yolo sync %s`.",
+                $service->value,
+                $this->argument('environment'),
+                $this->argument('environment'),
+            ));
 
-        match ($action) {
-            'edit' => $this->editOffer($service),
-            'remove' => $this->applyRemove($service->value, interactive: true),
-            default => null,
-        };
+            return;
+        }
+
+        info(sprintf("Enabled %s in this app's yolo.yml.", $service->value));
+
+        $this->configureOffer($service);
     }
 
-    protected function editOffer(Service $service): void
+    /**
+     * Configure an env-backed service's offer (its env-shared sizing) on a LOCAL
+     * copy of the environment manifest — pulled fresh from the bucket when one
+     * isn't already on disk. The result is written locally, never straight to the
+     * bucket, so the operator reviews it and applies it explicitly via
+     * environment:manifest:push + sync (or lets us run those now).
+     */
+    protected function configureOffer(Service $service): void
     {
-        $current = (array) EnvManifest::get($service->envManifestKey(), []);
+        $local = EnvManifest::localPath();
+
+        if (! file_exists($local)) {
+            $this->download(EnvManifest::filename(), $local);   // false → no remote yet; start empty
+        }
+
+        $manifest = file_exists($local) ? (array) (Yaml::parse((string) file_get_contents($local)) ?? []) : [];
+        $current = (array) Arr::get($manifest, $service->envManifestKey(), []);
+        $defaults = $service->definition()->offerDefaults();
+
         $offer = [];
 
         foreach ($service->definition()->offerKeys() as $key) {
-            $value = text(label: $key, default: (string) ($current[$key] ?? ''));
+            $value = trim(text(label: $key, default: (string) ($current[$key] ?? $defaults[$key] ?? '')));
 
             if ($value !== '') {
                 $offer[$key] = static::coerce($value);
             }
         }
 
+        $manifest['services'] ??= [];
+        $manifest['services'][$service->value] = $offer;
+
         try {
-            $this->writeOffer($service, $offer);
+            EnvManifest::parse(Yaml::dump($manifest, 6, 2));
         } catch (IntegrityCheckException $exception) {
             error($exception->getMessage());
 
             return;
         }
 
-        info(sprintf('Offered %s. Run `yolo sync:environment %s` to provision it.', $service->value, $this->argument('environment')));
+        file_put_contents($local, Yaml::dump($manifest, 6, 2));
+
+        info(sprintf('Wrote the %s offer (%s) to %s.', $service->value, static::offerSummary($offer), EnvManifest::filename()));
+
+        if (($implications = $service->definition()->implications()) !== '') {
+            warning($implications);
+        }
+
+        $this->offerToApply();
+    }
+
+    /**
+     * Spell out how to apply an environment-manifest change — and offer to run
+     * those steps now. Defaults to no: pushing + syncing provisions real, billed
+     * infrastructure, so it stays an explicit opt-in.
+     */
+    protected function offerToApply(): void
+    {
+        $environment = $this->argument('environment');
+
+        note(sprintf(
+            "To apply:\n  1. Review this app's yolo.yml and %s.\n  2. `yolo environment:manifest:push %s`  — publish the environment manifest.\n  3. `yolo sync %s`  — provision the change.",
+            EnvManifest::filename(),
+            $environment,
+            $environment,
+        ));
+
+        if (! confirm(label: sprintf('Apply now — push the manifest and run `yolo sync %s`?', $environment), default: false)) {
+            return;
+        }
+
+        $this->getApplication()?->find('environment:manifest:push')->run(new ArrayInput(['environment' => $environment]), $this->output);
+        $this->getApplication()?->find('sync')->run(new ArrayInput(['environment' => $environment]), $this->output);
     }
 
     protected function applyAdd(string $name): int

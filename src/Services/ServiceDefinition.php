@@ -30,6 +30,29 @@ abstract class ServiceDefinition
     abstract public function description(): string;
 
     /**
+     * Sensible defaults for the env-manifest offer keys, pre-filled when an
+     * operator first configures the service (e.g. Typesense's 256 vCPU / 1024 MB
+     * per node, 3 nodes). A required decision with no safe default (the Typesense
+     * version) is simply absent.
+     *
+     * @return array<string, int|string>
+     */
+    public function offerDefaults(): array
+    {
+        return [];
+    }
+
+    /**
+     * A short warning of the immediate, real-world implications of turning the
+     * service on — cost, blast radius, provisioning time — shown before the
+     * operator commits. Empty when there's nothing material to flag.
+     */
+    public function implications(): string
+    {
+        return '';
+    }
+
+    /**
      * Whether this service has an environment-manifest half — env-shared
      * infrastructure that sync:environment provisions when the environment
      * offers `services.{name}` and a live app claims it. App-side-only
