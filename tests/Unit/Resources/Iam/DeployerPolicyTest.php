@@ -107,20 +107,38 @@ it('scopes PassRole to the per-app task role and shared execution role, passed o
     ]);
 });
 
-it('grants S3 object and bucket access on the asset and config buckets', function (): void {
+it('grants write-only asset push on builds/* and read-only env-file pull, least-privilege', function (): void {
     $document = (new DeployerPolicy())->document();
 
-    $objects = statementFor($document, 's3:PutObject');
-    expect($objects['Resource'])->toBe([
-        'arn:aws:s3:::yolo-111111111111-testing-my-app-assets/*',
-        'arn:aws:s3:::yolo-111111111111-testing-my-app-config/*',
+    // Asset push (deploy): write-only on the per-deploy builds/ prefix — no read,
+    // no ListBucket. s3:PutObject covers the whole multipart upload chain.
+    $assets = collect($document['Statement'])
+        ->first(fn (array $statement): bool => $statement['Resource'] === 'arn:aws:s3:::yolo-111111111111-testing-my-app-assets/builds/*');
+    expect($assets)->not->toBeNull();
+    expect($assets['Action'])->toBe([
+        's3:PutObject',
+        's3:AbortMultipartUpload',
+        's3:ListMultipartUploadParts',
     ]);
 
-    $buckets = statementFor($document, 's3:ListBucket');
-    expect($buckets['Resource'])->toBe([
-        'arn:aws:s3:::yolo-111111111111-testing-my-app-assets',
-        'arn:aws:s3:::yolo-111111111111-testing-my-app-config',
-    ]);
+    // Env-file pull (build): read-only on exactly this app's .env.{env} object.
+    $envFile = collect($document['Statement'])
+        ->first(fn (array $statement): bool => $statement['Resource'] === 'arn:aws:s3:::yolo-111111111111-testing-my-app-config/.env.testing');
+    expect($envFile)->not->toBeNull();
+    expect($envFile['Action'])->toBe(['s3:GetObject']);
+
+    // No bucket-level S3 grant survives the tightening, and the asset/config
+    // buckets are never reachable at the bucket root or whole-object level.
+    $allActions = collect($document['Statement'])->flatMap(fn (array $statement): array => (array) $statement['Action']);
+    expect($allActions)->not->toContain('s3:ListBucket')
+        ->not->toContain('s3:ListBucketMultipartUploads')
+        ->not->toContain('s3:GetBucketLocation');
+
+    $allResources = collect($document['Statement'])->flatMap(fn (array $statement): array => (array) $statement['Resource']);
+    expect($allResources)->not->toContain('arn:aws:s3:::yolo-111111111111-testing-my-app-assets/*')
+        ->not->toContain('arn:aws:s3:::yolo-111111111111-testing-my-app-assets')
+        ->not->toContain('arn:aws:s3:::yolo-111111111111-testing-my-app-config/*')
+        ->not->toContain('arn:aws:s3:::yolo-111111111111-testing-my-app-config');
 });
 
 it('grants object access on this app\'s claim file in the env config bucket, scoped to the object not the bucket', function (): void {
