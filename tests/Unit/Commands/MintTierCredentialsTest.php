@@ -24,6 +24,7 @@ use Codinglabs\Yolo\Contracts\DeployerCommand;
 use Codinglabs\Yolo\Contracts\ReadOnlyCommand;
 use Codinglabs\Yolo\Commands\StatusLogsCommand;
 use Symfony\Component\Console\Input\ArrayInput;
+use Codinglabs\Yolo\Commands\PermissionsCommand;
 use Symfony\Component\Console\Input\InputOption;
 use Codinglabs\Yolo\Commands\StatusAlarmsCommand;
 use Codinglabs\Yolo\Commands\StatusBudgetCommand;
@@ -187,6 +188,7 @@ it('runs the provisioning commands under the Admin tier', function (Command $com
     'sync:environment' => fn (): Command => new SyncEnvironmentCommand(),
     'sync:app' => fn (): Command => new SyncAppCommand(),
     'scale' => fn (): Command => new ScaleCommand(),
+    'permissions' => fn (): Command => new PermissionsCommand(),
 ]);
 
 it('is a no-op for an un-tiered command — never assumes a role, never overrides credentials', function (): void {

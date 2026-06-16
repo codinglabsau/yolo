@@ -49,6 +49,9 @@ class Yolo
         // Scale
         Commands\ScaleCommand::class,
 
+        // Access management (team RBAC — edits YOLO grant-group membership)
+        Commands\PermissionsCommand::class,
+
         // Services (the env service gate)
         Commands\ServicesCommand::class,
 
