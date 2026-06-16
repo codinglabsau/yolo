@@ -25,6 +25,7 @@ class BuildCommand extends SteppedCommand implements DeployerCommand
 
     protected array $fargateSteps = [
         Steps\Build\Fargate\CheckOctaneInstalledStep::class,
+        Steps\Build\Fargate\CheckCloudWatchSdkStep::class,
         Steps\Build\Fargate\GenerateEntrypointScriptStep::class,
         Steps\Build\Fargate\GenerateSupervisorConfigStep::class,
         Steps\Build\Fargate\LoginToEcrStep::class,

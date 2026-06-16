@@ -245,11 +245,15 @@ it('adds the saturation emitter program and writes its script for an Octane auto
     $script = file_get_contents(Paths::build('docker/yolo-saturation.php'));
     expect($script)
         ->toContain("\$service = 'yolo-testing-my-app-web';")
-        ->toContain("'Namespace' => 'YOLO/Autoscaling'")
-        ->toContain("'Name' => 'WorkerSaturation'")
-        ->toContain("'ServiceName' => \$service")
         ->toContain('$floor = 70;')
-        ->toContain('frankenphp_busy_threads')
+        ->toContain('$threshold = 80;')
+        ->toContain("'region' => 'ap-southeast-2'")
+        ->toContain('->putMetricData(')
+        ->toContain("'Namespace' => 'YOLO/Autoscaling'")
+        ->toContain("'MetricName' => 'WorkerSaturation'")
+        ->toContain("['Name' => 'ServiceName', 'Value' => \$service]")
+        ->toContain('frankenphp_busy_workers')
+        ->not->toContain('_aws')
         ->not->toContain('{{');
 
     // The rendered emitter is runtime PHP — gate its syntax so a stub edit that
@@ -323,7 +327,7 @@ it('hard-fails the build when the Octane Caddyfile stub is missing for an autosc
         ->toThrow(RuntimeException::class, 'laravel/octane');
 });
 
-it('parses FrankenPHP thread saturation from a real metrics payload', function (): void {
+it('parses FrankenPHP worker saturation from a real metrics payload', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['autoscaling' => true]],
@@ -336,20 +340,20 @@ it('parses FrankenPHP thread saturation from a real metrics payload', function (
     require_once Paths::build('docker/yolo-saturation.php');
 
     $payload = <<<'METRICS'
-# HELP frankenphp_busy_threads Number of busy PHP threads
-# TYPE frankenphp_busy_threads gauge
-frankenphp_busy_threads 6
-# HELP frankenphp_total_threads Total number of PHP threads
-# TYPE frankenphp_total_threads gauge
-frankenphp_total_threads 8
+# HELP frankenphp_busy_workers Number of busy workers
+# TYPE frankenphp_busy_workers gauge
+frankenphp_busy_workers 6
+# HELP frankenphp_total_workers Total number of workers
+# TYPE frankenphp_total_workers gauge
+frankenphp_total_workers 8
 METRICS;
 
-    // 6 of 8 threads busy = 75%. The HELP/TYPE comment lines for the same metric names
+    // 6 of 8 workers busy = 75%. The HELP/TYPE comment lines for the same metric names
     // must not be mistaken for the gauge lines.
     expect(yolo_parse_saturation($payload))->toBe(75.0);
 
     // No gauges (metrics off) reads as null, so the emitter stays silent rather than
-    // emitting a bogus datapoint.
+    // publishing a bogus datapoint.
     expect(yolo_parse_saturation("frankenphp_other 1\n"))->toBeNull();
 });
 

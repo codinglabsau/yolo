@@ -120,9 +120,13 @@ class GenerateSupervisorConfigStep implements Step
         $script = strtr((string) $this->filesystem->get(Paths::stubs('yolo-saturation.php.stub')), [
             '{{service}}' => WebBurstPolicy::serviceName(),
             '{{floor}}' => (string) WebBurstPolicy::EMIT_FLOOR,
+            '{{threshold}}' => (string) WebBurstPolicy::ALARM_THRESHOLD,
+            '{{cooldown}}' => (string) WebBurstPolicy::COOLDOWN,
+            '{{interval}}' => (string) WebBurstPolicy::POLL_INTERVAL,
             '{{namespace}}' => WebBurstPolicy::METRIC_NAMESPACE,
             '{{metric}}' => WebBurstPolicy::METRIC_NAME,
             '{{dimension}}' => WebBurstPolicy::METRIC_DIMENSION,
+            '{{region}}' => Manifest::get('region'),
         ]);
 
         $path = Paths::build('docker/yolo-saturation.php');

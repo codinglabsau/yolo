@@ -14,6 +14,7 @@ use Codinglabs\Yolo\Resources\S3\S3Bucket;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
+use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
 
 /**
  * YOLO-managed customer-managed IAM policy granting this app's ECS task role its
@@ -130,6 +131,23 @@ class EcsTaskPolicy implements Resource, SynchronisesConfiguration
                 ],
             ],
         ];
+
+        // When web autoscaling burst is on, the saturation emitter publishes the
+        // real-time WorkerSaturation metric via PutMetricData. That action has no
+        // resource-level scoping, so it's narrowed by a namespace condition to YOLO's
+        // own metrics — the task role can publish nothing else. Gated on the same
+        // signal that builds the emitter and metrics Caddyfile, so the grant and the
+        // process using it can't drift.
+        if (Manifest::usesMetricsCaddyfile()) {
+            $statements[] = [
+                'Effect' => 'Allow',
+                'Resource' => '*',
+                'Action' => ['cloudwatch:PutMetricData'],
+                'Condition' => [
+                    'StringEquals' => ['cloudwatch:namespace' => WebBurstPolicy::METRIC_NAMESPACE],
+                ],
+            ];
+        }
 
         // When the manifest declares an application data bucket, grant this app's
         // task role read+write to that bucket. Scoped to the one declared bucket —

@@ -58,6 +58,28 @@ it('grants SES send scoped to this region\'s verified identities', function (): 
     ]);
 });
 
+it('grants namespace-scoped cloudwatch:PutMetricData when web autoscaling burst is on', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => true]],
+    ]);
+
+    $put = collect((new EcsTaskPolicy())->document()['Statement'])
+        ->firstWhere('Action', ['cloudwatch:PutMetricData']);
+
+    expect($put)->not->toBeNull();
+    expect($put['Resource'])->toBe('*');
+    expect($put['Condition'])->toBe([
+        'StringEquals' => ['cloudwatch:namespace' => 'YOLO/Autoscaling'],
+    ]);
+});
+
+it('grants no cloudwatch:PutMetricData when web autoscaling is off', function (): void {
+    $actions = collect((new EcsTaskPolicy())->document()['Statement'])->pluck('Action')->flatten();
+
+    expect($actions)->not->toContain('cloudwatch:PutMetricData');
+});
+
 it('trusts the ecs-tasks service in the ECS task assume role policy', function (): void {
     expect((new EcsTaskRole())->assumeRolePolicyDocument())->toBe([
         'Version' => '2012-10-17',
