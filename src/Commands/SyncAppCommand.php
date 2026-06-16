@@ -90,15 +90,17 @@ class SyncAppCommand extends SyncSteppedCommand
                 // dropping a claim melts that service's per-app IAM on the
                 // same sync rather than orphaning it
                 ...static::appServiceSteps(),
-                // app IAM (deployer)
+                // app IAM — every policy is created before any attach, so the
+                // deployer attach can reference the per-app observer policy.
+                // The per-app observer (read tier scoped to one app, log content
+                // fenced to its log group) is always provisioned (no GitHub-repo
+                // gate) so a read grant can name a single app; it's also the read
+                // surface the deployer carries for the pre-deploy sync-check gate.
                 Steps\Sync\App\SyncDeployerPolicyStep::class,
-                Steps\Sync\App\SyncDeployerRoleStep::class,
-                Steps\Sync\App\AttachDeployerRolePoliciesStep::class,
-                // app IAM (per-app observer) — the read tier scoped to one app,
-                // log content fenced to this app's log group. Always provisioned
-                // (no GitHub-repo gate) so a read grant can name a single app.
                 Steps\Sync\App\SyncAppObserverPolicyStep::class,
+                Steps\Sync\App\SyncDeployerRoleStep::class,
                 Steps\Sync\App\SyncAppObserverRoleStep::class,
+                Steps\Sync\App\AttachDeployerRolePoliciesStep::class,
                 Steps\Sync\App\AttachAppObserverRolePolicyStep::class,
                 // per-app grant groups (LPX-680): membership grants deploy / read
                 // on THIS app only. The deployers group is gated on a GitHub repo

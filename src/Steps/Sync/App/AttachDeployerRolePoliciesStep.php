@@ -8,8 +8,8 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\Iam\DeployerRole;
 use Codinglabs\Yolo\Resources\Iam\DeployerPolicy;
-use Codinglabs\Yolo\Resources\Iam\ObserverPolicy;
 use Codinglabs\Yolo\Concerns\AttachesRolePolicies;
+use Codinglabs\Yolo\Resources\Iam\AppObserverPolicy;
 
 class AttachDeployerRolePoliciesStep implements Step
 {
@@ -21,16 +21,24 @@ class AttachDeployerRolePoliciesStep implements Step
             return StepResult::SKIPPED;
         }
 
-        // DeployerPolicy = the deploy-time write/read grants. ObserverPolicy = the
-        // env-shared read-only surface the pre-deploy `sync --check` gate
-        // (EnsureInSyncStep) needs to inspect the whole stack — attaching it means
-        // the deployer inherits exactly that read without a new direct grant, and
-        // never the broad blast radius of AWS-managed ReadOnlyAccess.
-        return $this->attachRolePolicies(
+        // DeployerPolicy = the deploy-time write/read grants. AppObserverPolicy =
+        // the read surface the pre-deploy `sync --check` gate (EnsureInSyncStep)
+        // needs: the gate plans account → environment → THIS app, so it reads
+        // env-level resources + this app's, never a sibling app's. The per-app
+        // observer policy gives exactly that — the same unscopeable env-wide
+        // describes (AWS won't scope those) but with log *content* fenced to this
+        // app's group, so a deploy grant can't read another app's logs. The gate
+        // reads no logs anyway; this just stops the deployer carrying the unfenced
+        // env read it never needed.
+        //
+        // Reconciled, not additive: swapping off the old env-wide ObserverPolicy
+        // detaches it on the next sync, so an adopted deployer role converges to
+        // exactly these two — no orphaned broad-read grant left behind.
+        return $this->reconcileRolePolicies(
             (new DeployerRole())->name(),
             [
                 $this->customerManagedPolicyArn((new DeployerPolicy())->name()),
-                $this->customerManagedPolicyArn((new ObserverPolicy())->name()),
+                $this->customerManagedPolicyArn((new AppObserverPolicy())->name()),
             ],
             (bool) Arr::get($options, 'dry-run'),
         );
