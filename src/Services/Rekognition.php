@@ -18,6 +18,11 @@ class Rekognition extends ServiceDefinition
         return Service::REKOGNITION;
     }
 
+    public function description(): string
+    {
+        return 'Image & video analysis (Amazon Rekognition)';
+    }
+
     public function envBacked(): bool
     {
         return false;

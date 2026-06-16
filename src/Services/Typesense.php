@@ -59,6 +59,11 @@ class Typesense extends ServiceDefinition
         return Service::TYPESENSE;
     }
 
+    public function description(): string
+    {
+        return 'Self-hosted search cluster (Typesense)';
+    }
+
     public function envBacked(): bool
     {
         return true;

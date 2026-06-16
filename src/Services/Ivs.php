@@ -22,6 +22,11 @@ class Ivs extends ServiceDefinition
         return Service::IVS;
     }
 
+    public function description(): string
+    {
+        return 'Live, low-latency video streaming (Amazon IVS)';
+    }
+
     public function envBacked(): bool
     {
         return true;

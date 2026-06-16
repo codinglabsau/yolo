@@ -26,6 +26,9 @@ abstract class ServiceDefinition
     /** The enum case this definition belongs to — the service's registered name. */
     abstract public function service(): Service;
 
+    /** A one-line, human description of the capability — shown in the services table. */
+    abstract public function description(): string;
+
     /**
      * Whether this service has an environment-manifest half — env-shared
      * infrastructure that sync:environment provisions when the environment

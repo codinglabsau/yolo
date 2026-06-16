@@ -2,6 +2,7 @@
 
 namespace Codinglabs\Yolo\Commands;
 
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\EnvManifest;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Services\Lifecycle;
@@ -11,6 +12,7 @@ use Codinglabs\Yolo\Concerns\ManagesEnvironmentFiles;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 use function Laravel\Prompts\info;
+use function Laravel\Prompts\note;
 use function Laravel\Prompts\text;
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\table;
@@ -75,7 +77,7 @@ class ServicesCommand extends Command
      * published-claim registry (used by); the display state is derived so the
      * manual-edit "conflict" case surfaces as a row rather than throwing.
      *
-     * @return array<int, array{service: string, envBacked: bool, offered: bool, offer: array<string, mixed>|null, offerKeys: array<int, string>, usedBy: array<int, string>, state: string}>
+     * @return array<int, array{service: string, description: string, envBacked: bool, offered: bool, offer: array<string, mixed>|null, offerKeys: array<int, string>, usedBy: array<int, string>, usesApp: bool, state: string}>
      */
     public static function rows(): array
     {
@@ -89,11 +91,13 @@ class ServicesCommand extends Command
 
             return [
                 'service' => $service->value,
+                'description' => $definition->description(),
                 'envBacked' => $envBacked,
                 'offered' => $offered,
                 'offer' => $offered ? (array) EnvManifest::get($service->envManifestKey(), []) : null,
                 'offerKeys' => $definition->offerKeys(),
                 'usedBy' => $usedBy,
+                'usesApp' => Manifest::usesService($service),
                 'state' => self::displayState($envBacked, $offered, $usedBy !== [], $unpublished),
             ];
         }, Service::cases());
@@ -135,24 +139,24 @@ class ServicesCommand extends Command
         while (true) {
             $rows = static::rows();
 
-            table(['Service', 'Offered', 'Used by', 'State'], array_map(static fn (array $row): array => [
+            table(['Service', 'Description', 'Status'], array_map(static fn (array $row): array => [
                 $row['service'],
-                $row['offered'] ? static::offerSummary($row['offer']) : ($row['envBacked'] ? '—' : 'app-side'),
-                $row['usedBy'] === [] ? '—' : implode(', ', $row['usedBy']),
-                $row['state'],
+                $row['description'],
+                $row['usesApp'] ? 'enabled' : 'disabled',
             ], $rows));
 
-            $choices = ['__quit__' => 'Quit'];
+            $choices = [];
 
             foreach ($rows as $row) {
-                if ($row['envBacked']) {
-                    $choices[$row['service']] = $row['service'];
-                }
+                $choices[$row['service']] = $row['service'];
             }
+
+            // Cancel sits last, like a normal menu (not a leading "Quit").
+            $choices['__cancel__'] = 'Cancel';
 
             $pick = select(label: 'Manage which service?', options: $choices, scroll: 10);
 
-            if ($pick === '__quit__') {
+            if ($pick === '__cancel__') {
                 return self::SUCCESS;
             }
 
@@ -162,11 +166,25 @@ class ServicesCommand extends Command
 
     protected function manage(Service $service): void
     {
+        // App-side services are claimed in the consuming app's own yolo.yml (a
+        // per-app IAM grant), not offered at the environment tier — there's no env
+        // offer to edit here, so point the operator at the right place.
+        if (! $service->definition()->envBacked()) {
+            note(sprintf(
+                "%s is an app-side service — enable it by adding \"%s\" to environments.%s.services in this app's yolo.yml, then deploy.",
+                $service->value,
+                $service->value,
+                $this->argument('environment'),
+            ));
+
+            return;
+        }
+
         $offered = EnvManifest::has($service->envManifestKey());
 
         $action = select(label: $service->value, options: array_filter([
-            'edit' => $offered ? 'Edit offer' : 'Add offer',
-            'remove' => $offered ? 'Remove offer' : null,
+            'edit' => $offered ? 'Edit the environment offer' : 'Offer in this environment',
+            'remove' => $offered ? 'Withdraw the offer' : null,
             'cancel' => 'Cancel',
         ]));
 

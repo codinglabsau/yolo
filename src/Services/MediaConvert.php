@@ -24,6 +24,11 @@ class MediaConvert extends ServiceDefinition
         return Service::MEDIA_CONVERT;
     }
 
+    public function description(): string
+    {
+        return 'File-based video transcoding (Elemental MediaConvert)';
+    }
+
     public function envBacked(): bool
     {
         return false;
