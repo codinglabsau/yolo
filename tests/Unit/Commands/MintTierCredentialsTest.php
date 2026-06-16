@@ -4,6 +4,7 @@ use Aws\Result;
 use Aws\MockHandler;
 use Aws\Sts\StsClient;
 use Codinglabs\Yolo\Aws;
+use Laravel\Prompts\Key;
 use Laravel\Prompts\Prompt;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Enums\Iam;
@@ -255,10 +256,12 @@ it('mints the per-app Observer credentials for an app read once the role is prov
         ->and($credentials->getSecurityToken())->toBe('observer-session-token');
 
     // An app read (status) assumes this app's per-app observer role — log content
-    // fenced to the app's log group — under the shared observer session name.
+    // fenced to the app's log group — under the shared observer session name. No
+    // MFA: only the admin tier is MFA-gated.
     expect($captured)->toHaveCount(1)
         ->and($captured[0]['args']['RoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-my-app-observer-role')
-        ->and($captured[0]['args']['RoleSessionName'])->toBe('yolo-observer-role');
+        ->and($captured[0]['args']['RoleSessionName'])->toBe('yolo-observer-role')
+        ->and($captured[0]['args'])->not->toHaveKey('SerialNumber');
 });
 
 it('mints the env Observer credentials for an env-wide read (status:environment / audit)', function (): void {
@@ -295,7 +298,11 @@ it('mints the Deployer credentials for a deploy once the app deployer role is pr
         ->and($captured[0]['args']['RoleSessionName'])->toBe('yolo-deployer');
 });
 
-it('mints the Admin credentials for a sync once the env admin role is provisioned', function (): void {
+it('mints the Admin credentials for a sync — MFA-gated — once the env admin role is provisioned', function (): void {
+    // An explicit MFA serial avoids the ListMFADevices auto-discovery path.
+    putenv('YOLO_TESTING_MFA_SERIAL=arn:aws:iam::111111111111:mfa/operator');
+    Prompt::fake(['123456', Key::ENTER]);
+
     bindMockIamClient(['yolo-testing-admin-role' => 'arn:aws:iam::111111111111:role/yolo-testing-admin-role']);
 
     $captured = [];
@@ -304,12 +311,36 @@ it('mints the Admin credentials for a sync once the env admin role is provisione
     mint(new SyncEnvironmentCommand());
 
     expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeTrue();
-    expect(test()->promptOutput->fetch())->not->toContain('continuing on the profile credentials');
 
-    // It assumed exactly the env's admin role, named for the tier.
+    // It assumed the env admin role, passing the resolved MFA device serial + the
+    // freshly-prompted TOTP — the human factor an agent can't supply.
     expect($captured)->toHaveCount(1)
         ->and($captured[0]['args']['RoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-admin-role')
-        ->and($captured[0]['args']['RoleSessionName'])->toBe('yolo-admin-role');
+        ->and($captured[0]['args']['RoleSessionName'])->toBe('yolo-admin-role')
+        ->and($captured[0]['args']['SerialNumber'])->toBe('arn:aws:iam::111111111111:mfa/operator')
+        ->and($captured[0]['args']['TokenCode'])->toBe('123456');
+
+    putenv('YOLO_TESTING_MFA_SERIAL');
+    unset($_ENV['YOLO_TESTING_MFA_SERIAL'], $_SERVER['YOLO_TESTING_MFA_SERIAL']);
+});
+
+it('fails closed: admin refuses when no MFA device can be resolved', function (): void {
+    putenv('YOLO_TESTING_MFA_SERIAL');
+    unset($_ENV['YOLO_TESTING_MFA_SERIAL'], $_SERVER['YOLO_TESTING_MFA_SERIAL']);
+
+    bindMockIamClient(['yolo-testing-admin-role' => 'arn:aws:iam::111111111111:role/yolo-testing-admin-role']);
+
+    // The caller is an assumed-role, not an IAM user — so there's no device to
+    // auto-discover and no explicit serial set: admin must refuse, not run uncapped.
+    $mock = new MockHandler();
+    $mock->append(new Result(['Arn' => 'arn:aws:sts::111111111111:assumed-role/foo/bar']));
+    Helpers::app()->instance('sts', new StsClient([
+        'region' => 'ap-southeast-2', 'version' => 'latest', 'credentials' => false, 'handler' => $mock,
+    ]));
+
+    expect(mint(new SyncEnvironmentCommand()))->toBe(Command::FAILURE);
+    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
+    expect(test()->promptOutput->fetch())->toContain('MFA');
 });
 
 it('fails closed: refuses when the role exists but cannot be assumed (broken trust / lost grant)', function (): void {

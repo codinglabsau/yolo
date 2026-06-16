@@ -598,12 +598,44 @@ class Aws
      *
      * @return array<string, mixed> the Credentials sub-array (AccessKeyId, SecretAccessKey, SessionToken, Expiration)
      */
-    public static function assumeRole(string $roleArn, string $sessionName = 'yolo'): array
+    /**
+     * Assume a role, optionally with MFA. When both an MFA device serial and a
+     * fresh TOTP are supplied they're passed to STS, which is how the admin tier
+     * satisfies the `aws:MultiFactorAuthPresent` condition on its trust policy —
+     * a per-assume human factor an agent can't supply.
+     */
+    public static function assumeRole(string $roleArn, string $sessionName = 'yolo', ?string $mfaSerial = null, ?string $mfaTokenCode = null): array
     {
-        return static::sts()->assumeRole([
+        $parameters = [
             'RoleArn' => $roleArn,
             'RoleSessionName' => $sessionName,
-        ])['Credentials'];
+        ];
+
+        if ($mfaSerial !== null && $mfaTokenCode !== null) {
+            $parameters['SerialNumber'] = $mfaSerial;
+            $parameters['TokenCode'] = $mfaTokenCode;
+        }
+
+        return static::sts()->assumeRole($parameters)['Credentials'];
+    }
+
+    /**
+     * The MFA device serial of the calling IAM user, for the admin-tier assume —
+     * resolved from the caller's identity then their first attached device, or
+     * null when the caller isn't an IAM user or has no device (the operator then
+     * sets YOLO_{ENV}_MFA_SERIAL explicitly). Read-only; needs iam:ListMFADevices.
+     */
+    public static function callerMfaSerial(): ?string
+    {
+        $arn = static::sts()->getCallerIdentity()['Arn'] ?? '';
+
+        if (! preg_match('#:user/(.+)$#', (string) $arn, $matches)) {
+            return null;
+        }
+
+        $devices = static::iam()->listMFADevices(['UserName' => $matches[1]])['MFADevices'] ?? [];
+
+        return $devices[0]['SerialNumber'] ?? null;
     }
 
     public static function acm(): AcmClient

@@ -55,6 +55,19 @@ fall-through to the full identity. The single escape is the global
 loud warning), which is also the once-per-env bootstrap that creates the roles +
 groups (`yolo sync <env> --dangerously-skip-permissions`).
 
+## MFA-gated admin assume — escalation is never implicit
+
+The admin role's trust requires `aws:MultiFactorAuthPresent`, and YOLO passes a
+fresh TOTP (prompted; device serial from `YOLO_{ENV}_MFA_SERIAL` or auto-discovered
+via `iam:ListMFADevices`) when minting the admin tier. So `sync` / `scale` /
+`permissions` require a **fresh human MFA an agent can't generate** — escalating
+observer→admin is an explicit human act, not an implicit token switch. It's
+AWS-enforced (a direct AssumeRole without MFA is denied), so it holds even if YOLO
+is bypassed. Observer and deployer carry no MFA — reads and CI deploys stay
+frictionless. This is the interim agent fence until Lever B lands; the two
+compose (a weak base identity that can *only* assume, plus MFA on the one
+dangerous tier).
+
 ## Lever B — assume-only identities (not built; the real agent fence)
 
 A flag name is not a control — an agent can type it too. The only thing that

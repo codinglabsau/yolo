@@ -27,6 +27,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Codinglabs\Yolo\Concerns\ChecksIfCommandsShouldBeRunning;
 use Symfony\Component\Console\Command\Command as SymfonyCommand;
 
+use function Laravel\Prompts\text;
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\warning;
 
@@ -437,7 +438,26 @@ abstract class Command extends SymfonyCommand
         }
 
         try {
-            $credentials = Aws::assumeRole($role->arn(), sprintf('yolo-%s', $tier->value));
+            // Resolve the ARN first — a missing role fails closed here, before any
+            // MFA prompt, so "role not provisioned" never asks for a code.
+            $roleArn = $role->arn();
+            $sessionName = sprintf('yolo-%s', $tier->value);
+
+            if ($tier === Iam::ADMIN_ROLE) {
+                if (($mfaSerial = $this->resolveMfaSerial()) === null) {
+                    error(sprintf(
+                        "Refusing to mint the admin tier: no MFA device found for your identity.\n"
+                        . 'Attach an MFA device, or set YOLO_%s_MFA_SERIAL to its ARN. Admin requires MFA so escalating to it is always an explicit human act.',
+                        strtoupper((string) Helpers::environment()),
+                    ));
+
+                    return self::FAILURE;
+                }
+
+                $credentials = Aws::assumeRole($roleArn, $sessionName, $mfaSerial, $this->promptMfaCode());
+            } else {
+                $credentials = Aws::assumeRole($roleArn, $sessionName);
+            }
 
             Helpers::app()->instance('yoloAssumedCredentials', new Credentials(
                 $credentials['AccessKeyId'],
@@ -460,6 +480,38 @@ abstract class Command extends SymfonyCommand
 
             return self::FAILURE;
         }
+    }
+
+    /**
+     * The MFA device serial for the admin-tier assume. An explicit
+     * `YOLO_{ENV}_MFA_SERIAL` override wins (no extra IAM permission needed);
+     * otherwise auto-discover the caller's first device (needs
+     * `iam:ListMFADevices`). Null when neither resolves — admin then refuses.
+     */
+    protected function resolveMfaSerial(): ?string
+    {
+        if ($serial = Helpers::keyedEnv('MFA_SERIAL')) {
+            return $serial;
+        }
+
+        return Aws::callerMfaSerial();
+    }
+
+    /**
+     * Prompt for the fresh 6-digit TOTP that gates an admin-tier assume — the
+     * human factor an agent running as the operator can't generate.
+     */
+    protected function promptMfaCode(): string
+    {
+        return text(
+            label: 'MFA code (admin tier)',
+            placeholder: '123456',
+            required: true,
+            validate: fn (string $value): ?string => preg_match('/^\d{6}$/', $value) === 1
+                ? null
+                : 'Enter the 6-digit code from your MFA device.',
+            hint: 'Admin requires MFA — it proves a human, not an agent, is escalating.',
+        );
     }
 
     /**
