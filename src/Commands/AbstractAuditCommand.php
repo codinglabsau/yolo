@@ -2,11 +2,11 @@
 
 namespace Codinglabs\Yolo\Commands;
 
+use Codinglabs\Yolo\Arn;
 use Codinglabs\Yolo\Aws\Ecs;
-use Codinglabs\Yolo\Audit\Arn;
+use Codinglabs\Yolo\ConsoleUrl;
 use Codinglabs\Yolo\Audit\Audit;
 use Illuminate\Support\Collection;
-use Codinglabs\Yolo\Audit\ConsoleUrl;
 use Codinglabs\Yolo\Contracts\ReadOnlyCommand;
 use Symfony\Component\Console\Input\InputOption;
 use Codinglabs\Yolo\Aws\ResourceGroupsTaggingApi;

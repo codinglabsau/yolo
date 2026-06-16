@@ -6,10 +6,9 @@ namespace Codinglabs\Yolo\Tui;
 
 /**
  * Reads in-flight rollouts straight from the gathered ECS service statuses, so a
- * deploy shows up in the TUI whoever triggered it — `yolo deploy` in another
- * shell, CI, the Deployments tab's own rollback, even a raw update-service. The
- * shell uses active() to lock actions while a rollout runs and banner() to flag
- * it on the global bar.
+ * deploy shows up in the dashboard whoever triggered it — `yolo deploy` in another
+ * shell, CI, even a raw update-service. The global bar uses banner() to flag a
+ * rollout; the Deployments tab uses active() to switch to the live rollout view.
  */
 class DeployObserver
 {

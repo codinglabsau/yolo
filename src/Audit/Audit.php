@@ -2,6 +2,7 @@
 
 namespace Codinglabs\Yolo\Audit;
 
+use Codinglabs\Yolo\Arn;
 use Codinglabs\Yolo\Aws;
 
 /**

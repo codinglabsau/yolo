@@ -82,8 +82,8 @@ trait ManagesEnvironmentFiles
      * Validate a mutated env manifest and upload it to the env config bucket, then
      * drop the memoised copy. The whole document is re-validated (running each
      * service's validateOffer) before it leaves the machine, so a misshapen edit
-     * can never reach the bucket. Shared by the services gate and the TUI's inline
-     * manifest edits — the one place an env-manifest write is defined.
+     * can never reach the bucket — the one place an env-manifest write is defined
+     * (the services gate).
      *
      * @param  array<string, mixed>  $manifest
      */

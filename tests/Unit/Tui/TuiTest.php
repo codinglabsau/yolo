@@ -11,6 +11,8 @@ function stubPanel(string $title, string $hotkey): Panel
 {
     return new class($title, $hotkey) implements Panel
     {
+        public ?string $lastKey = null;
+
         public function __construct(public string $label, public string $key) {}
 
         public function title(): string
@@ -35,9 +37,9 @@ function stubPanel(string $title, string $hotkey): Panel
             return ['x thing'];
         }
 
-        public function onKey(string $key): ?Closure
+        public function onKey(string $key): void
         {
-            return $key === 'r' ? fn (): string => 'modal' : null;
+            $this->lastKey = $key;
         }
     };
 }
@@ -80,11 +82,15 @@ it('jumps to a tab by number and by hotkey', function (): void {
     expect($tui->activeIndex())->toBe(0);
 });
 
-it('delegates an unhandled key to the active panel as a modal closure', function (): void {
-    $tui = tui([stubPanel('A', 'a'), stubPanel('B', 'b')]);
+it('delegates an unhandled key to the active panel for in-place navigation', function (): void {
+    $panels = [stubPanel('A', 'a'), stubPanel('B', 'b')];
+    $tui = tui($panels);
 
-    expect($tui->handleKey('r'))->toBeInstanceOf(Closure::class)
-        ->and($tui->handleKey('z'))->toBeNull();
+    $tui->handleKey('r');
+
+    // The active panel receives the key (to scroll/cycle); the rest are untouched.
+    expect($panels[0]->lastKey)->toBe('r')
+        ->and($panels[1]->lastKey)->toBeNull();
 });
 
 it('quits on q', function (): void {
@@ -135,10 +141,7 @@ it('clips an over-long panel body to the height budget', function (): void {
             return [];
         }
 
-        public function onKey(string $key): ?Closure
-        {
-            return null;
-        }
+        public function onKey(string $key): void {}
     };
 
     $frame = (new Tui(new Screen(new BufferedOutput()), new Keyboard(), 'production', [$tall], new BufferedOutput()))
@@ -151,7 +154,7 @@ it('clips an over-long panel body to the height budget', function (): void {
 it('renders the global bar with brand, environment and coloured health dots', function (): void {
     $bar = Tui::globalBar('production', [dotStatus(ServerGroup::WEB, 3, 3), dotStatus(ServerGroup::SCHEDULER, 0, 1)]);
 
-    expect($bar)->toContain('yolo tui')
+    expect($bar)->toContain('yolo status')
         ->toContain('production')
         ->toContain('<fg=#A3E635>')   // healthy web → lime
         ->toContain('<fg=#FF3B5C>');  // dead scheduler → neon red

@@ -26,14 +26,13 @@ These are **read-only and safe** to run when you need live state: `status <env> 
 | `build <env>` | Build + push the container image to ECR |
 | `deploy <env>` | Build, then zero-downtime rollout (circuit breaker auto-rolls-back on failure) |
 | `rollback <env>` | Re-deploy a prior ECR version, no build (DB is **not** reverted) |
-| `status <env>` | One-shot snapshot (`--json` machine-readable); live cockpit is `tui` |
+| `status <env>` | Live read-only tabbed dashboard in a TTY; `--snapshot`/`--json` for a one-shot frame |
 | `status:environment <env>` | Roll up every app's status across the environment |
 | `status:logs\|:events\|:alarms <env>` | Incident reads — recent logs / ECS events / alarm state |
 | `status:budget <env>` | Month-to-date spend vs the declared `budget` (advisory) |
 | `run <env>` | Shell / one-off command in a running container (ECS Exec) |
 | `scale <env> [count]` | Adjust capacity out of band (`--web`/`--queue`, `--min`/`--max`) |
 | `services <env>` | View/manage env-shared services |
-| `tui [env]` | Interactive dashboard |
 | `sync[:account\|:environment\|:app] <env>` | Provision/reconcile resources (`--check` plan-only, `--force` skip confirm) |
 | `audit[:environment\|:app] <env>` | Flag resources YOLO can't account for (`--unexpected`, `--json`) |
 | `env:pull\|env:push <env>` | Download/upload the app's `.env` from S3 (push shows a diff, then offers to delete the local copy) |

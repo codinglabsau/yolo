@@ -1,10 +1,11 @@
 <?php
 
-namespace Codinglabs\Yolo\Audit;
+namespace Codinglabs\Yolo;
 
 /**
- * A parsed AWS ARN. Only the pieces the audit needs to classify a resource —
- * service, region, and the type/id split of the resource segment.
+ * A parsed AWS ARN — service, region, account, and the type/id split of the
+ * resource segment. A general-purpose parser; `parse()` returns null for a
+ * string that isn't a well-formed ARN.
  */
 class Arn
 {

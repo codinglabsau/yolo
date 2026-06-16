@@ -22,7 +22,7 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | [`build <env>`](#yolo-build) | Build and push the container image |
 | [`deploy <env>`](#yolo-deploy) | Build, then roll out a zero-downtime deploy |
 | [`rollback <env>`](#yolo-rollback) | Re-deploy a previously-built version from ECR, without a build |
-| [`status <env>`](#yolo-status) | Snapshot of one app's services, load, scaling and any in-progress deploy |
+| [`status <env>`](#yolo-status) | Live status dashboard (or a one-shot `--snapshot` / `--json` frame) |
 | [`status:app <env>`](#yolo-status-app) | App-tier status (the same as `status`, under the scope namespace) |
 | [`status:environment <env>`](#yolo-status-environment) | Roll up every app's status across an environment |
 | [`status:logs <env>`](#yolo-status-logs) | Recent CloudWatch logs per service group |
@@ -32,7 +32,6 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | [`run <env>`](#yolo-run) | Open a shell / run a command in a running container |
 | [`scale <env> [count]`](#yolo-scale) | Adjust the web service's task count out of band |
 | [`services <env>`](#yolo-services) | View and manage the services an environment offers |
-| [`tui [env]`](#yolo-tui) | Open the interactive dashboard |
 | [`sync <env>`](#yolo-sync) | Provision all resources (account → environment → app) |
 | [`sync:account <env>`](#yolo-sync-account) | Provision account-global resources |
 | [`sync:environment <env>`](#yolo-sync-environment) | Provision environment-shared resources |
@@ -249,10 +248,12 @@ Once the rollout settles, `rollback` prints the same recap as `deploy`.
 
 ## `yolo status`
 
-Show a snapshot of the app's running state for an environment — what each service group is running, its current load, scaling configuration, and any deploy in progress.
+The environment's live status. In a real terminal `yolo status <env>` opens a **tabbed, read-only dashboard** — it polls ECS, Application Auto Scaling, CloudWatch and SQS and redraws until you quit. `--snapshot` (and any non-interactive shell) renders a single frame instead; `--json` emits the machine-readable payload.
 
 ```bash
-yolo status <environment> [--json]
+yolo status <environment>             # live dashboard (in a terminal)
+yolo status <environment> --snapshot  # render one frame, then exit
+yolo status <environment> --json      # structured payload for scripts
 ```
 
 | Argument | Required | Description |
@@ -261,18 +262,36 @@ yolo status <environment> [--json]
 
 | Option | Value | Default | Description |
 |---|---|---|---|
+| `--snapshot` | flag | off | Render a single frame instead of the live dashboard (piping, screenshots, CI). |
 | `--json` | flag | off | Emit the status as JSON (`{app, environment, groups, queues}`) and exit — machine-readable for the `/yolo` skill and scripts. Exits non-zero if a deployment is currently failed. |
 
-It renders up to four panels, read live from ECS, Application Auto Scaling, CloudWatch and SQS:
+### The dashboard
+
+Read-only and navigation-only — every mutation is its own command, so nothing runs from here. Tabs:
+
+| Tab | What it shows |
+|---|---|
+| **Overview** | Per-group vitals, load, scaling, queue backlogs and any in-flight rollout — the same picture `--snapshot` renders |
+| **Metrics** | CPU / memory per group (and request rate / response time for web) as wide braille charts over the last hour |
+| **Alarms** | The app's CloudWatch alarms and their state (OK / ALARM / INSUFFICIENT_DATA), with the firing ones flagged |
+| **Logs** | Recent CloudWatch logs for one service group; `g` cycles groups, newest pinned to the bottom |
+| **Deployments** | Recent deployments from ECR, the running version marked; live progress while a rollout is in flight |
+| **Database** | The RDS instance/cluster behind `DB_HOST` — CPU, connections, freeable memory and latency over the last hour |
+| **Cache** | The shared Valkey cache — status, endpoint, and engine CPU / memory / connections / evictions over the last hour |
+| **Services** | The [service gate](/guide/provisioning#the-service-lifecycle) — what's offered, which apps claim it, its lifecycle state, plus the Typesense cluster's live CPU / memory when offered |
+
+A **global health bar** stays pinned on every tab — one dot per group (web / queue / scheduler), green when healthy, red when down, flipping to a rollout banner whenever a deploy is in flight, whoever triggered it. Each tab carries one muted AWS-Console deep link to its primary resource (the ECS service, RDS instance, cache cluster, log group, alarms). Navigate with `◂ ▸` / `Tab` / number keys / a tab's letter; `↑ ↓` / `PgUp PgDn` / `Home End` scroll the active tab's body; `q` quits. See the [Status Dashboard guide](/guide/status-dashboard) for the full tour.
+
+### The snapshot frame
+
+`--snapshot`, `--json`, or any non-interactive shell renders up to four panels instead, read live from ECS, Application Auto Scaling, CloudWatch and SQS:
 
 - **Deployment in progress** (only when a rollout is mid-flight) — a progress bar of new-revision tasks per rolling group, its rollout state, the revision, and how long it's been running.
 - **Services** — one row per group (web / queue / scheduler) with the task spec (vCPU/memory/launch type), running/desired task count, scaling bounds + policies (`1–4 auto (cpu 65%, req 1200)`, or `fixed` / `singleton`), and the deployed revision + app version.
 - **Load** (last 5 min) — ECS CPU/memory per group, shown against the CPU scaling target so headroom is obvious, plus the web service's ALB request rate and response time. Each reading trails a small `▁▂▃▅▇` sparkline of its recent trend.
 - **Queue** (backlog) — the visible-message count for each SQS queue (one for a solo app; the landlord queue plus one per tenant when multi-tenant). Shown even when the queue worker is bundled into the web container rather than its own service.
 
-Below the panels is a clickable deep link to the app's CloudWatch dashboard for the full metrics view.
-
-It **renders once and exits**, returning a non-zero exit code if a deployment is currently failed — so it doubles as a lightweight health probe. For the live, polling cockpit (it redraws and picks up deploys as they start), open [`yolo tui`](/guide/tui); its Status tab is this same picture, kept fresh. `--json` emits the same state as a structured payload rather than the panels — the machine-readable contract the `/yolo` skill (and any script) consumes. Each group's `load` carries both the latest reading and a `series` of its recent datapoints per metric (`load.series.cpu`, `.memory`, `.requests`, `.response`), so a consumer sees the trend, not just a lone number; `queues` lists each queue's `{label, name, backlog}`.
+Below the panels is a clickable deep link to the app's CloudWatch dashboard for the full metrics view. The snapshot returns a non-zero exit code if a deployment is currently failed — so it doubles as a lightweight health probe. `--json` emits the same state as a structured payload: each group's `load` carries both the latest reading and a `series` of its recent datapoints per metric (`load.series.cpu`, `.memory`, `.requests`, `.response`), so a consumer sees the trend, not just a lone number; `queues` lists each queue's `{label, name, backlog}`.
 
 `status` is the **app tier** of a scope-first namespace it shares with `status:app` and `status:environment`, mirroring [`sync:*`](#yolo-sync) and [`audit:*`](#yolo-audit).
 
@@ -397,7 +416,7 @@ yolo run <environment> [--command="<cmd>"] [--group=<groups>]
 
 **Behaviour:**
 
-- **No `--command`** → opens an interactive `/bin/sh` in the first running task (searched in the order `scheduler → queue → web`).
+- **No `--command`** → opens an interactive `/bin/sh`. In a real terminal with more than one group running (and no `--group` to narrow it), it prompts which group to shell into; otherwise it attaches to the first running task in the order `scheduler → queue → web`.
 - **With `--command`** → runs the command. With `--group`, it **fans out** across every running task in each listed group. Without `--group`, it runs on the first group that has a running task.
 
 Each group is its own ECS service when extracted, and `run` execs into the container named after the group. A bundled queue/scheduler runs inside the web container, so a `--group=queue` lookup that finds no standalone queue service simply falls through to the next group.
@@ -475,24 +494,6 @@ yolo services production --json                                   # read state
 yolo services production --add=typesense --set version=29.0 --set nodes=3
 yolo services production --remove=typesense
 ```
-
----
-
-## `yolo tui`
-
-Open the [interactive dashboard](/guide/tui) — a tabbed terminal UI over the environment.
-
-```bash
-yolo tui [environment]
-```
-
-| Argument | Required | Description |
-|---|---|---|
-| `environment` | no | The environment name. Prompts when omitted (auto-selects the only one). |
-
-Tabs: **Status** (live vitals, reusing [`status`](#yolo-status)), **Services** (the [`services`](#yolo-services) gate, ⏎ to manage), **Deployments** (ECR history + interactive [`rollback`](#yolo-rollback), and live rollout progress when one's in flight), **Logs** (tail CloudWatch per group), and **Manifest** (the env + app manifests, `e` to edit the env domain). The active tab's body is fitted to the terminal — tall content (logs, deploy history) scrolls. A global health bar stays on top and flags any in-progress deploy whoever triggered it. `tui` adds no new powers — it's the live cockpit over the existing commands.
-
-Navigate with `◂ ▸` / `Tab` / number keys / a tab's hotkey; `↑ ↓` / `PgUp PgDn` / `Home End` scroll a tab's body; `q` quits. It's interactive only — for a one-off frame in a script use [`status`](#yolo-status) (which renders once and exits) or `status --json`.
 
 ---
 

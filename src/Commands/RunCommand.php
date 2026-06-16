@@ -14,6 +14,7 @@ use Symfony\Component\Console\Input\InputArgument;
 
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\error;
+use function Laravel\Prompts\select;
 
 class RunCommand extends Command implements DeployerCommand
 {
@@ -48,19 +49,30 @@ class RunCommand extends Command implements DeployerCommand
 
         $fanOut = (bool) $group;
 
-        // Interactive shell can only attach to one task — first running, in order.
+        // Interactive shell attaches to one task. With several groups running and
+        // no explicit --group, let the operator pick which container to drop into;
+        // otherwise take the first running group in order. The container name is the
+        // group (the task-def names its container after the role).
         if (! $command) {
+            $running = [];
+
             foreach ($groups as $group) {
-                if ($task = Ecs::runningTasks($cluster, Helpers::keyedResourceName($group, exclusive: true))[0] ?? null) {
-                    // The container name is the group (the task-def names its
-                    // container after the role), so we exec into the right one.
-                    return $this->exec($cluster, $task, '/bin/sh', $group, interactive: true);
+                if (($task = Ecs::runningTasks($cluster, Helpers::keyedResourceName($group, exclusive: true))[0] ?? null) !== null) {
+                    $running[$group] = $task;
                 }
             }
 
-            error('No running task found to attach to.');
+            if ($running === []) {
+                error('No running task found to attach to.');
 
-            return self::FAILURE;
+                return self::FAILURE;
+            }
+
+            $group = (! $fanOut && count($running) > 1 && $this->input->isInteractive())
+                ? (string) select(label: 'Open a shell in which group?', options: array_combine(array_keys($running), array_keys($running)))
+                : array_key_first($running);
+
+            return $this->exec($cluster, $running[$group], '/bin/sh', $group, interactive: true);
         }
 
         // One-off command: fan out across all tasks when --group was given,

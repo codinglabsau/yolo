@@ -12,12 +12,22 @@ use Codinglabs\Yolo\Commands\StatusEnvironmentCommand;
 // RendersServiceStatus trait, reached here through StatusCommand. They take plain
 // arrays (the shapes AWS returns) so they can be pinned without mocking AWS.
 
-it('is a one-shot command — no full-screen --snapshot, keeps --json', function (): void {
-    $definition = (new StatusCommand())->getDefinition();
+it('is the status dashboard, with --snapshot and --json one-shot escape hatches', function (): void {
+    $command = new StatusCommand();
+    $definition = $command->getDefinition();
 
-    expect((new StatusCommand())->getName())->toBe('status')
+    expect($command->getName())->toBe('status')
+        ->and($definition->getArgument('environment')->isRequired())->toBeTrue()
         ->and($definition->hasOption('json'))->toBeTrue()
-        ->and($definition->hasOption('snapshot'))->toBeFalse();
+        ->and($definition->hasOption('snapshot'))->toBeTrue();
+});
+
+it('opens the dashboard only in an interactive, decorated terminal without --json/--snapshot', function (): void {
+    expect(StatusCommand::shouldRenderDashboard(json: false, snapshot: false, interactive: true, decorated: true))->toBeTrue()
+        ->and(StatusCommand::shouldRenderDashboard(json: true, snapshot: false, interactive: true, decorated: true))->toBeFalse()    // --json → snapshot
+        ->and(StatusCommand::shouldRenderDashboard(json: false, snapshot: true, interactive: true, decorated: true))->toBeFalse()    // --snapshot → snapshot
+        ->and(StatusCommand::shouldRenderDashboard(json: false, snapshot: false, interactive: false, decorated: true))->toBeFalse()  // piped stdin → snapshot
+        ->and(StatusCommand::shouldRenderDashboard(json: false, snapshot: false, interactive: true, decorated: false))->toBeFalse(); // non-decorated → snapshot
 });
 
 it('clamps the progress bar between empty and full', function (): void {

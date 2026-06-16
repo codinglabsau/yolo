@@ -2,21 +2,18 @@
 
 namespace Codinglabs\Yolo\Tui;
 
-use Closure;
-use Laravel\Prompts\Prompt;
 use Codinglabs\Yolo\Tui\Panels\Panel;
 use Codinglabs\Yolo\Concerns\RendersServiceStatus;
 use Symfony\Component\Console\Output\OutputInterface;
 
 /**
- * The dashboard shell — the status command's live-render loop, generalised into a
- * tab host. It owns the poll/redraw loop, the always-on global health bar, the
- * tab bar, the footer, and key routing; each Panel owns its own tab body. When a
- * panel returns a modal closure for a key, the loop pauses, drops to cooked mode
- * so Laravel Prompts can take the screen, then resumes.
+ * The dashboard shell behind `yolo status` — a tab host over the live environment.
+ * It owns the poll/redraw loop, the always-on global health bar, the tab bar, the
+ * footer, and key routing; each Panel owns its own tab body. Navigation only — tabs
+ * and scrolling; the dashboard is read-only, so a keypress never triggers an action.
  *
- * The chrome (global bar, tab bar, footer, frame, key routing) is pure and
- * tested; only the raw terminal loop and the modal handoff are @codeCoverageIgnore.
+ * The chrome (global bar, tab bar, footer, frame, key routing) is pure and tested;
+ * only the raw terminal loop is @codeCoverageIgnore.
  */
 class Tui
 {
@@ -71,11 +68,7 @@ class Tui
                     $key = $this->keyboard->read();
 
                     if ($key !== null) {
-                        $modal = $this->handleKey($key);
-
-                        if ($modal instanceof Closure) {
-                            $this->runModal($modal);
-                        }
+                        $this->handleKey($key);
 
                         break;
                     }
@@ -89,24 +82,6 @@ class Tui
         }
 
         return 0;
-    }
-
-    /**
-     * Hand the screen to a Laravel Prompts modal: leave the alternate buffer and
-     * raw mode so Prompts draws and reads normally, run it, then re-enter.
-     *
-     * @codeCoverageIgnore modal handoff — terminal mode switching
-     */
-    protected function runModal(Closure $modal): void
-    {
-        $this->screen->close();
-        $this->keyboard->restore();
-
-        Prompt::interactive(true);
-        $modal();
-
-        $this->keyboard->rawMode();
-        $this->screen->open();
     }
 
     /**
@@ -141,46 +116,46 @@ class Tui
 
     /**
      * Route a keypress: quit, tab navigation (arrows/tab), number and letter
-     * hotkeys jump tabs; anything else delegates to the active panel, which may
-     * return a modal closure for the loop to run.
+     * hotkeys jump tabs; anything else delegates to the active panel for in-place
+     * navigation (scrolling, group cycling). Read-only — never dispatches an action.
      */
-    public function handleKey(string $key): ?Closure
+    public function handleKey(string $key): void
     {
         $count = count($this->panels);
 
         if ($key === 'q' || $key === 'ctrl-c') {
             $this->quit = true;
 
-            return null;
+            return;
         }
 
         if ($key === 'right' || $key === 'tab') {
             $this->active = ($this->active + 1) % $count;
 
-            return null;
+            return;
         }
 
         if ($key === 'left') {
             $this->active = ($this->active - 1 + $count) % $count;
 
-            return null;
+            return;
         }
 
         if (ctype_digit($key) && isset($this->panels[(int) $key - 1])) {
             $this->active = (int) $key - 1;
 
-            return null;
+            return;
         }
 
         foreach ($this->panels as $index => $panel) {
             if ($panel->hotkey() === $key) {
                 $this->active = $index;
 
-                return null;
+                return;
             }
         }
 
-        return $this->panels[$this->active]->onKey($key);
+        $this->panels[$this->active]->onKey($key);
     }
 
     public function activeIndex(): int
@@ -201,7 +176,7 @@ class Tui
      */
     public static function globalBar(string $environment, array $statuses): string
     {
-        $left = Theme::Primary->bold('yolo tui') . Theme::Muted->fg(' · ' . $environment);
+        $left = Theme::Primary->bold('yolo status') . Theme::Muted->fg(' · ' . $environment);
 
         $banner = DeployObserver::banner($statuses);
 
