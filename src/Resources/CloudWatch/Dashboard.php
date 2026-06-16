@@ -27,7 +27,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * service YOLO provisions for the app — the ECS service (web + in-task queue &
  * scheduler), the ALB it sits behind, its SQS queues, the asset CloudFront
  * distribution, its S3 buckets and its log groups — plus the RDS database it
- * connects to (declared in the manifest as `database.identifier`; see rdsTarget()).
+ * connects to (declared by the manifest `database:` key; see rdsTarget()).
  *
  * A standalone reconciler, NOT a Resource: a dashboard carries no meaningful tags
  * (CloudWatch only tags alarms / Contributor Insights rules) and PutDashboard is a
@@ -252,28 +252,42 @@ class Dashboard
     }
 
     /**
-     * The RDS metric target for the Database section, DECLARED in the manifest
-     * (`database.identifier`, plus `database.cluster: true` for an Aurora cluster
-     * writer — defaults to a plain instance). Read from the manifest, never the
-     * app's secret `.env`: the dashboard is written by `yolo sync` (the admin tier,
-     * deliberately barred from reading secrets) and checked by the deploy gate and
-     * the status observer — so its desired body MUST resolve identically under
-     * every tier, which a secret read can't guarantee. Null when no database is
-     * declared, omitting the section.
+     * The RDS metric target for the Database section, DECLARED by the flat
+     * `database:` manifest key. Accepts either a bare RDS identifier (charted as a
+     * plain instance via DBInstanceIdentifier) or a full endpoint hostname — which
+     * auto-detects an Aurora cluster (DBClusterIdentifier + Role=WRITER, so it
+     * follows failovers) vs an instance, and skips an RDS Proxy / non-RDS host.
+     *
+     * Read from the manifest, never the app's secret `.env`: the dashboard is
+     * written by `yolo sync` (the admin tier, deliberately barred from reading
+     * secrets) and checked by the deploy gate + status observer — so its desired
+     * body MUST resolve identically under every tier, which a secret read can't
+     * guarantee. Null when nothing's declared, omitting the section.
      *
      * @return array{identifier: string, cluster: bool}|null
      */
     public static function rdsTarget(): ?array
     {
-        $identifier = Manifest::get('database.identifier');
+        $database = Manifest::get('database');
 
-        if (! is_string($identifier) || $identifier === '') {
+        if (! is_string($database) || $database === '') {
+            return null;
+        }
+
+        // A bare value is a plain instance identifier; a full endpoint hostname
+        // self-describes its kind.
+        if (! str_ends_with($database, '.rds.amazonaws.com')) {
+            return ['identifier' => $database, 'cluster' => false];
+        }
+
+        // RDS Proxy endpoints don't map to a DB metric identifier.
+        if (str_contains($database, '.proxy-')) {
             return null;
         }
 
         return [
-            'identifier' => $identifier,
-            'cluster' => (bool) Manifest::get('database.cluster', false),
+            'identifier' => strtok($database, '.'),
+            'cluster' => str_contains($database, '.cluster-'),
         ];
     }
 

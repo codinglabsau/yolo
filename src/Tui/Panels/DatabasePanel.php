@@ -16,9 +16,9 @@ use Codinglabs\Yolo\Aws\CloudWatch;
 use Codinglabs\Yolo\Resources\CloudWatch\Dashboard;
 
 /**
- * The app's database at a glance — the RDS instance/cluster declared in the
- * manifest (`database.identifier`), with CPU, connections, freeable memory and
- * read latency over the last hour. YOLO doesn't manage the database; it reads the
+ * The app's database at a glance — the RDS instance/cluster declared by the
+ * manifest `database:` key, with CPU, connections, freeable memory and read
+ * latency over the last hour. YOLO doesn't manage the database; it reads the
  * identifier from the manifest — never the app's secret `.env`, which the observer
  * tier this panel runs under can't read anyway — so the tab is empty until a
  * database is declared. Read-only.

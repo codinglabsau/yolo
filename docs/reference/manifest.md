@@ -275,22 +275,25 @@ By default YOLO creates and names shared networking under `yolo-{env}-…`. To p
 
 ---
 
-## `database.*`
+## `database`
 
 Declares the RDS instance or Aurora cluster the app connects to, so YOLO can chart it — the **Database** section of the app's CloudWatch dashboard and the **Database** tab of [`yolo status`](/reference/commands#yolo-status) (CPU, connections, freeable memory, read/write latency). Entirely optional: omit it and the database panels are simply dropped.
 
 YOLO doesn't manage your database, so it can't discover the identifier on its own. It's declared in the manifest — rather than read from `DB_HOST` in the app's `.env` — because the dashboard is written by `yolo sync` under the admin tier, which is deliberately barred from reading app secrets; a manifest value is read identically by every tier, so the dashboard never drifts between who writes it and who checks it.
 
+A single flat value, taken two ways:
+
 ```yaml
-database:
-  identifier: my-aurora-cluster   # the RDS DBInstanceIdentifier, or the Aurora DBClusterIdentifier
-  cluster: true                   # true → Aurora cluster (writer metrics); omit/false → a plain DB instance
+# A plain RDS instance — the bare identifier (its DBInstanceIdentifier):
+database: my-app-db
+
+# An Aurora cluster — paste the full cluster endpoint host; YOLO detects the
+# cluster and charts the writer (DBClusterIdentifier + Role=WRITER), which
+# follows failovers. An RDS Proxy / non-RDS host is skipped.
+database: my-app.cluster-cabc123.ap-southeast-2.rds.amazonaws.com
 ```
 
-| Key | Default | Description |
-|---|---|---|
-| `database.identifier` | — | The RDS instance identifier, or the Aurora cluster identifier. Omit to drop the database panels. |
-| `database.cluster` | `false` | `true` charts an Aurora cluster's writer (`DBClusterIdentifier` + `Role=WRITER`); `false` charts a plain instance (`DBInstanceIdentifier`). |
+A bare value (no `.rds.amazonaws.com`) is charted as a plain instance; a full endpoint hostname self-describes whether it's an Aurora cluster or an instance. For a plain RDS instance the short name is enough; for Aurora use the endpoint so the writer metrics are charted.
 
 ---
 
