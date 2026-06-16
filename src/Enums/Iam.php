@@ -17,4 +17,11 @@ enum Iam: string
     case OBSERVER_ROLE = 'observer-role';
     case ADMIN_POLICY = 'admin';
     case ADMIN_ROLE = 'admin-role';
+
+    // Grant groups — membership is the access lever. Plural by convention (a
+    // group holds users), which also keeps the name distinct from the singular
+    // role/policy it lets members assume: yolo-{env}[-{app}]-{tier}s.
+    case OBSERVERS_GROUP = 'observers';
+    case DEPLOYERS_GROUP = 'deployers';
+    case ADMINS_GROUP = 'admins';
 }

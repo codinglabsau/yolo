@@ -94,4 +94,67 @@ class Iam
 
         throw new ResourceDoesNotExistException("Could not find OIDC provider $arn");
     }
+
+    public static function group(string $name): array
+    {
+        $groups = Aws::iam()->listGroups();
+
+        foreach ($groups['Groups'] as $group) {
+            if ($group['GroupName'] === $name) {
+                return $group;
+            }
+        }
+
+        throw new ResourceDoesNotExistException("Could not find IAM group $name");
+    }
+
+    /**
+     * The decoded document of an inline group policy, or null when the group has
+     * no such inline policy yet (a partially-created group, or the first sync).
+     * AWS returns PolicyDocument url-encoded — decode it so callers diff a plain
+     * array against their desired document.
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function groupPolicy(string $groupName, string $policyName): ?array
+    {
+        try {
+            $result = Aws::iam()->getGroupPolicy([
+                'GroupName' => $groupName,
+                'PolicyName' => $policyName,
+            ]);
+
+            return json_decode(urldecode((string) $result['PolicyDocument']), true);
+        } catch (AwsException $e) {
+            if ($e->getAwsErrorCode() === 'NoSuchEntity') {
+                return null;
+            }
+
+            throw $e;
+        }
+    }
+
+    /**
+     * Every IAM user in the account, as [{UserName, Arn, …}] — the picker source
+     * for `yolo permissions`. A collection op with no resource-level form.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function users(): array
+    {
+        return Aws::iam()->listUsers()['Users'] ?? [];
+    }
+
+    /**
+     * The names of every group a user belongs to — the current grant set the
+     * `yolo permissions` checkboxes are seeded from.
+     *
+     * @return array<int, string>
+     */
+    public static function groupsForUser(string $userName): array
+    {
+        $groups = Aws::iam()->listGroupsForUser(['UserName' => $userName])['Groups'] ?? [];
+
+        return array_map(static fn (array $group): string => $group['GroupName'], $groups);
+    }
 }

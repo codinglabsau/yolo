@@ -100,6 +100,12 @@ class SyncAppCommand extends SyncSteppedCommand
                 Steps\Sync\App\SyncAppObserverPolicyStep::class,
                 Steps\Sync\App\SyncAppObserverRoleStep::class,
                 Steps\Sync\App\AttachAppObserverRolePolicyStep::class,
+                // per-app grant groups (LPX-680): membership grants deploy / read
+                // on THIS app only. The deployers group is gated on a GitHub repo
+                // like the deployer role it points at; the observers group is always
+                // provisioned so a read grant can name a single app.
+                Steps\Sync\App\SyncDeployersGroupStep::class,
+                Steps\Sync\App\SyncAppObserversGroupStep::class,
                 // cert/DNS + queues — runs before Fargate so the SSL certificate
                 // exists before the HTTPS listener that needs it. Solo gets an
                 // env-level apex zone + cert; multi-tenant has none (certs attach
