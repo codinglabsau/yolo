@@ -59,13 +59,45 @@ it('scopes every IAM role/policy/oidc action to yolo-* resources', function (): 
 
     expect($iamStatements)->not->toBeEmpty();
 
-    // No IAM statement may reach beyond yolo-* (roles/policies/oidc) or the
-    // service-linked-role + PassRole carve-outs.
+    // No IAM statement may reach beyond yolo-* (roles/policies/groups/oidc) or
+    // the service-linked-role + PassRole carve-outs — except the `yolo permissions`
+    // picker reads, which are unscopeable collection ops (list users / a user's
+    // groups) granted read-only on "*".
     $iamStatements->each(function (array $statement): void {
+        $isPickerRead = collect((array) $statement['Action'])
+            ->every(fn (string $action): bool => in_array($action, ['iam:ListUsers', 'iam:ListGroupsForUser'], true));
+
+        if ($isPickerRead) {
+            return;
+        }
+
         foreach ((array) $statement['Resource'] as $resource) {
             expect($resource)->toMatch('#(yolo-\*|:oidc-provider/\*|aws-service-role/\*|role/yolo-)#');
         }
     });
+});
+
+it('manages YOLO grant groups + membership, fenced to yolo-* groups', function (): void {
+    $groupStatement = collect((new AdminPolicy())->document()['Statement'])
+        ->first(fn (array $statement): bool => in_array('iam:AddUserToGroup', (array) $statement['Action'], true));
+
+    expect($groupStatement)->not->toBeNull();
+
+    // The membership lever + group lifecycle are scoped to yolo-* groups — never
+    // an arbitrary IAM group.
+    expect($groupStatement['Resource'])->toBe('arn:aws:iam::111111111111:group/yolo-*');
+    expect($groupStatement['Action'])->toContain(
+        'iam:CreateGroup',
+        'iam:PutGroupPolicy',
+        'iam:AddUserToGroup',
+        'iam:RemoveUserFromGroup',
+    );
+
+    // No user lifecycle — YOLO manages access (group membership), never identities.
+    expect(adminActions())
+        ->not->toContain('iam:CreateUser')
+        ->not->toContain('iam:DeleteUser')
+        ->not->toContain('iam:CreateAccessKey');
 });
 
 it('fences AttachRolePolicy so only a yolo-* customer-managed policy can be attached (no escalation)', function (): void {

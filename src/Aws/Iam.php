@@ -97,15 +97,17 @@ class Iam
 
     public static function group(string $name): array
     {
-        $groups = Aws::iam()->listGroups();
-
-        foreach ($groups['Groups'] as $group) {
-            if ($group['GroupName'] === $name) {
-                return $group;
+        try {
+            // GetGroup (scopeable to the group ARN) rather than listing every
+            // group — so the admin tier's group reads stay fenced to yolo-*.
+            return Aws::iam()->getGroup(['GroupName' => $name])['Group'];
+        } catch (AwsException $e) {
+            if ($e->getAwsErrorCode() === 'NoSuchEntity') {
+                throw new ResourceDoesNotExistException("Could not find IAM group $name", $e->getCode(), $e);
             }
-        }
 
-        throw new ResourceDoesNotExistException("Could not find IAM group $name");
+            throw $e;
+        }
     }
 
     /**

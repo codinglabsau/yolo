@@ -190,6 +190,20 @@ class ObserverPolicy implements Resource, SynchronisesConfiguration
                     ],
                 ],
                 [
+                    // Grant-group reads, scoped to yolo-* groups. The deploy-time
+                    // `sync --check` gate runs every sync step's plan pass under
+                    // this read tier (the deployer role carries this policy),
+                    // including the group steps — so the read tier must inspect the
+                    // groups + their inline assume policy without an AccessDenied.
+                    'Effect' => 'Allow',
+                    'Resource' => sprintf('arn:aws:iam::%s:group/yolo-*', $accountId),
+                    'Action' => [
+                        'iam:GetGroup',
+                        'iam:GetGroupPolicy',
+                        'iam:ListGroupPolicies',
+                    ],
+                ],
+                [
                     // Bucket-level configuration reads (tagging, versioning, policy,
                     // CORS, lifecycle, public-access-block, …) the plan diffs — scoped
                     // to YOLO-named buckets by the bucket ARN, which excludes object
