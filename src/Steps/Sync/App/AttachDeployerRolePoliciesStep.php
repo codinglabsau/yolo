@@ -28,8 +28,8 @@ class AttachDeployerRolePoliciesStep implements Step
         // observer policy gives exactly that — the same unscopeable env-wide
         // describes (AWS won't scope those) but with log *content* fenced to this
         // app's group, so a deploy grant can't read another app's logs. The gate
-        // reads no logs anyway; this just stops the deployer carrying the unfenced
-        // env read it never needed.
+        // does read the task log group's TAGS to plan tag drift (granted on the
+        // bare log-group ARN, see AppObserverPolicy), but never its content.
         //
         // Reconciled, not additive: swapping off the old env-wide ObserverPolicy
         // detaches it on the next sync, so an adopted deployer role converges to

@@ -43,12 +43,17 @@ class AppObserverPolicy extends ObserverPolicy
     #[\Override]
     public function logsStatements(): array
     {
-        $logGroupArn = sprintf(
-            'arn:aws:logs:%s:%s:log-group:%s:*',
-            Manifest::get('region'),
-            Aws::accountId(),
-            (new TaskLogGroup())->name(),
-        );
+        $region = Manifest::get('region');
+        $accountId = Aws::accountId();
+        $logGroupName = (new TaskLogGroup())->name();
+
+        // CloudWatch Logs addresses a group two ways, and they are NOT
+        // interchangeable in IAM. Log *content* (the streams inside the group)
+        // uses the trailing-':*' form; the group *itself* — the target of the
+        // tagging API — uses the bare ARN. A ':*' grant does not match a bare-ARN
+        // request, so the two reads need two statements.
+        $logContentArn = sprintf('arn:aws:logs:%s:%s:log-group:%s:*', $region, $accountId, $logGroupName);
+        $logGroupArn = sprintf('arn:aws:logs:%s:%s:log-group:%s', $region, $accountId, $logGroupName);
 
         return [
             [
@@ -65,14 +70,24 @@ class AppObserverPolicy extends ObserverPolicy
                 // FilterLogEvents, and Insights results are unscopeable — granting
                 // them would re-open the fence the per-app policy exists to close.
                 'Effect' => 'Allow',
-                'Resource' => $logGroupArn,
+                'Resource' => $logContentArn,
                 'Action' => [
                     'logs:GetLogEvents',
                     'logs:GetLogGroupFields',
                     'logs:GetLogRecord',
                     'logs:FilterLogEvents',
-                    'logs:ListTagsForResource',
                 ],
+            ],
+            [
+                // The log group's TAGS, addressed by its bare ARN (ListTagsForResource
+                // strips any ':*' before the call). This is the read the pre-deploy
+                // `sync --check` gate makes on the task log group to plan tag drift —
+                // the deployer role carries this policy, so without the bare-ARN grant
+                // every deploy is refused at the in-sync gate. Still fenced to this
+                // app's group, never "*".
+                'Effect' => 'Allow',
+                'Resource' => $logGroupArn,
+                'Action' => ['logs:ListTagsForResource'],
             ],
         ];
     }

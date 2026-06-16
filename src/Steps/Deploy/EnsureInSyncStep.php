@@ -37,9 +37,12 @@ use function Laravel\Prompts\info;
  * verbatim — no sync-command changes — and `--check` plans only, never writes.
  *
  * The plan reads run under whatever identity is deploying. In CI that's the GitHub
- * Actions deployer role, which carries AWS-managed ReadOnlyAccess (attached by
- * AttachDeployerRolePoliciesStep) so the whole-stack plan can inspect every service
- * without an AccessDenied aborting the gate.
+ * Actions deployer role, which carries the per-app read surface (AppObserverPolicy,
+ * attached by AttachDeployerRolePoliciesStep) on top of its deploy grants, so the
+ * whole-stack plan can inspect every service without an AccessDenied aborting the
+ * gate — the unscopeable env describes plus this app's log group (content fenced,
+ * tags readable on the bare ARN). A read the deploy identity lacks surfaces here as
+ * a one-step plan failure, not silent drift.
  */
 class EnsureInSyncStep implements Step
 {
@@ -48,17 +51,20 @@ class EnsureInSyncStep implements Step
         $environment = Helpers::environment();
         $output = Helpers::app('output');
 
-        // Buffer the whole sub-plan so an in-sync deploy stays quiet; only a
-        // refusal — or a crash — surfaces what sync produced.
+        // When the operator is watching an interactive terminal, the sub-plan
+        // renders live (progress bar and all) so the ~10s whole-stack check isn't
+        // dead air; in CI it's buffered so an in-sync deploy stays silent. Either
+        // way the buffer is what a refusal or crash flushes — empty and harmless
+        // when the plan already rendered live.
         $buffer = new BufferedOutput($output->getVerbosity(), $output->isDecorated());
 
         try {
-            $result = $this->check($environment, $buffer);
+            $result = $this->check($environment, $buffer, $output);
         } catch (\Throwable $e) {
             // The plan threw instead of returning a verdict — a plan step crashed
-            // (e.g. an AWS read the deploy identity can't make), and the per-step
-            // detail was already printed into the buffer by the plan runner. Flush
-            // it before the bare "Plan failed for N step(s)" bubbles up, or the
+            // (e.g. an AWS read the deploy identity can't make). When buffered, the
+            // per-step detail the plan runner printed lives in the buffer; flush it
+            // before the bare "Plan failed for N step(s)" bubbles up, or the
             // operator is left with no idea which step failed or why.
             $output->write($buffer->fetch());
 
@@ -87,30 +93,51 @@ class EnsureInSyncStep implements Step
      * drifted (or a claimed service isn't offered). Isolated so a unit test can stub
      * the verdict rather than mock the entire sync plan.
      *
-     * sync renders through Laravel Prompts, which writes to its own global output
-     * rather than the command's — so point that at the buffer too (and restore it to
-     * a fresh default afterwards, the state YOLO otherwise leaves it in) or the
-     * plan's headers and drift line would bypass the buffer and leak onto a clean
-     * deploy.
+     * Where it renders turns on whether anyone's watching ($console->isDecorated()):
+     * an interactive deploy gets the live `yolo sync --check` surface — its progress
+     * bar and compact plan straight to the console — so the gate shows activity; a
+     * non-interactive run (CI, piped) renders into the buffer with --no-progress so a
+     * clean deploy stays silent and only a drift/crash flushes it. sync renders
+     * through Laravel Prompts (its own global output, not the command's), so point
+     * that at the same sink, then restore a fresh default afterwards — the state YOLO
+     * otherwise leaves it in.
      */
-    protected function check(string $environment, OutputInterface $output): int
+    protected function check(string $environment, OutputInterface $buffer, OutputInterface $console): int
     {
+        $watching = $console->isDecorated();
+        $sink = $watching ? $console : $buffer;
+
         $command = new SyncCommand();
+        $input = $this->checkInput($environment, $watching);
 
-        $input = new ArrayInput([
-            'environment' => $environment,
-            '--check' => true,
-            '--no-progress' => true,
-        ], $command->getDefinition());
-
-        $input->setInteractive(false);
-
-        Prompt::setOutput($output);
+        Prompt::setOutput($sink);
 
         try {
-            return $command->run($input, $output);
+            return $command->run($input, $sink);
         } finally {
             Prompt::setOutput(new ConsoleOutput());
         }
+    }
+
+    /**
+     * Build the sub-command input: always `--check` (plan-only) and non-interactive;
+     * `--no-progress` only when nobody's watching, so the live deploy keeps the
+     * progress bar and CI doesn't spray cursor codes into the log.
+     */
+    protected function checkInput(string $environment, bool $watching): ArrayInput
+    {
+        $arguments = [
+            'environment' => $environment,
+            '--check' => true,
+        ];
+
+        if (! $watching) {
+            $arguments['--no-progress'] = true;
+        }
+
+        $input = new ArrayInput($arguments, (new SyncCommand())->getDefinition());
+        $input->setInteractive(false);
+
+        return $input;
     }
 }

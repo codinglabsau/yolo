@@ -22,9 +22,9 @@ function inSyncStep(int $exitCode, string $planOutput = ''): EnsureInSyncStep
         public function __construct(private readonly int $exitCode, private readonly string $planOutput) {}
 
         #[Override]
-        protected function check(string $environment, OutputInterface $output): int
+        protected function check(string $environment, OutputInterface $buffer, OutputInterface $console): int
         {
-            $output->write($this->planOutput);
+            $buffer->write($this->planOutput);
 
             return $this->exitCode;
         }
@@ -93,9 +93,9 @@ it('flushes the buffered sub-plan when a plan step crashes, so the failing step 
     $step = new class() extends EnsureInSyncStep
     {
         #[Override]
-        protected function check(string $environment, OutputInterface $output): int
+        protected function check(string $environment, OutputInterface $buffer, OutputInterface $console): int
         {
-            $output->write('app · Sync s3 bucket — S3Exception: AccessDenied');
+            $buffer->write('app · Sync s3 bucket — S3Exception: AccessDenied');
 
             throw new RuntimeException('Plan failed for 1 step(s).');
         }
@@ -103,4 +103,25 @@ it('flushes the buffered sub-plan when a plan step crashes, so the failing step 
 
     expect(fn (): StepResult => $step([]))->toThrow(RuntimeException::class, 'Plan failed for 1 step(s).');
     expect($output->fetch())->toContain('app · Sync s3 bucket — S3Exception: AccessDenied');
+});
+
+it('drops --no-progress only when an operator is watching, so CI stays quiet and a live deploy shows the bar', function (): void {
+    // checkInput() is the seam that decides whether the gate's sub-plan renders its
+    // progress bar. A watched (interactive) deploy keeps it; CI/piped runs pass
+    // --no-progress so the plan stays silent and sprays no cursor codes into the log.
+    $gate = new class() extends EnsureInSyncStep
+    {
+        public function input(string $environment, bool $watching): ArrayInput
+        {
+            return $this->checkInput($environment, $watching);
+        }
+    };
+
+    $watched = $gate->input('testing', true);
+    expect($watched->getOption('check'))->toBeTrue();
+    expect($watched->getOption('no-progress'))->toBeFalse();
+    expect($watched->isInteractive())->toBeFalse();
+
+    $ci = $gate->input('testing', false);
+    expect($ci->getOption('no-progress'))->toBeTrue();
 });
