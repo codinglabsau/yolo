@@ -65,6 +65,34 @@ it('renders the patience message and an elapsed heartbeat on each poll', functio
         ->toContain('elapsed');
 });
 
+it('prefers a live output line over the patience message when one has been reported', function (): void {
+    $progress = quietProgress();
+
+    $step = new class() implements LongRunning
+    {
+        public function __invoke(array $options): StepResult
+        {
+            // A shell-out step (RunsProcess) pumps a line, then redraws.
+            WaitReporter::line('npm reify:esbuild');
+            WaitReporter::poll();
+
+            return StepResult::CREATED;
+        }
+
+        public function patienceMessage(): string
+        {
+            return 'Running `npm ci`';
+        }
+    };
+
+    invokeStepWithProgress($step, $progress);
+
+    expect($progress->hint)
+        ->toContain('npm reify:esbuild')
+        ->toContain('elapsed')
+        ->not->toContain('Running `npm ci`');
+});
+
 it('clears the reporter after the step so a later poll cannot redraw a finished bar', function (): void {
     $progress = quietProgress();
 

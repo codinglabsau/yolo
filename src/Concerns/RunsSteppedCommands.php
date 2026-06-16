@@ -456,8 +456,15 @@ trait RunsSteppedCommands
         if ($step instanceof LongRunning && $progress instanceof Progress) {
             $progress->label($label)->hint($step->patienceMessage())->render();
 
+            // A live line from a shell-out step (RunsProcess) is more useful than
+            // the static patience message, so prefer it when present and fall back
+            // to the patience message during a quiet stretch or for AWS waiters.
             WaitReporter::using(fn () => $progress->label($label)
-                ->hint(sprintf('%s · %s elapsed', $step->patienceMessage(), Helpers::humaniseElapsed(time() - $started)))
+                ->hint(sprintf(
+                    '%s · %s elapsed',
+                    Str::limit(WaitReporter::message() ?? $step->patienceMessage(), 100),
+                    Helpers::humaniseElapsed(time() - $started)
+                ))
                 ->render());
         } else {
             $progress?->label($label)

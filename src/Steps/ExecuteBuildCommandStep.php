@@ -8,11 +8,15 @@ use Illuminate\Support\Str;
 use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
 use Symfony\Component\Process\Process;
+use Codinglabs\Yolo\Concerns\RunsProcess;
+use Codinglabs\Yolo\Contracts\LongRunning;
 use Codinglabs\Yolo\Contracts\RunsOnBuild;
 use Codinglabs\Yolo\Contracts\ExecutesCommandStep;
 
-class ExecuteBuildCommandStep implements ExecutesCommandStep, RunsOnBuild
+class ExecuteBuildCommandStep implements ExecutesCommandStep, LongRunning, RunsOnBuild
 {
+    use RunsProcess;
+
     public function __construct(protected string $environment, protected string $command, protected $filesystem = new Filesystem()) {}
 
     public function __invoke(array $options = []): StepResult
@@ -40,7 +44,7 @@ class ExecuteBuildCommandStep implements ExecutesCommandStep, RunsOnBuild
             timeout: null
         );
 
-        $process->mustRun();
+        $this->runProcess($process);
 
         return StepResult::SUCCESS;
     }
@@ -48,5 +52,10 @@ class ExecuteBuildCommandStep implements ExecutesCommandStep, RunsOnBuild
     public function name(): string
     {
         return $this->command;
+    }
+
+    public function patienceMessage(): string
+    {
+        return sprintf('Running `%s`', $this->command);
     }
 }

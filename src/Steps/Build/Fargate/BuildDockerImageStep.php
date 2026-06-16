@@ -5,13 +5,16 @@ namespace Codinglabs\Yolo\Steps\Build\Fargate;
 use Codinglabs\Yolo\Paths;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Symfony\Component\Process\Process;
+use Codinglabs\Yolo\Concerns\RunsProcess;
+use Codinglabs\Yolo\Contracts\LongRunning;
 use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
 
-class BuildDockerImageStep implements Step
+class BuildDockerImageStep implements LongRunning
 {
+    use RunsProcess;
+
     public function __construct(protected string $environment) {}
 
     public function __invoke(array $options): StepResult
@@ -24,9 +27,14 @@ class BuildDockerImageStep implements Step
             timeout: null,
         );
 
-        $process->mustRun();
+        $this->runProcess($process);
 
         return StepResult::SUCCESS;
+    }
+
+    public function patienceMessage(): string
+    {
+        return 'Building the container image — a cold cache can take a couple of minutes';
     }
 
     /**
