@@ -25,7 +25,6 @@ class BuildCommand extends SteppedCommand implements DeployerCommand
 
     protected array $fargateSteps = [
         Steps\Build\Fargate\CheckOctaneInstalledStep::class,
-        Steps\Build\Fargate\CheckCloudWatchSdkStep::class,
         Steps\Build\Fargate\GenerateEntrypointScriptStep::class,
         Steps\Build\Fargate\GenerateSupervisorConfigStep::class,
         Steps\Build\Fargate\LoginToEcrStep::class,
@@ -69,7 +68,14 @@ class BuildCommand extends SteppedCommand implements DeployerCommand
         }
 
         if (Manifest::has('tasks')) {
-            $this->steps = [...$this->steps, ...$this->fargateSteps];
+            // Fail fast: the yolo-as-production-dependency preflight only reads the
+            // committed composer.lock, so it runs before any build effort (purge,
+            // env staging, composer install, asset compilation) is spent.
+            $this->steps = [
+                Steps\Build\Fargate\CheckYoloInstalledStep::class,
+                ...$this->steps,
+                ...$this->fargateSteps,
+            ];
         }
 
         intro("Building app version: {$appVersion}");
