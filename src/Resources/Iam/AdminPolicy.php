@@ -198,11 +198,17 @@ class AdminPolicy implements Resource, SynchronisesConfiguration
                     ],
                 ],
                 [
-                    // The one object sync writes: seeding the env manifest into the
-                    // env config bucket (SeedEnvManifestStep). Scoped to exactly that
-                    // key — never the env-shared `.env` or any other secret.
+                    // The two objects sync writes into the env config bucket: the
+                    // env manifest (SeedEnvManifestStep) and each app's claim file
+                    // (PublishAppManifestStep writes `apps/{app}.yml` on every
+                    // sync:app — env-scoped admin syncs every app, so the whole
+                    // `apps/*` prefix). Scoped to exactly these keys — never the
+                    // env-shared `.env` or any other secret.
                     'Effect' => 'Allow',
-                    'Resource' => sprintf('arn:aws:s3:::%s/%s', $envConfigBucket, EnvManifest::filename()),
+                    'Resource' => [
+                        sprintf('arn:aws:s3:::%s/%s', $envConfigBucket, EnvManifest::filename()),
+                        sprintf('arn:aws:s3:::%s/apps/*', $envConfigBucket),
+                    ],
                     'Action' => ['s3:PutObject'],
                 ],
                 [
