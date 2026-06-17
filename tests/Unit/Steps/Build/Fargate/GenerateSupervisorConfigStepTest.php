@@ -355,6 +355,18 @@ METRICS;
     // No gauges (metrics off) reads as null, so the emitter stays silent rather than
     // publishing a bogus datapoint.
     expect(yolo_parse_saturation("frankenphp_other 1\n"))->toBeNull();
+
+    // FrankenPHP labels the gauge per worker script in production
+    // (`frankenphp_busy_workers{worker="/app/..."}`); the optional label set must parse.
+    expect(yolo_parse_saturation("frankenphp_busy_workers{worker=\"/app\"} 2\nfrankenphp_total_workers{worker=\"/app\"} 4\n"))->toBe(50.0);
+
+    // A mid-reload scrape can catch more busy workers than total (the gauges read at
+    // different instants), producing an impossible >100% ratio that would false-fire the
+    // burst alarm. It is dropped to null, not published, so the emitter stays silent.
+    expect(yolo_parse_saturation("frankenphp_busy_workers 15\nfrankenphp_total_workers 4\n"))->toBeNull();
+
+    // A zero-worker pool (nothing live yet) is equally bogus — null, never a divide blow-up.
+    expect(yolo_parse_saturation("frankenphp_busy_workers 0\nfrankenphp_total_workers 0\n"))->toBeNull();
 });
 
 it('does not double-inject metrics when the Octane stub already enables them', function (): void {
