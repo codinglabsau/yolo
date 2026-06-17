@@ -53,7 +53,7 @@ steps:
   - run: vendor/bin/yolo deploy production --no-progress
 ```
 
-In CI, YOLO defers to the AWS SDK's default credential chain, so the assumed-role credentials are picked up automatically — no `YOLO_PRODUCTION_AWS_PROFILE` needed.
+In CI, YOLO defers to the AWS SDK's default credential chain, so the assumed-role credentials are picked up automatically — no `YOLO_PRODUCTION_AWS_PROFILE` needed. Because the workflow has **already** assumed the deployer role via OIDC, the run is already capped to the Deployer tier: YOLO recognises it's running as exactly that role and proceeds as-is, rather than redundantly re-assuming the role it already is (a self-assume the role's own policy doesn't grant). Locally it's the reverse — you authenticate as your own identity, so YOLO mints the deployer role on top of it. Either way the run is capped to the tier.
 
 ::: tip Strongest production gate
 Pair `tag: 'v*'` with a GitHub protected-tag ruleset (only maintainers may cut `v*` tags). The AWS trust then just confirms "a tag push from this repo", and GitHub enforces who can trigger it.

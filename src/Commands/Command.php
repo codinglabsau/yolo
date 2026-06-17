@@ -445,9 +445,13 @@ abstract class Command extends SymfonyCommand
             return null;
         }
 
-        // Already capped by a parent run (the deploy → `sync --check` gate): inherit
-        // those credentials instead of re-minting and escalating past the cap.
-        if (Helpers::app()->bound('yoloAssumedCredentials')) {
+        // Already capped — a parent in-process run (the deploy → `sync --check`
+        // gate) applied a tier, or this process is already running as a tier role
+        // (the CI/OIDC skip below). Inherit it rather than re-minting and
+        // escalating past the cap. Keyed off a dedicated marker, not the minted
+        // credentials, because the CI path caps without minting any (it runs on
+        // the ambient OIDC role).
+        if (Helpers::app()->bound('yoloTierApplied')) {
             return null;
         }
 
@@ -459,6 +463,20 @@ abstract class Command extends SymfonyCommand
         };
 
         if (! $role instanceof Resource) {
+            return null;
+        }
+
+        // The canonical CI path: a GitHub Actions workflow assumes the tier role
+        // via OIDC before yolo runs, so the process is already capped to exactly
+        // this tier. Re-assuming the role we already are is a redundant
+        // self-assume the role's own permission policy doesn't grant (and
+        // shouldn't) — detect it and proceed on the ambient role credentials.
+        // Gated to CI: a local run authenticates as the developer's own identity
+        // and always mints through the assume path (skipping the extra
+        // GetCallerIdentity call).
+        if (static::detectCiEnvironment() && $this->callerIsTierRole($role)) {
+            Helpers::app()->instance('yoloTierApplied', true);
+
             return null;
         }
 
@@ -489,6 +507,7 @@ abstract class Command extends SymfonyCommand
                 $credentials['SecretAccessKey'],
                 $credentials['SessionToken'] ?? null,
             ));
+            Helpers::app()->instance('yoloTierApplied', true);
 
             static::forgetAwsClients();
             $this->registerAwsServices();
@@ -505,6 +524,23 @@ abstract class Command extends SymfonyCommand
 
             return self::FAILURE;
         }
+    }
+
+    /**
+     * Whether the AWS caller is already running as exactly this tier's role — the
+     * CI/OIDC path, where the workflow assumes the role before yolo runs. An STS
+     * assumed-role ARN is `arn:aws:sts::<account>:assumed-role/<role-name>/<session>`;
+     * YOLO roles carry no IAM path, so the role name alone identifies the role. A
+     * match means the process is already capped to the tier, so there is nothing
+     * to mint and a self-assume would be a no-op the role's own policy denies.
+     */
+    protected function callerIsTierRole(Resource $role): bool
+    {
+        if (preg_match('#:assumed-role/([^/]+)/#', Aws::callerArn(), $matches) !== 1) {
+            return false;
+        }
+
+        return $matches[1] === $role->name();
     }
 
     /**

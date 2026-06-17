@@ -620,6 +620,17 @@ class Aws
     }
 
     /**
+     * The ARN of the current AWS caller (`sts:GetCallerIdentity` — implicitly
+     * allowed for any principal, so it needs no grant). Lets YOLO detect when
+     * it's already running as a tier role (the CI/OIDC path) and skip a redundant
+     * self-assume.
+     */
+    public static function callerArn(): string
+    {
+        return static::sts()->getCallerIdentity()['Arn'] ?? '';
+    }
+
+    /**
      * The MFA device serial of the calling IAM user, for the admin-tier assume —
      * resolved from the caller's identity then their first attached device, or
      * null when the caller isn't an IAM user or has no device (the operator then
