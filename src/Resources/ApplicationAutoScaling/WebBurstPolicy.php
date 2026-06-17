@@ -14,6 +14,7 @@ use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Aws\ApplicationAutoScaling;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
+use Codinglabs\Yolo\Steps\Build\Fargate\GenerateSupervisorConfigStep;
 
 /**
  * The **burst** scale-out path for the web service: a real-time companion to the
@@ -33,11 +34,17 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * high-res metric, only while it's hot. The alarm evaluates the most-saturated task
  * every 10s and steps the desired count out. Detection drops from ~60s to ~10–15s.
  *
- * The metric arrives via EMF (the container writes a structured log line that
- * CloudWatch Logs auto-extracts), so there's no PutMetricData call, no AWS SDK in
- * the container and no new IAM — the saturation emitter ({@see
- * \Codinglabs\Yolo\Steps\Build\Fargate\GenerateSupervisorConfigStep}) just writes
- * to stdout, which already ships to CloudWatch Logs. FrankenPHP's metrics endpoint is
+ * The metric is published in real time via PutMetricData — the saturation emitter
+ * ({@see GenerateSupervisorConfigStep}) reads
+ * its own FrankenPHP worker gauges and puts a high-res datapoint, but only while it's
+ * at or above the emit floor and only as often as a scale can act (it snoozes the
+ * cooldown after a tripping datapoint — one breach already steps the count out). So
+ * CloudWatch is touched only during a spike: near-zero cost, and the datapoint lands
+ * synchronously — no riding the logs pipeline, whose flush cadence the ECS awslogs
+ * driver won't let you tune (AWS recommends ≤5s for high-res EMF alarms) and whose
+ * extraction is async, so an EMF datapoint surfaces on a cadence you don't control. The
+ * task role carries a single namespace-scoped `cloudwatch:PutMetricData` grant ({@see
+ * \Codinglabs\Yolo\Resources\Iam\EcsTaskPolicy}). FrankenPHP's metrics endpoint is
  * enabled by a Caddyfile YOLO generates (the app's Octane stub plus the top-level
  * `metrics` global option) and runs via `octane:start --caddyfile` — Octane
  * overwrites `CADDY_GLOBAL_OPTIONS`, so a task env var can't switch it on. Built only
@@ -58,7 +65,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  */
 class WebBurstPolicy
 {
-    /** EMF namespace + metric the saturation emitter writes and this alarm reads — the contract between them. */
+    /** Namespace + metric the saturation emitter publishes and this alarm reads — the contract between them. */
     public const string METRIC_NAMESPACE = 'YOLO/Autoscaling';
 
     public const string METRIC_NAME = 'WorkerSaturation';
@@ -78,7 +85,19 @@ class WebBurstPolicy
     /** High-resolution alarm: a 10s period is the fast end of CloudWatch's range. */
     private const int PERIOD = 10;
 
-    private const int COOLDOWN = 60;
+    /**
+     * Step-scaling cooldown — also the emitter's snooze after a tripping datapoint:
+     * one breach already steps the desired count out, so it pauses for that scale to
+     * land rather than putting more datapoints the cooldown would ignore anyway.
+     */
+    public const int COOLDOWN = 60;
+
+    /**
+     * The emitter's poll cadence — how often it reads its local metrics endpoint when
+     * idle, and the snooze between hot-but-not-tripping puts. A cheap localhost read;
+     * the only AWS call is the put, and only when saturation is at/over the floor.
+     */
+    public const int POLL_INTERVAL = 5;
 
     public function policyName(): string
     {
@@ -90,7 +109,7 @@ class WebBurstPolicy
         return Helpers::keyedResourceName('web-worker-saturation');
     }
 
-    /** The web service name the EMF metric is dimensioned by — baked into the emitter too. */
+    /** The web service name the metric is dimensioned by — baked into the emitter too. */
     public static function serviceName(): string
     {
         return (new EcsService(ServerGroup::WEB))->name();

@@ -12,7 +12,6 @@ use Aws\Rds\RdsClient;
 use Aws\Sns\SnsClient;
 use Aws\Sqs\SqsClient;
 use Aws\Sts\StsClient;
-use GuzzleHttp\Client;
 use Codinglabs\Yolo\Aws;
 use Aws\WAFV2\WAFV2Client;
 use Codinglabs\Yolo\Helpers;
@@ -25,7 +24,6 @@ use Aws\EventBridge\EventBridgeClient;
 use Aws\Credentials\CredentialProvider;
 use Aws\CostExplorer\CostExplorerClient;
 use Aws\Credentials\CredentialsInterface;
-use GuzzleHttp\Exception\ConnectException;
 use Aws\CloudWatchLogs\CloudWatchLogsClient;
 use Aws\ServiceDiscovery\ServiceDiscoveryClient;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
@@ -185,31 +183,21 @@ trait RegistersAws
         return ! Aws::runningInAws() && ! static::detectCiEnvironment();
     }
 
-    protected static function detectLocalEnvironment(): bool
-    {
-        return env('APP_ENV', false) === 'local';
-    }
-
     protected static function detectCiEnvironment(): bool
     {
         return env('CI', false) === true;
     }
 
+    /**
+     * Whether we're running inside a deployed ECS container. ECS injects
+     * ECS_CONTAINER_METADATA_URI_V4 into every task (Fargate and EC2 launch types
+     * alike), so its presence is an exact, instant signal — where the old EC2
+     * instance-metadata probe (169.254.169.254) silently read false on Fargate,
+     * which doesn't expose it. Drives both the credential strategy (task role vs
+     * named profile) and the base command's hard refusal to run in-container.
+     */
     protected static function detectAwsEnvironment(): bool
     {
-        if (static::detectLocalEnvironment() || static::detectCiEnvironment()) {
-            // skip if we are local or in continuous integration
-            return false;
-        }
-
-        try {
-            (new Client(['timeout' => 2]))
-                ->get('http://169.254.169.254/latest/meta-data/instance-id');
-
-            return true;
-        } catch (ConnectException) {
-        }
-
-        return false;
+        return getenv('ECS_CONTAINER_METADATA_URI_V4') !== false;
     }
 }

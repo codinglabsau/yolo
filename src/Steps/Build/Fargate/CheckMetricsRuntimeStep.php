@@ -20,8 +20,8 @@ use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
  * — before the push — if it's missing or has no metrics directive.
  *
  * The hard fail earns its place because the failure it prevents is silent: with metrics
- * off FrankenPHP registers no gauges, the saturation emitter reads nothing and emits no
- * EMF, the burst alarm sits in INSUFFICIENT_DATA, and the deploy still goes green on the
+ * off FrankenPHP registers no gauges, the saturation emitter reads nothing and publishes
+ * no datapoint, the burst alarm sits in INSUFFICIENT_DATA, and the deploy still goes green on the
  * target-tracking policies — burst is simply, invisibly, dark (exactly how it shipped
  * broken in #118). Probing the actual image (`docker run … grep`, matching
  * CheckSsrRuntimeStep / CheckSchedulerRuntimeStep) catches both a Caddyfile that never
