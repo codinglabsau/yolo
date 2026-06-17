@@ -10,6 +10,7 @@ use GuzzleHttp\Psr7\Response;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\WafV2\WebAcl;
+use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Codinglabs\Yolo\Steps\Sync\App\SyncTypesenseKeyStep;
 use GuzzleHttp\Handler\MockHandler as GuzzleMockHandler;
 
@@ -57,10 +58,14 @@ it('keeps the baseline rule set untouched while the environment is not running t
         ->and($rules['yolo-rate-limit']['Statement']['RateBasedStatement'])->not->toHaveKey('ScopeDownStatement');
 });
 
-it('typesense injects the scout driver, prefix and private node addresses at build', function (): void {
+it('typesense injects scout config, the private nodes and the public search host at build', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'services' => ['typesense'],
     ]);
+
+    // The env manifest's domain drives the public search host (search.{domain}).
+    $captured = [];
+    bindServiceLifecycleWorld(['manifest' => "domain: example.com.au\nservices:\n  typesense:\n    version: \"30.2\"\n"], $captured);
 
     expect(Service::TYPESENSE->definition()->buildValues())->toBe([
         'SCOUT_DRIVER' => 'typesense',
@@ -69,23 +74,66 @@ it('typesense injects the scout driver, prefix and private node addresses at bui
         'TYPESENSE_PORT' => '8108',
         'TYPESENSE_PROTOCOL' => 'http',
         'TYPESENSE_NODES' => 'typesense-0.testing.internal:8108:http,typesense-1.testing.internal:8108:http,typesense-2.testing.internal:8108:http',
+        'TYPESENSE_SEARCH_HOST' => 'search.example.com.au',
+        'TYPESENSE_SEARCH_PORT' => '443',
+        'TYPESENSE_SEARCH_PROTOCOL' => 'https',
     ]);
 });
 
-it('leaves an already-minted app key alone', function (): void {
+it('hard-fails the build when a typesense app has no env domain — no silent dead search box', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'services' => ['typesense'],
+    ]);
+
+    $captured = [];
+    bindServiceLifecycleWorld(['manifest' => "services:\n  typesense:\n    version: \"30.2\"\n"], $captured);
+
+    expect(fn (): array => Service::TYPESENSE->definition()->buildValues())
+        ->toThrow(IntegrityCheckException::class, 'declare `domain`');
+});
+
+it('leaves both already-minted keys alone', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'services' => ['typesense'],
     ]);
 
     // The idempotency marker is the app's env-side `.env` (env/.env.my-app) in
-    // the env config bucket — a present TYPESENSE_API_KEY means already minted.
+    // the env config bucket — both the server-side and the search key present
+    // means fully minted.
     $captured = [];
     bindRoutedS3Client([
-        'GetObject' => new Result(['Body' => "TYPESENSE_API_KEY=already-minted\n"]),
+        'GetObject' => new Result(['Body' => "TYPESENSE_API_KEY=already-minted\nTYPESENSE_SEARCH_KEY=already-search\n"]),
     ], $captured);
 
     expect((new SyncTypesenseKeyStep('testing'))([]))->toBe(StepResult::SYNCED);
     expect(array_column($captured, 'name'))->not->toContain('PutObject');
+});
+
+it('backfills only the missing search key for an app minted before it existed', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'services' => ['typesense'],
+    ]);
+
+    // Pre-search-key world: the env-side file carries the server key only, so
+    // the step mints just the search key and appends it, preserving the server key.
+    $captured = [];
+    bindServiceLifecycleWorld([
+        'manifest' => EDGE_OFFER,
+        'sharedEnv' => "TYPESENSE_API_KEY=admin-key\n",
+        'appEnvSide' => ['my-app' => "TYPESENSE_API_KEY=server-key\n"],
+    ], $captured);
+
+    $guzzle = new GuzzleMockHandler([
+        new Response(201, [], (string) json_encode(['value' => 'search-key'])),
+    ]);
+
+    $step = new SyncTypesenseKeyStep('testing', new Client(['handler' => HandlerStack::create($guzzle)]));
+    expect($step([]))->toBe(StepResult::CREATED);
+    expect($guzzle->count())->toBe(0); // one mint: the search key only
+
+    $put = collect($captured)->firstWhere('name', 'PutObject');
+    expect((string) $put['args']['Body'])->toContain('TYPESENSE_API_KEY=server-key')
+        ->and((string) $put['args']['Body'])->toContain('TYPESENSE_SEARCH_KEY=search-key');
 });
 
 it('reads its own env-side file as the idempotency marker, never the env-shared admin key', function (): void {
@@ -94,13 +142,13 @@ it('reads its own env-side file as the idempotency marker, never the env-shared 
     ]);
 
     // The env-shared `.env` carries the admin key; the app's env-side
-    // env/.env.my-app already carries this app's scoped key. The step keys
-    // idempotency off its OWN file, so it's a no-op (no re-mint, no write).
+    // env/.env.my-app already carries both of this app's scoped keys. The step
+    // keys idempotency off its OWN file, so it's a no-op (no re-mint, no write).
     $captured = [];
     bindServiceLifecycleWorld([
         'manifest' => EDGE_OFFER,
         'sharedEnv' => "TYPESENSE_API_KEY=admin-key\n",
-        'appEnvSide' => ['my-app' => "TYPESENSE_API_KEY=scoped-key\n"],
+        'appEnvSide' => ['my-app' => "TYPESENSE_API_KEY=scoped-key\nTYPESENSE_SEARCH_KEY=scoped-search\n"],
     ], $captured);
 
     expect((new SyncTypesenseKeyStep('testing'))([]))->toBe(StepResult::SYNCED);
@@ -119,20 +167,23 @@ it('plans the mint without any HTTP call, and mints + persists on apply', functi
     ], $captured);
 
     $guzzle = new GuzzleMockHandler([
-        new Response(201, [], (string) json_encode(['value' => 'scoped-key'])),
+        new Response(201, [], (string) json_encode(['value' => 'server-key'])),
+        new Response(201, [], (string) json_encode(['value' => 'search-key'])),
     ]);
 
     $planned = new SyncTypesenseKeyStep('testing', new Client(['handler' => HandlerStack::create($guzzle)]));
     expect($planned(['dry-run' => true]))->toBe(StepResult::WOULD_CREATE);
     expect($planned->changes())->not->toBeEmpty();
-    expect($guzzle->count())->toBe(1); // nothing consumed on the plan
+    expect($guzzle->count())->toBe(2); // nothing consumed on the plan — both keys still queued
 
     $step = new SyncTypesenseKeyStep('testing', new Client(['handler' => HandlerStack::create($guzzle)]));
     expect($step([]))->toBe(StepResult::CREATED);
+    expect($guzzle->count())->toBe(0); // apply mints both the server-side and the search key
 
     $put = collect($captured)->firstWhere('name', 'PutObject');
     expect($put['args']['Key'])->toBe('env/.env.my-app')
-        ->and((string) $put['args']['Body'])->toContain('TYPESENSE_API_KEY=scoped-key');
+        ->and((string) $put['args']['Body'])->toContain('TYPESENSE_API_KEY=server-key')
+        ->and((string) $put['args']['Body'])->toContain('TYPESENSE_SEARCH_KEY=search-key');
 });
 
 it('skips the mint with instructions while the cluster is not provisioned yet', function (): void {

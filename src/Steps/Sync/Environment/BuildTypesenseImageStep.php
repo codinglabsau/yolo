@@ -123,16 +123,7 @@ class BuildTypesenseImageStep implements LongRunning, Step
             '',
         ]));
 
-        file_put_contents($directory . '/typesense-server.ini', implode("\n", [
-            '[server]',
-            'api-address = 0.0.0.0',
-            sprintf('api-port = %d', Typesense::API_PORT),
-            sprintf('peering-port = %d', Typesense::PEERING_PORT),
-            'data-dir = /tmp',
-            sprintf('api-key = %s', Typesense::adminKey()),
-            'nodes = /etc/typesense/nodes',
-            '',
-        ]));
+        file_put_contents($directory . '/typesense-server.ini', Typesense::serverConfig());
 
         file_put_contents($directory . '/nodes', implode(',', Typesense::peers()) . "\n");
     }
