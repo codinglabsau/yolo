@@ -136,12 +136,18 @@ it('limits service-linked-role creation to the three services that need it', fun
     ]);
 });
 
-it('grants S3 object write only to the env manifest key, never the env-shared .env', function (): void {
+it('grants S3 object write to the env manifest + app claim keys, never the env-shared .env', function (): void {
     $objectWrite = collect((new AdminPolicy())->document()['Statement'])
         ->first(fn (array $statement): bool => (array) $statement['Action'] === ['s3:PutObject']);
 
     expect($objectWrite)->not->toBeNull();
-    expect($objectWrite['Resource'])
+
+    $resources = implode(' ', (array) $objectWrite['Resource']);
+
+    // Both objects sync writes — the env manifest (SeedEnvManifestStep) and the
+    // per-app claim prefix (PublishAppManifestStep) — but never the env-shared `.env`.
+    expect($resources)
         ->toContain('yolo-environment-testing.yml')
+        ->toContain('/apps/*')
         ->not->toContain('.env');
 });
