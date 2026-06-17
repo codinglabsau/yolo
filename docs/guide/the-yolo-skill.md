@@ -45,7 +45,7 @@ These commands are read-only and scriptable (non-zero exit signals a problem):
 | [`status <env> --json`](/reference/commands#yolo-status) | `{app, environment, groups[]}` — per-group tasks, spec, revision, version, rollout, scaling, load. Non-zero if a deploy is failed. |
 | [`audit <env> --json`](/reference/commands#yolo-audit) | `{environment, liveApps[], okCount, unexpectedCount, resources[]}` — ownership/inventory check. |
 | [`sync <env> --check`](/reference/commands#yolo-sync) | The read-only plan; non-zero exit on [drift](/guide/provisioning). |
-| [`services <env> --json`](/reference/commands#yolo-services) | The [service-lifecycle](/guide/provisioning#the-service-lifecycle) gate as data. |
+| [`services <env> --json`](/reference/commands#yolo-services) | The [service-lifecycle](/guide/services#the-service-lifecycle) gate as data. |
 
 ## Safety
 

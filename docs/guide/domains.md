@@ -44,20 +44,19 @@ domain: app.codinglabs.com.au
 
 ## Headless apps
 
-An app that has no public web front — a worker-only service, an internal API behind something else, a queue consumer — can run **headless**. Omit `domain`, `apex`, and tenant domains entirely:
+An app with no public web front — a background worker, a queue consumer, an internal job runner — can run **headless**: omit `domain`, `apex`, and any tenant domains.
 
 ```yaml
 environments:
   production:
-    account-id: '123456789012'
-    region: ap-southeast-2
-    # no domain / apex / tenants
+    # no domain / apex / tenants → headless
     tasks:
-      web:
-        queue: true
+      web: {}
 ```
 
-With nothing to route, YOLO skips the hosted zone, certificate, ALB attachment, and DNS for that app. It's still deployed and can still process queues and scheduled work.
+It still declares `tasks.web`. That's the container the app runs — the queue worker and scheduler ride inside it by default ([where each role runs](/reference/manifest#where-each-role-runs)) — so "headless" isn't about dropping the web tier, it's about not exposing it. With no domain to route, YOLO skips the hosted zone, certificate, ALB attachment, and DNS; the container still deploys and still processes queued and scheduled work, it just has no public URL.
+
+Need an image that builds but runs no container at all? Omit the `tasks` block entirely — see [App modes](/reference/manifest#app-modes).
 
 ## Multi-tenant domains
 

@@ -23,7 +23,7 @@ The frame is fitted to the terminal: the global bar and tabs sit up top, the foo
 | **Deployments** | Recent deployments from ECR, the running version marked; live progress while a rollout is in flight |
 | **Database** | The RDS instance or Aurora cluster behind `DB_HOST` — CPU, connections, freeable memory and latency over the last hour. YOLO reads the endpoint from the environment's `.env`; the tab is empty until [`env:push`](/reference/commands#yolo-env-push) and skips a non-RDS host |
 | **Cache** | The shared Valkey cache — status, endpoint and engine CPU / memory / connections / evictions. Empty when the environment runs no cache |
-| **Services** | The two-key [service gate](/guide/provisioning#the-service-lifecycle): what's offered, which apps claim it, and its lifecycle state — plus the Typesense cluster's live CPU / memory when it's offered |
+| **Services** | The two-key [service gate](/guide/services#the-service-lifecycle): what's offered, which apps claim it, and its lifecycle state — plus the Typesense cluster's live CPU / memory when it's offered |
 
 A **global health bar** stays pinned at the top on every tab — one dot per group (web / queue / scheduler), green when healthy, red when down. When a deploy is in flight it flips to a rollout banner, **whoever triggered it** — your `yolo deploy` in another shell, CI, or a teammate's rollback. The dashboard reads that straight from ECS, so it's never out of step with what's actually rolling.
 
