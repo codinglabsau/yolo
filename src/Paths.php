@@ -94,6 +94,21 @@ class Paths
     }
 
     /**
+     * This app's environment-side .env in the env config bucket
+     * (env/.env.{app}) — YOLO-owned per-app secrets minted at sync time (the
+     * Typesense scoped key), kept beside the env manifest and the per-app
+     * claim files rather than in the app's developer `.env` (the per-app
+     * config bucket, which the admin tier is fenced from) or the env-shared
+     * `.env` (which carries the cluster admin key the build must never read).
+     * One object per app under `env/`, so each app's build reads only its own
+     * file — never the admin key, never a sibling's.
+     */
+    public static function s3EnvAppEnvKey(?string $app = null): string
+    {
+        return sprintf('env/.env.%s', $app ?? Manifest::name());
+    }
+
+    /**
      * This app's claim file inside the env config bucket — the published
      * record of which YOLO-provisioned services the app consumes. One object
      * per app under `apps/`, so the env tier can list the prefix and evaluate

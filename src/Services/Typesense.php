@@ -58,6 +58,15 @@ class Typesense extends ServiceDefinition
     /** The env-shared .env key holding the cluster's admin API key. */
     public const string ADMIN_KEY_NAME = 'TYPESENSE_API_KEY';
 
+    /**
+     * The app-facing env var a consuming app reads at runtime — the same
+     * literal as the admin key's name, but a different channel: the build
+     * injects each app's own scoped key here from its environment-side per-app
+     * `.env` (env/.env.{app} in the env config bucket). The admin key never
+     * reaches an app — it stays alone in the env-shared `.env`.
+     */
+    public const string CLIENT_KEY_NAME = 'TYPESENSE_API_KEY';
+
     /** @var string|null|false memoised admin key — false = not yet read */
     protected static string|null|false $adminKey = false;
 
@@ -218,9 +227,10 @@ class Typesense extends ServiceDefinition
      * plus the private node addresses for server-side indexing (in-VPC, off
      * the ALB/WAF — bulk reimports never meet the rate limiter). The app's
      * scoped TYPESENSE_API_KEY is NOT injected here: sync:app mints it into
-     * the app's .env.{environment}, where the build reads it like any other
-     * env value. Browser config (the public host + a search-only key) is the
-     * app's own concern.
+     * the app's environment-side per-app `.env` (env/.env.{app} in the env
+     * config bucket), and the build step merges that file in separately — this
+     * definition stays pure (manifest-derived, no live AWS read). Browser
+     * config (the public host + a search-only key) is the app's own concern.
      */
     #[\Override]
     public function buildValues(): array
@@ -313,6 +323,34 @@ class Typesense extends ServiceDefinition
         $key = Dotenv::parse($body)[static::ADMIN_KEY_NAME] ?? null;
 
         return static::$adminKey = (is_string($key) && $key !== '' ? $key : null);
+    }
+
+    /**
+     * This app's scoped API key, read from its environment-side per-app `.env`
+     * (env/.env.{app}) in the env config bucket — null until SyncTypesenseKeyStep
+     * mints it, or while the bucket/file doesn't exist yet (a greenfield env).
+     * Read fresh every time (no memoisation): unlike the admin key, this is the
+     * once-minted idempotency marker the key step reads back on each sync, so it
+     * must reflect the live object, not a stale per-process cache.
+     */
+    public static function appKey(): ?string
+    {
+        try {
+            $body = (string) Aws::s3()->getObject([
+                'Bucket' => Paths::s3EnvConfigBucket(),
+                'Key' => Paths::s3EnvAppEnvKey(),
+            ])['Body'];
+        } catch (S3Exception $e) {
+            if (S3::isNotFound($e)) {
+                return null;
+            }
+
+            throw $e;
+        }
+
+        $key = Dotenv::parse($body)[static::CLIENT_KEY_NAME] ?? null;
+
+        return is_string($key) && $key !== '' ? $key : null;
     }
 
     /**

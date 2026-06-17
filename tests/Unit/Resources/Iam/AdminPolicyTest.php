@@ -151,3 +151,29 @@ it('grants S3 object write to the env manifest + app claim keys, never the env-s
         ->toContain('/apps/*')
         ->not->toContain('.env');
 });
+
+it('grants get+put on YOLO env-tier secret channels: the env-shared .env and each app env-side .env', function (): void {
+    // The minted-secret channel: get+put on the env-shared `.env` (the cluster
+    // admin key) and the whole env/* prefix (each app's env-side `.env`).
+    $secretChannel = collect((new AdminPolicy())->document()['Statement'])
+        ->first(fn (array $statement): bool => (array) $statement['Action'] === ['s3:GetObject', 's3:PutObject']);
+
+    expect($secretChannel)->not->toBeNull();
+    expect($secretChannel['Resource'])->toBe([
+        'arn:aws:s3:::yolo-111111111111-testing-config/.env.environment.testing',
+        'arn:aws:s3:::yolo-111111111111-testing-config/env/*',
+    ]);
+
+    // The only S3 GetObject admin holds is on this env-tier channel — never the
+    // per-app developer `.env` (a per-app config bucket the admin tier is fenced
+    // from). No statement reaches a per-app `-config` bucket here.
+    $getResources = collect((new AdminPolicy())->document()['Statement'])
+        ->filter(fn (array $statement): bool => in_array('s3:GetObject', (array) $statement['Action'], true))
+        ->flatMap(fn (array $statement): array => (array) $statement['Resource'])
+        ->all();
+
+    expect($getResources)->toBe([
+        'arn:aws:s3:::yolo-111111111111-testing-config/.env.environment.testing',
+        'arn:aws:s3:::yolo-111111111111-testing-config/env/*',
+    ]);
+});

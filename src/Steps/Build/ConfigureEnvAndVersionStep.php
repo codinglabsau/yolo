@@ -2,11 +2,14 @@
 
 namespace Codinglabs\Yolo\Steps\Build;
 
+use Dotenv\Dotenv;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Aws\S3;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
+use Aws\S3\Exception\S3Exception;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -42,6 +45,15 @@ class ConfigureEnvAndVersionStep implements Step
         foreach (Manifest::services() as $service) {
             $values = [...$values, ...Service::from($service)->definition()->buildValues()];
         }
+
+        // YOLO's per-app env-side secret channel: any key sync minted into this
+        // app's environment-side `.env` (env/.env.{app} in the env config bucket)
+        // — currently the Typesense scoped TYPESENSE_API_KEY. Merged in like a
+        // buildValues entry so it's baked into the image. The file doesn't exist
+        // until the key is minted (the common case on a fresh app, and for apps
+        // with no env-side secret at all), so a not-found read is skipped
+        // silently — never a build failure.
+        $values = [...$values, ...$this->envSideValues()];
 
         // Assets always live in S3 behind the YOLO-provisioned CloudFront
         // distribution. ASSET_URL points app-generated asset URLs at it,
@@ -124,6 +136,33 @@ class ConfigureEnvAndVersionStep implements Step
         $this->filesystem->append($envPath, $this->generateValues($values));
 
         return StepResult::SUCCESS;
+    }
+
+    /**
+     * Parse this app's environment-side `.env` (env/.env.{app} in the env
+     * config bucket) into key=>value pairs to merge into the built env. Empty
+     * when the file doesn't exist yet (S3 not-found) — minting the key is what
+     * creates it, so its absence is the steady state until then and must never
+     * crash the build.
+     *
+     * @return array<string, string>
+     */
+    protected function envSideValues(): array
+    {
+        try {
+            $body = (string) Aws::s3()->getObject([
+                'Bucket' => Paths::s3EnvConfigBucket(),
+                'Key' => Paths::s3EnvAppEnvKey(),
+            ])['Body'];
+        } catch (S3Exception $e) {
+            if (S3::isNotFound($e)) {
+                return [];
+            }
+
+            throw $e;
+        }
+
+        return Dotenv::parse($body);
     }
 
     protected function envDefines(string $path, string $key): bool

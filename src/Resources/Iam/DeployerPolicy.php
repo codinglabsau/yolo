@@ -252,6 +252,16 @@ class DeployerPolicy implements Resource, SynchronisesConfiguration
                     's3:PutObject',
                 ],
             ],
+            [
+                // Read this app's environment-side `.env` (env/.env.{app}) in the
+                // env config bucket, carrying its YOLO-minted Typesense scoped key
+                // — ConfigureEnvAndVersionStep merges it into the built env. Scoped
+                // to exactly this app's object — never the env-shared `.env` (the
+                // cluster admin key) or any other app's env-side file.
+                'Effect' => 'Allow',
+                'Resource' => sprintf('%s/%s', (new EnvConfigBucket())->arn(), Paths::s3EnvAppEnvKey()),
+                'Action' => ['s3:GetObject'],
+            ],
         ];
 
         // The apex/www DNS cutover only runs for apps with a public domain. Scope

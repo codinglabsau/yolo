@@ -25,11 +25,14 @@ use function Laravel\Prompts\warning;
 /**
  * Mints this app a Typesense API key scoped to its own `{prefix}*` collections
  * (the Algolia secured-key model: a leaked app key reaches that app's
- * collections only) and writes it into the app's `.env.{environment}` in its
- * config bucket, where the next build picks it up like any other env value.
- * Minted exactly once — the key already in the env file is the source of
- * truth, so sync never re-mints or rotates (rotation = delete the line, run
- * sync:app again).
+ * collections only) and writes it into the app's environment-side per-app
+ * `.env` (env/.env.{app} in the env config bucket), where the next build merges
+ * it in like any other env value. Kept out of the app's developer `.env` (which
+ * the admin tier running sync is fenced from) and apart from the env-shared
+ * `.env` (which carries the cluster admin key), so each app's build reads only
+ * its own minted key — never the admin key, never a sibling's. Minted exactly
+ * once — the key already in the env-side file is the source of truth, so sync
+ * never re-mints or rotates (rotation = delete the line, run sync:app again).
  *
  * The mint talks to the cluster's data plane over the public search host with
  * the admin key — the one place YOLO does — so while the cluster or its
@@ -49,11 +52,11 @@ class SyncTypesenseKeyStep implements Step
             return StepResult::SKIPPED;
         }
 
-        if ($this->appEnv() !== null && str_contains($this->appEnv(), Typesense::ADMIN_KEY_NAME . '=')) {
+        if (Typesense::appKey() !== null) {
             return StepResult::SYNCED;
         }
 
-        $this->recordChange(Change::make(Typesense::ADMIN_KEY_NAME, 'absent', 'minted (scoped to ' . $this->prefix() . '*)'));
+        $this->recordChange(Change::make(Typesense::CLIENT_KEY_NAME, 'absent', 'minted (scoped to ' . $this->prefix() . '*)'));
 
         if (Arr::get($options, 'dry-run')) {
             return StepResult::WOULD_CREATE;
@@ -76,7 +79,11 @@ class SyncTypesenseKeyStep implements Step
             return StepResult::SKIPPED;
         }
 
-        $this->appendToAppEnv($key);
+        Aws::s3()->putObject([
+            'Bucket' => Paths::s3EnvConfigBucket(),
+            'Key' => Paths::s3EnvAppEnvKey(),
+            'Body' => $this->bodyWithKey($key),
+        ]);
 
         return StepResult::CREATED;
     }
@@ -105,31 +112,32 @@ class SyncTypesenseKeyStep implements Step
         return is_string($key) && $key !== '' ? $key : null;
     }
 
-    protected function appendToAppEnv(string $key): void
+    /**
+     * The current env-side per-app `.env` with the minted key appended — absent
+     * file reads as empty, so the first mint creates it. Existing content is
+     * preserved byte-for-byte.
+     */
+    protected function bodyWithKey(string $key): string
     {
-        $current = (string) $this->appEnv();
+        $current = $this->currentBody();
 
         if ($current !== '' && ! str_ends_with($current, "\n")) {
             $current .= "\n";
         }
 
-        Aws::s3()->putObject([
-            'Bucket' => Paths::s3ConfigBucket(),
-            'Key' => Paths::s3AppEnvKey(),
-            'Body' => $current . sprintf("%s=%s\n", Typesense::ADMIN_KEY_NAME, $key),
-        ]);
+        return $current . sprintf("%s=%s\n", Typesense::CLIENT_KEY_NAME, $key);
     }
 
-    protected function appEnv(): ?string
+    protected function currentBody(): string
     {
         try {
             return (string) Aws::s3()->getObject([
-                'Bucket' => Paths::s3ConfigBucket(),
-                'Key' => Paths::s3AppEnvKey(),
+                'Bucket' => Paths::s3EnvConfigBucket(),
+                'Key' => Paths::s3EnvAppEnvKey(),
             ])['Body'];
         } catch (S3Exception $e) {
             if (S3::isNotFound($e)) {
-                return null;
+                return '';
             }
 
             throw $e;

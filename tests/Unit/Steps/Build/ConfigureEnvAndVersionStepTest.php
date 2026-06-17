@@ -3,6 +3,9 @@
 use Aws\Result;
 use Dotenv\Dotenv;
 use Codinglabs\Yolo\Paths;
+use GuzzleHttp\Psr7\Response;
+use Aws\Command as AwsCommand;
+use Aws\S3\Exception\S3Exception;
 use Codinglabs\Yolo\Steps\Build\ConfigureEnvAndVersionStep;
 
 function rebuildEnvFixture(array $config): void
@@ -37,6 +40,18 @@ beforeEach(function (): void {
             'Id' => 'E123',
         ],
     ]);
+
+    // The build merges the app's env-side `.env` (env/.env.{app}) — absent by
+    // default (it only exists once a key is minted), so every existing test
+    // reads NoSuchKey and just omits it. Tests that need the file present
+    // rebind the S3 client.
+    $s3Captured = [];
+    bindRoutedS3Client([
+        'GetObject' => new S3Exception('Not found', new AwsCommand('GetObject'), [
+            'code' => 'NoSuchKey',
+            'response' => new Response(404),
+        ]),
+    ], $s3Captured);
 
     // Web-app manifests default cache.store to redis, so the build resolves the
     // Valkey endpoint — bind a default cluster lookup for any tasks.web test.
@@ -313,4 +328,51 @@ it('respects a SESSION_DRIVER already set in the .env', function (): void {
 
     expect($env)->toContain('SESSION_DRIVER=cookie');
     expect($env)->not->toContain('SESSION_DRIVER=database');
+});
+
+it('merges the app env-side .env (env/.env.{app}) into the built env when present', function (): void {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+    ]);
+
+    // The env-side file carries YOLO-minted per-app secrets (the Typesense
+    // scoped key). When it exists, its vars are baked into the image like any
+    // buildValues entry.
+    $captured = [];
+    bindRoutedS3Client([
+        'GetObject' => new Result(['Body' => "TYPESENSE_API_KEY=scoped-key\n"]),
+    ], $captured);
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('TYPESENSE_API_KEY=scoped-key');
+    // The read targets exactly this app's env-side key in the env config bucket.
+    $get = collect($captured)->firstWhere('name', 'GetObject');
+    expect($get['args']['Bucket'])->toBe('yolo-111111111111-testing-config')
+        ->and($get['args']['Key'])->toBe('env/.env.my-app');
+});
+
+it('builds fine when the app env-side .env is absent (S3 not-found is skipped silently)', function (): void {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+    ]);
+
+    // No env-side file (the common case until a key is minted): GetObject throws
+    // NoSuchKey. The build must succeed and simply omit those vars — never crash.
+    $captured = [];
+    bindRoutedS3Client([
+        'GetObject' => new S3Exception('Not found', new AwsCommand('GetObject'), [
+            'code' => 'NoSuchKey',
+            'response' => new Response(404),
+        ]),
+    ], $captured);
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('APP_VERSION=26.21.5.0611')
+        ->not->toContain('TYPESENSE_API_KEY=');
 });

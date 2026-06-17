@@ -141,6 +141,26 @@ it('grants write-only asset push on builds/* and read-only env-file pull, least-
         ->not->toContain('arn:aws:s3:::yolo-111111111111-testing-my-app-config');
 });
 
+it('grants read on this app\'s env-side .env in the env config bucket, scoped to the object not the bucket', function (): void {
+    // ConfigureEnvAndVersionStep merges env/.env.{app} (the app's YOLO-minted
+    // Typesense key) into the built env, so the deployer needs read on exactly
+    // that object — never the env-shared `.env` (the cluster admin key) or a
+    // sibling app's env-side file.
+    $envSide = collect((new DeployerPolicy())->document()['Statement'])
+        ->first(fn (array $statement): bool => $statement['Resource'] === 'arn:aws:s3:::yolo-111111111111-testing-config/env/.env.my-app');
+
+    expect($envSide)->not->toBeNull();
+    expect($envSide['Action'])->toBe(['s3:GetObject']);
+
+    // Never the env-shared `.env` nor the whole env/ prefix.
+    $allResources = collect((new DeployerPolicy())->document()['Statement'])
+        ->flatMap(fn (array $statement): array => (array) $statement['Resource']);
+
+    expect($allResources)
+        ->not->toContain('arn:aws:s3:::yolo-111111111111-testing-config/.env.environment.testing')
+        ->not->toContain('arn:aws:s3:::yolo-111111111111-testing-config/env/*');
+});
+
 it('grants object access on this app\'s claim file in the env config bucket, scoped to the object not the bucket', function (): void {
     // PublishAppManifestStep reads then writes apps/{app}.yml in the env config
     // bucket on every deploy. The grant must be scoped to exactly this app's

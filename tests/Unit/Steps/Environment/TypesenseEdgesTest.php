@@ -77,9 +77,30 @@ it('leaves an already-minted app key alone', function (): void {
         'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'services' => ['typesense'],
     ]);
 
+    // The idempotency marker is the app's env-side `.env` (env/.env.my-app) in
+    // the env config bucket — a present TYPESENSE_API_KEY means already minted.
     $captured = [];
     bindRoutedS3Client([
         'GetObject' => new Result(['Body' => "TYPESENSE_API_KEY=already-minted\n"]),
+    ], $captured);
+
+    expect((new SyncTypesenseKeyStep('testing'))([]))->toBe(StepResult::SYNCED);
+    expect(array_column($captured, 'name'))->not->toContain('PutObject');
+});
+
+it('reads its own env-side file as the idempotency marker, never the env-shared admin key', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'services' => ['typesense'],
+    ]);
+
+    // The env-shared `.env` carries the admin key; the app's env-side
+    // env/.env.my-app already carries this app's scoped key. The step keys
+    // idempotency off its OWN file, so it's a no-op (no re-mint, no write).
+    $captured = [];
+    bindServiceLifecycleWorld([
+        'manifest' => EDGE_OFFER,
+        'sharedEnv' => "TYPESENSE_API_KEY=admin-key\n",
+        'appEnvSide' => ['my-app' => "TYPESENSE_API_KEY=scoped-key\n"],
     ], $captured);
 
     expect((new SyncTypesenseKeyStep('testing'))([]))->toBe(StepResult::SYNCED);
@@ -110,7 +131,7 @@ it('plans the mint without any HTTP call, and mints + persists on apply', functi
     expect($step([]))->toBe(StepResult::CREATED);
 
     $put = collect($captured)->firstWhere('name', 'PutObject');
-    expect($put['args']['Key'])->toBe('.env.testing')
+    expect($put['args']['Key'])->toBe('env/.env.my-app')
         ->and((string) $put['args']['Body'])->toContain('TYPESENSE_API_KEY=scoped-key');
 });
 

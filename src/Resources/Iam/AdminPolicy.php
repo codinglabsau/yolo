@@ -40,8 +40,9 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  *          `yolo-*` policy document and re-attach it; and
  *      (2) sync manages `yolo-*` bucket policies (the asset bucket's CloudFront
  *          OAC policy needs `s3:PutBucketPolicy`), so the same grant lets the tier
- *          rewrite the config bucket's policy to grant itself `s3:GetObject` on the
- *          env-shared `.env` it otherwise can't read.
+ *          rewrite a per-app config bucket's policy to grant itself `s3:GetObject`
+ *          on the per-app developer `.env` it otherwise can't read (admin reads
+ *          only YOLO's own minted env-tier secrets, not the developer `.env`).
  *    Closing either fully needs a permissions boundary on every YOLO-created role
  *    (so nothing YOLO mints can exceed the boundary) — deliberately NOT built here.
  *    Whether the blast-radius cap above suffices or the boundary is warranted is a
@@ -184,8 +185,10 @@ class AdminPolicy implements Resource, SynchronisesConfiguration
                 [
                     // S3 bucket lifecycle + configuration, scoped to YOLO-named
                     // buckets. CreateBucket/Put* on the bucket ARN; object contents
-                    // are NOT granted here (the env-shared `.env` lives in the config
-                    // bucket — admin manages buckets, never reads/writes secrets).
+                    // are NOT granted here. The only secrets admin can read/write are
+                    // YOLO's own env-tier minted keys (the env-shared + env-side
+                    // `.env` channels in the env config bucket) — granted as scoped
+                    // object actions below, never the per-app developer `.env`.
                     'Effect' => 'Allow',
                     'Resource' => 'arn:aws:s3:::yolo-*',
                     'Action' => [
@@ -202,14 +205,32 @@ class AdminPolicy implements Resource, SynchronisesConfiguration
                     // env manifest (SeedEnvManifestStep) and each app's claim file
                     // (PublishAppManifestStep writes `apps/{app}.yml` on every
                     // sync:app — env-scoped admin syncs every app, so the whole
-                    // `apps/*` prefix). Scoped to exactly these keys — never the
-                    // env-shared `.env` or any other secret.
+                    // `apps/*` prefix). Scoped to exactly these keys. The
+                    // env-shared/env-side secret channels are granted in the next
+                    // statement; the per-app DEVELOPER `.env` (in the per-app
+                    // config bucket) is still never granted here.
                     'Effect' => 'Allow',
                     'Resource' => [
                         sprintf('arn:aws:s3:::%s/%s', $envConfigBucket, EnvManifest::filename()),
                         sprintf('arn:aws:s3:::%s/apps/*', $envConfigBucket),
                     ],
                     'Action' => ['s3:PutObject'],
+                ],
+                [
+                    // YOLO's env-tier secret channels in the env config bucket: the
+                    // env-shared .env (.env.environment.{env}) holding the Typesense
+                    // cluster admin key (SyncTypesenseAdminKeyStep), and each app's
+                    // environment-side .env (env/.env.{app}) holding its YOLO-minted
+                    // scoped search key (SyncTypesenseKeyStep). Get+put: sync reads
+                    // what's already minted, appends new keys. These are YOLO's OWN
+                    // minted secrets — the per-app developer .env (in the per-app
+                    // config bucket) is still never granted here.
+                    'Effect' => 'Allow',
+                    'Resource' => [
+                        sprintf('arn:aws:s3:::%s/%s', $envConfigBucket, Paths::s3SharedEnvKey()),
+                        sprintf('arn:aws:s3:::%s/env/*', $envConfigBucket),
+                    ],
+                    'Action' => ['s3:GetObject', 's3:PutObject'],
                 ],
                 [
                     // IAM lifecycle for YOLO's own roles, policies and the OIDC

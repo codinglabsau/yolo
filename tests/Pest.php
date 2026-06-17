@@ -825,7 +825,7 @@ function bindRoutedEcrClient(array $byCommand, array &$captured): void
  * independently of read order. `bucket: false` makes every S3 read throw
  * NoSuchBucket (the greenfield plan pass). S3 calls are captured by reference.
  *
- * @param  array{manifest?: string|null, claims?: array<string, array<int, string>>, clusters?: array<string, bool>, bucket?: bool, sharedEnv?: string|null}  $world
+ * @param  array{manifest?: string|null, claims?: array<string, array<int, string>>, clusters?: array<string, bool>, bucket?: bool, sharedEnv?: string|null, appEnvSide?: array<string, string>}  $world
  * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
  */
 function bindServiceLifecycleWorld(array $world, array &$captured): void
@@ -843,6 +843,14 @@ function bindServiceLifecycleWorld(array $world, array &$captured): void
 
     if (($world['sharedEnv'] ?? null) !== null) {
         $byKey['.env.environment.' . Helpers::environment()] = new Result(['Body' => $world['sharedEnv']]);
+    }
+
+    // Each app's environment-side `.env` (env/.env.{app}) — the YOLO-minted
+    // per-app secret channel the build merges and SyncTypesenseKeyStep reads
+    // back as its idempotency marker. Routed by key alongside the claims, so a
+    // present file is read fresh and an absent one falls through to NoSuchKey.
+    foreach ($world['appEnvSide'] ?? [] as $app => $body) {
+        $byKey["env/.env.$app"] = new Result(['Body' => $body]);
     }
 
     foreach ($claims as $app => $services) {
