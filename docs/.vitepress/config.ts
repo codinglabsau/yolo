@@ -47,6 +47,7 @@ export default defineConfig({
           { text: 'Domains', link: '/guide/domains' },
           { text: 'Multi-Tenancy', link: '/guide/multi-tenancy' },
           { text: 'Scaling', link: '/guide/scaling' },
+          { text: 'Services', link: '/guide/services' },
           { text: 'Status Dashboard', link: '/guide/status-dashboard' },
           { text: 'The /yolo Skill', link: '/guide/the-yolo-skill' },
           { text: 'CI/CD', link: '/guide/ci-cd' },

@@ -139,7 +139,7 @@ yolo environment:manifest:push <environment>
 
 Validates the local file against the manifest schema **before** anything touches the bucket — a misshapen manifest can never become the environment's declared truth — then shows a key-level diff against the remote and asks for confirmation. After uploading it offers to delete the local working copy (default: yes). Apply the pushed declaration with [`sync:environment`](#yolo-sync-environment), from any app in the environment.
 
-Removing a [service](/guide/provisioning#the-service-lifecycle) (`services.{name}`) is refused while a running app still uses it — the error names the app — and likewise while any running app hasn't published what it uses yet. Remove the service from each app's `yolo.yml` and deploy (or `sync:app`) it first; the push goes through once nothing is using it.
+Removing a [service](/guide/services#the-service-lifecycle) (`services.{name}`) is refused while a running app still uses it — the error names the app — and likewise while any running app hasn't published what it uses yet. Remove the service from each app's `yolo.yml` and deploy (or `sync:app`) it first; the push goes through once nothing is using it.
 
 ---
 
@@ -283,7 +283,7 @@ Read-only and navigation-only — every mutation is its own command, so nothing 
 | **Deployments** | Recent deployments from ECR, the running version marked; live progress while a rollout is in flight |
 | **Database** | The RDS instance/cluster behind `DB_HOST` — CPU, connections, freeable memory and latency over the last hour |
 | **Cache** | The shared Valkey cache — status, endpoint, and engine CPU / memory / connections / evictions over the last hour |
-| **Services** | The [service gate](/guide/provisioning#the-service-lifecycle) — what's offered, which apps claim it, its lifecycle state, plus the Typesense cluster's live CPU / memory when offered |
+| **Services** | The [service gate](/guide/services#the-service-lifecycle) — what's offered, which apps claim it, its lifecycle state, plus the Typesense cluster's live CPU / memory when offered |
 
 A **global health bar** stays pinned on every tab — one dot per group (web / queue / scheduler), green when healthy, red when down, flipping to a rollout banner whenever a deploy is in flight, whoever triggered it. Each tab carries one muted AWS-Console deep link to its primary resource (the ECS service, RDS instance, cache cluster, log group, alarms). Navigate with `◂ ▸` / `Tab` / number keys / a tab's letter; `↑ ↓` / `PgUp PgDn` / `Home End` scroll the active tab's body; `q` quits. See the [Status Dashboard guide](/guide/status-dashboard) for the full tour.
 
@@ -497,7 +497,7 @@ Toggling and confirming applies the membership diff — and only ever touches th
 
 ## `yolo services`
 
-View and manage [services](/guide/provisioning#the-service-lifecycle) for an app and its environment. The interactive view is app-centric — a `Service · Description · Status` table where **Status** is whether *this app* uses each service — with enable / disable per service.
+View and manage [services](/guide/services#the-service-lifecycle) for an app and its environment. The interactive view is app-centric — a `Service · Description · Status` table where **Status** is whether *this app* uses each service — with enable / disable per service.
 
 ```bash
 yolo services <environment> [--json] [--add=<service>] [--set key=value] [--remove=<service>]
@@ -571,7 +571,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **account**.
 
 ## `yolo sync:environment`
 
-Sync the environment-shared (environment-tier) resources — VPC, subnets, internet gateway and routes, the load balancer security group, the env config bucket holding [the environment's declaration](/guide/provisioning#the-environment-declaration) (env manifest + env-shared `.env`, the manifest seeded once on first sync), the env-backed services gated on [the service lifecycle](/guide/provisioning#the-service-lifecycle) (the IVS event-logging pipeline and the [Typesense search cluster](/guide/provisioning#typesense-the-environment-s-search-cluster) — each provisioned while the env manifest declares it **and** a running app uses it, and planned as a `WOULD DELETE` teardown once that stops being true), the ALB and its `:80` listener, the SNS alarm topic, the shared ECS execution IAM role, the env-shared `yolo-{env}-observer` read-only policy (the drift-check inspection surface every app's deployer role attaches — see [CI/CD](/guide/ci-cd#what-yolo-sync-provisions-for-ci)), the `yolo-{env}-observer-role` an operator or agent assumes for safe **read-only** inspection (it carries that policy — point a `*-readonly` profile at it), the env-wide [grant groups](#conventions) (`yolo-{env}-observers`, `yolo-{env}-admins`) whose membership grants the read / admin tier, and the [WAF web ACL](/guide/provisioning#web-application-firewall) (with its allow/block IP sets) fronting the ALB.
+Sync the environment-shared (environment-tier) resources — VPC, subnets, internet gateway and routes, the load balancer security group, the env config bucket holding [the environment's declaration](/guide/provisioning#the-environment-declaration) (env manifest + env-shared `.env`, the manifest seeded once on first sync), the env-backed services gated on [the service lifecycle](/guide/services#the-service-lifecycle) (the IVS event-logging pipeline and the [Typesense search cluster](/guide/services#typesense-the-environment-s-search-cluster) — each provisioned while the env manifest declares it **and** a running app uses it, and planned as a `WOULD DELETE` teardown once that stops being true), the ALB and its `:80` listener, the SNS alarm topic, the shared ECS execution IAM role, the env-shared `yolo-{env}-observer` read-only policy (the drift-check inspection surface every app's deployer role attaches — see [CI/CD](/guide/ci-cd#what-yolo-sync-provisions-for-ci)), the `yolo-{env}-observer-role` an operator or agent assumes for safe **read-only** inspection (it carries that policy — point a `*-readonly` profile at it), the env-wide [grant groups](#conventions) (`yolo-{env}-observers`, `yolo-{env}-admins`) whose membership grants the read / admin tier, and the [WAF web ACL](/guide/provisioning#web-application-firewall) (with its allow/block IP sets) fronting the ALB.
 
 ```bash
 yolo sync:environment <environment> [--check] [--force] [--no-progress] [--tenant=<id>]
