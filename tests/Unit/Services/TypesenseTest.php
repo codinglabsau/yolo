@@ -120,7 +120,7 @@ it('reads a missing env-shared .env (or bucket) as no key yet', function (): voi
     expect(Typesense::adminKey())->toBeNull();
 });
 
-it('content-tags the image by version + key fingerprint, unresolvable until both exist', function (): void {
+it('content-tags the image by version + server-config fingerprint, unresolvable until both exist', function (): void {
     $captured = [];
     bindRoutedS3Client([
         'GetObject' => [
@@ -132,7 +132,26 @@ it('content-tags the image by version + key fingerprint, unresolvable until both
     $tag = Typesense::imageTag();
 
     expect($tag)->toStartWith('29.0-')
-        ->and($tag)->toBe('29.0-' . substr(hash('sha256', 'abc123|' . implode(',', Typesense::peers())), 0, 12));
+        ->and($tag)->toBe('29.0-' . substr(hash('sha256', Typesense::serverConfig() . '|' . implode(',', Typesense::peers())), 0, 12));
+});
+
+it('bakes the admin key and any-origin CORS into the server config — so a CORS flip re-tags the image', function (): void {
+    $captured = [];
+    bindServiceLifecycleWorld([
+        'manifest' => "services:\n  typesense:\n    version: \"29.0\"\n",
+        'sharedEnv' => "TYPESENSE_API_KEY=abc123\n",
+    ], $captured);
+
+    $config = Typesense::serverConfig();
+
+    expect($config)->toContain('api-key = abc123')
+        ->toContain('enable-cors = true')
+        ->toContain(sprintf('api-port = %d', Typesense::API_PORT))
+        ->toContain('nodes = /etc/typesense/nodes');
+
+    // The image tag fingerprints the whole config, so the CORS line is part of it.
+    expect(Typesense::imageTag())->not->toBeNull()
+        ->and(Typesense::imageTag())->toContain(substr(hash('sha256', $config . '|' . implode(',', Typesense::peers())), 0, 12));
 });
 
 it('has no image tag while the version is undeclared', function (): void {

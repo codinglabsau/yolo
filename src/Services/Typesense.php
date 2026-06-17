@@ -67,6 +67,15 @@ class Typesense extends ServiceDefinition
      */
     public const string CLIENT_KEY_NAME = 'TYPESENSE_API_KEY';
 
+    /**
+     * The app-facing env var holding the browser search key — a search-only
+     * scoped key sync:app mints alongside the server-side CLIENT_KEY_NAME and
+     * writes into the same environment-side per-app `.env`. Safe to embed in
+     * the page: it can only run searches, and only over this app's own
+     * `{prefix}*` collections.
+     */
+    public const string SEARCH_KEY_NAME = 'TYPESENSE_SEARCH_KEY';
+
     /** @var string|null|false memoised admin key — false = not yet read */
     protected static string|null|false $adminKey = false;
 
@@ -223,14 +232,20 @@ class Typesense extends ServiceDefinition
     }
 
     /**
-     * Build-time env injection for a consuming app: Scout's driver and prefix,
-     * plus the private node addresses for server-side indexing (in-VPC, off
-     * the ALB/WAF — bulk reimports never meet the rate limiter). The app's
-     * scoped TYPESENSE_API_KEY is NOT injected here: sync:app mints it into
-     * the app's environment-side per-app `.env` (env/.env.{app} in the env
-     * config bucket), and the build step merges that file in separately — this
-     * definition stays pure (manifest-derived, no live AWS read). Browser
-     * config (the public host + a search-only key) is the app's own concern.
+     * Build-time env injection for a consuming app, both traffic paths:
+     *
+     * - Server-side indexing (private, in-VPC, off the ALB/WAF — bulk reimports
+     *   never meet the rate limiter): Scout's driver and prefix, plus the
+     *   private Cloud Map node addresses.
+     * - Browser-direct search (public): the search host (search.{domain} on the
+     *   shared :443 listener) over https, paired with the search-only key
+     *   sync:app mints into the app's environment-side `.env`.
+     *
+     * The app's scoped keys are NOT injected here — sync:app mints them into
+     * env/.env.{app} and the build step merges that file in separately, so this
+     * definition stays pure (manifest-derived, no live AWS read). A claimed
+     * typesense with no env domain can't serve browsers at all, so the search
+     * host is required here rather than shipping a dead search box.
      */
     #[\Override]
     public function buildValues(): array
@@ -247,6 +262,9 @@ class Typesense extends ServiceDefinition
                 fn (int $node): string => sprintf('%s:%d:http', static::nodeAddress($node), static::API_PORT),
                 range(0, static::nodes() - 1),
             )),
+            'TYPESENSE_SEARCH_HOST' => static::requireSearchHost(),
+            'TYPESENSE_SEARCH_PORT' => '443',
+            'TYPESENSE_SEARCH_PROTOCOL' => 'https',
         ];
     }
 
@@ -326,11 +344,12 @@ class Typesense extends ServiceDefinition
     }
 
     /**
-     * This app's scoped API key, read from its environment-side per-app `.env`
-     * (env/.env.{app}) in the env config bucket — null until SyncTypesenseKeyStep
-     * mints it, or while the bucket/file doesn't exist yet (a greenfield env).
-     * Read fresh every time (no memoisation): unlike the admin key, this is the
-     * once-minted idempotency marker the key step reads back on each sync, so it
+     * This app's scoped server-side key, read from its environment-side per-app
+     * `.env` (env/.env.{app}) in the env config bucket — null until
+     * SyncTypesenseKeyStep mints it, or while the bucket/file doesn't exist yet
+     * (a greenfield env). The search-only key is minted in the same pass, so a
+     * present server key implies a present search key; this is the pair's
+     * once-minted idempotency marker. Read fresh every time (no memoisation): it
      * must reflect the live object, not a stale per-process cache.
      */
     public static function appKey(): ?string
@@ -354,12 +373,42 @@ class Typesense extends ServiceDefinition
     }
 
     /**
+     * The server config (typesense-server.ini) baked into the node image: the
+     * admin key, the API/peering ports, the peer-list pointer, and CORS enabled
+     * so browsers can query the public search host directly. Returned whole so
+     * imageTag() fingerprints it — any change here (a rotated key, a flipped
+     * setting) re-tags the image and rolls the nodes, where fingerprinting only
+     * the key would let an edited config ship under the old tag and never
+     * deploy.
+     *
+     * CORS is any-origin on purpose: the key the browser carries is a
+     * search-only scoped key (public by design — it ships in the page), so an
+     * origin allowlist guards nothing a determined caller can't sidestep
+     * off-browser. The real controls are that key's scope and the per-IP WAF
+     * rate limit on search.{domain}.
+     */
+    public static function serverConfig(): string
+    {
+        return implode("\n", [
+            '[server]',
+            'api-address = 0.0.0.0',
+            sprintf('api-port = %d', static::API_PORT),
+            sprintf('peering-port = %d', static::PEERING_PORT),
+            'data-dir = /tmp',
+            sprintf('api-key = %s', static::adminKey()),
+            'nodes = /etc/typesense/nodes',
+            'enable-cors = true',
+            '',
+        ]);
+    }
+
+    /**
      * The content tag the image build pushes: the declared version + a
-     * fingerprint of everything baked into the image (the admin key and the
-     * peer list) — so a version bump, key rotation or node-count change
-     * produces a new tag (and a task-def revision that rolls the nodes),
-     * while unchanged inputs skip the build entirely. Null until the inputs
-     * exist.
+     * fingerprint of everything baked into the image (the server config — which
+     * carries the admin key and CORS — and the peer list) — so a version bump,
+     * key rotation, config change or node-count change produces a new tag (and
+     * a task-def revision that rolls the nodes), while unchanged inputs skip the
+     * build entirely. Null until the inputs exist.
      */
     public static function imageTag(): ?string
     {
@@ -370,7 +419,7 @@ class Typesense extends ServiceDefinition
             return null;
         }
 
-        return sprintf('%s-%s', $version, substr(hash('sha256', $key . '|' . implode(',', static::peers())), 0, 12));
+        return sprintf('%s-%s', $version, substr(hash('sha256', static::serverConfig() . '|' . implode(',', static::peers())), 0, 12));
     }
 
     /**

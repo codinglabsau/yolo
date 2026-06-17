@@ -23,16 +23,22 @@ use Codinglabs\Yolo\Concerns\RecordsChanges;
 use function Laravel\Prompts\warning;
 
 /**
- * Mints this app a Typesense API key scoped to its own `{prefix}*` collections
- * (the Algolia secured-key model: a leaked app key reaches that app's
- * collections only) and writes it into the app's environment-side per-app
- * `.env` (env/.env.{app} in the env config bucket), where the next build merges
- * it in like any other env value. Kept out of the app's developer `.env` (which
- * the admin tier running sync is fenced from) and apart from the env-shared
- * `.env` (which carries the cluster admin key), so each app's build reads only
- * its own minted key — never the admin key, never a sibling's. Minted exactly
- * once — the key already in the env-side file is the source of truth, so sync
- * never re-mints or rotates (rotation = delete the line, run sync:app again).
+ * Mints this app its two Typesense keys, both scoped to its own `{prefix}*`
+ * collections (the Algolia secured-key model: a leaked key reaches that app's
+ * collections only) and written into the app's environment-side per-app `.env`
+ * (env/.env.{app} in the env config bucket), where the next build merges them
+ * in like any other env value:
+ *
+ * - a server-side key (all actions) the app indexes and queries with from PHP;
+ * - a search-only key (documents:search) safe to embed in the page, which the
+ *   browser carries when it queries the public search host directly.
+ *
+ * Kept out of the app's developer `.env` (which the admin tier running sync is
+ * fenced from) and apart from the env-shared `.env` (which carries the cluster
+ * admin key), so each app's build reads only its own minted keys — never the
+ * admin key, never a sibling's. Minted exactly once, the pair together — the
+ * keys already in the env-side file are the source of truth, so sync never
+ * re-mints or rotates (rotation = delete the lines, run sync:app again).
  *
  * The mint talks to the cluster's data plane over the public search host with
  * the admin key — the one place YOLO does — so while the cluster or its
@@ -57,6 +63,7 @@ class SyncTypesenseKeyStep implements Step
         }
 
         $this->recordChange(Change::make(Typesense::CLIENT_KEY_NAME, 'absent', 'minted (scoped to ' . $this->prefix() . '*)'));
+        $this->recordChange(Change::make(Typesense::SEARCH_KEY_NAME, 'absent', 'minted (search-only, scoped to ' . $this->prefix() . '*)'));
 
         if (Arr::get($options, 'dry-run')) {
             return StepResult::WOULD_CREATE;
@@ -71,9 +78,10 @@ class SyncTypesenseKeyStep implements Step
             return StepResult::SKIPPED;
         }
 
-        $key = $this->mint($searchHost, $adminKey);
+        $serverKey = $this->mint($searchHost, $adminKey, ['*'], 'server-side');
+        $searchKey = $this->mint($searchHost, $adminKey, ['documents:search'], 'browser search-only');
 
-        if ($key === null) {
+        if ($serverKey === null || $searchKey === null) {
             warning(sprintf('Typesense key not minted — https://%s is not reachable yet (DNS/health may still be settling). Run `yolo sync:app` again shortly.', $searchHost));
 
             return StepResult::SKIPPED;
@@ -82,23 +90,30 @@ class SyncTypesenseKeyStep implements Step
         Aws::s3()->putObject([
             'Bucket' => Paths::s3EnvConfigBucket(),
             'Key' => Paths::s3EnvAppEnvKey(),
-            'Body' => $this->bodyWithKey($key),
+            'Body' => $this->bodyWithKeys([
+                Typesense::CLIENT_KEY_NAME => $serverKey,
+                Typesense::SEARCH_KEY_NAME => $searchKey,
+            ]),
         ]);
 
         return StepResult::CREATED;
     }
 
     /**
-     * POST /keys with actions on this app's own collection prefix only.
+     * POST /keys with the given actions on this app's own collection prefix
+     * only. `role` names the key in its Typesense description so the two are
+     * told apart on the cluster.
+     *
+     * @param  array<int, string>  $actions
      */
-    protected function mint(string $searchHost, string $adminKey): ?string
+    protected function mint(string $searchHost, string $adminKey, array $actions, string $role): ?string
     {
         try {
             $response = ($this->http ?? new Client())->post(sprintf('https://%s/keys', $searchHost), [
                 'headers' => ['X-TYPESENSE-API-KEY' => $adminKey],
                 'json' => [
-                    'description' => sprintf('%s server-side key (YOLO managed)', Manifest::name()),
-                    'actions' => ['*'],
+                    'description' => sprintf('%s %s key (YOLO managed)', Manifest::name(), $role),
+                    'actions' => $actions,
                     'collections' => [$this->prefix() . '.*'],
                 ],
                 'timeout' => 15,
@@ -113,11 +128,13 @@ class SyncTypesenseKeyStep implements Step
     }
 
     /**
-     * The current env-side per-app `.env` with the minted key appended — absent
+     * The current env-side per-app `.env` with the minted keys appended — absent
      * file reads as empty, so the first mint creates it. Existing content is
      * preserved byte-for-byte.
+     *
+     * @param  array<string, string>  $values
      */
-    protected function bodyWithKey(string $key): string
+    protected function bodyWithKeys(array $values): string
     {
         $current = $this->currentBody();
 
@@ -125,7 +142,11 @@ class SyncTypesenseKeyStep implements Step
             $current .= "\n";
         }
 
-        return $current . sprintf("%s=%s\n", Typesense::CLIENT_KEY_NAME, $key);
+        foreach ($values as $name => $value) {
+            $current .= sprintf("%s=%s\n", $name, $value);
+        }
+
+        return $current;
     }
 
     protected function currentBody(): string
