@@ -1,6 +1,5 @@
 <?php
 
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Commands\SyncCommand;
@@ -19,12 +18,6 @@ trait FakeStepInvoke
         return StepResult::SUCCESS;
     }
 }
-
-beforeEach(function (): void {
-    // skipReason() consults Aws::runningInAws() for steps that pass every
-    // structural gate; bind it so the "should run" path resolves locally.
-    Helpers::app()->instance('runningInAws', false);
-});
 
 function skipReasonFor(object $step): ?string
 {

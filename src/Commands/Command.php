@@ -47,6 +47,16 @@ abstract class Command extends SymfonyCommand
         Helpers::app()->instance('output', $this->output = $output);
         Helpers::app()->singleton('runningInAws', fn (): bool => static::detectAwsEnvironment());
 
+        // The yolo CLI is a deploy-time tool and must never run inside a deployed
+        // container, where it would hold the task role's credentials. yolo still
+        // ships in the image — its service provider exposes a runtime API — but the
+        // CLI itself is inert there, so any invocation hard-stops.
+        if (Aws::runningInAws()) {
+            error('yolo is a deploy-time CLI and cannot run inside a deployed container.');
+
+            return 1;
+        }
+
         // bail if command should not be running
         if (! $this->shouldBeRunning($this)) {
             error(sprintf("Cannot run '%s' in current environment", $this->getName()));
