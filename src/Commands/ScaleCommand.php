@@ -79,11 +79,12 @@ class ScaleCommand extends Command implements AdminCommand
             return;
         }
 
-        // A standalone queue is always autoscaling-managed, as is any web service
-        // with a registered target. Setting a fixed desired count there is futile
-        // (the policies override it), so redirect to the bounds form rather than
-        // quietly no-op. Only a fixed web service falls through to desired count.
-        if ($group === ServerGroup::QUEUE || $live !== null) {
+        // A service the manifest autoscales — or one with a registered target — is
+        // autoscaling-managed: a fixed desired count there is futile (the policies
+        // override it), so redirect to the bounds form rather than quietly no-op.
+        // Only a truly fixed service (autoscaling: false, no live target — web or
+        // queue) falls through to desired count.
+        if (Manifest::autoscales($group) || $live !== null) {
             error('This service is autoscaling-managed — use --min/--max to change its bounds, not a desired count.');
 
             return;
@@ -188,17 +189,16 @@ class ScaleCommand extends Command implements AdminCommand
     }
 
     /**
-     * The manifest min/max key paths for a group — web autoscaling bounds live
-     * under tasks.web.autoscaling, the queue's directly under tasks.queue (a
-     * standalone queue is always autoscaled).
+     * The manifest min/max key paths for a group — both groups' autoscaling bounds
+     * live under `tasks.{group}.autoscaling.{min,max}`.
      *
      * @return array{0: string, 1: string}
      */
     public static function boundsKeys(ServerGroup $group): array
     {
-        return $group === ServerGroup::QUEUE
-            ? ['tasks.queue.min', 'tasks.queue.max']
-            : ['tasks.web.autoscaling.min', 'tasks.web.autoscaling.max'];
+        $prefix = "tasks.{$group->value}.autoscaling";
+
+        return ["$prefix.min", "$prefix.max"];
     }
 
     /**

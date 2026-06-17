@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Paths;
 use GuzzleHttp\Psr7\Response;
 use Aws\Command as AwsCommand;
 use Aws\S3\Exception\S3Exception;
+use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Codinglabs\Yolo\Steps\Build\ConfigureEnvAndVersionStep;
 
 function rebuildEnvFixture(array $config): void
@@ -107,7 +108,7 @@ it('does not inject AWS_BUCKET when the manifest does not define one', function 
 it('wires the SQS connection for every web app (the worker always runs somewhere)', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => []],
+        'tasks' => ['web' => true],
     ]);
 
     if (! is_dir(Paths::build())) {
@@ -140,7 +141,12 @@ it('forces QUEUE_CONNECTION=sync for a non-web app (no worker to consume)', func
     expect($env)->toContain('AWS_DEFAULT_REGION=ap-southeast-2');
 });
 
-it('respects a QUEUE_CONNECTION already set in the .env', function (): void {
+it('respects a QUEUE_CONNECTION already set in the .env when a worker runs', function (): void {
+    // A worker exists (web app), so YOLO's sqs default yields to a developer override.
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => true],
+    ]);
     file_put_contents(Paths::build('.env.testing'), "QUEUE_CONNECTION=redis\n");
 
     (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
@@ -152,10 +158,53 @@ it('respects a QUEUE_CONNECTION already set in the .env', function (): void {
     expect($env)->not->toContain('QUEUE_CONNECTION=sync');
 });
 
+it('forces QUEUE_CONNECTION=sync when the queue is disabled (tasks.queue: false)', function (): void {
+    // A worker would otherwise be bundled in web, but tasks.queue: false switches it
+    // off entirely — so jobs must run inline.
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => true, 'queue' => false],
+    ]);
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('QUEUE_CONNECTION=sync');
+    expect($env)->not->toContain('QUEUE_CONNECTION=sqs');
+    expect($env)->not->toContain('SQS_PREFIX=');
+});
+
+it('wires the SQS connection for a headless standalone queue (a worker with no web tier)', function (): void {
+    // The connection follows the worker, not the web tier: a headless app whose only
+    // service is a standalone queue still consumes SQS.
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['queue' => true],
+    ]);
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('QUEUE_CONNECTION=sqs');
+    expect($env)->toContain('SQS_PREFIX=https://sqs.ap-southeast-2.amazonaws.com/111111111111');
+    expect($env)->toContain('SQS_QUEUE=yolo-testing-my-app');
+});
+
+it('hard-fails when QUEUE_CONNECTION is non-sync but no worker runs', function (): void {
+    // No worker (the default no-tasks manifest) + a non-sync override = jobs black-holed,
+    // so the build refuses rather than shipping a silently broken image.
+    file_put_contents(Paths::build('.env.testing'), "QUEUE_CONNECTION=redis\n");
+
+    expect(fn (): mixed => (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']))
+        ->toThrow(IntegrityCheckException::class);
+});
+
 it('does not pin SQS_QUEUE for a multitenant app (worker resolves it per tenant)', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => []],
+        'tasks' => ['web' => true],
         'tenants' => ['acme' => ['domain' => 'acme.test']],
     ]);
 
@@ -230,7 +279,7 @@ it('does not wire cache or session for a non-web app (no tasks.web)', function (
 it('defaults a web app to the shared redis cache and redis sessions when neither is set', function (): void {
     rebuildEnvFixture([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => []],
+        'tasks' => ['web' => true],
     ]);
 
     (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
@@ -249,7 +298,7 @@ it('defaults a web app to the shared redis cache and redis sessions when neither
 it('does not inject OCTANE_SERVER — the app owns it (seeded by yolo init)', function (): void {
     rebuildEnvFixture([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => []],
+        'tasks' => ['web' => true],
     ]);
 
     (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
@@ -290,7 +339,7 @@ it('enables Inertia SSR when tasks.web.ssr is on', function (): void {
 it('does not enable Inertia SSR when tasks.web.ssr is off', function (): void {
     rebuildEnvFixture([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => []],
+        'tasks' => ['web' => true],
     ]);
 
     (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);

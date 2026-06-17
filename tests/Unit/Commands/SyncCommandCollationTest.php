@@ -73,7 +73,7 @@ it('constructs every declared step with just the environment string', function (
             expect(new $stepName('testing'))->toBeInstanceOf(Step::class);
         });
 })->with([
-    'solo web app' => [['domain' => 'codinglabs.com.au', 'tasks' => ['web' => []]]],
+    'solo web app' => [['domain' => 'codinglabs.com.au', 'tasks' => ['web' => true]]],
     'multi-tenant app' => [['tenants' => ['alpha' => []]]],
 ]);
 
@@ -139,7 +139,7 @@ it('keys each scope distinctly so no scope is dropped on merge', function (): vo
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'domain' => 'codinglabs.com.au',
-        'tasks' => ['web' => []],
+        'tasks' => ['web' => true],
     ]);
 
     $scopes = array_keys((new SyncCommand())->scopes());

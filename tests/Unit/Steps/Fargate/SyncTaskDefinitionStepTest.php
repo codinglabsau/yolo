@@ -81,7 +81,7 @@ it('maps no port for a headless worker group (queue/scheduler)', function (): vo
 it('sizes queue and scheduler smaller by default than web', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
+        'tasks' => ['web' => true, 'queue' => true, 'scheduler' => true],
     ]);
 
     bindMockIamClient([

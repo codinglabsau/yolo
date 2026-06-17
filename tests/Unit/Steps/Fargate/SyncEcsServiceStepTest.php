@@ -10,7 +10,7 @@ describe('serviceNeedsUpdate', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'domain' => 'codinglabs.com.au',
-            'tasks' => ['web' => []],
+            'tasks' => ['web' => true],
         ]);
     });
 
@@ -60,7 +60,7 @@ describe('serviceNeedsUpdate when headless', function (): void {
     beforeEach(function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tasks' => ['web' => []],
+            'tasks' => ['web' => true],
         ]);
     });
 
@@ -86,7 +86,7 @@ describe('updatePayload', function (): void {
     it('omits healthCheckGracePeriodSeconds when headless', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tasks' => ['web' => []],
+            'tasks' => ['web' => true],
         ]);
 
         // which require live AWS lookups, so we can't fully invoke it here. updatePayload is
@@ -118,7 +118,7 @@ describe('updatePayload', function (): void {
     it('never includes desiredCount — capacity is set once at create, never reset on update', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tasks' => ['web' => []],
+            'tasks' => ['web' => true],
         ]);
 
         expect((new EcsService())->updatePayload())->not->toHaveKey('desiredCount');
@@ -129,7 +129,7 @@ describe('deploymentConfiguration', function (): void {
     beforeEach(function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
+            'tasks' => ['web' => true, 'queue' => true, 'scheduler' => true],
         ]);
     });
 

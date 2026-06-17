@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Steps\Build\Fargate\CheckSchedulerRuntimeStep;
 beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => []],
+        'tasks' => ['web' => true],
     ]);
 });
 
@@ -17,12 +17,25 @@ it('passes when the built image has supercronic', function (): void {
 });
 
 it('hard-fails when the built image has no supercronic', function (): void {
-    // Every app hosts the scheduler somewhere (there's no opt-out), so the check
-    // is unconditional — no manifest key turns it off.
+    // The scheduler runs in the web container here (the default), so supercronic
+    // is required — a missing binary fails the build.
     $step = new CheckSchedulerRuntimeStep('testing', probe: fn (): false => false);
 
     expect(fn (): StepResult => $step(['app-version' => '26.24.1.1200']))
         ->toThrow(RuntimeException::class, 'no supercronic binary');
+});
+
+it('skips the supercronic probe when the scheduler is disabled', function (): void {
+    // tasks.scheduler: false → cron runs nowhere, so the image needn't carry
+    // supercronic; the probe never runs (a failing probe would otherwise throw).
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => true, 'scheduler' => false],
+    ]);
+
+    $step = new CheckSchedulerRuntimeStep('testing', probe: fn (): false => false);
+
+    expect($step(['app-version' => '26.24.1.1200']))->toBe(StepResult::SKIPPED);
 });
 
 it('probes the built image tag', function (): void {

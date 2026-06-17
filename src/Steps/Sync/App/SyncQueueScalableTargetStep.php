@@ -8,7 +8,7 @@ use Codinglabs\Yolo\Enums\ServerGroup;
 
 /**
  * Registers and reconciles the standalone queue service's scalable target — the
- * 0→N capacity bounds (`tasks.queue.min`/`max`, min default 0) the queue's
+ * 0→N capacity bounds (`tasks.queue.autoscaling.min`/`max`, min default 1) the queue's
  * policies move within. Wired into sync:app only when tasks.queue extracts the
  * queue into its own service.
  */

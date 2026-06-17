@@ -102,7 +102,7 @@ describe('cache + session defaults', function (): void {
     it('defaults web apps to the shared redis cache and redis sessions', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tasks' => ['web' => []],
+            'tasks' => ['web' => true],
         ]);
 
         expect(Manifest::cacheStore())->toBe('redis');
@@ -119,7 +119,7 @@ describe('cache + session defaults', function (): void {
     it('respects explicit cache.store and session.driver overrides', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tasks' => ['web' => []],
+            'tasks' => ['web' => true],
             'cache' => ['store' => 'file'],
             'session' => ['driver' => 'cookie'],
         ]);
@@ -133,7 +133,7 @@ describe('octane', function (): void {
     it('defaults to running octane when tasks.web.octane is unset', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tasks' => ['web' => []],
+            'tasks' => ['web' => true],
         ]);
 
         expect(Manifest::usesOctane())->toBeTrue();
@@ -186,13 +186,22 @@ describe('autoscaling', function (): void {
         expect(Manifest::isAutoscaling())->toBeFalse();
     });
 
-    it('is off without an autoscaling key', function (): void {
+    it('is on by default for an enabled web tier with no autoscaling key', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tasks' => ['web' => []],
+            'tasks' => ['web' => true],
         ]);
 
-        expect(Manifest::isAutoscaling())->toBeFalse();
+        expect(Manifest::isAutoscaling())->toBeTrue();
+    });
+
+    it('rejects an empty autoscaling object', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => ['autoscaling' => []]],
+        ]);
+
+        expect(fn (): bool => Manifest::isAutoscaling())->toThrow(IntegrityCheckException::class);
     });
 });
 
@@ -215,10 +224,19 @@ describe('metrics caddyfile', function (): void {
         expect(Manifest::usesMetricsCaddyfile())->toBeFalse();
     });
 
-    it('does not apply without autoscaling', function (): void {
+    it('applies by default for an Octane web tier (autoscaling on by default)', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tasks' => ['web' => []],
+            'tasks' => ['web' => true],
+        ]);
+
+        expect(Manifest::usesMetricsCaddyfile())->toBeTrue();
+    });
+
+    it('does not apply when autoscaling is explicitly off', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => ['autoscaling' => false]],
         ]);
 
         expect(Manifest::usesMetricsCaddyfile())->toBeFalse();
@@ -326,19 +344,19 @@ describe('apex', function (): void {
 
 describe('server groups', function (): void {
     it('lists only web for a plain web app', function (): void {
-        writeManifest(['tasks' => ['web' => []]]);
+        writeManifest(['tasks' => ['web' => true]]);
 
         expect(Manifest::serverGroups())->toBe([ServerGroup::WEB]);
     });
 
     it('lists web, queue and scheduler when both are extracted', function (): void {
-        writeManifest(['tasks' => ['web' => [], 'queue' => [], 'scheduler' => []]]);
+        writeManifest(['tasks' => ['web' => true, 'queue' => true, 'scheduler' => true]]);
 
         expect(Manifest::serverGroups())->toBe([ServerGroup::WEB, ServerGroup::QUEUE, ServerGroup::SCHEDULER]);
     });
 
     it('does not list a bundled queue as its own group', function (): void {
-        writeManifest(['tasks' => ['web' => []]]);
+        writeManifest(['tasks' => ['web' => true]]);
 
         expect(Manifest::serverGroups())->toBe([ServerGroup::WEB]);
         expect(Manifest::hasStandaloneQueue())->toBeFalse();
@@ -346,7 +364,7 @@ describe('server groups', function (): void {
     });
 
     it('detects a standalone queue and lists it as its own group', function (): void {
-        writeManifest(['tasks' => ['web' => [], 'queue' => []]]);
+        writeManifest(['tasks' => ['web' => true, 'queue' => true]]);
 
         expect(Manifest::hasStandaloneQueue())->toBeTrue();
         expect(Manifest::queueHost())->toBe(ServerGroup::QUEUE);
@@ -355,28 +373,28 @@ describe('server groups', function (): void {
 
 describe('queue and scheduler hosts', function (): void {
     it('bundles both the queue worker and the scheduler into web for a plain web app', function (): void {
-        writeManifest(['tasks' => ['web' => []]]);
+        writeManifest(['tasks' => ['web' => true]]);
 
         expect(Manifest::queueHost())->toBe(ServerGroup::WEB);
         expect(Manifest::schedulerHost())->toBe(ServerGroup::WEB);
     });
 
     it('rides the scheduler on the standalone queue when only the queue is extracted', function (): void {
-        writeManifest(['tasks' => ['web' => [], 'queue' => []]]);
+        writeManifest(['tasks' => ['web' => true, 'queue' => true]]);
 
         expect(Manifest::queueHost())->toBe(ServerGroup::QUEUE);
         expect(Manifest::schedulerHost())->toBe(ServerGroup::QUEUE);
     });
 
     it('keeps the queue worker in web but gives the scheduler its own service when only the scheduler is extracted', function (): void {
-        writeManifest(['tasks' => ['web' => [], 'scheduler' => []]]);
+        writeManifest(['tasks' => ['web' => true, 'scheduler' => true]]);
 
         expect(Manifest::queueHost())->toBe(ServerGroup::WEB);
         expect(Manifest::schedulerHost())->toBe(ServerGroup::SCHEDULER);
     });
 
     it('gives each role its own container when both are extracted', function (): void {
-        writeManifest(['tasks' => ['web' => [], 'queue' => [], 'scheduler' => []]]);
+        writeManifest(['tasks' => ['web' => true, 'queue' => true, 'scheduler' => true]]);
 
         expect(Manifest::queueHost())->toBe(ServerGroup::QUEUE);
         expect(Manifest::schedulerHost())->toBe(ServerGroup::SCHEDULER);
@@ -384,20 +402,20 @@ describe('queue and scheduler hosts', function (): void {
 });
 
 describe('queue floor', function (): void {
-    it('defaults a standalone queue to scale to zero when the scheduler is extracted', function (): void {
-        writeManifest(['tasks' => ['web' => [], 'queue' => [], 'scheduler' => []]]);
-
-        expect(Manifest::queueMin())->toBe(0);
-    });
-
-    it('defaults a scheduler-hosting queue to a floor of one', function (): void {
-        writeManifest(['tasks' => ['web' => [], 'queue' => []]]);
+    it('defaults a standalone queue floor to one (no accidental scale-to-zero)', function (): void {
+        writeManifest(['tasks' => ['web' => true, 'queue' => true, 'scheduler' => true]]);
 
         expect(Manifest::queueMin())->toBe(1);
     });
 
-    it('honours an explicit queue min', function (): void {
-        writeManifest(['tasks' => ['web' => [], 'queue' => ['min' => 3], 'scheduler' => []]]);
+    it('opts into scale-to-zero with an explicit autoscaling min of zero', function (): void {
+        writeManifest(['tasks' => ['web' => true, 'queue' => ['autoscaling' => ['min' => 0]], 'scheduler' => true]]);
+
+        expect(Manifest::queueMin())->toBe(0);
+    });
+
+    it('honours an explicit queue autoscaling min', function (): void {
+        writeManifest(['tasks' => ['web' => true, 'queue' => ['autoscaling' => ['min' => 3]], 'scheduler' => true]]);
 
         expect(Manifest::queueMin())->toBe(3);
     });
@@ -405,32 +423,173 @@ describe('queue floor', function (): void {
 
 describe('deploy group', function (): void {
     it('runs deploy hooks on web for a plain web app', function (): void {
-        writeManifest(['tasks' => ['web' => []]]);
+        writeManifest(['tasks' => ['web' => true]]);
 
         expect(Manifest::deployGroup())->toBe(ServerGroup::WEB);
     });
 
     it('runs deploy hooks on a standalone queue when there is no standalone scheduler', function (): void {
-        writeManifest(['tasks' => ['web' => [], 'queue' => []]]);
+        writeManifest(['tasks' => ['web' => true, 'queue' => true]]);
 
         expect(Manifest::deployGroup())->toBe(ServerGroup::QUEUE);
     });
 
     it('runs deploy hooks on a standalone scheduler when one is extracted', function (): void {
-        writeManifest(['tasks' => ['web' => [], 'scheduler' => []]]);
+        writeManifest(['tasks' => ['web' => true, 'scheduler' => true]]);
 
         expect(Manifest::deployGroup())->toBe(ServerGroup::SCHEDULER);
     });
 
     it('prefers the scheduler over the queue when both are extracted', function (): void {
-        writeManifest(['tasks' => ['web' => [], 'queue' => [], 'scheduler' => []]]);
+        writeManifest(['tasks' => ['web' => true, 'queue' => true, 'scheduler' => true]]);
 
         expect(Manifest::deployGroup())->toBe(ServerGroup::SCHEDULER);
     });
 
     it('tracks the scheduler host — deploy hooks run on the management tier', function (): void {
-        writeManifest(['tasks' => ['web' => [], 'queue' => []]]);
+        writeManifest(['tasks' => ['web' => true, 'queue' => true]]);
 
         expect(Manifest::deployGroup())->toBe(Manifest::schedulerHost());
+    });
+
+    it('still resolves a deploy group when the scheduler is disabled', function (): void {
+        writeManifest(['tasks' => ['web' => true, 'queue' => true, 'scheduler' => false]]);
+
+        expect(Manifest::schedulerHost())->toBeNull();
+        expect(Manifest::deployGroup())->toBe(ServerGroup::QUEUE);
+    });
+});
+
+describe('three-state queue and scheduler', function (): void {
+    it('extracts a standalone queue with `true`', function (): void {
+        writeManifest(['tasks' => ['web' => true, 'queue' => true]]);
+
+        expect(Manifest::hasStandaloneQueue())->toBeTrue();
+        expect(Manifest::queueDisabled())->toBeFalse();
+        expect(Manifest::queueHost())->toBe(ServerGroup::QUEUE);
+    });
+
+    it('extracts a standalone queue with a config object', function (): void {
+        writeManifest(['tasks' => ['web' => true, 'queue' => ['cpu' => 512]]]);
+
+        expect(Manifest::hasStandaloneQueue())->toBeTrue();
+        expect(Manifest::queueHost())->toBe(ServerGroup::QUEUE);
+    });
+
+    it('disables the queue with `false` — it runs nowhere', function (): void {
+        writeManifest(['tasks' => ['web' => true, 'queue' => false]]);
+
+        expect(Manifest::queueDisabled())->toBeTrue();
+        expect(Manifest::hasStandaloneQueue())->toBeFalse();
+        expect(Manifest::queueHost())->toBeNull();
+        expect(Manifest::serverGroups())->toBe([ServerGroup::WEB]);
+    });
+
+    it('keeps the scheduler in web when only the queue is disabled', function (): void {
+        writeManifest(['tasks' => ['web' => true, 'queue' => false]]);
+
+        expect(Manifest::schedulerHost())->toBe(ServerGroup::WEB);
+    });
+
+    it('disables the scheduler with `false` — cron runs nowhere', function (): void {
+        writeManifest(['tasks' => ['web' => true, 'scheduler' => false]]);
+
+        expect(Manifest::schedulerDisabled())->toBeTrue();
+        expect(Manifest::hasStandaloneScheduler())->toBeFalse();
+        expect(Manifest::schedulerHost())->toBeNull();
+        expect(Manifest::queueHost())->toBe(ServerGroup::WEB);
+    });
+
+    it('returns a null queue host for a worker-less headless app', function (): void {
+        writeManifest(['tasks' => ['scheduler' => true]]);
+
+        expect(Manifest::queueHost())->toBeNull();
+    });
+
+    it('rejects an empty queue block', function (): void {
+        writeManifest(['tasks' => ['web' => true, 'queue' => []]]);
+
+        expect(fn (): bool => Manifest::hasStandaloneQueue())
+            ->toThrow(IntegrityCheckException::class);
+    });
+
+    it('rejects an empty scheduler block', function (): void {
+        writeManifest(['tasks' => ['web' => true, 'scheduler' => []]]);
+
+        expect(fn (): bool => Manifest::hasStandaloneScheduler())
+            ->toThrow(IntegrityCheckException::class);
+    });
+
+    it('rejects a non-boolean scalar queue value', function (): void {
+        writeManifest(['tasks' => ['web' => true, 'queue' => 'yes']]);
+
+        expect(fn (): bool => Manifest::hasStandaloneQueue())
+            ->toThrow(IntegrityCheckException::class);
+    });
+
+    it('treats web: false as a headless app with no web service', function (): void {
+        writeManifest(['tasks' => ['web' => false, 'queue' => true]]);
+
+        expect(Manifest::hasWeb())->toBeFalse();
+        expect(Manifest::webDisabled())->toBeTrue();
+        expect(Manifest::serverGroups())->toBe([ServerGroup::QUEUE]);
+    });
+
+    it('rejects an empty web block', function (): void {
+        writeManifest(['tasks' => ['web' => []]]);
+
+        expect(fn (): bool => Manifest::hasWeb())
+            ->toThrow(IntegrityCheckException::class);
+    });
+});
+
+describe('unified autoscaling', function (): void {
+    it('autoscales an enabled web tier by default — min 1, max 4', function (): void {
+        writeManifest(['tasks' => ['web' => true]]);
+
+        expect(Manifest::autoscales(ServerGroup::WEB))->toBeTrue();
+        expect(Manifest::autoscalingMin(ServerGroup::WEB))->toBe(1);
+        expect(Manifest::autoscalingMax(ServerGroup::WEB))->toBe(4);
+    });
+
+    it('autoscales an enabled standalone queue by default — min 1, max 10', function (): void {
+        writeManifest(['tasks' => ['web' => true, 'queue' => true]]);
+
+        expect(Manifest::autoscales(ServerGroup::QUEUE))->toBeTrue();
+        expect(Manifest::autoscalingMin(ServerGroup::QUEUE))->toBe(1);
+        expect(Manifest::autoscalingMax(ServerGroup::QUEUE))->toBe(10);
+    });
+
+    it('turns autoscaling off for either group with autoscaling: false', function (): void {
+        writeManifest(['tasks' => ['web' => ['autoscaling' => false], 'queue' => ['autoscaling' => false]]]);
+
+        expect(Manifest::autoscales(ServerGroup::WEB))->toBeFalse();
+        expect(Manifest::autoscales(ServerGroup::QUEUE))->toBeFalse();
+    });
+
+    it('honours bespoke bounds from an autoscaling object', function (): void {
+        writeManifest(['tasks' => ['web' => ['autoscaling' => ['min' => 3, 'max' => 9]]]]);
+
+        expect(Manifest::autoscalingMin(ServerGroup::WEB))->toBe(3);
+        expect(Manifest::autoscalingMax(ServerGroup::WEB))->toBe(9);
+    });
+
+    it('rejects a web autoscaling min below one', function (): void {
+        writeManifest(['tasks' => ['web' => ['autoscaling' => ['min' => 0]]]]);
+
+        expect(fn (): int => Manifest::autoscalingMin(ServerGroup::WEB))
+            ->toThrow(IntegrityCheckException::class);
+    });
+
+    it('allows a queue autoscaling min of zero (scale to zero)', function (): void {
+        writeManifest(['tasks' => ['web' => true, 'queue' => ['autoscaling' => ['min' => 0]]]]);
+
+        expect(Manifest::autoscalingMin(ServerGroup::QUEUE))->toBe(0);
+    });
+
+    it('never autoscales the scheduler', function (): void {
+        writeManifest(['tasks' => ['web' => true, 'scheduler' => true]]);
+
+        expect(Manifest::autoscales(ServerGroup::SCHEDULER))->toBeFalse();
     });
 });

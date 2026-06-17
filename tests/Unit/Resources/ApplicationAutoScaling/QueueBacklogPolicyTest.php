@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Resources\ApplicationAutoScaling\QueueBacklogPolicy;
 beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => []],
+        'tasks' => ['web' => true, 'queue' => true],
     ]);
 });
 
@@ -33,7 +33,7 @@ it('tracks backlog-per-task with metric math dividing visible messages by runnin
 it('reads the backlog-per-task target from the manifest', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => ['backlog-per-task' => 40]],
+        'tasks' => ['web' => true, 'queue' => ['autoscaling' => ['backlog-per-task' => 40]]],
     ]);
 
     expect((new QueueBacklogPolicy())->configuration()['TargetValue'])->toBe(40.0);

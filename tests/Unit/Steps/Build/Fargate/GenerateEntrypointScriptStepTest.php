@@ -7,7 +7,7 @@ beforeEach(function (): void {
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => []],
+        'tasks' => ['web' => true],
     ]);
 
     if (is_file(Paths::build('.yolo-entrypoint.sh'))) {
@@ -26,7 +26,7 @@ it('starts with a shebang and fails fast through the deploy-all hooks', function
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => []],
+        'tasks' => ['web' => true],
         'deploy-all' => ['php artisan migrate --force', 'php artisan config:cache'],
     ]);
 
@@ -75,7 +75,7 @@ it('runs a standalone queue under supervisord when it co-hosts the scheduler', f
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => []],
+        'tasks' => ['web' => true, 'queue' => true],
     ]);
 
     $script = generatedEntrypointScript();
@@ -94,7 +94,7 @@ it('runs a standalone queue as a single worker process when the scheduler is its
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
+        'tasks' => ['web' => true, 'queue' => true, 'scheduler' => true],
     ]);
 
     $script = generatedEntrypointScript();
@@ -109,7 +109,7 @@ it('adds a scheduler branch running cron when the scheduler is its own service',
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'scheduler' => []],
+        'tasks' => ['web' => true, 'scheduler' => true],
     ]);
 
     $script = generatedEntrypointScript();
@@ -128,7 +128,7 @@ it('drains for the web shutdown-grace-period before forwarding the stop', functi
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'scheduler' => []],
+        'tasks' => ['web' => true, 'scheduler' => true],
     ]);
 
     expect(generatedEntrypointScript())->toContain("sleep 10\n");
@@ -138,7 +138,7 @@ it('tracks the manifest web shutdown-grace-period for the drain duration', funct
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['shutdown-grace-period' => 45], 'scheduler' => []],
+        'tasks' => ['web' => ['shutdown-grace-period' => 45], 'scheduler' => true],
     ]);
 
     expect(generatedEntrypointScript())->toContain("sleep 45\n");
@@ -147,7 +147,7 @@ it('tracks the manifest web shutdown-grace-period for the drain duration', funct
 it('omits the ALB drain window when headless — no target to drain', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['shutdown-grace-period' => 45], 'scheduler' => []],
+        'tasks' => ['web' => ['shutdown-grace-period' => 45], 'scheduler' => true],
     ]);
 
     $script = generatedEntrypointScript();

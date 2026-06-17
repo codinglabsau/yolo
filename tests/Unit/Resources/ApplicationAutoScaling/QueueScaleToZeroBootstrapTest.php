@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Resources\ApplicationAutoScaling\QueueScaleToZeroBootstrap;
 beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => ['min' => 0]],
+        'tasks' => ['web' => true, 'queue' => ['autoscaling' => ['min' => 0]]],
     ]);
 });
 

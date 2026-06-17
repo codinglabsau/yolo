@@ -68,7 +68,7 @@ it('queue: writes tasks.queue bounds and registers, allowing a zero floor', func
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => []],
+        'tasks' => ['web' => true, 'queue' => true],
     ]);
 
     $ecs = [];
@@ -84,15 +84,15 @@ it('queue: writes tasks.queue bounds and registers, allowing a zero floor', func
     invokeScale(options: ['queue' => true, 'min' => '0', 'max' => '20']);
 
     expect(collect($aa)->firstWhere('name', 'RegisterScalableTarget')['args'])->toMatchArray(['MinCapacity' => 0, 'MaxCapacity' => 20]);
-    expect(Manifest::get('tasks.queue.min'))->toBe(0);
-    expect(Manifest::get('tasks.queue.max'))->toBe(20);
+    expect(Manifest::get('tasks.queue.autoscaling.min'))->toBe(0);
+    expect(Manifest::get('tasks.queue.autoscaling.max'))->toBe(20);
 });
 
-it('queue: rejects a fixed desired count (always autoscaling-managed)', function (): void {
+it('queue: rejects a fixed desired count (autoscaling-managed)', function (): void {
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => []],
+        'tasks' => ['web' => true, 'queue' => true],
     ]);
 
     $ecs = [];
@@ -109,7 +109,7 @@ it('fixed: sets the ECS desired count directly when no scalable target exists', 
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',
-        'tasks' => ['web' => []],
+        'tasks' => ['web' => ['autoscaling' => false]],
     ]);
 
     $ecs = [];

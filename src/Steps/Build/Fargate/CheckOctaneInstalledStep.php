@@ -44,7 +44,7 @@ class CheckOctaneInstalledStep implements Step
         // worker-only app has no web role, and an app that opts out with
         // `tasks.web.octane: false` runs FrankenPHP classic mode, which needs no
         // octane package — so neither requires this check.
-        if (! Manifest::has('tasks.web') || ! Manifest::usesOctane()) {
+        if (! Manifest::hasWeb() || ! Manifest::usesOctane()) {
             return StepResult::SKIPPED;
         }
 

@@ -87,21 +87,21 @@ it('reports drift but does not register on a dry-run', function (): void {
     expect(collect($captured)->pluck('name'))->not->toContain('RegisterScalableTarget');
 });
 
-it('builds the queue service resource id and defaults its floor to zero when the scheduler is extracted', function (): void {
+it('builds the queue service resource id and defaults its bounds to 1/10', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
+        'tasks' => ['web' => true, 'queue' => true, 'scheduler' => true],
     ]);
 
     expect(ScalableTarget::resourceId(ServerGroup::QUEUE))->toBe('service/yolo-testing-my-app/yolo-testing-my-app-queue');
-    expect((new ScalableTarget(ServerGroup::QUEUE))->min())->toBe(0);
+    expect((new ScalableTarget(ServerGroup::QUEUE))->min())->toBe(1);
     expect((new ScalableTarget(ServerGroup::QUEUE))->max())->toBe(10);
 });
 
 it('floors the queue at one task when it also hosts the scheduler', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => []],
+        'tasks' => ['web' => true, 'queue' => true],
     ]);
 
     // No dedicated scheduler service → the scheduler rides the queue, so it can't
@@ -112,7 +112,7 @@ it('floors the queue at one task when it also hosts the scheduler', function ():
 it('registers the queue target with a zero floor (scale to zero)', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => ['min' => 0, 'max' => 20], 'scheduler' => []],
+        'tasks' => ['web' => true, 'queue' => ['autoscaling' => ['min' => 0, 'max' => 20]], 'scheduler' => true],
     ]);
 
     $captured = [];

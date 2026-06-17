@@ -62,12 +62,12 @@ class SyncScalableTargetStep implements Step
         $target = new ScalableTarget($this->group());
         $live = $target->current();
 
-        if (! Manifest::isAutoscaling()) {
+        if (! Manifest::autoscales($this->group())) {
             if ($live === null) {
                 return StepResult::SKIPPED;
             }
 
-            $this->recordChanges([Change::make('web autoscaling', sprintf('%d-%d', $live['min'], $live['max']), null)]);
+            $this->recordChanges([Change::make($this->group()->value . ' autoscaling', sprintf('%d-%d', $live['min'], $live['max']), null)]);
 
             if (! $dryRun) {
                 $target->deregister();

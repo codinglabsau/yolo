@@ -13,7 +13,7 @@ beforeEach(function (): void {
 it('skips without probing the image when ssr is off', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => []],
+        'tasks' => ['web' => true],
     ]);
 
     // A probe that throws proves the step short-circuits before running the image.

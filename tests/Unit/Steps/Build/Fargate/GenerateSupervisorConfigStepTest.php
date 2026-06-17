@@ -6,7 +6,9 @@ use Codinglabs\Yolo\Steps\Build\Fargate\GenerateSupervisorConfigStep;
 beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => []],
+        // The process-tree baseline is a fixed web tier; the autoscaling cases
+        // (saturation emitter, metrics Caddyfile) opt in explicitly below.
+        'tasks' => ['web' => ['autoscaling' => false]],
     ]);
 
     if (is_file(Paths::build('docker/supervisord.conf'))) {
@@ -115,7 +117,7 @@ it('bundles octane, the scheduler and the queue worker into the web config for a
 it('runs octane alone in the web config when both queue and scheduler are extracted', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
+        'tasks' => ['web' => true, 'queue' => true, 'scheduler' => true],
     ]);
 
     $config = generatedSupervisorConfig();
@@ -128,7 +130,7 @@ it('runs octane alone in the web config when both queue and scheduler are extrac
 it('drops the scheduler from the web config when it has its own service, keeping the bundled queue', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'scheduler' => []],
+        'tasks' => ['web' => true, 'scheduler' => true],
     ]);
 
     $config = generatedSupervisorConfig();
@@ -141,7 +143,7 @@ it('drops the scheduler from the web config when it has its own service, keeping
 it('writes a second supervisord config for a standalone queue that hosts the scheduler', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => []],
+        'tasks' => ['web' => true, 'queue' => true],
     ]);
 
     (new GenerateSupervisorConfigStep('testing'))();
@@ -162,7 +164,7 @@ it('writes a second supervisord config for a standalone queue that hosts the sch
 it('writes no queue supervisord config when the standalone queue is a single process', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
+        'tasks' => ['web' => true, 'queue' => true, 'scheduler' => true],
     ]);
 
     (new GenerateSupervisorConfigStep('testing'))();
@@ -171,7 +173,7 @@ it('writes no queue supervisord config when the standalone queue is a single pro
     expect(is_file(Paths::build('docker/supervisord.queue.conf')))->toBeFalse();
 });
 
-it('writes a crontab firing schedule:run each minute (the scheduler always runs somewhere)', function (): void {
+it('writes a crontab firing schedule:run each minute wherever the scheduler runs', function (): void {
     (new GenerateSupervisorConfigStep('testing'))();
 
     $crontab = file_get_contents(Paths::build('docker/crontab'));
@@ -181,10 +183,23 @@ it('writes a crontab firing schedule:run each minute (the scheduler always runs 
     expect($crontab)->toContain("* * * * * cd /app && php artisan schedule:run\n");
 });
 
+it('writes no crontab when the scheduler is disabled', function (): void {
+    // tasks.scheduler: false → cron runs nowhere, so the crontab the image would
+    // never read is not generated.
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => true, 'scheduler' => false],
+    ]);
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    expect(is_file(Paths::build('docker/crontab')))->toBeFalse();
+});
+
 it('uses the web shutdown-grace-period for octanes stop wait', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['shutdown-grace-period' => 25], 'queue' => [], 'scheduler' => []],
+        'tasks' => ['web' => ['shutdown-grace-period' => 25], 'queue' => true, 'scheduler' => true],
     ]);
 
     // Octane is the only program in the web config here (queue + scheduler extracted),
@@ -195,7 +210,7 @@ it('uses the web shutdown-grace-period for octanes stop wait', function (): void
 it('honours a standalone queue shutdown-grace-period override', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => ['shutdown-grace-period' => 90], 'scheduler' => []],
+        'tasks' => ['web' => true, 'queue' => ['shutdown-grace-period' => 90], 'scheduler' => true],
     ]);
 
     (new GenerateSupervisorConfigStep('testing'))();

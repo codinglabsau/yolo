@@ -20,7 +20,7 @@ function writeComposerLock(array $packages, array $devPackages = []): void
 beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => []],
+        'tasks' => ['web' => true],
     ]);
 });
 
@@ -33,7 +33,7 @@ afterEach(function (): void {
 it('skips without reading composer.lock for a worker-only app', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['queue' => []],
+        'tasks' => ['queue' => true],
     ]);
 
     // No composer.lock on disk — proof the step short-circuits before touching it.

@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Steps\Sync\App;
 
 use Illuminate\Support\Arr;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\ServerGroup;
@@ -24,6 +25,12 @@ class SyncQueueScalingPolicyStep implements Step
 
     public function __invoke(array $options): StepResult
     {
+        // Off when the queue runs a fixed single task (autoscaling: false) — the
+        // scalable target's deregistration cascades this policy away, so just skip.
+        if (! Manifest::autoscales(ServerGroup::QUEUE)) {
+            return StepResult::SKIPPED;
+        }
+
         if (! (new EcsService(ServerGroup::QUEUE))->exists()) {
             return StepResult::SKIPPED;
         }

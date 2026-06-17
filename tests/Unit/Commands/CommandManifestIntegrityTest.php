@@ -228,9 +228,9 @@ it('accepts the known shape of every task group', function (): void {
                 'health-check' => ['timeout' => 8], 'autoscaling' => ['min' => 1, 'max' => 4],
             ],
             'queue' => [
-                'min' => 1, 'max' => 10, 'backlog-per-task' => 100, 'cpu' => '256',
-                'memory' => '512', 'spot' => true, 'shutdown-grace-period' => 70,
-                'enable-execute-command' => false,
+                'autoscaling' => ['min' => 1, 'max' => 10, 'backlog-per-task' => 100],
+                'cpu' => '256', 'memory' => '512', 'spot' => true,
+                'shutdown-grace-period' => 70, 'enable-execute-command' => false,
             ],
             'scheduler' => [
                 'cpu' => '256', 'memory' => '512', 'shutdown-grace-period' => 10,
@@ -255,20 +255,20 @@ it('bails on an unrecognised key inside a task group', function (): void {
 it('bails when the scheduler rides a queue explicitly set to scale to zero', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => ['min' => 0]],
+        'tasks' => ['web' => true, 'queue' => ['autoscaling' => ['min' => 0]]],
     ]);
 
     expect(invokeManifestIntegrity())->toBeFalse();
 
     $output = test()->promptOutput->fetch();
-    expect($output)->toContain('tasks.queue.min');
+    expect($output)->toContain('tasks.queue.autoscaling.min');
     expect($output)->toContain('tasks.scheduler');
 });
 
 it('accepts a scheduler-hosting queue with a standing floor of one', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => ['min' => 1]],
+        'tasks' => ['web' => true, 'queue' => ['autoscaling' => ['min' => 1]]],
     ]);
 
     expect(invokeManifestIntegrity())->toBeTrue();
@@ -277,7 +277,7 @@ it('accepts a scheduler-hosting queue with a standing floor of one', function ()
 it('accepts a scheduler-hosting queue with no explicit floor (defaults to one)', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => []],
+        'tasks' => ['web' => true, 'queue' => true],
     ]);
 
     expect(invokeManifestIntegrity())->toBeTrue();
@@ -286,7 +286,7 @@ it('accepts a scheduler-hosting queue with no explicit floor (defaults to one)',
 it('accepts a scale-to-zero queue when the scheduler is its own service', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => ['min' => 0], 'scheduler' => []],
+        'tasks' => ['web' => true, 'queue' => ['autoscaling' => ['min' => 0]], 'scheduler' => true],
     ]);
 
     expect(invokeManifestIntegrity())->toBeTrue();

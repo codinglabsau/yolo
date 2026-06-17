@@ -20,7 +20,7 @@ function attachedPolicies(array $arns): Result
 beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => []],
+        'tasks' => ['web' => true],
         'task-role-policies' => [EXTRA_POLICY],
     ]);
 });
@@ -54,7 +54,7 @@ it('detaches a policy dropped from the manifest, never the baseline', function (
     // must detach it (and leave the baseline alone).
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => []],
+        'tasks' => ['web' => true],
     ]);
 
     $captured = [];

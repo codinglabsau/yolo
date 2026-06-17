@@ -74,7 +74,7 @@ it('deregisters the target when the autoscaling block is removed', function (): 
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',
-        'tasks' => ['web' => []],
+        'tasks' => ['web' => ['autoscaling' => false]],
     ]);
 
     $ecs = [];
@@ -93,7 +93,7 @@ it('would-deregister on a dry-run without deregistering', function (): void {
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',
-        'tasks' => ['web' => []],
+        'tasks' => ['web' => ['autoscaling' => false]],
     ]);
 
     $ecs = [];
@@ -112,7 +112,7 @@ it('skips when autoscaling is removed and no target is registered', function ():
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',
-        'tasks' => ['web' => []],
+        'tasks' => ['web' => ['autoscaling' => false]],
     ]);
 
     $ecs = [];

@@ -45,7 +45,7 @@ During `yolo build`, YOLO writes two files into the build context that your Dock
 | File | Purpose |
 |---|---|
 | `.yolo-entrypoint.sh` | The container entrypoint. Runs your `deploy-all` hooks (e.g. `php artisan optimize`) on startup, then dispatches on the container command: a role (`web` / `queue` / `scheduler`) is supervised and traps `SIGTERM` so the web tier keeps serving across the ALB drain window before forwarding the stop; any other command — a one-off task such as a deploy migration — is `exec`'d directly (no supervise, no drain). ECS can override the command, not the entrypoint, which is why the dispatch lives here. |
-| `docker/supervisord.conf` | The web container's supervisord program tree — FrankenPHP/Octane, plus the `queue:work` worker and the scheduler unless you've extracted them into their own services. A crontab is generated alongside it (the scheduler always runs somewhere). A standalone queue that also hosts the scheduler gets a second `docker/supervisord.queue.conf`. |
+| `docker/supervisord.conf` | The web container's supervisord program tree — FrankenPHP/Octane, plus the `queue:work` worker and the scheduler unless you've extracted them into their own services (or switched them off with `tasks.queue` / `tasks.scheduler: false`). A crontab is generated wherever cron runs (skipped when the scheduler is disabled). A standalone queue that also hosts the scheduler gets a second `docker/supervisord.queue.conf`. |
 
 Because these are generated, your Dockerfile doesn't need to know how to run Octane, the queue, or the scheduler — it just copies the config and runs the entrypoint.
 
@@ -76,7 +76,7 @@ For your image to work with YOLO, the Dockerfile must:
 `yolo build` runs three preflights so a deploy can't ship an image that won't run:
 
 - **Octane** — *before* the build, it reads `composer.lock` and fails if `laravel/octane` isn't in the production requirements, since the web role runs `octane:start`. Skipped when [`tasks.web.octane: false`](/reference/manifest#tasks-web): classic mode runs `frankenphp php-server` and needs no octane package.
-- **Scheduler (supercronic)** — it runs the freshly-built image and fails if `supercronic` isn't on the `PATH`. Every app hosts the scheduler somewhere (there's no opt-out), and the failure this prevents is **silent**: busybox `crond` — the obvious fallback already in the base image — ignores crontabs not owned by root without logging a word, so an image without supercronic deploys green, stays healthy, and simply never fires a scheduled job.
+- **Scheduler (supercronic)** — it runs the freshly-built image and fails if `supercronic` isn't on the `PATH`. The scheduler runs in almost every app (the check is skipped only when cron is switched off with [`tasks.scheduler: false`](/reference/manifest#tasks-scheduler)), and the failure this prevents is **silent**: busybox `crond` — the obvious fallback already in the base image — ignores crontabs not owned by root without logging a word, so an image without supercronic deploys green, stays healthy, and simply never fires a scheduled job.
 - **SSR (Node)** — when [`tasks.web.ssr`](/reference/manifest#tasks-web) is on, it runs the freshly-built image and fails if `node` isn't on the `PATH`. Like the scheduler check, this matters because a missing SSR runtime is otherwise **silent** — Inertia falls back to client-side rendering and the web tier stays healthy on `/up`, so the deploy goes green with SSR quietly off.
 
 The image probes run the image (rather than grepping the Dockerfile), so they see the resolved base image and multi-stage `COPY --from` layers too — no false negatives.
@@ -85,7 +85,7 @@ YOLO doesn't assert the image's base runtime (e.g. that PHP is present) — Dock
 
 ## Processes in the container
 
-Every app runs three roles — web, the queue worker, and the scheduler — and by default they all share the one web container:
+Every app runs three roles — web, the queue worker, and the scheduler — and by default they all share the one web container (each can be extracted into its own service, or switched off with `tasks.queue` / `tasks.scheduler: false`):
 
 ```yaml
 tasks:

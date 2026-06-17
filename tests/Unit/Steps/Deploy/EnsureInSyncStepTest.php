@@ -34,7 +34,7 @@ function inSyncStep(int $exitCode, string $planOutput = ''): EnsureInSyncStep
 beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => []],
+        'tasks' => ['web' => true],
     ]);
 
     Helpers::app()->instance('output', new BufferedOutput());
