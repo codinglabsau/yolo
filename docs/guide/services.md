@@ -44,7 +44,7 @@ For agents and CI there's a non-interactive surface — `--json` to read the gat
 
 ```bash
 yolo services production --json
-yolo services production --add=typesense --set version=29.0 --set nodes=3
+yolo services production --add=typesense --set version=30.2 --set nodes=3
 yolo services production --remove=typesense
 ```
 

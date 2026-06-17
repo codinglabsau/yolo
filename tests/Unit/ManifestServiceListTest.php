@@ -11,13 +11,13 @@ function writeServiceListManifest(string $yaml): void
     Helpers::app()->instance('environment', 'testing');
 }
 
-it('adds a service to an inline list, preserving comments and the rest of the file', function (): void {
+it('rewrites an inline list to a block sequence, re-attaching a trailing comment', function (): void {
     writeServiceListManifest(<<<'YAML'
     name: my-app
     environments:
       testing:
         region: ap-southeast-2  # keep me
-        services: [ivs]
+        services: [ivs]  # search + media
         tasks:
           web: {}
     YAML);
@@ -26,12 +26,13 @@ it('adds a service to an inline list, preserving comments and the rest of the fi
 
     $raw = file_get_contents(BASE_PATH . '/yolo.yml');
 
-    expect($raw)->toContain('services: [ivs, mediaconvert]')
-        ->toContain('# keep me')   // comment untouched
+    expect($raw)->toContain("    services:  # search + media\n      - ivs\n      - mediaconvert")
+        ->not->toContain('[ivs')   // inline flow gone
+        ->toContain('# keep me')   // sibling comment untouched
         ->toContain('web: {}');    // unrelated keys untouched
 });
 
-it('rewrites a block-style list inline, dropping the - item children', function (): void {
+it('rewrites a block-style list in place, replacing the - item children', function (): void {
     writeServiceListManifest(<<<'YAML'
     name: my-app
     environments:
@@ -46,12 +47,11 @@ it('rewrites a block-style list inline, dropping the - item children', function 
 
     $raw = file_get_contents(BASE_PATH . '/yolo.yml');
 
-    expect($raw)->toContain('services: [ivs, typesense, mediaconvert]')
-        ->not->toContain('- ivs')                  // block children removed
+    expect($raw)->toContain("    services:\n      - ivs\n      - typesense\n      - mediaconvert")
         ->toContain('region: ap-southeast-2');     // sibling key preserved
 });
 
-it('inserts the services key under the env block when absent', function (): void {
+it('inserts the services key as a block sequence under the env block when absent', function (): void {
     writeServiceListManifest(<<<'YAML'
     name: my-app
     environments:
@@ -61,7 +61,68 @@ it('inserts the services key under the env block when absent', function (): void
 
     expect(Manifest::setServiceList(['rekognition']))->toBeTrue();
 
-    expect(file_get_contents(BASE_PATH . '/yolo.yml'))->toContain('services: [rekognition]');
+    expect(file_get_contents(BASE_PATH . '/yolo.yml'))
+        ->toContain("    services:\n      - rekognition");
+});
+
+it('preserves blank lines around the key when rewriting an inline list in place', function (): void {
+    writeServiceListManifest(<<<'YAML'
+    name: my-app
+
+    environments:
+      testing:
+        region: ap-southeast-2
+
+        services: [ivs]
+
+        tasks:
+          web: {}
+    YAML);
+
+    expect(Manifest::setServiceList(['ivs', 'typesense']))->toBeTrue();
+
+    expect(file_get_contents(BASE_PATH . '/yolo.yml'))->toBe(<<<'YAML'
+    name: my-app
+
+    environments:
+      testing:
+        region: ap-southeast-2
+
+        services:
+          - ivs
+          - typesense
+
+        tasks:
+          web: {}
+    YAML);
+});
+
+it('preserves blank lines when inserting the key into the env block', function (): void {
+    writeServiceListManifest(<<<'YAML'
+    name: my-app
+
+    environments:
+      testing:
+        region: ap-southeast-2
+
+        tasks:
+          web: {}
+    YAML);
+
+    expect(Manifest::setServiceList(['typesense']))->toBeTrue();
+
+    expect(file_get_contents(BASE_PATH . '/yolo.yml'))->toBe(<<<'YAML'
+    name: my-app
+
+    environments:
+      testing:
+        services:
+          - typesense
+        region: ap-southeast-2
+
+        tasks:
+          web: {}
+    YAML);
 });
 
 it('drops a service (disable) and removes the key entirely for an empty list', function (): void {
@@ -74,7 +135,9 @@ it('drops a service (disable) and removes the key entirely for an empty list', f
     YAML);
 
     expect(Manifest::setServiceList(['ivs']))->toBeTrue();
-    expect(file_get_contents(BASE_PATH . '/yolo.yml'))->toContain('services: [ivs]');
+    expect(file_get_contents(BASE_PATH . '/yolo.yml'))
+        ->toContain("    services:\n      - ivs")
+        ->not->toContain('mediaconvert');
 
     expect(Manifest::setServiceList([]))->toBeTrue();
     expect(file_get_contents(BASE_PATH . '/yolo.yml'))

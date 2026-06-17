@@ -21,6 +21,18 @@ it('is env-backed with no runtime IAM — consumption is env injection only', fu
         ->and($definition->offerKeys())->toBe(['version', 'nodes', 'cpu', 'memory']);
 });
 
+it('offers known stable versions newest-first and the valid node counts', function (): void {
+    $options = Service::TYPESENSE->definition()->offerOptions();
+
+    expect($options['version'])->toBe(Typesense::VERSIONS)
+        ->and($options['version'][0])->toBe('30.2')   // newest is the default selection
+        ->and($options['nodes'])->toBe(['3', '5']);   // mirrors NODE_COUNTS
+
+    foreach ($options['version'] as $version) {
+        expect($version)->toMatch('/^\d+\.\d+$/');     // stable tags only — never an rc/alpha
+    }
+});
+
 it('rejects a misshapen entry', function (array $offer, string $needle): void {
     expect(fn () => Service::TYPESENSE->definition()->validateOffer($offer, 'yolo-environment-testing.yml'))
         ->toThrow(IntegrityCheckException::class, $needle);

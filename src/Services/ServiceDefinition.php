@@ -43,6 +43,19 @@ abstract class ServiceDefinition
     }
 
     /**
+     * Offer keys whose value is chosen from a fixed list rather than typed free,
+     * keyed by offer key — options ordered most-preferred first (the configurator
+     * presents a select and defaults to the first, or to the current value when
+     * re-editing). Keys absent here fall back to a free-text prompt.
+     *
+     * @return array<string, array<int, string>>
+     */
+    public function offerOptions(): array
+    {
+        return [];
+    }
+
+    /**
      * A short warning of the immediate, real-world implications of turning the
      * service on — cost, blast radius, provisioning time — shown before the
      * operator commits. Empty when there's nothing material to flag.

@@ -291,11 +291,23 @@ class ServicesCommand extends Command
         $manifest = file_exists($local) ? (array) (Yaml::parse((string) file_get_contents($local)) ?? []) : [];
         $current = (array) Arr::get($manifest, $service->envManifestKey(), []);
         $defaults = $service->definition()->offerDefaults();
+        $options = $service->definition()->offerOptions();
 
         $offer = [];
 
         foreach ($service->definition()->offerKeys() as $key) {
-            $value = trim(text(label: $key, default: (string) ($current[$key] ?? $defaults[$key] ?? '')));
+            $existing = (string) ($current[$key] ?? $defaults[$key] ?? '');
+
+            if (isset($options[$key])) {
+                $choices = $options[$key];
+                $value = (string) select(
+                    label: $key,
+                    options: $choices,
+                    default: in_array($existing, $choices, true) ? $existing : $choices[0],
+                );
+            } else {
+                $value = trim(text(label: $key, default: $existing));
+            }
 
             if ($value !== '') {
                 $offer[$key] = static::coerce($value);

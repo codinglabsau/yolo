@@ -267,8 +267,8 @@ class Manifest
 
     /**
      * Surgically rewrite this environment's app `services` claim list to $services
-     * as an inline flow list (`services: [a, b]`) — preserving every other byte of
-     * yolo.yml (comments, ordering, quoting), unlike the put() re-dump. Drops the
+     * as a block sequence (`services:` with `- item` children) — preserving every
+     * other byte of yolo.yml (comments, ordering, quoting), unlike the put() re-dump. Drops the
      * key for an empty list. Verifies the result parses to exactly the intended
      * services before committing, so an unanticipated layout never corrupts the
      * file: on any doubt it writes nothing and returns false, and the caller falls
@@ -305,9 +305,9 @@ class Manifest
     /**
      * The pure line-surgery behind setServiceList — returns the rewritten YAML, or
      * null when the `services` key (or its env block, for an insert) can't be
-     * located. Replaces an existing inline or block list in place, drops any
-     * "- item" children, inserts the key as the env block's first child when
-     * absent, and removes the key for an empty list.
+     * located. Replaces an existing inline or block list with a block sequence,
+     * inserts the key as the env block's first child when absent, and removes the
+     * key for an empty list.
      *
      * @param  array<int, string>  $services
      */
@@ -316,7 +316,7 @@ class Manifest
         $lines = explode("\n", $raw);
         $path = ['environments', Helpers::environment(), 'services'];
         $parentPath = ['environments', Helpers::environment()];
-        $value = $services === [] ? null : '[' . implode(', ', $services) . ']';
+        $removing = $services === [];
 
         $stack = [];
         $parentLine = null;
@@ -343,13 +343,17 @@ class Manifest
                     $children++;
                 }
 
-                if ($value === null) {
+                if ($removing) {
                     array_splice($lines, $index, 1 + $children);
-                } else {
-                    preg_match('/^(\s*[A-Za-z0-9_.-]+:)(\s*)(.*?)(\s*(?:#.*)?)$/', $line, $leaf);
-                    $lines[$index] = $leaf[1] . ' ' . $value . ($leaf[4] ?? '');
-                    array_splice($lines, $index + 1, $children);
+
+                    return implode("\n", $lines);
                 }
+
+                preg_match('/^(\s*)[A-Za-z0-9_.-]+:\s*.*?(\s*(?:#.*)?)$/', $line, $leaf);
+                $block = static::serviceListBlock($services, strlen($leaf[1]));
+                $block[0] .= $leaf[2] ?? '';   // re-attach any trailing comment to the `services:` line
+
+                array_splice($lines, $index, 1 + $children, $block);
 
                 return implode("\n", $lines);
             }
@@ -360,17 +364,37 @@ class Manifest
             }
         }
 
-        if ($value === null) {
+        if ($removing) {
             return $raw; // nothing to remove — already absent
         }
 
         if ($parentLine !== null) {
-            array_splice($lines, $parentLine + 1, 0, str_repeat(' ', $parentIndent + 2) . 'services: ' . $value);
+            array_splice($lines, $parentLine + 1, 0, static::serviceListBlock($services, $parentIndent + 2));
 
             return implode("\n", $lines);
         }
 
         return null;
+    }
+
+    /**
+     * Render the `services:` claim as a block sequence at the given key indent:
+     *
+     *     services:
+     *       - typesense
+     *
+     * @param  array<int, string>  $services
+     * @return array<int, string>
+     */
+    protected static function serviceListBlock(array $services, int $keyIndent): array
+    {
+        $block = [str_repeat(' ', $keyIndent) . 'services:'];
+
+        foreach ($services as $service) {
+            $block[] = str_repeat(' ', $keyIndent + 2) . '- ' . $service;
+        }
+
+        return $block;
     }
 
     /**

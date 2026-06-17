@@ -8,7 +8,8 @@ it('gives typesense its sizing defaults and an implications warning', function (
     $typesense = Service::TYPESENSE->definition();
 
     expect($typesense->offerDefaults())->toBe(['nodes' => 3, 'cpu' => 256, 'memory' => 1024])
-        ->and($typesense->implications())->toContain('cluster')->toContain('Fargate');
+        ->and($typesense->implications())->toContain('cluster')->toContain('Fargate')
+        ->and(array_keys($typesense->offerOptions()))->toBe(['version', 'nodes']);   // selects, not free text
 });
 
 it('gives every service a one-line description', function (): void {
@@ -20,6 +21,7 @@ it('gives every service a one-line description', function (): void {
 it('leaves app-side services without env offer defaults or implications', function (): void {
     foreach ([Service::MEDIA_CONVERT, Service::REKOGNITION] as $service) {
         expect($service->definition()->offerDefaults())->toBe([])
+            ->and($service->definition()->offerOptions())->toBe([])
             ->and($service->definition()->implications())->toBe('');
     }
 });
