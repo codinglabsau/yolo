@@ -80,17 +80,19 @@ function yolo_worker_saturation(): ?float
  */
 function yolo_parse_saturation(string $metrics): ?float
 {
-    // Tolerate an optional Prometheus label set (`frankenphp_busy_workers{} 5`).
-    if (! preg_match('/^frankenphp_busy_workers(?:\{[^}]*\})?\s+([0-9.]+)/m', $metrics, $busy)) {
+    // FrankenPHP emits one gauge line per worker script, optionally Prometheus-labelled
+    // (`frankenphp_busy_workers{worker="/app/..."} 5`). Sum across every entry so a
+    // multi-worker app reads its whole pool, not just the first line.
+    if (! preg_match_all('/^frankenphp_busy_workers(?:\{[^}]*\})?\s+([0-9.]+)/m', $metrics, $busy)) {
         return null;
     }
 
-    if (! preg_match('/^frankenphp_total_workers(?:\{[^}]*\})?\s+([0-9.]+)/m', $metrics, $total)) {
+    if (! preg_match_all('/^frankenphp_total_workers(?:\{[^}]*\})?\s+([0-9.]+)/m', $metrics, $total)) {
         return null;
     }
 
-    $busyWorkers = (float) $busy[1];
-    $totalWorkers = (float) $total[1];
+    $busyWorkers = array_sum($busy[1]);
+    $totalWorkers = array_sum($total[1]);
 
     // Reject physically impossible readings. Busy can never exceed total and total can
     // never be zero with a live pool, but both happen transiently mid worker-reload —

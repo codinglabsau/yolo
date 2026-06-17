@@ -360,6 +360,17 @@ METRICS;
     // (`frankenphp_busy_workers{worker="/app/..."}`); the optional label set must parse.
     expect(yolo_parse_saturation("frankenphp_busy_workers{worker=\"/app\"} 2\nfrankenphp_total_workers{worker=\"/app\"} 4\n"))->toBe(50.0);
 
+    // Multiple worker scripts each emit their own labelled line; the pool is the sum, so
+    // 3+1 busy of 4+4 total reads 50%, not just the first line's 3/4.
+    expect(yolo_parse_saturation(
+        "frankenphp_busy_workers{worker=\"a\"} 3\nfrankenphp_busy_workers{worker=\"b\"} 1\n" .
+        "frankenphp_total_workers{worker=\"a\"} 4\nfrankenphp_total_workers{worker=\"b\"} 4\n"
+    ))->toBe(50.0);
+
+    // Idle reads a clean 0.0 (not null), so the emit floor — not a parse gap — is what
+    // keeps the emitter silent at rest.
+    expect(yolo_parse_saturation("frankenphp_busy_workers 0\nfrankenphp_total_workers 4\n"))->toBe(0.0);
+
     // A mid-reload scrape can catch more busy workers than total (the gauges read at
     // different instants), producing an impossible >100% ratio that would false-fire the
     // burst alarm. It is dropped to null, not published, so the emitter stays silent.
