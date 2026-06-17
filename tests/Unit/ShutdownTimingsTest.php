@@ -12,7 +12,7 @@ beforeEach(function (): void {
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => []],
+        'tasks' => ['web' => true],
     ]);
 });
 
@@ -49,7 +49,7 @@ it('runs the web server alone in the web container when both queue and scheduler
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
+        'tasks' => ['web' => true, 'queue' => true, 'scheduler' => true],
     ]);
 
     expect(ShutdownTimings::programGraces(ServerGroup::WEB))->toBe(['web' => 10]);
@@ -69,7 +69,7 @@ it('runs the scheduler and queue worker together in a standalone queue container
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => []],
+        'tasks' => ['web' => true, 'queue' => true],
     ]);
 
     // Queue extracted, scheduler not — so the scheduler rides the queue container,
@@ -82,7 +82,7 @@ it('runs the queue worker alone in its container when the scheduler is its own s
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
+        'tasks' => ['web' => true, 'queue' => true, 'scheduler' => true],
     ]);
 
     expect(ShutdownTimings::programGraces(ServerGroup::QUEUE))->toBe(['queue' => 70]);
@@ -93,7 +93,7 @@ it('honours a standalone scheduler shutdown-grace-period override', function ():
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => [], 'scheduler' => ['shutdown-grace-period' => 30]],
+        'tasks' => ['web' => true, 'queue' => true, 'scheduler' => ['shutdown-grace-period' => 30]],
     ]);
 
     expect(ShutdownTimings::programGraces(ServerGroup::SCHEDULER))->toBe(['scheduler' => 30]);
@@ -104,7 +104,7 @@ it('honours a standalone queue shutdown-grace-period override', function (): voi
     writeManifest([
         'apex' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => ['shutdown-grace-period' => 90], 'scheduler' => []],
+        'tasks' => ['web' => true, 'queue' => ['shutdown-grace-period' => 90], 'scheduler' => true],
     ]);
 
     expect(ShutdownTimings::programGraces(ServerGroup::QUEUE))->toBe(['queue' => 90]);
@@ -141,7 +141,7 @@ it('drops the ALB drain window from the web stop timeout when headless', functio
     // Scheduler extracted so the drain track is what sizes the budget.
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'scheduler' => []],
+        'tasks' => ['web' => true, 'scheduler' => true],
     ]);
 
     // no drain window: 0 + max(web 10, queue 70) + 5 buffer.
@@ -188,7 +188,7 @@ describe('standalone services', function (): void {
     it('sizes a queue-only stop timeout as the grace plus buffer (no ALB drain, no scheduler)', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
+            'tasks' => ['web' => true, 'queue' => true, 'scheduler' => true],
         ]);
 
         // 70 (default queue grace) + 5 buffer; no ALB drain, no co-hosted scheduler.
@@ -198,7 +198,7 @@ describe('standalone services', function (): void {
     it('sizes a queue+scheduler stop timeout as the slower of the two overlapped stops', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tasks' => ['web' => [], 'queue' => []],
+            'tasks' => ['web' => true, 'queue' => true],
         ]);
 
         // supervisord signals queue:work and supercronic together; the budget is
@@ -209,7 +209,7 @@ describe('standalone services', function (): void {
     it('sizes a scheduler-only stop timeout as its grace plus buffer', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
+            'tasks' => ['web' => true, 'queue' => true, 'scheduler' => true],
         ]);
 
         expect(ShutdownTimings::stopTimeoutFor(ServerGroup::SCHEDULER))->toBe(120);
@@ -218,7 +218,7 @@ describe('standalone services', function (): void {
     it('rejects a standalone grace that overcommits the Fargate stop ceiling', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tasks' => ['web' => [], 'queue' => ['shutdown-grace-period' => 200], 'scheduler' => []],
+            'tasks' => ['web' => true, 'queue' => ['shutdown-grace-period' => 200], 'scheduler' => true],
         ]);
 
         expect(fn (): int => ShutdownTimings::stopTimeoutFor(ServerGroup::QUEUE))

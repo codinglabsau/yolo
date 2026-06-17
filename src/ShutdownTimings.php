@@ -112,8 +112,9 @@ final class ShutdownTimings
      * graceful-stop window. Placement is by task presence, not flags: the web
      * server and (when enabled) ssr are always web; the queue worker and the
      * scheduler ride whichever container hosts them (Manifest::queueHost /
-     * schedulerHost). Every app runs all three roles somewhere, so a plain web
-     * app's web container runs web + queue + scheduler. The `web` program is
+     * schedulerHost), or nowhere when switched off (tasks.queue / tasks.scheduler:
+     * false → a null host). A plain web app's web container runs web + queue +
+     * scheduler; disabling either drops it from every container. The `web` program is
      * Octane by default, or FrankenPHP classic mode when tasks.web.octane is off
      * (ProcessCommands::web) — its grace is the same either way.
      *

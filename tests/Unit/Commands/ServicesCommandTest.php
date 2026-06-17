@@ -63,7 +63,7 @@ it('summarises an offer for the table', function (): void {
 });
 
 it('reports the service state as json', function (): void {
-    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'tasks' => ['web' => []]]);
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'tasks' => ['web' => true]]);
 
     $captured = [];
     bindServiceLifecycleWorld(offeringTypesense(claims: ['convict' => ['typesense']], clusters: ['convict' => true]), $captured);
@@ -78,7 +78,7 @@ it('reports the service state as json', function (): void {
 });
 
 it('adds a service offer and uploads the env manifest', function (): void {
-    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'tasks' => ['web' => []]]);
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'tasks' => ['web' => true]]);
 
     $captured = [];
     bindServiceLifecycleWorld(['manifest' => "domain: example.com\nservices: {}\n", 'claims' => [], 'clusters' => []], $captured);
@@ -93,7 +93,7 @@ it('adds a service offer and uploads the env manifest', function (): void {
 });
 
 it('refuses to withdraw a service a running app still uses', function (): void {
-    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'tasks' => ['web' => []]]);
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'tasks' => ['web' => true]]);
 
     $captured = [];
     bindServiceLifecycleWorld(offeringTypesense(claims: ['convict' => ['typesense']], clusters: ['convict' => true]), $captured);
@@ -105,7 +105,7 @@ it('refuses to withdraw a service a running app still uses', function (): void {
 });
 
 it('withdraws an unused service offer', function (): void {
-    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'tasks' => ['web' => []]]);
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'tasks' => ['web' => true]]);
 
     $captured = [];
     bindServiceLifecycleWorld(offeringTypesense(claims: [], clusters: []), $captured);
@@ -119,7 +119,7 @@ it('withdraws an unused service offer', function (): void {
 });
 
 it('rejects offering an app-side-only service', function (): void {
-    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'tasks' => ['web' => []]]);
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'tasks' => ['web' => true]]);
 
     $captured = [];
     bindServiceLifecycleWorld(['manifest' => "domain: example.com\nservices: {}\n", 'claims' => [], 'clusters' => []], $captured);

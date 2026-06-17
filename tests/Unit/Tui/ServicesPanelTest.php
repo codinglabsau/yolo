@@ -15,7 +15,7 @@ it('maps lifecycle states to theme colours', function (): void {
 });
 
 it('renders the gate as a themed table, with the live typesense cluster detail', function (): void {
-    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'tasks' => ['web' => []]]);
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'tasks' => ['web' => true]]);
 
     $captured = [];
     bindServiceLifecycleWorld([

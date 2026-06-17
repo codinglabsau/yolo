@@ -14,7 +14,7 @@ function statementFor(array $document, string $action): array
 beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => []],
+        'tasks' => ['web' => true],
     ]);
 });
 
@@ -82,7 +82,7 @@ it('scopes UpdateService and RunTask to this app\'s cluster resources', function
 it('widens UpdateService scope to the standalone queue and scheduler services when extracted', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => [], 'queue' => [], 'scheduler' => []],
+        'tasks' => ['web' => true, 'queue' => true, 'scheduler' => true],
     ]);
 
     $statement = statementFor((new DeployerPolicy())->document(), 'ecs:UpdateService');

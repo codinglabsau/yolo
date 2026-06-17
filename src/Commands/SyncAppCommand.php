@@ -43,7 +43,27 @@ class SyncAppCommand extends SyncSteppedCommand
     #[\Override]
     public function warnings(): array
     {
-        return array_filter([static::schedulerAdvisory()]);
+        return array_filter([
+            static::schedulerDisabledWarning(),
+            static::schedulerAdvisory(),
+        ]);
+    }
+
+    /**
+     * A loud warning when cron is switched off entirely (`tasks.scheduler: false`):
+     * the Laravel scheduler runs nowhere, so scheduled work and the framework/package
+     * maintenance that rides the scheduler (model pruning, auth:clear-resets,
+     * telescope/pulse pruning, …) silently stop firing. Rarely intended, so it's
+     * surfaced on every sync as a deliberate choice rather than a quiet default.
+     */
+    public static function schedulerDisabledWarning(): ?string
+    {
+        if (! Manifest::schedulerDisabled()) {
+            return null;
+        }
+
+        return 'The scheduler is disabled (tasks.scheduler: false) — `schedule:run` runs nowhere. '
+            . 'Scheduled tasks and framework/package maintenance (model pruning, auth:clear-resets, etc.) will not fire.';
     }
 
     /**
@@ -51,16 +71,18 @@ class SyncAppCommand extends SyncSteppedCommand
      * host that can run more than one task — the autoscaling web container, or the
      * standalone queue (which always autoscales). Cron then fires on every replica,
      * so every scheduled task must use ->onOneServer(). A dedicated tasks.scheduler
-     * service is a pinned singleton and needs no nudge.
+     * service is a pinned singleton and needs no nudge; a disabled scheduler (null
+     * host) never fires at all, so it gets the separate warning above, not this one.
      */
     public static function schedulerAdvisory(): ?string
     {
         $host = Manifest::schedulerHost();
 
         $hostAutoscales = match ($host) {
-            ServerGroup::WEB => Manifest::isAutoscaling(),
-            ServerGroup::QUEUE => true, // a standalone queue is always autoscaled (min↔max)
+            ServerGroup::WEB => Manifest::autoscales(ServerGroup::WEB),
+            ServerGroup::QUEUE => Manifest::autoscales(ServerGroup::QUEUE), // a fixed (autoscaling: false) queue won't multi-fire
             ServerGroup::SCHEDULER => false, // dedicated singleton — never multi-fires
+            null => false, // disabled — surfaced by schedulerDisabledWarning instead
         };
 
         if (! $hostAutoscales) {
@@ -126,7 +148,7 @@ class SyncAppCommand extends SyncSteppedCommand
                         Steps\Sync\App\Solo\SyncQueueAlarmStep::class,
                     ],
                 // Fargate + CDN (web tasks only)
-                ...Manifest::has('tasks.web')
+                ...Manifest::hasWeb()
                     ? [
                         Steps\Sync\App\SyncEcrRepositoryStep::class,
                         Steps\Sync\App\SyncEcsClusterStep::class,

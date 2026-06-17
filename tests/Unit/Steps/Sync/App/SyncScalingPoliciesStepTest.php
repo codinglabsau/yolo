@@ -139,7 +139,7 @@ it('skips entirely when autoscaling is removed from the manifest', function (): 
     writeManifest([
         'account-id' => '111111111111',
         'region' => 'ap-southeast-2',
-        'tasks' => ['web' => []],
+        'tasks' => ['web' => ['autoscaling' => false]],
     ]);
 
     $aa = [];

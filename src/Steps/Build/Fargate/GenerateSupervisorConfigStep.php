@@ -63,9 +63,12 @@ class GenerateSupervisorConfigStep implements Step
             $this->writeConfig('docker/supervisord.queue.conf', ServerGroup::QUEUE);
         }
 
-        // The scheduler runs cron in some container of every app, so the crontab it
-        // reads is always generated (the standalone scheduler service runs supercronic too).
-        $this->writeCrontab();
+        // The crontab supercronic reads is generated wherever the scheduler runs —
+        // every app unless cron is switched off entirely (tasks.scheduler: false), where
+        // schedulerHost() is null and no container runs supercronic, so it's skipped.
+        if (Manifest::schedulerHost() instanceof ServerGroup) {
+            $this->writeCrontab();
+        }
 
         return StepResult::SUCCESS;
     }

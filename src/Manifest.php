@@ -51,7 +51,7 @@ class Manifest
         'tasks.web.ssr', 'tasks.web.ssr.*',
         'tasks.web.health-check.*', 'tasks.web.autoscaling.*',
         'tasks.queue',
-        'tasks.queue.min', 'tasks.queue.max', 'tasks.queue.backlog-per-task',
+        'tasks.queue.autoscaling.*',
         'tasks.queue.cpu', 'tasks.queue.memory', 'tasks.queue.spot',
         'tasks.queue.shutdown-grace-period', 'tasks.queue.enable-execute-command',
         'tasks.scheduler',
@@ -430,7 +430,7 @@ class Manifest
      */
     public static function cacheStore(): ?string
     {
-        return static::get('cache.store', static::has('tasks.web') ? 'redis' : null);
+        return static::get('cache.store', static::hasWeb() ? 'redis' : null);
     }
 
     /**
@@ -442,7 +442,28 @@ class Manifest
      */
     public static function sessionDriver(): ?string
     {
-        return static::get('session.driver', static::has('tasks.web') ? 'redis' : null);
+        return static::get('session.driver', static::hasWeb() ? 'redis' : null);
+    }
+
+    /**
+     * Whether the app runs a web (Fargate) service — `tasks.web: true` or a config
+     * object. Absent ⇒ build-only/worker app; `tasks.web: false` ⇒ explicitly
+     * headless (no web service), same as absent. The single gate for the ALB / CDN /
+     * Route 53 / web-task provisioning (the value-aware replacement for
+     * `has('tasks.web')`).
+     */
+    public static function hasWeb(): bool
+    {
+        return static::has('tasks.web') && self::taskExtraction('web') !== false;
+    }
+
+    /**
+     * Whether the web service is switched off explicitly (`tasks.web: false`) — a
+     * headless app. Distinct from absent (also headless) only in being self-documenting.
+     */
+    public static function webDisabled(): bool
+    {
+        return static::has('tasks.web') && self::taskExtraction('web') === false;
     }
 
     /**
@@ -477,16 +498,85 @@ class Manifest
     }
 
     /**
-     * Whether the web tier autoscales — the single gate every scaling resource keys
-     * off (the scalable target, the concurrency/CPU policies, burst). Two manifest
-     * forms turn it on: the block `tasks.web.autoscaling: {min, max, …}` for explicit
-     * bounds, or the shorthand `tasks.web.autoscaling: true` to take the defaults
-     * (min 1, max 4). An explicit `false` — or no key — leaves the web service a
-     * fixed single task. Off ⇒ everything scaling tears down (or never provisions).
+     * Whether a group autoscales. Autoscaling is **bolted on by default** for an
+     * enabled web or queue tier — an omitted `autoscaling` key, `autoscaling: true`,
+     * or an `autoscaling: {min, max, …}` block all mean ON; only an explicit
+     * `autoscaling: false` turns it off (a fixed single task). The scheduler is a
+     * pinned singleton and never autoscales. This is the single gate every scaling
+     * resource keys off (scalable target, concurrency/CPU/backlog policies, burst,
+     * scale-to-zero) — off ⇒ those tear down or never provision.
+     */
+    public static function autoscales(ServerGroup $group): bool
+    {
+        $enabled = match ($group) {
+            ServerGroup::WEB => static::hasWeb(),
+            ServerGroup::QUEUE => static::hasStandaloneQueue(),
+            ServerGroup::SCHEDULER => false,
+        };
+
+        return $enabled && self::autoscalingValue($group) !== false;
+    }
+
+    /**
+     * Web-tier autoscaling — the common gate, kept as a named shorthand for
+     * `autoscales(ServerGroup::WEB)` (most scaling code is web).
      */
     public static function isAutoscaling(): bool
     {
-        return static::get('tasks.web.autoscaling', false) !== false;
+        return static::autoscales(ServerGroup::WEB);
+    }
+
+    /**
+     * Validate and resolve a group's `autoscaling` value — the three-state knob,
+     * defaulting to ON when the key is omitted on an enabled group. `true` (or an
+     * omitted key) and a non-empty config object both mean ON; `false` means off.
+     * An empty object (`{}`) or null hard-fails — write `true` / `false`.
+     *
+     * @return bool|array<string, mixed>
+     */
+    private static function autoscalingValue(ServerGroup $group): bool|array
+    {
+        $key = "tasks.{$group->value}.autoscaling";
+        $value = static::get($key, true);
+
+        if (is_array($value) && $value !== [] && ! array_is_list($value)) {
+            return $value;
+        }
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        throw new IntegrityCheckException(sprintf(
+            '%s must be `true`, `false`, or a non-empty config object (got %s). Omit it for autoscaling on with defaults, or set `false` for a fixed single task.',
+            $key,
+            json_encode($value),
+        ));
+    }
+
+    /**
+     * The autoscaling floor for a group. Both default to 1 (no accidental
+     * scale-to-zero); web is validated ≥ 1 (it serves traffic, can't idle to zero),
+     * the queue ≥ 0 (0 opts into scale-to-zero, with a 0→1 bootstrap alarm).
+     */
+    public static function autoscalingMin(ServerGroup $group): int
+    {
+        $key = "tasks.{$group->value}.autoscaling.min";
+        $value = static::get($key, 1);
+
+        return $group === ServerGroup::WEB
+            ? Helpers::validatePositiveInt($value, $key)
+            : Helpers::validateNonNegativeInt($value, $key);
+    }
+
+    /**
+     * The autoscaling ceiling for a group — web defaults to 4, the queue to 10.
+     */
+    public static function autoscalingMax(ServerGroup $group): int
+    {
+        $key = "tasks.{$group->value}.autoscaling.max";
+
+        return Helpers::validatePositiveInt(static::get($key, $group === ServerGroup::QUEUE ? 10 : 4), $key);
     }
 
     /**
@@ -504,43 +594,50 @@ class Manifest
     }
 
     /**
-     * Which container runs the queue worker: a standalone `tasks.queue` service if
-     * extracted, else bundled in the web container. The worker always runs
-     * somewhere — there's no opt-out.
+     * Which container runs the queue worker, or null when no worker runs anywhere.
+     * A standalone `tasks.queue` service if extracted; else the web container
+     * (bundled); else null — `tasks.queue: false` (disabled) or a worker-less app
+     * with no web tier to bundle into. Null ⇒ jobs run inline (QUEUE_CONNECTION=sync).
      */
-    public static function queueHost(): ServerGroup
-    {
-        return static::hasStandaloneQueue() ? ServerGroup::QUEUE : ServerGroup::WEB;
-    }
-
-    /**
-     * Which container runs the scheduler (supercronic + schedule:run): a dedicated
-     * `tasks.scheduler` service if extracted, else the standalone queue if there is
-     * one, else the web container. The cron always runs somewhere — there's no
-     * opt-out — so management work lands on the least request-facing service that
-     * exists. This is also the deploy/management tier (see deployGroup).
-     */
-    public static function schedulerHost(): ServerGroup
+    public static function queueHost(): ?ServerGroup
     {
         return match (true) {
-            static::hasStandaloneScheduler() => ServerGroup::SCHEDULER,
+            static::queueDisabled() => null,
             static::hasStandaloneQueue() => ServerGroup::QUEUE,
-            default => ServerGroup::WEB,
+            static::hasWeb() => ServerGroup::WEB,
+            default => null,
         };
     }
 
     /**
-     * The autoscaling/desired-count floor for the standalone queue. A scale-to-zero
-     * queue (`min: 0`, the default) idles to no tasks — but when the queue also
-     * hosts the scheduler (no dedicated `tasks.scheduler` service), it can't scale
-     * to zero or cron would stop, so the floor defaults to 1. An explicit
-     * `tasks.queue.min: 0` in that topology is rejected by the validator.
+     * Which container runs the scheduler (supercronic + schedule:run), or null when
+     * cron runs nowhere (`tasks.scheduler: false`, or no host exists): a dedicated
+     * `tasks.scheduler` service if extracted, else the standalone queue if there is
+     * one, else the web container. Bundled cron lands on the least request-facing
+     * service that exists. Distinct from the deploy/management tier (see deployGroup),
+     * which always resolves to a real group even when the scheduler is disabled.
+     */
+    public static function schedulerHost(): ?ServerGroup
+    {
+        return match (true) {
+            static::schedulerDisabled() => null,
+            static::hasStandaloneScheduler() => ServerGroup::SCHEDULER,
+            static::hasStandaloneQueue() => ServerGroup::QUEUE,
+            static::hasWeb() => ServerGroup::WEB,
+            default => null,
+        };
+    }
+
+    /**
+     * The autoscaling/desired-count floor for the standalone queue — its
+     * `autoscaling.min` (default 1). `0` opts into scale-to-zero (idle to no tasks,
+     * zero cost), except when the queue also hosts the scheduler, where cron can't
+     * ride a task that idles to zero — `ensureSchedulerHostNotScaleToZero` rejects an
+     * explicit `0` there.
      */
     public static function queueMin(): int
     {
-        $default = static::schedulerHost() === ServerGroup::QUEUE ? 1 : 0;
-
-        return Helpers::validateNonNegativeInt(static::get('tasks.queue.min', $default), 'tasks.queue.min');
+        return static::autoscalingMin(ServerGroup::QUEUE);
     }
 
     /**
@@ -573,22 +670,80 @@ class Manifest
     }
 
     /**
-     * Whether the queue runs as its own ECS service (a top-level `tasks.queue`
-     * block) rather than bundled in the web container. Presence is the opt-in —
-     * an empty block extracts the queue with default sizing and scale-to-zero.
+     * Whether the queue runs as its own ECS service (`tasks.queue: true` or a
+     * config object) rather than bundled in the web container. Absent ⇒ bundled;
+     * `false` ⇒ disabled (see queueDisabled), so neither counts as standalone.
      */
     public static function hasStandaloneQueue(): bool
     {
-        return static::has('tasks.queue');
+        return static::has('tasks.queue') && self::taskExtraction('queue') !== false;
     }
 
     /**
-     * Whether the scheduler runs as its own pinned-singleton ECS service (a
-     * top-level `tasks.scheduler` block) rather than bundled in the web container.
+     * Whether the scheduler runs as its own pinned-singleton ECS service
+     * (`tasks.scheduler: true` or a config object) rather than bundled in the web
+     * container. Absent ⇒ bundled; `false` ⇒ disabled (see schedulerDisabled).
      */
     public static function hasStandaloneScheduler(): bool
     {
-        return static::has('tasks.scheduler');
+        return static::has('tasks.scheduler') && self::taskExtraction('scheduler') !== false;
+    }
+
+    /**
+     * Whether the queue worker is switched off entirely (`tasks.queue: false`) —
+     * it runs nowhere, neither bundled nor extracted. Jobs must run inline
+     * (QUEUE_CONNECTION=sync, enforced at build).
+     */
+    public static function queueDisabled(): bool
+    {
+        return static::has('tasks.queue') && self::taskExtraction('queue') === false;
+    }
+
+    /**
+     * Whether the scheduler is switched off entirely (`tasks.scheduler: false`) —
+     * cron runs nowhere. Dangerous (framework + packages lean on the scheduler), so
+     * sync surfaces a warning; see SyncAppCommand::schedulerAdvisory.
+     */
+    public static function schedulerDisabled(): bool
+    {
+        return static::has('tasks.scheduler') && self::taskExtraction('scheduler') === false;
+    }
+
+    /**
+     * Validate and resolve a top-level task role's block value — the three-state
+     * opt-in shared by `tasks.queue` and `tasks.scheduler`, mirroring the
+     * boolean-or-object form of `tasks.web.ssr` (see bundles()):
+     *
+     *   - `true`               extract a standalone service with default sizing
+     *   - non-empty config map extract a standalone service with overrides
+     *   - `false`              disabled — runs nowhere
+     *
+     * Callers confirm presence first (has()); an absent block is the bundled
+     * default, not a value. An empty block (`tasks.queue:` → null), an empty map
+     * (`{}`), a list, or any non-boolean scalar hard-fails — write `true` for
+     * defaults rather than leaving the value ambiguous.
+     *
+     * @return bool|array<string, mixed>
+     */
+    private static function taskExtraction(string $task): bool|array
+    {
+        $value = static::get("tasks.$task");
+
+        if (is_array($value) && $value !== [] && ! array_is_list($value)) {
+            return $value;
+        }
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        throw new IntegrityCheckException(sprintf(
+            'tasks.%s must be `true`, `false`, or a non-empty config object (got %s). '
+            . 'Write `tasks.%s: true` to extract it with default sizing, or omit it to bundle it in the web container.',
+            $task,
+            json_encode($value),
+            $task,
+        ));
     }
 
     /**
@@ -603,7 +758,7 @@ class Manifest
     public static function serverGroups(): array
     {
         return array_values(array_filter([
-            static::has('tasks.web') ? ServerGroup::WEB : null,
+            static::hasWeb() ? ServerGroup::WEB : null,
             static::hasStandaloneQueue() ? ServerGroup::QUEUE : null,
             static::hasStandaloneScheduler() ? ServerGroup::SCHEDULER : null,
         ]));
@@ -611,13 +766,19 @@ class Manifest
 
     /**
      * The service group a one-off deploy/management task (the `deploy:` hooks,
-     * e.g. migrations) templates its task definition on. It's the same least
-     * request-facing tier the scheduler rides — a dedicated scheduler if extracted,
-     * else a standalone queue, else web — so the one-off lands off the request path.
+     * e.g. migrations) templates its task definition on — the least request-facing
+     * tier that exists: a dedicated scheduler if extracted, else a standalone queue,
+     * else web. Unlike schedulerHost this always resolves to a real group (it picks
+     * a tier to run on, independent of whether cron is enabled), so a disabled
+     * scheduler still leaves migrations a home.
      */
     public static function deployGroup(): ServerGroup
     {
-        return static::schedulerHost();
+        return match (true) {
+            static::hasStandaloneScheduler() => ServerGroup::SCHEDULER,
+            static::hasStandaloneQueue() => ServerGroup::QUEUE,
+            default => ServerGroup::WEB,
+        };
     }
 
     public static function apex(): string

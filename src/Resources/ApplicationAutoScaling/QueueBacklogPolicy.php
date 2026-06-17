@@ -15,7 +15,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 /**
  * The queue service's target-tracking scaling policy, scaling on **backlog per
  * task** — `ApproximateNumberOfMessagesVisible / RunningTaskCount` via CloudWatch
- * metric math (no Lambda) — held at `tasks.queue.backlog-per-task` messages per
+ * metric math (no Lambda) — held at `tasks.queue.autoscaling.backlog-per-task` messages per
  * task. This is what scales the queue 1→N under load and back down to its floor.
  *
  * It deliberately can't scale 0→1: when the service is at zero the running-task
@@ -45,8 +45,8 @@ class QueueBacklogPolicy
     public function targetValue(): float
     {
         return (float) Helpers::validatePositiveInt(
-            Manifest::get('tasks.queue.backlog-per-task', 100),
-            'tasks.queue.backlog-per-task',
+            Manifest::get('tasks.queue.autoscaling.backlog-per-task', 100),
+            'tasks.queue.autoscaling.backlog-per-task',
         );
     }
 

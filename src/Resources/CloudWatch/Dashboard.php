@@ -165,7 +165,7 @@ class Dashboard
      */
     public function resolveContext(): array
     {
-        $web = Manifest::has('tasks.web');
+        $web = Manifest::hasWeb();
 
         return [
             'region' => Manifest::get('region'),

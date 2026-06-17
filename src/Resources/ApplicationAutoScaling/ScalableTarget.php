@@ -4,7 +4,6 @@ namespace Codinglabs\Yolo\Resources\ApplicationAutoScaling;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Change;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
@@ -14,10 +13,9 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * The Application Auto Scaling scalable target that hands an ECS service's
- * desired count to scaling policies. Group-aware: the web target's bounds come
- * from `tasks.web.autoscaling.min/max` (autoscaling is opt-in for web), the queue
- * target's from `tasks.queue.min/max` (a standalone queue is always autoscaled,
- * and its floor may be 0 — scale to zero).
+ * desired count to scaling policies. Group-aware: both groups' bounds come from
+ * their own `tasks.{group}.autoscaling.min/max` (Manifest::autoscalingMin/Max) —
+ * web defaults 1/4 (min always ≥ 1), the queue 1/10 (min may be 0 to scale to zero).
  *
  * Like Dashboard this is a standalone reconciler, NOT a Resource:
  * App Auto Scaling targets aren't RGT-taggable (so they carry none of the
@@ -52,23 +50,12 @@ class ScalableTarget
 
     public function min(): int
     {
-        if ($this->group === ServerGroup::QUEUE) {
-            // A standalone queue's floor may be 0 (scale to zero) — that's the opt-in
-            // — unless it also hosts the scheduler, where Manifest::queueMin floors it
-            // at 1 so cron isn't killed when the queue idles to zero.
-            return Manifest::queueMin();
-        }
-
-        return Helpers::validatePositiveInt(Manifest::get('tasks.web.autoscaling.min', 1), 'tasks.web.autoscaling.min');
+        return Manifest::autoscalingMin($this->group);
     }
 
     public function max(): int
     {
-        if ($this->group === ServerGroup::QUEUE) {
-            return Helpers::validatePositiveInt(Manifest::get('tasks.queue.max', 10), 'tasks.queue.max');
-        }
-
-        return Helpers::validatePositiveInt(Manifest::get('tasks.web.autoscaling.max', 4), 'tasks.web.autoscaling.max');
+        return Manifest::autoscalingMax($this->group);
     }
 
     /**

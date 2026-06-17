@@ -25,7 +25,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * across policies, so asserting "at least one while there's backlog" never fights
  * the backlog policy's higher number and never ratchets up on a long backlog.
  *
- * Only provisioned when the queue's floor is zero (`tasks.queue.min: 0`); a queue
+ * Only provisioned when the queue's floor is zero (`tasks.queue.autoscaling.min: 0`); a queue
  * with a standing floor never sits at zero, so it needs no bootstrap. Both the
  * policy and the alarm are pure upserts, so this is a reconciler, not a Resource.
  */

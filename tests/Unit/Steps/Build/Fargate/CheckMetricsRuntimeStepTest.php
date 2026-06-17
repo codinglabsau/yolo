@@ -13,7 +13,7 @@ beforeEach(function (): void {
 it('skips without probing the image when the web tier is not autoscaling', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => []],
+        'tasks' => ['web' => ['autoscaling' => false]],
     ]);
 
     // A probe that throws proves the step short-circuits before running the image.

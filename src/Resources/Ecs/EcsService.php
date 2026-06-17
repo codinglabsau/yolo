@@ -252,14 +252,14 @@ class EcsService implements Resource
     }
 
     /**
-     * The desired count to create the service at. The queue starts at its
-     * autoscaling floor (Manifest::queueMin) — 0 when it scales to zero, so a fresh
-     * idle queue costs nothing, but ≥1 when the queue also hosts the scheduler (cron
-     * can't ride a task that idles to zero). Web and the scheduler start at one task.
+     * The desired count to create the service at. An autoscaling queue starts at its
+     * floor (Manifest::queueMin) — 0 when it scales to zero, so a fresh idle queue
+     * costs nothing; a fixed queue (autoscaling: false) and web and the scheduler all
+     * start at one task.
      */
     protected function initialDesiredCount(): int
     {
-        if ($this->group === ServerGroup::QUEUE) {
+        if ($this->group === ServerGroup::QUEUE && Manifest::autoscales(ServerGroup::QUEUE)) {
             return Manifest::queueMin();
         }
 

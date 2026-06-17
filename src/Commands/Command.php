@@ -133,24 +133,23 @@ abstract class Command extends SymfonyCommand
 
     /**
      * When the scheduler rides the standalone queue (a `tasks.queue` block but no
-     * dedicated `tasks.scheduler` service), the queue can't scale to zero — cron
-     * would stop the moment it idled to no tasks. The floor defaults to 1 in that
-     * topology, but an explicit `tasks.queue.min: 0` is a contradiction, so
-     * hard-fail and point at the two ways out.
+     * dedicated `tasks.scheduler` service), an autoscaling queue can't scale to zero
+     * — cron would stop the moment it idled to no tasks. The floor defaults to 1, so
+     * only an explicit `tasks.queue.autoscaling.min: 0` is a contradiction; hard-fail
+     * and point at the ways out. A fixed (autoscaling: false) queue never idles to
+     * zero, so it's exempt.
      */
     protected function ensureSchedulerHostNotScaleToZero(): bool
     {
-        if (Manifest::schedulerHost() !== ServerGroup::QUEUE) {
+        if (Manifest::schedulerHost() !== ServerGroup::QUEUE || ! Manifest::autoscales(ServerGroup::QUEUE)) {
             return true;
         }
 
-        $min = Manifest::get('tasks.queue.min');
-
-        if ($min !== null && is_numeric($min) && (int) $min === 0) {
+        if (Manifest::autoscalingMin(ServerGroup::QUEUE) === 0) {
             error(
                 "yolo.yml runs the scheduler inside the standalone queue (there's no `tasks.scheduler` service), "
                 . "so the queue can't scale to zero — cron would stop when it idles to 0 tasks.\n"
-                . 'Set `tasks.queue.min` to 1 or more, or extract the scheduler into its own `tasks.scheduler` service.'
+                . 'Set `tasks.queue.autoscaling.min` to 1 or more, or extract the scheduler into its own `tasks.scheduler` service.'
             );
 
             return false;

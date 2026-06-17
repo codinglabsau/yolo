@@ -5,16 +5,19 @@ namespace Codinglabs\Yolo\Steps\Build\Fargate;
 use Closure;
 use RuntimeException;
 use Illuminate\Support\Arr;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Symfony\Component\Process\Process;
 use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
 
 /**
- * Every app hosts the scheduler somewhere (Manifest::schedulerHost — there's no
- * opt-out), and the scheduler program is supercronic (ProcessCommands::scheduler).
- * This probes the freshly-built image for the supercronic binary and hard-fails
- * the build — before the push — if it can't find one.
+ * The scheduler runs somewhere in almost every app (Manifest::schedulerHost),
+ * driven by supercronic (ProcessCommands::scheduler). This probes the freshly-built
+ * image for the supercronic binary and hard-fails the build — before the push — if
+ * it can't find one. Skipped only when cron is switched off entirely
+ * (tasks.scheduler: false → a null host), where no container runs supercronic.
  *
  * The hard fail earns its place because the failure it prevents is silent:
  * busybox crond, the cron the base image ships for free, can't run as a non-root
@@ -35,6 +38,12 @@ class CheckSchedulerRuntimeStep implements Step
 
     public function __invoke(array $options): StepResult
     {
+        // No host runs the scheduler (tasks.scheduler: false) → the image needn't carry
+        // supercronic, so there's nothing to probe.
+        if (! Manifest::schedulerHost() instanceof ServerGroup) {
+            return StepResult::SKIPPED;
+        }
+
         $image = sprintf('%s:%s', (new EcrRepository())->uri(), Arr::get($options, 'app-version'));
 
         if (($this->probe ?? $this->imageHasSupercronic(...))($image)) {

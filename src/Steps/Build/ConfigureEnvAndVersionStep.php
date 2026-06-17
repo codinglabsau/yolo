@@ -14,6 +14,8 @@ use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
+use Codinglabs\Yolo\Enums\ServerGroup;
+use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Codinglabs\Yolo\Resources\ElastiCache\CacheCluster;
 use Codinglabs\Yolo\Resources\CloudFront\AssetDistribution;
 
@@ -72,15 +74,18 @@ class ConfigureEnvAndVersionStep implements Step
             'AWS_DEFAULT_REGION' => Manifest::get('region'),
         ];
 
-        // Every web app runs a queue worker somewhere — bundled in the web container
-        // or its own standalone service (queue:work always runs; there's no opt-out)
-        // — so wire the connection to the queue YOLO provisions for it (it owns the
-        // name + URL, so the app can't point at the wrong one); the task role carries
-        // the access. Solo has one queue; multitenancy resolves the per-tenant queue
-        // at runtime, so SQS_QUEUE is not pinned for it. A non-web app has no worker,
-        // so force `sync` rather than route to a queue nothing consumes (the framework
-        // default of `database` has the same no-worker pitfall).
-        if (Manifest::has('tasks.web')) {
+        // QUEUE_CONNECTION is one value baked into the one image every task shares
+        // (web + queue + scheduler), so it follows WORKER presence, not web presence:
+        // wherever a queue:work runs — bundled in the web container, a standalone
+        // tasks.queue, or a headless worker — point the connection at the SQS queue
+        // YOLO provisions (it owns the name + URL so the app can't target the wrong
+        // one; the task role carries access), so producers (web requests, scheduled
+        // jobs) and the worker share one queue. Solo pins SQS_QUEUE; multitenancy
+        // resolves the per-tenant queue at runtime, so it isn't pinned. With no worker
+        // anywhere (tasks.queue: false, or a worker-less app) jobs would pile into a
+        // queue nothing drains, so force `sync` (run inline at dispatch) — and ENFORCE
+        // it: a non-sync override would silently break, so hard-fail rather than ship.
+        if (Manifest::queueHost() instanceof ServerGroup) {
             $defaults['QUEUE_CONNECTION'] = 'sqs';
             $defaults['SQS_PREFIX'] = sprintf('https://sqs.%s.amazonaws.com/%s', Manifest::get('region'), Aws::accountId());
 
@@ -88,6 +93,8 @@ class ConfigureEnvAndVersionStep implements Step
                 $defaults['SQS_QUEUE'] = Helpers::keyedResourceName();
             }
         } else {
+            $this->ensureSyncQueueConnection($envPath);
+
             $defaults['QUEUE_CONNECTION'] = 'sync';
         }
 
@@ -172,6 +179,47 @@ class ConfigureEnvAndVersionStep implements Step
         }
 
         return preg_match('/^' . preg_quote($key, '/') . '=/m', (string) $this->filesystem->get($path)) === 1;
+    }
+
+    /**
+     * Hard-fail the build when no queue worker runs (tasks.queue: false, or a
+     * worker-less app) yet the app's own .env pins QUEUE_CONNECTION to anything but
+     * `sync`. With no worker, any other connection dispatches into a queue nothing
+     * drains; YOLO can't fix it by injecting `sync` (its default is skipped once the
+     * key is set, and phpdotenv is first-wins), so it would otherwise ship a silently
+     * broken build. The usual intent is a bundled worker — point the way out.
+     */
+    protected function ensureSyncQueueConnection(string $envPath): void
+    {
+        $connection = $this->envValue($envPath, 'QUEUE_CONNECTION');
+
+        if ($connection !== null && $connection !== 'sync') {
+            throw new IntegrityCheckException(sprintf(
+                'QUEUE_CONNECTION is "%s" but no queue worker runs (tasks.queue: false, or no worker tier). '
+                . 'Jobs dispatched to "%s" would never be processed. Set QUEUE_CONNECTION=sync, or omit '
+                . 'tasks.queue to bundle a worker in the web container.',
+                $connection,
+                $connection,
+            ));
+        }
+    }
+
+    /**
+     * The value the app's staged .env defines for $key, or null when the key is
+     * absent (or the file doesn't exist yet). Surrounding quotes and whitespace are
+     * stripped so the comparison is on the bare value.
+     */
+    protected function envValue(string $path, string $key): ?string
+    {
+        if (! $this->filesystem->exists($path)) {
+            return null;
+        }
+
+        if (preg_match('/^' . preg_quote($key, '/') . '=(.*)$/m', (string) $this->filesystem->get($path), $matches) === 1) {
+            return trim($matches[1], " \t\"'");
+        }
+
+        return null;
     }
 
     protected function generateValues(array $values): string

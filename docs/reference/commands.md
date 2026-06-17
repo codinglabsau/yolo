@@ -452,14 +452,14 @@ yolo scale <environment> [count] [--web] [--min=<n>] [--max=<n>] [--queue] [--sc
 | Option | Value | Description |
 |---|---|---|
 | `--web` | flag | Target the web service (the default). |
-| `--queue` | flag | Target the standalone queue service. Always autoscaling-managed — takes `--min`/`--max` (min may be `0`), never a count. |
+| `--queue` | flag | Target the standalone queue service. Autoscaling-managed by default — takes `--min`/`--max` (min may be `0`); a fixed (`autoscaling: false`) queue takes a count instead. |
 | `--scheduler` | flag | Always errors — the scheduler is a singleton and can't be scaled. |
 | `--min` / `--max` | int | Autoscaling bounds — the autoscaled form. |
 
 There are two forms, picked by what you pass:
 
-- **Autoscaled** — `--min`/`--max` set the bounds. The values are written back to the manifest (surgically — comments and formatting are preserved): web → [`tasks.web.autoscaling.min/max`](/reference/manifest#tasks-web-autoscaling), queue → [`tasks.queue.min/max`](/reference/manifest#tasks-queue). The scalable target is then registered, so the **manifest stays the source of truth** and the next sync reconciles to the same values. A desired count is never set under autoscaling (the policies would override it).
-- **Fixed** — a positional `count` sets the ECS desired count directly (`UpdateService`), for a **web** service with no `autoscaling` block. A standalone queue is always autoscaling-managed, so passing it a count errors and points you to `--min/--max`.
+- **Autoscaled** — `--min`/`--max` set the bounds. The values are written back to the manifest (surgically — comments and formatting are preserved) under [`tasks.{group}.autoscaling.min/max`](/reference/manifest#tasks-web-autoscaling) for both web and queue. The scalable target is then registered, so the **manifest stays the source of truth** and the next sync reconciles to the same values. A desired count is never set under autoscaling (the policies would override it).
+- **Fixed** — a positional `count` sets the ECS desired count directly (`UpdateService`), for a service with `autoscaling: false` (web or queue). An autoscaling service (the default) errors and points you to `--min/--max`.
 
 Lowering a live bound is guarded the same as [reducing capacity](/guide/scaling#reducing-capacity-is-guarded) — an explicit confirm defaulting to no.
 
