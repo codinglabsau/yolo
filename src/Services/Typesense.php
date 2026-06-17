@@ -44,6 +44,13 @@ class Typesense extends ServiceDefinition
      * replacement loses the search data — so neither is offered. */
     public const array NODE_COUNTS = [3, 5];
 
+    /** The typesense/typesense image tags we offer when configuring the cluster,
+     * newest first — the configurator selects from these, defaulting to the
+     * newest. We support v30+ only; there's no compelling reason to stand a
+     * fresh cluster up on an older line, and one current stable is enough until
+     * 31.x goes GA (added here then, alongside an app upgrade path). */
+    public const array VERSIONS = ['30.2'];
+
     public const int API_PORT = 8108;
 
     public const int PEERING_PORT = 8107;
@@ -91,6 +98,21 @@ class Typesense extends ServiceDefinition
         return ['nodes' => 3, 'cpu' => 256, 'memory' => 1024];
     }
 
+    /**
+     * Version and node count are picked from fixed sets — a fresh cluster should
+     * run the newest release on a quorum-valid topology, never an arbitrary
+     * typed value — so both are selects. cpu/memory stay free-text (continuous
+     * per-node sizing).
+     */
+    #[\Override]
+    public function offerOptions(): array
+    {
+        return [
+            'version' => self::VERSIONS,
+            'nodes' => array_map(strval(...), self::NODE_COUNTS),
+        ];
+    }
+
     #[\Override]
     public function implications(): string
     {
@@ -117,7 +139,7 @@ class Typesense extends ServiceDefinition
 
         if (! is_string($version) || trim($version) === '') {
             throw new IntegrityCheckException(sprintf(
-                'services.typesense in %s must declare a version (the typesense/typesense image tag, e.g. "29.0").',
+                'services.typesense in %s must declare a version (the typesense/typesense image tag, e.g. "30.2").',
                 $filename,
             ));
         }

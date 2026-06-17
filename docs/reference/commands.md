@@ -507,20 +507,20 @@ yolo services <environment> [--json] [--add=<service>] [--set key=value] [--remo
 |---|---|---|
 | `--json` | flag | Print the service state as JSON and exit — no prompts (for agents/CI). |
 | `--add` | service | Offer a service non-interactively (pair with `--set`). |
-| `--set` | `key=value` | An offer field for `--add`, repeatable (e.g. `--set version=29.0 --set nodes=3`). |
+| `--set` | `key=value` | An offer field for `--add`, repeatable (e.g. `--set version=30.2 --set nodes=3`). |
 | `--remove` | service | Withdraw a service offer non-interactively. |
 
 Run with no options for the interactive picker (`Cancel` is the last option). The table lists every service with a one-line description and whether **this app** has it enabled; selecting one lets you:
 
 - **Enable / Disable for this app** — write (or remove) the service in this app's `yolo.yml` `services` claim. The write is surgical (it preserves your manifest's comments and formatting). For an app-side service (`mediaconvert`, `rekognition`) that's the whole change, and it offers to run [`sync:app`](#yolo-run) right then.
-- For an **env-backed** service (`typesense`, `ivs`), enabling also walks you through its **environment offer** — e.g. Typesense's version / nodes / CPU / RAM, pre-filled with sensible defaults. The offer is written to a **local copy** of the [environment manifest](/reference/manifest) (not pushed straight to the bucket), the command **warns you of the cost and blast-radius implications**, and then it tells you — and offers — to run `environment:manifest:push <env>` followed by `sync <env>` to apply.
+- For an **env-backed** service (`typesense`, `ivs`), enabling also walks you through its **environment offer** — e.g. Typesense's version / nodes / CPU / RAM. Constrained fields are **selects of known values** (the Typesense version picks from the releases YOLO provisions, newest the default; node count from the quorum-valid set), and free-form sizing (CPU / RAM) is typed with sensible defaults. The offer is written to a **local copy** of the [environment manifest](/reference/manifest) (not pushed straight to the bucket), the command **warns you of the cost and blast-radius implications**, and then it tells you — and offers — to run `environment:manifest:push <env>` followed by `sync <env>` to apply.
 
 The `--add` / `--set` / `--remove` flags drive the **environment offer** non-interactively (for agents/CI), uploading the env manifest directly. A service still can't be withdrawn while a running app claims it (the same guard as [`environment:manifest:push`](#yolo-environment-manifest-push)).
 
 ```bash
 yolo services production                                          # interactive
 yolo services production --json                                   # read state
-yolo services production --add=typesense --set version=29.0 --set nodes=3
+yolo services production --add=typesense --set version=30.2 --set nodes=3
 yolo services production --remove=typesense
 ```
 
