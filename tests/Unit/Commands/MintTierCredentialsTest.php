@@ -113,6 +113,7 @@ beforeEach(function (): void {
     // The container is a process singleton with no global reset, so a minted
     // binding from one case would otherwise leak into the next — forget it.
     Helpers::app()->forgetInstance('yoloAssumedCredentials');
+    Helpers::app()->forgetInstance('yoloTierApplied');
 
     $buffer = new BufferedOutput();
     Prompt::setOutput($buffer);
@@ -133,6 +134,10 @@ afterEach(function (): void {
     }
 
     Helpers::app()->forgetInstance('yoloAssumedCredentials');
+    Helpers::app()->forgetInstance('yoloTierApplied');
+
+    putenv('CI');
+    unset($_ENV['CI'], $_SERVER['CI']);
 });
 
 it('returns the assumed-role Credentials and sends the role ARN + session name', function (): void {
@@ -375,8 +380,10 @@ it('break-glass: --dangerously-skip-permissions skips the cap and runs on the fu
 
 it('inherits a parent run\'s cap when nested — never re-mints or escalates to its own tier', function (): void {
     // The deploy → `sync --check` gate: a parent deploy has already minted (and
-    // capped to) the deployer tier, binding its credentials in the shared container.
+    // capped to) the deployer tier, binding its credentials and the tier-applied
+    // marker in the shared container.
     Helpers::app()->instance('yoloAssumedCredentials', new Credentials('ASIA-DEPLOYER', 'deployer-secret', 'deployer-session'));
+    Helpers::app()->instance('yoloTierApplied', true);
 
     // The nested run is an admin command. Without the inherit guard it would try to
     // climb deployer → admin (MFA-gated, and unresolvable from inside a role session)
@@ -393,4 +400,61 @@ it('inherits a parent run\'s cap when nested — never re-mints or escalates to 
     expect($captured)->toBeEmpty();
     expect(test()->promptOutput->fetch())->not->toContain('MFA');
     expect(Helpers::app('yoloAssumedCredentials')->getAccessKeyId())->toBe('ASIA-DEPLOYER');
+});
+
+it('skips the redundant self-assume when CI is already running as the tier role (OIDC)', function (): void {
+    // The CI/OIDC path: a GitHub Actions workflow assumes the deployer role before
+    // yolo runs, so the process is already the role. Re-assuming the role we are is
+    // a no-op the role's own policy denies — yolo must detect it and proceed, not
+    // refuse fail-closed (the regression the Lever A guard introduced).
+    putenv('CI=true');
+    $_ENV['CI'] = $_SERVER['CI'] = 'true';
+
+    // GetCallerIdentity returns this app's deployer role as an assumed-role session.
+    // A single mock response: a second STS call (a self-assume) would throw.
+    $mock = new MockHandler();
+    $mock->append(new Result(['Arn' => 'arn:aws:sts::111111111111:assumed-role/yolo-testing-my-app-deployer/GitHubActions']));
+    Helpers::app()->instance('sts', new StsClient([
+        'region' => 'ap-southeast-2', 'version' => 'latest', 'credentials' => false, 'handler' => $mock,
+    ]));
+
+    expect(mint(new DeployCommand()))->toBeNull();
+
+    // No minted credentials (the run stays on the ambient OIDC role), but the
+    // tier-applied marker is set so a nested `sync --check` inherits rather than
+    // trying to climb to admin. And it did not refuse.
+    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
+    expect(Helpers::app()->bound('yoloTierApplied'))->toBeTrue();
+    expect(test()->promptOutput->fetch())->not->toContain('Refusing to run');
+});
+
+it('still mints in CI when the caller is not yet the tier role (e.g. static-key / SSO CI)', function (): void {
+    // A CI runner authenticated as an IAM user (not the tier role) — there's a role
+    // to assume, so the self-assume skip must NOT fire: yolo mints as usual.
+    putenv('CI=true');
+    $_ENV['CI'] = $_SERVER['CI'] = 'true';
+
+    bindMockIamClient(['yolo-testing-my-app-deployer' => 'arn:aws:iam::111111111111:role/yolo-testing-my-app-deployer']);
+
+    $captured = [];
+    $mock = new MockHandler();
+    // GetCallerIdentity: an IAM user, not an assumed role → no skip.
+    $mock->append(new Result(['Arn' => 'arn:aws:iam::111111111111:user/ci-deployer']));
+    // AssumeRole: the real mint.
+    $mock->append(function ($command, $request) use (&$captured): Result {
+        $captured[] = ['name' => $command->getName(), 'args' => $command->toArray()];
+
+        return assumeRoleResult();
+    });
+    Helpers::app()->instance('sts', new StsClient([
+        'region' => 'ap-southeast-2', 'version' => 'latest', 'credentials' => false, 'handler' => $mock,
+    ]));
+
+    expect(mint(new DeployCommand()))->toBeNull();
+
+    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeTrue();
+    expect(Helpers::app()->bound('yoloTierApplied'))->toBeTrue();
+    expect($captured)->toHaveCount(1)
+        ->and($captured[0]['name'])->toBe('AssumeRole')
+        ->and($captured[0]['args']['RoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-my-app-deployer');
 });
