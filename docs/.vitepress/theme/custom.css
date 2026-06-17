@@ -2,3 +2,10 @@
   height: 36px;
   width: auto;
 }
+
+/* Top-align table cell contents site-wide — keeps the command/key column
+   level with the start of a tall neighbouring cell instead of centring it. */
+.vp-doc table th,
+.vp-doc table td {
+  vertical-align: top;
+}
