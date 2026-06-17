@@ -92,48 +92,21 @@ it('hard-fails the build when a typesense app has no env domain — no silent de
         ->toThrow(IntegrityCheckException::class, 'declare `domain`');
 });
 
-it('leaves both already-minted keys alone', function (): void {
+it('leaves an already-minted app alone', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'services' => ['typesense'],
     ]);
 
     // The idempotency marker is the app's env-side `.env` (env/.env.my-app) in
-    // the env config bucket — both the server-side and the search key present
-    // means fully minted.
+    // the env config bucket — a present TYPESENSE_API_KEY means the pair is
+    // already minted (both keys are written together).
     $captured = [];
     bindRoutedS3Client([
-        'GetObject' => new Result(['Body' => "TYPESENSE_API_KEY=already-minted\nTYPESENSE_SEARCH_KEY=already-search\n"]),
+        'GetObject' => new Result(['Body' => "TYPESENSE_API_KEY=already-minted\n"]),
     ], $captured);
 
     expect((new SyncTypesenseKeyStep('testing'))([]))->toBe(StepResult::SYNCED);
     expect(array_column($captured, 'name'))->not->toContain('PutObject');
-});
-
-it('backfills only the missing search key for an app minted before it existed', function (): void {
-    writeManifest([
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'services' => ['typesense'],
-    ]);
-
-    // Pre-search-key world: the env-side file carries the server key only, so
-    // the step mints just the search key and appends it, preserving the server key.
-    $captured = [];
-    bindServiceLifecycleWorld([
-        'manifest' => EDGE_OFFER,
-        'sharedEnv' => "TYPESENSE_API_KEY=admin-key\n",
-        'appEnvSide' => ['my-app' => "TYPESENSE_API_KEY=server-key\n"],
-    ], $captured);
-
-    $guzzle = new GuzzleMockHandler([
-        new Response(201, [], (string) json_encode(['value' => 'search-key'])),
-    ]);
-
-    $step = new SyncTypesenseKeyStep('testing', new Client(['handler' => HandlerStack::create($guzzle)]));
-    expect($step([]))->toBe(StepResult::CREATED);
-    expect($guzzle->count())->toBe(0); // one mint: the search key only
-
-    $put = collect($captured)->firstWhere('name', 'PutObject');
-    expect((string) $put['args']['Body'])->toContain('TYPESENSE_API_KEY=server-key')
-        ->and((string) $put['args']['Body'])->toContain('TYPESENSE_SEARCH_KEY=search-key');
 });
 
 it('reads its own env-side file as the idempotency marker, never the env-shared admin key', function (): void {
@@ -142,13 +115,13 @@ it('reads its own env-side file as the idempotency marker, never the env-shared 
     ]);
 
     // The env-shared `.env` carries the admin key; the app's env-side
-    // env/.env.my-app already carries both of this app's scoped keys. The step
-    // keys idempotency off its OWN file, so it's a no-op (no re-mint, no write).
+    // env/.env.my-app already carries this app's scoped key. The step keys
+    // idempotency off its OWN file, so it's a no-op (no re-mint, no write).
     $captured = [];
     bindServiceLifecycleWorld([
         'manifest' => EDGE_OFFER,
         'sharedEnv' => "TYPESENSE_API_KEY=admin-key\n",
-        'appEnvSide' => ['my-app' => "TYPESENSE_API_KEY=scoped-key\nTYPESENSE_SEARCH_KEY=scoped-search\n"],
+        'appEnvSide' => ['my-app' => "TYPESENSE_API_KEY=scoped-key\n"],
     ], $captured);
 
     expect((new SyncTypesenseKeyStep('testing'))([]))->toBe(StepResult::SYNCED);

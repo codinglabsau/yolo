@@ -36,11 +36,9 @@ use function Laravel\Prompts\warning;
  * Kept out of the app's developer `.env` (which the admin tier running sync is
  * fenced from) and apart from the env-shared `.env` (which carries the cluster
  * admin key), so each app's build reads only its own minted keys — never the
- * admin key, never a sibling's. Each key is minted exactly once — the keys
- * already in the env-side file are the source of truth, so sync mints only the
- * ones still missing and never rotates (rotation = delete the line, run
- * sync:app again); an app provisioned before the search key existed gets it
- * backfilled on the next sync.
+ * admin key, never a sibling's. Minted exactly once, the pair together — the
+ * keys already in the env-side file are the source of truth, so sync never
+ * re-mints or rotates (rotation = delete the lines, run sync:app again).
  *
  * The mint talks to the cluster's data plane over the public search host with
  * the admin key — the one place YOLO does — so while the cluster or its
@@ -60,20 +58,12 @@ class SyncTypesenseKeyStep implements Step
             return StepResult::SKIPPED;
         }
 
-        $needServerKey = Typesense::appKey() === null;
-        $needSearchKey = Typesense::searchKey() === null;
-
-        if (! $needServerKey && ! $needSearchKey) {
+        if (Typesense::appKey() !== null) {
             return StepResult::SYNCED;
         }
 
-        if ($needServerKey) {
-            $this->recordChange(Change::make(Typesense::CLIENT_KEY_NAME, 'absent', 'minted (scoped to ' . $this->prefix() . '*)'));
-        }
-
-        if ($needSearchKey) {
-            $this->recordChange(Change::make(Typesense::SEARCH_KEY_NAME, 'absent', 'minted (search-only, scoped to ' . $this->prefix() . '*)'));
-        }
+        $this->recordChange(Change::make(Typesense::CLIENT_KEY_NAME, 'absent', 'minted (scoped to ' . $this->prefix() . '*)'));
+        $this->recordChange(Change::make(Typesense::SEARCH_KEY_NAME, 'absent', 'minted (search-only, scoped to ' . $this->prefix() . '*)'));
 
         if (Arr::get($options, 'dry-run')) {
             return StepResult::WOULD_CREATE;
@@ -88,47 +78,25 @@ class SyncTypesenseKeyStep implements Step
             return StepResult::SKIPPED;
         }
 
-        $minted = [];
+        $serverKey = $this->mint($searchHost, $adminKey, ['*'], 'server-side');
+        $searchKey = $this->mint($searchHost, $adminKey, ['documents:search'], 'browser search-only');
 
-        if ($needServerKey) {
-            $serverKey = $this->mint($searchHost, $adminKey, ['*'], 'server-side');
+        if ($serverKey === null || $searchKey === null) {
+            warning(sprintf('Typesense key not minted — https://%s is not reachable yet (DNS/health may still be settling). Run `yolo sync:app` again shortly.', $searchHost));
 
-            if ($serverKey === null) {
-                return $this->skipUnreachable($searchHost);
-            }
-
-            $minted[Typesense::CLIENT_KEY_NAME] = $serverKey;
-        }
-
-        if ($needSearchKey) {
-            $searchKey = $this->mint($searchHost, $adminKey, ['documents:search'], 'browser search-only');
-
-            if ($searchKey === null) {
-                return $this->skipUnreachable($searchHost);
-            }
-
-            $minted[Typesense::SEARCH_KEY_NAME] = $searchKey;
+            return StepResult::SKIPPED;
         }
 
         Aws::s3()->putObject([
             'Bucket' => Paths::s3EnvConfigBucket(),
             'Key' => Paths::s3EnvAppEnvKey(),
-            'Body' => $this->bodyWithKeys($minted),
+            'Body' => $this->bodyWithKeys([
+                Typesense::CLIENT_KEY_NAME => $serverKey,
+                Typesense::SEARCH_KEY_NAME => $searchKey,
+            ]),
         ]);
 
         return StepResult::CREATED;
-    }
-
-    /**
-     * The cluster answered the admin key but a /keys POST didn't land — DNS or
-     * node health is still settling. Skip with instructions; the next sync
-     * mints whatever is still missing.
-     */
-    protected function skipUnreachable(string $searchHost): StepResult
-    {
-        warning(sprintf('Typesense key not minted — https://%s is not reachable yet (DNS/health may still be settling). Run `yolo sync:app` again shortly.', $searchHost));
-
-        return StepResult::SKIPPED;
     }
 
     /**
@@ -162,8 +130,7 @@ class SyncTypesenseKeyStep implements Step
     /**
      * The current env-side per-app `.env` with the minted keys appended — absent
      * file reads as empty, so the first mint creates it. Existing content is
-     * preserved byte-for-byte, so a backfilled search key lands beside the
-     * server key already there.
+     * preserved byte-for-byte.
      *
      * @param  array<string, string>  $values
      */

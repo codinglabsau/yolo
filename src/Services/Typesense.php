@@ -347,34 +347,12 @@ class Typesense extends ServiceDefinition
      * This app's scoped server-side key, read from its environment-side per-app
      * `.env` (env/.env.{app}) in the env config bucket — null until
      * SyncTypesenseKeyStep mints it, or while the bucket/file doesn't exist yet
-     * (a greenfield env). Read fresh every time (no memoisation): unlike the
-     * admin key, this is the once-minted idempotency marker the key step reads
-     * back on each sync, so it must reflect the live object, not a stale
-     * per-process cache.
+     * (a greenfield env). The search-only key is minted in the same pass, so a
+     * present server key implies a present search key; this is the pair's
+     * once-minted idempotency marker. Read fresh every time (no memoisation): it
+     * must reflect the live object, not a stale per-process cache.
      */
     public static function appKey(): ?string
-    {
-        return static::appEnvValue(static::CLIENT_KEY_NAME);
-    }
-
-    /**
-     * This app's browser search-only key, the search-path sibling of appKey()
-     * in the same env-side `.env` — the key step mints it alongside the
-     * server-side key and reads it back as the second half of its idempotency
-     * marker. Null until minted.
-     */
-    public static function searchKey(): ?string
-    {
-        return static::appEnvValue(static::SEARCH_KEY_NAME);
-    }
-
-    /**
-     * Read one var from this app's environment-side per-app `.env`
-     * (env/.env.{app}) in the env config bucket — null when the var, the file,
-     * or the bucket is absent (a greenfield env). Always live (no memoisation):
-     * the key step relies on it reflecting the current object on each sync.
-     */
-    protected static function appEnvValue(string $name): ?string
     {
         try {
             $body = (string) Aws::s3()->getObject([
@@ -389,9 +367,9 @@ class Typesense extends ServiceDefinition
             throw $e;
         }
 
-        $value = Dotenv::parse($body)[$name] ?? null;
+        $key = Dotenv::parse($body)[static::CLIENT_KEY_NAME] ?? null;
 
-        return is_string($value) && $value !== '' ? $value : null;
+        return is_string($key) && $key !== '' ? $key : null;
     }
 
     /**
