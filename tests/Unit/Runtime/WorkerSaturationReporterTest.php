@@ -1,54 +1,27 @@
 <?php
 
+declare(strict_types=1);
+
 use Aws\Result;
 use Aws\MockHandler;
 use Aws\CommandInterface;
 use GuzzleHttp\Promise\Create;
+use Illuminate\Cache\ArrayStore;
+use Illuminate\Cache\Repository;
 use Aws\CloudWatch\CloudWatchClient;
 use Codinglabs\Yolo\Runtime\CpuSnapshot;
 use Codinglabs\Yolo\Runtime\ScrapeResult;
 use Codinglabs\Yolo\Runtime\Contracts\Cpu;
 use Codinglabs\Yolo\Runtime\Contracts\Scraper;
-use Codinglabs\Yolo\Runtime\Contracts\WindowStore;
 use Codinglabs\Yolo\Runtime\WorkerSaturationReporter;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
 
 /** The window key the reporter claims for task 'task-1' — forget it to simulate the next window. */
 const WINDOW_KEY = 'yolo-burst:task-1:window';
 
-function fakeWindowStore(): WindowStore
+function arrayCache(): Repository
 {
-    return new class() implements WindowStore
-    {
-        /** @var array<string, int> */
-        public array $data = [];
-
-        public function add(string $key, int $ttlSeconds): bool
-        {
-            if (array_key_exists($key, $this->data)) {
-                return false;
-            }
-
-            $this->data[$key] = 1;
-
-            return true;
-        }
-
-        public function get(string $key): ?int
-        {
-            return $this->data[$key] ?? null;
-        }
-
-        public function put(string $key, int $value, int $ttlSeconds): void
-        {
-            $this->data[$key] = $value;
-        }
-
-        public function forget(string $key): void
-        {
-            unset($this->data[$key]);
-        }
-    };
+    return new Repository(new ArrayStore());
 }
 
 /** A scraper that returns a queued sequence of results, then Absent forever. */
@@ -113,9 +86,9 @@ function recordingCloudWatch(array &$captured): CloudWatchClient
     ]);
 }
 
-function burstReporter(WindowStore $store, Scraper $scraper, Cpu $cpu, array &$published): WorkerSaturationReporter
+function burstReporter(Repository $cache, Scraper $scraper, Cpu $cpu, array &$published): WorkerSaturationReporter
 {
-    return new WorkerSaturationReporter($store, recordingCloudWatch($published), $scraper, $cpu, 'svc', 'task-1');
+    return new WorkerSaturationReporter($cache, recordingCloudWatch($published), $scraper, $cpu, 'svc', 'task-1');
 }
 
 /** Two snapshots a window apart whose delta is the given CPU % of a 0.5-core task. */
@@ -130,7 +103,7 @@ function cpuRamp(float $percent): array
 
 it('publishes a reading at or above the emit floor', function (): void {
     $published = [];
-    $reporter = burstReporter(fakeWindowStore(), queuedScraper([ScrapeResult::reading(75.0)]), nullCpu(), $published);
+    $reporter = burstReporter(arrayCache(), queuedScraper([ScrapeResult::reading(75.0)]), nullCpu(), $published);
 
     $reporter->report();
 
@@ -139,7 +112,7 @@ it('publishes a reading at or above the emit floor', function (): void {
 
 it('stays silent for a reading below the emit floor', function (): void {
     $published = [];
-    $reporter = burstReporter(fakeWindowStore(), queuedScraper([ScrapeResult::reading(25.0)]), nullCpu(), $published);
+    $reporter = burstReporter(arrayCache(), queuedScraper([ScrapeResult::reading(25.0)]), nullCpu(), $published);
 
     $reporter->report();
 
@@ -148,8 +121,7 @@ it('stays silent for a reading below the emit floor', function (): void {
 
 it('does real work at most once per window no matter the request rate', function (): void {
     $published = [];
-    $store = fakeWindowStore();
-    $reporter = burstReporter($store, queuedScraper([ScrapeResult::reading(75.0), ScrapeResult::reading(90.0)]), nullCpu(), $published);
+    $reporter = burstReporter(arrayCache(), queuedScraper([ScrapeResult::reading(75.0), ScrapeResult::reading(90.0)]), nullCpu(), $published);
 
     $reporter->report();
     $reporter->report(); // window still claimed → no scrape, no publish
@@ -159,7 +131,7 @@ it('does real work at most once per window no matter the request rate', function
 
 it('stays silent when metrics are absent (off / classic mode)', function (): void {
     $published = [];
-    $reporter = burstReporter(fakeWindowStore(), queuedScraper([ScrapeResult::absent()]), nullCpu(), $published);
+    $reporter = burstReporter(arrayCache(), queuedScraper([ScrapeResult::absent()]), nullCpu(), $published);
 
     $reporter->report();
 
@@ -168,11 +140,11 @@ it('stays silent when metrics are absent (off / classic mode)', function (): voi
 
 it('never breaches on a failure before it has been primed by a success — even at high CPU', function (): void {
     $published = [];
-    $store = fakeWindowStore();
-    $reporter = burstReporter($store, queuedScraper([ScrapeResult::failure(), ScrapeResult::failure()]), queuedCpu(cpuRamp(100.0)), $published);
+    $cache = arrayCache();
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::failure(), ScrapeResult::failure()]), queuedCpu(cpuRamp(100.0)), $published);
 
     foreach (range(1, 2) as $ignored) {
-        $store->forget(WINDOW_KEY);
+        $cache->forget(WINDOW_KEY);
         $reporter->report();
     }
 
@@ -181,14 +153,14 @@ it('never breaches on a failure before it has been primed by a success — even 
 
 it('breaches with a tripping value when a primed scrape fails and CPU is high', function (): void {
     $published = [];
-    $store = fakeWindowStore();
-    $reporter = burstReporter($store, queuedScraper([
+    $cache = arrayCache();
+    $reporter = burstReporter($cache, queuedScraper([
         ScrapeResult::reading(40.0), // primes (below floor → no publish) and seeds the CPU baseline
         ScrapeResult::failure(),     // scrape fails; CPU corroborates
     ]), queuedCpu(cpuRamp(100.0)), $published);
 
     foreach (range(1, 2) as $ignored) {
-        $store->forget(WINDOW_KEY);
+        $cache->forget(WINDOW_KEY);
         $reporter->report();
     }
 
@@ -198,14 +170,14 @@ it('breaches with a tripping value when a primed scrape fails and CPU is high', 
 
 it('stays silent when a primed scrape fails but CPU is low (a transient, not a pin)', function (): void {
     $published = [];
-    $store = fakeWindowStore();
-    $reporter = burstReporter($store, queuedScraper([
+    $cache = arrayCache();
+    $reporter = burstReporter($cache, queuedScraper([
         ScrapeResult::reading(40.0),
         ScrapeResult::failure(),
     ]), queuedCpu(cpuRamp(20.0)), $published);
 
     foreach (range(1, 2) as $ignored) {
-        $store->forget(WINDOW_KEY);
+        $cache->forget(WINDOW_KEY);
         $reporter->report();
     }
 
@@ -214,14 +186,14 @@ it('stays silent when a primed scrape fails but CPU is low (a transient, not a p
 
 it('stays silent when a primed scrape fails and CPU cannot be read', function (): void {
     $published = [];
-    $store = fakeWindowStore();
-    $reporter = burstReporter($store, queuedScraper([
+    $cache = arrayCache();
+    $reporter = burstReporter($cache, queuedScraper([
         ScrapeResult::reading(40.0),
         ScrapeResult::failure(),
     ]), queuedCpu([new CpuSnapshot(0, 0, 0.5)]), $published); // no second snapshot → null on the failure window
 
     foreach (range(1, 2) as $ignored) {
-        $store->forget(WINDOW_KEY);
+        $cache->forget(WINDOW_KEY);
         $reporter->report();
     }
 

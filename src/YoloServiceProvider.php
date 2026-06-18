@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\Cache;
 use Codinglabs\Yolo\Runtime\CgroupCpu;
 use Illuminate\Support\ServiceProvider;
 use Codinglabs\Yolo\Runtime\MetricsScraper;
-use Codinglabs\Yolo\Runtime\CacheWindowStore;
 use Codinglabs\Yolo\Runtime\WorkerSaturationReporter;
 use Codinglabs\Yolo\Steps\Sync\App\SyncTaskDefinitionStep;
 use Codinglabs\Yolo\Steps\Build\Fargate\CheckYoloInstalledStep;
@@ -36,7 +35,7 @@ class YoloServiceProvider extends ServiceProvider
         }
 
         $this->app->singleton(WorkerSaturationReporter::class, fn (): WorkerSaturationReporter => new WorkerSaturationReporter(
-            store: new CacheWindowStore(Cache::store()),
+            cache: Cache::store(),
             cloudwatch: new CloudWatchClient([
                 'version' => 'latest',
                 'region' => $this->region(),

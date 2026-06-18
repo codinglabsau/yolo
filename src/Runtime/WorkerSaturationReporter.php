@@ -8,24 +8,25 @@ use Throwable;
 use Aws\CloudWatch\CloudWatchClient;
 use Codinglabs\Yolo\YoloServiceProvider;
 use Codinglabs\Yolo\Runtime\Contracts\Cpu;
+use Illuminate\Contracts\Cache\Repository;
 use Codinglabs\Yolo\Runtime\Contracts\Scraper;
-use Codinglabs\Yolo\Runtime\Contracts\WindowStore;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
 
 /**
  * Publishes FrankenPHP worker saturation to CloudWatch for burst step-scaling. It's
- * invoked from an after-response hook the {@see YoloServiceProvider}
- * registers ($app->terminating), so the work rides on a request that already holds a
- * CPU slice instead of a separate loop fighting for one on a pinned box.
+ * invoked from an after-response hook the {@see YoloServiceProvider} registers
+ * ($app->terminating), so the work rides on a request that already holds a CPU slice
+ * instead of a separate loop fighting for one on a pinned box.
  *
  * report() runs on every request but is debounced to real work at most once per
- * window via an atomic per-task claim in the {@see WindowStore} (Redis), whose TTL
- * encodes the poll interval, stretched to the cooldown after a tripping datapoint —
+ * window via an atomic per-task claim in the app's cache (Redis on a YOLO app), whose
+ * TTL encodes the poll interval, stretched to the cooldown after a tripping datapoint —
  * so CloudWatch is touched only while hot and only as often as a scale can act. This
  * throttle is load-bearing, not a nicety: under FrankenPHP worker mode the request
  * isn't finalised until the terminate callback returns, so the scrape + put cost the
  * worker throughput — which is exactly why only one request per window pays it, and
- * only while hot.
+ * only while hot. The cache keys are task-scoped, so a shared Redis is correct: each
+ * task still publishes its own datapoint and the alarm takes Maximum across them.
  *
  * The metric, namespace, dimension, floor, threshold and cooldown are the same
  * constants the alarm reads ({@see WebBurstPolicy}) — the contract between the two.
@@ -53,7 +54,7 @@ class WorkerSaturationReporter
     private const int CPU_TTL = 30;
 
     public function __construct(
-        private readonly WindowStore $store,
+        private readonly Repository $cache,
         private readonly CloudWatchClient $cloudwatch,
         private readonly Scraper $scraper,
         private readonly Cpu $cpu,
@@ -65,8 +66,10 @@ class WorkerSaturationReporter
     {
         // Claim this window. Whoever wins does the single scrape; everyone else is
         // "still sleeping / just evaluated" and returns — so no work is wasted on
-        // internal requests, and CloudWatch is never touched out of cadence.
-        if (! $this->store->add($this->key('window'), WebBurstPolicy::POLL_INTERVAL)) {
+        // internal requests, and CloudWatch is never touched out of cadence. The
+        // debounce keeps this off the hot path: at most one request per window pays
+        // for the scrape + put, and only while the service is actually hot.
+        if (! $this->cache->add($this->key('window'), 1, WebBurstPolicy::POLL_INTERVAL)) {
             return;
         }
 
@@ -85,7 +88,7 @@ class WorkerSaturationReporter
     {
         // A clean reading primes the reporter — proof the endpoint is reachable, so a
         // later failure can be trusted enough to corroborate against CPU.
-        $this->store->put($this->key('primed'), 1, self::PRIMED_TTL);
+        $this->cache->put($this->key('primed'), 1, self::PRIMED_TTL);
 
         // Below the emit floor: near-zero cost at rest, nothing worth publishing.
         if ($saturation < WebBurstPolicy::EMIT_FLOOR) {
@@ -97,7 +100,7 @@ class WorkerSaturationReporter
         // A tripping datapoint already steps the desired count out; hold the window at
         // the cooldown so we don't pile on while the new task boots.
         if ($saturation >= WebBurstPolicy::ALARM_THRESHOLD) {
-            $this->store->put($this->key('window'), 1, WebBurstPolicy::COOLDOWN);
+            $this->cache->put($this->key('window'), 1, WebBurstPolicy::COOLDOWN);
         }
     }
 
@@ -105,7 +108,7 @@ class WorkerSaturationReporter
     {
         // Never primed → the endpoint has never answered here (boot race or metrics
         // misconfig), so a failure is config, not load. Stay silent.
-        if ($this->store->get($this->key('primed')) === null) {
+        if ($this->cache->get($this->key('primed')) === null) {
             return;
         }
 
@@ -117,7 +120,7 @@ class WorkerSaturationReporter
         }
 
         $this->put(self::BREACH_VALUE);
-        $this->store->put($this->key('window'), 1, WebBurstPolicy::COOLDOWN);
+        $this->cache->put($this->key('window'), 1, WebBurstPolicy::COOLDOWN);
     }
 
     /**
@@ -133,15 +136,19 @@ class WorkerSaturationReporter
             return null;
         }
 
-        $previousUsage = $this->store->get($this->key('cpu-usage'));
-        $previousAt = $this->store->get($this->key('cpu-at'));
+        $previousUsage = $this->storedInt($this->key('cpu-usage'));
+        $previousAt = $this->storedInt($this->key('cpu-at'));
 
-        $this->store->put($this->key('cpu-usage'), $snapshot->usageMicros, self::CPU_TTL);
-        $this->store->put($this->key('cpu-at'), $snapshot->atMicros, self::CPU_TTL);
+        $this->cache->put($this->key('cpu-usage'), $snapshot->usageMicros, self::CPU_TTL);
+        $this->cache->put($this->key('cpu-at'), $snapshot->atMicros, self::CPU_TTL);
 
-        $wallMicros = $snapshot->atMicros - ($previousAt ?? 0);
+        if ($previousUsage === null || $previousAt === null) {
+            return null;
+        }
 
-        if ($previousUsage === null || $previousAt === null || $wallMicros <= 0 || $snapshot->cores <= 0.0) {
+        $wallMicros = $snapshot->atMicros - $previousAt;
+
+        if ($wallMicros <= 0 || $snapshot->cores <= 0.0) {
             return null;
         }
 
@@ -165,6 +172,14 @@ class WorkerSaturationReporter
             // Fail safe: a transient CloudWatch error must never bubble into the
             // request lifecycle — target-tracking still owns scaling.
         }
+    }
+
+    /** A previously-stored integer value, or null when absent — the cache returns mixed. */
+    private function storedInt(string $key): ?int
+    {
+        $value = $this->cache->get($key);
+
+        return $value === null ? null : (int) $value;
     }
 
     private function key(string $suffix): string
