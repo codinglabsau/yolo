@@ -1,5 +1,7 @@
 <?php
 
+use Codinglabs\Yolo\YoloServiceProvider;
+
 arch()->preset()->php();
 
 // The runtime surfaces (the service provider + Runtime classes) boot inside the
@@ -9,6 +11,6 @@ arch()->preset()->php();
 arch('runtime-in-app code reads config(), not env()')
     ->expect('env')
     ->not->toBeUsedIn([
-        'Codinglabs\Yolo\YoloServiceProvider',
+        YoloServiceProvider::class,
         'Codinglabs\Yolo\Runtime',
     ]);

@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo\Runtime\Ssr;
 
 use Throwable;
+use Inertia\Ssr\Gateway;
 use Inertia\Ssr\Response;
-use Inertia\Ssr\HttpGateway;
 use Illuminate\Support\Facades\Http;
 use Codinglabs\Yolo\YoloServiceProvider;
 use Illuminate\Contracts\Cache\Repository;
@@ -14,33 +14,38 @@ use Illuminate\Http\Client\StrayRequestException;
 use Codinglabs\Yolo\Runtime\WorkerSaturationReporter;
 
 /**
- * An Inertia SSR gateway that sheds rendering under load. It extends the stock
- * {@see HttpGateway} — inheriting its enable/bundle gating ({@see HttpGateway::shouldDispatch()})
- * and URL resolution — and overrides only dispatch() to add the two protections the
- * default gateway lacks:
+ * An Inertia SSR gateway that protects the web tier under load. It replaces the stock
+ * gateway and adds the two things the default lacks, then renders against the same local
+ * Node SSR server:
  *
- *  1. Saturation bypass. When the burst engine has flagged this task as hot — the
- *     same per-task worker-saturation reading that drives step-scaling, set by
- *     {@see WorkerSaturationReporter} — skip the Node render entirely and let Inertia
- *     fall back to CSR. This sheds the most expensive per-request CPU exactly when
- *     CPU is scarce, instantly and locally (no CloudWatch round-trip), buying time
- *     for the slower scale-out to land.
+ *  1. A bounded render timeout. Inertia's own gateway POSTs to Node with no timeout, so a
+ *     slow render blocks the worker for Laravel's HTTP default (~30s) — and a worker
+ *     blocked on a synchronous, CPU-bound render is exactly how one hot task spirals into
+ *     a health-check death-loop. A tight bound frees the worker fast; a failed render is
+ *     just CSR. This covers the few seconds before the saturation flag (below) trips.
  *
- *  2. A bounded render timeout. The stock gateway POSTs to Node with no timeout, so a
- *     slow render blocks the worker for Laravel's HTTP default (~30s). A tight bound
- *     frees the worker fast; Inertia already turns a failed dispatch into CSR. This is
- *     the backstop covering the few seconds before the saturation flag trips.
+ *  2. Saturation bypass. While the burst engine has flagged this task hot — the same
+ *     per-task worker-saturation reading that drives step-scaling, set by
+ *     {@see WorkerSaturationReporter} — skip the render entirely and fall back to CSR.
+ *     Sheds the most expensive per-request CPU exactly when CPU is scarce, instantly and
+ *     locally, buying time for the slower scale-out to land.
  *
- * Bound from {@see YoloServiceProvider} on the autoscaling web tier
- * only (the same gate that runs the reporter), so it's inert everywhere else.
+ * It implements the `Gateway` interface and talks to the SSR server over the stable
+ * `inertia.ssr.*` config + `/render` protocol, rather than extending the stock
+ * HttpGateway, because that interface and protocol are stable across Inertia v2 and v3
+ * whereas HttpGateway's internals are not (v3 reworked its method set) and an SSR app may
+ * be on either major. The one thing it doesn't carry over is v3's per-path SSR exclusion
+ * (`ExcludesSsrPaths`), which a replacing gateway can't see — a documented follow-up.
+ *
+ * Bound from {@see YoloServiceProvider} on the autoscaling web tier only
+ * (the same gate that runs the reporter), so it's inert everywhere else.
  */
-class SaturationAwareSsrGateway extends HttpGateway
+class SaturationAwareSsrGateway implements Gateway
 {
     /**
-     * The render budget, in seconds. Deliberately generous: the saturation bypass is
-     * the real load shedder, so the timeout only needs to catch an individual
-     * pathological render — a tight value would needlessly degrade a legitimately slow
-     * first render to CSR (and silently cost its SEO).
+     * The render budget, in seconds. Generous on purpose: the saturation bypass is the
+     * real load shedder, so the timeout only needs to catch an individual slow render — a
+     * tight value would needlessly degrade a legitimately slow first render to CSR.
      */
     public const float RENDER_TIMEOUT = 2.0;
 
@@ -52,15 +57,13 @@ class SaturationAwareSsrGateway extends HttpGateway
     /**
      * @param  array<string, mixed>  $page
      */
-    #[\Override]
     public function dispatch(array $page): ?Response
     {
-        if (! $this->shouldDispatch()) {
+        if (! config('inertia.ssr.enabled', true)) {
             return null;
         }
 
-        // Hot box → shed SSR before we ever touch Node. Inertia renders CSR. The flag
-        // is set by the burst reporter while saturated and self-expires on cooldown.
+        // Hot box → shed SSR before we touch Node. Returning null is Inertia's CSR path.
         if ($this->cache->get(WorkerSaturationReporter::ssrBypassKey($this->taskId))) {
             return null;
         }
@@ -68,11 +71,11 @@ class SaturationAwareSsrGateway extends HttpGateway
         try {
             $response = Http::connectTimeout(1)
                 ->timeout(self::RENDER_TIMEOUT)
-                ->post($this->getUrl('/render'), $page)
+                ->post($this->renderUrl(), $page)
                 ->throw()
                 ->json();
         } catch (StrayRequestException $e) {
-            throw $e; // keep strict-HTTP-fake tests honest, exactly as HttpGateway does
+            throw $e; // keep strict-HTTP-fake tests honest
         } catch (Throwable) {
             return null; // timeout / connection refused / Node 5xx → CSR fallback
         }
@@ -85,5 +88,12 @@ class SaturationAwareSsrGateway extends HttpGateway
             implode("\n", $response['head']),
             $response['body'],
         );
+    }
+
+    private function renderUrl(): string
+    {
+        $base = rtrim((string) config('inertia.ssr.url', 'http://127.0.0.1:13714'), '/');
+
+        return $base . '/render';
     }
 }
