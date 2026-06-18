@@ -146,12 +146,11 @@ it('nices the bundled background programs in classic mode too', function (): voi
 
     expect($config)->toContain('command=frankenphp php-server');
     expect($config)->not->toContain('nice -n 19 frankenphp');
-    expect($config)->not->toContain('nice -n 3 frankenphp');
     expect($config)->toContain('command=nice -n 19 php artisan queue:work --tries=3 --max-time=3600');
     expect($config)->toContain('command=nice -n 19 supercronic /app/docker/crontab');
 });
 
-it('keeps the saturation emitter at the highest priority so burst metrics report promptly', function (): void {
+it('runs the saturation emitter at the default priority so it never starves the scrape it reads', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['autoscaling' => true]],
@@ -159,21 +158,24 @@ it('keeps the saturation emitter at the highest priority so burst metrics report
 
     $config = generatedSupervisorConfig();
 
-    // The emitter must always be schedulable to publish saturation, so it alone stays
-    // at nice 0 — every other program in the group is niced below it.
+    // The emitter scrapes the web server's own metrics endpoint, so it must never
+    // outrank web — it runs at the default priority, never niced in either direction.
     expect($config)->toContain('command=php /app/docker/yolo-saturation.php');
     expect($config)->not->toContain('nice -n 19 php /app/docker/yolo-saturation.php');
-    expect($config)->not->toContain('nice -n 3 php /app/docker/yolo-saturation.php');
 
-    // The request path is niced just under the emitter; the background tier well below it.
-    expect($config)->toContain('command=nice -n 3 php artisan octane:start');
+    // Web stays at the default priority too — the emitter is not lifted above it, so
+    // neither is niced (a niced web command would read `command=nice -n ...`).
+    expect($config)->toContain('command=php artisan octane:start --host=0.0.0.0 --port=8000');
+    expect($config)->not->toContain('nice -n 19 php artisan octane:start');
+
+    // Only the background tier is niced down, so a heavy job can't starve the web tier.
     expect($config)->toContain('command=nice -n 19 php artisan queue:work --tries=3 --max-time=3600');
     expect($config)->toContain('command=nice -n 19 supercronic /app/docker/crontab');
 });
 
-it('orders the whole web group emitter > web/ssr > queue/scheduler when burst is bundled', function (): void {
+it('orders the whole web group web ≈ ssr ≈ emitter > queue/scheduler when burst is bundled', function (): void {
     // Grouped topology: web + ssr + queue + scheduler + the burst emitter all share
-    // the one web container, so all three priority tiers appear at once.
+    // the one web container, so both priority tiers appear at once.
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['ssr' => true, 'autoscaling' => true]],
@@ -181,21 +183,22 @@ it('orders the whole web group emitter > web/ssr > queue/scheduler when burst is
 
     $config = generatedSupervisorConfig();
 
-    // Tier 0 — the emitter, never niced.
+    // Tier 0 — web, ssr and the emitter all at the default priority. The emitter must
+    // not outrank the web server it scrapes, so none of the three is niced.
     expect($config)->toContain('command=php /app/docker/yolo-saturation.php');
-    // Tier 1 — the request path (web + ssr), niced just below the emitter.
-    expect($config)->toContain('command=nice -n 3 php artisan octane:start');
-    expect($config)->toContain('command=nice -n 3 php artisan inertia:start-ssr');
-    // Tier 2 — background work, well below the request path.
+    expect($config)->toContain('command=php artisan octane:start --host=0.0.0.0 --port=8000');
+    expect($config)->toContain('command=php artisan inertia:start-ssr');
+    expect($config)->not->toContain('nice -n 19 php artisan octane:start');
+    expect($config)->not->toContain('nice -n 19 php artisan inertia:start-ssr');
+    // Tier 1 — background work, niced down so it can't starve the request path.
     expect($config)->toContain('command=nice -n 19 php artisan queue:work --tries=3 --max-time=3600');
     expect($config)->toContain('command=nice -n 19 supercronic /app/docker/crontab');
 });
 
-it('lifts the emitter above web and ssr in a separated-web container, leaving the standalone queue untouched', function (): void {
+it('runs web, ssr and the emitter at the default priority in a separated-web container, leaving the standalone queue untouched', function (): void {
     // Separated-web topology: the worker tier is extracted, so the web container holds
-    // only web + ssr + the emitter — but the emitter must still outrank the request path
-    // (its CPU contenders here are Octane and SSR, neither of which can be deprioritised
-    // as background).
+    // only web + ssr + the emitter — and with no background tier to nice, nothing is
+    // niced at all (the emitter must never be lifted above the web server it scrapes).
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['ssr' => true, 'autoscaling' => true], 'queue' => true],
@@ -205,8 +208,9 @@ it('lifts the emitter above web and ssr in a separated-web container, leaving th
 
     $web = file_get_contents(Paths::build('docker/supervisord.conf'));
     expect($web)->toContain('command=php /app/docker/yolo-saturation.php');
-    expect($web)->toContain('command=nice -n 3 php artisan octane:start');
-    expect($web)->toContain('command=nice -n 3 php artisan inertia:start-ssr');
+    expect($web)->toContain('command=php artisan octane:start --host=0.0.0.0 --port=8000');
+    expect($web)->toContain('command=php artisan inertia:start-ssr');
+    expect($web)->not->toContain('nice');
     expect($web)->not->toContain('[program:queue]');
     expect($web)->not->toContain('[program:scheduler]');
 
@@ -218,10 +222,9 @@ it('lifts the emitter above web and ssr in a separated-web container, leaving th
     expect($queue)->not->toContain('nice');
 });
 
-it('keeps web and ssr at full priority when no burst emitter shares the container', function (): void {
-    // Non-autoscaling: no emitter, so there's nothing to lift the request path under —
-    // web + ssr stay at the default priority (and ssr is never treated as background),
-    // only the queue/scheduler tier is niced.
+it('keeps web and ssr at the default priority while nicing the bundled background tier', function (): void {
+    // Non-autoscaling: no emitter. web + ssr stay at the default priority (ssr is never
+    // treated as background), and only the queue/scheduler tier is niced.
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['ssr' => true, 'autoscaling' => false]],
@@ -231,7 +234,6 @@ it('keeps web and ssr at full priority when no burst emitter shares the containe
 
     expect($config)->toContain('command=php artisan octane:start --host=0.0.0.0 --port=8000');
     expect($config)->toContain('command=php artisan inertia:start-ssr');
-    expect($config)->not->toContain('nice -n 3');
     expect($config)->not->toContain('nice -n 19 php artisan inertia:start-ssr');
     expect($config)->toContain('command=nice -n 19 php artisan queue:work --tries=3 --max-time=3600');
     expect($config)->toContain('command=nice -n 19 supercronic /app/docker/crontab');
@@ -414,8 +416,8 @@ it('adds the saturation emitter program and writes its script for an Octane auto
     $script = file_get_contents(Paths::build('docker/yolo-saturation.php'));
     expect($script)
         ->toContain("\$service = 'yolo-testing-my-app-web';")
-        ->toContain('$floor = 70;')
-        ->toContain('$threshold = 80;')
+        ->toContain('$floor = 50;')
+        ->toContain('$threshold = 70;')
         ->toContain("'region' => 'ap-southeast-2'")
         ->toContain('->putMetricData(')
         ->toContain("'Namespace' => 'YOLO/Autoscaling'")
@@ -458,9 +460,10 @@ it('runs octane against the metrics Caddyfile via --caddyfile when autoscaling',
         'tasks' => ['web' => ['autoscaling' => true]],
     ]);
 
-    // Autoscaling bundles the burst emitter, so the web command is niced just below it.
+    // Autoscaling bundles the burst emitter, but the web command stays at the default
+    // priority (the emitter must not outrank the endpoint it scrapes), so it's never niced.
     expect(generatedSupervisorConfig())
-        ->toContain('command=nice -n 3 php artisan octane:start --host=0.0.0.0 --port=8000 --caddyfile=/app/docker/Caddyfile');
+        ->toContain('command=php artisan octane:start --host=0.0.0.0 --port=8000 --caddyfile=/app/docker/Caddyfile');
 });
 
 it('writes no Caddyfile and passes no --caddyfile when the web tier is not autoscaling', function (): void {
@@ -480,9 +483,9 @@ it('writes no Caddyfile in classic mode even when autoscaling', function (): voi
     $config = generatedSupervisorConfig();
 
     // Classic mode runs frankenphp php-server, not octane:start — no Caddyfile, no flag.
-    // Autoscaling still bundles the emitter, so the web command is niced below it like
-    // any request-path program.
-    expect($config)->toContain('command=nice -n 3 frankenphp php-server');
+    // Autoscaling still bundles the emitter, but the web command stays at the default
+    // priority like the emitter itself.
+    expect($config)->toContain('command=frankenphp php-server');
     expect($config)->not->toContain('--caddyfile');
     expect(is_file(Paths::build('docker/Caddyfile')))->toBeFalse();
 });

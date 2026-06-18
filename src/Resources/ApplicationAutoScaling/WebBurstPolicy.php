@@ -61,7 +61,14 @@ use Codinglabs\Yolo\Steps\Build\Fargate\GenerateSupervisorConfigStep;
  * Note: burst complements, never replaces, warm capacity. Even instant detection
  * still waits ~55s for the new task to boot and pass ALB health, so sub-1-min
  * scale-out needs `min ≥ N`; this just makes the spike that exceeds the warm
- * headroom land faster.
+ * headroom land faster. And the in-container gauge is best-effort: a single
+ * hard-pinned task (min 1, one small box at ~99% CPU) can starve the emitter along
+ * with everything else, so no datapoint escapes and burst stays dark — the
+ * target-tracking policies and `min ≥ 2` / more task CPU are the guarantees, burst
+ * only sharpens the light-pin / multi-task case. Do not try to rescue that silence
+ * by raising the emitter's scheduling priority above the web server: it scrapes
+ * web's own metrics endpoint, so outranking web starves the scrape (the regression
+ * this replaced). See {@see GenerateSupervisorConfigStep} for the priority ordering.
  */
 class WebBurstPolicy
 {
@@ -72,15 +79,25 @@ class WebBurstPolicy
 
     public const string METRIC_DIMENSION = 'ServiceName';
 
-    /** Worker-saturation % at which the alarm trips and the burst steps out. */
-    public const int ALARM_THRESHOLD = 80;
+    /**
+     * Worker-saturation % at which the alarm trips and the burst steps out. Set so a
+     * small worker pool can actually reach it: saturation quantises to busy/total, so a
+     * 4-worker task only ever reads 0/25/50/75/100 % — a threshold of 80 (the old value)
+     * needed a sustained 4/4 = 100 %, which a real pool rarely holds, so burst never
+     * tripped. With the strict `>` comparator, 70 trips at 3/4 = 75 % yet stays under a
+     * larger pool's higher steps. yolo doesn't know the app's real FrankenPHP worker
+     * count (it's auto-detected at runtime, not a manifest value), so this is a fixed
+     * default that holds across the realistic 4–16 worker range rather than a derived one.
+     */
+    public const int ALARM_THRESHOLD = 70;
 
     /**
-     * The emitter only publishes at or above this saturation %, so the metric (and
-     * its cost) is near-zero when the service isn't hot. Below the alarm threshold
-     * so the alarm still sees not-breaching datapoints around the trip point.
+     * The emitter only publishes at or above this saturation %, so the metric (and its
+     * cost) is near-zero when the service isn't hot. Below the alarm threshold so the
+     * alarm is fed a not-breaching datapoint on the step just under the trip — for a
+     * 4-worker pool that's the 50 % (2/4) reading, so the floor sits at 50.
      */
-    public const int EMIT_FLOOR = 70;
+    public const int EMIT_FLOOR = 50;
 
     /** High-resolution alarm: a 10s period is the fast end of CloudWatch's range. */
     private const int PERIOD = 10;
@@ -154,9 +171,9 @@ class WebBurstPolicy
                 'AdjustmentType' => 'ChangeInCapacity',
                 'Cooldown' => self::COOLDOWN,
                 'MetricAggregationType' => 'Maximum',
-                // Bounds are relative to the alarm threshold (80): ≥80 → +1, ≥90 → +2.
+                // Bounds are relative to the alarm threshold (70): ≥70 → +1, ≥80 → +2.
                 // Saturation can't meaningfully clip (it's a %), so the deeper overshoot
-                // gets the bigger step.
+                // gets the bigger step — a 4-worker task reads 75 → +1, a pinned 100 → +2.
                 'StepAdjustments' => [
                     ['MetricIntervalLowerBound' => 0, 'MetricIntervalUpperBound' => 10, 'ScalingAdjustment' => 1],
                     ['MetricIntervalLowerBound' => 10, 'ScalingAdjustment' => 2],
