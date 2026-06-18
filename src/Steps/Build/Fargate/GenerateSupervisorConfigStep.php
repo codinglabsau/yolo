@@ -28,9 +28,37 @@ use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
  * entrypoint exec's directly, with no supervisord config. The web config stays at
  * the path the scaffolded Dockerfile copies (docker/supervisord.conf); the queue
  * config rides along under docker/ via the Dockerfile's `COPY . /app`.
+ *
+ * When a container co-locates the web server with background programs (queue
+ * worker and/or scheduler), those background programs launch at a positive nice
+ * so the request path always wins CPU under contention — see config().
  */
 class GenerateSupervisorConfigStep implements Step
 {
+    /**
+     * The nice the background programs (queue worker, scheduler) launch at when
+     * they share a container with the web server, so the kernel scheduler favours
+     * the request path under CPU contention. +19 is the lowest priority an
+     * unprivileged user can set — background work effectively yields to web when
+     * CPU is saturated, yet still runs at full speed when it isn't (nice only
+     * biases the scheduler under contention). This reallocates CPU, it doesn't cap
+     * it: a queue/scheduler burst still shows on the CloudWatch CPU metric, it just
+     * no longer hits web latency. On a min-1 combined app, sustained web saturation
+     * that starves the queue is itself a scale-out signal the queue-depth alarm
+     * already covers.
+     */
+    private const int BACKGROUND_NICE = 19;
+
+    /**
+     * The programs that yield CPU priority to the web server when bundled alongside
+     * it. ssr is excluded — it renders the request path, so it stays at nice 0 with
+     * web — and so is the saturation emitter, whose burst metrics must report
+     * promptly to drive scale-out.
+     *
+     * @var list<string>
+     */
+    private const array BACKGROUND_PROGRAMS = ['scheduler', 'queue'];
+
     public function __construct(
         protected string $environment,
         protected $filesystem = new Filesystem()
@@ -87,6 +115,11 @@ class GenerateSupervisorConfigStep implements Step
     {
         $blocks = [$this->header()];
 
+        // The web server's presence in this container is what makes it the request
+        // path — programGraces only emits a 'web' grace for the web group — so it is
+        // exactly the co-location trigger for nicing the background programs below.
+        $colocatesWebServer = isset($graces['web']);
+
         // One block per program present in this container, in a stable order. Stop
         // waits come from ShutdownTimings so a program's graceful-stop window matches
         // the container stopTimeout derived from the same source.
@@ -100,7 +133,7 @@ class GenerateSupervisorConfigStep implements Step
         //  - queue     queue:work, with a longer stop wait so an in-flight job can finish
         foreach (['web', 'ssr', 'scheduler', 'queue'] as $program) {
             if (isset($graces[$program])) {
-                $blocks[] = $this->program($program, ProcessCommands::{$program}(), stopwaitsecs: $graces[$program]);
+                $blocks[] = $this->program($program, $this->command($program, $colocatesWebServer), stopwaitsecs: $graces[$program]);
             }
         }
 
@@ -235,6 +268,25 @@ class GenerateSupervisorConfigStep implements Step
             '[rpcinterface:supervisor]',
             'supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface',
         ]);
+    }
+
+    /**
+     * The shell command for a program's `command=` line. Background programs (queue
+     * worker, scheduler) are launched under `nice` when they share the container
+     * with the web server, so Octane keeps CPU priority under contention; the web
+     * server, ssr and any standalone (split-service) container run their commands
+     * unchanged. The container runs as www-data, and a positive nice (lowering
+     * priority) needs no privilege, so no CAP_SYS_NICE is involved.
+     */
+    protected function command(string $program, bool $colocatesWebServer): string
+    {
+        $command = ProcessCommands::{$program}();
+
+        if ($colocatesWebServer && in_array($program, self::BACKGROUND_PROGRAMS, true)) {
+            return sprintf('nice -n %d %s', self::BACKGROUND_NICE, $command);
+        }
+
+        return $command;
     }
 
     protected function program(string $name, string $command, int $stopwaitsecs = 10): string

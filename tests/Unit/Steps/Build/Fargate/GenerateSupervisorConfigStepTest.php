@@ -107,11 +107,100 @@ it('bundles octane, the scheduler and the queue worker into the web config for a
 
     expect($config)->toContain('[program:web]');
     expect($config)->toContain('[program:scheduler]');
-    // The scheduler runs as cron, not a schedule:work daemon.
-    expect($config)->toContain('command=supercronic /app/docker/crontab');
+    // The scheduler runs as cron, not a schedule:work daemon. Bundled alongside the
+    // web server, it's niced so the request path wins CPU under contention (see the
+    // co-location tests below for the full nice contract).
+    expect($config)->toContain('command=nice -n 19 supercronic /app/docker/crontab');
     expect($config)->not->toContain('schedule:work');
     expect($config)->toContain('[program:queue]');
-    expect($config)->toContain('command=php artisan queue:work --tries=3 --max-time=3600');
+    expect($config)->toContain('command=nice -n 19 php artisan queue:work --tries=3 --max-time=3600');
+});
+
+it('nices the bundled queue and scheduler so the web request path wins CPU under contention', function (): void {
+    // Plain web app: web + queue + scheduler share one container, so the background
+    // programs launch under nice while the web server keeps full CPU priority.
+    $config = generatedSupervisorConfig();
+
+    expect($config)->toContain('command=nice -n 19 php artisan queue:work --tries=3 --max-time=3600');
+    expect($config)->toContain('command=nice -n 19 supercronic /app/docker/crontab');
+
+    // The web server is never niced — it's the request path the nicing protects.
+    expect($config)->toContain('command=php artisan octane:start --host=0.0.0.0 --port=8000');
+    expect($config)->not->toContain('nice -n 19 php artisan octane:start');
+});
+
+it('nices the bundled background programs in classic mode too', function (): void {
+    // The web program is the request path whether it's Octane or FrankenPHP classic
+    // mode — the co-located background work yields to it either way.
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['octane' => false]],
+    ]);
+
+    $config = generatedSupervisorConfig();
+
+    expect($config)->toContain('command=frankenphp php-server');
+    expect($config)->not->toContain('nice -n 19 frankenphp');
+    expect($config)->toContain('command=nice -n 19 php artisan queue:work --tries=3 --max-time=3600');
+    expect($config)->toContain('command=nice -n 19 supercronic /app/docker/crontab');
+});
+
+it('keeps the bundled ssr renderer at full priority — it serves the request path', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['ssr' => true]],
+    ]);
+
+    $config = generatedSupervisorConfig();
+
+    // ssr renders requests, so it stays at nice 0 beside web; queue + scheduler still nice.
+    expect($config)->toContain('command=php artisan inertia:start-ssr');
+    expect($config)->not->toContain('nice -n 19 php artisan inertia:start-ssr');
+    expect($config)->toContain('command=nice -n 19 php artisan queue:work --tries=3 --max-time=3600');
+    expect($config)->toContain('command=nice -n 19 supercronic /app/docker/crontab');
+});
+
+it('keeps the saturation emitter at full priority so burst metrics report promptly', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => true]],
+    ]);
+
+    $config = generatedSupervisorConfig();
+
+    // The emitter must publish promptly to drive scale-out, so it is not niced — but
+    // the co-located queue + scheduler in the same container still are.
+    expect($config)->toContain('command=php /app/docker/yolo-saturation.php');
+    expect($config)->not->toContain('nice -n 19 php /app/docker/yolo-saturation.php');
+    expect($config)->toContain('command=nice -n 19 php artisan queue:work --tries=3 --max-time=3600');
+    expect($config)->toContain('command=nice -n 19 supercronic /app/docker/crontab');
+});
+
+it('nices nothing in a web-only container when the worker tier is extracted', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => true, 'queue' => true, 'scheduler' => true],
+    ]);
+
+    // Octane alone — no co-located background work to arbitrate, so nothing is niced.
+    expect(generatedSupervisorConfig())->not->toContain('nice');
+});
+
+it('nices nothing in a standalone queue+scheduler container — no request path to protect', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => true, 'queue' => true],
+    ]);
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    // The standalone queue co-hosts the scheduler but no web server, so both background
+    // programs run at normal priority — nicing two co-equal background programs would
+    // just restore parity.
+    $queue = file_get_contents(Paths::build('docker/supervisord.queue.conf'));
+    expect($queue)->toContain('command=php artisan queue:work --tries=3 --max-time=3600');
+    expect($queue)->toContain('command=supercronic /app/docker/crontab');
+    expect($queue)->not->toContain('nice');
 });
 
 it('runs octane alone in the web config when both queue and scheduler are extracted', function (): void {

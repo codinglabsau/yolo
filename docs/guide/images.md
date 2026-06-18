@@ -98,6 +98,8 @@ tasks:
 - **The scheduler** runs [supercronic](https://github.com/aptible/supercronic), firing `php artisan schedule:run` every minute, bundled until you extract it. (YOLO uses cron, not `schedule:work`, so the scheduler survives `SIGTERM` cleanly — supercronic stops scheduling on stop and waits out the in-flight run.)
 - **`ssr: true`** adds Inertia's SSR renderer — see [Inertia SSR](#inertia-ssr) below.
 
+When the web server shares a container with the queue worker and/or scheduler, those background programs are launched under `nice -n 19` so the request path always wins CPU under contention — a heavy scheduled job or queue batch can't starve Octane and spike user-facing latency. `nice` only biases the kernel scheduler when CPU is saturated, so under the normal case the background work still runs at full speed; it reallocates CPU rather than capping it, so the burst still shows on the CloudWatch CPU metric, it just no longer hits web latency. This applies only to the combined container — a web-only, queue-only, or scheduler-only service (the split-service topology below) runs its programs at normal priority, since there's no shared CPU to arbitrate.
+
 ::: tip Independent task groups
 Run web in isolation by extracting the **worker tier**: add a top-level `tasks.queue` block and the queue worker and scheduler move to their own service, leaving the web container running just the web server. Add `tasks.scheduler` too for a dedicated singleton cron. Where each role runs is derived from which blocks you've added; see [Where each role runs](/reference/manifest#where-each-role-runs) and [Scaling](/guide/scaling).
 :::
