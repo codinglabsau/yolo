@@ -43,7 +43,7 @@ class YoloServiceProvider extends ServiceProvider
                 'http' => ['connect_timeout' => 1, 'timeout' => 1],
             ]),
             scraper: new MetricsScraper(),
-            cpu: new CgroupCpu(),
+            cpu: new CgroupCpu(allocatedCores: $this->burstCpu()),
             serviceName: $this->burstService(),
             taskId: $this->taskId(),
         ));
@@ -82,6 +82,18 @@ class YoloServiceProvider extends ServiceProvider
     private function burstEnabled(): bool
     {
         return $this->burstService() !== '';
+    }
+
+    /**
+     * The task's vCPU allocation, injected on the web task-def alongside the service
+     * name (see SyncTaskDefinitionStep). The CPU fallback divides usage by it; the
+     * Fargate microVM exposes more vCPUs than a fractional task is throttled to, so this
+     * injected value is the only trustworthy denominator. 0.0 (unset) lets CgroupCpu fall
+     * back to the cgroup CFS quota. getenv (not env()) so it survives config:cache.
+     */
+    private function burstCpu(): float
+    {
+        return (float) getenv('YOLO_BURST_CPU');
     }
 
     private function region(): string

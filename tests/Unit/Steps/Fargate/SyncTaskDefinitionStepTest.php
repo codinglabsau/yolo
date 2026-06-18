@@ -252,12 +252,33 @@ it('sets no container environment for a non-autoscaling web app', function (): v
         ->not->toHaveKey('environment');
 });
 
-it('sets the burst-metrics service name on the autoscaling web container', function (): void {
+it('sets the burst-metrics service name and vCPU allocation on the autoscaling web container', function (): void {
     // The default web tier autoscales, so the runtime YoloServiceProvider needs the ECS
-    // service name to dimension the metric by — its presence is also the gate, so burst
-    // needs no separate enabled flag. Everything else it reads from WebBurstPolicy directly.
+    // service name to dimension the metric by (its presence is also the gate, so burst
+    // needs no separate enabled flag) and the task's vCPU allocation for the CPU fallback
+    // denominator. The beforeEach manifest sizes web at 1024 CPU units → 1 vCPU.
     expect(SyncTaskDefinitionStep::payload()['containerDefinitions'][0]['environment'])
-        ->toBe([['name' => 'YOLO_BURST_SERVICE', 'value' => 'yolo-testing-my-app-web']]);
+        ->toBe([
+            ['name' => 'YOLO_BURST_SERVICE', 'value' => 'yolo-testing-my-app-web'],
+            ['name' => 'YOLO_BURST_CPU', 'value' => '1'],
+        ]);
+});
+
+it('injects the vCPU allocation as Fargate CPU units divided by 1024', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['cpu' => '512', 'memory' => '1024']],
+    ]);
+
+    bindMockIamClient([
+        'yolo-testing-my-app-ecs-task-role' => 'arn:aws:iam::111111111111:role/yolo-testing-my-app-ecs-task-role',
+        'yolo-testing-ecs-execution-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role',
+    ]);
+
+    // A fractional task — 512 units is the 0.5 vCPU that the microVM misreports as 2,
+    // which is exactly why the denominator is injected rather than read back.
+    expect(SyncTaskDefinitionStep::payload()['containerDefinitions'][0]['environment'])
+        ->toContain(['name' => 'YOLO_BURST_CPU', 'value' => '0.5']);
 });
 
 it('keeps the burst-metrics env off the queue and scheduler task definitions', function (): void {
