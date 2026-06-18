@@ -18,8 +18,10 @@ environments:
         domain: globex-with-yolo.com
     tasks:
       web:
-        queue: true
-        scheduler: true
+        autoscaling: true
+      queue:
+        autoscaling: true
+      scheduler: true
 ```
 
 The tenant id (`acme`, `globex`) identifies that tenant's resources throughout YOLO. Each tenant follows the same domain rules as a solo app — set `apex` separately if the tenant is served from a subdomain (see [Domains](/guide/domains)).

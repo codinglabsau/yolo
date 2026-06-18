@@ -4,6 +4,7 @@ use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Commands\InitCommand;
+use Codinglabs\Yolo\Commands\SyncCommand;
 
 function dockerignorePatterns(): array
 {
@@ -35,6 +36,22 @@ it('scaffolds web autoscaling on by default', function (): void {
     Helpers::app()->instance('environment', 'production');
 
     expect(Manifest::isAutoscaling())->toBeTrue();
+})->after(fn (): bool => @unlink(Paths::manifest()));
+
+it('scaffolds a manifest that satisfies the autoscaling-required integrity gate', function (): void {
+    // The stub declares an explicit `autoscaling`, so the scaffold a fresh app gets
+    // must pass `ensureManifestIntegrity` rather than tripping the new requirement.
+    file_put_contents(Paths::manifest(), str_replace(
+        ['{NAME}', '{AWS_ACCOUNT_ID}', '{AWS_REGION}'],
+        ['my-app', '111111111111', 'ap-southeast-2'],
+        file_get_contents(Paths::stubs('yolo.yml.stub'))
+    ));
+    Helpers::app()->instance('environment', 'production');
+
+    $command = new SyncCommand();
+    $gate = new ReflectionMethod($command, 'ensureManifestIntegrity');
+
+    expect($gate->invoke($command))->toBeTrue();
 })->after(fn (): bool => @unlink(Paths::manifest()));
 
 it('scaffolds a .dockerignore when none exists', function (): void {
