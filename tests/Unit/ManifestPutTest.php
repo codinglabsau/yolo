@@ -80,6 +80,52 @@ YAML);
     expect(file_get_contents(Paths::manifest()))->toContain("        autoscaling:\n          min: 3\n          max: 6");
 });
 
+it('creates a missing intermediate parent block and keeps the surrounding formatting', function (): void {
+    writeFormattedManifest(<<<'YAML'
+name: my-app  # the application
+
+environments:
+  production:
+    # capacity tuning lives here
+    tasks:
+      web:
+        cpu: 512
+        memory: 1024
+YAML);
+
+    // autoscaling is on-by-default, so the block is absent — the first scale must
+    // create `autoscaling:` AND its `min` child without re-dumping the whole file.
+    Manifest::put('tasks.web.autoscaling.min', 3);
+
+    $contents = file_get_contents(Paths::manifest());
+
+    // The intermediate block + leaf are spliced in under web at the right indent...
+    expect($contents)->toContain("      web:\n        autoscaling:\n          min: 3\n        cpu: 512");
+    // ...and the comments + blank line a full re-dump would have stripped survive.
+    expect($contents)->toContain('name: my-app  # the application');
+    expect($contents)->toContain('    # capacity tuning lives here');
+    expect(Manifest::get('tasks.web.autoscaling.min'))->toBe(3);
+});
+
+it('falls back to a full dump when the deepest ancestor carries an inline value', function (): void {
+    // `web: true` can't take block children — splicing under `tasks` would duplicate
+    // the key, so the surgical pass declines and put() re-dumps (losing comments) to
+    // render web as a proper block. The value must still round-trip correctly.
+    writeFormattedManifest(<<<'YAML'
+name: my-app
+
+environments:
+  production:
+    tasks:
+      web: true
+YAML);
+
+    Manifest::put('tasks.web.autoscaling.min', 3);
+
+    expect(Manifest::get('tasks.web.autoscaling.min'))->toBe(3);
+    expect(substr_count(file_get_contents(Paths::manifest()), 'web:'))->toBe(1);
+});
+
 it('round-trips the inserted value through the manifest reader', function (): void {
     writeFormattedManifest(<<<'YAML'
 name: my-app

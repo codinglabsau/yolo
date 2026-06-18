@@ -176,11 +176,11 @@ class Manifest
 
     public static function put(string $key, mixed $value): false|int
     {
-        // Scalar writes are applied surgically — only the changed value's
-        // characters are rewritten, so comments, blank lines, key ordering and
-        // quoting in yolo.yml all survive. Non-scalar writes (init scaffolding
-        // arrays like deploy/tenants into a fresh file) and any key the surgical
-        // pass can't locate fall back to a full re-dump.
+        // Scalar writes are applied surgically — the value is rewritten in place
+        // (or its key, plus any missing parent blocks, spliced in) so comments,
+        // blank lines, key ordering and quoting in yolo.yml all survive. Non-scalar
+        // writes (init scaffolding arrays like deploy/tenants into a fresh file) and
+        // any key the surgical pass can't anchor fall back to a full re-dump.
         if (is_scalar($value)) {
             $path = [...['environments', Helpers::environment()], ...explode('.', $key)];
 
@@ -204,21 +204,23 @@ class Manifest
     /**
      * Rewrite a single scalar at $path (e.g. [environments, production, tasks,
      * web, autoscaling, min]) in raw block-style YAML, preserving every other byte
-     * — comments, blank lines, ordering, indentation, quoting. Updates the value
-     * in place when the key exists; inserts it as the first child when only its
-     * immediate parent block exists. Returns null when neither the key nor its
-     * parent can be located, so the caller can fall back to a full dump.
+     * — comments, blank lines, ordering, indentation, quoting. Updates the value in
+     * place when the key exists; otherwise splices the missing chain (the leaf plus
+     * any absent intermediate blocks) in as a fresh block under the deepest existing
+     * ancestor on the path. Returns null when no block-style ancestor can anchor it
+     * — a fresh file, or a deepest ancestor that carries an inline value
+     * (`web: true`, `autoscaling: {}`) and so can't take block children, where a
+     * structural rewrite is needed — so the caller can fall back to a full dump.
      */
     protected static function setScalarPreservingFormat(string $raw, array $path, mixed $value): ?string
     {
         $formatted = static::formatScalar($value);
         $lines = explode("\n", $raw);
 
-        // Walk the block structure, tracking the active key path by indentation.
-        $stack = [];          // list of [indent, key] for the current ancestry
-        $parentLine = null;   // line index of the immediate parent block, if present
-        $parentIndent = null;
-        $parentPath = array_slice($path, 0, -1);
+        // Walk the block structure, tracking the active key path by indentation and
+        // the deepest existing ancestor of $path we could hang a missing chain off.
+        $stack = [];        // list of [indent, key] for the current ancestry
+        $ancestor = null;   // [depth, lineIndex, indent, blockStyle] of the deepest path-prefix found
 
         foreach ($lines as $index => $line) {
             if (! preg_match('/^(\s*)([A-Za-z0-9_.-]+):(.*)$/', $line, $matches)) {
@@ -243,26 +245,44 @@ class Manifest
                 return implode("\n", $lines);
             }
 
-            // Only a block-style parent (nothing after the colon but maybe a
-            // comment) can take a new child line. A parent with an inline value —
-            // `queue: {}` / `queue: []` — would be corrupted by splicing a block
-            // child beneath it, so leave parentLine null and let put() fall back to
-            // a full re-dump (which renders it as a proper block).
-            if ($currentPath === $parentPath && trim((string) preg_replace('/#.*$/', '', $matches[3])) === '') {
-                $parentLine = $index;
-                $parentIndent = $indent;
+            // Track the deepest line whose path is a strict prefix of $path — the
+            // node we'd splice the missing chain under. Recorded regardless of style:
+            // a deepest ancestor carrying an inline value (`web: true`) can't take
+            // block children, and splicing under a shallower one would duplicate it,
+            // so that case must bail rather than splice (handled below).
+            $depth = count($currentPath);
+
+            if ($depth < count($path) && $currentPath === array_slice($path, 0, $depth) && ($ancestor === null || $depth > $ancestor[0])) {
+                $blockStyle = trim((string) preg_replace('/#.*$/', '', $matches[3])) === '';
+                $ancestor = [$depth, $index, $indent, $blockStyle];
             }
         }
 
-        // Key absent but its immediate parent block exists → insert as first child.
-        if ($parentLine !== null) {
-            $childIndent = str_repeat(' ', $parentIndent + 2);
-            array_splice($lines, $parentLine + 1, 0, sprintf('%s%s: %s', $childIndent, end($path), $formatted));
-
-            return implode("\n", $lines);
+        // No usable ancestor, or the deepest one carries an inline value → bail so
+        // put() re-dumps (which renders the whole structure as proper blocks).
+        if ($ancestor === null || ! $ancestor[3]) {
+            return null;
         }
 
-        return null;
+        // Splice every path element below the deepest existing ancestor in as a fresh
+        // block under it — the missing intermediate blocks plus the leaf, each level
+        // indented two spaces deeper. With only the immediate parent missing this is a
+        // single leaf line; with a gap (an absent `autoscaling`) it builds the chain.
+        [$depth, $lineIndex, $indent] = $ancestor;
+        $missing = array_slice($path, $depth);
+        $lastOffset = count($missing) - 1;
+        $insert = [];
+
+        foreach ($missing as $offset => $key) {
+            $keyIndent = str_repeat(' ', $indent + 2 * ($offset + 1));
+            $insert[] = $offset === $lastOffset
+                ? sprintf('%s%s: %s', $keyIndent, $key, $formatted)
+                : sprintf('%s%s:', $keyIndent, $key);
+        }
+
+        array_splice($lines, $lineIndex + 1, 0, $insert);
+
+        return implode("\n", $lines);
     }
 
     /**
