@@ -29,10 +29,18 @@ function bindRecordingLoadBalancerClient(array $attributes = []): object
             $this->calls[] = ['name' => $cmd->getName(), 'args' => $cmd->toArray()];
 
             return Create::promiseFor(match ($cmd->getName()) {
+                'CreateLoadBalancer' => new Result([
+                    'LoadBalancers' => [[
+                        'LoadBalancerArn' => 'arn:aws:elasticloadbalancing:ap-southeast-2:111111111111:loadbalancer/app/yolo-testing/abc',
+                    ]],
+                ]),
                 'DescribeLoadBalancers' => new Result([
                     'LoadBalancers' => [[
                         'LoadBalancerName' => 'yolo-testing',
                         'LoadBalancerArn' => 'arn:aws:elasticloadbalancing:ap-southeast-2:111111111111:loadbalancer/app/yolo-testing/abc',
+                        // `active` so create()'s LoadBalancerAvailable waiter
+                        // resolves on its first poll.
+                        'State' => ['Code' => 'active'],
                     ]],
                 ]),
                 'DescribeLoadBalancerAttributes' => new Result(['Attributes' => $this->attributes]),
@@ -97,6 +105,34 @@ beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
+});
+
+it('waits for the load balancer to become active before reconciling attributes', function (): void {
+    // A fresh ALB provisions for a minute or two; downstream env steps (notably the
+    // WAF association) fail against a not-yet-active load balancer. create() must
+    // block on the LoadBalancerAvailable waiter — a DescribeLoadBalancers poll —
+    // after CreateLoadBalancer and before it writes attributes.
+    $ec2 = [];
+
+    bindMockEc2Client([
+        'DescribeSecurityGroups' => new Result(['SecurityGroups' => [
+            ['GroupName' => 'yolo-testing-load-balancer-security-group', 'GroupId' => 'sg-lb1'],
+        ]]),
+        'DescribeSubnets' => new Result(['Subnets' => [
+            ['SubnetId' => 'subnet-1'],
+        ]]),
+    ], $ec2);
+
+    $recorder = bindRecordingLoadBalancerClient();
+
+    (new LoadBalancer())->create();
+
+    $sequence = collect($recorder->calls)->pluck('name');
+
+    expect($sequence)->toContain('DescribeLoadBalancers');
+    expect($sequence->search('DescribeLoadBalancers'))
+        ->toBeGreaterThan($sequence->search('CreateLoadBalancer'))
+        ->toBeLessThan($sequence->search('ModifyLoadBalancerAttributes'));
 });
 
 it('pins the full hardened attribute shape', function (): void {

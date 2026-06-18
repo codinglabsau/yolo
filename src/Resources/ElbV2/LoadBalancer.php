@@ -71,6 +71,17 @@ class LoadBalancer implements Resource, SynchronisesConfiguration
             ...Aws::tags($this->tags()),
         ])['LoadBalancers'][0]['LoadBalancerArn'];
 
+        // A fresh ALB sits in `provisioning` for a minute or two before it reaches
+        // `active`. Later env-scope steps reference it the moment it exists — most
+        // sharply SyncWafAssociationStep, whose associateWebACL throws
+        // WAFUnavailableEntityException against a not-yet-active load balancer (a
+        // bounded retry can't outwait a multi-minute provision). Block until it's
+        // available so everything downstream sees a usable ALB; the LongRunning
+        // sync step heartbeats the progress bar meanwhile.
+        Aws::waitFor(Aws::elasticLoadBalancingV2(), 'LoadBalancerAvailable', [
+            'LoadBalancerArns' => [$arn],
+        ]);
+
         // A fresh ALB starts on AWS defaults (no deletion protection, access logs
         // off, invalid headers passed through); bring our hardened attributes onto
         // it. The env logs bucket (S3LogsBucket) is provisioned earlier in the
