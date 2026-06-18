@@ -71,7 +71,7 @@ function currentlyRunning(string $version): array
             'cpu' => '256',
             'memory' => '512',
             'containerDefinitions' => [[
-                'image' => '111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/my-app:' . $version,
+                'image' => '111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/yolo-testing-my-app:' . $version,
             ]],
         ]]),
     ];

@@ -10,13 +10,23 @@ use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
+/**
+ * The app's image repository, env-scoped (`yolo-{env}-{app}`) like every other
+ * App resource — NOT bare `{app}`. The image is env-specific by construction
+ * (`ConfigureEnvAndVersionStep` bakes `APP_VERSION`/`ASSET_URL` in at build), so
+ * there is no "build once, promote across envs" to gain from a shared repo —
+ * only collisions to avoid: two environments of the same app would clobber each
+ * other's `:latest` (and so each other's `--cache-from`), share one 30-image
+ * retention window, and the per-env-scoped deployer would be free to overwrite a
+ * sibling env's images (DeployerPolicy scopes ECR to this repo's ARN).
+ */
 class EcrRepository implements Resource
 {
     use ResolvesTags;
 
     public function name(): string
     {
-        return Manifest::name();
+        return $this->keyedName();
     }
 
     public function scope(): Scope

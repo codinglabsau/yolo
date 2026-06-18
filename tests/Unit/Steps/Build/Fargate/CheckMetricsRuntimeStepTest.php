@@ -60,7 +60,7 @@ it('probes the built image tag', function (): void {
 
     $step(['app-version' => '26.24.1.1200']);
 
-    expect($image)->toEndWith('/my-app:26.24.1.1200');
+    expect($image)->toEndWith('/yolo-testing-my-app:26.24.1.1200');
 });
 
 it('builds a docker probe that greps the baked Caddyfile for the metrics directive', function (): void {

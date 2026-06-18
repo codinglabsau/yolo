@@ -55,14 +55,14 @@ it('defaults image to the app ECR repository when not overridden', function (): 
     $payload = SyncTaskDefinitionStep::payload();
 
     expect($payload['containerDefinitions'][0]['image'])
-        ->toBe('111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/my-app:latest');
+        ->toBe('111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/yolo-testing-my-app:latest');
 });
 
 it('pins image to the supplied tag when one is passed', function (): void {
     $payload = SyncTaskDefinitionStep::payload(imageTag: '26.21.2.1500');
 
     expect($payload['containerDefinitions'][0]['image'])
-        ->toBe('111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/my-app:26.21.2.1500');
+        ->toBe('111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/yolo-testing-my-app:26.21.2.1500');
 });
 
 it('names the container after the role and passes it as the command', function (): void {
@@ -204,7 +204,7 @@ it('does not re-register when only the image tag differs (deploy pinned a versio
     // must reuse that image instead of rendering repo:latest, so a no-op deploy→sync
     // is in sync rather than churning a throwaway revision on every run.
     $live = liveTaskDefinition();
-    $live['containerDefinitions'][0]['image'] = '111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/my-app:26.21.2.1500';
+    $live['containerDefinitions'][0]['image'] = '111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/yolo-testing-my-app:26.21.2.1500';
 
     $captured = [];
     bindRoutedEcsClient([
@@ -221,7 +221,7 @@ it('preserves the deployed image when re-registering for a genuine infra change'
     // A real field drifted (cpu) AND the live revision runs a deployed version — the
     // new revision must carry that deployed image, never silently swap to :latest.
     $live = liveTaskDefinition(['cpu' => '9999']);
-    $live['containerDefinitions'][0]['image'] = '111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/my-app:26.21.2.1500';
+    $live['containerDefinitions'][0]['image'] = '111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/yolo-testing-my-app:26.21.2.1500';
 
     $captured = [];
     bindRoutedEcsClient([
@@ -234,7 +234,7 @@ it('preserves the deployed image when re-registering for a genuine infra change'
     expect($register)->not->toBeNull()
         ->and($register['args']['cpu'])->toBe('1024')
         ->and($register['args']['containerDefinitions'][0]['image'])
-        ->toBe('111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/my-app:26.21.2.1500');
+        ->toBe('111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/yolo-testing-my-app:26.21.2.1500');
 });
 
 it('sets no container environment by default', function (): void {

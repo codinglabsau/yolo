@@ -21,7 +21,7 @@ beforeEach(function (): void {
 it('scopes the ECR push statement to this app\'s repository', function (): void {
     $statement = statementFor((new DeployerPolicy())->document(), 'ecr:PutImage');
 
-    expect($statement['Resource'])->toBe('arn:aws:ecr:ap-southeast-2:111111111111:repository/my-app');
+    expect($statement['Resource'])->toBe('arn:aws:ecr:ap-southeast-2:111111111111:repository/yolo-testing-my-app');
     expect($statement['Action'])->toContain('ecr:InitiateLayerUpload', 'ecr:UploadLayerPart', 'ecr:CompleteLayerUpload');
 });
 
