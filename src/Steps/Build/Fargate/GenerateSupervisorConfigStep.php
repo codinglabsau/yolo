@@ -28,9 +28,73 @@ use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
  * entrypoint exec's directly, with no supervisord config. The web config stays at
  * the path the scaffolded Dockerfile copies (docker/supervisord.conf); the queue
  * config rides along under docker/ via the Dockerfile's `COPY . /app`.
+ *
+ * The web group runs a three-tier CPU-priority order so the kernel scheduler
+ * arbitrates contention in the app's favour (nice only bites when CPU is
+ * saturated — a no-op with spare capacity, so steady-state throughput is
+ * unchanged):
+ *
+ *     saturation (nice 0, highest)  >  web ≈ ssr  >  queue, scheduler (lowest)
+ *
+ *  - The burst saturation emitter must always be schedulable to report worker
+ *    saturation to CloudWatch — if it's starved exactly when the box is pinned,
+ *    burst step-scaling never trips and only slow CPU target-tracking rescues. It
+ *    stays at nice 0 (highest) because an unprivileged process can only RAISE its
+ *    nice, never lower it, so the request path is niced down to it rather than the
+ *    emitter up. The emitter is runnable only for milliseconds per cycle, so this
+ *    is invisible to request latency.
+ *  - The request path (web + ssr) is niced just below the emitter, but only when
+ *    the emitter shares its container (web autoscaling); otherwise it stays at the
+ *    default priority.
+ *  - Background work (queue worker, scheduler) is niced well below the request
+ *    path when co-located with it, so a heavy job can't starve the web tier.
+ *
+ * See config() / niceLevel() for the rendering.
  */
 class GenerateSupervisorConfigStep implements Step
 {
+    /**
+     * The nice the background programs (queue worker, scheduler) launch at when
+     * they share a container with the web server, so the kernel scheduler favours
+     * the request path under CPU contention. +19 is the lowest priority an
+     * unprivileged user can set — background work effectively yields to web when
+     * CPU is saturated, yet still runs at full speed when it isn't. This reallocates
+     * CPU, it doesn't cap it: a queue/scheduler burst still shows on the CloudWatch
+     * CPU metric, it just no longer hits web latency. On a min-1 combined app,
+     * sustained web saturation that starves the queue is itself a scale-out signal
+     * the queue-depth alarm already covers.
+     */
+    private const int BACKGROUND_NICE = 19;
+
+    /**
+     * The nice the request path (web server, ssr renderer) launches at when the
+     * burst saturation emitter shares its container, leaving the emitter alone at
+     * nice 0 as the highest-priority process in the group. A small, deliberately
+     * minimal nudge: enough that the emitter is always picked promptly when it wakes
+     * (so it can sample and publish even while web + ssr peg a small box), far above
+     * the +19 background tier, and invisible to request latency. +2 is the lighter
+     * alternative; either holds the ordering.
+     */
+    private const int REQUEST_PATH_NICE = 3;
+
+    /**
+     * The programs niced below the web server when bundled alongside it.
+     *
+     * @var list<string>
+     */
+    private const array BACKGROUND_PROGRAMS = ['scheduler', 'queue'];
+
+    /**
+     * The request-path programs niced just below the saturation emitter when it
+     * shares their container, so the emitter is never starved by the very saturation
+     * it reports. Both contend for the box's CPU — Octane's workers and the SSR
+     * Node process — and neither can be treated as background, so the emitter is
+     * lifted above them instead.
+     *
+     * @var list<string>
+     */
+    private const array REQUEST_PATH_PROGRAMS = ['web', 'ssr'];
+
     public function __construct(
         protected string $environment,
         protected $filesystem = new Filesystem()
@@ -87,6 +151,16 @@ class GenerateSupervisorConfigStep implements Step
     {
         $blocks = [$this->header()];
 
+        // The web server's presence in this container is what makes it the request
+        // path — programGraces only emits a 'web' grace for the web group — so it is
+        // exactly the co-location trigger for nicing the background programs below.
+        $colocatesWebServer = isset($graces['web']);
+
+        // The burst saturation emitter rides only the web container, and only when the
+        // web tier autoscales. The same flag both adds the emitter below and nices the
+        // request path under it (niceLevel), so the two can't drift apart.
+        $bundlesEmitter = $group === ServerGroup::WEB && Manifest::isAutoscaling();
+
         // One block per program present in this container, in a stable order. Stop
         // waits come from ShutdownTimings so a program's graceful-stop window matches
         // the container stopTimeout derived from the same source.
@@ -100,13 +174,15 @@ class GenerateSupervisorConfigStep implements Step
         //  - queue     queue:work, with a longer stop wait so an in-flight job can finish
         foreach (['web', 'ssr', 'scheduler', 'queue'] as $program) {
             if (isset($graces[$program])) {
-                $blocks[] = $this->program($program, ProcessCommands::{$program}(), stopwaitsecs: $graces[$program]);
+                $blocks[] = $this->program($program, $this->command($program, $colocatesWebServer, $bundlesEmitter), stopwaitsecs: $graces[$program]);
             }
         }
 
-        // The burst saturation emitter (web container only) — a stateless loop
-        // that needs no drain window, so a 1s stop wait is plenty.
-        if ($group === ServerGroup::WEB && Manifest::isAutoscaling()) {
+        // The burst saturation emitter (web container only) — a stateless loop that
+        // needs no drain window, so a 1s stop wait is plenty. It alone stays at nice 0:
+        // every other program in the group is niced below it (niceLevel) so it can
+        // always be scheduled to sample and report, even while the box is pinned.
+        if ($bundlesEmitter) {
             $blocks[] = $this->program('saturation', ProcessCommands::saturationEmitter(), stopwaitsecs: 1);
         }
 
@@ -235,6 +311,43 @@ class GenerateSupervisorConfigStep implements Step
             '[rpcinterface:supervisor]',
             'supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface',
         ]);
+    }
+
+    /**
+     * The shell command for a program's `command=` line, wrapped in `nice` to place
+     * it in the web group's priority order (see the class docblock). The container
+     * runs as www-data and every nice applied here is positive (lowering priority),
+     * which needs no privilege — so no CAP_SYS_NICE or task-def ulimit is involved.
+     */
+    protected function command(string $program, bool $colocatesWebServer, bool $bundlesEmitter): string
+    {
+        $command = ProcessCommands::{$program}();
+        $nice = $this->niceLevel($program, $colocatesWebServer, $bundlesEmitter);
+
+        return $nice === null
+            ? $command
+            : sprintf('nice -n %d %s', $nice, $command);
+    }
+
+    /**
+     * The nice a program launches at, or null for the default priority. Background
+     * work yields to the request path when bundled with the web server; the request
+     * path in turn yields to the saturation emitter when that shares the container,
+     * so the emitter (always nice 0) is the highest-priority process in the group.
+     * The two tiers are independent program sets, so a container with no emitter just
+     * keeps the request path at the default priority above the background tier.
+     */
+    protected function niceLevel(string $program, bool $colocatesWebServer, bool $bundlesEmitter): ?int
+    {
+        if ($colocatesWebServer && in_array($program, self::BACKGROUND_PROGRAMS, true)) {
+            return self::BACKGROUND_NICE;
+        }
+
+        if ($bundlesEmitter && in_array($program, self::REQUEST_PATH_PROGRAMS, true)) {
+            return self::REQUEST_PATH_NICE;
+        }
+
+        return null;
     }
 
     protected function program(string $name, string $command, int $stopwaitsecs = 10): string
