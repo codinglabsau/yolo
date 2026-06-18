@@ -30,6 +30,8 @@ class YoloServiceProvider extends ServiceProvider
     #[\Override]
     public function register(): void
     {
+        $this->mergeConfigFrom(__DIR__ . '/../config/yolo.php', 'yolo');
+
         if (! $this->burstEnabled()) {
             return;
         }
@@ -71,12 +73,12 @@ class YoloServiceProvider extends ServiceProvider
      * Burst is baked in, not a user toggle — so there's no "enabled" flag. The one
      * thing the runtime can't derive is the ECS service name the metric is dimensioned
      * by (the alarm filters on it), so YOLO injects that on the autoscaling web
-     * task-def only; its presence is the gate. Read via getenv (not env()) so it
-     * survives config:cache — it's a real ECS process-env var, not a .env-file one.
+     * task-def only; its presence is the gate. Sourced from the package config
+     * (`config/yolo.php`), which reads the injected env var so `config:cache` bakes it.
      */
     private function burstService(): string
     {
-        return (string) getenv('YOLO_BURST_SERVICE');
+        return (string) config('yolo.burst.service');
     }
 
     private function burstEnabled(): bool
@@ -89,11 +91,11 @@ class YoloServiceProvider extends ServiceProvider
      * name (see SyncTaskDefinitionStep). The CPU fallback divides usage by it; the
      * Fargate microVM exposes more vCPUs than a fractional task is throttled to, so this
      * injected value is the only trustworthy denominator. 0.0 (unset) lets CgroupCpu fall
-     * back to the cgroup CFS quota. getenv (not env()) so it survives config:cache.
+     * back to the cgroup CFS quota.
      */
     private function burstCpu(): float
     {
-        return (float) getenv('YOLO_BURST_CPU');
+        return (float) config('yolo.burst.cpu');
     }
 
     private function region(): string

@@ -70,9 +70,9 @@ class CgroupCpu implements Cpu
 
     private function v2UsageMicros(): ?int
     {
-        $stat = @file_get_contents($this->v2StatPath);
+        $stat = $this->read($this->v2StatPath);
 
-        if ($stat === false || preg_match('/^usage_usec\s+(\d+)/m', $stat, $matches) !== 1) {
+        if ($stat === null || preg_match('/^usage_usec\s+(\d+)/m', $stat, $matches) !== 1) {
             return null;
         }
 
@@ -81,9 +81,9 @@ class CgroupCpu implements Cpu
 
     private function v2Cores(): ?float
     {
-        $max = @file_get_contents($this->v2MaxPath);
+        $max = $this->read($this->v2MaxPath);
 
-        if ($max === false) {
+        if ($max === null) {
             return null;
         }
 
@@ -101,28 +101,22 @@ class CgroupCpu implements Cpu
 
     private function v1UsageMicros(): ?int
     {
-        $usageNanos = @file_get_contents($this->v1UsagePath);
+        $usageNanos = $this->read($this->v1UsagePath);
 
-        if ($usageNanos === false) {
-            return null;
-        }
-
-        $usageNanos = trim($usageNanos);
-
-        if (! is_numeric($usageNanos)) {
+        if ($usageNanos === null || ! is_numeric(trim($usageNanos))) {
             return null;
         }
 
         // cpuacct.usage is nanoseconds; v2's usage_usec is micros — normalise to micros.
-        return intdiv((int) $usageNanos, 1_000);
+        return intdiv((int) trim($usageNanos), 1_000);
     }
 
     private function v1Cores(): ?float
     {
-        $quota = @file_get_contents($this->v1QuotaPath);
-        $period = @file_get_contents($this->v1PeriodPath);
+        $quota = $this->read($this->v1QuotaPath);
+        $period = $this->read($this->v1PeriodPath);
 
-        if ($quota === false || $period === false) {
+        if ($quota === null || $period === null) {
             return null;
         }
 
@@ -135,5 +129,20 @@ class CgroupCpu implements Cpu
         }
 
         return $quotaMicros / $periodMicros;
+    }
+
+    /**
+     * The file's contents, or null when it isn't present — the cgroup interface that
+     * doesn't apply on this host (v1 vs v2) is simply absent, never an error.
+     */
+    private function read(string $path): ?string
+    {
+        if (! is_file($path)) {
+            return null;
+        }
+
+        $contents = @file_get_contents($path);
+
+        return $contents === false ? null : $contents;
     }
 }
