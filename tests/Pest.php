@@ -71,7 +71,12 @@ file_put_contents($tempDir . '/yolo.yml', Yaml::dump([
     ],
 ], 10, 2));
 
-Helpers::app()->instance('environment', 'testing');
+// Rebind per test, not once at load, so a test that swaps the global container —
+// e.g. a Testbench-based runtime test booting its own Laravel app — can't strand a
+// sibling unit file batched into the same --parallel worker without 'environment'.
+pest()->beforeEach(function (): void {
+    Helpers::app()->instance('environment', 'testing');
+})->in(__DIR__);
 
 /*
 |--------------------------------------------------------------------------

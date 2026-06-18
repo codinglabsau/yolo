@@ -195,12 +195,12 @@ class EcsTaskPolicy implements Deletable, Resource, SynchronisesConfiguration
             ],
         ];
 
-        // When web autoscaling burst is on, the saturation emitter publishes the
-        // real-time WorkerSaturation metric via PutMetricData. That action has no
-        // resource-level scoping, so it's narrowed by a namespace condition to YOLO's
-        // own metrics — the task role can publish nothing else. Gated on the same
-        // signal that builds the emitter and metrics Caddyfile, so the grant and the
-        // process using it can't drift.
+        // When web autoscaling burst is on, the runtime worker-saturation reporter
+        // publishes the real-time WorkerSaturation metric via PutMetricData. That action
+        // has no resource-level scoping, so it's narrowed by a namespace condition to
+        // YOLO's own metrics — the task role can publish nothing else. Gated on the same
+        // signal that ships the reporter and metrics Caddyfile, so the grant and the
+        // reporter using it can't drift.
         if (Manifest::usesMetricsCaddyfile()) {
             $statements[] = [
                 'Effect' => 'Allow',

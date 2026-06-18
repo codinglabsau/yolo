@@ -10,15 +10,17 @@ use Illuminate\Filesystem\Filesystem;
 
 /**
  * YOLO must ship inside the runtime image as a production dependency, not just sit
- * on the deploy runner as a dev tool. Two things in the container rely on it:
+ * on the deploy runner as a dev tool. Its Laravel service provider is auto-discovered
+ * and boots with the app:
  *
- * - the burst saturation emitter, which `require`s the app's autoload and publishes
- *   via `PutMetricData` — yolo depends on `aws/aws-sdk-php`, so a prod-required yolo
- *   guarantees the SDK transitively (this is why there's no separate SDK preflight);
- * - YOLO's Laravel service provider: auto-discovered, it boots with the app so the
- *   app can call yolo's runtime API directly — a facade abstracting the AWS work
+ * - on the autoscaling web tier it publishes FrankenPHP worker saturation for burst
+ *   scaling via `PutMetricData` from an after-response hook — yolo depends on
+ *   `aws/aws-sdk-php`, so a prod-required yolo guarantees the SDK transitively (this is
+ *   why there's no separate SDK preflight);
+ * - the same provider backs yolo's runtime API — a facade abstracting the AWS work
  *   (e.g. adding/removing WAF IP-set entries) rather than shelling out to the CLI.
- *   A dev-only package is stripped by `--no-dev`, so its provider would never load.
+ *
+ * A dev-only package is stripped by `--no-dev`, so the provider would never load.
  *
  * The CLI itself is inert in the container — nothing runs `yolo` there; the package
  * earns its place purely as a bootable runtime library. Like
@@ -56,8 +58,8 @@ class CheckYoloInstalledStep implements Step
 
         throw new RuntimeException(
             'Build aborted: codinglabsau/yolo is not in composer.lock\'s production requirements. '
-            . 'YOLO must ship in the runtime image (it backs the burst metrics emitter and the '
-            . 'service provider), so it has to be a production dependency, not require-dev — the '
+            . 'YOLO must ship in the runtime image (its service provider backs the burst metrics '
+            . 'reporter and the runtime API), so it has to be a production dependency, not require-dev — the '
             . 'image installs with --no-dev. Run `composer require codinglabsau/yolo` and commit '
             . 'composer.lock.'
         );

@@ -13,8 +13,9 @@ use Codinglabs\Yolo\Aws\CloudWatch;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Aws\ApplicationAutoScaling;
+use Codinglabs\Yolo\Resources\Iam\EcsTaskPolicy;
+use Codinglabs\Yolo\Runtime\WorkerSaturationReporter;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
-use Codinglabs\Yolo\Steps\Build\Fargate\GenerateSupervisorConfigStep;
 
 /**
  * The **burst** scale-out path for the web service: a real-time companion to the
@@ -34,21 +35,22 @@ use Codinglabs\Yolo\Steps\Build\Fargate\GenerateSupervisorConfigStep;
  * high-res metric, only while it's hot. The alarm evaluates the most-saturated task
  * every 10s and steps the desired count out. Detection drops from ~60s to ~10–15s.
  *
- * The metric is published in real time via PutMetricData — the saturation emitter
- * ({@see GenerateSupervisorConfigStep}) reads
- * its own FrankenPHP worker gauges and puts a high-res datapoint, but only while it's
- * at or above the emit floor and only as often as a scale can act (it snoozes the
- * cooldown after a tripping datapoint — one breach already steps the count out). So
- * CloudWatch is touched only during a spike: near-zero cost, and the datapoint lands
- * synchronously — no riding the logs pipeline, whose flush cadence the ECS awslogs
- * driver won't let you tune (AWS recommends ≤5s for high-res EMF alarms) and whose
- * extraction is async, so an EMF datapoint surfaces on a cadence you don't control. The
- * task role carries a single namespace-scoped `cloudwatch:PutMetricData` grant ({@see
- * \Codinglabs\Yolo\Resources\Iam\EcsTaskPolicy}). FrankenPHP's metrics endpoint is
- * enabled by a Caddyfile YOLO generates (the app's Octane stub plus the top-level
- * `metrics` global option) and runs via `octane:start --caddyfile` — Octane
+ * The metric is published in real time via PutMetricData — the runtime worker-
+ * saturation reporter ({@see WorkerSaturationReporter}),
+ * driven from an after-response hook so it rides a request that already holds a CPU
+ * slice, reads FrankenPHP's worker gauges and puts a high-res datapoint, but only
+ * while it's at or above the emit floor and only as often as a scale can act (it holds
+ * the window at the cooldown after a tripping datapoint — one breach already steps the
+ * count out). So CloudWatch is touched only during a spike: near-zero cost, and the
+ * datapoint lands synchronously — no riding the logs pipeline, whose flush cadence the
+ * ECS awslogs driver won't let you tune (AWS recommends ≤5s for high-res EMF alarms)
+ * and whose extraction is async, so an EMF datapoint surfaces on a cadence you don't
+ * control. The task role carries a single namespace-scoped `cloudwatch:PutMetricData`
+ * grant ({@see EcsTaskPolicy}). FrankenPHP's metrics
+ * endpoint is enabled by a Caddyfile YOLO generates (the app's Octane stub plus the
+ * top-level `metrics` global option) and runs via `octane:start --caddyfile` — Octane
  * overwrites `CADDY_GLOBAL_OPTIONS`, so a task env var can't switch it on. Built only
- * for an autoscaling Octane web tier (see GenerateSupervisorConfigStep).
+ * for an autoscaling Octane web tier.
  *
  * Scale-*in* is left entirely to the target-tracking policies (slow, safe) — this
  * is scale-out only, so it can only ever add capacity faster, never fight them.
@@ -61,18 +63,16 @@ use Codinglabs\Yolo\Steps\Build\Fargate\GenerateSupervisorConfigStep;
  * Note: burst complements, never replaces, warm capacity. Even instant detection
  * still waits ~55s for the new task to boot and pass ALB health, so sub-1-min
  * scale-out needs `min ≥ N`; this just makes the spike that exceeds the warm
- * headroom land faster. And the in-container gauge is best-effort: a single
- * hard-pinned task (min 1, one small box at ~99% CPU) can starve the emitter along
- * with everything else, so no datapoint escapes and burst stays dark — the
- * target-tracking policies and `min ≥ 2` / more task CPU are the guarantees, burst
- * only sharpens the light-pin / multi-task case. Do not try to rescue that silence
- * by raising the emitter's scheduling priority above the web server: it scrapes
- * web's own metrics endpoint, so outranking web starves the scrape (the regression
- * this replaced). See {@see GenerateSupervisorConfigStep} for the priority ordering.
+ * headroom land faster. And the in-request publish is best-effort: when a scrape of
+ * the metrics endpoint fails under load, the reporter corroborates with a cheap local
+ * cgroup CPU read and breaches on a high reading — but a single hard-pinned task where
+ * no request completes can still go dark, so the target-tracking policies and
+ * `min ≥ 2` / more task CPU are the guarantees; burst only sharpens the light-pin /
+ * multi-task case.
  */
 class WebBurstPolicy
 {
-    /** Namespace + metric the saturation emitter publishes and this alarm reads — the contract between them. */
+    /** Namespace + metric the runtime reporter publishes and this alarm reads — the contract between them. */
     public const string METRIC_NAMESPACE = 'YOLO/Autoscaling';
 
     public const string METRIC_NAME = 'WorkerSaturation';
@@ -92,7 +92,7 @@ class WebBurstPolicy
     public const int ALARM_THRESHOLD = 70;
 
     /**
-     * The emitter only publishes at or above this saturation %, so the metric (and its
+     * The reporter only publishes at or above this saturation %, so the metric (and its
      * cost) is near-zero when the service isn't hot. Below the alarm threshold so the
      * alarm is fed a not-breaching datapoint on the step just under the trip — for a
      * 4-worker pool that's the 50 % (2/4) reading, so the floor sits at 50.
@@ -103,16 +103,17 @@ class WebBurstPolicy
     private const int PERIOD = 10;
 
     /**
-     * Step-scaling cooldown — also the emitter's snooze after a tripping datapoint:
-     * one breach already steps the desired count out, so it pauses for that scale to
-     * land rather than putting more datapoints the cooldown would ignore anyway.
+     * Step-scaling cooldown — also the reporter's window hold after a tripping
+     * datapoint: one breach already steps the desired count out, so it pauses for that
+     * scale to land rather than putting more datapoints the cooldown would ignore anyway.
      */
     public const int COOLDOWN = 60;
 
     /**
-     * The emitter's poll cadence — how often it reads its local metrics endpoint when
-     * idle, and the snooze between hot-but-not-tripping puts. A cheap localhost read;
-     * the only AWS call is the put, and only when saturation is at/over the floor.
+     * The reporter's debounce window — at most one scrape + put per this many seconds
+     * across the web tier's workers within a task, no matter the request rate. A cheap
+     * localhost read; the only AWS call is the put, and only when saturation is at/over
+     * the floor.
      */
     public const int POLL_INTERVAL = 5;
 
@@ -126,7 +127,7 @@ class WebBurstPolicy
         return Helpers::keyedResourceName('web-worker-saturation');
     }
 
-    /** The web service name the metric is dimensioned by — baked into the emitter too. */
+    /** The web service name the metric is dimensioned by — passed to the reporter too. */
     public static function serviceName(): string
     {
         return (new EcsService(ServerGroup::WEB))->name();
