@@ -47,9 +47,13 @@ it('grants the ECR login + layer-upload chain sync needs to push the Typesense i
     // step), so admin must hold the same push chain the deployer uses — the
     // management wildcards (Create*/Delete*/Put*/…) don't cover these verbs, and
     // GetAuthorizationToken is the login call that errored when they were missing.
+    // BatchGetImage is a read, but docker HEADs the manifest by digest as part of
+    // the push handshake (the observer's Describe*/List* don't cover it), so a push
+    // 403s on the manifest check without it.
     expect(adminActions())->toContain(
         'ecr:GetAuthorizationToken',
         'ecr:BatchCheckLayerAvailability',
+        'ecr:BatchGetImage',
         'ecr:InitiateLayerUpload',
         'ecr:UploadLayerPart',
         'ecr:CompleteLayerUpload',

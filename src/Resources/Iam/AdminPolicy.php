@@ -145,8 +145,13 @@ class AdminPolicy implements Resource, SynchronisesConfiguration
                         // login + layer-upload chain the deployer uses. These verbs
                         // don't fit the management wildcards above; GetAuthorizationToken
                         // is account-level (unscopeable) and PutImage is already in Put*.
+                        // BatchGetImage is a READ but part of the push handshake: docker
+                        // HEADs the manifest by digest before PutImage, and that HEAD
+                        // maps to BatchGetImage — not covered by the observer's Describe*/
+                        // List*, so a push 403s on the manifest check without it.
                         'ecr:GetAuthorizationToken',
                         'ecr:BatchCheckLayerAvailability',
+                        'ecr:BatchGetImage',
                         'ecr:InitiateLayerUpload',
                         'ecr:UploadLayerPart',
                         'ecr:CompleteLayerUpload',
