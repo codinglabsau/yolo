@@ -47,6 +47,27 @@ class Ec2
     }
 
     /**
+     * Every IPv4 CIDR block in use by a VPC in this region — across all
+     * associations, YOLO-owned or not (the default VPC, a co-located Vapor
+     * stack, anything) — so a new environment's VPC can be placed in a /16 that
+     * overlaps nothing already on the account. Returns [] on a fresh account.
+     *
+     * @return array<int, string>
+     */
+    public static function cidrBlocksInUse(): array
+    {
+        return collect(Aws::ec2()->describeVpcs()['Vpcs'] ?? [])
+            ->flatMap(fn (array $vpc): array => [
+                $vpc['CidrBlock'] ?? null,
+                ...collect($vpc['CidrBlockAssociationSet'] ?? [])->pluck('CidrBlock')->all(),
+            ])
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
      * Every subnet in a VPC (used to build the RDS DB subnet group).
      *
      * @return array<int, array<string, mixed>>

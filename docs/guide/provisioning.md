@@ -27,7 +27,7 @@ yolo sync production   # account → environment → app
 The shared **Valkey cache** is env-scoped but bootstrapped from `sync:app` by exception (like the RDS security group), because its security group needs this app's task SG to authorise. The first web app to sync creates the cluster (cache defaults on); later apps find it and just wire their env. **Sessions reuse the same cluster** (on a separate logical database), so there's no extra session infrastructure to provision.
 
 ::: tip Why scopes matter
-Several apps can share one environment's VPC and load balancer. Because `sync:app` only attaches and never mutates, deploying app B can't break app A's networking. When you're iterating on one app, `sync:app` is faster than a full `sync` — the account and environment tiers rarely change.
+Several apps can share one environment's VPC and load balancer. Because `sync:app` only attaches and never mutates, deploying app B can't break app A's networking. When you're iterating on one app, `sync:app` is faster than a full `sync` — the account and environment tiers rarely change. Each environment, on the other hand, gets its own VPC in a distinct `10.N.0.0/16` (auto-selected at create as the lowest /16 free on the account), so two environments — a staging trial beside production — never overlap and stay peerable.
 :::
 
 ## The environment declaration

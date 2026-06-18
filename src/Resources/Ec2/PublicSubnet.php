@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Resources\Ec2;
 
 use Codinglabs\Yolo\Aws;
+use Illuminate\Support\Str;
 use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
@@ -13,9 +14,10 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * One of the three public subnets (one per availability zone), addressed by AZ
- * index 0-2. Each gets a /24 in the VPC's 10.1 block and auto-assigns public
- * IPs so Fargate tasks reach the internet without a NAT gateway. Point
- * `public-subnets` at three existing subnet names to adopt instead.
+ * index 0-2. Each gets a /24 carved from whichever /16 the VPC was allocated
+ * (its `10.N.{index}.0/24`) and auto-assigns public IPs so Fargate tasks reach
+ * the internet without a NAT gateway. Point `public-subnets` at three existing
+ * subnet names to adopt instead.
  */
 class PublicSubnet implements Resource
 {
@@ -69,11 +71,16 @@ class PublicSubnet implements Resource
     public function create(): void
     {
         $availabilityZones = Ec2::availabilityZones(Manifest::get('region'));
+        $vpc = Ec2::vpc((new Vpc())->name());
+
+        // Carve this subnet's /24 from the VPC's allocated /16 (10.N.0.0/16 →
+        // 10.N.{index}.0/24) so subnets follow the auto-selected range.
+        $block = Str::before($vpc['CidrBlock'], '.0.0/16');
 
         Aws::ec2()->createSubnet([
             'AvailabilityZone' => $availabilityZones[$this->index]['ZoneName'],
-            'CidrBlock' => "10.1.{$this->index}.0/24",
-            'VpcId' => (new Vpc())->arn(),
+            'CidrBlock' => "{$block}.{$this->index}.0/24",
+            'VpcId' => $vpc['VpcId'],
             'MapPublicIpOnLaunch' => true,
             'TagSpecifications' => [
                 ['ResourceType' => 'subnet', ...Aws::tags($this->tags())],
