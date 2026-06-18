@@ -184,6 +184,47 @@ it('runs the deploy lifecycle under the Deployer tier', function (Command $comma
     'run' => fn (): Command => new RunCommand(),
 ]);
 
+it('caps deploy --admin up to the Admin tier, while a default deploy stays Deployer', function (): void {
+    // The escalation knob: --admin flips the deploy off the least-privilege Deployer
+    // tier onto Admin, so the in-sync gate can reconcile drift inline. No flag → the
+    // Deployer default stands.
+    expect(tierOf(new DeployCommand()))->toBe(Iam::DEPLOYER_ROLE);
+
+    $deploy = new DeployCommand();
+    $definition = new InputDefinition([new InputOption('admin', null, InputOption::VALUE_NONE)]);
+    $deploy->input = new ArrayInput(['--admin' => true], $definition);
+
+    expect(tierOf($deploy))->toBe(Iam::ADMIN_ROLE);
+});
+
+it('mints Admin credentials — MFA-gated — for deploy --admin', function (): void {
+    // --admin must mint through the same MFA-gated admin path as `sync`, up front,
+    // not the Deployer role: the human factor is required to escalate a deploy.
+    putenv('YOLO_TESTING_MFA_SERIAL=arn:aws:iam::111111111111:mfa/operator');
+    Prompt::fake(['123456', Key::ENTER]);
+
+    bindMockIamClient(['yolo-testing-admin-role' => 'arn:aws:iam::111111111111:role/yolo-testing-admin-role']);
+
+    $captured = [];
+    bindAssumeRoleStsClient($captured, assumeRoleResult());
+
+    $deploy = new DeployCommand();
+    $definition = new InputDefinition([new InputOption('admin', null, InputOption::VALUE_NONE)]);
+    $deploy->input = new ArrayInput(['--admin' => true], $definition);
+
+    mint($deploy);
+
+    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeTrue();
+    expect($captured)->toHaveCount(1)
+        ->and($captured[0]['args']['RoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-admin-role')
+        ->and($captured[0]['args']['RoleSessionName'])->toBe('yolo-admin-role')
+        ->and($captured[0]['args']['SerialNumber'])->toBe('arn:aws:iam::111111111111:mfa/operator')
+        ->and($captured[0]['args']['TokenCode'])->toBe('123456');
+
+    putenv('YOLO_TESTING_MFA_SERIAL');
+    unset($_ENV['YOLO_TESTING_MFA_SERIAL'], $_SERVER['YOLO_TESTING_MFA_SERIAL']);
+});
+
 it('runs the provisioning commands under the Admin tier', function (Command $command): void {
     expect($command)->toBeInstanceOf(AdminCommand::class);
     expect($command)->not->toBeInstanceOf(ReadOnlyCommand::class);
