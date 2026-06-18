@@ -207,16 +207,22 @@ class Typesense extends ServiceDefinition
             Steps\Sync\Environment\SyncTypesenseNamespaceStep::class,
             Steps\Sync\Environment\SyncTypesenseDiscoveryServicesStep::class,
             Steps\Sync\Environment\SyncTypesenseSecurityGroupStep::class,
-            // The search target group precedes the nodes so they attach to it
-            // at create — Typesense's /health doubles as readiness, dropping a
-            // catching-up node out of rotation while the quorum serves.
+            // Public ingress is wired BEFORE the nodes, because the node services
+            // are load-balanced: ECS CreateService rejects a target group that
+            // isn't yet associated with a load balancer, and a target group only
+            // becomes associated once a listener rule forwards to it. So the target
+            // group, the env-domain cert (which also bootstraps the shared :443
+            // listener — the service owns its ingress, never waiting on an app) and
+            // the search.{domain} rule all precede the node services. /health then
+            // doubles as readiness, dropping a catching-up node out of rotation
+            // while the quorum keeps serving.
             Steps\Sync\Environment\SyncSearchTargetGroupStep::class,
-            Steps\Sync\Environment\SyncTypesenseTaskDefinitionStep::class,
-            Steps\Sync\Environment\SyncTypesenseNodesStep::class,
-            // Public ingress: the env-domain cert (SNI on the shared :443
-            // listener), the search.{domain} rule and its Route 53 alias.
             Steps\Sync\Environment\SyncSearchCertificateStep::class,
             Steps\Sync\Environment\SyncSearchListenerRuleStep::class,
+            Steps\Sync\Environment\SyncTypesenseTaskDefinitionStep::class,
+            Steps\Sync\Environment\SyncTypesenseNodesStep::class,
+            // The Route 53 alias + the healthy-host alarms follow — neither gates
+            // service creation.
             Steps\Sync\Environment\SyncSearchRecordSetStep::class,
             Steps\Sync\Environment\SyncTypesenseAlarmsStep::class,
         ];

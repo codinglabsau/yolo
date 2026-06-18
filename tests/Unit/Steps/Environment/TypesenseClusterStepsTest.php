@@ -11,7 +11,10 @@ use Codinglabs\Yolo\Resources\Ecs\ServicesCluster;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncTypesenseNodesStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\BuildTypesenseImageStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncServicesClusterStep;
+use Codinglabs\Yolo\Steps\Sync\Environment\SyncSearchCertificateStep;
+use Codinglabs\Yolo\Steps\Sync\Environment\SyncSearchTargetGroupStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncTypesenseAdminKeyStep;
+use Codinglabs\Yolo\Steps\Sync\Environment\SyncSearchListenerRuleStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncTypesenseSecurityGroupStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncTypesenseDiscoveryServicesStep;
 
@@ -136,6 +139,47 @@ it('tears the cluster down once the offer is removed from the env manifest', fun
     expect($planned(['dry-run' => true]))->toBe(StepResult::WOULD_DELETE);
     expect($planned->changes())->not->toBeEmpty();
     expect(array_column($ecsCaptured, 'name'))->not->toContain('DeleteCluster');
+});
+
+it('wires the search ingress (target group, cert, listener rule) before the load-balanced nodes', function (): void {
+    // A node is a load-balanced ECS service: ECS CreateService rejects a target
+    // group that isn't yet associated with the ALB, and the association only
+    // exists once the listener rule forwards to it. So the target group, the cert
+    // (which also bootstraps the shared :443 listener) and the rule must all
+    // precede the nodes — this exact ordering shipped a CreateService crash once.
+    $steps = (new Typesense())->environmentSteps();
+    $index = fn (string $step): int => (int) array_search($step, $steps, true);
+
+    expect($index(SyncSearchTargetGroupStep::class))->toBeLessThan($index(SyncSearchCertificateStep::class));
+    expect($index(SyncSearchCertificateStep::class))->toBeLessThan($index(SyncSearchListenerRuleStep::class));
+    expect($index(SyncSearchListenerRuleStep::class))->toBeLessThan($index(SyncTypesenseNodesStep::class));
+});
+
+it('defers the missing nodes until the search target group is attached to a load balancer', function (): void {
+    $captured = [];
+    bindTypesenseWorld($captured, sharedEnv: "TYPESENSE_API_KEY=abc123\n");
+
+    $ecsCaptured = [];
+    bindRoutedEcsClient([
+        'ListClusters' => new Result(['clusterArns' => ['arn:aws:ecs:ap-southeast-2:111111111111:cluster/yolo-testing-my-app']]),
+        'ListTasks' => new Result(['taskArns' => ['arn:aws:ecs:ap-southeast-2:111111111111:task/x']]),
+        'DescribeServices' => new Result(['services' => []]),
+        'DescribeTaskDefinition' => new AwsException('nope', new Command('DescribeTaskDefinition'), ['code' => 'ClientException']),
+    ], $ecsCaptured);
+
+    // The target group exists but no listener rule forwards to it yet, so it has
+    // no associated load balancer — CreateService would 403, so the step defers.
+    $elbCaptured = [];
+    bindRoutedElbV2Client([
+        'DescribeTargetGroups' => new Result(['TargetGroups' => [['TargetGroupArn' => 'arn:tg', 'LoadBalancerArns' => []]]]),
+    ], $elbCaptured);
+
+    $step = new SyncTypesenseNodesStep();
+
+    expect($step([]))->toBe(StepResult::SKIPPED);
+    // The pending nodes are still recorded — the plan shows them, apply just waits.
+    expect($step->changes())->toHaveCount(3);
+    expect(array_column($ecsCaptured, 'name'))->not->toContain('CreateService');
 });
 
 it('the nodes step plans every missing node and skips teardown (the cluster cascade owns it)', function (): void {

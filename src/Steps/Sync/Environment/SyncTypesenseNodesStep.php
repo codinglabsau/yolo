@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Change;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Aws\Ecs;
+use Codinglabs\Yolo\Aws\ElbV2;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -16,6 +17,7 @@ use Codinglabs\Yolo\Contracts\LongRunning;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
 use Codinglabs\Yolo\Resources\Ecs\ServicesCluster;
 use Codinglabs\Yolo\Resources\Ecs\TypesenseService;
+use Codinglabs\Yolo\Resources\ElbV2\SearchTargetGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 use Codinglabs\Yolo\Resources\ServiceDiscovery\TypesenseDiscoveryService;
 
@@ -76,6 +78,16 @@ class SyncTypesenseNodesStep implements LongRunning, Step
                 $surplus !== [] => StepResult::WOULD_DELETE,
                 default => StepResult::WOULD_SYNC,
             };
+        }
+
+        // A node is a load-balanced service, so ECS CreateService rejects it
+        // until the search target group is associated with the ALB (a listener
+        // rule forwards to it). On a green-field env the rule may not be in place
+        // yet — the :443 listener is still being bootstrapped — so defer the
+        // missing nodes to the next sync rather than crash. The changes are
+        // already recorded above, so the plan still shows the pending nodes.
+        if ($missing !== [] && ! $this->searchTargetGroupAttached()) {
+            return StepResult::SKIPPED;
         }
 
         // Survivors first: the rolled image carries the new peer list, so the
@@ -180,6 +192,21 @@ class SyncTypesenseNodesStep implements LongRunning, Step
         ]);
 
         (new TypesenseDiscoveryService($service->node()))->delete();
+    }
+
+    /**
+     * Whether the search target group is associated with a load balancer yet —
+     * i.e. a listener rule already forwards to it. ECS refuses to create a
+     * load-balanced service against an unassociated target group, so the missing
+     * nodes wait on the rule. An absent target group reads as not-yet-attached.
+     */
+    protected function searchTargetGroupAttached(): bool
+    {
+        try {
+            return (ElbV2::targetGroup((new SearchTargetGroup())->name())['LoadBalancerArns'] ?? []) !== [];
+        } catch (ResourceDoesNotExistException) {
+            return false;
+        }
     }
 
     protected function latestRevisionArn(): ?string
