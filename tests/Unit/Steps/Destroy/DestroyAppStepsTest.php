@@ -190,55 +190,40 @@ function bindDestroyRoutedClient(string $binding, string $clientClass, array $by
     ]));
 }
 
-// --- TeardownHostedZoneStep: fail-closed ownership gate (BLOCKER fix) ---
+// --- TeardownHostedZoneStep: withdraw records, NEVER delete the zone ---
 
-it('tears down the hosted zone only when this environment positively owns it', function (): void {
+it('withdraws the app records and never deletes the hosted zone', function (): void {
     $captured = [];
     bindDestroyRoutedClient('route53', Route53Client::class, [
         'ListHostedZones' => new Result(['HostedZones' => [['Id' => '/hostedzone/Z1', 'Name' => 'example.com.']]]),
-        'ListTagsForResource' => new Result(['ResourceTagSet' => ['Tags' => [['Key' => 'yolo:environment', 'Value' => 'testing']]]]),
         'ListResourceRecordSets' => new Result(['ResourceRecordSets' => [
             ['Name' => 'example.com.', 'Type' => 'NS', 'ResourceRecords' => [['Value' => 'ns']]],
             ['Name' => 'example.com.', 'Type' => 'SOA', 'ResourceRecords' => [['Value' => 'soa']]],
+            ['Name' => 'example.com.', 'Type' => 'A', 'TTL' => 60, 'ResourceRecords' => [['Value' => '1.1.1.1']]],
         ]]),
     ], $captured);
 
-    expect((new TeardownHostedZoneStep())(['dry-run' => false]))->toBe(StepResult::DELETED)
-        ->and(array_column($captured, 'name'))->toContain('DeleteHostedZone');
+    expect((new TeardownHostedZoneStep())(['dry-run' => false]))->toBe(StepResult::DELETED);
+
+    $names = array_column($captured, 'name');
+    expect($names)->toContain('ChangeResourceRecordSets')->not->toContain('DeleteHostedZone');
 });
 
-it('refuses to touch a hosted zone a sibling environment owns', function (): void {
+it('skips the hosted-zone teardown when none of the app records remain', function (): void {
     $captured = [];
     bindDestroyRoutedClient('route53', Route53Client::class, [
         'ListHostedZones' => new Result(['HostedZones' => [['Id' => '/hostedzone/Z1', 'Name' => 'example.com.']]]),
-        'ListTagsForResource' => new Result(['ResourceTagSet' => ['Tags' => [['Key' => 'yolo:environment', 'Value' => 'production']]]]),
+        // Only NS/SOA + an unrelated MX — nothing of this app's, so nothing to do.
+        'ListResourceRecordSets' => new Result(['ResourceRecordSets' => [
+            ['Name' => 'example.com.', 'Type' => 'NS', 'ResourceRecords' => [['Value' => 'ns']]],
+            ['Name' => 'example.com.', 'Type' => 'SOA', 'ResourceRecords' => [['Value' => 'soa']]],
+            ['Name' => 'example.com.', 'Type' => 'MX', 'TTL' => 3600, 'ResourceRecords' => [['Value' => '10 mail']]],
+        ]]),
     ], $captured);
 
     expect((new TeardownHostedZoneStep())(['dry-run' => false]))->toBe(StepResult::SKIPPED)
-        ->and(array_column($captured, 'name'))->not->toContain('DeleteHostedZone')
-        ->not->toContain('ChangeResourceRecordSets');
-});
-
-it('refuses to touch a hosted zone YOLO does not own (untagged)', function (): void {
-    $captured = [];
-    bindDestroyRoutedClient('route53', Route53Client::class, [
-        'ListHostedZones' => new Result(['HostedZones' => [['Id' => '/hostedzone/Z1', 'Name' => 'example.com.']]]),
-        'ListTagsForResource' => new Result(['ResourceTagSet' => ['Tags' => []]]),
-    ], $captured);
-
-    expect((new TeardownHostedZoneStep())(['dry-run' => false]))->toBe(StepResult::SKIPPED)
-        ->and(array_column($captured, 'name'))->not->toContain('DeleteHostedZone');
-});
-
-it('fails closed and skips when the ownership read errors', function (): void {
-    $captured = [];
-    bindDestroyRoutedClient('route53', Route53Client::class, [
-        'ListHostedZones' => new Result(['HostedZones' => [['Id' => '/hostedzone/Z1', 'Name' => 'example.com.']]]),
-        'ListTagsForResource' => new RuntimeException('Route 53 throttled'),
-    ], $captured);
-
-    expect((new TeardownHostedZoneStep())(['dry-run' => false]))->toBe(StepResult::SKIPPED)
-        ->and(array_column($captured, 'name'))->not->toContain('DeleteHostedZone');
+        ->and(array_column($captured, 'name'))->not->toContain('ChangeResourceRecordSets')
+        ->not->toContain('DeleteHostedZone');
 });
 
 // --- TeardownSslCertificateStep: detach + InUse-skip (WARNING fix / coverage) ---

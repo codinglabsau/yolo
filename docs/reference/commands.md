@@ -604,7 +604,7 @@ When a [`tasks.web.autoscaling`](/reference/manifest#tasks-web-autoscaling) bloc
 
 ## `yolo destroy:app`
 
-Permanently tear one application's resources down in the given environment — the reverse of [`sync:app`](#yolo-sync-app). It uses the same **plan → confirm → apply** flow: a plan pass lists every resource that **would delete**, the confirm gate guards the irreversible apply (declining is the preview), and `--check` is the non-interactive plan-only form for CI. The apply pass deletes in reverse dependency order — CloudFront → autoscaling → ECS services → cluster → listener rules → target group → task security group → app IAM → SQS → hosted zone → buckets → ECR — so a resource is never deleted while something still references it.
+Permanently tear one application's resources down in the given environment — the reverse of [`sync:app`](#yolo-sync-app). It uses the same **plan → confirm → apply** flow: a plan pass lists every resource that **would delete**, the confirm gate guards the irreversible apply (declining is the preview), and `--check` is the non-interactive plan-only form for CI. The apply pass deletes in reverse dependency order — CloudFront → autoscaling → ECS services → cluster → listener rules → target group → task security group → app IAM → SQS → Route 53 records → buckets → ECR — so a resource is never deleted while something still references it.
 
 ```bash
 yolo destroy:app <environment> [--check] [--force] [--no-progress]
@@ -617,6 +617,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **app**. Admin-tier.
 - The **app data bucket** (the BYO [`bucket`](/reference/manifest#bucket)) holds user data and is never deleted — it isn't even YOLO-tagged. The regenerable asset and config buckets *are* emptied and removed.
 - **RDS is never touched** (YOLO owns the security group, not the database) — destroy:app *revokes this app's 3306 ingress rule* from the shared RDS security group, never the group itself.
 - The shared **`:443` listener** and the **Valkey cache** stay for the environment's other apps — destroy:app removes only this app's listener rule + SNI certificate, and revokes this app's cache ingress rule. (If the certificate is the listener's *default*, it can't be removed app-side and is left for environment teardown.)
+- The **Route 53 hosted zone is never deleted** — a zone is domain-level (the registrar's NS delegation, the domain's email/verification DNS, sibling environments all live in it), so destroy:app withdraws only the A/AAAA records it inserted for this app and leaves the zone (and everything else in it) standing. YOLO creates the zone on first sync, but never tears it down.
 - **Environment- and account-scoped** resources (VPC, subnets, ALB, OIDC provider, …) are out of scope — environment teardown is a separate, later command.
 
 **It refuses rather than partially tearing down.** To guarantee a teardown can never orphan resources (which [`yolo audit`](#yolo-audit) would then flag), destroy:app refuses — with a clear message — app shapes whose teardown isn't fully modelled yet: **multi-tenant** apps, **headless** apps (no domain), apps with **no web task**, and apps still **consuming an env service** (Typesense / IVS / MediaConvert). For the last, remove the service from `yolo.yml` and deploy first, then tear the app down.

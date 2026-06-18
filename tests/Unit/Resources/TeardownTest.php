@@ -298,37 +298,30 @@ it('finds and deletes the ssl certificate', function (): void {
         ->toBe('arn:aws:acm:ap-southeast-2:111111111111:certificate/abc-123');
 });
 
-it('removes only its managed A records, then deletes the zone when it is pure-YOLO', function (): void {
+it('withdraws only its own A records and never deletes the hosted zone', function (): void {
     $captured = [];
     bindTeardownRoutedClient('route53', Route53Client::class, [
         'ListHostedZones' => new Result(['HostedZones' => [['Id' => '/hostedzone/Z123', 'Name' => 'example.com.']]]),
-        // First list = pre-delete; second = post-delete (only NS/SOA left → pure-YOLO → deletable).
-        'ListResourceRecordSets' => [
-            new Result(['ResourceRecordSets' => [
-                ['Name' => 'example.com.', 'Type' => 'NS', 'TTL' => 172800, 'ResourceRecords' => [['Value' => 'ns-1']]],
-                ['Name' => 'example.com.', 'Type' => 'SOA', 'TTL' => 900, 'ResourceRecords' => [['Value' => 'soa']]],
-                ['Name' => 'example.com.', 'Type' => 'A', 'TTL' => 60, 'ResourceRecords' => [['Value' => '1.1.1.1']]],
-                ['Name' => 'www.example.com.', 'Type' => 'A', 'TTL' => 60, 'ResourceRecords' => [['Value' => '1.1.1.1']]],
-            ]]),
-            new Result(['ResourceRecordSets' => [
-                ['Name' => 'example.com.', 'Type' => 'NS', 'TTL' => 172800, 'ResourceRecords' => [['Value' => 'ns-1']]],
-                ['Name' => 'example.com.', 'Type' => 'SOA', 'TTL' => 900, 'ResourceRecords' => [['Value' => 'soa']]],
-            ]]),
-        ],
+        'ListResourceRecordSets' => new Result(['ResourceRecordSets' => [
+            ['Name' => 'example.com.', 'Type' => 'NS', 'TTL' => 172800, 'ResourceRecords' => [['Value' => 'ns-1']]],
+            ['Name' => 'example.com.', 'Type' => 'SOA', 'TTL' => 900, 'ResourceRecords' => [['Value' => 'soa']]],
+            ['Name' => 'example.com.', 'Type' => 'A', 'TTL' => 60, 'ResourceRecords' => [['Value' => '1.1.1.1']]],
+            ['Name' => 'www.example.com.', 'Type' => 'A', 'TTL' => 60, 'ResourceRecords' => [['Value' => '1.1.1.1']]],
+        ]]),
     ], $captured);
 
-    (new HostedZone('example.com'))->delete();
+    expect((new HostedZone('example.com'))->removeAppRecords())->toBe(2);
 
     $names = array_column($captured, 'name');
-    expect($names)->toContain('ChangeResourceRecordSets')->toContain('DeleteHostedZone');
+    // The zone is NEVER deleted — only the app's records are withdrawn.
+    expect($names)->toContain('ChangeResourceRecordSets')->not->toContain('DeleteHostedZone');
 
-    // Both managed A records (apex + www) are removed; NS/SOA are never touched.
     $deleted = collect(collect($captured)->firstWhere('name', 'ChangeResourceRecordSets')['args']['ChangeBatch']['Changes'])
         ->pluck('ResourceRecordSet.Name')->all();
     expect($deleted)->toEqualCanonicalizing(['example.com.', 'www.example.com.']);
 });
 
-it('preserves non-YOLO records and keeps the zone standing', function (): void {
+it('leaves operator-added records (email / verification) untouched', function (): void {
     $captured = [];
     bindTeardownRoutedClient('route53', Route53Client::class, [
         'ListHostedZones' => new Result(['HostedZones' => [['Id' => '/hostedzone/Z123', 'Name' => 'example.com.']]]),
@@ -340,15 +333,15 @@ it('preserves non-YOLO records and keeps the zone standing', function (): void {
         ]]),
     ], $captured);
 
-    (new HostedZone('example.com'))->delete();
+    expect((new HostedZone('example.com'))->removeAppRecords())->toBe(1);
 
     $names = array_column($captured, 'name');
-    // The app's A record is removed, but the zone is NOT deleted — the MX record survives.
-    expect($names)->toContain('ChangeResourceRecordSets')->not->toContain('DeleteHostedZone');
+    expect($names)->not->toContain('DeleteHostedZone');
 
+    // Only the A record is withdrawn — the MX (and NS/SOA) are never touched.
     $deleted = collect(collect($captured)->firstWhere('name', 'ChangeResourceRecordSets')['args']['ChangeBatch']['Changes'])
         ->pluck('ResourceRecordSet.Type')->all();
-    expect($deleted)->toBe(['A']); // never the MX/NS/SOA
+    expect($deleted)->toBe(['A']);
 });
 
 it('detaches and deletes every app IAM role', function (string $class): void {

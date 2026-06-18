@@ -4,20 +4,26 @@ use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\S3\S3Bucket;
+use Codinglabs\Yolo\Resources\Route53\HostedZone;
 
 /**
  * `yolo destroy` tears an environment down by deleting the live AWS resources it
  * owns, so every App-scoped resource must be able to delete itself — otherwise a
  * teardown would orphan it (and `yolo audit` would then flag it as unexpected).
  *
- * The one deliberate exception is the bring-your-own app data bucket
- * ({@see S3Bucket}): it holds user data, is never YOLO-tagged, and must survive a
- * teardown — so it is asserted NON-deletable here on purpose. A new App-scoped
- * resource that forgets `delete()` fails this test until it implements
- * {@see Deletable} (or, for a future shared resource, is moved off App scope).
+ * Two deliberate exceptions, both asserted NON-deletable directly below so the
+ * exclusion can't rot:
+ *  - the bring-your-own app data bucket ({@see S3Bucket}) — holds user data, never
+ *    YOLO-tagged, must survive a teardown;
+ *  - the {@see HostedZone} — a hosted zone is domain-level infrastructure (the
+ *    registrar's NS delegation, the domain's email/verification DNS, sibling
+ *    environments) that outlives any single app, so `destroy:app` withdraws only
+ *    the records it inserted and never deletes the zone.
  *
- * Env- and Account-scoped resources are intentionally NOT yet required to be
- * deletable — environment teardown is a later phase of LPX-695.
+ * A new App-scoped resource that forgets `delete()` fails this test until it
+ * implements {@see Deletable} (or, for a future shared resource, is moved off App
+ * scope). Env- and Account-scoped resources are intentionally NOT yet required to
+ * be deletable — environment teardown is a later phase of LPX-695.
  */
 it('every app-scoped resource is deletable, except the BYO data bucket', function (): void {
     $instantiate = function (ReflectionClass $reflection): object {
@@ -86,10 +92,10 @@ it('every app-scoped resource is deletable, except the BYO data bucket', functio
 
         $examined++;
 
-        // The BYO app data bucket is the deliberate exception — that it must NOT
-        // be Deletable is asserted directly in its own test below, never via this
-        // discovery loop (which could stop classifying it as App-scoped).
-        if ($class === S3Bucket::class) {
+        // The deliberate exceptions — that they must NOT be Deletable is asserted
+        // directly in their own tests below, never via this discovery loop (which
+        // could stop classifying one as App-scoped and pass vacuously).
+        if (in_array($class, [S3Bucket::class, HostedZone::class], true)) {
             continue;
         }
 
@@ -112,4 +118,13 @@ it('every app-scoped resource is deletable, except the BYO data bucket', functio
  */
 it('never makes the BYO app data bucket deletable', function (): void {
     expect(class_implements(S3Bucket::class))->not->toContain(Deletable::class);
+});
+
+/**
+ * Same hard counterpart for the hosted zone: a zone is domain-level (registrar NS
+ * delegation, email/verification DNS, sibling environments), so it must never be
+ * Deletable — `destroy:app` withdraws only the records it inserted, never the zone.
+ */
+it('never makes the hosted zone deletable', function (): void {
+    expect(class_implements(HostedZone::class))->not->toContain(Deletable::class);
 });
