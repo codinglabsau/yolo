@@ -19,8 +19,7 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Services\Typesense;
 use GuzzleHttp\Exception\GuzzleException;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
-
-use function Laravel\Prompts\warning;
+use Codinglabs\Yolo\Concerns\RecordsWarnings;
 
 /**
  * Mints this app its two Typesense keys, both scoped to its own `{prefix}*`
@@ -49,6 +48,7 @@ use function Laravel\Prompts\warning;
 class SyncTypesenseKeyStep implements Step
 {
     use RecordsChanges;
+    use RecordsWarnings;
 
     public function __construct(protected string $environment, protected ?Client $http = null) {}
 
@@ -73,7 +73,7 @@ class SyncTypesenseKeyStep implements Step
         $searchHost = Typesense::searchHost();
 
         if ($adminKey === null || $searchHost === null) {
-            warning('Typesense key not minted — the cluster is not provisioned yet. Run `yolo sync:app` again once `yolo sync:environment` has it up.');
+            $this->recordWarning('Typesense key not minted — the cluster is not provisioned yet. Run `yolo sync:app` again once `yolo sync:environment` has it up.');
 
             return StepResult::SKIPPED;
         }
@@ -82,7 +82,7 @@ class SyncTypesenseKeyStep implements Step
         $searchKey = $this->mint($searchHost, $adminKey, ['documents:search'], 'browser search-only');
 
         if ($serverKey === null || $searchKey === null) {
-            warning(sprintf('Typesense key not minted — https://%s is not reachable yet (DNS/health may still be settling). Run `yolo sync:app` again shortly.', $searchHost));
+            $this->recordWarning(sprintf('Typesense key not minted — https://%s is not reachable yet (DNS/health may still be settling). Run `yolo sync:app` again shortly.', $searchHost));
 
             return StepResult::SKIPPED;
         }

@@ -10,10 +10,9 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
+use Codinglabs\Yolo\Concerns\RecordsWarnings;
 use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\ScalableTarget;
-
-use function Laravel\Prompts\warning;
 
 /**
  * Registers and reconciles the web service's Application Auto Scaling scalable
@@ -42,6 +41,7 @@ use function Laravel\Prompts\warning;
 class SyncScalableTargetStep implements Step
 {
     use RecordsChanges;
+    use RecordsWarnings;
 
     /**
      * The workload group this step scales — web here; SyncQueueScalableTargetStep
@@ -77,7 +77,7 @@ class SyncScalableTargetStep implements Step
         }
 
         if (! $dryRun && static::wouldReduce($target, $live) && static::unattended($options)) {
-            warning(sprintf(
+            $this->recordWarning(sprintf(
                 'Skipped the %s autoscaling reduction: manifest bounds (%d–%d) are below live (%d–%d). Lower capacity with an interactive `yolo sync` or `yolo scale` — never unattended.',
                 $this->group()->value,
                 $target->min(),

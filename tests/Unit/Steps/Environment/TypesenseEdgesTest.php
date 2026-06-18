@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use Aws\Result;
 use GuzzleHttp\Client;
-use Laravel\Prompts\Prompt;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
 use Codinglabs\Yolo\Enums\Service;
@@ -168,8 +167,11 @@ it('skips the mint with instructions while the cluster is not provisioned yet', 
     $captured = [];
     bindServiceLifecycleWorld(['bucket' => false], $captured);
 
-    Prompt::fake();
+    $step = new SyncTypesenseKeyStep('testing');
 
-    expect((new SyncTypesenseKeyStep('testing'))([]))->toBe(StepResult::SKIPPED);
-    expect(Prompt::content())->toContain('not provisioned yet');
+    // The reason is recorded, not printed — the runner replays buffered warnings
+    // after the results table so they never collide with the live progress bar.
+    expect($step([]))->toBe(StepResult::SKIPPED);
+    expect($step->recordedWarnings())->toHaveCount(1)
+        ->and($step->recordedWarnings()[0])->toContain('not provisioned yet');
 });

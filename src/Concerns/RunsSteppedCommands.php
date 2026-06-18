@@ -105,15 +105,18 @@ trait RunsSteppedCommands
             'step' => $entry['step'],
         ])->values();
 
-        // Step instances are reused across passes; clear the changes the plan
-        // pass recorded so RecordsChanges starts fresh under apply.
-        $this->resetRecordedChanges($applyPlan);
+        // Step instances are reused across passes; clear the changes and warnings
+        // the plan pass recorded so RecordsChanges/RecordsWarnings start fresh
+        // under apply.
+        $this->resetRecordedState($applyPlan);
 
         $now = time();
 
         $applied = $this->executePlan($applyPlan, $now, apply: true);
 
         $this->renderResults($environment, $applied, time() - $now);
+
+        $this->renderDeferredWarnings($applied);
 
         return SymfonyCommand::SUCCESS;
     }
@@ -167,7 +170,7 @@ trait RunsSteppedCommands
      * and a single Skipping section grouped by scope + reason. With `-v`, the
      * skipped section expands to list every resource under each concept group.
      *
-     * @param  Collection<int, array{index: int, scope: string, step: Step, status: StepResult|string, elapsed: int, changes: array<int, Change>}>  $plan
+     * @param  Collection<int, array{index: int, scope: string, step: Step, status: StepResult|string, elapsed: int, changes: array<int, Change>, warnings: array<int, string>}>  $plan
      * @param  Collection<int, array{scope: string, step: Step, reason: string}>  $skipped
      */
     protected function printPlan(Collection $plan, Collection $skipped): void
@@ -248,7 +251,7 @@ trait RunsSteppedCommands
      * writes start, declaration order IS the dependency order.
      *
      * @param  Collection<int, array{scope: string, step: Step}>  $plan
-     * @return Collection<int, array{index: int, scope: string, step: Step, status: StepResult|string, elapsed: int, changes: array<int, Change>}>
+     * @return Collection<int, array{index: int, scope: string, step: Step, status: StepResult|string, elapsed: int, changes: array<int, Change>, warnings: array<int, string>}>
      */
     protected function executePlan(Collection $plan, int $now, bool $apply): Collection
     {
@@ -321,7 +324,7 @@ trait RunsSteppedCommands
      *
      * @param  Collection<int, array{scope: string, step: Step}>  $plan
      * @param  array<string, mixed>  $options
-     * @return Collection<int, array{index: int, scope: string, step: Step, status: StepResult|string, elapsed: int, changes: array<int, Change>}>
+     * @return Collection<int, array{index: int, scope: string, step: Step, status: StepResult|string, elapsed: int, changes: array<int, Change>, warnings: array<int, string>}>
      */
     protected function executePlanConcurrently(Collection $plan, array $options): Collection
     {
@@ -352,6 +355,7 @@ trait RunsSteppedCommands
                         'status' => $status,
                         'elapsed' => time() - $started,
                         'changes' => method_exists($step, 'changes') ? $step->changes() : [],
+                        'warnings' => method_exists($step, 'recordedWarnings') ? $step->recordedWarnings() : [],
                     ];
                 } catch (\Throwable $e) {
                     return [
@@ -382,6 +386,7 @@ trait RunsSteppedCommands
             'status' => $results[$i]['status'],
             'elapsed' => $results[$i]['elapsed'],
             'changes' => $results[$i]['changes'],
+            'warnings' => $results[$i]['warnings'],
         ]);
     }
 
@@ -425,15 +430,20 @@ trait RunsSteppedCommands
     }
 
     /**
-     * Clear changes recorded by a previous pass so the next pass starts clean.
+     * Clear the changes and warnings recorded by a previous pass so the next
+     * pass starts clean.
      *
      * @param  Collection<int, array{scope: string, step: Step}>  $planned
      */
-    protected function resetRecordedChanges(Collection $planned): void
+    protected function resetRecordedState(Collection $planned): void
     {
         $planned->each(function (array $entry): void {
             if (method_exists($entry['step'], 'resetChanges')) {
                 $entry['step']->resetChanges();
+            }
+
+            if (method_exists($entry['step'], 'resetWarnings')) {
+                $entry['step']->resetWarnings();
             }
         });
     }
@@ -442,7 +452,7 @@ trait RunsSteppedCommands
      * Render the progress frame for a step, invoke it, and time it.
      *
      * @param  array<string, mixed>  $options
-     * @return array{status: StepResult|string, elapsed: int, changes: array<int, Change>}
+     * @return array{status: StepResult|string, elapsed: int, changes: array<int, Change>, warnings: array<int, string>}
      */
     protected function invokeStep(Step $step, ?Progress $progress, string $label, int $now, array $options): array
     {
@@ -487,6 +497,10 @@ trait RunsSteppedCommands
             // record the attributes they changed so the Changes report can surface
             // each current → desired comparison.
             'changes' => method_exists($step, 'changes') ? $step->changes() : [],
+            // Steps buffer operator warnings (RecordsWarnings) instead of printing
+            // them inline — a warning written mid-run lands in the live progress
+            // bar's repaint region. The runner replays them after the results table.
+            'warnings' => method_exists($step, 'recordedWarnings') ? $step->recordedWarnings() : [],
         ];
     }
 
@@ -529,6 +543,32 @@ trait RunsSteppedCommands
         }
 
         info(sprintf('Synced %s in %ds.', $environment, $elapsed));
+    }
+
+    /**
+     * Replay the warnings steps recorded during the apply pass, as one block
+     * below the results table. Steps buffer warnings (RecordsWarnings) rather
+     * than printing them inline, because a warning written mid-run lands inside
+     * the live progress bar's repaint region — doubling its box and scrolling
+     * the message off-screen before it can be read. Rendered last so it's the
+     * final thing on screen, where a skip-with-a-reason can't be missed.
+     *
+     * @param  Collection<int, array{warnings?: array<int, string>}>  $ran
+     */
+    protected function renderDeferredWarnings(Collection $ran): void
+    {
+        $warnings = $ran->flatMap(fn (array $entry): array => $entry['warnings'] ?? [])->all();
+
+        if ($warnings === []) {
+            return;
+        }
+
+        $this->output->writeln('');
+        $this->output->writeln('  <options=bold>Warnings</>');
+
+        foreach ($warnings as $warning) {
+            $this->output->writeln(sprintf('  <fg=yellow>• %s</>', $warning));
+        }
     }
 
     /**

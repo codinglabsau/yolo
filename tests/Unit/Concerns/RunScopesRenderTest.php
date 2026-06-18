@@ -9,6 +9,7 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Commands\SyncCommand;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
+use Codinglabs\Yolo\Concerns\RecordsWarnings;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Console\Command\Command as SymfonyCommand;
@@ -42,6 +43,30 @@ class RunScopesChangeStep implements Step
         $this->recordChange(Change::make('idle_timeout', 30, 60));
 
         return Arr::get($options, 'dry-run') ? StepResult::WOULD_SYNC : StepResult::SYNCED;
+    }
+}
+
+/**
+ * A step that's pending on the plan but, on apply, records a deferred warning
+ * and skips — mirroring SyncTypesenseKeyStep, whose live mint can't run until
+ * the cluster is up. The warning is buffered, never printed inline.
+ */
+class RunScopesWarnStep implements Step
+{
+    use RecordsChanges;
+    use RecordsWarnings;
+
+    public function __invoke(array $options): StepResult
+    {
+        if (Arr::get($options, 'dry-run')) {
+            $this->recordChange(Change::make('typesense key', 'absent', 'minted'));
+
+            return StepResult::WOULD_CREATE;
+        }
+
+        $this->recordWarning('Typesense key not minted — the cluster is not provisioned yet.');
+
+        return StepResult::SKIPPED;
     }
 }
 
@@ -259,6 +284,22 @@ it('omits the Warnings section when the command carries no advisories', function
     );
 
     expect($output)->not->toContain('Warnings');
+});
+
+it('defers a step warning to a Warnings block after the apply results', function (): void {
+    $output = runScopesCapture(
+        ['app' => [RunScopesWarnStep::class]],
+        ['--no-progress' => true],
+    );
+
+    // The warning the step recorded on apply is replayed once, under a heading...
+    expect($output)
+        ->toContain('Warnings')
+        ->toContain('not provisioned yet');
+
+    // ...*after* the apply results — never mid-run, where the live progress bar
+    // would clobber it (the bug this buffering fixes).
+    expect(strpos($output, 'Synced testing'))->toBeLessThan(strpos($output, 'not provisioned yet'));
 });
 
 it('--check exits non-zero on drift and never applies', function (): void {
