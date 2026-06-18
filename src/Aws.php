@@ -528,9 +528,12 @@ class Aws
 
     /**
      * The standard upper-case `[{Key, Value}]` tag-list shape most AWS tagging
-     * APIs accept on write, built from an associative {key => value} map.
+     * APIs accept on write, built from an associative {key => value} map. Public
+     * (the inverse of flattenTags()) so a resource doing its own single-read tag
+     * reconcile — e.g. HostedZone, which must inspect live ownership first — can
+     * format the write without a second AWS round-trip.
      */
-    protected static function keyValueTags(array $tags): array
+    public static function keyValueTags(array $tags): array
     {
         return collect($tags)
             ->map(fn ($value, $key): array => ['Key' => $key, 'Value' => $value])

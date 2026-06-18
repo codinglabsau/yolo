@@ -42,6 +42,15 @@ domain: app.codinglabs.com.au
 
 `apex` tells YOLO which Route 53 hosted zone to write into; `domain` is where the app is served. If you omit `apex`, it defaults to `domain`. A bare subdomain like this is served on its own — it's not one half of the apex/`www` pair, so no redirect is set up.
 
+## One app across two environments
+
+Every other resource YOLO creates is env-scoped (`yolo-{env}-{app}-…`), so two environments of the same app — say a `staging` trial on `app-staging.example.com` alongside `production` on `example.com` — never collide. The one exception is the **hosted zone**: a real domain has a single zone, so both environments write into it.
+
+That's safe by design:
+
+- **Records stay isolated.** Each environment UPSERTs only its own `domain` (and, for an apex/`www` canonical host, that pair). A trial on a bare subdomain has no `www` sibling, so it only ever writes its own record — it never touches the production apex.
+- **Ownership is first-writer-wins.** The zone carries a `yolo:environment` tag for [`audit`](/guide/provisioning#auditing-what-s-deployed). Whichever environment provisions it first owns that tag; later environments **never overwrite it** (which would otherwise flap on every sync and read as drift, refusing both environments' deploys at the [pre-deploy in-sync check](/guide/ci-cd#yolo-deploy-refuses-to-run-against-drift)). `sync:app` instead surfaces a one-line **warning** naming the owning environment, so the shared zone is visible without being a gate.
+
 ## Headless apps
 
 An app with no public web front — a background worker, a queue consumer, an internal job runner — can run **headless**: omit `domain`, `apex`, and any tenant domains.

@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServerGroup;
+use Codinglabs\Yolo\Resources\Route53\HostedZone;
 
 /**
  * Writer of one app's resources within an environment. Blast radius: this app.
@@ -46,7 +47,36 @@ class SyncAppCommand extends SyncSteppedCommand
         return array_filter([
             static::schedulerDisabledWarning(),
             static::schedulerAdvisory(),
+            $this->hostedZoneOwnershipWarning(),
         ]);
+    }
+
+    /**
+     * A heads-up when this app's hosted zone is already owned by another
+     * environment — i.e. the same app is served on the one domain from more than
+     * one env (a trial alongside prod). It's not a gate: record writes are
+     * isolated (each env UPSERTs only its own subdomain) and the env ownership tag
+     * is first-writer-wins, so this only reminds the operator the zone is shared.
+     */
+    public function hostedZoneOwnershipWarning(): ?string
+    {
+        if (Manifest::isMultitenanted() || Manifest::isHeadless()) {
+            return null;
+        }
+
+        $owner = (new HostedZone(Manifest::apex()))->ownerEnvironment();
+
+        if ($owner === null) {
+            return null;
+        }
+
+        return sprintf(
+            'The hosted zone for %s is already owned by the "%s" environment. This app is served on the one '
+                . 'domain from more than one environment — DNS records stay isolated (each env writes only its own '
+                . 'subdomain) and YOLO leaves the existing yolo:environment tag in place.',
+            Manifest::apex(),
+            $owner,
+        );
     }
 
     /**
