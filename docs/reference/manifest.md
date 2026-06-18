@@ -80,7 +80,7 @@ environments:
         #   unhealthy-threshold: 5        # default: 5 — cushion for a slow-but-alive task
         #   grace-period: 60              # default: 60 (ECS health-check grace period)
         #
-        # autoscaling: false             # on by default (min 1, max 5); `false` = fixed single task
+        autoscaling: true              # REQUIRED for web — true (min 1, max 5) | false (fixed single task) | a block
         # autoscaling:                    # …or tune it (web min must be ≥ 1)
         #   min: 1                        # default: 1
         #   max: 5                        # default: 5
@@ -90,14 +90,15 @@ environments:
         #   # request concurrency is the default signal (derived from task memory); burst
         #   # (~10s spike detection) is unconditional for octane — neither has a knob
 
-      # Extract the queue into its own ECS service (scale independently of web).
-      # `true` extracts with defaults; `false` switches the worker off entirely.
-      # Autoscales by default (min 1, max 5); set autoscaling.min: 0 to scale to zero
-      # when idle — except when it also hosts the scheduler (no `scheduler` block below),
-      # where min 0 is rejected so cron isn't killed when it idles.
+      # Extract the queue into its own ECS service (scale independently of web). Like
+      # web, a standalone queue must be a config map that declares `autoscaling` — there's
+      # no bare `queue: true` shorthand. `false` switches the worker off entirely. Set
+      # autoscaling.min: 0 to scale to zero when idle — except when it also hosts the
+      # scheduler (no `scheduler` block below), where min 0 is rejected so cron isn't
+      # killed when it idles.
       # queue:
-      #   autoscaling:                    # on by default; `false` = fixed single task
-      #     min: 0                        # default: 1 — 0 = scale to zero when idle
+      #   autoscaling:                    # required — true | false | a { min, max } block
+      #     min: 0                        # 0 = scale to zero when idle (floor defaults to 1)
       #     max: 5                        # default: 5
       #     backlog-per-task: 100         # default: 100 — target messages per running task
       #   cpu: '256'                      # default: '256'
@@ -367,7 +368,7 @@ The budget block is **two-tier**: the same `budget` shape can also be declared i
 
 ## `tasks.web.*`
 
-Declaring `tasks.web` (as `true` or a config object) makes the app a Fargate web service; it **autoscales by default** (see [`tasks.web.autoscaling`](#tasks-web-autoscaling)). `tasks.web: false` — or omitting `tasks` entirely — is a build-only / headless app with no web container.
+Declaring `tasks.web` as a config object makes the app a Fargate web service; it **must declare** [`autoscaling`](#tasks-web-autoscaling) — there's no implicit default, and the bare `tasks.web: true` shorthand isn't accepted (a scalar tier has nowhere to state its scaling behaviour). `tasks.web: false` — or omitting `tasks` entirely — is a build-only / headless app with no web container.
 
 ### Where each role runs
 
@@ -375,7 +376,9 @@ Every app runs three roles — **web**, the **queue worker**, and the **schedule
 
 To run web in isolation, **extract the worker tier**: add a top-level [`tasks.queue`](#tasks-queue) block and the queue worker *and* the scheduler move out to their own service, leaving the web container running just the web server. Add [`tasks.scheduler`](#tasks-scheduler) as well to give cron its own pinned-singleton task. Placement is derived from which blocks are present — there are no `tasks.web.queue` / `tasks.web.scheduler` flags.
 
-Each block is **`true | false | {config}`** (the same boolean-or-object form as [`tasks.web.ssr`](#tasks-web)): `true` extracts the role with default sizing, a config object extracts it with overrides, and `false` switches it off so the role runs **nowhere** — neither bundled nor extracted. An empty block (`queue:`) or empty object (`{}`) is rejected — write `true` for defaults so the intent is never ambiguous.
+Each block is **`true | false | {config}`** (the same boolean-or-object form as [`tasks.web.ssr`](#tasks-web)): `true` extracts the role with default sizing, a config object extracts it with overrides, and `false` switches it off so the role runs **nowhere** — neither bundled nor extracted. An empty block (`queue:`) or empty object (`{}`) is rejected — state the intent explicitly. The **`queue`** block is the one exception to bare `true`: like web, a standalone queue must be a config object that declares [`autoscaling`](#tasks-queue) (web and queue both need a definitive scaling decision). Only **`scheduler`** — a pinned singleton that never scales — keeps the bare `true` shorthand.
+
+In the placement table below, `queue: true` is shorthand for "queue extracted" — the real manifest writes `queue: { autoscaling: … }`; only `scheduler: true` is literal.
 
 | Manifest | web container | worker container | scheduler container |
 | --- | --- | --- | --- |
@@ -420,11 +423,11 @@ The other defaults are tuned to avoid false-positive failures on a Laravel/Octan
 
 ### `tasks.web.autoscaling.*`
 
-[Application Auto Scaling](/guide/scaling) is **on by default** for the web service (`min: 1`, `max: 5`) — `autoscaling` is `true | false | {config}`, the same boolean-or-object form as the group itself. An omitted key or `autoscaling: true` takes the defaults; **`autoscaling: false`** pins a fixed single task (no scalable target); a `{min, max, …}` object sets bespoke bounds. An empty object (`{}`) is rejected — write `true` or `false`. Web **`min` must be ≥ 1** (it serves traffic and can't idle to zero). With autoscaling on, YOLO scales on **request concurrency** — the default, leading signal, with its target derived from the task's memory so there's nothing to tune — and composes a **CPU** policy alongside as a safety net. The only knobs are the bounds and cooldowns.
+[Application Auto Scaling](/guide/scaling) is **required** for the web service — `autoscaling` is `true | false | {config}` and the key can't be omitted (nor can web use the bare `tasks.web: true` shorthand). **`autoscaling: true`** takes the defaults (`min: 1`, `max: 5`); **`autoscaling: false`** pins a fixed single task (no scalable target); a `{min, max, …}` object sets bespoke bounds. An empty object (`{}`) is rejected — write `true` or `false`. Web **`min` must be ≥ 1** (it serves traffic and can't idle to zero). With autoscaling on, YOLO scales on **request concurrency** — the default, leading signal, with its target derived from the task's memory so there's nothing to tune — and composes a **CPU** policy alongside as a safety net. The only knobs are the bounds and cooldowns.
 
 | Key | Default | Description |
 |---|---|---|
-| `autoscaling` | *(on)* | `false` for a fixed single task; `true` / object to tune. On by default. |
+| `autoscaling` | *(required)* | `true` for scaling on defaults, `false` for a fixed single task, or an object to tune. No implicit default — must be declared. |
 | `autoscaling.min` | `1` | Minimum number of tasks (must be ≥ 1). |
 | `autoscaling.max` | `5` | Maximum number of tasks. |
 | `autoscaling.cpu-utilization` | `65` | Target average CPU % — the safety-net policy composed alongside concurrency. |
@@ -445,22 +448,22 @@ tasks:
 ```
 
 ::: warning Bundled scheduler
-A plain web app bundles the scheduler in the web container, so scaling to N tasks runs cron N times — every scheduled task would fire on each replica. Every scheduled task **must** use Laravel's `->onOneServer()`, or extract the scheduler into its own service ([`tasks.scheduler`](#tasks-scheduler)). The `sync` plan lists an advisory under its **Warnings** section whenever the scheduler is bundled into an autoscaling host (the web task, or a standalone queue — both autoscale by default). See [Scaling → the scheduler](/guide/scaling#the-scheduler).
+A plain web app bundles the scheduler in the web container, so scaling to N tasks runs cron N times — every scheduled task would fire on each replica. Every scheduled task **must** use Laravel's `->onOneServer()`, or extract the scheduler into its own service ([`tasks.scheduler`](#tasks-scheduler)). The `sync` plan lists an advisory under its **Warnings** section whenever the scheduler is bundled into an autoscaling host (the web task, or a standalone queue — both must declare autoscaling). See [Scaling → the scheduler](/guide/scaling#the-scheduler).
 :::
 
 ---
 
 ## `tasks.queue.*`
 
-`tasks.queue` is **`true | false | {config}`**. `true` (or a config object) extracts the queue worker into its **own** ECS service, so it scales independently of web; `false` switches the worker off entirely (it runs nowhere, and YOLO enforces `QUEUE_CONNECTION=sync` — see [Where each role runs](#where-each-role-runs)); omitting the block leaves the worker bundled in the web container. An empty block (`queue:`) or empty object (`{}`) is rejected — write `true` for a scale-to-zero worker on default sizing.
+`tasks.queue` is a **config object** that extracts the queue worker into its **own** ECS service (so it scales independently of web), or **`false`** to switch the worker off entirely (it runs nowhere, and YOLO enforces `QUEUE_CONNECTION=sync` — see [Where each role runs](#where-each-role-runs)); omitting the block leaves the worker bundled in the web container. Like web, a standalone queue **must declare `autoscaling`** — there's no bare `queue: true` shorthand, and an empty block (`queue:`) or empty object (`{}`) is rejected.
 
-A standalone queue **autoscales by default** (`min: 1`, `max: 5`) — the same `autoscaling: true | false | {min, max, backlog-per-task}` knob as web, on unless you set `autoscaling: false` (a fixed single task — no scalable target, no backlog policy). Set **`autoscaling.min: 0`** to opt into **scale to zero**: zero tasks — and zero compute cost — when the queue is empty, at the cost of a ~30–60s Fargate cold start on the first message after idle (so it suits bursty, latency-tolerant work). The queue `min` may be `0` (unlike web); but when the queue also hosts the scheduler (a `tasks.queue` block with no [`tasks.scheduler`](#tasks-scheduler)) it can't scale to zero — cron would stop — so an explicit `tasks.queue.autoscaling.min: 0` is rejected there.
+`autoscaling` is the same `true | false | {min, max, backlog-per-task}` knob as web: `true` takes the defaults (`min: 1`, `max: 5`), `false` pins a fixed single task (no scalable target, no backlog policy). Set **`autoscaling.min: 0`** to opt into **scale to zero**: zero tasks — and zero compute cost — when the queue is empty, at the cost of a ~30–60s Fargate cold start on the first message after idle (so it suits bursty, latency-tolerant work). The queue `min` may be `0` (unlike web); but when the queue also hosts the scheduler (a `tasks.queue` block with no [`tasks.scheduler`](#tasks-scheduler)) it can't scale to zero — cron would stop — so an explicit `tasks.queue.autoscaling.min: 0` is rejected there.
 
 Scaling is **backlog-per-task** target tracking (`ApproximateNumberOfMessagesVisible / RunningTaskCount`, CloudWatch metric math — no Lambda). A scale-to-zero queue (`autoscaling.min: 0`) also gets a step-scaling alarm that lifts it 0→1 the instant a message arrives (target tracking can't divide by zero running tasks).
 
 | Key | Default | Description |
 |---|---|---|
-| `tasks.queue.autoscaling` | *(on)* | `false` for a fixed single task; `true` / object to tune. On by default. |
+| `tasks.queue.autoscaling` | *(required)* | `true` for scaling on defaults, `false` for a fixed single task, or an object to tune. No implicit default — must be declared. |
 | `tasks.queue.autoscaling.min` | `1` | Minimum tasks. `0` = scale to zero when idle. |
 | `tasks.queue.autoscaling.max` | `5` | Maximum tasks. |
 | `tasks.queue.autoscaling.backlog-per-task` | `100` | Target visible messages per running task — the scale-out trigger. |

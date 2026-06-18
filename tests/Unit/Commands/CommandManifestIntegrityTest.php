@@ -252,10 +252,74 @@ it('bails on an unrecognised key inside a task group', function (): void {
     expect(test()->promptOutput->fetch())->toContain('tasks.web.nonsense');
 });
 
+it('bails when a web config map omits autoscaling', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['cpu' => '512']],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    $output = test()->promptOutput->fetch();
+    expect($output)->toContain('tasks.web');
+    expect($output)->toContain('autoscaling');
+});
+
+it('bails on the bare `tasks.web: true` shorthand — web needs an explicit autoscaling decision', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => true],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+    expect(test()->promptOutput->fetch())->toContain('tasks.web');
+});
+
+it('bails when a standalone queue omits autoscaling', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => true], 'queue' => ['spot' => true]],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    $output = test()->promptOutput->fetch();
+    expect($output)->toContain('tasks.queue');
+    expect($output)->toContain('autoscaling');
+});
+
+it('bails on the bare `tasks.queue: true` shorthand', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => true], 'queue' => true],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+    expect(test()->promptOutput->fetch())->toContain('tasks.queue');
+});
+
+it('accepts a headless app — a disabled web tier needs no autoscaling', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => false],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+});
+
+it('keeps the bare `tasks.scheduler: true` shorthand — the scheduler never scales', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => true], 'scheduler' => true],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+});
+
 it('bails when the scheduler rides a queue explicitly set to scale to zero', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => true, 'queue' => ['autoscaling' => ['min' => 0]]],
+        'tasks' => ['web' => ['autoscaling' => true], 'queue' => ['autoscaling' => ['min' => 0]]],
     ]);
 
     expect(invokeManifestIntegrity())->toBeFalse();
@@ -268,7 +332,7 @@ it('bails when the scheduler rides a queue explicitly set to scale to zero', fun
 it('accepts a scheduler-hosting queue with a standing floor of one', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => true, 'queue' => ['autoscaling' => ['min' => 1]]],
+        'tasks' => ['web' => ['autoscaling' => true], 'queue' => ['autoscaling' => ['min' => 1]]],
     ]);
 
     expect(invokeManifestIntegrity())->toBeTrue();
@@ -277,7 +341,7 @@ it('accepts a scheduler-hosting queue with a standing floor of one', function ()
 it('accepts a scheduler-hosting queue with no explicit floor (defaults to one)', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => true, 'queue' => true],
+        'tasks' => ['web' => ['autoscaling' => true], 'queue' => ['autoscaling' => true]],
     ]);
 
     expect(invokeManifestIntegrity())->toBeTrue();
@@ -286,7 +350,7 @@ it('accepts a scheduler-hosting queue with no explicit floor (defaults to one)',
 it('accepts a scale-to-zero queue when the scheduler is its own service', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => true, 'queue' => ['autoscaling' => ['min' => 0]], 'scheduler' => true],
+        'tasks' => ['web' => ['autoscaling' => true], 'queue' => ['autoscaling' => ['min' => 0]], 'scheduler' => true],
     ]);
 
     expect(invokeManifestIntegrity())->toBeTrue();

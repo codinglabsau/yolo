@@ -19,7 +19,7 @@ Autoscaling **bounds** (`min`/`max`) live in the manifest and are reconciled by 
 
 ## Autoscaling
 
-`yolo init` scaffolds new apps with web autoscaling **on** (`tasks.web.autoscaling: true`, bounds 1–5) — so a fresh app scales out of the box. To set your own bounds, expand the shorthand into a block:
+`autoscaling` is **required** on web and queue — there's no implicit default, and neither accepts the bare `tasks.web: true` / `tasks.queue: true` shorthand (only the scheduler does). `yolo init` scaffolds new apps with `tasks.web.autoscaling: true` (bounds 1–5), so a fresh app scales out of the box. To set your own bounds, expand the shorthand into a block:
 
 ```yaml
 tasks:
@@ -35,10 +35,10 @@ The scaffolded shorthand takes the defaults (`min: 1`, `max: 5`):
 ```yaml
 tasks:
   web:
-    autoscaling: true       # shorthand for the defaults — on by default; `false` = a fixed single task
+    autoscaling: true       # shorthand for the defaults; `false` = a fixed single task
 ```
 
-Autoscaling is **on by default** for any enabled web tier — an omitted `autoscaling` key behaves like `true`. On the next `yolo sync` / `yolo sync:app`, YOLO registers an [Application Auto Scaling](https://docs.aws.amazon.com/autoscaling/application/userguide/what-is-application-auto-scaling.html) **scalable target** on the ECS service (bounded by `min`/`max`) and attaches **target-tracking policies** to it. Set `autoscaling: false` to keep the service a fixed single task instead.
+An enabled web tier **must declare `autoscaling`** — omitting it (or using the bare `tasks.web: true` shorthand) hard-fails the manifest check, so a tier's scaling posture is always a deliberate decision rather than an inherited default. With `true` (or a block), the next `yolo sync` / `yolo sync:app` registers an [Application Auto Scaling](https://docs.aws.amazon.com/autoscaling/application/userguide/what-is-application-auto-scaling.html) **scalable target** on the ECS service (bounded by `min`/`max`) and attaches **target-tracking policies** to it. Set `autoscaling: false` to keep the service a fixed single task instead.
 
 ### Two metrics, composed
 
@@ -49,7 +49,7 @@ YOLO runs two target-tracking policies at once. Application Auto Scaling takes t
 | **Request concurrency** | in-flight requests per task (derived) | The default, leading signal — concurrency climbs the instant traffic does, ahead of CPU. Scales the web tier under normal HTTP load. No tuning: its target comes from the task's memory. |
 | **CPU** | `ECSServiceAverageCPUUtilization` | The safety net. Catches load that pegs the CPU without raising request concurrency — a few heavy, low-rate requests. Target defaults to 65%. |
 
-Both are on the moment the web tier is enabled (autoscaling is on by default) — there's nothing to seed from a load test first. Scaling on the requests a task is actively serving rather than trailing CPU means faster responses need fewer tasks for the same traffic, and a spike is caught as it arrives.
+Both are on the moment the web tier declares `autoscaling: true` (or a block) — there's nothing to seed from a load test first. Scaling on the requests a task is actively serving rather than trailing CPU means faster responses need fewer tasks for the same traffic, and a spike is caught as it arrives.
 
 ### How the concurrency target is derived
 
@@ -85,7 +85,7 @@ The burst alarm and step policy aren't taggable, so (like the target-tracking po
 
 ### Turning autoscaling off
 
-Autoscaling is declarative — sync reconciles live state down to what the manifest asks for, so removing the `autoscaling` block deregisters the scalable target on the next `yolo sync`, which cascades the delete to **every** policy and alarm on it.
+Autoscaling is declarative — sync reconciles live state down to what the manifest asks for. Since the key is required you turn it off by setting **`autoscaling: false`** (not by removing it); that deregisters the scalable target on the next `yolo sync`, which cascades the delete to **every** policy and alarm on it.
 
 Deregistering doesn't drop tasks — the service reverts to a **fixed** task count frozen at its current live count. Bring it down with [`yolo scale`](#manual-scaling) if you no longer need the extra capacity.
 
@@ -105,7 +105,7 @@ yolo scale production --queue --min=0 --max=20     # queue bounds (min 0 = scale
 
 Under autoscaling you set the **bounds** (`--min`/`--max`), never a desired count — the policies own desired count and would override it. Crucially, `scale` **writes the bounds back to the manifest** (surgically — your comments and formatting survive), so the manifest stays the single source of truth and the next `yolo sync` reconciles to the same values rather than clobbering your change.
 
-For a fixed service (`autoscaling: false` — web or queue) a positional `count` sets the ECS desired count directly. An autoscaling service (the default for web and queue) only takes `--min`/`--max`. The scheduler is a singleton and can't be scaled (`--scheduler` errors out).
+For a fixed service (`autoscaling: false` — web or queue) a positional `count` sets the ECS desired count directly. An autoscaling service (`autoscaling: true` or a block) only takes `--min`/`--max`. The scheduler is a singleton and can't be scaled (`--scheduler` errors out).
 
 ### Reducing capacity is guarded
 
@@ -123,7 +123,8 @@ Add a top-level `tasks.queue` block to give the queue worker its own ECS service
 
 ```yaml
 tasks:
-  web: true
+  web:
+    autoscaling: true
   queue:
     autoscaling:
       min: 0          # scale to zero when idle (opt-in; the default floor is 1)
@@ -132,7 +133,7 @@ tasks:
     spot: true        # optional: ~70% cheaper interruptible capacity
 ```
 
-Like web, the queue **autoscales by default** (`min: 1`, `max: 5`) — set `autoscaling: false` for a fixed single task. It scales on **backlog per task** — `ApproximateNumberOfMessagesVisible / RunningTaskCount`, computed with CloudWatch metric math (no Lambda) and held at `backlog-per-task` messages per running task. As the backlog grows it scales out toward `max`; as it drains it scales back in toward `min`.
+Like web, the queue **must declare `autoscaling`** — `true` takes the defaults (`min: 1`, `max: 5`), `false` pins a fixed single task. It scales on **backlog per task** — `ApproximateNumberOfMessagesVisible / RunningTaskCount`, computed with CloudWatch metric math (no Lambda) and held at `backlog-per-task` messages per running task. As the backlog grows it scales out toward `max`; as it drains it scales back in toward `min`.
 
 With `autoscaling.min: 0` the queue **scales to zero**: no tasks and no compute cost when idle. Target tracking can't lift it off zero (dividing by zero running tasks is undefined), so YOLO also attaches a step-scaling alarm that sets the service to exactly one task the instant a message becomes visible; target tracking owns it from one upward. The cost is a **~30–60s cold start** (image pull + boot) on the first message after idle.
 
@@ -176,5 +177,5 @@ tasks:
 YOLO pins it at exactly one task (never a scalable target) and deploys it **stop-then-start** (`minimumHealthyPercent: 0` / `maximumPercent: 100`) so a rollout stops the old cron before starting the new one — a deploy never briefly runs two schedulers (a missed cron minute is harmless; a double-run isn't). This removes the `onOneServer()` *requirement* entirely — it's genuinely a singleton now — though leaving `onOneServer()` on is harmless. The web tier then scales without any scheduler concern.
 
 ::: tip
-When the scheduler is bundled into a host that runs more than one task — an autoscaling web task, or a standalone queue (both autoscale by default) — `yolo sync` lists an advisory under the plan's **Warnings** section pointing at these two strategies. It's a nudge, not a gate — YOLO can't see inside your kernel to know whether you've used `onOneServer()`.
+When the scheduler is bundled into a host that runs more than one task — an autoscaling web task, or a standalone queue (both must declare autoscaling) — `yolo sync` lists an advisory under the plan's **Warnings** section pointing at these two strategies. It's a nudge, not a gate — YOLO can't see inside your kernel to know whether you've used `onOneServer()`.
 :::

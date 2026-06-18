@@ -39,9 +39,10 @@ environments:
         port: 8000
         enable-execute-command: true   # ECS Exec shell access (gate with MFA on your IAM)
 
-        # Request-based autoscaling, on by default — web scales out on request concurrency
-        # (with CPU as a safety net and a ~10s burst path), between 1 and 5 tasks. Expand to a
-        # block for your own bounds (autoscaling: { min: 2, max: 8 }); set false to pin one task.
+        # Request-based autoscaling — REQUIRED for web and queue (there is no implicit default,
+        # and the bare `web: true` shorthand isn't accepted for these two). `true` scales out on
+        # request concurrency (CPU safety net + a ~10s burst path) between 1 and 5 tasks; `false`
+        # pins one task; a block sets your own bounds (autoscaling: { min: 2, max: 8 }).
         autoscaling: true
 
         # shutdown-grace-period: seconds the web process gets to finish work on SIGTERM before it's
@@ -50,14 +51,15 @@ environments:
         # shutdown-grace-period: 10
 
       # Extract a workload into its own ECS service so it scales independently of
-      # web — just uncomment its block (presence is the opt-in). A standalone queue
-      # scales to zero by default; the scheduler is a pinned singleton (exactly one
-      # task), which drops the onOneServer() need. With only a queue extracted, the
-      # scheduler rides that queue (so its floor is pinned at min 1).
+      # web — just uncomment its block (presence is the opt-in). The scheduler is a
+      # pinned singleton (exactly one task), which drops the onOneServer() need. With
+      # only a queue extracted, the scheduler rides that queue (so its floor is pinned
+      # at min 1). Like web, a standalone queue must declare `autoscaling`.
       # queue:
-      #   min: 0                 # 0 = scale to zero when idle (default)
-      #   max: 10
-      #   backlog-per-task: 100  # target messages per running task
+      #   autoscaling:           # required — true | false | a { min, max } block
+      #     min: 0               # 0 opts into scale-to-zero when idle (floor defaults to 1)
+      #     max: 10
+      #     backlog-per-task: 100  # target messages per running task
       #   spot: true             # ~70% cheaper interruptible capacity
       #   shutdown-grace-period: 70   # let an in-flight job finish on SIGTERM
       # scheduler:

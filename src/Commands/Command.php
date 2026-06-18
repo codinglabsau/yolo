@@ -128,7 +128,41 @@ abstract class Command extends SymfonyCommand
             && $this->ensureCacheStoreValid()
             && $this->ensureSessionDriverValid()
             && $this->ensureServicesValid()
+            && $this->ensureAutoscalingDeclared()
             && $this->ensureSchedulerHostNotScaleToZero();
+    }
+
+    /**
+     * Web and queue must each make a definitive autoscaling decision — there is no
+     * implicit default. The value is `true` (cost-effective scaling from one task),
+     * `false` (a pinned single task), or a `{ min, max }` block for bespoke bounds.
+     * The bare `tasks.web: true` / `tasks.queue: true` shorthand is therefore not
+     * accepted for these two groups: a scalar tier has nowhere to declare scaling
+     * behaviour. Only the scheduler — a pinned singleton that never scales — keeps
+     * its bare-`true` shorthand. A disabled (`false`) or absent group is exempt.
+     */
+    protected function ensureAutoscalingDeclared(): bool
+    {
+        $enabled = [
+            ServerGroup::WEB->value => Manifest::hasWeb(),
+            ServerGroup::QUEUE->value => Manifest::hasStandaloneQueue(),
+        ];
+
+        foreach ($enabled as $group => $isEnabled) {
+            if ($isEnabled && ! Manifest::has("tasks.$group.autoscaling")) {
+                error(sprintf(
+                    'yolo.yml `tasks.%s` must declare `autoscaling` (true | false | { min, max }) — '
+                    . "web and queue need an explicit scaling decision, so the bare `tasks.%s: true` shorthand isn't accepted.\n"
+                    . 'See the manifest reference: https://codinglabsau.github.io/yolo/reference/manifest',
+                    $group,
+                    $group,
+                ));
+
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
