@@ -138,30 +138,159 @@ class WebBurstPolicy
     }
 
     /**
-     * Provision (or confirm) the step policy + its high-res alarm. The config is
-     * static, so drift is simply "either piece is missing"; reported as a Change so
-     * the sync step renders WOULD_CREATE / CREATED and survives the only-pending
-     * filter.
+     * Provision the step policy + its high-res alarm, and reconcile their config when
+     * either drifts. Drift is "a piece is missing" OR "an existing piece's owned
+     * config differs from the desired" — the latter matters because the alarm
+     * threshold and the policy's step config are code constants that change between
+     * yolo versions, and an existing alarm is never recreated. Without a config diff a
+     * lowered threshold (e.g. 80 → 70) would never reach a provisioned environment:
+     * the alarm exists, so the old existence-only check reported no drift and the put
+     * never ran. Every drift is reported as a Change (built regardless of $apply, so
+     * the plan and apply passes agree) and the matching put fires only on apply.
      *
      * @return array<int, Change>
      */
     public function synchronise(bool $apply): array
     {
-        $changes = [];
+        $livePolicy = $this->livePolicy();
+        $liveAlarm = $this->liveAlarm();
 
-        if (! $this->policyExists()) {
-            $changes[] = Change::make('web burst policy', null, $this->policyName());
-        }
+        $policyChanges = $livePolicy === null
+            ? [Change::make('web burst policy', null, $this->policyName())]
+            : $this->policyDrift($livePolicy);
 
-        if (! $this->alarmExists()) {
-            $changes[] = Change::make('web burst alarm', null, $this->alarmName());
-        }
+        $alarmChanges = $liveAlarm === null
+            ? [Change::make('web burst alarm', null, $this->alarmName())]
+            : $this->alarmDrift($liveAlarm);
+
+        $changes = [...$policyChanges, ...$alarmChanges];
 
         if ($changes === [] || ! $apply) {
             return $changes;
         }
 
-        $policyArn = Aws::applicationAutoScaling()->putScalingPolicy([
+        // The alarm's action is the policy ARN, which is stable per policy name — so
+        // when only the alarm drifted we reuse the existing policy's ARN rather than
+        // re-putting an unchanged policy.
+        $policyArn = $policyChanges === []
+            ? $livePolicy['PolicyARN']
+            : Aws::applicationAutoScaling()->putScalingPolicy($this->policyDefinition())['PolicyARN'];
+
+        if ($alarmChanges !== []) {
+            Aws::cloudWatch()->putMetricAlarm($this->alarmDefinition($policyArn));
+
+            // PutMetricAlarm ignores Tags when updating an existing alarm, so reconcile
+            // the ownership markers explicitly (TagResource works on an existing alarm) —
+            // so the alarm reads as `ok` in yolo audit rather than rogue.
+            Aws::synchroniseCloudWatchTags(
+                CloudWatch::alarm($this->alarmName())['AlarmArn'],
+                $this->tags(),
+                apply: true,
+            );
+        }
+
+        return $changes;
+    }
+
+    /**
+     * Owned-config drift on an existing alarm — the scalar fields that decide *when*
+     * it fires, each reported as its own Change so the plan shows "threshold: 80 → 70"
+     * rather than an opaque blob. CloudWatch echoes numeric fields back as floats
+     * (Threshold 70 → 70.0), so numerics are compared by value and strings exactly.
+     *
+     * @param  array<string, mixed>  $live
+     * @return array<int, Change>
+     */
+    private function alarmDrift(array $live): array
+    {
+        $changes = [];
+
+        foreach ($this->alarmBehaviour() as $key => $desired) {
+            $current = $live[$key] ?? null;
+
+            $matches = is_int($desired)
+                ? $current !== null && (float) $current === (float) $desired
+                : $current === $desired;
+
+            if (! $matches) {
+                $changes[] = Change::make("web burst alarm {$key}", $current, $desired);
+            }
+        }
+
+        return $changes;
+    }
+
+    /**
+     * Owned-config drift on an existing step policy. The whole scaling behaviour is
+     * compared as one normalised unit (AWS returns step bounds as floats and omits an
+     * absent upper bound) and reported as a single Change — it's internal plumbing
+     * that rarely moves, unlike the operator-facing alarm threshold.
+     *
+     * @param  array<string, mixed>  $live
+     * @return array<int, Change>
+     */
+    private function policyDrift(array $live): array
+    {
+        $desired = $this->normalisePolicyConfig($this->policyDefinition()['StepScalingPolicyConfiguration']);
+        $current = $this->normalisePolicyConfig($live['StepScalingPolicyConfiguration'] ?? []);
+
+        if ($current === $desired) {
+            return [];
+        }
+
+        return [Change::make('web burst policy config', $current, $desired)];
+    }
+
+    /**
+     * The alarm's firing behaviour — the subset of the put payload that defines the
+     * trip condition, shared by {@see alarmDefinition()} and {@see alarmDrift()} so
+     * there is one source of truth for both writing and drift detection.
+     *
+     * @return array<string, int|string>
+     */
+    private function alarmBehaviour(): array
+    {
+        return [
+            'Threshold' => self::ALARM_THRESHOLD,
+            'Period' => self::PERIOD,
+            'EvaluationPeriods' => 1,
+            'ComparisonOperator' => 'GreaterThanThreshold',
+            'Statistic' => 'Maximum',
+        ];
+    }
+
+    /**
+     * Reduce a StepScalingPolicyConfiguration to a comparable shape — coercing AWS's
+     * float bounds and normalising the absent final upper bound to null — so an equal
+     * config never reads as drift.
+     *
+     * @param  array<string, mixed>  $config
+     * @return array<string, mixed>
+     */
+    private function normalisePolicyConfig(array $config): array
+    {
+        return [
+            'AdjustmentType' => $config['AdjustmentType'] ?? null,
+            'Cooldown' => isset($config['Cooldown']) ? (int) $config['Cooldown'] : null,
+            'MetricAggregationType' => $config['MetricAggregationType'] ?? null,
+            'StepAdjustments' => array_map(fn (array $step): array => [
+                'lower' => isset($step['MetricIntervalLowerBound']) ? (float) $step['MetricIntervalLowerBound'] : null,
+                'upper' => isset($step['MetricIntervalUpperBound']) ? (float) $step['MetricIntervalUpperBound'] : null,
+                'adjustment' => (int) $step['ScalingAdjustment'],
+            ], $config['StepAdjustments'] ?? []),
+        ];
+    }
+
+    /**
+     * Desired step-scaling policy. Bounds are relative to the alarm threshold (70):
+     * ≥70 → +1, ≥80 → +2. Saturation can't meaningfully clip (it's a %), so the deeper
+     * overshoot gets the bigger step — a 4-worker task reads 75 → +1, a pinned 100 → +2.
+     *
+     * @return array<string, mixed>
+     */
+    private function policyDefinition(): array
+    {
+        return [
             'PolicyName' => $this->policyName(),
             'ServiceNamespace' => ApplicationAutoScaling::SERVICE_NAMESPACE,
             'ResourceId' => ScalableTarget::resourceId(),
@@ -171,43 +300,35 @@ class WebBurstPolicy
                 'AdjustmentType' => 'ChangeInCapacity',
                 'Cooldown' => self::COOLDOWN,
                 'MetricAggregationType' => 'Maximum',
-                // Bounds are relative to the alarm threshold (70): ≥70 → +1, ≥80 → +2.
-                // Saturation can't meaningfully clip (it's a %), so the deeper overshoot
-                // gets the bigger step — a 4-worker task reads 75 → +1, a pinned 100 → +2.
                 'StepAdjustments' => [
                     ['MetricIntervalLowerBound' => 0, 'MetricIntervalUpperBound' => 10, 'ScalingAdjustment' => 1],
                     ['MetricIntervalLowerBound' => 10, 'ScalingAdjustment' => 2],
                 ],
             ],
-        ])['PolicyARN'];
+        ];
+    }
 
-        Aws::cloudWatch()->putMetricAlarm([
+    /**
+     * Desired high-resolution alarm: the saturation metric, this app's web service
+     * dimension, the {@see alarmBehaviour()} trip condition, and the step policy as
+     * its action.
+     *
+     * @return array<string, mixed>
+     */
+    private function alarmDefinition(string $policyArn): array
+    {
+        return [
             'ActionsEnabled' => true,
             'AlarmName' => $this->alarmName(),
             'AlarmDescription' => 'Bursts the web service out when worker saturation spikes. Created by yolo CLI',
-            'ComparisonOperator' => 'GreaterThanThreshold',
             'Dimensions' => [['Name' => self::METRIC_DIMENSION, 'Value' => self::serviceName()]],
-            'EvaluationPeriods' => 1,
             'MetricName' => self::METRIC_NAME,
             'Namespace' => self::METRIC_NAMESPACE,
-            'Period' => self::PERIOD,
-            'Statistic' => 'Maximum',
-            'Threshold' => self::ALARM_THRESHOLD,
             'TreatMissingData' => 'notBreaching',
             'AlarmActions' => [$policyArn],
+            ...$this->alarmBehaviour(),
             ...Aws::tags($this->tags()),
-        ]);
-
-        // PutMetricAlarm ignores Tags when updating an existing alarm, so reconcile
-        // the ownership markers explicitly (TagResource works on an existing alarm) —
-        // so the alarm reads as `ok` in yolo audit rather than rogue.
-        Aws::synchroniseCloudWatchTags(
-            CloudWatch::alarm($this->alarmName())['AlarmArn'],
-            $this->tags(),
-            apply: true,
-        );
-
-        return $changes;
+        ];
     }
 
     /**
@@ -244,23 +365,41 @@ class WebBurstPolicy
 
     public function policyExists(): bool
     {
-        try {
-            ApplicationAutoScaling::scalingPolicy(ScalableTarget::resourceId(), $this->policyName());
-
-            return true;
-        } catch (ResourceDoesNotExistException) {
-            return false;
-        }
+        return $this->livePolicy() !== null;
     }
 
     public function alarmExists(): bool
     {
-        try {
-            CloudWatch::alarm($this->alarmName());
+        return $this->liveAlarm() !== null;
+    }
 
-            return true;
+    /**
+     * The live step policy, or null when it doesn't exist yet — never throws, so it's
+     * safe on a first sync where nothing has been created (the two-pass plan contract).
+     *
+     * @return array<string, mixed>|null
+     */
+    private function livePolicy(): ?array
+    {
+        try {
+            return ApplicationAutoScaling::scalingPolicy(ScalableTarget::resourceId(), $this->policyName());
         } catch (ResourceDoesNotExistException) {
-            return false;
+            return null;
+        }
+    }
+
+    /**
+     * The live alarm, or null when it doesn't exist yet — never throws, so it's safe
+     * on a first sync where nothing has been created (the two-pass plan contract).
+     *
+     * @return array<string, mixed>|null
+     */
+    private function liveAlarm(): ?array
+    {
+        try {
+            return CloudWatch::alarm($this->alarmName());
+        } catch (ResourceDoesNotExistException) {
+            return null;
         }
     }
 

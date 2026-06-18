@@ -89,6 +89,85 @@ it('creates a scale-out step policy and a high-resolution saturation alarm when 
     expect($alarm['args']['AlarmActions'])->toBe([$policyArn]);
 });
 
+/**
+ * A live policy + alarm that already match the desired definition — the fixture for
+ * the drift cases below. The alarm's threshold is overridable so a test can drift it.
+ *
+ * @return array{0: array<string, mixed>, 1: array<string, mixed>}
+ */
+function inSyncBurstState(float $threshold = 70.0): array
+{
+    $policy = [
+        'PolicyName' => 'yolo-testing-my-app-web-burst-policy',
+        'PolicyARN' => 'arn:policy',
+        'StepScalingPolicyConfiguration' => [
+            'AdjustmentType' => 'ChangeInCapacity',
+            'Cooldown' => 60,
+            'MetricAggregationType' => 'Maximum',
+            // AWS echoes the bounds back as floats and omits the open-ended upper bound.
+            'StepAdjustments' => [
+                ['MetricIntervalLowerBound' => 0.0, 'MetricIntervalUpperBound' => 10.0, 'ScalingAdjustment' => 1],
+                ['MetricIntervalLowerBound' => 10.0, 'ScalingAdjustment' => 2],
+            ],
+        ],
+    ];
+
+    $alarm = [
+        'AlarmName' => 'yolo-testing-my-app-web-worker-saturation',
+        'AlarmArn' => 'arn:alarm',
+        'Threshold' => $threshold,
+        'Period' => 10,
+        'EvaluationPeriods' => 1,
+        'ComparisonOperator' => 'GreaterThanThreshold',
+        'Statistic' => 'Maximum',
+    ];
+
+    return [$policy, $alarm];
+}
+
+it('re-puts the alarm at the new threshold when the live alarm has drifted', function (): void {
+    // The exact regression: lowering ALARM_THRESHOLD in code must reach an alarm that
+    // already exists. The live alarm is at the old 80; sync must re-put it at 70 —
+    // without re-putting the unchanged policy (its ARN is stable, so the alarm reuses it).
+    [$policy, $alarm] = inSyncBurstState(threshold: 80.0);
+
+    $aa = [];
+    $cw = [];
+    bindMockApplicationAutoScalingClient(['DescribeScalingPolicies' => new Result(['ScalingPolicies' => [$policy]])], $aa);
+    bindMockCloudWatchClient([
+        'DescribeAlarms' => new Result(['MetricAlarms' => [$alarm]]),
+        'ListTagsForResource' => new Result(['Tags' => []]),
+    ], $cw);
+
+    $changes = (new WebBurstPolicy())->synchronise(apply: true);
+
+    expect($changes)->toHaveCount(1);
+    expect($changes[0]->describe())->toBe('web burst alarm Threshold: 80 → 70');
+
+    $put = collect($cw)->firstWhere('name', 'PutMetricAlarm');
+    expect($put['args']['Threshold'])->toBe(70);
+    expect($put['args']['AlarmActions'])->toBe(['arn:policy']);
+    expect(collect($aa)->pluck('name'))->not->toContain('PutScalingPolicy');
+});
+
+it('is a no-op when the live policy and alarm already match — no false drift', function (): void {
+    // The dangerous failure mode of a config reconciler: an equal config that reads as
+    // drift would make every deploy gate refuse and never converge. A matching live
+    // state must produce zero changes and zero writes.
+    [$policy, $alarm] = inSyncBurstState();
+
+    $aa = [];
+    $cw = [];
+    bindMockApplicationAutoScalingClient(['DescribeScalingPolicies' => new Result(['ScalingPolicies' => [$policy]])], $aa);
+    bindMockCloudWatchClient(['DescribeAlarms' => new Result(['MetricAlarms' => [$alarm]])], $cw);
+
+    $changes = (new WebBurstPolicy())->synchronise(apply: true);
+
+    expect($changes)->toBe([]);
+    expect(collect($aa)->pluck('name'))->not->toContain('PutScalingPolicy');
+    expect(collect($cw)->pluck('name'))->not->toContain('PutMetricAlarm');
+});
+
 it('tears down the policy and its self-authored alarm', function (): void {
     $aa = [];
     $cw = [];

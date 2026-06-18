@@ -57,6 +57,10 @@ class SyncWebBurstStep implements Step
             return $dryRun ? StepResult::WOULD_CREATE : StepResult::CREATED;
         }
 
+        if ($changes !== []) {
+            return $dryRun ? StepResult::WOULD_SYNC : StepResult::SYNCED;
+        }
+
         return StepResult::SYNCED;
     }
 }

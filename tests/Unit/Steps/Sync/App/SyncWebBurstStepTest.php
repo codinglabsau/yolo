@@ -62,6 +62,37 @@ it('would-create on a dry-run without writing', function (): void {
     expect(collect($cw)->pluck('name'))->not->toContain('PutMetricAlarm');
 });
 
+it('would-sync on a dry-run when an existing alarm has drifted', function (): void {
+    // Both pieces already exist (so it's not a create), but the live alarm's threshold
+    // differs from the desired — the step must surface that as WOULD_SYNC so the plan
+    // (and the deploy gate's sync --check) treats it as a pending change, not clean.
+    $ecs = [];
+    $aa = [];
+    $cw = [];
+    activeWebService($ecs);
+    bindMockApplicationAutoScalingClient(['DescribeScalingPolicies' => new Result(['ScalingPolicies' => [[
+        'PolicyName' => 'yolo-testing-my-app-web-burst-policy',
+        'PolicyARN' => 'arn:policy',
+        'StepScalingPolicyConfiguration' => [
+            'AdjustmentType' => 'ChangeInCapacity',
+            'Cooldown' => 60,
+            'MetricAggregationType' => 'Maximum',
+            'StepAdjustments' => [
+                ['MetricIntervalLowerBound' => 0.0, 'MetricIntervalUpperBound' => 10.0, 'ScalingAdjustment' => 1],
+                ['MetricIntervalLowerBound' => 10.0, 'ScalingAdjustment' => 2],
+            ],
+        ],
+    ]]])], $aa);
+    bindMockCloudWatchClient(['DescribeAlarms' => new Result(['MetricAlarms' => [[
+        'AlarmName' => 'yolo-testing-my-app-web-worker-saturation', 'AlarmArn' => 'arn',
+        'Threshold' => 80.0, 'Period' => 10, 'EvaluationPeriods' => 1,
+        'ComparisonOperator' => 'GreaterThanThreshold', 'Statistic' => 'Maximum',
+    ]]])], $cw);
+
+    expect((new SyncWebBurstStep())(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC);
+    expect(collect($cw)->pluck('name'))->not->toContain('PutMetricAlarm');
+});
+
 it('prunes the policy and alarm when burst is switched off', function (): void {
     burstManifest(on: false);
 
