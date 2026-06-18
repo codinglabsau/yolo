@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Aws\Route53;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Commands\SyncAppCommand;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -27,7 +28,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * environments' deploy in-sync gate). The shared ownership surfaces as a sync
  * plan warning instead ({@see SyncAppCommand}).
  */
-class HostedZone implements Resource
+class HostedZone implements Deletable, Resource
 {
     use ResolvesTags;
 
@@ -67,6 +68,56 @@ class HostedZone implements Resource
         ]);
 
         $this->synchroniseTags(apply: true);
+    }
+
+    /**
+     * Tear the zone down — but NEVER one a sibling environment owns: a shared
+     * domain (a trial env alongside prod) keeps its zone for as long as any env
+     * still serves it, so ownership by another env is a hard skip. When this env
+     * does own it (or it's unowned), every record set is removed — except the
+     * apex NS + SOA that Route 53 manages and deletes with the zone — and then
+     * the zone itself is deleted. A zone that's already gone is the goal state.
+     */
+    public function delete(): void
+    {
+        if ($this->ownerEnvironment() !== null) {
+            return;
+        }
+
+        try {
+            $id = Str::afterLast($this->arn(), '/');
+        } catch (ResourceDoesNotExistException) {
+            return;
+        }
+
+        $this->deleteRecordSets($id);
+
+        Aws::route53()->deleteHostedZone(['Id' => $id]);
+    }
+
+    /**
+     * Empty the zone of every deletable record — a zone with any record set
+     * other than the apex NS + SOA can't be deleted. Those two are auto-managed
+     * by Route 53 and removed with the zone, so they're left in place.
+     */
+    protected function deleteRecordSets(string $id): void
+    {
+        $apex = rtrim($this->apex, '.') . '.';
+
+        $changes = collect(Aws::route53()->listResourceRecordSets(['HostedZoneId' => $id])['ResourceRecordSets'] ?? [])
+            ->reject(fn (array $record): bool => in_array($record['Type'], ['NS', 'SOA'], true) && rtrim((string) $record['Name'], '.') . '.' === $apex)
+            ->map(fn (array $record): array => ['Action' => 'DELETE', 'ResourceRecordSet' => $record])
+            ->values()
+            ->all();
+
+        if ($changes === []) {
+            return;
+        }
+
+        Aws::route53()->changeResourceRecordSets([
+            'HostedZoneId' => $id,
+            'ChangeBatch' => ['Changes' => $changes],
+        ]);
     }
 
     public function synchroniseTags(bool $apply): array

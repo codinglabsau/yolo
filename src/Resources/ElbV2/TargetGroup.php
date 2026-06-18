@@ -6,15 +6,17 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Change;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\ElbV2;
+use Aws\Exception\AwsException;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\ShutdownTimings;
 use Codinglabs\Yolo\Resources\Ec2\Vpc;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class TargetGroup implements Resource, SynchronisesConfiguration
+class TargetGroup implements Deletable, Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
 
@@ -59,6 +61,31 @@ class TargetGroup implements Resource, SynchronisesConfiguration
 
         // A fresh target group defaults to 300s deregistration; bring it to ours.
         $this->reconcileDeregistrationDelay($arn, apply: true);
+    }
+
+    /**
+     * Teardown removes the target group itself — its health-check and
+     * deregistration-delay attributes go with it, nothing else owns them. AWS
+     * refuses to delete a target group still referenced by a listener-rule
+     * forward action, but YOLO's teardown order deletes this app's listener rule
+     * first, so by the time we get here the group is unreferenced and a plain
+     * deleteTargetGroup is correct. A concurrent not-found is tolerated.
+     */
+    public function delete(): void
+    {
+        try {
+            Aws::elasticLoadBalancingV2()->deleteTargetGroup([
+                'TargetGroupArn' => $this->arn(),
+            ]);
+        } catch (ResourceDoesNotExistException) {
+            // arn() resolution raced a concurrent delete — already gone.
+        } catch (AwsException $e) {
+            if ($e->getAwsErrorCode() === 'TargetGroupNotFound') {
+                return;
+            }
+
+            throw $e;
+        }
     }
 
     public function synchroniseTags(bool $apply): array

@@ -8,7 +8,9 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Aws\S3;
 use Codinglabs\Yolo\Enums\Scope;
+use Aws\S3\Exception\S3Exception;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 
@@ -19,7 +21,7 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
  * and versioning are reconciled onto it on every sync — both declarative,
  * idempotent puts. The yolo:app owner tag lets `yolo audit` attribute it.
  */
-class S3ConfigBucket implements Resource, SynchronisesConfiguration
+class S3ConfigBucket implements Deletable, Resource, SynchronisesConfiguration
 {
     use ReconcilesBucketHardening;
     use ResolvesTags;
@@ -74,5 +76,69 @@ class S3ConfigBucket implements Resource, SynchronisesConfiguration
             ...$this->reconcilePublicAccessBlock($apply),
             ...$this->reconcileVersioning($apply),
         ];
+    }
+
+    /**
+     * Empty then delete the bucket. S3 refuses DeleteBucket on a non-empty
+     * bucket. This bucket is versioned (create() reconciles versioning to
+     * Enabled), so emptying must clear every object version AND every delete
+     * marker — a plain object sweep would leave noncurrent versions behind and
+     * the delete would fail. A concurrent removal (NoSuchBucket / 404) is
+     * tolerated.
+     */
+    public function delete(): void
+    {
+        try {
+            $this->emptyVersions();
+
+            Aws::s3()->deleteBucket(['Bucket' => $this->name()]);
+        } catch (S3Exception $e) {
+            if (S3::isNotFound($e)) {
+                return;
+            }
+
+            throw $e;
+        }
+    }
+
+    /**
+     * Delete every object version and delete marker in the bucket, paginating
+     * the listing and batching deletes up to S3's per-request limit of 1000
+     * entries.
+     */
+    protected function emptyVersions(): void
+    {
+        $keyMarker = null;
+        $versionIdMarker = null;
+
+        do {
+            $page = Aws::s3()->listObjectVersions(array_filter([
+                'Bucket' => $this->name(),
+                'KeyMarker' => $keyMarker,
+                'VersionIdMarker' => $versionIdMarker,
+            ]));
+
+            $entries = collect([...$page['Versions'] ?? [], ...$page['DeleteMarkers'] ?? []])
+                ->map(fn (array $entry): array => [
+                    'Key' => $entry['Key'],
+                    'VersionId' => $entry['VersionId'],
+                ])
+                ->all();
+
+            if ($entries !== []) {
+                Aws::s3()->deleteObjects([
+                    'Bucket' => $this->name(),
+                    'Delete' => ['Objects' => $entries],
+                ]);
+            }
+
+            if ($page['IsTruncated']) {
+                $keyMarker = $page['NextKeyMarker'];
+                $versionIdMarker = $page['NextVersionIdMarker'];
+            } else {
+                $keyMarker = null;
+                $versionIdMarker = null;
+            }
+        } while ($keyMarker !== null);
     }
 }

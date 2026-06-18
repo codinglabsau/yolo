@@ -7,7 +7,9 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Enums\Scope;
+use Aws\Iam\Exception\IamException;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
@@ -25,7 +27,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * repo + ref) and its permissions (the app's ECR repo, buckets, cluster, service)
  * are app-specific, so unlike the shared ECS execution role it can't be shared.
  */
-class DeployerRole implements Resource, SynchronisesConfiguration
+class DeployerRole implements Deletable, Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
     use SynchronisesAssumeRolePolicy;
@@ -80,6 +82,48 @@ class DeployerRole implements Resource, SynchronisesConfiguration
     public function synchroniseTags(bool $apply): array
     {
         return Aws::synchroniseIamRoleTags($this->name(), $this->tags(), $apply);
+    }
+
+    /**
+     * Teardown when the app drops its deployer (no GitHub repository, or the app
+     * is being torn down): IAM refuses to delete a role that still holds policy
+     * attachments, so the managed-policy attachments (AttachDeployerRolePoliciesStep's
+     * work) detach and any inline policies delete before deleteRole. A concurrent
+     * delete that already removed the role is tolerated.
+     */
+    public function delete(): void
+    {
+        try {
+            $attached = Aws::iam()->listAttachedRolePolicies([
+                'RoleName' => $this->name(),
+            ])['AttachedPolicies'] ?? [];
+
+            foreach ($attached as $policy) {
+                Aws::iam()->detachRolePolicy([
+                    'RoleName' => $this->name(),
+                    'PolicyArn' => $policy['PolicyArn'],
+                ]);
+            }
+
+            $inline = Aws::iam()->listRolePolicies([
+                'RoleName' => $this->name(),
+            ])['PolicyNames'] ?? [];
+
+            foreach ($inline as $policyName) {
+                Aws::iam()->deleteRolePolicy([
+                    'RoleName' => $this->name(),
+                    'PolicyName' => $policyName,
+                ]);
+            }
+
+            Aws::iam()->deleteRole([
+                'RoleName' => $this->name(),
+            ]);
+        } catch (IamException $e) {
+            if ($e->getAwsErrorCode() !== 'NoSuchEntity') {
+                throw $e;
+            }
+        }
     }
 
     public function assumeRolePolicyDocument(): array

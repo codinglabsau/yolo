@@ -7,6 +7,7 @@ use Codinglabs\Yolo\Change;
 use Codinglabs\Yolo\Aws\ElbV2;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
@@ -26,7 +27,7 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
  * forwards the canonical host to the target group; a {@see RedirectListenerRule}
  * 301-redirects the apex/`www` sibling to the canonical host.
  */
-abstract class ListenerRule implements Resource, SynchronisesConfiguration
+abstract class ListenerRule implements Deletable, Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
 
@@ -85,6 +86,14 @@ abstract class ListenerRule implements Resource, SynchronisesConfiguration
         $this->cachedRule = null;
     }
 
+    /**
+     * Teardown removes only this app's own rule, found by its stable Name tag on
+     * the shared `:443` listener — never the listener itself (env-scope, shared by
+     * every app) nor any sibling host's rule. This runs ahead of the target
+     * group's delete in the teardown order, so the forward action's reference to
+     * the group is gone before the group is removed. A concurrent not-found is
+     * tolerated: find() simply returns null and there's nothing to do.
+     */
     public function delete(): void
     {
         if ($rule = $this->find()) {

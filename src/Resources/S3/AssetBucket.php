@@ -9,7 +9,9 @@ use Codinglabs\Yolo\Aws\S3;
 use Codinglabs\Yolo\Change;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Enums\Scope;
+use Aws\S3\Exception\S3Exception;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 
@@ -29,7 +31,7 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
  * Access-Control-Allow-Origin and browsers reject duplicate headers. Sync
  * enforces the absence: any CORS config found on the bucket is removed.
  */
-class AssetBucket implements Resource, SynchronisesConfiguration
+class AssetBucket implements Deletable, Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
 
@@ -96,5 +98,57 @@ class AssetBucket implements Resource, SynchronisesConfiguration
         }
 
         return [Change::make('cors', 'present', 'removed (owned by the distribution)')];
+    }
+
+    /**
+     * Empty then delete the bucket. S3 refuses DeleteBucket on a non-empty
+     * bucket, so every object is removed first (paginated list, batched
+     * deletes). This bucket is not versioned (create() enables no versioning),
+     * so the current-object sweep is sufficient — there are no prior versions
+     * or delete markers to clear. A concurrent removal (NoSuchBucket / 404) is
+     * tolerated.
+     */
+    public function delete(): void
+    {
+        try {
+            $this->emptyObjects();
+
+            Aws::s3()->deleteBucket(['Bucket' => $this->name()]);
+        } catch (S3Exception $e) {
+            if (S3::isNotFound($e)) {
+                return;
+            }
+
+            throw $e;
+        }
+    }
+
+    /**
+     * Delete every object in the bucket, paginating the listing and batching
+     * deletes up to S3's per-request limit of 1000 keys.
+     */
+    protected function emptyObjects(): void
+    {
+        $continuationToken = null;
+
+        do {
+            $page = Aws::s3()->listObjectsV2(array_filter([
+                'Bucket' => $this->name(),
+                'ContinuationToken' => $continuationToken,
+            ]));
+
+            $objects = collect($page['Contents'] ?? [])
+                ->map(fn (array $object): array => ['Key' => $object['Key']])
+                ->all();
+
+            if ($objects !== []) {
+                Aws::s3()->deleteObjects([
+                    'Bucket' => $this->name(),
+                    'Delete' => ['Objects' => $objects],
+                ]);
+            }
+
+            $continuationToken = $page['IsTruncated'] ? $page['NextContinuationToken'] : null;
+        } while ($continuationToken !== null);
     }
 }
