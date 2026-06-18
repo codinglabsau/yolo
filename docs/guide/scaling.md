@@ -19,7 +19,7 @@ Autoscaling **bounds** (`min`/`max`) live in the manifest and are reconciled by 
 
 ## Autoscaling
 
-`yolo init` scaffolds new apps with web autoscaling **on** (`tasks.web.autoscaling: true`, bounds 1–4) — so a fresh app scales out of the box. To set your own bounds, expand the shorthand into a block:
+`yolo init` scaffolds new apps with web autoscaling **on** (`tasks.web.autoscaling: true`, bounds 1–5) — so a fresh app scales out of the box. To set your own bounds, expand the shorthand into a block:
 
 ```yaml
 tasks:

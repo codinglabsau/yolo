@@ -60,7 +60,7 @@ yolo init
 
 Interactive. Prompts for the app name, AWS account ID, region, and (unless multi-tenant) a domain and optional S3 bucket. It then:
 
-- Writes `yolo.yml` from the stub — with web [autoscaling](/guide/scaling) on by default (`tasks.web.autoscaling: true`, bounds 1–4).
+- Writes `yolo.yml` from the stub — with web [autoscaling](/guide/scaling) on by default (`tasks.web.autoscaling: true`, bounds 1–5).
 - Writes a default `Dockerfile` and `.dockerignore` (asks before overwriting existing ones).
 - Creates a starter `.env.production`.
 - Appends `.yolo`, `.env.staging`, `.env.production`, and the env-shared working copies (`.env.environment.*`, `yolo-environment-*.yml`) to `.gitignore`.
@@ -293,7 +293,7 @@ A **global health bar** stays pinned on every tab — one dot per group (web / q
 `--snapshot`, `--json`, or any non-interactive shell renders up to four panels instead, read live from ECS, Application Auto Scaling, CloudWatch and SQS:
 
 - **Deployment in progress** (only when a rollout is mid-flight) — a progress bar of new-revision tasks per rolling group, its rollout state, the revision, and how long it's been running.
-- **Services** — one row per group (web / queue / scheduler) with the task spec (vCPU/memory/launch type), running/desired task count, scaling bounds + policies (`1–4 auto (cpu 65%, req 1200)`, or `fixed` / `singleton`), and the deployed revision + app version.
+- **Services** — one row per group (web / queue / scheduler) with the task spec (vCPU/memory/launch type), running/desired task count, scaling bounds + policies (`1–5 auto (cpu 65%, req 1200)`, or `fixed` / `singleton`), and the deployed revision + app version.
 - **Load** (last 15 min) — ECS CPU/memory per group, shown against the CPU scaling target so headroom is obvious, plus the web service's ALB request rate and response time. Each reading trails a small braille sparkline (`⢀⡠⠔⠊`) of its recent trend; the full-width charts are the dashboard's Metrics tab.
 - **Queue** (backlog) — the visible-message count for each SQS queue (one for a solo app; the landlord queue plus one per tenant when multi-tenant). Shown even when the queue worker is bundled into the web container rather than its own service.
 

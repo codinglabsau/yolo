@@ -234,7 +234,7 @@ See the [Services guide](/guide/services) for the full model and the need-to-kno
 | Service | What consuming it gives this app |
 |---|---|
 | `ivs` | The app's ECS task role is granted IVS access (`ivs:*` — channels and stream keys are created by the app at runtime, so there's nothing stable to scope to), and the app's CloudWatch dashboard gains the IVS logs panel |
-| `typesense` | The app uses the environment's shared [Typesense search cluster](/guide/services#typesense-the-environment-s-search-cluster) — and as long as a running app does, the cluster stays provisioned. No runtime IAM: the app talks to the cluster over HTTP. `sync:app` opens the app's private path (its task SG onto the search API port) and **mints the app two keys scoped to its own `{prefix}*` collections** — a server-side key (all actions) and a browser search-only key (`documents:search`) — written into the app's environment-side `.env` (`env/.env.{app}` in the env config bucket — a YOLO-owned per-app secret channel kept out of the app's developer `.env`, which the admin tier running `sync` is fenced from). The build merges that file in and injects `SCOUT_DRIVER=typesense`, `SCOUT_PREFIX`, the private Cloud Map node addresses for indexing (`TYPESENSE_HOST/PORT/PROTOCOL` + the full `TYPESENSE_NODES` list — server-side indexing rides the VPC, never the ALB/WAF), and the public search host for browser-direct search (`TYPESENSE_SEARCH_HOST/PORT/PROTOCOL`, on `search.{domain}`). The app's CloudWatch dashboard gains the search panels |
+| `typesense` | The app uses the environment's shared [Typesense search cluster](/guide/services#typesense-the-environment-s-search-cluster) — the cluster is provisioned by the environment while its env-manifest entry stands, independent of whether any app currently consumes it. No runtime IAM: the app talks to the cluster over HTTP. `sync:app` opens the app's private path (its task SG onto the search API port) and **mints the app two keys scoped to its own `{prefix}*` collections** — a server-side key (all actions) and a browser search-only key (`documents:search`) — written into the app's environment-side `.env` (`env/.env.{app}` in the env config bucket — a YOLO-owned per-app secret channel kept out of the app's developer `.env`, which the admin tier running `sync` is fenced from). The build merges that file in and injects `SCOUT_DRIVER=typesense`, `SCOUT_PREFIX`, the private Cloud Map node addresses for indexing (`TYPESENSE_HOST/PORT/PROTOCOL` + the full `TYPESENSE_NODES` list — server-side indexing rides the VPC, never the ALB/WAF), and the public search host for browser-direct search (`TYPESENSE_SEARCH_HOST/PORT/PROTOCOL`, on `search.{domain}`). The app's CloudWatch dashboard gains the search panels |
 | `mediaconvert` | A per-app IAM role for AWS Elemental MediaConvert to assume is provisioned, its computed ARN is baked into the build as `AWS_MEDIACONVERT_ROLE_ID`, the task role is granted the job operations plus `iam:PassRole` locked to that one role and to MediaConvert itself, and the app's CloudWatch dashboard gains a MediaConvert jobs panel. App-side only — jobs run on the account's default on-demand queue, so there is no environment-manifest half |
 | `rekognition` | The app's ECS task role is granted Rekognition access (`rekognition:*` — the detection APIs are resource-less, operating on request payloads or S3 objects read with the caller's own credentials, so reads of the app [`bucket`](#bucket) ride its existing grant), and the app's CloudWatch dashboard gains a Rekognition requests panel. App-side only — a pure pay-per-call API, nothing is provisioned, so there is no environment-manifest half |
 
@@ -426,7 +426,7 @@ The other defaults are tuned to avoid false-positive failures on a Laravel/Octan
 |---|---|---|
 | `autoscaling` | *(on)* | `false` for a fixed single task; `true` / object to tune. On by default. |
 | `autoscaling.min` | `1` | Minimum number of tasks (must be ≥ 1). |
-| `autoscaling.max` | `4` | Maximum number of tasks. |
+| `autoscaling.max` | `5` | Maximum number of tasks. |
 | `autoscaling.cpu-utilization` | `65` | Target average CPU % — the safety-net policy composed alongside concurrency. |
 | `autoscaling.scale-out-cooldown` | `60` | Seconds between scale-out steps (both policies). |
 | `autoscaling.scale-in-cooldown` | `300` | Seconds between scale-in steps, both policies (kept conservative). |
@@ -462,7 +462,7 @@ Scaling is **backlog-per-task** target tracking (`ApproximateNumberOfMessagesVis
 |---|---|---|
 | `tasks.queue.autoscaling` | *(on)* | `false` for a fixed single task; `true` / object to tune. On by default. |
 | `tasks.queue.autoscaling.min` | `1` | Minimum tasks. `0` = scale to zero when idle. |
-| `tasks.queue.autoscaling.max` | `10` | Maximum tasks. |
+| `tasks.queue.autoscaling.max` | `5` | Maximum tasks. |
 | `tasks.queue.autoscaling.backlog-per-task` | `100` | Target visible messages per running task — the scale-out trigger. |
 | `tasks.queue.cpu` | `'256'` | Fargate CPU units. |
 | `tasks.queue.memory` | `'512'` | Fargate memory (MB). |
