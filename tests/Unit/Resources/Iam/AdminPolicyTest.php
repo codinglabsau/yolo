@@ -42,6 +42,20 @@ it('grants the write surface for the services YOLO provisions', function (): voi
     );
 });
 
+it('grants the ECR login + layer-upload chain sync needs to push the Typesense image', function (): void {
+    // BuildTypesenseImageStep runs under the admin tier (it's a sync:environment
+    // step), so admin must hold the same push chain the deployer uses — the
+    // management wildcards (Create*/Delete*/Put*/…) don't cover these verbs, and
+    // GetAuthorizationToken is the login call that errored when they were missing.
+    expect(adminActions())->toContain(
+        'ecr:GetAuthorizationToken',
+        'ecr:BatchCheckLayerAvailability',
+        'ecr:InitiateLayerUpload',
+        'ecr:UploadLayerPart',
+        'ecr:CompleteLayerUpload',
+    );
+});
+
 it('never grants a blanket wildcard or blanket IAM', function (): void {
     $actions = adminActions();
 
