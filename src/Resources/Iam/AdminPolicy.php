@@ -51,8 +51,11 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * Per-service write *wildcards* (`ecs:Create*`, `ecs:Delete*`, …) mirror
  * ObserverPolicy's read-wildcard discipline: a new sync write within a service
  * YOLO already manages can't AccessDenied-abort a sync; only adding a brand-new
- * AWS service needs a line here. The document is pure (manifest-derived, no live
- * AWS calls) and drift-reconciled via SynchronisesPolicyDocument.
+ * AWS service needs a line here. The exception is verbs that don't fit a write
+ * wildcard — ECR's image-push chain (`GetAuthorizationToken` + the layer-upload
+ * APIs) is enumerated explicitly because sync now builds + pushes the env
+ * Typesense image. The document is pure (manifest-derived, no live AWS calls)
+ * and drift-reconciled via SynchronisesPolicyDocument.
  */
 class AdminPolicy implements Resource, SynchronisesConfiguration
 {
@@ -137,6 +140,16 @@ class AdminPolicy implements Resource, SynchronisesConfiguration
                         'ecs:Put*', 'ecs:Tag*', 'ecs:Untag*',
                         'ecr:Create*', 'ecr:Delete*', 'ecr:Put*',
                         'ecr:Set*', 'ecr:Tag*', 'ecr:Untag*',
+                        // Image push — sync builds + pushes the env Typesense image
+                        // (BuildTypesenseImageStep), so the admin tier needs the same
+                        // login + layer-upload chain the deployer uses. These verbs
+                        // don't fit the management wildcards above; GetAuthorizationToken
+                        // is account-level (unscopeable) and PutImage is already in Put*.
+                        'ecr:GetAuthorizationToken',
+                        'ecr:BatchCheckLayerAvailability',
+                        'ecr:InitiateLayerUpload',
+                        'ecr:UploadLayerPart',
+                        'ecr:CompleteLayerUpload',
                         'elasticloadbalancing:Create*', 'elasticloadbalancing:Modify*',
                         'elasticloadbalancing:Delete*', 'elasticloadbalancing:Set*',
                         'elasticloadbalancing:Register*', 'elasticloadbalancing:Deregister*',
