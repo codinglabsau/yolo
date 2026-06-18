@@ -3,11 +3,6 @@
 declare(strict_types=1);
 
 use Aws\Result;
-use Aws\MockHandler;
-use Aws\Acm\AcmClient;
-use Aws\CommandInterface;
-use Codinglabs\Yolo\Helpers;
-use GuzzleHttp\Promise\Create;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Steps\Sync\App\SyncHttpsListenerStep;
 
@@ -106,34 +101,4 @@ function httpsListenerElbV2(array $attached): array
             ['Key' => 'yolo:environment', 'Value' => 'testing'],
         ]]]]),
     ];
-}
-
-function bindIssuedAcmCertificate(string $domain, string $certificateArn, string $status = 'ISSUED'): void
-{
-    $mock = new class($domain, $certificateArn, $status) extends MockHandler
-    {
-        public function __construct(
-            private readonly string $domain,
-            private readonly string $certificateArn,
-            private readonly string $status,
-        ) {}
-
-        public function __invoke(CommandInterface $cmd, $request)
-        {
-            return Create::promiseFor(new Result([
-                'CertificateSummaryList' => [[
-                    'DomainName' => $this->domain,
-                    'CertificateArn' => $this->certificateArn,
-                    'Status' => $this->status,
-                ]],
-            ]));
-        }
-    };
-
-    Helpers::app()->instance('acm', new AcmClient([
-        'region' => 'ap-southeast-2',
-        'version' => 'latest',
-        'credentials' => false,
-        'handler' => $mock,
-    ]));
 }

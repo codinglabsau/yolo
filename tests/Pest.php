@@ -3,6 +3,7 @@
 use Aws\Result;
 use Aws\MockHandler;
 use Aws\S3\S3Client;
+use Aws\Acm\AcmClient;
 use Aws\Ec2\Ec2Client;
 use Aws\Ecr\EcrClient;
 use Aws\Ecs\EcsClient;
@@ -923,4 +924,62 @@ function bindServiceLifecycleWorld(array $world, array &$captured): void
         'ListClusters' => new Result(['clusterArns' => $clusterArns]),
         'ListTasks' => $taskResults === [] ? new Result(['taskArns' => []]) : $taskResults,
     ], $ecsCaptured);
+}
+
+/**
+ * Bind a mock ACM client that resolves listCertificates to a single summary for
+ * the given domain at the given status (ISSUED by default). Shared by the steps
+ * that gate on a cert being issued — the HTTPS listener and the forward/redirect
+ * listener rules.
+ */
+function bindIssuedAcmCertificate(string $domain, string $certificateArn, string $status = 'ISSUED'): void
+{
+    $mock = new class($domain, $certificateArn, $status) extends MockHandler
+    {
+        public function __construct(
+            private readonly string $domain,
+            private readonly string $certificateArn,
+            private readonly string $status,
+        ) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            return Create::promiseFor(new Result([
+                'CertificateSummaryList' => [[
+                    'DomainName' => $this->domain,
+                    'CertificateArn' => $this->certificateArn,
+                    'Status' => $this->status,
+                ]],
+            ]));
+        }
+    };
+
+    Helpers::app()->instance('acm', new AcmClient([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+}
+
+/**
+ * Bind a mock ACM client with no certificates — listCertificates returns an
+ * empty list, so Acm::certificate() throws not-found for any domain.
+ */
+function bindNoAcmCertificates(): void
+{
+    $mock = new class() extends MockHandler
+    {
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            return Create::promiseFor(new Result(['CertificateSummaryList' => []]));
+        }
+    };
+
+    Helpers::app()->instance('acm', new AcmClient([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
 }

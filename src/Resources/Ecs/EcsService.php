@@ -70,7 +70,12 @@ class EcsService implements Resource
 
     public function create(): void
     {
-        Aws::ecs()->createService($this->createPayload());
+        // Routed through the retry helper for the web service's case: its target
+        // group is attached to the ALB listener only a few steps earlier, and
+        // ELB→ECS consistency can lag that write by a few seconds. Headless / queue
+        // / scheduler services carry no target group, so the helper never retries
+        // them — it's a plain createService for those.
+        Ecs::createServiceWhenTargetGroupAttached($this->createPayload());
     }
 
     public function synchroniseTags(bool $apply): array

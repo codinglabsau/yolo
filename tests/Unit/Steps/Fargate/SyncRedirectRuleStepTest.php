@@ -31,6 +31,47 @@ it('skips a headless app with no domain or apex', function (): void {
     expect((new SyncRedirectRuleStep())(['dry-run' => true]))->toBe(StepResult::SKIPPED);
 });
 
+it('reports the redirect as pending on the plan pass when the listener will be created this sync', function (): void {
+    // Same first-sync prune trap as the forward rule: with the :443 listener not yet
+    // created on the plan pass, a redirecting apex/www app must report pending (not a
+    // self-pruning SKIPPED) when the listener will be created — an issued cert.
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'apex' => 'codinglabs.com.au', 'domain' => 'codinglabs.com.au',
+    ]);
+
+    $captured = [];
+    bindRoutedElbV2Client([
+        'DescribeLoadBalancers' => new Result(['LoadBalancers' => [['LoadBalancerName' => 'yolo-testing', 'LoadBalancerArn' => 'arn:alb']]]),
+        'DescribeListeners' => new Result(['Listeners' => []]),
+    ], $captured);
+    bindIssuedAcmCertificate('codinglabs.com.au', 'arn:aws:acm:ap-southeast-2:111111111111:certificate/app-cert');
+
+    $step = new SyncRedirectRuleStep();
+
+    expect($step(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC);
+    expect($step->changes())->not->toBeEmpty();
+    expect(array_column($captured, 'name'))->not->toContain('CreateRule');
+});
+
+it('still defers a bare subdomain on the plan pass when the listener is absent', function (): void {
+    // A bare subdomain has no apex/www redirect, so even with the listener pending
+    // there is nothing to plan — it must defer, not report a phantom rule.
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'apex' => 'codinglabs.com.au', 'domain' => 'app.codinglabs.com.au',
+    ]);
+
+    $captured = [];
+    bindRoutedElbV2Client([
+        'DescribeLoadBalancers' => new Result(['LoadBalancers' => [['LoadBalancerName' => 'yolo-testing', 'LoadBalancerArn' => 'arn:alb']]]),
+        'DescribeListeners' => new Result(['Listeners' => []]),
+    ], $captured);
+    bindIssuedAcmCertificate('codinglabs.com.au', 'arn:aws:acm:ap-southeast-2:111111111111:certificate/app-cert');
+
+    expect((new SyncRedirectRuleStep())(['dry-run' => true]))->toBe(StepResult::SKIPPED);
+});
+
 it('skips a bare subdomain when there is no redirect rule to clean up', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',

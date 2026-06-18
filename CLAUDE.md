@@ -19,7 +19,7 @@ deployments.
 - Always run tests before pushing changes
 - **Any new/changed sync step or reconciler must survive the plan pass with nothing created yet** — work
   through [the two-pass contract checklist](#the-two-pass-contract--read-this-before-writing-any-sync-step-or-reconciler)
-  before shipping; this exact crash class has shipped three times
+  before shipping; this exact crash class has shipped four times
 - **Update the docs when you change behaviour or the public surface.** Any change to a command's
   arguments/options, a manifest key (name, default, or semantics), the Dockerfile/entrypoint contract, the
   manifest-required keys, or the sync/audit scope model must update the matching page under `docs/` in the same
@@ -137,9 +137,12 @@ decide *what* the resource is.
 `sync` runs every step **twice**: a **plan pass** (every step, dry, against live AWS, *before anything has been
 created*) and an **apply pass** (confirmed steps, in declaration order). The plan pass therefore runs on
 first-ever syncs and on migrations where resources have been renamed — i.e. **exactly when sibling resources
-don't exist yet**. The same crash class has shipped three times (a step eager-resolving a not-yet-created
+don't exist yet**. The same crash class has shipped four times (a step eager-resolving a not-yet-created
 sibling's live state: the WAF web ACL ARN in `5ca02fe`, the asset bucket's OAC policy in `0d9fbe8`; plus the
-eventual-consistency cousin in `4899c76`). Checklist for any code that reads or writes live AWS state:
+eventual-consistency cousin in `4899c76`; plus the forward/redirect listener-rule steps returning a bare
+`SKIPPED` — not a `WOULD_*` — when the env `:443` listener wasn't created yet on the plan pass, so they pruned
+themselves out of apply and left the target group unattached, which surfaced two steps later as ECS
+`CreateService` rejecting the service). Checklist for any code that reads or writes live AWS state:
 
 1. **Walk the first-sync scenario by hand.** Before shipping, answer: *"what does every AWS read in this code
    return when NOTHING exists yet — fresh account, fresh env, renamed sibling?"* If the answer is "it throws",
@@ -161,7 +164,10 @@ eventual-consistency cousin in `4899c76`). Checklist for any code that reads or 
    twice; the second plan must be clean).
 6. **Record drift before any dry-run guard** so the plan and apply passes agree (the `assertReconcilerContract`
    helper in `tests/Pest.php` pins this) — a step that returns early on the plan pass without recording is
-   pruned from the apply pass and never self-heals.
+   pruned from the apply pass and never self-heals. The disguised form: a *conditional* step whose `SKIPPED`
+   looks legitimate, but whose skip condition itself reads an uncreated sibling (a rule deferring because its
+   listener "doesn't exist" — when the listener is created later in the same apply). Distinguish "sibling will
+   be created this sync, so report pending and survive to apply" from "genuinely not applicable, so skip".
 7. **The plan pass runs steps CONCURRENTLY in forked worker processes** (the apply pass stays sequential, in
    declaration order). This falls out of points 1–2 — a step that survives "nothing exists yet" can't depend on
    a sibling having planned first — but it adds two hard rules of its own: a step's plan must not write local

@@ -143,4 +143,39 @@ class Ecs
             throw new ResourceDoesNotExistException("Could not find ECS task definition $family");
         }
     }
+
+    /**
+     * Create a service, retrying the brief window after its target group is wired
+     * onto the ALB listener where ECS still reports the group unattached. The
+     * forward-rule step associates the target group only a few steps before this
+     * runs; ELB→ECS consistency lags a few seconds, so a first CreateService can
+     * fail with "targetGroup ... does not have an associated load balancer" even
+     * though the rule is in place. Matched narrowly on that message so every other
+     * InvalidParameterException (a genuine misconfiguration) still fails fast.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public static function createServiceWhenTargetGroupAttached(array $payload, int $maxAttempts = 6, int $sleepSeconds = 5): void
+    {
+        $attempt = 0;
+
+        while (true) {
+            try {
+                Aws::ecs()->createService($payload);
+
+                return;
+            } catch (AwsException $exception) {
+                $attempt++;
+
+                $targetGroupNotYetAttached = $exception->getAwsErrorCode() === 'InvalidParameterException'
+                    && str_contains((string) $exception->getAwsErrorMessage(), 'does not have an associated load balancer');
+
+                if ($attempt >= $maxAttempts || ! $targetGroupNotYetAttached) {
+                    throw $exception;
+                }
+
+                sleep($sleepSeconds);
+            }
+        }
+    }
 }
