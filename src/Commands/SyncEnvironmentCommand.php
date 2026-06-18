@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Steps;
+use Codinglabs\Yolo\EnvManifest;
 use Codinglabs\Yolo\Enums\Service;
+use Codinglabs\Yolo\Services\Lifecycle;
 
 /**
  * Writer of env-shared (environment-tier) resources — one set per environment, shared by
@@ -20,6 +22,63 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
         $this->addSyncOptions()
             ->setName('sync:environment')
             ->setDescription('Sync the env-shared (environment-tier) resources for the given environment');
+    }
+
+    #[\Override]
+    public function warnings(): array
+    {
+        return static::idleServiceWarnings();
+    }
+
+    /**
+     * A heads-up for an env-backed service this environment provisions (declared
+     * in the env manifest) that no running app currently consumes — you're
+     * paying for an idle cluster. Not a gate: provisioning follows declaration,
+     * so a declared-but-unused service is a legitimate (if costly) state, and
+     * removing the manifest entry is what tears it down. Suppressed while a live
+     * app hasn't published its services yet, since we can't then be sure the
+     * service is truly unused.
+     *
+     * @return array<int, string>
+     */
+    public static function idleServiceWarnings(): array
+    {
+        // Only env-backed services the env manifest declares can sit idle. This
+        // gate is cheap (the manifest is read once per run anyway) and keeps the
+        // common sync — no env-backed service declared — off the registry/ECS
+        // reads the consumer probe below needs.
+        $declared = array_values(array_filter(
+            Service::cases(),
+            fn (Service $service): bool => $service->definition()->envBacked()
+                && EnvManifest::has($service->envManifestKey()),
+        ));
+
+        if ($declared === []) {
+            return [];
+        }
+
+        // A live app that hasn't republished its services yet might be a
+        // consumer we can't see — don't cry "idle" while that's unknown.
+        if (Lifecycle::unpublishedLiveApps() !== []) {
+            return [];
+        }
+
+        $warnings = [];
+
+        foreach ($declared as $service) {
+            if (Lifecycle::liveAppsUsing($service) !== []) {
+                continue;
+            }
+
+            $warnings[] = sprintf(
+                'The %s service is provisioned (declared in the environment manifest) but no running app uses it — '
+                    . 'you\'re paying for it while it sits idle. Remove services.%s with `yolo environment:manifest:pull/push` if it\'s no longer needed.',
+                $service->value,
+                $service->value,
+            );
+        }
+
+        return $warnings;
     }
 
     public function scopes(): array

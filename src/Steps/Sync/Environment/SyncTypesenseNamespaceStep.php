@@ -27,7 +27,6 @@ class SyncTypesenseNamespaceStep implements LongRunning, Step
         return match (Lifecycle::state(Service::TYPESENSE)) {
             ServiceState::Provision => $this->syncResource(new PrivateDnsNamespace(), $options),
             ServiceState::Teardown => $this->teardownResource(new PrivateDnsNamespace(), $options),
-            ServiceState::Retain => StepResult::SKIPPED,
         };
     }
 

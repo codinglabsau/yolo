@@ -5,25 +5,18 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo\Enums;
 
 /**
- * What sync should do about an env-backed service, decided by two facts: the
- * environment manifest declares it (`services.{name}`), and at least one
- * running app uses it (the services each app publishes on deploy/sync:app,
- * counted only while the app has running tasks).
+ * What sync should do about an env-backed service, decided by one fact: whether
+ * the environment manifest declares it (`services.{name}`). Declaration is the
+ * operator's deliberate, billed decision to run the service — it stands up
+ * independent of whether any app currently consumes it (so a consumer being
+ * down at sync time can never tear the service out from under it). An unused
+ * declared service is surfaced as a plan warning, not torn down.
  */
 enum ServiceState
 {
-    /** Declared by the environment and in use by a running app — sync it toward the manifest. */
+    /** Declared by the environment manifest — sync it toward the manifest. */
     case Provision;
 
-    /** Not declared-and-in-use, and every running app has published what it uses — tear it down. */
+    /** Not declared — tear it down. */
     case Teardown;
-
-    /**
-     * A running app hasn't deployed on this YOLO release yet, so the
-     * environment doesn't know what it uses — nothing is created or torn
-     * down until every running app has published. That makes the rollout
-     * bootstrap-safe: day one nobody has republished, and existing services
-     * hold position.
-     */
-    case Retain;
 }

@@ -11,10 +11,10 @@ use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Resources\EventBridge\IvsEventBridgeRule;
 
 /**
- * The env-shared IVS state-change EventBridge rule, gated on the two-key
- * service lifecycle: provisioned while the environment manifest offers
- * `services.ivs` AND a live app claims ivs, torn down (rule + its log-group
- * target in one act) when the gate turns off.
+ * The env-shared IVS state-change EventBridge rule, gated on the service
+ * lifecycle: provisioned while the environment manifest declares `services.ivs`,
+ * torn down (rule + its log-group target in one act) when the declaration is
+ * removed.
  */
 class SyncIvsEventBridgeRuleStep implements Step
 {
@@ -25,7 +25,6 @@ class SyncIvsEventBridgeRuleStep implements Step
         return match (Lifecycle::state(Service::IVS)) {
             ServiceState::Provision => $this->syncResource(new IvsEventBridgeRule(), $options),
             ServiceState::Teardown => $this->teardownResource(new IvsEventBridgeRule(), $options),
-            ServiceState::Retain => StepResult::SKIPPED,
         };
     }
 }

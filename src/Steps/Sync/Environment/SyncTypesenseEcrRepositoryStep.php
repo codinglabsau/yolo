@@ -24,7 +24,6 @@ class SyncTypesenseEcrRepositoryStep implements Step
         return match (Lifecycle::state(Service::TYPESENSE)) {
             ServiceState::Provision => $this->syncResource(new TypesenseRepository(), $options),
             ServiceState::Teardown => $this->teardownResource(new TypesenseRepository(), $options),
-            ServiceState::Retain => StepResult::SKIPPED,
         };
     }
 }

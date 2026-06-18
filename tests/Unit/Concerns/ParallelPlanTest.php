@@ -66,6 +66,12 @@ function runParallelPlanCheck(array $scopes, ?BufferedOutput $output = null): ar
 beforeEach(function (): void {
     Helpers::app()->instance('runningInAws', false);
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
+
+    // SyncEnvironmentCommand::warnings() probes the env manifest + registry for
+    // idle services during plan render. These tests carry no env-backed service,
+    // so a greenfield (no config bucket) world makes that probe a clean no-op.
+    $captured = [];
+    bindServiceLifecycleWorld(['bucket' => false], $captured);
 });
 
 // The suite pins YOLO_PLAN_SEQUENTIAL=1 (phpunit.xml) because AWS mocks can't

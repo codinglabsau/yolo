@@ -52,26 +52,23 @@ See the [`services` command reference](/reference/commands#yolo-services) for ev
 
 ## The service lifecycle
 
-An environment-backed service (IVS or Typesense) runs while two things are true:
+An environment-backed service (IVS or Typesense) is governed by one fact: **whether the environment manifest declares it** — a `services.{name}` entry. That declaration is the environment's catalogue (the record of what it runs and how it's shaped) and a deliberate, billed decision. The service stands up on declaration alone, **independent of whether any app currently consumes it**, and is torn down only when you remove the entry.
 
-1. **The environment declares it** — `services.{name}` in the env manifest. That entry is the environment's catalogue: the record of what this environment runs and how it's shaped. It stays put even when nothing is using the service — removing it is your call, never an inference.
-2. **A running app is using it** — every `deploy` and `sync:app` publishes the app's `services` list into the env config bucket, and only apps with running tasks count (the same liveness test [`audit`](/guide/provisioning#auditing-what-s-deployed) uses) — a dead app can't keep a service alive.
+`sync:environment` reconciles every env-backed service against the manifest, every sync:
 
-`sync:environment` checks both for every env-backed service, every sync:
+| Declared | What sync does |
+|---|---|
+| yes | Provisions it and keeps it reconciled |
+| no | Tears down whatever still exists (a `WOULD DELETE` behind the confirm gate); otherwise skips |
 
-| Declared | In use | What sync does |
-|---|---|---|
-| yes | yes | Provisions it and keeps it reconciled |
-| yes | no | Plans the teardown (`WOULD DELETE`, behind the confirm gate) |
-| no | no | Tears down whatever still exists; otherwise skips |
-| no | yes | **Hard error** — only reachable by editing the bucket manifest by hand, since `environment:manifest:push` refuses to remove a service apps still use |
+Provisioning deliberately does **not** depend on a consuming app. An earlier design gated it on "a running app uses it" — but that means a consumer being down at sync time (mid-deploy, scaled to zero, an incident) would tear the shared cluster, and its index, out from under everything. Declaration drives provisioning instead; the consumption signal informs a warning, not a teardown.
 
-One deliberate exception: a running app that hasn't deployed since this YOLO release hasn't told the environment what it uses yet — so until every running app has, nothing is created or torn down. Day one nobody has redeployed, and nothing gets torn down by surprise.
+**An idle service is a warning, not a teardown.** When `sync:environment` provisions a declared service that **no running app uses**, it surfaces a plan warning — you're paying for an idle cluster — naming the fix (remove it from the env manifest). It's a nudge, never a gate. (Suppressed while a running app hasn't published its `services` since this YOLO release, since that app might be a consumer YOLO can't yet see.)
 
-Enforcement is hard errors everywhere, never warnings:
+**Two hard errors guard the edges:**
 
 - An app that uses a service the environment doesn't declare fails `build`, `deploy` and `sync:app` with the fix spelled out (declare it via the manifest pull/push flow, or take it out of `yolo.yml`). On a greenfield environment whose manifest hasn't been seeded yet, the check defers to the first sync instead of bricking it.
-- `environment:manifest:push` refuses to remove a service while running apps still use it — naming them — and likewise while any running app hasn't published what it uses yet.
+- `environment:manifest:push` refuses to remove a service while running apps still use it — naming them — and likewise while any running app hasn't published what it uses yet. (Hand-editing the bucket manifest to drop a service apps still use is caught at sync as a hard error too, rather than silently tearing it out from under them.)
 
 Retiring a service is therefore self-enforcing, with hard edges the whole way: remove it from each app's `yolo.yml` → `deploy`/`sync:app` (the app's per-service IAM melts away in the same pass) → remove the env-manifest entry and `push` (accepted once nothing is using it) → `sync:environment` plans the teardown for you to confirm.
 

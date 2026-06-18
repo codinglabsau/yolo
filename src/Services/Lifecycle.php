@@ -17,27 +17,22 @@ use Codinglabs\Yolo\Enums\ServiceState;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 /**
- * Decides whether an env-backed service should exist. A service runs while
- * two things are true:
+ * Decides whether an env-backed service should exist. The single deciding fact
+ * is whether the environment declares it — `services.{name}` in the env
+ * manifest, the environment's catalogue of what it runs. Declaration is the
+ * operator's deliberate, billed decision; the service stands up on declaration
+ * alone, independent of any consuming app, and is torn down only when the entry
+ * is removed. Removing it is an operator act (`environment:manifest:push`,
+ * which refuses to remove a service apps still use), never an inference from a
+ * consumer being down.
  *
- *   1. The environment declares it — `services.{name}` in the env manifest,
- *      the environment's catalogue of what it runs. The entry stays put even
- *      when nothing is using the service; removing it is an operator act,
- *      never an inference.
- *   2. A running app is using it — every deploy/sync:app publishes the app's
- *      services (`apps/{app}.yml` in the env config bucket), and only apps
- *      with running tasks count (the audit liveness test), so a dead app
- *      can't keep a service alive.
- *
- * Declared ∧ in use → provision; anything else → teardown — EXCEPT that a
- * running app which hasn't deployed on this YOLO release yet hasn't told the
- * environment what it uses, so nothing is created or torn down until every
- * running app has. That makes the rollout bootstrap-safe: day one nobody has
- * republished, nothing can tear down.
- *
- * Usage and liveness are read once per process (both sync passes see the
- * same world); on a greenfield plan pass the env config bucket doesn't exist
- * yet, which reads as nothing published — never an error.
+ * Consumption no longer gates provisioning — it only informs warnings: a
+ * declared service with no live consumer is surfaced as idle (you're paying for
+ * it), via SyncEnvironmentCommand. Liveness reads the services each app
+ * publishes (`apps/{app}.yml` in the env config bucket), counting only apps
+ * with running tasks; both are read once per process so the plan and apply
+ * passes see the same world, and a greenfield env (no config bucket) reads as
+ * nothing published rather than erroring.
  */
 class Lifecycle
 {
@@ -49,13 +44,17 @@ class Lifecycle
 
     public static function state(Service $service): ServiceState
     {
-        $declared = EnvManifest::has($service->envManifestKey());
+        if (EnvManifest::has($service->envManifestKey())) {
+            return ServiceState::Provision;
+        }
+
+        // Not declared, so the service tears down — but if a running app still
+        // uses it, the manifest was edited outside environment:manifest:push
+        // (which refuses to remove a service apps still use). Surface the
+        // contradiction instead of tearing infrastructure out from under them.
         $using = static::liveAppsUsing($service);
 
-        // Reachable only by editing the env manifest outside environment:manifest:push
-        // (push refuses to remove a service apps still use) — surface the
-        // contradiction instead of tearing infrastructure out from under the apps.
-        if (! $declared && $using !== []) {
+        if ($using !== []) {
             throw new IntegrityCheckException(sprintf(
                 '%s %s still using the %s service, but the environment manifest no longer declares services.%s. '
                 . 'Put the entry back with `yolo environment:manifest:pull/push`, or remove %s from each app\'s yolo.yml and deploy (or `yolo sync:app`) it first.',
@@ -67,11 +66,7 @@ class Lifecycle
             ));
         }
 
-        if ($declared && $using !== []) {
-            return ServiceState::Provision;
-        }
-
-        return static::unpublishedLiveApps() === [] ? ServiceState::Teardown : ServiceState::Retain;
+        return ServiceState::Teardown;
     }
 
     /**

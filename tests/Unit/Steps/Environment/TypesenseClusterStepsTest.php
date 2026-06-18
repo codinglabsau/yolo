@@ -115,10 +115,10 @@ it('cascades the cluster teardown: drain services, delete them, then the cluster
     expect(array_search('DeleteService', $names))->toBeLessThan(array_search('DeleteCluster', $names));
 });
 
-it('tears the cluster down once no running app uses the service', function (): void {
+it('tears the cluster down once the offer is removed from the env manifest', function (): void {
     $captured = [];
     bindServiceLifecycleWorld([
-        'manifest' => TYPESENSE_OFFER,
+        'manifest' => "services: {  }\n", // offer removed → teardown
         'claims' => ['my-app' => []],
         'clusters' => ['my-app' => true],
     ], $captured);
@@ -161,7 +161,7 @@ it('the nodes step plans every missing node and skips teardown (the cluster casc
 it('the nodes and discovery-services steps skip on teardown', function (string $step): void {
     $captured = [];
     bindServiceLifecycleWorld([
-        'manifest' => TYPESENSE_OFFER,
+        'manifest' => "services: {  }\n", // offer removed → teardown
         'claims' => ['my-app' => []],
         'clusters' => ['my-app' => true],
     ], $captured);

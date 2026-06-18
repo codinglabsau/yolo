@@ -35,10 +35,6 @@ class SyncTypesenseAlarmsStep implements Step
     {
         $state = Lifecycle::state(Service::TYPESENSE);
 
-        if ($state === ServiceState::Retain) {
-            return StepResult::SKIPPED;
-        }
-
         $results = [];
 
         foreach ($this->alarms($state) as $alarm) {

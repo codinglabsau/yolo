@@ -32,10 +32,6 @@ class SyncTypesenseSecurityGroupStep implements Step
     {
         $state = Lifecycle::state(Service::TYPESENSE);
 
-        if ($state === ServiceState::Retain) {
-            return StepResult::SKIPPED;
-        }
-
         if ($state === ServiceState::Teardown) {
             return $this->teardownResource(new TypesenseSecurityGroup(), $options);
         }
