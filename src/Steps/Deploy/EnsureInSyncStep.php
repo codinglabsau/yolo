@@ -16,6 +16,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 use function Laravel\Prompts\info;
+use function Laravel\Prompts\confirm;
 
 /**
  * Deploy preflight: refuse to deploy into an environment that has drifted from its
@@ -24,7 +25,20 @@ use function Laravel\Prompts\info;
  * target group, a changed task role, an un-provisioned listener, or a shared
  * foundation (VPC/ALB/OIDC) that no longer matches the manifest silently deploys
  * onto the wrong shape. This gate runs the full `sync --check` plan
- * (account → environment → app) against live AWS first and aborts on drift.
+ * (account → environment → app) against live AWS first.
+ *
+ * On drift the response depends on who's driving:
+ *  - **CI (nobody watching)** — refuse, exactly as a `sync --check` gate would: the
+ *    buffered plan is flushed and the deploy aborts. There's no operator to answer a
+ *    prompt, so a drifted pipeline fails loudly and a human reconciles.
+ *  - **Interactive (a terminal is watching)** — offer to reconcile inline. The
+ *    operator confirms, YOLO runs the real `yolo sync <env>` (they approve its plan
+ *    at sync's own confirm gate), the plan is re-checked once to confirm it
+ *    converged, and the deploy falls through into the build in the *same* process.
+ *    Declining aborts with the same refusal CI gets. The gate is the deploy's first
+ *    step — nothing has been built or rolled yet — so a clean re-check means there's
+ *    nothing already done to redo: we continue here rather than re-invoking deploy
+ *    (which would only re-run this gate, and risk a loop if sync never converges).
  *
  * Whole-stack rather than app-only is deliberate: a deploy is the natural — and
  * for most setups the only — moment drift is checked, so the gate covers the
@@ -34,7 +48,8 @@ use function Laravel\Prompts\info;
  *
  * It runs *before* the image build (DeployCommand invokes it first in handle()),
  * so a drifted environment fails fast without burning a build. It reuses `sync`
- * verbatim — no sync-command changes — and `--check` plans only, never writes.
+ * verbatim — no sync-command changes — and the check pass `--check` plans only,
+ * never writes; only an interactive, operator-confirmed reconcile writes anything.
  *
  * The plan reads run under whatever identity is deploying. In CI that's the GitHub
  * Actions deployer role, which carries the per-app read surface (AppObserverPolicy,
@@ -58,28 +73,121 @@ class EnsureInSyncStep implements Step
         // when the plan already rendered live.
         $buffer = new BufferedOutput($output->getVerbosity(), $output->isDecorated());
 
-        try {
-            $result = $this->check($environment, $buffer, $output);
-        } catch (\Throwable $e) {
-            // The plan threw instead of returning a verdict — a plan step crashed
-            // (e.g. an AWS read the deploy identity can't make). When buffered, the
-            // per-step detail the plan runner printed lives in the buffer; flush it
-            // before the bare "Plan failed for N step(s)" bubbles up, or the
-            // operator is left with no idea which step failed or why.
-            $output->write($buffer->fetch());
-
-            throw $e;
-        }
-
-        if ($result === SyncCommand::SUCCESS) {
+        if ($this->planIsClean($environment, $buffer, $output)) {
             info(sprintf('%s is in sync.', $environment));
 
             return StepResult::SYNCED;
         }
 
-        $output->write($buffer->fetch());
+        // Drifted. In CI there's no operator to answer a prompt, so refuse exactly
+        // as a `sync --check` gate would — flush the buffered plan first so the
+        // pipeline log shows what drifted, then abort.
+        if (! $output->isDecorated()) {
+            $output->write($buffer->fetch());
 
-        throw new IntegrityCheckException(sprintf(
+            throw $this->refusal($environment);
+        }
+
+        // Interactive: offer to reconcile inline rather than dead-ending the deploy.
+        // The live --check plan above already showed the operator what drifted.
+        // Declining aborts with the same refusal CI gets.
+        if (! $this->confirmReconcile($environment)) {
+            throw $this->refusal($environment);
+        }
+
+        // Reconcile through the real `yolo sync` (the operator approves its plan at
+        // sync's own confirm gate), then re-check once to confirm it converged.
+        $this->reconcile($environment, $output);
+
+        if (! $this->planIsClean($environment, $buffer, $output)) {
+            $output->write($buffer->fetch());
+
+            throw new IntegrityCheckException(sprintf(
+                "Refusing to deploy — %s is still not in sync after `yolo sync` (see the plan above).\n"
+                . 'Resolve the remaining drift, then redeploy.',
+                $environment,
+            ));
+        }
+
+        info(sprintf('%s reconciled and in sync — continuing deploy.', $environment));
+
+        return StepResult::SYNCED;
+    }
+
+    /**
+     * Run the `sync --check` plan and report whether the environment is clean.
+     *
+     * A plan that *crashes* (a step throws — e.g. an AWS read the deploy identity
+     * can't make) isn't a drift verdict: flush the per-step detail the plan runner
+     * buffered before the bare "Plan failed for N step(s)" bubbles up, or the
+     * operator is left with no idea which step failed or why.
+     *
+     * @phpstan-impure runs the sync plan against live AWS — called twice (pre- and
+     * post-reconcile) and the verdict can change between calls, so it must not be
+     * memoised.
+     */
+    protected function planIsClean(string $environment, BufferedOutput $buffer, OutputInterface $console): bool
+    {
+        try {
+            return $this->check($environment, $buffer, $console) === SyncCommand::SUCCESS;
+        } catch (\Throwable $e) {
+            $console->write($buffer->fetch());
+
+            throw $e;
+        }
+    }
+
+    /**
+     * Ask the operator whether to reconcile the drift before deploying. Defaults to
+     * "no" — reconciling mutates infrastructure, so hitting enter aborts the deploy.
+     *
+     * The preceding check sub-run left Laravel Prompts non-interactive (its input is
+     * non-interactive); we only reach here on a decorated terminal, so re-enable
+     * prompting for the confirm.
+     */
+    protected function confirmReconcile(string $environment): bool
+    {
+        Prompt::interactive(true);
+
+        return confirm(
+            label: sprintf('%s has drifted from its declared state. Reconcile it with `yolo sync` before deploying?', $environment),
+            default: false,
+            yes: 'Reconcile now',
+            no: 'Abort deploy',
+        );
+    }
+
+    /**
+     * Reconcile the environment inline: a full interactive `yolo sync` (no --check),
+     * so the operator approves its plan at sync's own confirm gate before anything is
+     * written. Renders straight to the console through the same sink the live --check
+     * preview uses — same command, same output path, no command-switch flicker.
+     *
+     * The verdict is ignored on purpose: convergence is decided by the re-check that
+     * follows, which is authoritative whether sync applied, was declined at its own
+     * gate, or only partially converged.
+     */
+    protected function reconcile(string $environment, OutputInterface $console): int
+    {
+        $command = new SyncCommand();
+
+        $input = new ArrayInput([
+            'environment' => $environment,
+        ], $command->getDefinition());
+        $input->setInteractive(true);
+
+        Prompt::setOutput($console);
+
+        try {
+            return $command->run($input, $console);
+        } finally {
+            Prompt::setOutput(new ConsoleOutput());
+        }
+    }
+
+    protected function refusal(string $environment): IntegrityCheckException
+    {
+        return new IntegrityCheckException(sprintf(
             "Refusing to deploy — %s is not in sync (see the plan above).\n"
             . 'Reconcile with `yolo sync %s`, then redeploy.',
             $environment,
