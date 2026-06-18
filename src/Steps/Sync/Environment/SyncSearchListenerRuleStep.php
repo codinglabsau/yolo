@@ -30,10 +30,6 @@ class SyncSearchListenerRuleStep implements Step
     {
         $state = Lifecycle::state(Service::TYPESENSE);
 
-        if ($state === ServiceState::Retain) {
-            return StepResult::SKIPPED;
-        }
-
         try {
             $listenerArn = ElbV2::listenerOnPort((new LoadBalancer())->arn(), 443)['ListenerArn'];
         } catch (ResourceDoesNotExistException) {

@@ -27,7 +27,6 @@ class SyncServicesClusterStep implements Step
         return match (Lifecycle::state(Service::TYPESENSE)) {
             ServiceState::Provision => $this->syncResource(new ServicesCluster(), $options),
             ServiceState::Teardown => $this->teardownResource(new ServicesCluster(), $options),
-            ServiceState::Retain => StepResult::SKIPPED,
         };
     }
 }

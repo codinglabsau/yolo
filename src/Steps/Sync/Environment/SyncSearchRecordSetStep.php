@@ -32,10 +32,6 @@ class SyncSearchRecordSetStep implements Step
     {
         $state = Lifecycle::state(Service::TYPESENSE);
 
-        if ($state === ServiceState::Retain) {
-            return StepResult::SKIPPED;
-        }
-
         $dryRun = (bool) Arr::get($options, 'dry-run');
 
         if ($state === ServiceState::Teardown) {

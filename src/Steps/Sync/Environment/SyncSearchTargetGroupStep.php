@@ -14,9 +14,9 @@ use Codinglabs\Yolo\Resources\ElbV2\SearchTargetGroup;
 /**
  * The search target group — provisioned before the node services so they can
  * attach to it at create. Requires the env manifest's domain: a search host
- * is the whole point of the public path, so an offered-and-claimed typesense
- * without a domain is a hard error (the lifecycle gate names the fix), never
- * a silently-private cluster.
+ * is the whole point of the public path, so a declared typesense without a
+ * domain is a hard error (requireSearchHost names the fix), never a
+ * silently-private cluster.
  */
 class SyncSearchTargetGroupStep implements Step
 {
@@ -27,7 +27,6 @@ class SyncSearchTargetGroupStep implements Step
         return match (Lifecycle::state(Service::TYPESENSE)) {
             ServiceState::Provision => $this->provision($options),
             ServiceState::Teardown => $this->teardownResource(new SearchTargetGroup(), $options),
-            ServiceState::Retain => StepResult::SKIPPED,
         };
     }
 

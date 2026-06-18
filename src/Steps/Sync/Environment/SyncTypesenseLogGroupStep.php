@@ -19,7 +19,6 @@ class SyncTypesenseLogGroupStep implements Step
         return match (Lifecycle::state(Service::TYPESENSE)) {
             ServiceState::Provision => $this->syncResource(new TypesenseLogGroup(), $options),
             ServiceState::Teardown => $this->teardownResource(new TypesenseLogGroup(), $options),
-            ServiceState::Retain => StepResult::SKIPPED,
         };
     }
 }

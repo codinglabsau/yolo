@@ -82,7 +82,7 @@ it('provisions the env-shared log group when the offer and a live claim both hol
     expect($calls)->toContain('DescribeLogGroups');
 });
 
-it('skips provisioning while the offer is unclaimed and nothing exists', function (): void {
+it('provisions a declared log group even when no app has claimed it yet', function (): void {
     $captured = [];
     bindServiceLifecycleWorld([
         'manifest' => "services:\n  ivs: {}\n",
@@ -93,13 +93,14 @@ it('skips provisioning while the offer is unclaimed and nothing exists', functio
     $calls = [];
     bindIvsCloudWatchLogsClient($calls, exists: false);
 
-    expect((new SyncIvsCloudWatchLogGroupStep())(['dry-run' => true]))->toBe(StepResult::SKIPPED);
+    // Declaration drives provisioning — a consumer claim is no longer required.
+    expect((new SyncIvsCloudWatchLogGroupStep())(['dry-run' => true]))->toBe(StepResult::WOULD_CREATE);
 });
 
-it('plans WOULD_DELETE for an existing log group when the gate turns off, and deletes on apply', function (): void {
+it('plans WOULD_DELETE for an existing log group when the offer is removed, and deletes on apply', function (): void {
     $captured = [];
     bindServiceLifecycleWorld([
-        'manifest' => "services:\n  ivs: {}\n",
+        'manifest' => "services: {  }\n", // offer removed → teardown
         'claims' => ['my-app' => []],
         'clusters' => ['my-app' => true],
     ], $captured);
@@ -118,10 +119,10 @@ it('plans WOULD_DELETE for an existing log group when the gate turns off, and de
     expect($calls)->toContain('DeleteLogGroup');
 });
 
-it('plans WOULD_DELETE for the rule when the gate turns off, removing rule and target in one act on apply', function (): void {
+it('plans WOULD_DELETE for the rule when the offer is removed, removing rule and target in one act on apply', function (): void {
     $captured = [];
     bindServiceLifecycleWorld([
-        'manifest' => "services:\n  ivs: {}\n",
+        'manifest' => "services: {  }\n", // offer removed → teardown
         'claims' => ['my-app' => []],
         'clusters' => ['my-app' => true],
     ], $captured);
@@ -146,7 +147,7 @@ it('plans WOULD_DELETE for the rule when the gate turns off, removing rule and t
 it('the target step skips on teardown — the rule deletion removes its own target', function (): void {
     $captured = [];
     bindServiceLifecycleWorld([
-        'manifest' => "services:\n  ivs: {}\n",
+        'manifest' => "services: {  }\n", // offer removed → teardown
         'claims' => ['my-app' => []],
         'clusters' => ['my-app' => true],
     ], $captured);
@@ -161,7 +162,9 @@ it('the target step skips on teardown — the rule deletion removes its own targ
     expect(array_column($ebCaptured, 'name'))->not->toContain('RemoveTargets');
 });
 
-it('holds position (skips) while a running app has not published its services yet', function (): void {
+it('provisions a declared service even while a running app has not published yet', function (): void {
+    // Provisioning follows the declaration, not the registry — an unpublished
+    // live app (one yet to deploy on this release) no longer holds it back.
     $captured = [];
     bindServiceLifecycleWorld([
         'manifest' => "services:\n  ivs: {}\n",
@@ -172,6 +175,6 @@ it('holds position (skips) while a running app has not published its services ye
     $calls = [];
     bindIvsCloudWatchLogsClient($calls);
 
-    expect((new SyncIvsCloudWatchLogGroupStep())(['dry-run' => true]))->toBe(StepResult::SKIPPED);
+    expect((new SyncIvsCloudWatchLogGroupStep())([]))->toBe(StepResult::SYNCED);
     expect($calls)->not->toContain('DeleteLogGroup');
 });

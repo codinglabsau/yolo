@@ -61,7 +61,7 @@ S3 read on the env config bucket is what gates env-secret control. Deploying an 
 
 ## Services
 
-Some of what `sync:environment` provisions belongs to **environment-backed services** — the [IVS event pipeline](/guide/services#ivs-live-video) and the [Typesense search cluster](/guide/services#typesense-the-environment-s-search-cluster) — each created under a two-key [lifecycle gate](/guide/services#the-service-lifecycle): declared in the env manifest **and** in use by a running app, torn down once that stops being true. The full model, and the need-to-know for every service (the app-side ones too), lives on its own page — see **[Services](/guide/services)**.
+Some of what `sync:environment` provisions belongs to **environment-backed services** — the [IVS event pipeline](/guide/services#ivs-live-video) and the [Typesense search cluster](/guide/services#typesense-the-environment-s-search-cluster) — each created under a declaration-driven [lifecycle](/guide/services#the-service-lifecycle): provisioned while declared in the env manifest, torn down once the entry is removed (a declared service no app uses is flagged as idle, not torn down). The full model, and the need-to-know for every service (the app-side ones too), lives on its own page — see **[Services](/guide/services)**.
 
 ## Web application firewall
 
