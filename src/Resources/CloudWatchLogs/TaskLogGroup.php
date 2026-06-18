@@ -8,10 +8,12 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Aws\CloudWatchLogs;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
+use Aws\CloudWatchLogs\Exception\CloudWatchLogsException;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class TaskLogGroup implements Resource
+class TaskLogGroup implements Deletable, Resource
 {
     use ResolvesTags;
 
@@ -42,6 +44,20 @@ class TaskLogGroup implements Resource
     public function arn(): string
     {
         return CloudWatchLogs::logGroup($this->name())['arn'];
+    }
+
+    /** Delete the log group, tolerating a concurrent not-found. */
+    public function delete(): void
+    {
+        try {
+            Aws::cloudWatchLogs()->deleteLogGroup([
+                'logGroupName' => $this->name(),
+            ]);
+        } catch (CloudWatchLogsException $exception) {
+            if ($exception->getAwsErrorCode() !== 'ResourceNotFoundException') {
+                throw $exception;
+            }
+        }
     }
 
     public function create(): void

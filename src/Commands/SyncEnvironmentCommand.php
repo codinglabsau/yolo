@@ -134,11 +134,10 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 Steps\Sync\Environment\SyncEnvConfigBucketStep::class,
                 Steps\Sync\Environment\SeedEnvManifestStep::class,
                 // env-backed services — each definition composes its own
-                // ordered steps, every one gated on the two-key lifecycle
-                // (offered by the env manifest ∧ claimed by a live app via
-                // the claims registry). The same steps tear the service down
-                // when its gate turns off, so the plan stays declared either
-                // way.
+                // ordered steps, every one gated on the env-backed service
+                // lifecycle (declared in the env manifest). The same steps tear
+                // the service down when the declaration is removed, so the plan
+                // stays declared either way.
                 ...static::environmentServiceSteps(),
                 // env logs bucket (ALB access logs under alb/) — provisioned
                 // before the load balancer so the log-delivery bucket policy

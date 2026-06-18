@@ -11,6 +11,7 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Aws\CloudFront;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\S3\AssetBucket;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
@@ -36,7 +37,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * (ErrorCachingMinTTL 0) against the immutable, content-hashed paths it would
  * otherwise poison until the next deploy. See the constants below.
  */
-class AssetDistribution implements Resource, SynchronisesConfiguration
+class AssetDistribution implements Deletable, Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
 
@@ -128,6 +129,48 @@ class AssetDistribution implements Resource, SynchronisesConfiguration
 
         // Grant the new distribution (and only it) read access to the bucket.
         $this->grantBucketAccess($bucket, $distribution['ARN']);
+    }
+
+    /**
+     * Tear the distribution down. CloudFront refuses to delete an enabled
+     * distribution, and the disable is an edge redeploy (~15 min) that must
+     * finish before the delete — so: disable (only if still enabled, so a retry
+     * after a half-done teardown skips straight to the wait), block on the
+     * DistributionDeployed waiter, then delete with a freshly-read ETag. The
+     * asset bucket's OAC read policy dies with the bucket (a separate App
+     * resource), so nothing else to unwind here. Already gone ⇒ no-op.
+     */
+    public function delete(): void
+    {
+        try {
+            $id = CloudFront::distributionByComment($this->name())['Id'];
+        } catch (ResourceDoesNotExistException) {
+            return;
+        }
+
+        $response = Aws::cloudFront()->getDistributionConfig(['Id' => $id]);
+        $config = (array) $response['DistributionConfig'];
+
+        if ($config['Enabled'] ?? false) {
+            $config['Enabled'] = false;
+
+            Aws::cloudFront()->updateDistribution([
+                'Id' => $id,
+                'DistributionConfig' => $config,
+                'IfMatch' => (string) $response['ETag'],
+            ]);
+        }
+
+        // The disable must reach every edge (Deployed) before CloudFront will
+        // delete it — a full propagation routinely runs 15+ minutes, so the
+        // waiter timeout is raised well past the 600s default to match (a too-low
+        // timeout would throw and abort the teardown on a routine slow deploy).
+        Aws::waitFor(Aws::cloudFront(), 'DistributionDeployed', ['Id' => $id], timeout: 1800);
+
+        Aws::cloudFront()->deleteDistribution([
+            'Id' => $id,
+            'IfMatch' => (string) Aws::cloudFront()->getDistributionConfig(['Id' => $id])['ETag'],
+        ]);
     }
 
     public function synchroniseTags(bool $apply): array

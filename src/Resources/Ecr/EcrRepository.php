@@ -6,7 +6,9 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ecr;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
+use Aws\Ecr\Exception\EcrException;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -20,7 +22,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * retention window, and the per-env-scoped deployer would be free to overwrite a
  * sibling env's images (DeployerPolicy scopes ECR to this repo's ARN).
  */
-class EcrRepository implements Resource
+class EcrRepository implements Deletable, Resource
 {
     use ResolvesTags;
 
@@ -73,6 +75,27 @@ class EcrRepository implements Resource
             'repositoryName' => $this->name(),
             'lifecyclePolicyText' => $this->lifecyclePolicy(),
         ]);
+    }
+
+    /**
+     * Force-delete the repository and every image in it — `force` is required
+     * because a repository holding images can't be removed otherwise. A missing
+     * repository is the goal state, so its not-found code is swallowed.
+     */
+    public function delete(): void
+    {
+        try {
+            Aws::ecr()->deleteRepository([
+                'repositoryName' => $this->name(),
+                'force' => true,
+            ]);
+        } catch (EcrException $e) {
+            if ($e->getAwsErrorCode() === 'RepositoryNotFoundException') {
+                return;
+            }
+
+            throw $e;
+        }
     }
 
     public function synchroniseTags(bool $apply): array

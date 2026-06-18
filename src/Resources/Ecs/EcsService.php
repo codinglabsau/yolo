@@ -8,8 +8,10 @@ use Codinglabs\Yolo\Aws\Ecs;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
+use Aws\Ecs\Exception\EcsException;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\Ec2\PublicSubnet;
 use Codinglabs\Yolo\Resources\ElbV2\TargetGroup;
@@ -31,7 +33,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  *    never clobbers it. The queue starts at its autoscaling floor (0 when it
  *    scales to zero); web and scheduler start at one task.
  */
-class EcsService implements Resource
+class EcsService implements Deletable, Resource
 {
     use ResolvesTags;
 
@@ -76,6 +78,29 @@ class EcsService implements Resource
         // / scheduler services carry no target group, so the helper never retries
         // them — it's a plain createService for those.
         Ecs::createServiceWhenTargetGroupAttached($this->createPayload());
+    }
+
+    /**
+     * Force-delete the service: `force` drains running tasks (desired → 0) and
+     * removes the service in one call, so a live service tears down without a
+     * separate scale-down step. A service already gone (or mid-deletion) is the
+     * goal state, so the not-found / not-active codes are swallowed.
+     */
+    public function delete(): void
+    {
+        try {
+            Aws::ecs()->deleteService([
+                'cluster' => (new EcsCluster())->name(),
+                'service' => $this->name(),
+                'force' => true,
+            ]);
+        } catch (EcsException $e) {
+            if (in_array($e->getAwsErrorCode(), ['ServiceNotFoundException', 'ServiceNotActiveException', 'ClusterNotFoundException'], true)) {
+                return;
+            }
+
+            throw $e;
+        }
     }
 
     public function synchroniseTags(bool $apply): array

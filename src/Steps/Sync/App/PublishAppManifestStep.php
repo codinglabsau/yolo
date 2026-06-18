@@ -21,10 +21,10 @@ use Codinglabs\Yolo\Concerns\RecordsChanges;
 /**
  * Publishes this app's claim file (`apps/{app}.yml` — the app name + the
  * services it consumes) into the env config bucket, on every sync:app and
- * every deploy. The environment tier reads the union of published claims to
- * evaluate which env-shared services are still consumed — so unlike the env
- * manifest (operator-owned, seed-only), the claim file is YOLO's and
- * reconciles freely.
+ * every deploy. The env tier reads the union of published claims to flag
+ * declared-but-idle services and to refuse removing a service apps still
+ * consume — not to gate provisioning. So unlike the env manifest
+ * (operator-owned, seed-only), the claim file is YOLO's and reconciles freely.
  */
 class PublishAppManifestStep implements Step
 {

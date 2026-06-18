@@ -134,8 +134,8 @@ class SyncAppCommand extends SyncSteppedCommand
                 Steps\Sync\App\SyncS3BucketStep::class,
                 Steps\Sync\App\SyncS3AssetBucketStep::class,
                 // environment claim — publish `apps/{app}.yml` into the env
-                // config bucket so the env tier can evaluate which shared
-                // services are still consumed (deploy republishes it too)
+                // config bucket so the env tier can flag idle services and
+                // guard service removal (deploy republishes it too)
                 Steps\Sync\App\PublishAppManifestStep::class,
                 // per-service app resources — every service's app steps are
                 // always in the plan (each self-gates on the app's claim), so

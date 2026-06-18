@@ -12,6 +12,7 @@ use Codinglabs\Yolo\Aws\WafV2;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Aws\CloudFront;
 use Codinglabs\Yolo\Aws\CloudWatch;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\WafV2\WebAcl;
 use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
 use Codinglabs\Yolo\Resources\Ecs\EcsService;
@@ -43,7 +44,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * if the backing resource doesn't exist yet — so on a greenfield first sync those
  * panels land on the next sync once their resources are provisioned.
  */
-class Dashboard
+class Dashboard implements Deletable
 {
     // Sensible default annotation thresholds. The queue-depth line instead
     // reuses sqs.depth-alarm-threshold so the graph and the existing
@@ -111,6 +112,14 @@ class Dashboard
         } catch (ResourceDoesNotExistException) {
             return false;
         }
+    }
+
+    /** Delete the dashboard; deleteDashboards is idempotent on a missing dashboard. */
+    public function delete(): void
+    {
+        Aws::cloudWatch()->deleteDashboards([
+            'DashboardNames' => [$this->name()],
+        ]);
     }
 
     /**

@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Aws\CloudWatch;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\Sns\SnsAlarmTopic;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
@@ -34,7 +35,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * on an existing alarm, so synchroniseTags() back-fills any alarm first put
  * untagged.
  */
-class QueueAlarm implements Resource, SynchronisesConfiguration
+class QueueAlarm implements Deletable, Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
 
@@ -68,6 +69,14 @@ class QueueAlarm implements Resource, SynchronisesConfiguration
     public function arn(): string
     {
         return CloudWatch::alarm($this->alarmName)['AlarmArn'];
+    }
+
+    /** Delete the alarm; deleteAlarms is idempotent on a missing alarm. */
+    public function delete(): void
+    {
+        Aws::cloudWatch()->deleteAlarms([
+            'AlarmNames' => [$this->name()],
+        ]);
     }
 
     public function create(): void

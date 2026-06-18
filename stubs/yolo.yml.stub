@@ -40,7 +40,7 @@ environments:
         enable-execute-command: true   # ECS Exec shell access (gate with MFA on your IAM)
 
         # Request-based autoscaling, on by default — web scales out on request concurrency
-        # (with CPU as a safety net and a ~10s burst path), between 1 and 4 tasks. Expand to a
+        # (with CPU as a safety net and a ~10s burst path), between 1 and 5 tasks. Expand to a
         # block for your own bounds (autoscaling: { min: 2, max: 8 }); set false to pin one task.
         autoscaling: true
 

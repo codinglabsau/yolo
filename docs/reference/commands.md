@@ -26,6 +26,7 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | [`build <env>`](#yolo-build) | Build and push the container image |
 | [`deploy <env>`](#yolo-deploy) | Build, then roll out a zero-downtime deploy |
 | [`rollback <env>`](#yolo-rollback) | Re-deploy a previously-built version from ECR, without a build |
+| [`destroy:app <env>`](#yolo-destroy-app) | Permanently tear down one app's resources (the reverse of `sync:app`) |
 | [`status <env>`](#yolo-status) | Live status dashboard (or a one-shot `--snapshot` / `--json` frame) |
 | [`status:app <env>`](#yolo-status-app) | App-tier status (the same as `status`, under the scope namespace) |
 | [`status:environment <env>`](#yolo-status-environment) | Roll up every app's status across an environment |
@@ -59,7 +60,7 @@ yolo init
 
 Interactive. Prompts for the app name, AWS account ID, region, and (unless multi-tenant) a domain and optional S3 bucket. It then:
 
-- Writes `yolo.yml` from the stub — with web [autoscaling](/guide/scaling) on by default (`tasks.web.autoscaling: true`, bounds 1–4).
+- Writes `yolo.yml` from the stub — with web [autoscaling](/guide/scaling) on by default (`tasks.web.autoscaling: true`, bounds 1–5).
 - Writes a default `Dockerfile` and `.dockerignore` (asks before overwriting existing ones).
 - Creates a starter `.env.production`.
 - Appends `.yolo`, `.env.staging`, `.env.production`, and the env-shared working copies (`.env.environment.*`, `yolo-environment-*.yml`) to `.gitignore`.
@@ -292,7 +293,7 @@ A **global health bar** stays pinned on every tab — one dot per group (web / q
 `--snapshot`, `--json`, or any non-interactive shell renders up to four panels instead, read live from ECS, Application Auto Scaling, CloudWatch and SQS:
 
 - **Deployment in progress** (only when a rollout is mid-flight) — a progress bar of new-revision tasks per rolling group, its rollout state, the revision, and how long it's been running.
-- **Services** — one row per group (web / queue / scheduler) with the task spec (vCPU/memory/launch type), running/desired task count, scaling bounds + policies (`1–4 auto (cpu 65%, req 1200)`, or `fixed` / `singleton`), and the deployed revision + app version.
+- **Services** — one row per group (web / queue / scheduler) with the task spec (vCPU/memory/launch type), running/desired task count, scaling bounds + policies (`1–5 auto (cpu 65%, req 1200)`, or `fixed` / `singleton`), and the deployed revision + app version.
 - **Load** (last 15 min) — ECS CPU/memory per group, shown against the CPU scaling target so headroom is obvious, plus the web service's ALB request rate and response time. Each reading trails a small braille sparkline (`⢀⡠⠔⠊`) of its recent trend; the full-width charts are the dashboard's Metrics tab.
 - **Queue** (backlog) — the visible-message count for each SQS queue (one for a solo app; the landlord queue plus one per tenant when multi-tenant). Shown even when the queue worker is bundled into the web container rather than its own service.
 
@@ -598,6 +599,27 @@ Some environment-tier resources are bootstrapped here by exception — the RDS s
 A per-app **CloudWatch dashboard** (`yolo-<env>-<app>-dashboard`) is generated last, so every resource it charts already exists. It panels the ECS service (CPU/memory/tasks), the ALB (target health, requests, latency, slow-request bands, error counts and a 5xx error-rate SLO), SQS depth/throughput, the asset CloudFront distribution (requests, errors and cache hit rate), the S3 buckets, any consumed services (MediaConvert jobs, Rekognition requests) and the app's logs — plus an RDS panel derived from `DB_HOST` in the app's env file (CPU, connections, memory, throughput and read/write latency). It's a read-only convenience: CloudWatch dashboards can't carry tags, so it doesn't appear in `yolo audit`.
 
 When a [`tasks.web.autoscaling`](/reference/manifest#tasks-web-autoscaling) block is present, `sync:app` also registers the **scalable target** and its **target-tracking policies** (request concurrency by default, derived from task memory, plus CPU as a safety net), right after the ECS service. App Auto Scaling targets aren't taggable either, so they're invisible to `yolo audit` too. If autoscaling is enabled on a task that also runs the scheduler, the sync plan lists an advisory under its **Warnings** section — see [Scaling](/guide/scaling). Scaling is web-only and inert without the manifest block.
+
+---
+
+## `yolo destroy:app`
+
+Permanently tear one application's resources down in the given environment — the reverse of [`sync:app`](#yolo-sync-app). It uses the same **plan → confirm → apply** flow: a plan pass lists every resource that **would delete**, the confirm gate guards the irreversible apply (declining is the preview), and `--check` is the non-interactive plan-only form for CI. The apply pass deletes in reverse dependency order — CloudFront → autoscaling → ECS services → cluster → listener rules → target group → task security group → app IAM → SQS → hosted zone → buckets → ECR — so a resource is never deleted while something still references it.
+
+```bash
+yolo destroy:app <environment> [--check] [--force] [--no-progress]
+```
+
+Arguments and options as [`sync`](#sync-options). Scope: **app**. Admin-tier.
+
+**App-scoped only — shared and stateful infrastructure is deliberately preserved:**
+
+- The **app data bucket** (the BYO [`bucket`](/reference/manifest#bucket)) holds user data and is never deleted — it isn't even YOLO-tagged. The regenerable asset and config buckets *are* emptied and removed.
+- **RDS is never touched** (YOLO owns the security group, not the database) — destroy:app *revokes this app's 3306 ingress rule* from the shared RDS security group, never the group itself.
+- The shared **`:443` listener** and the **Valkey cache** stay for the environment's other apps — destroy:app removes only this app's listener rule + SNI certificate, and revokes this app's cache ingress rule. (If the certificate is the listener's *default*, it can't be removed app-side and is left for environment teardown.)
+- **Environment- and account-scoped** resources (VPC, subnets, ALB, OIDC provider, …) are out of scope — environment teardown is a separate, later command.
+
+**It refuses rather than partially tearing down.** To guarantee a teardown can never orphan resources (which [`yolo audit`](#yolo-audit) would then flag), destroy:app refuses — with a clear message — app shapes whose teardown isn't fully modelled yet: **multi-tenant** apps, **headless** apps (no domain), apps with **no web task**, and apps still **consuming an env service** (Typesense / IVS / MediaConvert). For the last, remove the service from `yolo.yml` and deploy first, then tear the app down.
 
 ---
 

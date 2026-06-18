@@ -71,13 +71,16 @@ All commands extend `Command` (base) or, for multi-step work, `SteppedCommand` /
   manifest checks, environment validation, and an STS account-vs-profile guard (`ensureAccountMatchesProfile`).
 - **`SteppedCommand`** — runs an ordered `$steps` array of `Step` classes with progress tracking and status reporting
   (via the `RunsSteppedCommands` concern).
-- **`SyncSteppedCommand`** — a `SteppedCommand` whose steps are declared as scope-labelled `domains()`. Adds the
+- **`SyncSteppedCommand`** — a `SteppedCommand` whose steps are declared as scope-labelled `scopes()`. Adds the
   `--check`, `--force`, `--no-progress`, and `--tenant=<id>` options and an `environment` argument. There is no
   `--dry-run`: sync is always approve-before-apply (it prints the full plan before its confirm gate, so declining is
-  the preview), and `--check` is the non-interactive plan-only/fail-on-drift form for CI.
+  the preview), and `--check` is the non-interactive plan-only/fail-on-drift form for CI. `DestroyAppCommand`
+  (`destroy:app`) extends it too — the teardown reverse of `sync:app`, reusing the same plan → confirm → apply runner.
 
-The full command set: `init`, `env:pull`, `env:push`, `build`, `deploy`, `status`, `run`, `scale`, and the
-scope-grouped `sync` / `audit` verbs below.
+The full command set: `init`; the env-file and env-manifest pull/push pairs (`env:pull`/`env:push`,
+`environment:manifest:pull`/`push`, `environment:env:pull`/`push`); `build`, `deploy`, `rollback`, `run`, `scale`,
+and `destroy:app` (app teardown); the scope-grouped `status` / `status:*` read surfaces; `permissions`; `services`;
+and the scope-grouped `sync` / `audit` verbs below.
 
 ### Sync is scope-first (`sync` / `sync:account` / `sync:environment` / `sync:app`)
 
@@ -88,8 +91,8 @@ allowed to write it:
 | Command | `Scope` | Blast radius | Examples |
 | --- | --- | --- | --- |
 | `sync:account` | `Account` | the whole AWS account | GitHub OIDC provider |
-| `sync:environment <env>` | `Env` | every app in the environment | VPC, subnets, IGW/routes, RDS SG, SNS topic, shared ECS execution role, env logs bucket (ALB access logs under `alb/`), ALB + `:80` and `:443` listeners |
-| `sync:app <env>` | `App` | one app | Storage, app IAM (deployer + per-app ECS task role + `task-role-policies`), Fargate (cluster/service/task def), CDN, IVS, mode-aware Queue/DNS |
+| `sync:environment <env>` | `Env` | every app in the environment | VPC, subnets, IGW/routes, RDS SG, SNS topic, shared ECS execution role, env logs bucket (ALB access logs under `alb/`), ALB + `:80` and `:443` listeners, the env-backed services (IVS event-logging pipeline, Typesense search cluster) |
+| `sync:app <env>` | `App` | one app | Storage, app IAM (deployer + per-app ECS task role + `task-role-policies`), Fargate (cluster/service/task def), CDN, mode-aware Queue/DNS |
 
 `sync` orchestrates **account → environment → app** in dependency order. `sync:app` only depends on and *additively
 attaches to* shared infra (its SNI cert + listener-rule on the env `:443` listener, its 3306 ingress on the env RDS
@@ -124,9 +127,12 @@ that axis belongs to Resources):
 
 - `Build/`, `Deploy/` — lifecycle phase: build the image / run the deployment (see flow below)
 - `Sync/Account/`, `Sync/Environment/`, `Sync/App/` — the sync steps, grouped by the **scope** that writes them, so
-  each dir mirrors its `sync:account` / `sync:environment` / `sync:app` command's `domains()`. `Sync/App/{Solo,Tenant,
+  each dir mirrors its `sync:account` / `sync:environment` / `sync:app` command's `scopes()`. `Sync/App/{Solo,Tenant,
   Landlord}/` holds the app-mode variants (single-tenant vs multi-tenant fan-out). The two by-exception env-scope
   resources bootstrapped from `sync:app` (the `:443` listener, the RDS security group) live under `Sync/App/`.
+- `Destroy/` — app teardown (the reverse of `sync:app`, driving `destroy:app`). A thin `TeardownStep` base names a
+  `Resource&Deletable` and tears it down via `teardownResource()`; `Destroy/App/` holds the per-resource steps, run
+  in reverse dependency order.
 
 A sync step is typically thin: it `use`s the `SynchronisesResource` trait and delegates to a `Resource`
 (e.g. `return $this->syncResource(new TargetGroup(), $options);`). Steps decide *when* to create/sync; Resources
@@ -181,7 +187,8 @@ themselves out of apply and left the target group unattached, which surfaced two
 ### Resources (`src/Resources/`)
 
 A `Resource` is the desired-state definition of one AWS thing, independent of the step that drives it. It owns its
-`name()`, `scope()`, `tags()`, `exists()`, `arn()`, `create()`, and `synchroniseTags()`. Organised strictly by AWS
+`name()`, `scope()`, `tags()`, `exists()`, `arn()`, `create()`, and `synchroniseTags()` (plus `delete()` when it
+implements `Deletable`, below). Organised strictly by AWS
 service — every `Resources/{Service}/` dir maps 1:1 to an `Aws/{Service}` wrapper (`Ec2/`, `Ecs/`, `ElbV2/`, `Ecr/`,
 `S3/`, `Rds/`, `Sns/`, `Sqs/`, `Iam/`, `Acm/`, `Route53/`, `CloudWatch/`, `CloudWatchLogs/`, `EventBridge/`,
 `CloudFront/`).
@@ -192,6 +199,10 @@ service — every `Resources/{Service}/` dir maps 1:1 to an `Aws/{Service}` wrap
   (e.g. CloudFront distribution, ALB attributes, target-group settings). `SynchronisesResource::syncResource()` calls
   `synchroniseConfiguration()` on an *existing* resource in addition to tag sync, so a changed default reaches an
   already-provisioned resource.
+- **`Deletable`** (interface) — opt-in `delete()` so a resource can tear itself down (removing the live resource and
+  everything only it owns). `SynchronisesResource::teardownResource()` drives it — the mirror of `syncResource()`.
+  Every App-scoped resource implements it (so `destroy:app` never orphans one), enforced by
+  `tests/Arch/ResourceTeardownTest.php`; the BYO app data bucket is the one deliberate exception (it holds user data).
 
 (Distinct from `src/Audit/` — that looks up *live* AWS state rather than declaring desired state.)
 
@@ -208,9 +219,11 @@ per-service wrappers (`Ecs`, `ElbV2`, `S3`, `Iam`, `Route53`, `Acm`, `Sqs`, `Sns
 Interfaces a step implements to declare its execution context:
 
 - `Step` — the base step contract
-- `RunsOnBuild` / `RunsOnAws` / `RunsOnAwsWeb` / `RunsOnAwsQueue` / `RunsOnAwsScheduler` — where a step runs
-- `ExecutesTenantStep` / `ExecutesSoloStep` / `ExecutesMultitenancyStep` / `ExecutesWebStep` / `ExecutesCommandStep` /
-  `ExecutesIvsStep` — per-tenant fan-out and app-mode gating
+- `RunsOnBuild` — a step that runs during the build phase (vs against live AWS)
+- `ExecutesTenantStep` / `ExecutesSoloStep` / `ExecutesMultitenancyStep` / `ExecutesWebStep` / `ExecutesCommandStep` —
+  per-tenant fan-out and app-mode gating
+- `AdminCommand` / `DeployerCommand` / `ReadOnlyCommand` — a command's RBAC tier (which scoped role it assumes);
+  `ReadsEnvironment` marks a command that needs the env manifest
 - `HasSubSteps` — step contains sub-steps (e.g. manifest build commands)
 - `LongRunning` — step blocks on a slow AWS waiter (cache cluster, sessions table, deploy task); the runner shows
   its `patienceMessage()` and ticks an elapsed-time heartbeat (via `WaitReporter` + `Aws::waitFor`) so the progress
@@ -221,8 +234,10 @@ Interfaces a step implements to declare its execution context:
 Orchestration traits (per-service AWS interaction now lives in `src/Aws/*`, not here): `RunsSteppedCommands` (step
 execution + progress UI), `SynchronisesResource` (create-or-sync), `RegistersAws` (env-aware client registration),
 `RendersServiceStatus` (gathers + renders the live `status` dashboard and the end-of-deploy recap, shared by
-`StatusCommand` and `DeployCommand`), `SyncsRecordSets`, `DetectsSubdomains`,
-`ChecksIfCommandsShouldBeRunning`, `HasAfterCallbacks`, `ParsesOnlyOption`.
+`StatusCommand` and `DeployCommand`), `SyncsRecordSets`, `ChecksIfCommandsShouldBeRunning`, `HasAfterCallbacks`,
+`RecordsChanges` / `RecordsWarnings` (the plan-pass attribute diff + deferred warnings), `AuthorisesTaskIngress` /
+`RevokesTaskIngress` (the shared-SG ingress add for sync / revoke for teardown), and `RendersIncidentReads`
+(the `status:logs` / `status:events` / `status:alarms` read surfaces).
 
 ### Configuration & helpers
 
@@ -237,9 +252,11 @@ execution + progress UI), `SynchronisesResource` (create-or-sync), `RegistersAws
 
 ### Key patterns
 
-1. Commands extend `SteppedCommand`; sync commands declare scope-labelled `domains()` of `Step` classes and
-   `SyncSteppedCommand::handle()` runs them in order.
+1. Commands extend `SteppedCommand`; sync (and `destroy:app`) commands declare scope-labelled `scopes()` of `Step`
+   classes and `SyncSteppedCommand::handle()` runs them in order.
 2. A `Step` delegates to a `Resource` via `SynchronisesResource`: `exists()` ? sync tags (and config) : `create()`.
+   Teardown is the mirror — a `TeardownStep` runs `teardownResource()`: `exists()` ? record change + `delete()` :
+   `SKIPPED`; `destroy:app` runs these in reverse dependency order.
 3. A `Resource` declares its `Scope` once; its name, tags, and the sync tier that writes it all follow from that.
 4. AWS SDK access goes through the `src/Aws/*` wrappers, registered via `RegistersAws` based on environment.
 5. Multi-tenancy fans a step out over `Manifest::tenants()` (`ExecutesTenantStep`); `--tenant=<id>` narrows the

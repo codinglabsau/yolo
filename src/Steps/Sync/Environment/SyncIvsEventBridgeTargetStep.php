@@ -16,7 +16,7 @@ use Codinglabs\Yolo\Resources\EventBridge\IvsEventBridgeRule;
 
 /**
  * Points the env-shared IVS state-change rule at the env-shared IVS log group
- * while the environment runs the ivs service (declared ∧ in use). Teardown is
+ * while the environment declares the ivs service. Teardown is
  * deliberately a skip: AWS refuses to delete a rule that still has targets,
  * so IvsEventBridgeRule::delete() removes the rule and this target in one
  * atomic act — a separate target-removal here would leave the plan's rule

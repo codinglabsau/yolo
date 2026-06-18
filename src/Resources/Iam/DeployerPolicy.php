@@ -7,7 +7,9 @@ use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Enums\Scope;
+use Aws\Iam\Exception\IamException;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
@@ -33,7 +35,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * Document drift is reconciled as a plan-visible Change via the shared
  * SynchronisesPolicyDocument trait (createPolicyVersion + 5-version pruning).
  */
-class DeployerPolicy implements Resource, SynchronisesConfiguration
+class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
     use SynchronisesPolicyDocument;
@@ -88,6 +90,66 @@ class DeployerPolicy implements Resource, SynchronisesConfiguration
     public function synchroniseTags(bool $apply): array
     {
         return Aws::synchroniseIamPolicyTags($this->arn(), $this->tags(), $apply);
+    }
+
+    /**
+     * Teardown when the app drops its deployer: IAM refuses to delete a
+     * customer-managed policy while it is still attached to any entity or while
+     * it carries non-default versions, so detach it from every role/group/user it
+     * is attached to (the SynchronisesPolicyDocument trait may have rolled several
+     * versions) and prune every non-default version before deletePolicy. A
+     * concurrent delete that already removed the policy is tolerated.
+     */
+    public function delete(): void
+    {
+        try {
+            $policyArn = $this->arn();
+
+            $entities = Aws::iam()->listEntitiesForPolicy([
+                'PolicyArn' => $policyArn,
+            ]);
+
+            foreach ($entities['PolicyRoles'] ?? [] as $role) {
+                Aws::iam()->detachRolePolicy([
+                    'RoleName' => $role['RoleName'],
+                    'PolicyArn' => $policyArn,
+                ]);
+            }
+
+            foreach ($entities['PolicyGroups'] ?? [] as $group) {
+                Aws::iam()->detachGroupPolicy([
+                    'GroupName' => $group['GroupName'],
+                    'PolicyArn' => $policyArn,
+                ]);
+            }
+
+            foreach ($entities['PolicyUsers'] ?? [] as $user) {
+                Aws::iam()->detachUserPolicy([
+                    'UserName' => $user['UserName'],
+                    'PolicyArn' => $policyArn,
+                ]);
+            }
+
+            foreach (IamClient::policyVersions($policyArn) as $version) {
+                if (! ($version['IsDefaultVersion'] ?? false)) {
+                    Aws::iam()->deletePolicyVersion([
+                        'PolicyArn' => $policyArn,
+                        'VersionId' => $version['VersionId'],
+                    ]);
+                }
+            }
+
+            Aws::iam()->deletePolicy([
+                'PolicyArn' => $policyArn,
+            ]);
+        } catch (IamException $e) {
+            if ($e->getAwsErrorCode() !== 'NoSuchEntity') {
+                throw $e;
+            }
+        } catch (ResourceDoesNotExistException) {
+            // arn() resolves the policy by listing; a concurrent delete that
+            // removed it between exists() and here leaves nothing to do.
+        }
     }
 
     public function document(): array
