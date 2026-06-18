@@ -323,6 +323,23 @@ class Dashboard implements Deletable
     }
 
     /**
+     * The dimension pair that scopes a front-end ALB metric to THIS app. The ALB
+     * is shared across every app in the environment, so the bare `LoadBalancer`
+     * dimension sums all of them — pairing it with the app's `TargetGroup` narrows
+     * a metric (RequestCount, TargetResponseTime, the target HTTP codes) to the
+     * requests this app actually served. Falls back to the load balancer alone
+     * before the target group has resolved (first sync), the only signal then.
+     *
+     * @return array<int, string>
+     */
+    protected static function appAlbDimensions(?string $targetGroup, string $alb): array
+    {
+        return $targetGroup !== null
+            ? ['TargetGroup', $targetGroup, 'LoadBalancer', $alb]
+            : ['LoadBalancer', $alb];
+    }
+
+    /**
      * The full dashboard document, assembled purely from a resolved context so it
      * can be asserted in tests without touching AWS.
      *
@@ -421,10 +438,13 @@ class Dashboard implements Deletable
                 'stat' => 'Sum',
                 'yAxis' => ['left' => ['min' => 0, 'showUnits' => false]],
                 'metrics' => [
-                    [['expression' => '(m1 + m2) / m3 * 100', 'label' => '5xx %', 'id' => 'e1', 'color' => static::RED]],
-                    ['AWS/ApplicationELB', 'HTTPCode_Target_5XX_Count', 'LoadBalancer', $alb, ['id' => 'm1', 'visible' => false]],
-                    ['AWS/ApplicationELB', 'HTTPCode_ELB_5XX_Count', 'LoadBalancer', $alb, ['id' => 'm2', 'visible' => false]],
-                    ['AWS/ApplicationELB', 'RequestCount', 'LoadBalancer', $alb, ['id' => 'm3', 'visible' => false]],
+                    // Target 5xx over this app's own request volume. ELB-generated 5xx
+                    // (no healthy target, etc.) isn't target-group attributable, so it
+                    // can't go in a per-app rate — it surfaces on Target health and the
+                    // HTTP errors panel instead.
+                    [['expression' => 'm1 / m2 * 100', 'label' => '5xx %', 'id' => 'e1', 'color' => static::RED]],
+                    ['AWS/ApplicationELB', 'HTTPCode_Target_5XX_Count', ...static::appAlbDimensions($targetGroup, $alb), ['id' => 'm1', 'visible' => false]],
+                    ['AWS/ApplicationELB', 'RequestCount', ...static::appAlbDimensions($targetGroup, $alb), ['id' => 'm2', 'visible' => false]],
                 ],
                 'annotations' => ['horizontal' => [
                     ['color' => static::RED, 'label' => 'SLO', 'value' => static::ERROR_RATE_SLO, 'fill' => 'above'],
@@ -432,7 +452,7 @@ class Dashboard implements Deletable
             ]);
             $y += 6;
 
-            $requests = [['AWS/ApplicationELB', 'RequestCount', 'LoadBalancer', $alb, ['label' => 'Total requests', 'color' => static::BLUE]]];
+            $requests = [['AWS/ApplicationELB', 'RequestCount', ...static::appAlbDimensions($targetGroup, $alb), ['label' => 'Total requests', 'color' => static::BLUE]]];
 
             if ($targetGroup !== null) {
                 $requests[] = ['AWS/ApplicationELB', 'RequestCountPerTarget', 'TargetGroup', $targetGroup, ['label' => 'Requests per task', 'color' => static::GREEN]];
@@ -457,9 +477,9 @@ class Dashboard implements Deletable
                 'stat' => 'p95',
                 'yAxis' => ['left' => ['min' => 0]],
                 'metrics' => [
-                    ['AWS/ApplicationELB', 'TargetResponseTime', 'LoadBalancer', $alb, ['label' => 'IQM', 'stat' => 'IQM', 'color' => static::BLUE]],
-                    ['AWS/ApplicationELB', 'TargetResponseTime', 'LoadBalancer', $alb, ['label' => 'p95', 'stat' => 'p95', 'color' => static::ORANGE]],
-                    ['AWS/ApplicationELB', 'TargetResponseTime', 'LoadBalancer', $alb, ['label' => 'p99', 'stat' => 'p99', 'color' => static::RED]],
+                    ['AWS/ApplicationELB', 'TargetResponseTime', ...static::appAlbDimensions($targetGroup, $alb), ['label' => 'IQM', 'stat' => 'IQM', 'color' => static::BLUE]],
+                    ['AWS/ApplicationELB', 'TargetResponseTime', ...static::appAlbDimensions($targetGroup, $alb), ['label' => 'p95', 'stat' => 'p95', 'color' => static::ORANGE]],
+                    ['AWS/ApplicationELB', 'TargetResponseTime', ...static::appAlbDimensions($targetGroup, $alb), ['label' => 'p99', 'stat' => 'p99', 'color' => static::RED]],
                 ],
                 'annotations' => ['horizontal' => [
                     ['color' => static::RED, 'label' => 'Alarm', 'value' => static::RESPONSE_TIME_ALARM, 'fill' => 'above'],
@@ -476,10 +496,10 @@ class Dashboard implements Deletable
                 'period' => 60,
                 'yAxis' => ['left' => ['showUnits' => false]],
                 'metrics' => [
-                    ['AWS/ApplicationELB', 'TargetResponseTime', 'LoadBalancer', $alb, ['label' => '2-5s', 'stat' => 'TC(2:5)', 'color' => '#98df8a']],
-                    ['AWS/ApplicationELB', 'TargetResponseTime', 'LoadBalancer', $alb, ['label' => '5-10s', 'stat' => 'TC(5:10)', 'color' => static::ORANGE]],
-                    ['AWS/ApplicationELB', 'TargetResponseTime', 'LoadBalancer', $alb, ['label' => '10-30s', 'stat' => 'TC(10:30)', 'color' => static::RED]],
-                    ['AWS/ApplicationELB', 'TargetResponseTime', 'LoadBalancer', $alb, ['label' => '> 30s', 'stat' => 'TC(30:60)', 'color' => static::PURPLE]],
+                    ['AWS/ApplicationELB', 'TargetResponseTime', ...static::appAlbDimensions($targetGroup, $alb), ['label' => '2-5s', 'stat' => 'TC(2:5)', 'color' => '#98df8a']],
+                    ['AWS/ApplicationELB', 'TargetResponseTime', ...static::appAlbDimensions($targetGroup, $alb), ['label' => '5-10s', 'stat' => 'TC(5:10)', 'color' => static::ORANGE]],
+                    ['AWS/ApplicationELB', 'TargetResponseTime', ...static::appAlbDimensions($targetGroup, $alb), ['label' => '10-30s', 'stat' => 'TC(10:30)', 'color' => static::RED]],
+                    ['AWS/ApplicationELB', 'TargetResponseTime', ...static::appAlbDimensions($targetGroup, $alb), ['label' => '> 30s', 'stat' => 'TC(30:60)', 'color' => static::PURPLE]],
                 ],
             ]);
 
@@ -491,9 +511,11 @@ class Dashboard implements Deletable
                 'period' => 60,
                 'stat' => 'Sum',
                 'metrics' => [
-                    ['AWS/ApplicationELB', 'HTTPCode_Target_4XX_Count', 'LoadBalancer', $alb, ['label' => '4xx', 'color' => static::ORANGE]],
-                    ['AWS/ApplicationELB', 'HTTPCode_Target_5XX_Count', 'LoadBalancer', $alb, ['label' => 'Target 5xx', 'color' => static::RED]],
-                    ['AWS/ApplicationELB', 'HTTPCode_ELB_5XX_Count', 'LoadBalancer', $alb, ['label' => 'ELB 5xx', 'color' => static::PURPLE]],
+                    ['AWS/ApplicationELB', 'HTTPCode_Target_4XX_Count', ...static::appAlbDimensions($targetGroup, $alb), ['label' => '4xx', 'color' => static::ORANGE]],
+                    ['AWS/ApplicationELB', 'HTTPCode_Target_5XX_Count', ...static::appAlbDimensions($targetGroup, $alb), ['label' => 'Target 5xx', 'color' => static::RED]],
+                    // ELB-generated 5xx is emitted at the load balancer only — not attributable
+                    // to a target group, so this one line stays env-wide (labelled as such).
+                    ['AWS/ApplicationELB', 'HTTPCode_ELB_5XX_Count', 'LoadBalancer', $alb, ['label' => 'ELB 5xx (LB-wide)', 'color' => static::PURPLE]],
                 ],
             ]);
             $y += 6;

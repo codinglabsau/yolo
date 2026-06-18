@@ -157,13 +157,56 @@ it('omits the target-health panel when the target group is not resolved yet', fu
     expect(findWidget($body, '5xx error rate')['x'])->toBe(0);
 });
 
-it('expresses the 5xx error rate as a percentage of requests with a 1% SLO line', function (): void {
+it('expresses the 5xx error rate as this app target 5xx over its own requests with a 1% SLO line', function (): void {
     $rate = findWidget(Dashboard::body(dashboardContext()), '5xx error rate');
 
-    expect($rate['properties']['metrics'][0][0]['expression'])->toBe('(m1 + m2) / m3 * 100');
-    expect($rate['properties']['metrics'])->toHaveCount(4); // expression + target 5xx + elb 5xx + requests
+    expect($rate['properties']['metrics'][0][0]['expression'])->toBe('m1 / m2 * 100');
+    expect($rate['properties']['metrics'])->toHaveCount(3); // expression + target 5xx + requests
+    // Both terms are scoped to this app's target group, not the shared load balancer.
+    expect($rate['properties']['metrics'][1])->toContain('HTTPCode_Target_5XX_Count', 'TargetGroup', 'targetgroup/yolo-testing-my-app/0a1b2c3d4e5f');
+    expect($rate['properties']['metrics'][2])->toContain('RequestCount', 'TargetGroup', 'targetgroup/yolo-testing-my-app/0a1b2c3d4e5f');
     expect($rate['properties']['annotations']['horizontal'][0]['value'])->toBe(1);
     expect($rate['x'])->toBe(12); // sits beside target health when the target group exists
+});
+
+it('scopes the Requests panel to the app target group so a shared ALB does not leak other apps', function (): void {
+    $requests = findWidget(Dashboard::body(dashboardContext()), 'Requests');
+
+    // Total requests counts only what the shared ALB forwards to THIS app's target
+    // group — not every app behind the load balancer.
+    expect($requests['properties']['metrics'][0])
+        ->toContain('AWS/ApplicationELB', 'RequestCount', 'TargetGroup', 'targetgroup/yolo-testing-my-app/0a1b2c3d4e5f', 'LoadBalancer', 'app/yolo-testing/abc123def456');
+
+    // Requests per task is already per-target.
+    expect($requests['properties']['metrics'][1])
+        ->toContain('RequestCountPerTarget', 'TargetGroup', 'targetgroup/yolo-testing-my-app/0a1b2c3d4e5f');
+});
+
+it('scopes response time, slow requests and the target HTTP errors to the app target group', function (): void {
+    $body = Dashboard::body(dashboardContext());
+    $targetGroup = 'targetgroup/yolo-testing-my-app/0a1b2c3d4e5f';
+
+    expect(findWidget($body, 'Response time')['properties']['metrics'][0])->toContain('TargetResponseTime', 'TargetGroup', $targetGroup);
+    expect(findWidget($body, 'Slow requests')['properties']['metrics'][0])->toContain('TargetResponseTime', 'TargetGroup', $targetGroup);
+    expect(findWidget($body, 'HTTP errors')['properties']['metrics'][0])->toContain('HTTPCode_Target_4XX_Count', 'TargetGroup', $targetGroup);
+    expect(findWidget($body, 'HTTP errors')['properties']['metrics'][1])->toContain('HTTPCode_Target_5XX_Count', 'TargetGroup', $targetGroup);
+
+    // ELB-generated 5xx isn't target-group attributable, so it stays load-balancer wide.
+    $elb = collect(findWidget($body, 'HTTP errors')['properties']['metrics'])
+        ->first(fn (array $metric): bool => $metric[1] === 'HTTPCode_ELB_5XX_Count');
+    expect($elb)->toContain('LoadBalancer', 'app/yolo-testing/abc123def456')
+        ->and($elb)->not->toContain('TargetGroup');
+});
+
+it('falls back to the load-balancer dimension for the front-end panels before the target group resolves', function (): void {
+    $requests = findWidget(Dashboard::body(dashboardContext(['targetGroupSuffix' => null])), 'Requests');
+
+    // No target group yet → the bare load balancer is the only signal, and there is
+    // no per-task line.
+    expect($requests['properties']['metrics'])->toHaveCount(1);
+    expect($requests['properties']['metrics'][0])
+        ->toContain('RequestCount', 'LoadBalancer', 'app/yolo-testing/abc123def456')
+        ->and($requests['properties']['metrics'][0])->not->toContain('TargetGroup');
 });
 
 it('charts RDS read and write latency with p90 alongside the average', function (): void {
