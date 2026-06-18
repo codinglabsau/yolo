@@ -5,12 +5,15 @@ namespace Codinglabs\Yolo\Resources\Route53;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Str;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\Route53;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Commands\SyncAppCommand;
+use Codinglabs\Yolo\Concerns\SyncsRecordSets;
+use Codinglabs\Yolo\Concerns\ResolvesCanonicalHost;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
@@ -30,6 +33,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  */
 class HostedZone implements Deletable, Resource
 {
+    use ResolvesCanonicalHost;
     use ResolvesTags;
 
     public function __construct(protected string $apex) {}
@@ -71,41 +75,87 @@ class HostedZone implements Deletable, Resource
     }
 
     /**
-     * Tear the zone down — but NEVER one a sibling environment owns: a shared
-     * domain (a trial env alongside prod) keeps its zone for as long as any env
-     * still serves it, so ownership by another env is a hard skip. When this env
-     * does own it (or it's unowned), every record set is removed — except the
-     * apex NS + SOA that Route 53 manages and deletes with the zone — and then
-     * the zone itself is deleted. A zone that's already gone is the goal state.
+     * The environment named by the zone's `yolo:environment` tag, or null when
+     * the zone carries no such tag. Unlike {@see ownerEnvironment()} (a fail-soft
+     * signal for a sync plan warning that swallows read errors), this lets a read
+     * error PROPAGATE — the teardown gate must distinguish "unowned" from "couldn't
+     * read" and fail closed on the latter, never delete on an inconclusive read.
      */
-    public function delete(): void
+    public function ownerTag(): ?string
     {
-        if ($this->ownerEnvironment() !== null) {
-            return;
-        }
-
-        try {
-            $id = Str::afterLast($this->arn(), '/');
-        } catch (ResourceDoesNotExistException) {
-            return;
-        }
-
-        $this->deleteRecordSets($id);
-
-        Aws::route53()->deleteHostedZone(['Id' => $id]);
+        return Aws::flattenTags($this->liveTags(Str::afterLast($this->arn(), '/')))['yolo:environment'] ?? null;
     }
 
     /**
-     * Empty the zone of every deletable record — a zone with any record set
-     * other than the apex NS + SOA can't be deleted. Those two are auto-managed
-     * by Route 53 and removed with the zone, so they're left in place.
+     * Tear down the Deletable contract — delegates to {@see teardown()}. The
+     * ownership gate (only a zone this env owns) lives in TeardownHostedZoneStep,
+     * which fails closed on an inconclusive ownership read.
      */
-    protected function deleteRecordSets(string $id): void
+    public function delete(): void
     {
-        $apex = rtrim($this->apex, '.') . '.';
+        $this->teardown();
+    }
+
+    /**
+     * Remove only the records YOLO manages for this app (the canonical host + its
+     * apex/www sibling A records), preserving every operator-added record — MX,
+     * SPF/DKIM/DMARC TXT, verification CNAMEs. The zone itself is deleted only
+     * when nothing but the apex NS + SOA remain afterwards (it was a pure-YOLO
+     * zone); a zone still holding other records is left standing, because a real
+     * domain outlives any single app and deleting it would take that DNS with it.
+     *
+     * @return bool whether the zone itself was deleted (false ⇒ kept, other records remain)
+     */
+    public function teardown(): bool
+    {
+        try {
+            $id = Str::afterLast($this->arn(), '/');
+        } catch (ResourceDoesNotExistException) {
+            return true;
+        }
+
+        $this->deleteManagedRecords($id);
+
+        if (! $this->onlyDefaultRecordsRemain($id)) {
+            return false;
+        }
+
+        Aws::route53()->deleteHostedZone(['Id' => $id]);
+
+        return true;
+    }
+
+    /**
+     * The hostnames YOLO writes A-alias records for — the canonical host and,
+     * when it's one half of the apex/www pair, its sibling. Mirrors
+     * {@see SyncsRecordSets::generateChanges()} so
+     * teardown removes exactly what sync created and nothing else.
+     *
+     * @return array<int, string>
+     */
+    protected function managedHosts(): array
+    {
+        $domain = Manifest::get('domain', $this->apex);
+
+        return $this->hasWwwSibling($this->apex, $domain)
+            ? [$domain, $this->wwwSibling($this->apex, $domain)]
+            : [$domain];
+    }
+
+    /**
+     * Delete only this app's A/AAAA alias records at the managed hosts. Anything
+     * else in the zone (email/verification DNS, other apps' records) is left
+     * untouched.
+     */
+    protected function deleteManagedRecords(string $id): void
+    {
+        $managed = collect($this->managedHosts())
+            ->map(fn (string $host): string => rtrim($host, '.') . '.')
+            ->all();
 
         $changes = collect(Aws::route53()->listResourceRecordSets(['HostedZoneId' => $id])['ResourceRecordSets'] ?? [])
-            ->reject(fn (array $record): bool => in_array($record['Type'], ['NS', 'SOA'], true) && rtrim((string) $record['Name'], '.') . '.' === $apex)
+            ->filter(fn (array $record): bool => in_array($record['Type'], ['A', 'AAAA'], true)
+                && in_array(rtrim((string) $record['Name'], '.') . '.', $managed, true))
             ->map(fn (array $record): array => ['Action' => 'DELETE', 'ResourceRecordSet' => $record])
             ->values()
             ->all();
@@ -118,6 +168,19 @@ class HostedZone implements Deletable, Resource
             'HostedZoneId' => $id,
             'ChangeBatch' => ['Changes' => $changes],
         ]);
+    }
+
+    /**
+     * Whether the only records left in the zone are the apex NS + SOA that
+     * Route 53 auto-manages (and removes with the zone) — i.e. it was a pure-YOLO
+     * zone and is now safe to delete outright.
+     */
+    protected function onlyDefaultRecordsRemain(string $id): bool
+    {
+        $apex = rtrim($this->apex, '.') . '.';
+
+        return collect(Aws::route53()->listResourceRecordSets(['HostedZoneId' => $id])['ResourceRecordSets'] ?? [])
+            ->every(fn (array $record): bool => in_array($record['Type'], ['NS', 'SOA'], true) && rtrim((string) $record['Name'], '.') . '.' === $apex);
     }
 
     public function synchroniseTags(bool $apply): array

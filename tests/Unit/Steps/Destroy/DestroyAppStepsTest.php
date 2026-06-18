@@ -3,13 +3,23 @@
 declare(strict_types=1);
 
 use Aws\Result;
+use Aws\Command;
+use Aws\MockHandler;
+use Aws\Acm\AcmClient;
+use Aws\CommandInterface;
+use Codinglabs\Yolo\Helpers;
+use Aws\Route53\Route53Client;
+use GuzzleHttp\Promise\Create;
+use Aws\Acm\Exception\AcmException;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\Ec2\RdsSecurityGroup;
 use Codinglabs\Yolo\Resources\Ec2\EcsTaskSecurityGroup;
 use Codinglabs\Yolo\Steps\Destroy\App\RevokeRdsIngressStep;
+use Codinglabs\Yolo\Steps\Destroy\App\TeardownHostedZoneStep;
 use Codinglabs\Yolo\Steps\Destroy\App\TeardownForwardRuleStep;
 use Codinglabs\Yolo\Steps\Destroy\App\TeardownTargetGroupStep;
 use Codinglabs\Yolo\Steps\Destroy\App\UnpublishAppManifestStep;
+use Codinglabs\Yolo\Steps\Destroy\App\TeardownSslCertificateStep;
 use Codinglabs\Yolo\Steps\Destroy\App\DeregisterWebAutoscalingStep;
 use Codinglabs\Yolo\Steps\Destroy\App\DeregisterTaskDefinitionsStep;
 use Codinglabs\Yolo\Steps\Destroy\App\TeardownCloudWatchDashboardStep;
@@ -137,4 +147,145 @@ it('skips the forward-rule teardown when the load balancer is already gone', fun
     ], $captured);
 
     expect((new TeardownForwardRuleStep())(['dry-run' => false]))->toBe(StepResult::SKIPPED);
+});
+
+/**
+ * Generic routed mock for clients without a Pest-wide binder (route53, acm).
+ * Uniquely named to avoid colliding with the same helper in TeardownTest.php.
+ *
+ * @param  array<string, Result|Throwable|array<int, Result|Throwable>>  $byCommand
+ * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+ */
+function bindDestroyRoutedClient(string $binding, string $clientClass, array $byCommand, array &$captured): void
+{
+    $mock = new class($byCommand, $captured) extends MockHandler
+    {
+        /** @var array<string, int> */
+        private array $cursors = [];
+
+        public function __construct(protected array $byCommand, protected array &$captured) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            $name = $cmd->getName();
+            $this->captured[] = ['name' => $name, 'args' => $cmd->toArray()];
+
+            $entry = $this->byCommand[$name] ?? new Result();
+
+            if (is_array($entry)) {
+                $index = min($this->cursors[$name] ?? 0, count($entry) - 1);
+                $this->cursors[$name] = $index + 1;
+                $entry = $entry[$index];
+            }
+
+            return $entry instanceof Throwable ? Create::rejectionFor($entry) : Create::promiseFor($entry);
+        }
+    };
+
+    Helpers::app()->instance($binding, new $clientClass([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+}
+
+// --- TeardownHostedZoneStep: fail-closed ownership gate (BLOCKER fix) ---
+
+it('tears down the hosted zone only when this environment positively owns it', function (): void {
+    $captured = [];
+    bindDestroyRoutedClient('route53', Route53Client::class, [
+        'ListHostedZones' => new Result(['HostedZones' => [['Id' => '/hostedzone/Z1', 'Name' => 'example.com.']]]),
+        'ListTagsForResource' => new Result(['ResourceTagSet' => ['Tags' => [['Key' => 'yolo:environment', 'Value' => 'testing']]]]),
+        'ListResourceRecordSets' => new Result(['ResourceRecordSets' => [
+            ['Name' => 'example.com.', 'Type' => 'NS', 'ResourceRecords' => [['Value' => 'ns']]],
+            ['Name' => 'example.com.', 'Type' => 'SOA', 'ResourceRecords' => [['Value' => 'soa']]],
+        ]]),
+    ], $captured);
+
+    expect((new TeardownHostedZoneStep())(['dry-run' => false]))->toBe(StepResult::DELETED)
+        ->and(array_column($captured, 'name'))->toContain('DeleteHostedZone');
+});
+
+it('refuses to touch a hosted zone a sibling environment owns', function (): void {
+    $captured = [];
+    bindDestroyRoutedClient('route53', Route53Client::class, [
+        'ListHostedZones' => new Result(['HostedZones' => [['Id' => '/hostedzone/Z1', 'Name' => 'example.com.']]]),
+        'ListTagsForResource' => new Result(['ResourceTagSet' => ['Tags' => [['Key' => 'yolo:environment', 'Value' => 'production']]]]),
+    ], $captured);
+
+    expect((new TeardownHostedZoneStep())(['dry-run' => false]))->toBe(StepResult::SKIPPED)
+        ->and(array_column($captured, 'name'))->not->toContain('DeleteHostedZone')
+        ->not->toContain('ChangeResourceRecordSets');
+});
+
+it('refuses to touch a hosted zone YOLO does not own (untagged)', function (): void {
+    $captured = [];
+    bindDestroyRoutedClient('route53', Route53Client::class, [
+        'ListHostedZones' => new Result(['HostedZones' => [['Id' => '/hostedzone/Z1', 'Name' => 'example.com.']]]),
+        'ListTagsForResource' => new Result(['ResourceTagSet' => ['Tags' => []]]),
+    ], $captured);
+
+    expect((new TeardownHostedZoneStep())(['dry-run' => false]))->toBe(StepResult::SKIPPED)
+        ->and(array_column($captured, 'name'))->not->toContain('DeleteHostedZone');
+});
+
+it('fails closed and skips when the ownership read errors', function (): void {
+    $captured = [];
+    bindDestroyRoutedClient('route53', Route53Client::class, [
+        'ListHostedZones' => new Result(['HostedZones' => [['Id' => '/hostedzone/Z1', 'Name' => 'example.com.']]]),
+        'ListTagsForResource' => new RuntimeException('Route 53 throttled'),
+    ], $captured);
+
+    expect((new TeardownHostedZoneStep())(['dry-run' => false]))->toBe(StepResult::SKIPPED)
+        ->and(array_column($captured, 'name'))->not->toContain('DeleteHostedZone');
+});
+
+// --- TeardownSslCertificateStep: detach + InUse-skip (WARNING fix / coverage) ---
+
+it('detaches the cert from the listener and deletes it', function (): void {
+    $acm = [];
+    bindDestroyRoutedClient('acm', AcmClient::class, [
+        'ListCertificates' => new Result(['CertificateSummaryList' => [['DomainName' => 'example.com', 'CertificateArn' => 'arn:aws:acm:ap-southeast-2:111111111111:certificate/x']]]),
+    ], $acm);
+
+    $elb = [];
+    bindRoutedElbV2Client([
+        'DescribeLoadBalancers' => new Result(['LoadBalancers' => [['LoadBalancerName' => 'yolo-testing', 'LoadBalancerArn' => 'arn:lb', 'DNSName' => 'd', 'CanonicalHostedZoneId' => 'Z']]]),
+        'DescribeListeners' => new Result(['Listeners' => [['ListenerArn' => 'arn:listener', 'Port' => 443]]]),
+    ], $elb);
+
+    expect((new TeardownSslCertificateStep())(['dry-run' => false]))->toBe(StepResult::DELETED);
+    expect(array_column($elb, 'name'))->toContain('RemoveListenerCertificates');
+    expect(array_column($acm, 'name'))->toContain('DeleteCertificate');
+});
+
+it('skips (does not abort) when the cert is the listener default and still in use', function (): void {
+    $acm = [];
+    bindDestroyRoutedClient('acm', AcmClient::class, [
+        'ListCertificates' => new Result(['CertificateSummaryList' => [['DomainName' => 'example.com', 'CertificateArn' => 'arn:aws:acm:ap-southeast-2:111111111111:certificate/x']]]),
+        'DeleteCertificate' => new AcmException('in use', new Command('DeleteCertificate'), ['code' => 'ResourceInUseException']),
+    ], $acm);
+
+    $elb = [];
+    bindRoutedElbV2Client([
+        'DescribeLoadBalancers' => new Result(['LoadBalancers' => [['LoadBalancerName' => 'yolo-testing', 'LoadBalancerArn' => 'arn:lb', 'DNSName' => 'd', 'CanonicalHostedZoneId' => 'Z']]]),
+        'DescribeListeners' => new Result(['Listeners' => [['ListenerArn' => 'arn:listener', 'Port' => 443]]]),
+    ], $elb);
+
+    $step = new TeardownSslCertificateStep();
+
+    // The InUse cert is left in place (not deleted) and the step does NOT rethrow.
+    expect($step(['dry-run' => false]))->toBe(StepResult::SKIPPED)
+        ->and($step->recordedWarnings())->not->toBeEmpty();
+});
+
+it('skips the cert teardown when the certificate is already gone', function (): void {
+    $acm = [];
+    bindDestroyRoutedClient('acm', AcmClient::class, [
+        'ListCertificates' => new Result(['CertificateSummaryList' => []]),
+    ], $acm);
+
+    expect((new TeardownSslCertificateStep())(['dry-run' => false]))->toBe(StepResult::SKIPPED)
+        ->and(array_column($acm, 'name'))->not->toContain('DeleteCertificate');
 });

@@ -12,12 +12,11 @@ use Codinglabs\Yolo\Aws\ElbV2;
 use Aws\Exception\AwsException;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
+use Codinglabs\Yolo\Concerns\RecordsWarnings;
 use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Resources\Acm\SslCertificate;
 use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
-
-use function Laravel\Prompts\warning;
 
 /**
  * Tears down this app's ACM certificate. ACM refuses to delete a certificate
@@ -30,6 +29,7 @@ use function Laravel\Prompts\warning;
 class TeardownSslCertificateStep implements ExecutesWebStep
 {
     use RecordsChanges;
+    use RecordsWarnings;
 
     public function __invoke(array $options): StepResult
     {
@@ -52,7 +52,7 @@ class TeardownSslCertificateStep implements ExecutesWebStep
             $certificate->delete();
         } catch (AwsException $e) {
             if ($e->getAwsErrorCode() === 'ResourceInUseException') {
-                warning('The SSL certificate is still the shared HTTPS listener\'s default — left in place; `yolo destroy:environment` frees it with the listener.');
+                $this->recordWarning('The SSL certificate is still the shared HTTPS listener\'s default — left in place; `yolo destroy:environment` frees it with the listener.');
 
                 return StepResult::SKIPPED;
             }

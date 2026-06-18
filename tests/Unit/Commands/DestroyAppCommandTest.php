@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Helpers;
+use Symfony\Component\Console\Command\Command;
 use Codinglabs\Yolo\Commands\DestroyAppCommand;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
@@ -97,4 +98,19 @@ it('reframes the runner wording as an irreversible destroy', function (): void {
     expect((new ReflectionMethod($command, 'planHeading'))->invoke($command))->toBe('Will destroy')
         ->and((new ReflectionMethod($command, 'confirmQuestion'))->invoke($command, 'production'))->toContain('Permanently delete')
         ->and((new ReflectionMethod($command, 'completionVerb'))->invoke($command))->toBe('Destroyed');
+});
+
+it('handle() refuses an unsupported app with FAILURE before any teardown runs', function (): void {
+    // Multi-tenant is refused. No AWS client is bound, so if the guard failed to
+    // short-circuit, reaching runScopes would error — a clean FAILURE proves the
+    // reason -> FAILURE -> no-apply wiring, not just the reason string.
+    writeManifest(['domain' => 'example.com', 'tasks' => ['web' => true], 'tenants' => ['t1' => ['domain' => 't1.example.com']]]);
+
+    $command = new DestroyAppCommand();
+    $input = new ArrayInput(['environment' => 'testing'], $command->getDefinition());
+    $input->setInteractive(false);
+    $command->input = $input;
+    $command->output = new BufferedOutput();
+
+    expect($command->handle())->toBe(Command::FAILURE);
 });

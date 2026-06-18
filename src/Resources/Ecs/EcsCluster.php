@@ -61,11 +61,16 @@ class EcsCluster implements Deletable, Resource
     }
 
     /**
-     * Teardown cascades: AWS refuses to delete a cluster with active services,
-     * so every remaining service is drained (desired 0) and force-deleted first,
-     * then the cluster itself. The app's web/queue/scheduler services are torn
-     * down by their own steps ahead of this, so this normally finds an empty
-     * cluster — the sweep is the safety net for anything left attached.
+     * Teardown cascades: AWS refuses to delete a cluster while it still has an
+     * active service or a running task, so every remaining service is
+     * force-deleted first, then we wait for them to drain. `force` deletes a
+     * service asynchronously — its tasks keep stopping over the graceful-drain
+     * window — so without the `ServicesInactive` wait `deleteCluster` would race
+     * the drain and throw `ClusterContainsTasksException`. listServices returns
+     * ACTIVE + DRAINING services, so a service the per-app teardown steps already
+     * force-deleted is still caught here while it drains. (Reachable as the
+     * safety-net sweep: the app's web/queue/scheduler services are normally torn
+     * down by their own steps ahead of this.)
      */
     public function delete(): void
     {
@@ -78,6 +83,13 @@ class EcsCluster implements Deletable, Resource
                 'cluster' => $this->name(),
                 'service' => $serviceArn,
                 'force' => true,
+            ]);
+        }
+
+        if ($serviceArns !== []) {
+            Aws::waitFor(Aws::ecs(), 'ServicesInactive', [
+                'cluster' => $this->name(),
+                'services' => $serviceArns,
             ]);
         }
 

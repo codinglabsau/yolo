@@ -162,8 +162,10 @@ class AssetDistribution implements Deletable, Resource, SynchronisesConfiguratio
         }
 
         // The disable must reach every edge (Deployed) before CloudFront will
-        // delete it.
-        Aws::waitFor(Aws::cloudFront(), 'DistributionDeployed', ['Id' => $id]);
+        // delete it — a full propagation routinely runs 15+ minutes, so the
+        // waiter timeout is raised well past the 600s default to match (a too-low
+        // timeout would throw and abort the teardown on a routine slow deploy).
+        Aws::waitFor(Aws::cloudFront(), 'DistributionDeployed', ['Id' => $id], timeout: 1800);
 
         Aws::cloudFront()->deleteDistribution([
             'Id' => $id,
