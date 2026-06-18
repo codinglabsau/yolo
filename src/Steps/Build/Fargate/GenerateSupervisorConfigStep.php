@@ -11,7 +11,7 @@ use Codinglabs\Yolo\ShutdownTimings;
 use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
 use Codinglabs\Yolo\Enums\ServerGroup;
-use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
+use Codinglabs\Yolo\YoloServiceProvider;
 
 /**
  * Generates each container's supervisord.conf into the build context from the
@@ -29,56 +29,35 @@ use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
  * the path the scaffolded Dockerfile copies (docker/supervisord.conf); the queue
  * config rides along under docker/ via the Dockerfile's `COPY . /app`.
  *
- * The web group runs a two-tier CPU-priority order so the kernel scheduler
- * arbitrates contention in the app's favour (nice only bites when CPU is
- * saturated — a no-op with spare capacity, so steady-state throughput is
- * unchanged):
+ * When background work (scheduler, queue) shares the web container, it's niced below
+ * the request path so the kernel scheduler favours the request path under CPU
+ * contention — a heavy job can't starve the web tier. Burst detection now rides the
+ * web request itself ({@see YoloServiceProvider}), so web is the top priority; the
+ * scheduler (a brief, time-sensitive cron tick) outranks the queue (heavy, backlog-
+ * tolerant). nice only bites when CPU is saturated, so steady-state throughput is
+ * unchanged:
  *
- *     web ≈ ssr ≈ saturation (default nice)  >  queue, scheduler (niced down)
- *
- *  - The request path (web + ssr) AND the burst saturation emitter all run at the
- *    DEFAULT priority. The emitter must never outrank web: it reports worker
- *    saturation by scraping the web server's own metrics endpoint (localhost:2019)
- *    with a short timeout, failing safe to silence on a miss — so prioritising it
- *    ABOVE the very process it scrapes starves that scrape under a CPU pin (web
- *    can't answer in time → null → no emit → burst never trips, the exact failure
- *    this once caused). The invariant: the emitter is ≤ the priority of web (peer
- *    here), never above it. Being I/O-bound — a 5s sleep, then a quick scrape +
- *    put — the kernel schedules the just-woken emitter promptly even at peer
- *    priority, while web at the default priority stays responsive to the scrape, so
- *    neither needs lifting.
- *  - Background work (queue worker, scheduler) is niced well below the request
- *    path when co-located with it, so a heavy job can't starve the web tier.
- *
- * The in-container gauge is best-effort: on a single hard-pinned task nothing
- * in-container can escape a ~99% CPU pin, so the emitter can go silent WITH the box
- * — the target-tracking policies and `min ≥ 2` / more task CPU are the guarantees,
- * burst only sharpens the light-pin / multi-task case. Do not "fix" that silence by
- * lifting the emitter above web; that reintroduces the scrape starvation above.
+ *     web ≈ ssr (default)  >  scheduler (nice 10)  >  queue (nice 19)
  *
  * See config() / niceLevel() for the rendering.
  */
 class GenerateSupervisorConfigStep implements Step
 {
     /**
-     * The nice the background programs (queue worker, scheduler) launch at when
-     * they share a container with the web server, so the kernel scheduler favours
-     * the request path under CPU contention. +19 is the lowest priority an
-     * unprivileged user can set — background work effectively yields to web when
-     * CPU is saturated, yet still runs at full speed when it isn't. This reallocates
-     * CPU, it doesn't cap it: a queue/scheduler burst still shows on the CloudWatch
-     * CPU metric, it just no longer hits web latency. On a min-1 combined app,
-     * sustained web saturation that starves the queue is itself a scale-out signal
-     * the queue-depth alarm already covers.
-     */
-    private const int BACKGROUND_NICE = 19;
-
-    /**
-     * The programs niced below the web server when bundled alongside it.
+     * The nice each co-located background program launches at when it shares a
+     * container with the web server, so the kernel scheduler favours the request path
+     * under CPU contention. Burst detection now rides the web request itself, so web is
+     * the top priority (default, never niced); among the background tier the scheduler —
+     * a brief, time-sensitive cron tick — outranks the queue, which is heavy and
+     * backlog-tolerant (and has its own queue-depth scaling). The order is
+     * web > scheduler > queue. All values are positive (an unprivileged www-data can
+     * only nice *down*, so no CAP_SYS_NICE or task-def ulimit), and nice reallocates CPU
+     * under saturation rather than capping it — a burst still shows on the CloudWatch CPU
+     * metric, it just no longer hits web latency.
      *
-     * @var list<string>
+     * @var array<string, int>
      */
-    private const array BACKGROUND_PROGRAMS = ['scheduler', 'queue'];
+    private const array PROGRAM_NICE = ['scheduler' => 10, 'queue' => 19];
 
     public function __construct(
         protected string $environment,
@@ -89,13 +68,6 @@ class GenerateSupervisorConfigStep implements Step
     {
         // The web container always runs supervisord (the web server + whatever it hosts).
         $this->writeConfig('docker/supervisord.conf', ServerGroup::WEB);
-
-        // The saturation emitter rides with the burst alarm — present wherever the web
-        // tier autoscales (its supervisord program is added by config() for the same
-        // gate). In classic mode no metrics ever flow, so it's an inert no-op there.
-        if (Manifest::isAutoscaling()) {
-            $this->writeEmitterScript();
-        }
 
         // The metrics Caddyfile additionally needs Octane (worker mode) — its worker
         // gauges are the burst signal, and octane:start runs it via --caddyfile
@@ -141,12 +113,6 @@ class GenerateSupervisorConfigStep implements Step
         // exactly the co-location trigger for nicing the background programs below.
         $colocatesWebServer = isset($graces['web']);
 
-        // The burst saturation emitter rides only the web container, and only when the
-        // web tier autoscales — this flag adds its program block below. It does NOT nice
-        // the request path: web, ssr and the emitter all stay at the default priority, so
-        // the emitter never outranks the web server it scrapes (see the class docblock).
-        $bundlesEmitter = $group === ServerGroup::WEB && Manifest::isAutoscaling();
-
         // One block per program present in this container, in a stable order. Stop
         // waits come from ShutdownTimings so a program's graceful-stop window matches
         // the container stopTimeout derived from the same source.
@@ -164,39 +130,7 @@ class GenerateSupervisorConfigStep implements Step
             }
         }
 
-        // The burst saturation emitter (web container only) — a stateless loop that
-        // needs no drain window, so a 1s stop wait is plenty. It runs at the default
-        // priority, never niced and never lifted above web: it scrapes the web server's
-        // own metrics endpoint, so it must not outrank the process it reads (class docblock).
-        if ($bundlesEmitter) {
-            $blocks[] = $this->program('saturation', ProcessCommands::saturationEmitter(), stopwaitsecs: 1);
-        }
-
         return implode("\n\n", $blocks) . "\n";
-    }
-
-    /**
-     * Render the saturation emitter from its stub, substituting this app's web
-     * service name (the metric's dimension value) and the metric contract it shares
-     * with {@see WebBurstPolicy}'s alarm, into the build context.
-     */
-    protected function writeEmitterScript(): void
-    {
-        $script = strtr((string) $this->filesystem->get(Paths::stubs('yolo-saturation.php.stub')), [
-            '{{service}}' => WebBurstPolicy::serviceName(),
-            '{{floor}}' => (string) WebBurstPolicy::EMIT_FLOOR,
-            '{{threshold}}' => (string) WebBurstPolicy::ALARM_THRESHOLD,
-            '{{cooldown}}' => (string) WebBurstPolicy::COOLDOWN,
-            '{{interval}}' => (string) WebBurstPolicy::POLL_INTERVAL,
-            '{{namespace}}' => WebBurstPolicy::METRIC_NAMESPACE,
-            '{{metric}}' => WebBurstPolicy::METRIC_NAME,
-            '{{dimension}}' => WebBurstPolicy::METRIC_DIMENSION,
-            '{{region}}' => Manifest::get('region'),
-        ]);
-
-        $path = Paths::build('docker/yolo-saturation.php');
-        $this->filesystem->ensureDirectoryExists(dirname($path));
-        $this->filesystem->put($path, $script);
     }
 
     /**
@@ -317,20 +251,14 @@ class GenerateSupervisorConfigStep implements Step
 
     /**
      * The nice a program launches at, or null for the default priority. Only the
-     * background tier (queue worker, scheduler) is niced, and only when it shares a
-     * container with the web server, so a heavy job can't starve the request path.
-     * Everything else — web, ssr and the saturation emitter — runs at the default
-     * priority; the emitter is deliberately NOT lifted above web (it scrapes web's
-     * metrics endpoint, so outranking web would starve the scrape under a pin — see
-     * the class docblock).
+     * background tier (scheduler, queue) is niced, and only when it shares a container
+     * with the web server, so a heavy job can't starve the request path — scheduler
+     * above queue (see {@see PROGRAM_NICE}). Everything else — web and ssr — runs at
+     * the default priority.
      */
     protected function niceLevel(string $program, bool $colocatesWebServer): ?int
     {
-        if ($colocatesWebServer && in_array($program, self::BACKGROUND_PROGRAMS, true)) {
-            return self::BACKGROUND_NICE;
-        }
-
-        return null;
+        return $colocatesWebServer ? (self::PROGRAM_NICE[$program] ?? null) : null;
     }
 
     protected function program(string $name, string $command, int $stopwaitsecs = 10): string

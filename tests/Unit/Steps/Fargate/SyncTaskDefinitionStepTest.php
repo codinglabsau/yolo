@@ -187,7 +187,6 @@ it('ignores AWS-derived enrichment fields when diffing (no phantom drift)', func
     $live = liveTaskDefinition();
     $live['containerDefinitions'][0]['mountPoints'] = [];
     $live['containerDefinitions'][0]['volumesFrom'] = [];
-    $live['containerDefinitions'][0]['environment'] = [];
     $live['requiresAttributes'] = [['name' => 'ecs.capability.execution-role-awslogs']];
 
     $captured = [];
@@ -237,15 +236,10 @@ it('preserves the deployed image when re-registering for a genuine infra change'
         ->toBe('111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/yolo-testing-my-app:26.21.2.1500');
 });
 
-it('sets no container environment by default', function (): void {
-    expect(SyncTaskDefinitionStep::payload()['containerDefinitions'][0])
-        ->not->toHaveKey('environment');
-});
-
-it('sets no container environment for an Octane autoscaling app (burst metrics move to the Caddyfile)', function (): void {
+it('sets no container environment for a non-autoscaling web app', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['autoscaling' => ['min' => 2, 'max' => 8]]],
+        'tasks' => ['web' => ['autoscaling' => false]],
     ]);
 
     bindMockIamClient([
@@ -253,9 +247,23 @@ it('sets no container environment for an Octane autoscaling app (burst metrics m
         'yolo-testing-ecs-execution-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role',
     ]);
 
-    // Burst metrics are enabled by a custom Caddyfile (--caddyfile), not a task env var:
-    // octane:start overwrites CADDY_GLOBAL_OPTIONS, so setting it on the container is a
-    // no-op. The web container therefore carries no environment for it.
+    // Burst is off, so the runtime provider has nothing to do — no env to set.
     expect(SyncTaskDefinitionStep::payload()['containerDefinitions'][0])
+        ->not->toHaveKey('environment');
+});
+
+it('sets the burst-metrics service name on the autoscaling web container', function (): void {
+    // The default web tier autoscales, so the runtime YoloServiceProvider needs the ECS
+    // service name to dimension the metric by — its presence is also the gate, so burst
+    // needs no separate enabled flag. Everything else it reads from WebBurstPolicy directly.
+    expect(SyncTaskDefinitionStep::payload()['containerDefinitions'][0]['environment'])
+        ->toBe([['name' => 'YOLO_BURST_SERVICE', 'value' => 'yolo-testing-my-app-web']]);
+});
+
+it('keeps the burst-metrics env off the queue and scheduler task definitions', function (): void {
+    // Only the web tier publishes saturation; the headless workers never carry the env.
+    expect(SyncTaskDefinitionStep::payload(ServerGroup::QUEUE)['containerDefinitions'][0])
+        ->not->toHaveKey('environment');
+    expect(SyncTaskDefinitionStep::payload(ServerGroup::SCHEDULER)['containerDefinitions'][0])
         ->not->toHaveKey('environment');
 });

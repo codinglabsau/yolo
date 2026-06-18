@@ -11,6 +11,7 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\ShutdownTimings;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\ServerGroup;
+use Codinglabs\Yolo\YoloServiceProvider;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
 use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Resources\Iam\EcsTaskRole;
@@ -197,9 +198,33 @@ class SyncTaskDefinitionStep implements Step
                             'awslogs-stream-prefix' => $group->value,
                         ],
                     ],
+                    ...static::burstEnvironment($group),
                 ],
             ],
             'tags' => Aws::ecsTags(['Name' => $family]),
+        ];
+    }
+
+    /**
+     * The one value the runtime {@see YoloServiceProvider} can't derive: the ECS service
+     * name the burst metric is dimensioned by (the alarm filters on it). Injected on the
+     * autoscaling web tier only — its presence is what tells the provider to publish, so
+     * burst needs no separate "enabled" flag. Same gate as the metrics Caddyfile and the
+     * PutMetricData grant, so the three can't drift; everything else the reporter needs is
+     * a WebBurstPolicy constant it reads directly.
+     *
+     * @return array<string, array<int, array<string, string>>>
+     */
+    protected static function burstEnvironment(ServerGroup $group): array
+    {
+        if ($group !== ServerGroup::WEB || ! Manifest::usesMetricsCaddyfile()) {
+            return [];
+        }
+
+        return [
+            'environment' => [
+                ['name' => 'YOLO_BURST_SERVICE', 'value' => (new EcsService($group))->name()],
+            ],
         ];
     }
 

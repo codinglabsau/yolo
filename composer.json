@@ -9,6 +9,7 @@
     "guzzlehttp/guzzle": "^7.9",
     "illuminate/container": "^12|^13",
     "illuminate/filesystem": "^12|^13",
+    "illuminate/http": "^12|^13",
     "illuminate/support": "^12|^13",
     "laravel/prompts": "^0.3",
     "nesbot/carbon": "^3.10",
@@ -20,6 +21,7 @@
   "require-dev": {
     "laravel/pint": "^1.24",
     "mockery/mockery": "^1.6",
+    "orchestra/testbench": "^11.0",
     "pestphp/pest": "^4.7",
     "phpstan/phpstan": "^2.2",
     "rector/rector": "^2.4",
@@ -30,6 +32,11 @@
       "Codinglabs\\Yolo\\": "src"
     }
   },
+  "autoload-dev": {
+    "psr-4": {
+      "Tests\\": "tests/"
+    }
+  },
   "bin": [
     "yolo"
   ],
@@ -37,6 +44,13 @@
     "sort-packages": true,
     "allow-plugins": {
       "pestphp/pest-plugin": true
+    }
+  },
+  "extra": {
+    "laravel": {
+      "providers": [
+        "Codinglabs\\Yolo\\YoloServiceProvider"
+      ]
     }
   },
   "minimum-stability": "dev",
