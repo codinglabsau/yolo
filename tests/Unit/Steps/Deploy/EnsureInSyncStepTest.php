@@ -31,6 +31,48 @@ function inSyncStep(int $exitCode, string $planOutput = ''): EnsureInSyncStep
     };
 }
 
+/**
+ * Interactive variant: stub a *sequence* of check verdicts (first the pre-reconcile
+ * drift check, then the post-reconcile confirmation), the operator's reconcile
+ * answer, and a reconcile that records it was invoked — so the interactive branch is
+ * exercised without a real terminal prompt or a live `yolo sync`. A decorated output
+ * is what flips the gate into the interactive (watching) branch.
+ *
+ * @param  array<int, int>  $checkVerdicts
+ */
+function interactiveGate(array $checkVerdicts, bool $confirm): EnsureInSyncStep
+{
+    Helpers::app()->instance('output', new BufferedOutput(OutputInterface::VERBOSITY_NORMAL, decorated: true));
+
+    return new class($checkVerdicts, $confirm) extends EnsureInSyncStep
+    {
+        public bool $reconciled = false;
+
+        /** @param  array<int, int>  $checkVerdicts */
+        public function __construct(private array $checkVerdicts, private readonly bool $confirm) {}
+
+        #[Override]
+        protected function check(string $environment, OutputInterface $buffer, OutputInterface $console): int
+        {
+            return array_shift($this->checkVerdicts) ?? 0;
+        }
+
+        #[Override]
+        protected function confirmReconcile(string $environment): bool
+        {
+            return $this->confirm;
+        }
+
+        #[Override]
+        protected function reconcile(string $environment, OutputInterface $console): int
+        {
+            $this->reconciled = true;
+
+            return 0;
+        }
+    };
+}
+
 beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
@@ -50,6 +92,37 @@ it('refuses the deploy when the environment has drifted, naming the reconcile co
             IntegrityCheckException::class,
             'testing is not in sync',
         );
+});
+
+it('reconciles inline then continues when an operator confirms and sync converges', function (): void {
+    // Interactive + drift → confirm yes → reconcile → re-check clean → SYNCED.
+    $gate = interactiveGate(checkVerdicts: [1, 0], confirm: true);
+
+    expect($gate([]))->toBe(StepResult::SYNCED);
+    expect($gate->reconciled)->toBeTrue();
+});
+
+it('refuses without reconciling when an operator declines the drift prompt', function (): void {
+    // Interactive + drift → confirm no → same refusal CI gets, no sync run.
+    $gate = interactiveGate(checkVerdicts: [1], confirm: false);
+
+    expect(fn (): StepResult => $gate([]))->toThrow(IntegrityCheckException::class, 'testing is not in sync');
+    expect($gate->reconciled)->toBeFalse();
+});
+
+it('refuses when the environment is still drifted after a confirmed reconcile, rather than looping', function (): void {
+    // Interactive + drift → confirm yes → reconcile → re-check STILL drifted → abort
+    // (sync couldn't converge — don't re-invoke the deploy and loop).
+    $gate = interactiveGate(checkVerdicts: [1, 1], confirm: true);
+
+    expect(fn (): StepResult => $gate([]))->toThrow(IntegrityCheckException::class, 'still not in sync');
+    expect($gate->reconciled)->toBeTrue();
+});
+
+it('never prompts in CI — a non-decorated drift refuses outright', function (): void {
+    // The default BufferedOutput is non-decorated (CI/piped), so drift must throw
+    // without ever reaching the reconcile prompt.
+    expect(fn (): StepResult => inSyncStep(1)([]))->toThrow(IntegrityCheckException::class);
 });
 
 it('feeds option names sync actually defines (the live sub-command invocation the seam hides)', function (): void {
