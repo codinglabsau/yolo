@@ -63,19 +63,19 @@ Pair `tag: 'v*'` with a GitHub protected-tag ruleset (only maintainers may cut `
 
 Before it builds, `yolo deploy` runs a full `sync --check` (account → environment → app) and **aborts if anything has drifted** from the manifest. A deploy only rolls a new task-definition revision onto the *existing* infrastructure — it never reconciles it — so this stops a deploy landing on a stale target group, a changed task role, an un-provisioned listener, or a shared foundation (VPC/ALB/OIDC) that no longer matches `yolo.yml`. It also fires sync's claim gate, so an app that claims an env service the environment doesn't offer (e.g. typesense) is refused with a precise message. The check plans only (never writes), runs *before* the build so a drift fails fast without burning one, and prints the full diff.
 
-What happens next depends on who's driving:
+What happens on drift depends on the permission tier the deploy runs under, because **reconciling drift is an admin-tier act** — it writes the shared foundation (IAM, ALB, CloudFront, autoscaling) the deployer tier deliberately can't touch:
 
-- **In CI** (or any non-interactive run) the gate **refuses** with `Refusing to deploy — <env> is not in sync` and exits non-zero. There's no operator to answer a prompt, so the pipeline fails loudly — reconcile with `yolo sync <env>` and redeploy.
-- **Interactively** (a watched terminal) the gate **offers to reconcile inline**: confirm the prompt and YOLO runs the real `yolo sync <env>` (you approve its plan at sync's own confirm gate), re-checks once that it converged, then continues straight into the build in the same run — no second `yolo deploy` needed. Decline and it aborts with the same refusal CI gets. If the environment is *still* drifted after the reconcile, the deploy aborts rather than looping.
+- **By default — and always in CI** — `yolo deploy` runs under the least-privilege deployer role, which can't write the drift away. So the gate **refuses** with `Refusing to deploy — <env> has drifted from its declared state` and exits non-zero. The fix: ask someone with admin to run `yolo sync <env>`, then redeploy — or rerun with `--admin` if you hold admin yourself.
+- **With `--admin`** the deploy mints the admin tier up front (MFA-prompted, exactly like `sync`), so it holds the writes to **reconcile inline**: it runs the real `yolo sync <env>` (you approve its plan at sync's own confirm gate), re-checks once that it converged, then continues straight into the build in the same run — no second command needed. If the environment is *still* drifted after the reconcile, the deploy aborts rather than looping. `--admin` is local/interactive only — CI always stays on the least-privilege deployer role and never self-heals.
 
-Shared-foundation rather than app-only is deliberate: a deploy is the natural — and for most setups the only — moment drift is checked, so the gate covers the env-level foundation the app sits on (VPC/ALB/RDS/…) plus this app's own slice — never a sibling app's. This is why the deployer role attaches the per-app `yolo-{env}-{app}-observer` policy: env-wide describes (which AWS can't scope finer) plus this app's reads, with log content fenced to this app. No extra workflow step is needed — the gate is part of `yolo deploy` itself.
+Shared-foundation rather than app-only is deliberate: a deploy is the natural — and for most setups the only — moment drift is checked, so the gate covers the env-level foundation the app sits on (VPC/ALB/RDS/…) plus this app's own slice — never a sibling app's. This is why the deployer role attaches the per-app `yolo-{env}-{app}-observer` policy: it lets the check *read* the whole stack — env-wide describes (which AWS can't scope finer) plus this app's reads, with log content fenced to this app — without granting any write. No extra workflow step is needed — the gate is part of `yolo deploy` itself.
 
 | Exit code | Meaning |
 |---|---|
 | `0` | In sync — the build and rollout proceed. |
 | non-zero | Drift detected (deploy refused), **or** the check itself errored — bad credentials, an AWS API failure, an invalid manifest, or a claimed service the environment doesn't offer. |
 
-The fix is always the same: run `yolo sync <env>` to reconcile, then deploy again. The same check is available standalone as [`yolo sync <env> --check`](/reference/commands#sync-options) if you ever want to probe for drift without deploying — but you don't need to wire anything up; the gate is part of every deploy.
+The reliable fix is always the same: run `yolo sync <env>` (admin-tier, MFA-gated) to reconcile, then deploy again — or fold both into one local run with `yolo deploy <env> --admin`. The same check is available standalone as [`yolo sync <env> --check`](/reference/commands#sync-options) if you ever want to probe for drift without deploying — but you don't need to wire anything up; the gate is part of every deploy.
 
 ## Other auth methods
 

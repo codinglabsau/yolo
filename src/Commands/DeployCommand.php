@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Steps;
+use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Contracts\DeployerCommand;
 use Symfony\Component\Console\Input\InputOption;
 use Codinglabs\Yolo\Concerns\RendersServiceStatus;
@@ -37,7 +38,26 @@ class DeployCommand extends SteppedCommand implements DeployerCommand
             ->addOption('app-version', null, InputArgument::OPTIONAL, 'Tag to stamp on the build (defaults to a timestamp)')
             ->addOption('group', null, InputOption::VALUE_REQUIRED, 'Comma-separated service groups to roll (web,queue,scheduler) — defaults to all the app runs')
             ->addOption('no-progress', null, null, 'Hide the progress output')
+            ->addOption('admin', null, InputOption::VALUE_NONE, 'Run under the admin tier (MFA-gated) so a drifted environment can be reconciled inline instead of refusing')
             ->setDescription('Build, push, and deploy the application');
+    }
+
+    /**
+     * A deploy runs under the least-privilege Deployer tier by default. `--admin`
+     * caps it up to the Admin tier instead (minted MFA-gated up front, like `sync`),
+     * so the in-sync gate can reconcile a drifted environment inline rather than
+     * refusing — the deployer tier can't write the shared foundation drift touches.
+     * Guarded against input not yet bound (direct unit invocation), mirroring
+     * skipsPermissions().
+     */
+    #[\Override]
+    protected function awsTier(): ?Iam
+    {
+        $admin = isset($this->input)
+            && $this->input->hasOption('admin')
+            && (bool) $this->input->getOption('admin');
+
+        return $admin ? Iam::ADMIN_ROLE : Iam::DEPLOYER_ROLE;
     }
 
     #[\Override]
@@ -45,8 +65,9 @@ class DeployCommand extends SteppedCommand implements DeployerCommand
     {
         // Refuse to deploy into an environment that has drifted from its declared
         // state — runs the full `sync --check` plan before the build, so a drifted
-        // environment fails fast without burning one, and throws to abort on drift.
-        (new Steps\Deploy\EnsureInSyncStep())([]);
+        // environment fails fast without burning one. Under `--admin` the gate
+        // reconciles the drift inline (admin holds the writes); otherwise it throws.
+        (new Steps\Deploy\EnsureInSyncStep(admin: (bool) $this->option('admin')))([]);
 
         $build = (new BuildCommand())->execute($this->input, $this->output);
 

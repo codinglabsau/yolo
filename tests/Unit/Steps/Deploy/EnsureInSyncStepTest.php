@@ -19,7 +19,10 @@ function inSyncStep(int $exitCode, string $planOutput = ''): EnsureInSyncStep
 {
     return new class($exitCode, $planOutput) extends EnsureInSyncStep
     {
-        public function __construct(private readonly int $exitCode, private readonly string $planOutput) {}
+        public function __construct(private readonly int $exitCode, private readonly string $planOutput)
+        {
+            parent::__construct(admin: false);
+        }
 
         #[Override]
         protected function check(string $environment, OutputInterface $buffer, OutputInterface $console): int
@@ -32,35 +35,33 @@ function inSyncStep(int $exitCode, string $planOutput = ''): EnsureInSyncStep
 }
 
 /**
- * Interactive variant: stub a *sequence* of check verdicts (first the pre-reconcile
- * drift check, then the post-reconcile confirmation), the operator's reconcile
- * answer, and a reconcile that records it was invoked — so the interactive branch is
- * exercised without a real terminal prompt or a live `yolo sync`. A decorated output
- * is what flips the gate into the interactive (watching) branch.
+ * Stub a *sequence* of check verdicts (the pre-reconcile drift check, then the
+ * post-reconcile confirmation) plus a reconcile that records it was invoked — so the
+ * reconcile branch is exercised without a real terminal or a live `yolo sync`. The
+ * `admin` flag is the gate's only fork: only an admin-tier deploy reconciles inline;
+ * a deployer-tier deploy refuses on drift. A decorated output stands in for a real
+ * interactive deploy.
  *
  * @param  array<int, int>  $checkVerdicts
  */
-function interactiveGate(array $checkVerdicts, bool $confirm): EnsureInSyncStep
+function gate(array $checkVerdicts, bool $admin): EnsureInSyncStep
 {
     Helpers::app()->instance('output', new BufferedOutput(OutputInterface::VERBOSITY_NORMAL, decorated: true));
 
-    return new class($checkVerdicts, $confirm) extends EnsureInSyncStep
+    return new class($checkVerdicts, $admin) extends EnsureInSyncStep
     {
         public bool $reconciled = false;
 
         /** @param  array<int, int>  $checkVerdicts */
-        public function __construct(private array $checkVerdicts, private readonly bool $confirm) {}
+        public function __construct(private array $checkVerdicts, bool $admin)
+        {
+            parent::__construct($admin);
+        }
 
         #[Override]
         protected function check(string $environment, OutputInterface $buffer, OutputInterface $console): int
         {
             return array_shift($this->checkVerdicts) ?? 0;
-        }
-
-        #[Override]
-        protected function confirmReconcile(string $environment): bool
-        {
-            return $this->confirm;
         }
 
         #[Override]
@@ -86,42 +87,52 @@ it('passes the gate as SYNCED when the environment is in sync', function (): voi
     expect(inSyncStep(0)([]))->toBe(StepResult::SYNCED);
 });
 
-it('refuses the deploy when the environment has drifted, naming the reconcile command', function (): void {
+it('refuses a default (deployer) deploy on drift, pointing at sync and deploy --admin', function (): void {
+    // The deployer tier can't write the shared-foundation drift away, so the gate
+    // refuses and names both ways forward: an admin runs `yolo sync`, or rerun with
+    // --admin. The exception carries each so the operator isn't left guessing.
     expect(fn (): StepResult => inSyncStep(1)([]))
-        ->toThrow(
-            IntegrityCheckException::class,
-            'testing is not in sync',
-        );
+        ->toThrow(IntegrityCheckException::class, 'yolo sync testing');
+
+    try {
+        inSyncStep(1)([]);
+    } catch (IntegrityCheckException $e) {
+        expect($e->getMessage())
+            ->toContain('admin permissions')
+            ->toContain('yolo deploy testing --admin');
+    }
 });
 
-it('reconciles inline then continues when an operator confirms and sync converges', function (): void {
-    // Interactive + drift → confirm yes → reconcile → re-check clean → SYNCED.
-    $gate = interactiveGate(checkVerdicts: [1, 0], confirm: true);
+it('does not reconcile a drifted deployer deploy — it refuses, even on an interactive terminal', function (): void {
+    // The core of the revert: a decorated (interactive) deploy under the deployer
+    // tier no longer offers to reconcile — it refuses outright, like CI. Only
+    // --admin reconciles.
+    $gate = gate(checkVerdicts: [1], admin: false);
+
+    expect(fn (): StepResult => $gate([]))->toThrow(IntegrityCheckException::class, 'has drifted');
+    expect($gate->reconciled)->toBeFalse();
+});
+
+it('reconciles inline under --admin then continues when sync converges', function (): void {
+    // Admin tier + drift → reconcile → re-check clean → SYNCED.
+    $gate = gate(checkVerdicts: [1, 0], admin: true);
 
     expect($gate([]))->toBe(StepResult::SYNCED);
     expect($gate->reconciled)->toBeTrue();
 });
 
-it('refuses without reconciling when an operator declines the drift prompt', function (): void {
-    // Interactive + drift → confirm no → same refusal CI gets, no sync run.
-    $gate = interactiveGate(checkVerdicts: [1], confirm: false);
-
-    expect(fn (): StepResult => $gate([]))->toThrow(IntegrityCheckException::class, 'testing is not in sync');
-    expect($gate->reconciled)->toBeFalse();
-});
-
-it('refuses when the environment is still drifted after a confirmed reconcile, rather than looping', function (): void {
-    // Interactive + drift → confirm yes → reconcile → re-check STILL drifted → abort
-    // (sync couldn't converge — don't re-invoke the deploy and loop).
-    $gate = interactiveGate(checkVerdicts: [1, 1], confirm: true);
+it('refuses when the environment is still drifted after an --admin reconcile, rather than looping', function (): void {
+    // Admin tier + drift → reconcile → re-check STILL drifted → abort (sync couldn't
+    // converge — don't re-invoke the deploy and loop).
+    $gate = gate(checkVerdicts: [1, 1], admin: true);
 
     expect(fn (): StepResult => $gate([]))->toThrow(IntegrityCheckException::class, 'still not in sync');
     expect($gate->reconciled)->toBeTrue();
 });
 
-it('never prompts in CI — a non-decorated drift refuses outright', function (): void {
-    // The default BufferedOutput is non-decorated (CI/piped), so drift must throw
-    // without ever reaching the reconcile prompt.
+it('refuses outright in CI — a non-decorated drift never reconciles', function (): void {
+    // The default BufferedOutput is non-decorated (CI/piped). A CI deploy runs the
+    // deployer tier and can't reconcile, so drift throws outright.
     expect(fn (): StepResult => inSyncStep(1)([]))->toThrow(IntegrityCheckException::class);
 });
 

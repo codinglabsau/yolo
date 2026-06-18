@@ -16,7 +16,6 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 use function Laravel\Prompts\info;
-use function Laravel\Prompts\confirm;
 
 /**
  * Deploy preflight: refuse to deploy into an environment that has drifted from its
@@ -27,18 +26,24 @@ use function Laravel\Prompts\confirm;
  * onto the wrong shape. This gate runs the full `sync --check` plan
  * (account → environment → app) against live AWS first.
  *
- * On drift the response depends on who's driving:
- *  - **CI (nobody watching)** — refuse, exactly as a `sync --check` gate would: the
- *    buffered plan is flushed and the deploy aborts. There's no operator to answer a
- *    prompt, so a drifted pipeline fails loudly and a human reconciles.
- *  - **Interactive (a terminal is watching)** — offer to reconcile inline. The
- *    operator confirms, YOLO runs the real `yolo sync <env>` (they approve its plan
- *    at sync's own confirm gate), the plan is re-checked once to confirm it
- *    converged, and the deploy falls through into the build in the *same* process.
- *    Declining aborts with the same refusal CI gets. The gate is the deploy's first
- *    step — nothing has been built or rolled yet — so a clean re-check means there's
- *    nothing already done to redo: we continue here rather than re-invoking deploy
- *    (which would only re-run this gate, and risk a loop if sync never converges).
+ * Reconciling drift is an admin-tier act: it writes the shared foundation (IAM,
+ * ALB, CloudFront, autoscaling) the deployer tier deliberately can't touch — so a
+ * reconcile run under a deploy's deployer cap would 403 on the first env/account
+ * change. Whether the gate can self-heal therefore turns on the tier the deploy is
+ * running under:
+ *  - **Default deploy (deployer tier — and all CI)** — the deployer can't write the
+ *    drift away, so there's nothing to offer: flush the plan and refuse, pointing
+ *    the operator at `yolo sync <env>` (run by an admin) or an admin-tier
+ *    `yolo deploy <env> --admin`. A drifted pipeline fails loudly; a human reconciles.
+ *  - **Admin deploy (`yolo deploy --admin`)** — the operator opted into the admin
+ *    tier up front (minted MFA-gated before the build, exactly like `sync`), so the
+ *    deploy holds the credentials to reconcile inline. YOLO runs the real
+ *    `yolo sync <env>` (the operator approves its plan at sync's own confirm gate),
+ *    re-checks once to confirm it converged, and falls through into the build in the
+ *    *same* process. The gate is the deploy's first step — nothing has been built or
+ *    rolled yet — so a clean re-check means there's nothing already done to redo: we
+ *    continue here rather than re-invoking deploy (which would only re-run this gate,
+ *    and risk a loop if sync never converges).
  *
  * Whole-stack rather than app-only is deliberate: a deploy is the natural — and
  * for most setups the only — moment drift is checked, so the gate covers the
@@ -49,7 +54,7 @@ use function Laravel\Prompts\confirm;
  * It runs *before* the image build (DeployCommand invokes it first in handle()),
  * so a drifted environment fails fast without burning a build. It reuses `sync`
  * verbatim — no sync-command changes — and the check pass `--check` plans only,
- * never writes; only an interactive, operator-confirmed reconcile writes anything.
+ * never writes; only an admin-tier reconcile (approved at sync's gate) writes anything.
  *
  * The plan reads run under whatever identity is deploying. In CI that's the GitHub
  * Actions deployer role, which carries the per-app read surface (AppObserverPolicy,
@@ -61,6 +66,13 @@ use function Laravel\Prompts\confirm;
  */
 class EnsureInSyncStep implements Step
 {
+    /**
+     * @param  bool  $admin  whether the deploy is running under the admin tier
+     *                       (`yolo deploy --admin`) — the only tier that can write
+     *                       drift away, so the only one allowed to reconcile inline.
+     */
+    public function __construct(protected bool $admin = false) {}
+
     public function __invoke(array $options): StepResult
     {
         $environment = Helpers::environment();
@@ -79,24 +91,19 @@ class EnsureInSyncStep implements Step
             return StepResult::SYNCED;
         }
 
-        // Drifted. In CI there's no operator to answer a prompt, so refuse exactly
-        // as a `sync --check` gate would — flush the buffered plan first so the
-        // pipeline log shows what drifted, then abort.
-        if (! $output->isDecorated()) {
+        // Drifted. Reconciling means admin-tier writes the deployer cap (and every
+        // CI deploy) doesn't hold, so a default deploy can't self-heal: flush the
+        // plan so the operator/pipeline log sees what drifted, then refuse — the
+        // message points at `yolo sync` or an admin-tier `deploy --admin`.
+        if (! $this->admin) {
             $output->write($buffer->fetch());
 
             throw $this->refusal($environment);
         }
 
-        // Interactive: offer to reconcile inline rather than dead-ending the deploy.
-        // The live --check plan above already showed the operator what drifted.
-        // Declining aborts with the same refusal CI gets.
-        if (! $this->confirmReconcile($environment)) {
-            throw $this->refusal($environment);
-        }
-
-        // Reconcile through the real `yolo sync` (the operator approves its plan at
-        // sync's own confirm gate), then re-check once to confirm it converged.
+        // Admin tier: reconcile through the real `yolo sync` (the operator approves
+        // its plan at sync's own confirm gate), then re-check once to confirm it
+        // converged.
         $this->reconcile($environment, $output);
 
         if (! $this->planIsClean($environment, $buffer, $output)) {
@@ -138,26 +145,6 @@ class EnsureInSyncStep implements Step
     }
 
     /**
-     * Ask the operator whether to reconcile the drift before deploying. Defaults to
-     * "no" — reconciling mutates infrastructure, so hitting enter aborts the deploy.
-     *
-     * The preceding check sub-run left Laravel Prompts non-interactive (its input is
-     * non-interactive); we only reach here on a decorated terminal, so re-enable
-     * prompting for the confirm.
-     */
-    protected function confirmReconcile(string $environment): bool
-    {
-        Prompt::interactive(true);
-
-        return confirm(
-            label: sprintf('%s has drifted from its declared state. Reconcile it with `yolo sync` before deploying?', $environment),
-            default: false,
-            yes: 'Reconcile now',
-            no: 'Abort deploy',
-        );
-    }
-
-    /**
      * Reconcile the environment inline: a full interactive `yolo sync` (no --check),
      * so the operator approves its plan at sync's own confirm gate before anything is
      * written. Renders straight to the console through the same sink the live --check
@@ -188,8 +175,11 @@ class EnsureInSyncStep implements Step
     protected function refusal(string $environment): IntegrityCheckException
     {
         return new IntegrityCheckException(sprintf(
-            "Refusing to deploy — %s is not in sync (see the plan above).\n"
-            . 'Reconcile with `yolo sync %s`, then redeploy.',
+            "Refusing to deploy — %s has drifted from its declared state (see the plan above).\n"
+            . "Reconciling drift needs admin permissions, which `yolo deploy` doesn't hold.\n"
+            . 'Ask someone with admin to run `yolo sync %s` and then redeploy, '
+            . 'or rerun as `yolo deploy %s --admin` if you have admin yourself.',
+            $environment,
             $environment,
             $environment,
         ));
