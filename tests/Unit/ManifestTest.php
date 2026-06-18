@@ -544,20 +544,20 @@ describe('three-state queue and scheduler', function (): void {
 });
 
 describe('unified autoscaling', function (): void {
-    it('autoscales an enabled web tier by default — min 1, max 4', function (): void {
+    it('autoscales an enabled web tier by default — min 1, max 5', function (): void {
         writeManifest(['tasks' => ['web' => true]]);
 
         expect(Manifest::autoscales(ServerGroup::WEB))->toBeTrue();
         expect(Manifest::autoscalingMin(ServerGroup::WEB))->toBe(1);
-        expect(Manifest::autoscalingMax(ServerGroup::WEB))->toBe(4);
+        expect(Manifest::autoscalingMax(ServerGroup::WEB))->toBe(5);
     });
 
-    it('autoscales an enabled standalone queue by default — min 1, max 10', function (): void {
+    it('autoscales an enabled standalone queue by default — min 1, max 5', function (): void {
         writeManifest(['tasks' => ['web' => true, 'queue' => true]]);
 
         expect(Manifest::autoscales(ServerGroup::QUEUE))->toBeTrue();
         expect(Manifest::autoscalingMin(ServerGroup::QUEUE))->toBe(1);
-        expect(Manifest::autoscalingMax(ServerGroup::QUEUE))->toBe(10);
+        expect(Manifest::autoscalingMax(ServerGroup::QUEUE))->toBe(5);
     });
 
     it('turns autoscaling off for either group with autoscaling: false', function (): void {

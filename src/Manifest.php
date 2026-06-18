@@ -570,13 +570,13 @@ class Manifest
     }
 
     /**
-     * The autoscaling ceiling for a group — web defaults to 4, the queue to 10.
+     * The autoscaling ceiling for a group — web and the queue both default to 5.
      */
     public static function autoscalingMax(ServerGroup $group): int
     {
         $key = "tasks.{$group->value}.autoscaling.max";
 
-        return Helpers::validatePositiveInt(static::get($key, $group === ServerGroup::QUEUE ? 10 : 4), $key);
+        return Helpers::validatePositiveInt(static::get($key, 5), $key);
     }
 
     /**

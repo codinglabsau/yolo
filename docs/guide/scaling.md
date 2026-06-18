@@ -30,7 +30,7 @@ tasks:
       cpu-utilization: 65   # optional — the safety-net policy's target
 ```
 
-The scaffolded shorthand takes the defaults (`min: 1`, `max: 4`):
+The scaffolded shorthand takes the defaults (`min: 1`, `max: 5`):
 
 ```yaml
 tasks:
@@ -130,7 +130,7 @@ tasks:
     spot: true        # optional: ~70% cheaper interruptible capacity
 ```
 
-Like web, the queue **autoscales by default** (`min: 1`, `max: 10`) — set `autoscaling: false` for a fixed single task. It scales on **backlog per task** — `ApproximateNumberOfMessagesVisible / RunningTaskCount`, computed with CloudWatch metric math (no Lambda) and held at `backlog-per-task` messages per running task. As the backlog grows it scales out toward `max`; as it drains it scales back in toward `min`.
+Like web, the queue **autoscales by default** (`min: 1`, `max: 5`) — set `autoscaling: false` for a fixed single task. It scales on **backlog per task** — `ApproximateNumberOfMessagesVisible / RunningTaskCount`, computed with CloudWatch metric math (no Lambda) and held at `backlog-per-task` messages per running task. As the backlog grows it scales out toward `max`; as it drains it scales back in toward `min`.
 
 With `autoscaling.min: 0` the queue **scales to zero**: no tasks and no compute cost when idle. Target tracking can't lift it off zero (dividing by zero running tasks is undefined), so YOLO also attaches a step-scaling alarm that sets the service to exactly one task the instant a message becomes visible; target tracking owns it from one upward. The cost is a **~30–60s cold start** (image pull + boot) on the first message after idle.
 

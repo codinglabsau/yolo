@@ -48,14 +48,14 @@ it('registers the target with the manifest min/max when absent', function (): vo
     ]);
 });
 
-it('takes default 1–4 bounds for the autoscaling: true shorthand', function (): void {
+it('takes default 1–5 bounds for the autoscaling: true shorthand', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['autoscaling' => true]],
     ]);
 
     expect((new ScalableTarget())->min())->toBe(1)
-        ->and((new ScalableTarget())->max())->toBe(4);
+        ->and((new ScalableTarget())->max())->toBe(5);
 });
 
 it('does not register when the live min/max already match', function (): void {
@@ -87,7 +87,7 @@ it('reports drift but does not register on a dry-run', function (): void {
     expect(collect($captured)->pluck('name'))->not->toContain('RegisterScalableTarget');
 });
 
-it('builds the queue service resource id and defaults its bounds to 1/10', function (): void {
+it('builds the queue service resource id and defaults its bounds to 1/5', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => true, 'queue' => true, 'scheduler' => true],
@@ -95,7 +95,7 @@ it('builds the queue service resource id and defaults its bounds to 1/10', funct
 
     expect(ScalableTarget::resourceId(ServerGroup::QUEUE))->toBe('service/yolo-testing-my-app/yolo-testing-my-app-queue');
     expect((new ScalableTarget(ServerGroup::QUEUE))->min())->toBe(1);
-    expect((new ScalableTarget(ServerGroup::QUEUE))->max())->toBe(10);
+    expect((new ScalableTarget(ServerGroup::QUEUE))->max())->toBe(5);
 });
 
 it('floors the queue at one task when it also hosts the scheduler', function (): void {

@@ -15,7 +15,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * The Application Auto Scaling scalable target that hands an ECS service's
  * desired count to scaling policies. Group-aware: both groups' bounds come from
  * their own `tasks.{group}.autoscaling.min/max` (Manifest::autoscalingMin/Max) —
- * web defaults 1/4 (min always ≥ 1), the queue 1/10 (min may be 0 to scale to zero).
+ * web defaults 1/5 (min always ≥ 1), the queue 1/5 (min may be 0 to scale to zero).
  *
  * Like Dashboard this is a standalone reconciler, NOT a Resource:
  * App Auto Scaling targets aren't RGT-taggable (so they carry none of the
