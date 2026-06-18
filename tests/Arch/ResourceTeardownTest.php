@@ -86,17 +86,14 @@ it('every app-scoped resource is deletable, except the BYO data bucket', functio
 
         $examined++;
 
-        $deletable = $reflection->implementsInterface(Deletable::class);
-
+        // The BYO app data bucket is the deliberate exception — that it must NOT
+        // be Deletable is asserted directly in its own test below, never via this
+        // discovery loop (which could stop classifying it as App-scoped).
         if ($class === S3Bucket::class) {
-            if ($deletable) {
-                $offenders[] = $class . ' — the BYO data bucket must NEVER be deletable';
-            }
-
             continue;
         }
 
-        if (! $deletable) {
+        if (! $reflection->implementsInterface(Deletable::class)) {
             $offenders[] = $class . ' — App-scoped but does not implement Deletable';
         }
     }
@@ -105,4 +102,14 @@ it('every app-scoped resource is deletable, except the BYO data bucket', functio
     expect($examined)->toBeGreaterThan(15);
 
     expect($offenders)->toBe([]);
+});
+
+/**
+ * The hard counterpart to the invariant above, asserted directly (not through
+ * the discovery loop, so it can never pass vacuously): the bring-your-own app
+ * data bucket holds user data and MUST survive a teardown, so it must never be
+ * made Deletable — no destroy step can ever reach it.
+ */
+it('never makes the BYO app data bucket deletable', function (): void {
+    expect(class_implements(S3Bucket::class))->not->toContain(Deletable::class);
 });
