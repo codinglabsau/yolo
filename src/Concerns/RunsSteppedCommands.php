@@ -175,7 +175,7 @@ trait RunsSteppedCommands
      */
     protected function printPlan(Collection $plan, Collection $skipped): void
     {
-        $this->output->writeln('  <options=bold>Will sync</>');
+        $this->output->writeln(sprintf('  <options=bold>%s</>', $this->planHeading()));
 
         $plan->groupBy('scope')->each(function (Collection $entries, string $scope): void {
             $this->output->writeln(sprintf('  <fg=green>✔</> %s <fg=gray>(%d)</>', $scope, $entries->count()));
@@ -233,8 +233,36 @@ trait RunsSteppedCommands
         }
 
         return confirm(
-            label: sprintf('Apply these changes to %s?', $environment),
+            label: $this->confirmQuestion($environment),
         );
+    }
+
+    /**
+     * The bold heading above the plan tally. Sync says "Will sync"; a teardown
+     * command overrides this (and {@see confirmQuestion()} / {@see completionVerb()})
+     * so the whole flow reads as a destroy without duplicating the runner.
+     */
+    protected function planHeading(): string
+    {
+        return 'Will sync';
+    }
+
+    /**
+     * The confirm-gate question. Sync asks to apply changes; a teardown command
+     * overrides this with an irreversible-delete warning.
+     */
+    protected function confirmQuestion(string $environment): string
+    {
+        return sprintf('Apply these changes to %s?', $environment);
+    }
+
+    /**
+     * The past-tense verb in the post-apply completion line ("Synced testing in
+     * 3s."). A teardown command overrides it with "Destroyed".
+     */
+    protected function completionVerb(): string
+    {
+        return 'Synced';
     }
 
     /**
@@ -542,7 +570,7 @@ trait RunsSteppedCommands
             );
         }
 
-        info(sprintf('Synced %s in %ds.', $environment, $elapsed));
+        info(sprintf('%s %s in %ds.', $this->completionVerb(), $environment, $elapsed));
     }
 
     /**

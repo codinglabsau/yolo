@@ -33,6 +33,9 @@ class Yolo
         // Rollback
         Commands\RollbackCommand::class,
 
+        // Destroy (app teardown — the reverse of sync:app)
+        Commands\DestroyAppCommand::class,
+
         // Status (scope-grouped: app-tier `status`/`status:app`, env-tier roll-up,
         // and the incident read surfaces — logs / events / alarms)
         Commands\StatusCommand::class,

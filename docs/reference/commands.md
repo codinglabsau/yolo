@@ -26,6 +26,7 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | [`build <env>`](#yolo-build) | Build and push the container image |
 | [`deploy <env>`](#yolo-deploy) | Build, then roll out a zero-downtime deploy |
 | [`rollback <env>`](#yolo-rollback) | Re-deploy a previously-built version from ECR, without a build |
+| [`destroy:app <env>`](#yolo-destroy-app) | Permanently tear down one app's resources (the reverse of `sync:app`) |
 | [`status <env>`](#yolo-status) | Live status dashboard (or a one-shot `--snapshot` / `--json` frame) |
 | [`status:app <env>`](#yolo-status-app) | App-tier status (the same as `status`, under the scope namespace) |
 | [`status:environment <env>`](#yolo-status-environment) | Roll up every app's status across an environment |
@@ -598,6 +599,27 @@ Some environment-tier resources are bootstrapped here by exception — the RDS s
 A per-app **CloudWatch dashboard** (`yolo-<env>-<app>-dashboard`) is generated last, so every resource it charts already exists. It panels the ECS service (CPU/memory/tasks), the ALB (target health, requests, latency, slow-request bands, error counts and a 5xx error-rate SLO), SQS depth/throughput, the asset CloudFront distribution (requests, errors and cache hit rate), the S3 buckets, any consumed services (MediaConvert jobs, Rekognition requests) and the app's logs — plus an RDS panel derived from `DB_HOST` in the app's env file (CPU, connections, memory, throughput and read/write latency). It's a read-only convenience: CloudWatch dashboards can't carry tags, so it doesn't appear in `yolo audit`.
 
 When a [`tasks.web.autoscaling`](/reference/manifest#tasks-web-autoscaling) block is present, `sync:app` also registers the **scalable target** and its **target-tracking policies** (request concurrency by default, derived from task memory, plus CPU as a safety net), right after the ECS service. App Auto Scaling targets aren't taggable either, so they're invisible to `yolo audit` too. If autoscaling is enabled on a task that also runs the scheduler, the sync plan lists an advisory under its **Warnings** section — see [Scaling](/guide/scaling). Scaling is web-only and inert without the manifest block.
+
+---
+
+## `yolo destroy:app`
+
+Permanently tear one application's resources down in the given environment — the reverse of [`sync:app`](#yolo-sync-app). It uses the same **plan → confirm → apply** flow: a plan pass lists every resource that **would delete**, the confirm gate guards the irreversible apply (declining is the preview), and `--check` is the non-interactive plan-only form for CI. The apply pass deletes in reverse dependency order — CloudFront → autoscaling → ECS services → cluster → listener rules → target group → task security group → app IAM → SQS → hosted zone → buckets → ECR — so a resource is never deleted while something still references it.
+
+```bash
+yolo destroy:app <environment> [--check] [--force] [--no-progress]
+```
+
+Arguments and options as [`sync`](#sync-options). Scope: **app**. Admin-tier.
+
+**App-scoped only — shared and stateful infrastructure is deliberately preserved:**
+
+- The **app data bucket** (the BYO [`bucket`](/reference/manifest#bucket)) holds user data and is never deleted — it isn't even YOLO-tagged. The regenerable asset and config buckets *are* emptied and removed.
+- **RDS is never touched** (YOLO owns the security group, not the database) — destroy:app *revokes this app's 3306 ingress rule* from the shared RDS security group, never the group itself.
+- The shared **`:443` listener** and the **Valkey cache** stay for the environment's other apps — destroy:app removes only this app's listener rule + SNI certificate, and revokes this app's cache ingress rule. (If the certificate is the listener's *default*, it can't be removed app-side and is left for environment teardown.)
+- **Environment- and account-scoped** resources (VPC, subnets, ALB, OIDC provider, …) are out of scope — environment teardown is a separate, later command.
+
+**It refuses rather than partially tearing down.** To guarantee a teardown can never orphan resources (which [`yolo audit`](#yolo-audit) would then flag), destroy:app refuses — with a clear message — app shapes whose teardown isn't fully modelled yet: **multi-tenant** apps, **headless** apps (no domain), apps with **no web task**, and apps still **consuming an env service** (Typesense / IVS / MediaConvert). For the last, remove the service from `yolo.yml` and deploy first, then tear the app down.
 
 ---
 
