@@ -10,6 +10,7 @@ use Codinglabs\Yolo\YoloServiceProvider;
 use Codinglabs\Yolo\Runtime\Contracts\Cpu;
 use Illuminate\Contracts\Cache\Repository;
 use Codinglabs\Yolo\Runtime\Contracts\Scraper;
+use Codinglabs\Yolo\Runtime\Ssr\SaturationAwareSsrGateway;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
 
 /**
@@ -100,6 +101,7 @@ class WorkerSaturationReporter
         // A tripping datapoint already steps the desired count out; hold the window at
         // the cooldown so we don't pile on while the new task boots.
         if ($saturation >= WebBurstPolicy::ALARM_THRESHOLD) {
+            $this->markSaturated();
             $this->cache->put($this->key('window'), 1, WebBurstPolicy::COOLDOWN);
         }
     }
@@ -120,7 +122,30 @@ class WorkerSaturationReporter
         }
 
         $this->put(self::BREACH_VALUE);
+        $this->markSaturated();
         $this->cache->put($this->key('window'), 1, WebBurstPolicy::COOLDOWN);
+    }
+
+    /**
+     * Flag this task as saturated so the SSR gateway sheds rendering to CSR (see
+     * {@see SaturationAwareSsrGateway}). The same
+     * worker-saturation reading that trips burst step-scaling also turns SSR off —
+     * one signal, an instant local lever (shed) alongside the slow cloud one (scale).
+     * The flag self-expires after the cooldown, so it clears once the box stops
+     * tripping and fails open to SSR if the reporter ever stops running.
+     */
+    private function markSaturated(): void
+    {
+        $this->cache->put(self::ssrBypassKey($this->taskId), 1, WebBurstPolicy::COOLDOWN);
+    }
+
+    /**
+     * The per-task cache key the reporter sets while saturated and the SSR gateway
+     * reads. Defined once here so the producer and consumer can never drift.
+     */
+    public static function ssrBypassKey(string $taskId): string
+    {
+        return "yolo-burst:{$taskId}:ssr-bypass";
     }
 
     /**

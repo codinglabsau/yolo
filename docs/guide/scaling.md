@@ -83,6 +83,10 @@ The in-request publish is also best-effort: on a single hard-pinned task (`min 1
 
 The burst alarm and step policy aren't taggable, so (like the target-tracking policies) they don't appear in [`yolo audit`](/reference/commands#yolo-audit); setting `autoscaling: false` (or switching the web tier to classic mode) deletes both on the next sync.
 
+### Shedding SSR under load
+
+On an Inertia **SSR** app, the same worker-saturation reading drives a second, instant lever. Scale-out still bottoms out at ~1 min to relief (a new task has to boot), so to cover that window YOLO routes SSR through a saturation-aware gateway: while a task is flagged hot (the burst trip), it **skips the Node render and serves CSR instead**. Server-side rendering is the most expensive per-request CPU on the box, so shedding it the instant saturation trips frees the worker immediately and keeps the task responsive while the new capacity lands — one signal, a slow lever (add a task) and an instant local one (stop rendering). The flag is per task and self-expires on the burst cooldown, so SSR resumes automatically once the task stops tripping; the gateway also bounds each render so a single slow one can't pin a worker. It needs nothing in the manifest — it's active wherever burst runs and Inertia SSR is enabled, and is a no-op everywhere else. Failure always degrades to CSR, never an error.
+
 ### Turning autoscaling off
 
 Autoscaling is declarative — sync reconciles live state down to what the manifest asks for. Since the key is required you turn it off by setting **`autoscaling: false`** (not by removing it); that deregisters the scalable target on the next `yolo sync`, which cascades the delete to **every** policy and alarm on it.

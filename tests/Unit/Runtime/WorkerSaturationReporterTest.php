@@ -199,3 +199,45 @@ it('stays silent when a primed scrape fails and CPU cannot be read', function ()
 
     expect($published)->toBe([]);
 });
+
+const SSR_BYPASS_KEY = 'yolo-burst:task-1:ssr-bypass';
+
+it('flags the task saturated for SSR bypass when a reading trips the alarm threshold', function (): void {
+    $published = [];
+    $cache = arrayCache();
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::reading(75.0)]), nullCpu(), $published);
+
+    $reporter->report();
+
+    expect($cache->get(SSR_BYPASS_KEY))->not->toBeNull();
+    expect(WorkerSaturationReporter::ssrBypassKey('task-1'))->toBe(SSR_BYPASS_KEY);
+});
+
+it('does not flag SSR bypass for a reading below the alarm threshold', function (): void {
+    $published = [];
+    $cache = arrayCache();
+    // 60 publishes (≥ emit floor) but is below the 70 alarm threshold — no shed.
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::reading(60.0)]), nullCpu(), $published);
+
+    $reporter->report();
+
+    expect($published)->toBe([60.0]);
+    expect($cache->get(SSR_BYPASS_KEY))->toBeNull();
+});
+
+it('flags SSR bypass on a CPU-corroborated scrape-failure breach', function (): void {
+    $published = [];
+    $cache = arrayCache();
+    $reporter = burstReporter($cache, queuedScraper([
+        ScrapeResult::reading(40.0), // primes + seeds the CPU baseline
+        ScrapeResult::failure(),     // scrape fails; high CPU corroborates → breach
+    ]), queuedCpu(cpuRamp(100.0)), $published);
+
+    foreach (range(1, 2) as $ignored) {
+        $cache->forget(WINDOW_KEY);
+        $reporter->report();
+    }
+
+    expect($published)->toBe([100.0]);
+    expect($cache->get(SSR_BYPASS_KEY))->not->toBeNull();
+});

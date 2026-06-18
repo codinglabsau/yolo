@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace Codinglabs\Yolo;
 
+use Inertia\Ssr\Gateway;
+use Inertia\Ssr\HttpGateway;
 use Aws\CloudWatch\CloudWatchClient;
 use Illuminate\Support\Facades\Cache;
 use Codinglabs\Yolo\Runtime\CgroupCpu;
 use Illuminate\Support\ServiceProvider;
 use Codinglabs\Yolo\Runtime\MetricsScraper;
 use Codinglabs\Yolo\Runtime\WorkerSaturationReporter;
+use Codinglabs\Yolo\Runtime\Ssr\SaturationAwareSsrGateway;
 use Codinglabs\Yolo\Steps\Sync\App\SyncTaskDefinitionStep;
 use Codinglabs\Yolo\Steps\Build\Fargate\CheckYoloInstalledStep;
 
@@ -67,6 +70,18 @@ class YoloServiceProvider extends ServiceProvider
         $this->app->terminating(function (): void {
             $this->app->make(WorkerSaturationReporter::class)->report();
         });
+
+        // On an Inertia app, route SSR through the saturation-aware gateway: it sheds
+        // rendering to CSR while the burst reporter flags this task hot, and bounds each
+        // render so a slow one can't pin a worker. Bound in boot() so it wins over
+        // Inertia's own register()-time binding regardless of provider order; guarded on
+        // the package being installed so non-Inertia apps are untouched.
+        if (class_exists(HttpGateway::class)) {
+            $this->app->bind(Gateway::class, fn (): Gateway => new SaturationAwareSsrGateway(
+                cache: Cache::store(),
+                taskId: $this->taskId(),
+            ));
+        }
     }
 
     /**
