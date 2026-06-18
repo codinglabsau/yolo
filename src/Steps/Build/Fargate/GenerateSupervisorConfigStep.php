@@ -29,25 +29,32 @@ use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
  * the path the scaffolded Dockerfile copies (docker/supervisord.conf); the queue
  * config rides along under docker/ via the Dockerfile's `COPY . /app`.
  *
- * The web group runs a three-tier CPU-priority order so the kernel scheduler
+ * The web group runs a two-tier CPU-priority order so the kernel scheduler
  * arbitrates contention in the app's favour (nice only bites when CPU is
  * saturated — a no-op with spare capacity, so steady-state throughput is
  * unchanged):
  *
- *     saturation (nice 0, highest)  >  web ≈ ssr  >  queue, scheduler (lowest)
+ *     web ≈ ssr ≈ saturation (default nice)  >  queue, scheduler (niced down)
  *
- *  - The burst saturation emitter must always be schedulable to report worker
- *    saturation to CloudWatch — if it's starved exactly when the box is pinned,
- *    burst step-scaling never trips and only slow CPU target-tracking rescues. It
- *    stays at nice 0 (highest) because an unprivileged process can only RAISE its
- *    nice, never lower it, so the request path is niced down to it rather than the
- *    emitter up. The emitter is runnable only for milliseconds per cycle, so this
- *    is invisible to request latency.
- *  - The request path (web + ssr) is niced just below the emitter, but only when
- *    the emitter shares its container (web autoscaling); otherwise it stays at the
- *    default priority.
+ *  - The request path (web + ssr) AND the burst saturation emitter all run at the
+ *    DEFAULT priority. The emitter must never outrank web: it reports worker
+ *    saturation by scraping the web server's own metrics endpoint (localhost:2019)
+ *    with a short timeout, failing safe to silence on a miss — so prioritising it
+ *    ABOVE the very process it scrapes starves that scrape under a CPU pin (web
+ *    can't answer in time → null → no emit → burst never trips, the exact failure
+ *    this once caused). The invariant: the emitter is ≤ the priority of web (peer
+ *    here), never above it. Being I/O-bound — a 5s sleep, then a quick scrape +
+ *    put — the kernel schedules the just-woken emitter promptly even at peer
+ *    priority, while web at the default priority stays responsive to the scrape, so
+ *    neither needs lifting.
  *  - Background work (queue worker, scheduler) is niced well below the request
  *    path when co-located with it, so a heavy job can't starve the web tier.
+ *
+ * The in-container gauge is best-effort: on a single hard-pinned task nothing
+ * in-container can escape a ~99% CPU pin, so the emitter can go silent WITH the box
+ * — the target-tracking policies and `min ≥ 2` / more task CPU are the guarantees,
+ * burst only sharpens the light-pin / multi-task case. Do not "fix" that silence by
+ * lifting the emitter above web; that reintroduces the scrape starvation above.
  *
  * See config() / niceLevel() for the rendering.
  */
@@ -67,33 +74,11 @@ class GenerateSupervisorConfigStep implements Step
     private const int BACKGROUND_NICE = 19;
 
     /**
-     * The nice the request path (web server, ssr renderer) launches at when the
-     * burst saturation emitter shares its container, leaving the emitter alone at
-     * nice 0 as the highest-priority process in the group. A small, deliberately
-     * minimal nudge: enough that the emitter is always picked promptly when it wakes
-     * (so it can sample and publish even while web + ssr peg a small box), far above
-     * the +19 background tier, and invisible to request latency. +2 is the lighter
-     * alternative; either holds the ordering.
-     */
-    private const int REQUEST_PATH_NICE = 3;
-
-    /**
      * The programs niced below the web server when bundled alongside it.
      *
      * @var list<string>
      */
     private const array BACKGROUND_PROGRAMS = ['scheduler', 'queue'];
-
-    /**
-     * The request-path programs niced just below the saturation emitter when it
-     * shares their container, so the emitter is never starved by the very saturation
-     * it reports. Both contend for the box's CPU — Octane's workers and the SSR
-     * Node process — and neither can be treated as background, so the emitter is
-     * lifted above them instead.
-     *
-     * @var list<string>
-     */
-    private const array REQUEST_PATH_PROGRAMS = ['web', 'ssr'];
 
     public function __construct(
         protected string $environment,
@@ -157,8 +142,9 @@ class GenerateSupervisorConfigStep implements Step
         $colocatesWebServer = isset($graces['web']);
 
         // The burst saturation emitter rides only the web container, and only when the
-        // web tier autoscales. The same flag both adds the emitter below and nices the
-        // request path under it (niceLevel), so the two can't drift apart.
+        // web tier autoscales — this flag adds its program block below. It does NOT nice
+        // the request path: web, ssr and the emitter all stay at the default priority, so
+        // the emitter never outranks the web server it scrapes (see the class docblock).
         $bundlesEmitter = $group === ServerGroup::WEB && Manifest::isAutoscaling();
 
         // One block per program present in this container, in a stable order. Stop
@@ -174,14 +160,14 @@ class GenerateSupervisorConfigStep implements Step
         //  - queue     queue:work, with a longer stop wait so an in-flight job can finish
         foreach (['web', 'ssr', 'scheduler', 'queue'] as $program) {
             if (isset($graces[$program])) {
-                $blocks[] = $this->program($program, $this->command($program, $colocatesWebServer, $bundlesEmitter), stopwaitsecs: $graces[$program]);
+                $blocks[] = $this->program($program, $this->command($program, $colocatesWebServer), stopwaitsecs: $graces[$program]);
             }
         }
 
         // The burst saturation emitter (web container only) — a stateless loop that
-        // needs no drain window, so a 1s stop wait is plenty. It alone stays at nice 0:
-        // every other program in the group is niced below it (niceLevel) so it can
-        // always be scheduled to sample and report, even while the box is pinned.
+        // needs no drain window, so a 1s stop wait is plenty. It runs at the default
+        // priority, never niced and never lifted above web: it scrapes the web server's
+        // own metrics endpoint, so it must not outrank the process it reads (class docblock).
         if ($bundlesEmitter) {
             $blocks[] = $this->program('saturation', ProcessCommands::saturationEmitter(), stopwaitsecs: 1);
         }
@@ -319,10 +305,10 @@ class GenerateSupervisorConfigStep implements Step
      * runs as www-data and every nice applied here is positive (lowering priority),
      * which needs no privilege — so no CAP_SYS_NICE or task-def ulimit is involved.
      */
-    protected function command(string $program, bool $colocatesWebServer, bool $bundlesEmitter): string
+    protected function command(string $program, bool $colocatesWebServer): string
     {
         $command = ProcessCommands::{$program}();
-        $nice = $this->niceLevel($program, $colocatesWebServer, $bundlesEmitter);
+        $nice = $this->niceLevel($program, $colocatesWebServer);
 
         return $nice === null
             ? $command
@@ -330,21 +316,18 @@ class GenerateSupervisorConfigStep implements Step
     }
 
     /**
-     * The nice a program launches at, or null for the default priority. Background
-     * work yields to the request path when bundled with the web server; the request
-     * path in turn yields to the saturation emitter when that shares the container,
-     * so the emitter (always nice 0) is the highest-priority process in the group.
-     * The two tiers are independent program sets, so a container with no emitter just
-     * keeps the request path at the default priority above the background tier.
+     * The nice a program launches at, or null for the default priority. Only the
+     * background tier (queue worker, scheduler) is niced, and only when it shares a
+     * container with the web server, so a heavy job can't starve the request path.
+     * Everything else — web, ssr and the saturation emitter — runs at the default
+     * priority; the emitter is deliberately NOT lifted above web (it scrapes web's
+     * metrics endpoint, so outranking web would starve the scrape under a pin — see
+     * the class docblock).
      */
-    protected function niceLevel(string $program, bool $colocatesWebServer, bool $bundlesEmitter): ?int
+    protected function niceLevel(string $program, bool $colocatesWebServer): ?int
     {
         if ($colocatesWebServer && in_array($program, self::BACKGROUND_PROGRAMS, true)) {
             return self::BACKGROUND_NICE;
-        }
-
-        if ($bundlesEmitter && in_array($program, self::REQUEST_PATH_PROGRAMS, true)) {
-            return self::REQUEST_PATH_NICE;
         }
 
         return null;

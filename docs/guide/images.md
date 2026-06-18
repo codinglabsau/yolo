@@ -103,11 +103,11 @@ tasks:
 Where these programs share one container they share one Fargate CPU quota, so YOLO orders them by `nice` priority to keep the kernel scheduler arbitrating contention in the app's favour:
 
 ```
-saturation emitter (highest)  >  web ≈ ssr  >  queue, scheduler (lowest)
+web ≈ ssr ≈ saturation emitter (default)  >  queue, scheduler (niced down)
 ```
 
 - **The queue worker and scheduler** are launched under `nice -n 19` when bundled with the web server, so a heavy scheduled job or queue batch can't starve Octane and spike user-facing latency.
-- **The burst saturation emitter** (the sidecar that reports worker saturation to drive [burst step-scaling](/guide/scaling), present when the web tier autoscales) is the *highest* priority. If it were starved by the very saturation it reports, burst scaling would never trip exactly when it's needed. An unprivileged process can only *raise* its `nice`, never lower it, so the emitter stays at `nice 0` and the request path (web + ssr) is niced a few points below it — invisible to request latency, since the emitter is runnable for only milliseconds per cycle. This needs no `CAP_SYS_NICE` or task-definition `ulimit`.
+- **The burst saturation emitter** (the sidecar that reports worker saturation to drive [burst step-scaling](/guide/scaling), present when the web tier autoscales) runs at the *default* priority — the same as the web server, never above it. The emitter reports saturation by scraping the web server's own metrics endpoint (`localhost:2019`), so prioritising it *above* web would starve that scrape exactly when the box is pinned: web couldn't answer in time, the emitter would read nothing, and burst would never trip when it's needed most. As an I/O-bound sleeper it's scheduled promptly at peer priority anyway, so it needs no lift. (None of this needs `CAP_SYS_NICE` or a task-definition `ulimit` — only the background tier is niced, always *down*.)
 
 `nice` only biases the scheduler when CPU is saturated, so under the normal case every program still runs at full speed; it reallocates CPU rather than capping it, so a burst still shows on the CloudWatch CPU metric, it just no longer hits web latency. A web-only, queue-only, or scheduler-only service (the split-service topology below) keeps the same ordering for whatever it co-locates — and a single-role container with nothing to arbitrate runs at normal priority.
 

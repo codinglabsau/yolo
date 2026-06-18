@@ -10,6 +10,20 @@ beforeEach(function (): void {
     ]);
 });
 
+it('keeps the burst threshold reachable across the realistic worker-pool range', function (int $workers): void {
+    // Saturation quantises to busy/total, so a loaded pool with all-but-one worker busy
+    // reads (N-1)/N — the hardest case to clear is the smallest pool (4 workers → 75%).
+    // The alarm uses a strict `>` comparator, so that reading must exceed the threshold
+    // for burst to trip without a sustained full-pool pin (the bug the old 80 caused).
+    $loadedSaturation = ($workers - 1) / $workers * 100;
+
+    expect($loadedSaturation)->toBeGreaterThan((float) WebBurstPolicy::ALARM_THRESHOLD);
+
+    // The emit floor sits below the threshold, so the alarm is fed a not-breaching
+    // datapoint on the step just under the trip as load ramps.
+    expect((float) WebBurstPolicy::EMIT_FLOOR)->toBeLessThan((float) WebBurstPolicy::ALARM_THRESHOLD);
+})->with([4, 8, 12, 16]);
+
 it('reports both pieces as pending on a dry-run without writing', function (): void {
     $aa = [];
     $cw = [];
@@ -41,8 +55,8 @@ it('creates a scale-out step policy and a high-resolution saturation alarm when 
 
     (new WebBurstPolicy())->synchronise(apply: true);
 
-    // A scale-out-only StepScaling policy on the WEB target: ≥80% (the alarm
-    // threshold) → +1, ≥90% → +2. Bounds are relative to the threshold.
+    // A scale-out-only StepScaling policy on the WEB target: ≥70% (the alarm
+    // threshold) → +1, ≥80% → +2. Bounds are relative to the threshold.
     $put = collect($aa)->firstWhere('name', 'PutScalingPolicy');
     expect($put['args'])->toMatchArray([
         'PolicyType' => 'StepScaling',
@@ -66,7 +80,7 @@ it('creates a scale-out step policy and a high-resolution saturation alarm when 
         'MetricName' => 'WorkerSaturation',
         'Period' => 10,
         'EvaluationPeriods' => 1,
-        'Threshold' => 80,
+        'Threshold' => 70,
         'Statistic' => 'Maximum',
         'ComparisonOperator' => 'GreaterThanThreshold',
         'TreatMissingData' => 'notBreaching',

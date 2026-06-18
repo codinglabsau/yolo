@@ -8,9 +8,10 @@
 // Publishes only at or above the emit floor, and snoozes the cooldown after a
 // tripping datapoint (one breach already steps the desired count out, so there's no
 // point putting more until that scale lands) — so CloudWatch is touched only during
-// a spike, and only as often as a scale can act. Fails safe: if FrankenPHP's metrics
-// endpoint isn't reachable, or a put errors, it publishes nothing and the
-// target-tracking policies still own scaling.
+// a spike, and only as often as a scale can act. Best-effort by design: if FrankenPHP's
+// metrics endpoint isn't reachable (including when a hard CPU pin starves this scrape
+// along with the box), or a put errors, it publishes nothing and the target-tracking
+// policies still own scaling.
 
 // The publish loop only runs when the script is executed directly
 // (php yolo-saturation.php), so the parsing function below can be required and
