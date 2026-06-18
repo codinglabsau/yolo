@@ -3,17 +3,25 @@
 namespace Codinglabs\Yolo\Steps\Build;
 
 use Codinglabs\Yolo\Paths;
-use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
 use Symfony\Component\Process\Process;
+use Codinglabs\Yolo\Concerns\RunsProcess;
+use Codinglabs\Yolo\Contracts\LongRunning;
 
-class CopyApplicationStep implements Step
+class CopyApplicationStep implements LongRunning
 {
+    use RunsProcess;
+
     public function __construct(
         protected string $environment,
         protected $filesystem = new Filesystem()
     ) {}
+
+    public function patienceMessage(): string
+    {
+        return 'Copying the application into the build directory — a large tree can take a moment';
+    }
 
     public function __invoke(array $options = []): StepResult
     {
@@ -65,7 +73,7 @@ class CopyApplicationStep implements Step
             timeout: null
         );
 
-        $process->mustRun();
+        $this->runProcess($process);
 
         return StepResult::SUCCESS;
     }

@@ -6,19 +6,25 @@ use RuntimeException;
 use Codinglabs\Yolo\Aws;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Aws\Ecs;
-use Codinglabs\Yolo\Contracts\Step;
+use Codinglabs\Yolo\WaitReporter;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\ServerGroup;
+use Codinglabs\Yolo\Contracts\LongRunning;
 use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
 use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Resources\ElbV2\TargetGroup;
 use Codinglabs\Yolo\Concerns\ResolvesServerGroups;
 
-class WaitForDeploymentHealthyStep implements Step
+class WaitForDeploymentHealthyStep implements LongRunning
 {
     use ResolvesServerGroups;
 
     public function __construct(protected string $environment) {}
+
+    public function patienceMessage(): string
+    {
+        return 'Waiting for the new deployment to become healthy in the load balancer — usually a minute or two';
+    }
 
     /**
      * Wait until the NEW deployment's tasks are healthy in the load balancer —
@@ -74,6 +80,11 @@ class WaitForDeploymentHealthyStep implements Step
             if (static::newTasksAreHealthy($tasks, $revision, (int) $primary['desiredCount'], $targetHealth)) {
                 return StepResult::SUCCESS;
             }
+
+            // This is a hand-rolled poll loop, not an Aws::waitFor waiter, so the
+            // LongRunning heartbeat won't tick on its own — ping the reporter each
+            // pass so the elapsed-time hint keeps moving while we wait.
+            WaitReporter::poll();
 
             sleep(10);
         }
