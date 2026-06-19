@@ -3,7 +3,10 @@
 declare(strict_types=1);
 
 use Tests\TestbenchCase;
+use Illuminate\Contracts\Http\Kernel;
 use Codinglabs\Yolo\Runtime\WorkerSaturationReporter;
+use Codinglabs\Yolo\Runtime\Http\TrackInFlightRequests;
+use Illuminate\Foundation\Http\Kernel as FoundationHttpKernel;
 
 uses(TestbenchCase::class);
 
@@ -65,4 +68,24 @@ it('does not register the terminating hook when no burst service is set', functi
     $this->app->terminate();
 
     expect($spy->reported)->toBeFalse();
+});
+
+it('pushes the in-flight tracking middleware onto the web kernel when burst is on', function (): void {
+    putenv('YOLO_BURST_SERVICE=svc');
+    $this->refreshApplication();
+
+    $kernel = $this->app->make(Kernel::class);
+    assert($kernel instanceof FoundationHttpKernel);
+
+    expect($kernel->hasMiddleware(TrackInFlightRequests::class))->toBeTrue();
+});
+
+it('does not push the in-flight tracking middleware when no burst service is set', function (): void {
+    putenv('YOLO_BURST_SERVICE');
+    $this->refreshApplication();
+
+    $kernel = $this->app->make(Kernel::class);
+    assert($kernel instanceof FoundationHttpKernel);
+
+    expect($kernel->hasMiddleware(TrackInFlightRequests::class))->toBeFalse();
 });

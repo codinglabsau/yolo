@@ -41,10 +41,10 @@ class MetricsScraper implements Scraper
             return ScrapeResult::failure();
         }
 
-        $saturation = Saturation::parse($body);
+        $totalWorkers = WorkerPool::total($body);
 
-        return $saturation === null
+        return $totalWorkers === null
             ? ScrapeResult::absent()
-            : ScrapeResult::reading($saturation);
+            : ScrapeResult::reading($totalWorkers);
     }
 }

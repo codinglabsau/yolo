@@ -14,8 +14,14 @@ use Codinglabs\Yolo\Runtime\Ssr\SaturationAwareSsrGateway;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
 
 /**
- * Publishes FrankenPHP worker saturation to CloudWatch for burst step-scaling. It's
- * invoked from an after-response hook the {@see YoloServiceProvider} registers
+ * Publishes web-task saturation to CloudWatch for burst step-scaling. Saturation is the
+ * window's **peak in-flight request count** ({@see InFlightRequests}) over the FrankenPHP
+ * **worker-pool size** (scraped from :2019 — the one number the runtime can't otherwise
+ * know). The numerator is counted directly rather than read from FrankenPHP's
+ * `busy_workers` gauge because that gauge, sampled from this after-response hook,
+ * under-reports the very pin burst exists to catch — high when idle, low when pinned.
+ *
+ * It's invoked from an after-response hook the {@see YoloServiceProvider} registers
  * ($app->terminating), so the work rides on a request that already holds a CPU slice
  * instead of a separate loop fighting for one on a pinned box.
  *
@@ -59,6 +65,7 @@ class WorkerSaturationReporter
         private readonly CloudWatchClient $cloudwatch,
         private readonly Scraper $scraper,
         private readonly Cpu $cpu,
+        private readonly InFlightRequests $inFlight,
         private readonly string $serviceName,
         private readonly string $taskId,
     ) {}
@@ -77,19 +84,33 @@ class WorkerSaturationReporter
         $utilisation = $this->sampleCpu();
         $result = $this->scraper->scrape();
 
+        // Always read-and-reset the window's peak so the high-water mark tracks this
+        // window, not an inherited spike — even on the paths that don't use it.
+        $peak = $this->inFlight->flushPeak();
+
         match ($result->outcome) {
-            ScrapeOutcome::Reading => $this->onReading($result->saturation ?? 0.0),
+            ScrapeOutcome::Reading => $this->onReading($result->totalWorkers ?? 0, $peak),
             ScrapeOutcome::Failure => $this->onFailure($utilisation),
             // A 200 with no gauges is metrics-off / classic mode — config, not load.
             ScrapeOutcome::Absent => null,
         };
     }
 
-    private function onReading(float $saturation): void
+    private function onReading(int $totalWorkers, int $peak): void
     {
         // A clean reading primes the reporter — proof the endpoint is reachable, so a
         // later failure can be trusted enough to corroborate against CPU.
         $this->cache->put($this->key('primed'), 1, self::PRIMED_TTL);
+
+        // No pool to divide by (caught mid worker-reload): nothing to publish this tick.
+        if ($totalWorkers <= 0) {
+            return;
+        }
+
+        // Saturation as a percentage of the pool. Capped at 100: the in-flight count can
+        // only exceed the pool size if a leaked request never decremented (the safe
+        // upward bias), and an absurd datapoint helps no one — 100 already trips the +2 step.
+        $saturation = min(100.0, $peak / $totalWorkers * 100);
 
         // Below the emit floor: near-zero cost at rest, nothing worth publishing.
         if ($saturation < WebBurstPolicy::EMIT_FLOOR) {

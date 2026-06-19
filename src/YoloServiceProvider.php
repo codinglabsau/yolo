@@ -10,9 +10,13 @@ use Illuminate\Support\Facades\Cache;
 use Codinglabs\Yolo\Runtime\CgroupCpu;
 use Illuminate\Support\ServiceProvider;
 use Codinglabs\Yolo\Runtime\MetricsScraper;
+use Codinglabs\Yolo\Runtime\InFlightRequests;
 use Codinglabs\Yolo\Runtime\WorkerSaturationReporter;
+use Codinglabs\Yolo\Runtime\Http\TrackInFlightRequests;
 use Codinglabs\Yolo\Runtime\Ssr\SaturationAwareSsrGateway;
 use Codinglabs\Yolo\Steps\Sync\App\SyncTaskDefinitionStep;
+use Illuminate\Contracts\Http\Kernel as HttpKernelContract;
+use Illuminate\Foundation\Http\Kernel as FoundationHttpKernel;
 use Codinglabs\Yolo\Steps\Build\Fargate\CheckYoloInstalledStep;
 
 /**
@@ -38,6 +42,11 @@ class YoloServiceProvider extends ServiceProvider
             return;
         }
 
+        $this->app->singleton(InFlightRequests::class, fn (): InFlightRequests => new InFlightRequests(
+            cache: Cache::store(),
+            taskId: $this->taskId(),
+        ));
+
         $this->app->singleton(WorkerSaturationReporter::class, fn (): WorkerSaturationReporter => new WorkerSaturationReporter(
             cache: Cache::store(),
             cloudwatch: new CloudWatchClient([
@@ -48,6 +57,7 @@ class YoloServiceProvider extends ServiceProvider
             ]),
             scraper: new MetricsScraper(),
             cpu: new CgroupCpu(allocatedCores: $this->burstCpu()),
+            inFlight: $this->app->make(InFlightRequests::class),
             serviceName: $this->burstService(),
             taskId: $this->taskId(),
         ));
@@ -68,6 +78,18 @@ class YoloServiceProvider extends ServiceProvider
         // terminating only runs at the end of a handled request.
         $this->app->terminating(function (): void {
             $this->app->make(WorkerSaturationReporter::class)->report();
+        });
+
+        // Bracket every web request so the reporter scales on real in-flight concurrency
+        // rather than the worker gauge that under-reports under a pin. Pushed once the app
+        // has booted (the HTTP kernel is resolvable by then); pushMiddleware is idempotent,
+        // so re-running on each Octane worker boot adds it at most once.
+        $this->app->booted(function (): void {
+            $kernel = $this->app->make(HttpKernelContract::class);
+
+            if ($kernel instanceof FoundationHttpKernel) {
+                $kernel->pushMiddleware(TrackInFlightRequests::class);
+            }
         });
 
         // On an Inertia app, swap the SSR gateway for one that bounds each render and sheds

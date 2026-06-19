@@ -74,9 +74,13 @@ class SaturationAwareSsrGateway implements Gateway
                 ->post($this->renderUrl(), $page)
                 ->throw()
                 ->json();
-        } catch (StrayRequestException $e) {
-            throw $e; // keep strict-HTTP-fake tests honest
-        } catch (Throwable) {
+        } catch (Throwable $e) {
+            // A stray request under Http::preventStrayRequests() must surface, not be
+            // swallowed as a CSR fallback — keep strict-HTTP-fake tests honest.
+            if ($e instanceof StrayRequestException) {
+                throw $e;
+            }
+
             return null; // timeout / connection refused / Node 5xx → CSR fallback
         }
 

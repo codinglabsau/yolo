@@ -6,18 +6,18 @@ namespace Codinglabs\Yolo\Runtime;
 
 /**
  * The outcome of one scrape, classified by {@see ScrapeOutcome} and carrying the
- * saturation value only when a real reading was obtained.
+ * worker-pool size — the saturation denominator — only when a real reading was obtained.
  */
 final readonly class ScrapeResult
 {
     private function __construct(
         public ScrapeOutcome $outcome,
-        public ?float $saturation = null,
+        public ?int $totalWorkers = null,
     ) {}
 
-    public static function reading(float $saturation): self
+    public static function reading(int $totalWorkers): self
     {
-        return new self(ScrapeOutcome::Reading, $saturation);
+        return new self(ScrapeOutcome::Reading, $totalWorkers);
     }
 
     public static function failure(): self

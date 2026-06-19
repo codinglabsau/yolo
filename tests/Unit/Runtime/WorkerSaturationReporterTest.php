@@ -12,6 +12,7 @@ use Aws\CloudWatch\CloudWatchClient;
 use Codinglabs\Yolo\Runtime\CpuSnapshot;
 use Codinglabs\Yolo\Runtime\ScrapeResult;
 use Codinglabs\Yolo\Runtime\Contracts\Cpu;
+use Codinglabs\Yolo\Runtime\InFlightRequests;
 use Codinglabs\Yolo\Runtime\Contracts\Scraper;
 use Codinglabs\Yolo\Runtime\WorkerSaturationReporter;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
@@ -64,6 +65,18 @@ function queuedCpu(array $snapshots): Cpu
     };
 }
 
+/** An in-flight gauge seeded so the window peaks at the given concurrency. */
+function inFlightPeaking(Repository $cache, int $peak): InFlightRequests
+{
+    $gauge = new InFlightRequests($cache, 'task-1');
+
+    foreach (range(1, max(0, $peak)) as $ignored) {
+        $gauge->enter();
+    }
+
+    return $gauge;
+}
+
 function recordingCloudWatch(array &$captured): CloudWatchClient
 {
     $mock = new class($captured) extends MockHandler
@@ -86,9 +99,9 @@ function recordingCloudWatch(array &$captured): CloudWatchClient
     ]);
 }
 
-function burstReporter(Repository $cache, Scraper $scraper, Cpu $cpu, array &$published): WorkerSaturationReporter
+function burstReporter(Repository $cache, Scraper $scraper, Cpu $cpu, InFlightRequests $inFlight, array &$published): WorkerSaturationReporter
 {
-    return new WorkerSaturationReporter($cache, recordingCloudWatch($published), $scraper, $cpu, 'svc', 'task-1');
+    return new WorkerSaturationReporter($cache, recordingCloudWatch($published), $scraper, $cpu, $inFlight, 'svc', 'task-1');
 }
 
 /** Two snapshots a window apart whose delta is the given CPU % of a 0.5-core task. */
@@ -101,27 +114,43 @@ function cpuRamp(float $percent): array
     return [new CpuSnapshot(0, 0, $cores), new CpuSnapshot($usedMicros, $wallMicros, $cores)];
 }
 
-it('publishes a reading at or above the emit floor', function (): void {
+it('publishes saturation (peak in-flight ÷ pool) at or above the emit floor', function (): void {
     $published = [];
-    $reporter = burstReporter(arrayCache(), queuedScraper([ScrapeResult::reading(75.0)]), nullCpu(), $published);
+    $cache = arrayCache();
+    // 3 in flight of a 4-worker pool → 75%.
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::reading(4)]), nullCpu(), inFlightPeaking($cache, 3), $published);
 
     $reporter->report();
 
     expect($published)->toBe([75.0]);
 });
 
-it('stays silent for a reading below the emit floor', function (): void {
+it('stays silent for saturation below the emit floor', function (): void {
     $published = [];
-    $reporter = burstReporter(arrayCache(), queuedScraper([ScrapeResult::reading(25.0)]), nullCpu(), $published);
+    $cache = arrayCache();
+    // 1 of 4 → 25%, below the 50% floor.
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::reading(4)]), nullCpu(), inFlightPeaking($cache, 1), $published);
 
     $reporter->report();
 
     expect($published)->toBe([]);
 });
 
+it('caps a leaked over-pool count at 100 rather than publishing an absurd value', function (): void {
+    $published = [];
+    $cache = arrayCache();
+    // 6 in flight on a 4-worker pool (a leaked, never-decremented request) → capped to 100.
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::reading(4)]), nullCpu(), inFlightPeaking($cache, 6), $published);
+
+    $reporter->report();
+
+    expect($published)->toBe([100.0]);
+});
+
 it('does real work at most once per window no matter the request rate', function (): void {
     $published = [];
-    $reporter = burstReporter(arrayCache(), queuedScraper([ScrapeResult::reading(75.0), ScrapeResult::reading(90.0)]), nullCpu(), $published);
+    $cache = arrayCache();
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::reading(4), ScrapeResult::reading(4)]), nullCpu(), inFlightPeaking($cache, 3), $published);
 
     $reporter->report();
     $reporter->report(); // window still claimed → no scrape, no publish
@@ -131,7 +160,8 @@ it('does real work at most once per window no matter the request rate', function
 
 it('stays silent when metrics are absent (off / classic mode)', function (): void {
     $published = [];
-    $reporter = burstReporter(arrayCache(), queuedScraper([ScrapeResult::absent()]), nullCpu(), $published);
+    $cache = arrayCache();
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::absent()]), nullCpu(), inFlightPeaking($cache, 4), $published);
 
     $reporter->report();
 
@@ -141,7 +171,7 @@ it('stays silent when metrics are absent (off / classic mode)', function (): voi
 it('never breaches on a failure before it has been primed by a success — even at high CPU', function (): void {
     $published = [];
     $cache = arrayCache();
-    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::failure(), ScrapeResult::failure()]), queuedCpu(cpuRamp(100.0)), $published);
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::failure(), ScrapeResult::failure()]), queuedCpu(cpuRamp(100.0)), inFlightPeaking($cache, 0), $published);
 
     foreach (range(1, 2) as $ignored) {
         $cache->forget(WINDOW_KEY);
@@ -155,9 +185,9 @@ it('breaches with a tripping value when a primed scrape fails and CPU is high', 
     $published = [];
     $cache = arrayCache();
     $reporter = burstReporter($cache, queuedScraper([
-        ScrapeResult::reading(40.0), // primes (below floor → no publish) and seeds the CPU baseline
-        ScrapeResult::failure(),     // scrape fails; CPU corroborates
-    ]), queuedCpu(cpuRamp(100.0)), $published);
+        ScrapeResult::reading(4), // primes (1 of 4 = 25%, below floor → no publish) + seeds the CPU baseline
+        ScrapeResult::failure(),  // scrape fails; CPU corroborates
+    ]), queuedCpu(cpuRamp(100.0)), inFlightPeaking($cache, 1), $published);
 
     foreach (range(1, 2) as $ignored) {
         $cache->forget(WINDOW_KEY);
@@ -172,9 +202,9 @@ it('stays silent when a primed scrape fails but CPU is low (a transient, not a p
     $published = [];
     $cache = arrayCache();
     $reporter = burstReporter($cache, queuedScraper([
-        ScrapeResult::reading(40.0),
+        ScrapeResult::reading(4),
         ScrapeResult::failure(),
-    ]), queuedCpu(cpuRamp(20.0)), $published);
+    ]), queuedCpu(cpuRamp(20.0)), inFlightPeaking($cache, 1), $published);
 
     foreach (range(1, 2) as $ignored) {
         $cache->forget(WINDOW_KEY);
@@ -188,9 +218,9 @@ it('stays silent when a primed scrape fails and CPU cannot be read', function ()
     $published = [];
     $cache = arrayCache();
     $reporter = burstReporter($cache, queuedScraper([
-        ScrapeResult::reading(40.0),
+        ScrapeResult::reading(4),
         ScrapeResult::failure(),
-    ]), queuedCpu([new CpuSnapshot(0, 0, 0.5)]), $published); // no second snapshot → null on the failure window
+    ]), queuedCpu([new CpuSnapshot(0, 0, 0.5)]), inFlightPeaking($cache, 1), $published); // no second snapshot → null on the failure window
 
     foreach (range(1, 2) as $ignored) {
         $cache->forget(WINDOW_KEY);
@@ -202,10 +232,10 @@ it('stays silent when a primed scrape fails and CPU cannot be read', function ()
 
 const SSR_BYPASS_KEY = 'yolo-burst:task-1:ssr-bypass';
 
-it('flags the task saturated for SSR bypass when a reading trips the alarm threshold', function (): void {
+it('flags the task saturated for SSR bypass when saturation trips the alarm threshold', function (): void {
     $published = [];
     $cache = arrayCache();
-    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::reading(75.0)]), nullCpu(), $published);
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::reading(4)]), nullCpu(), inFlightPeaking($cache, 3), $published); // 75%
 
     $reporter->report();
 
@@ -213,15 +243,15 @@ it('flags the task saturated for SSR bypass when a reading trips the alarm thres
     expect(WorkerSaturationReporter::ssrBypassKey('task-1'))->toBe(SSR_BYPASS_KEY);
 });
 
-it('does not flag SSR bypass for a reading below the alarm threshold', function (): void {
+it('does not flag SSR bypass for saturation below the alarm threshold', function (): void {
     $published = [];
     $cache = arrayCache();
-    // 60 publishes (≥ emit floor) but is below the 70 alarm threshold — no shed.
-    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::reading(60.0)]), nullCpu(), $published);
+    // 2 of 4 = 50%: publishes (≥ emit floor) but is below the 70% alarm threshold — no shed.
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::reading(4)]), nullCpu(), inFlightPeaking($cache, 2), $published);
 
     $reporter->report();
 
-    expect($published)->toBe([60.0]);
+    expect($published)->toBe([50.0]);
     expect($cache->get(SSR_BYPASS_KEY))->toBeNull();
 });
 
@@ -229,9 +259,9 @@ it('flags SSR bypass on a CPU-corroborated scrape-failure breach', function (): 
     $published = [];
     $cache = arrayCache();
     $reporter = burstReporter($cache, queuedScraper([
-        ScrapeResult::reading(40.0), // primes + seeds the CPU baseline
-        ScrapeResult::failure(),     // scrape fails; high CPU corroborates → breach
-    ]), queuedCpu(cpuRamp(100.0)), $published);
+        ScrapeResult::reading(4), // primes (25%, below floor) + seeds the CPU baseline
+        ScrapeResult::failure(),  // scrape fails; high CPU corroborates → breach
+    ]), queuedCpu(cpuRamp(100.0)), inFlightPeaking($cache, 1), $published);
 
     foreach (range(1, 2) as $ignored) {
         $cache->forget(WINDOW_KEY);
