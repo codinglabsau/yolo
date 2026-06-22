@@ -139,6 +139,7 @@ it('plans the mint without any HTTP call, and mints + persists on apply', functi
     ], $captured);
 
     $guzzle = new GuzzleMockHandler([
+        new Response(200, [], (string) json_encode(['ok' => true])), // GET /health — endpoint up, mint proceeds
         new Response(201, [], (string) json_encode(['value' => 'server-key'])),
         new Response(201, [], (string) json_encode(['value' => 'search-key'])),
     ]);
@@ -146,11 +147,11 @@ it('plans the mint without any HTTP call, and mints + persists on apply', functi
     $planned = new SyncTypesenseKeyStep('testing', new Client(['handler' => HandlerStack::create($guzzle)]));
     expect($planned(['dry-run' => true]))->toBe(StepResult::WOULD_CREATE);
     expect($planned->changes())->not->toBeEmpty();
-    expect($guzzle->count())->toBe(2); // nothing consumed on the plan — both keys still queued
+    expect($guzzle->count())->toBe(3); // nothing consumed on the plan — health probe + both keys still queued
 
     $step = new SyncTypesenseKeyStep('testing', new Client(['handler' => HandlerStack::create($guzzle)]));
     expect($step([]))->toBe(StepResult::CREATED);
-    expect($guzzle->count())->toBe(0); // apply mints both the server-side and the search key
+    expect($guzzle->count())->toBe(0); // apply probes /health, then mints the server-side + search keys
 
     $put = collect($captured)->firstWhere('name', 'PutObject');
     expect($put['args']['Key'])->toBe('env/.env.my-app')

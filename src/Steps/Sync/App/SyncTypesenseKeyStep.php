@@ -13,11 +13,12 @@ use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Aws\S3\Exception\S3Exception;
+use Codinglabs\Yolo\WaitReporter;
 use Codinglabs\Yolo\Enums\Service;
-use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Services\Typesense;
 use GuzzleHttp\Exception\GuzzleException;
+use Codinglabs\Yolo\Contracts\LongRunning;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
 use Codinglabs\Yolo\Concerns\RecordsWarnings;
 
@@ -45,12 +46,26 @@ use Codinglabs\Yolo\Concerns\RecordsWarnings;
  * provisions → this step), it skips with instructions rather than failing the
  * sync.
  */
-class SyncTypesenseKeyStep implements Step
+class SyncTypesenseKeyStep implements LongRunning
 {
     use RecordsChanges;
     use RecordsWarnings;
 
+    /**
+     * Bounded wait for the public search host to answer /health before minting —
+     * 5s polls up to ~5 minutes. Enough for node boot + target registration +
+     * DNS/cert settling on a first sync; instant on a re-sync where it's already up.
+     */
+    protected const int HEALTH_POLL_INTERVAL_SECONDS = 5;
+
+    protected const int HEALTH_POLL_ATTEMPTS = 60;
+
     public function __construct(protected string $environment, protected ?Client $http = null) {}
+
+    public function patienceMessage(): string
+    {
+        return 'Waiting for the Typesense search endpoint to answer /health before minting this app\'s search keys — usually under a minute';
+    }
 
     public function __invoke(array $options): StepResult
     {
@@ -78,11 +93,23 @@ class SyncTypesenseKeyStep implements Step
             return StepResult::SKIPPED;
         }
 
+        // The env tier provisions the cluster moments before this step on a first
+        // sync, so the public search host is usually still settling — node boot,
+        // target registration, DNS/cert propagation. Wait a bounded spell for
+        // /health to answer rather than skipping and forcing a second sync; if it
+        // never comes up, fall back to the skip so an unhealthy cluster can't hang
+        // the run.
+        if (! $this->awaitHealthy($searchHost)) {
+            $this->recordWarning(sprintf('Typesense key not minted — https://%s did not answer /health within %ds (DNS/cert/health still settling, or the cluster is unhealthy). Run `yolo sync:app` again once it is up.', $searchHost, self::HEALTH_POLL_ATTEMPTS * self::HEALTH_POLL_INTERVAL_SECONDS));
+
+            return StepResult::SKIPPED;
+        }
+
         $serverKey = $this->mint($searchHost, $adminKey, ['*'], 'server-side');
         $searchKey = $this->mint($searchHost, $adminKey, ['documents:search'], 'browser search-only');
 
         if ($serverKey === null || $searchKey === null) {
-            $this->recordWarning(sprintf('Typesense key not minted — https://%s is not reachable yet (DNS/health may still be settling). Run `yolo sync:app` again shortly.', $searchHost));
+            $this->recordWarning(sprintf('Typesense key not minted — https://%s became unreachable mid-mint. Run `yolo sync:app` again shortly.', $searchHost));
 
             return StepResult::SKIPPED;
         }
@@ -97,6 +124,70 @@ class SyncTypesenseKeyStep implements Step
         ]);
 
         return StepResult::CREATED;
+    }
+
+    /**
+     * Poll the public search host's /health until it answers or the bounded
+     * attempts are spent — wraps the pure {@see pollHealthy} loop with the real
+     * probe, the heartbeat, and the sleep.
+     */
+    protected function awaitHealthy(string $searchHost): bool
+    {
+        return static::pollHealthy(
+            fn (): bool => $this->isHealthy($searchHost),
+            self::HEALTH_POLL_ATTEMPTS,
+            function (): void {
+                WaitReporter::poll();
+                sleep(self::HEALTH_POLL_INTERVAL_SECONDS);
+            },
+        );
+    }
+
+    /**
+     * Poll $isHealthy up to $attempts times, running $betweenAttempts (the
+     * heartbeat + sleep in production) after each failed attempt except the last.
+     * Returns true on the first healthy check, false once the attempts are spent —
+     * it never blocks beyond the bound, so a cluster that never comes up falls
+     * through to the caller's skip rather than hanging the sync.
+     *
+     * @param  callable(): bool  $isHealthy
+     * @param  callable(): void  $betweenAttempts
+     */
+    public static function pollHealthy(callable $isHealthy, int $attempts, callable $betweenAttempts): bool
+    {
+        $attempts = max(1, $attempts);
+
+        for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+            if ($isHealthy()) {
+                return true;
+            }
+
+            if ($attempt < $attempts) {
+                $betweenAttempts();
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * GET the search host's unauthenticated /health. A 200 means the whole public
+     * chain is ready at once — nodes healthy, target registered, DNS resolved,
+     * cert valid — exactly what the mint's POST /keys then needs. A non-200 or a
+     * connection error (DNS/cert not ready) reads as not-yet-healthy.
+     */
+    protected function isHealthy(string $searchHost): bool
+    {
+        try {
+            $response = ($this->http ?? new Client())->get(sprintf('https://%s/health', $searchHost), [
+                'timeout' => 5,
+                'http_errors' => false,
+            ]);
+        } catch (GuzzleException) {
+            return false;
+        }
+
+        return $response->getStatusCode() === 200;
     }
 
     /**
