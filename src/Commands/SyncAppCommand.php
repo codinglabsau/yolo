@@ -218,7 +218,17 @@ class SyncAppCommand extends SyncSteppedCommand
                         Steps\Sync\App\SyncWebBurstStep::class,
                         // Standalone queue service (own task-def + service +
                         // scale-to-zero autoscaling) — only when tasks.queue extracts
-                        // it from the web container.
+                        // it from the web container. When it no longer does — the block
+                        // reverted to bundled, or was switched off with
+                        // `tasks.queue: false` — the melt branch tears any
+                        // previously-extracted service + autoscaling back down. Without
+                        // it, dropping the block would just prune the sync steps and
+                        // strand a live service the plan never mentions again (a running
+                        // service + a stale scalable target + the non-cascading
+                        // scale-to-zero alarm). These are the same teardown units
+                        // destroy:app runs; each no-ops when nothing's live, so a normal
+                        // bundled-queue app pays only two idempotent reads per sync —
+                        // the same always-wired-melt shape the web autoscaling steps use.
                         ...Manifest::hasStandaloneQueue()
                             ? [
                                 Steps\Sync\App\SyncQueueTaskDefinitionStep::class,
@@ -227,15 +237,26 @@ class SyncAppCommand extends SyncSteppedCommand
                                 Steps\Sync\App\SyncQueueScalingPolicyStep::class,
                                 Steps\Sync\App\SyncQueueScaleToZeroAlarmStep::class,
                             ]
-                            : [],
+                            : [
+                                // Autoscaling first (scalable target + cascaded policies
+                                // + the standalone alarm), then the service — mirrors
+                                // destroy:app's teardown order.
+                                Steps\Destroy\App\DeregisterQueueAutoscalingStep::class,
+                                Steps\Destroy\App\TeardownQueueServiceStep::class,
+                            ],
                         // Standalone scheduler service (pinned singleton) — only when
-                        // tasks.scheduler extracts it from the web container.
+                        // tasks.scheduler extracts it from the web container; otherwise
+                        // melt any previously-extracted scheduler service back down
+                        // (the scheduler never autoscales, so the service is all there
+                        // is to tear down).
                         ...Manifest::hasStandaloneScheduler()
                             ? [
                                 Steps\Sync\App\SyncSchedulerTaskDefinitionStep::class,
                                 Steps\Sync\App\SyncSchedulerServiceStep::class,
                             ]
-                            : [],
+                            : [
+                                Steps\Destroy\App\TeardownSchedulerServiceStep::class,
+                            ],
                         Steps\Sync\App\SyncAssetDistributionStep::class,
                     ]
                     : [],

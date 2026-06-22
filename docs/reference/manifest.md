@@ -378,6 +378,8 @@ To run web in isolation, **extract the worker tier**: add a top-level [`tasks.qu
 
 Each block is **`true | false | {config}`** (the same boolean-or-object form as [`tasks.web.ssr`](#tasks-web)): `true` extracts the role with default sizing, a config object extracts it with overrides, and `false` switches it off so the role runs **nowhere** — neither bundled nor extracted. An empty block (`queue:`) or empty object (`{}`) is rejected — state the intent explicitly. The **`queue`** block is the one exception to bare `true`: like web, a standalone queue must be a config object that declares [`autoscaling`](#tasks-queue) (web and queue both need a definitive scaling decision). Only **`scheduler`** — a pinned singleton that never scales — keeps the bare `true` shorthand.
 
+Placement is reconciled, not just applied: if an app was running an extracted queue or scheduler service and you later **bundle the role back in** (remove the block) or **switch it off** (`false`), the next `sync` tears the now-orphaned ECS service down — and for the queue, its scalable target, scaling policies and scale-to-zero alarm with it — so a dropped block never strands a live service.
+
 In the placement table below, `queue: true` is shorthand for "queue extracted" — the real manifest writes `queue: { autoscaling: … }`; only `scheduler: true` is literal.
 
 | Manifest | web container | worker container | scheduler container |

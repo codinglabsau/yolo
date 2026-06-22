@@ -118,6 +118,62 @@ it('swaps the Solo steps for Landlord + Tenant steps on a multi-tenant app', fun
         ->and($appSteps)->not->toContain(Steps\Sync\App\Solo\SyncHostedZoneStep::class);
 });
 
+it('syncs the standalone queue + scheduler services when both are extracted', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'codinglabs.com.au',
+        'tasks' => ['web' => true, 'queue' => ['autoscaling' => true], 'scheduler' => true],
+    ]);
+
+    $appSteps = (new SyncCommand())->scopes()['app'];
+
+    // The extracting branch is wired; the melt branch is not.
+    expect($appSteps)
+        ->toContain(Steps\Sync\App\SyncQueueServiceStep::class)
+        ->toContain(Steps\Sync\App\SyncSchedulerServiceStep::class)
+        ->not->toContain(Steps\Destroy\App\DeregisterQueueAutoscalingStep::class)
+        ->not->toContain(Steps\Destroy\App\TeardownQueueServiceStep::class)
+        ->not->toContain(Steps\Destroy\App\TeardownSchedulerServiceStep::class);
+});
+
+it('melts a standalone queue + scheduler back down when both are switched off', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'codinglabs.com.au',
+        'tasks' => ['web' => true, 'queue' => false, 'scheduler' => false],
+    ]);
+
+    $appSteps = (new SyncCommand())->scopes()['app'];
+
+    // Switching a group off must wire its teardown, not just prune the sync steps —
+    // otherwise a previously-extracted service is stranded with the plan silent on it.
+    expect($appSteps)
+        ->toContain(Steps\Destroy\App\DeregisterQueueAutoscalingStep::class)
+        ->toContain(Steps\Destroy\App\TeardownQueueServiceStep::class)
+        ->toContain(Steps\Destroy\App\TeardownSchedulerServiceStep::class)
+        ->not->toContain(Steps\Sync\App\SyncQueueServiceStep::class)
+        ->not->toContain(Steps\Sync\App\SyncSchedulerServiceStep::class);
+});
+
+it('melts a standalone queue + scheduler back down when the roles revert to bundled', function (): void {
+    // No queue/scheduler block at all — the roles ride the web container. An app that
+    // previously extracted them must still get the teardown wired so the revert lands.
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'codinglabs.com.au',
+        'tasks' => ['web' => true],
+    ]);
+
+    $appSteps = (new SyncCommand())->scopes()['app'];
+
+    expect($appSteps)
+        ->toContain(Steps\Destroy\App\DeregisterQueueAutoscalingStep::class)
+        ->toContain(Steps\Destroy\App\TeardownQueueServiceStep::class)
+        ->toContain(Steps\Destroy\App\TeardownSchedulerServiceStep::class)
+        ->not->toContain(Steps\Sync\App\SyncQueueServiceStep::class)
+        ->not->toContain(Steps\Sync\App\SyncSchedulerServiceStep::class);
+});
+
 it('provisions the env bucket before the load balancer in the environment scope', function (): void {
     // `SyncLoadBalancerStep` writes `access_logs.s3.bucket`, which AWS validates
     // against the bucket's log-delivery policy at attribute-write time. The bucket
