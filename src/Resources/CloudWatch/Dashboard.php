@@ -12,6 +12,7 @@ use Codinglabs\Yolo\Aws\WafV2;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Aws\CloudFront;
 use Codinglabs\Yolo\Aws\CloudWatch;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\WafV2\WebAcl;
 use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
@@ -25,10 +26,11 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * A per-app CloudWatch dashboard giving at-a-glance visibility across every
- * service YOLO provisions for the app — the ECS service (web + in-task queue &
- * scheduler), the ALB it sits behind, its SQS queues, the asset CloudFront
- * distribution, its S3 buckets and its log groups — plus the RDS database it
- * connects to (declared by the manifest `database:` key; see rdsTarget()).
+ * service YOLO provisions for the app — each ECS service (web, plus any extracted
+ * queue/scheduler, charted in their own compute sections), the ALB it sits behind,
+ * its SQS queues, the asset CloudFront distribution, its S3 buckets and its log
+ * groups — plus the RDS database it connects to (declared by the manifest
+ * `database:` key; see rdsTarget()).
  *
  * A standalone reconciler, NOT a Resource: a dashboard carries no meaningful tags
  * (CloudWatch only tags alarms / Contributor Insights rules) and PutDashboard is a
@@ -181,6 +183,11 @@ class Dashboard implements Deletable
             'web' => $web,
             'clusterName' => $web ? (new EcsCluster())->name() : null,
             'serviceName' => $web ? (new EcsService())->name() : null,
+            // Per-group compute is charted only for a group that runs as its own
+            // ECS service (a bundled queue/scheduler rides web's section; a disabled
+            // one runs nowhere). The cluster only exists with web, so gate on it too.
+            'queueService' => $web && Manifest::hasStandaloneQueue() ? (new EcsService(ServerGroup::QUEUE))->name() : null,
+            'schedulerService' => $web && Manifest::hasStandaloneScheduler() ? (new EcsService(ServerGroup::SCHEDULER))->name() : null,
             'albSuffix' => $web ? static::tryResolve(fn (): string => static::loadBalancerDimension((new LoadBalancer())->arn())) : null,
             // The WAF is env-shared (one ACL fronts the ALB), so it's looked up live
             // rather than derived from this app's manifest — the panel shows for any
@@ -359,6 +366,20 @@ class Dashboard implements Deletable
             $widgets = [...$widgets, ...$section];
         }
 
+        // Per-group compute for any extracted worker — its own ECS service has
+        // CPU/memory/task panels the web section can't show. Bundled or disabled
+        // groups have no own service, so their context entry is null and the
+        // section is skipped (web → queue → scheduler order).
+        if ($context['queueService'] !== null) {
+            [$section, $y] = static::groupComputeSection('# Queue', $context['clusterName'], $context['queueService'], $context['region'], $y);
+            $widgets = [...$widgets, ...$section];
+        }
+
+        if ($context['schedulerService'] !== null) {
+            [$section, $y] = static::groupComputeSection('# Scheduler', $context['clusterName'], $context['schedulerService'], $context['region'], $y);
+            $widgets = [...$widgets, ...$section];
+        }
+
         if ($context['wafWebAcl'] !== null) {
             [$section, $y] = static::wafSection($context, $y);
             $widgets = [...$widgets, ...$section];
@@ -391,8 +412,9 @@ class Dashboard implements Deletable
     }
 
     /**
-     * ECS compute (one service — web + in-task queue & scheduler) and, when the
-     * ALB is attached, the request / latency / error panels in front of it.
+     * The web service section: its ALB request / latency / error panels (when the
+     * ALB is attached) in front of its ECS compute charts. Any bundled queue &
+     * scheduler ride this service; an extracted one gets its own compute section.
      *
      * @param  array<string, mixed>  $context
      * @return array{0: array<int, array<string, mixed>>, 1: int}
@@ -526,37 +548,52 @@ class Dashboard implements Deletable
             $y += 6;
         }
 
-        $widgets[] = static::metric(0, $y, 12, 6, [
-            'title' => 'CPU utilisation',
-            'region' => $region,
-            'view' => 'timeSeries',
-            'stacked' => false,
-            'period' => 60,
-            'stat' => 'Average',
-            'yAxis' => ['left' => ['min' => 0, 'max' => 100]],
-            'metrics' => [
-                ['AWS/ECS', 'CPUUtilization', 'ClusterName', $cluster, 'ServiceName', $service, ['label' => 'Average', 'color' => static::BLUE]],
-                ['AWS/ECS', 'CPUUtilization', 'ClusterName', $cluster, 'ServiceName', $service, ['label' => 'Max', 'stat' => 'Maximum', 'color' => static::ORANGE]],
-            ],
-            'annotations' => ['horizontal' => [
-                ['color' => static::ORANGE, 'label' => 'Scale', 'value' => static::CPU_SCALE_THRESHOLD],
-                ['color' => static::RED, 'label' => 'Critical', 'value' => static::CPU_CRITICAL_THRESHOLD, 'fill' => 'above'],
-            ]],
-        ]);
+        [$compute, $y] = static::computeWidgets($region, $cluster, $service, $y);
 
-        $widgets[] = static::metric(12, $y, 12, 6, [
-            'title' => 'Memory utilisation',
-            'region' => $region,
-            'view' => 'timeSeries',
-            'stacked' => false,
-            'period' => 60,
-            'stat' => 'Average',
-            'yAxis' => ['left' => ['min' => 0, 'max' => 100]],
-            'metrics' => [
-                ['AWS/ECS', 'MemoryUtilization', 'ClusterName', $cluster, 'ServiceName', $service, ['label' => 'Average', 'color' => static::BLUE]],
-                ['AWS/ECS', 'MemoryUtilization', 'ClusterName', $cluster, 'ServiceName', $service, ['label' => 'Max', 'stat' => 'Maximum', 'color' => static::ORANGE]],
-            ],
-        ]);
+        return [[...$widgets, ...$compute], $y];
+    }
+
+    /**
+     * The shared ECS compute charts for one service — CPU, memory, task counts and
+     * network in/out. Used by the web section (after its ALB panels) and by each
+     * extracted worker's compute section. Pure.
+     *
+     * @return array{0: array<int, array<string, mixed>>, 1: int}
+     */
+    protected static function computeWidgets(string $region, string $cluster, string $service, int $y): array
+    {
+        $widgets = [
+            static::metric(0, $y, 12, 6, [
+                'title' => 'CPU utilisation',
+                'region' => $region,
+                'view' => 'timeSeries',
+                'stacked' => false,
+                'period' => 60,
+                'stat' => 'Average',
+                'yAxis' => ['left' => ['min' => 0, 'max' => 100]],
+                'metrics' => [
+                    ['AWS/ECS', 'CPUUtilization', 'ClusterName', $cluster, 'ServiceName', $service, ['label' => 'Average', 'color' => static::BLUE]],
+                    ['AWS/ECS', 'CPUUtilization', 'ClusterName', $cluster, 'ServiceName', $service, ['label' => 'Max', 'stat' => 'Maximum', 'color' => static::ORANGE]],
+                ],
+                'annotations' => ['horizontal' => [
+                    ['color' => static::ORANGE, 'label' => 'Scale', 'value' => static::CPU_SCALE_THRESHOLD],
+                    ['color' => static::RED, 'label' => 'Critical', 'value' => static::CPU_CRITICAL_THRESHOLD, 'fill' => 'above'],
+                ]],
+            ]),
+            static::metric(12, $y, 12, 6, [
+                'title' => 'Memory utilisation',
+                'region' => $region,
+                'view' => 'timeSeries',
+                'stacked' => false,
+                'period' => 60,
+                'stat' => 'Average',
+                'yAxis' => ['left' => ['min' => 0, 'max' => 100]],
+                'metrics' => [
+                    ['AWS/ECS', 'MemoryUtilization', 'ClusterName', $cluster, 'ServiceName', $service, ['label' => 'Average', 'color' => static::BLUE]],
+                    ['AWS/ECS', 'MemoryUtilization', 'ClusterName', $cluster, 'ServiceName', $service, ['label' => 'Max', 'stat' => 'Maximum', 'color' => static::ORANGE]],
+                ],
+            ]),
+        ];
         $y += 6;
 
         $widgets[] = static::metric(0, $y, 12, 6, [
@@ -588,6 +625,23 @@ class Dashboard implements Deletable
         $y += 6;
 
         return [$widgets, $y];
+    }
+
+    /**
+     * An extracted worker's compute section (a standalone queue or scheduler) — a
+     * header plus the shared compute charts. No ALB panels; only web sits behind
+     * the load balancer. Pure.
+     *
+     * @return array{0: array<int, array<string, mixed>>, 1: int}
+     */
+    protected static function groupComputeSection(string $title, string $cluster, string $service, string $region, int $y): array
+    {
+        $widgets = [static::header($y, $title)];
+        $y++;
+
+        [$compute, $y] = static::computeWidgets($region, $cluster, $service, $y);
+
+        return [[...$widgets, ...$compute], $y];
     }
 
     /**
@@ -668,7 +722,7 @@ class Dashboard implements Deletable
         // No dedicated dead-letter-queue depth panel: the Queue resource provisions
         // a plain SQS queue with no RedrivePolicy, so there is no DLQ to chart. If a
         // DLQ is ever added, a ">0 = silent job failures" panel belongs right here.
-        $widgets = [static::header($y, '# Queue')];
+        $widgets = [static::header($y, '# Queue backlog')];
         $y++;
 
         $widgets[] = static::metric(0, $y, 12, 6, [

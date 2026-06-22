@@ -33,6 +33,9 @@ function dashboardContext(array $overrides = []): array
         'queuePrefix' => 'yolo-testing-my-app-',
         'queues' => ['yolo-testing-my-app'],
         'queueDisabled' => false,
+        // Per-group compute services — null = bundled into web (the default).
+        'queueService' => null,
+        'schedulerService' => null,
         'rds' => ['identifier' => 'my-cluster', 'cluster' => true],
         'buckets' => ['yolo-111111111111-testing-my-app-config', 'yolo-111111111111-testing-my-app-assets'],
         'taskLogGroup' => '/yolo/testing-my-app',
@@ -127,13 +130,38 @@ it('parses the CloudWatch dimension suffix out of ELB ARNs', function (): void {
 it('builds every section for a full web app', function (): void {
     $body = Dashboard::body(dashboardContext());
 
-    expect(widgetTitles($body))->toContain('# Web', '# Queue', '# Database', '# CDN & storage', '# Logs');
+    expect(widgetTitles($body))->toContain('# Web', '# Queue backlog', '# Database', '# CDN & storage', '# Logs');
 });
 
-it('omits the queue section when the queue is disabled (tasks.queue: false)', function (): void {
+it('charts per-group compute for an extracted queue / scheduler, omitting bundled ones', function (): void {
+    // Bundled by default → no own ECS service → no per-group compute section.
+    expect(widgetTitles(Dashboard::body(dashboardContext())))
+        ->not->toContain('# Queue')
+        ->not->toContain('# Scheduler');
+
+    // Extracted → each gets a compute section (web → queue → scheduler order),
+    // charting that service's own ECS metrics.
+    $body = Dashboard::body(dashboardContext([
+        'queueService' => 'yolo-testing-my-app-queue',
+        'schedulerService' => 'yolo-testing-my-app-scheduler',
+    ]));
+
+    $titles = widgetTitles($body);
+    expect($titles)->toContain('# Web', '# Queue', '# Scheduler')
+        ->and(array_search('# Web', $titles, true))->toBeLessThan(array_search('# Queue', $titles, true))
+        ->and(array_search('# Queue', $titles, true))->toBeLessThan(array_search('# Scheduler', $titles, true));
+
+    // The queue section's compute charts read the queue service's own dimensions.
+    expect(collect($body['widgets'])
+        ->first(fn (array $w): bool => ($w['properties']['title'] ?? null) === 'Tasks (running vs desired)'
+            && in_array('yolo-testing-my-app-queue', $w['properties']['metrics'][0], true)))
+        ->not->toBeNull();
+});
+
+it('omits the queue backlog section when the queue is disabled (tasks.queue: false)', function (): void {
     $body = Dashboard::body(dashboardContext(['queueDisabled' => true]));
 
-    expect(widgetTitles($body))->not->toContain('# Queue')
+    expect(widgetTitles($body))->not->toContain('# Queue backlog')
         ->and(findWidget($body, 'Queue depth'))->toBeNull()
         ->and(widgetTitles($body))->toContain('# Web', '# Database');   // the rest still render
 
@@ -283,7 +311,7 @@ it('drops the web, database and log sections for a headless app with no env DB',
         'taskLogGroup' => null,
     ]));
 
-    expect(widgetTitles($body))->toContain('# Queue', '# CDN & storage');
+    expect(widgetTitles($body))->toContain('# Queue backlog', '# CDN & storage');
     expect(widgetTitles($body))->not->toContain('# Web', '# Database', '# Logs');
 });
 

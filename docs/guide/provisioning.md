@@ -183,7 +183,7 @@ There are two statuses, and a **Reason** column explains every `unexpected` row:
 The `service no longer provisioned` check is driven by the catalogue of services YOLO has resource classes for, which mirrors the `src/Resources/*` directories. That makes it correct by construction: a managed service is never false-flagged, and the day a service is dropped its leftover resources surface automatically — no allow-list to keep in sync by hand.
 
 ::: tip The per-app dashboard isn't audited
-`sync:app` also generates a CloudWatch dashboard (`yolo-<env>-<app>-dashboard`) panelling the app's ECS service, ALB, SQS queues, CloudFront, S3 and logs, plus an RDS panel derived from `DB_HOST`. CloudWatch dashboards can't carry tags, so it's a read-only convenience that **won't** show up in `yolo audit`.
+`sync:app` also generates a CloudWatch dashboard (`yolo-<env>-<app>-dashboard`) panelling each of the app's ECS services (web, plus any extracted queue/scheduler — CPU/memory/tasks each), the ALB, SQS backlog, CloudFront, S3 and logs, plus an RDS panel sourced from the manifest [`database:`](/reference/manifest#database) key — omitted when it isn't set (the panel reads the manifest, never the app's secret `.env`). CloudWatch dashboards can't carry tags, so it's a read-only convenience that **won't** show up in `yolo audit`.
 :::
 
 Like sync, audit is scope-grouped — narrow it with `audit:environment <env>` or `audit:app <env> <app>`, and add `--unexpected` to show only the rows needing attention:
