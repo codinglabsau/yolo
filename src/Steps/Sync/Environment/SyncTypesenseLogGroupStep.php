@@ -8,9 +8,10 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\ServiceState;
 use Codinglabs\Yolo\Services\Lifecycle;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
+use Codinglabs\Yolo\Contracts\SkippedByDeployCheck;
 use Codinglabs\Yolo\Resources\CloudWatchLogs\TypesenseLogGroup;
 
-class SyncTypesenseLogGroupStep implements Step
+class SyncTypesenseLogGroupStep implements SkippedByDeployCheck, Step
 {
     use SynchronisesResource;
 

@@ -14,6 +14,7 @@ use Codinglabs\Yolo\Enums\ServiceState;
 use Codinglabs\Yolo\Services\Lifecycle;
 use Codinglabs\Yolo\Services\Typesense;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
+use Codinglabs\Yolo\Contracts\SkippedByDeployCheck;
 use Codinglabs\Yolo\Resources\Ecs\TypesenseService;
 use Codinglabs\Yolo\Resources\Iam\EcsExecutionRole;
 use Codinglabs\Yolo\Resources\Ecr\TypesenseRepository;
@@ -32,7 +33,7 @@ use Codinglabs\Yolo\Resources\CloudWatchLogs\TypesenseLogGroup;
  * Teardown is a skip — task-definition revisions are registration history,
  * not standing infrastructure (the audit ignores them for the same reason).
  */
-class SyncTypesenseTaskDefinitionStep implements Step
+class SyncTypesenseTaskDefinitionStep implements SkippedByDeployCheck, Step
 {
     use RecordsChanges;
 

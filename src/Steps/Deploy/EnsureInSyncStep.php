@@ -6,6 +6,7 @@ namespace Codinglabs\Yolo\Steps\Deploy;
 
 use Laravel\Prompts\Prompt;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\DeployCheck;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Commands\SyncCommand;
@@ -210,8 +211,13 @@ class EnsureInSyncStep implements Step
 
         Prompt::setOutput($sink);
 
+        // Scope the deploy-check flag to this --check run only: the step runner
+        // skips SkippedByDeployCheck steps (admin-owned env-backed-service
+        // reconcilers the deployer can't read) while it's set. The reconcile()
+        // path is deliberately NOT wrapped — an admin reconcile must run those
+        // steps for real.
         try {
-            return $command->run($input, $sink);
+            return DeployCheck::during(fn (): int => $command->run($input, $sink));
         } finally {
             Prompt::setOutput(new ConsoleOutput());
         }

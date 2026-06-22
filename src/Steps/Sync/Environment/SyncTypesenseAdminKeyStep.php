@@ -17,6 +17,7 @@ use Codinglabs\Yolo\Enums\ServiceState;
 use Codinglabs\Yolo\Services\Lifecycle;
 use Codinglabs\Yolo\Services\Typesense;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
+use Codinglabs\Yolo\Contracts\SkippedByDeployCheck;
 
 /**
  * Seed-generates the cluster's admin API key into the env-shared .env in the
@@ -28,7 +29,7 @@ use Codinglabs\Yolo\Concerns\RecordsChanges;
  * the operator's secrets channel, not infrastructure, and a re-offer reuses
  * it.
  */
-class SyncTypesenseAdminKeyStep implements Step
+class SyncTypesenseAdminKeyStep implements SkippedByDeployCheck, Step
 {
     use RecordsChanges;
 

@@ -18,6 +18,7 @@ use Codinglabs\Yolo\Services\Lifecycle;
 use Codinglabs\Yolo\Services\Typesense;
 use Codinglabs\Yolo\Contracts\LongRunning;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
+use Codinglabs\Yolo\Contracts\SkippedByDeployCheck;
 use Codinglabs\Yolo\Resources\Ecr\TypesenseRepository;
 
 /**
@@ -32,7 +33,7 @@ use Codinglabs\Yolo\Resources\Ecr\TypesenseRepository;
  * Teardown is a skip: the repository's force-delete (the previous step) takes
  * the images with it.
  */
-class BuildTypesenseImageStep implements LongRunning, Step
+class BuildTypesenseImageStep implements LongRunning, SkippedByDeployCheck, Step
 {
     use RecordsChanges;
 

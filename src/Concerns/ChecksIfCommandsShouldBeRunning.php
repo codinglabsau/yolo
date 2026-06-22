@@ -3,10 +3,12 @@
 namespace Codinglabs\Yolo\Concerns;
 
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\DeployCheck;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Commands\Command;
 use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Contracts\ExecutesSoloStep;
+use Codinglabs\Yolo\Contracts\SkippedByDeployCheck;
 use Codinglabs\Yolo\Contracts\ExecutesMultitenancyStep;
 
 trait ChecksIfCommandsShouldBeRunning
@@ -21,6 +23,14 @@ trait ChecksIfCommandsShouldBeRunning
      */
     public function skipReason(Command|Step $instance): ?string
     {
+        // The pre-deploy in-sync gate runs as the deployer tier, which is fenced
+        // from the admin-owned env-backed-service state these steps reconcile
+        // (the env-shared admin key, env log-group tags). `yolo sync <env>`
+        // verifies them; the gate skips them rather than 403.
+        if ($instance instanceof SkippedByDeployCheck && DeployCheck::active()) {
+            return 'env-backed service (admin-owned) — verified by `yolo sync`, not the deploy gate';
+        }
+
         if ($instance instanceof ExecutesSoloStep && Manifest::isMultitenanted()) {
             return 'solo-only step in a multi-tenant app';
         }
