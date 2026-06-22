@@ -74,6 +74,19 @@ class MediaConvert extends ServiceDefinition
     }
 
     /**
+     * Tear down the per-app role MediaConvert assumes — the mirror of
+     * SyncMediaConvertRoleStep. Its delete() detaches the policies first, so the
+     * one step reverses both appSteps.
+     */
+    #[\Override]
+    public function teardownAppSteps(): array
+    {
+        return [
+            Steps\Destroy\App\TeardownMediaConvertRoleStep::class,
+        ];
+    }
+
+    /**
      * Consuming mediaconvert provisions a per-app role for MediaConvert to
      * assume; the app passes it on every CreateJob, so the computed ARN is
      * baked in at build.

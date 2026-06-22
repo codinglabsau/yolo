@@ -418,6 +418,101 @@ class Manifest
     }
 
     /**
+     * Surgically remove an environment's entire block from yolo.yml — the
+     * `environments.{environment}` key and every line nested under it, the
+     * trailing blank separator included — preserving every other byte (comments,
+     * ordering, the sibling environments' quoting), unlike the put() re-dump.
+     * The reverse of declaring a deployment target: `destroy:app` calls it as its
+     * final act, once the environment's resources are gone, so yolo.yml stops
+     * advertising a target that no longer exists.
+     *
+     * Verifies the result parses and that exactly this environment — and nothing
+     * else — was dropped before committing, so an unanticipated layout never
+     * corrupts the file: on any doubt it writes nothing and returns false, and
+     * the caller falls back to telling the operator to edit by hand.
+     */
+    public static function removeEnvironment(string $environment): bool
+    {
+        $raw = (string) file_get_contents(Paths::manifest());
+
+        $rewritten = static::rewriteEnvironmentRemoval($raw, $environment);
+
+        // Safety net: only commit a result that parses and leaves exactly the
+        // sibling environments standing — never a manifest mangled by an odd layout.
+        try {
+            $before = array_keys((array) Arr::get(Yaml::parse($raw) ?? [], 'environments', []));
+            $after = array_keys((array) Arr::get(Yaml::parse($rewritten) ?? [], 'environments', []));
+        } catch (\Throwable) {
+            return false;
+        }
+
+        if ($after !== array_values(array_diff($before, [$environment]))) {
+            return false;
+        }
+
+        return file_put_contents(Paths::manifest(), $rewritten) !== false;
+    }
+
+    /**
+     * The pure line-surgery behind removeEnvironment — returns the rewritten YAML
+     * with the `environments.{environment}` block (header + nested children +
+     * trailing blank lines) excised, or the input unchanged when the environment
+     * is already absent. The block ends at the next line indented no deeper than
+     * the header (a sibling environment or a top-level key) or at end of file.
+     */
+    protected static function rewriteEnvironmentRemoval(string $raw, string $environment): string
+    {
+        $lines = explode("\n", $raw);
+        $path = ['environments', $environment];
+
+        $stack = [];
+
+        foreach ($lines as $index => $line) {
+            if (! preg_match('/^(\s*)([A-Za-z0-9_.-]+):(.*)$/', $line, $matches)) {
+                continue;
+            }
+
+            $indent = strlen($matches[1]);
+
+            while ($stack !== [] && end($stack)[0] >= $indent) {
+                array_pop($stack);
+            }
+
+            $stack[] = [$indent, $matches[2]];
+            $currentPath = array_map(fn (array $entry): string => $entry[1], $stack);
+
+            if ($currentPath !== $path) {
+                continue;
+            }
+
+            // The block runs from the header to the next structural line indented
+            // no deeper than it; trailing blank lines are swept with it so the
+            // separator goes too, leaving the surviving siblings cleanly spaced.
+            $end = $index + 1;
+
+            while ($end < count($lines)) {
+                if (trim($lines[$end]) === '') {
+                    $end++;
+
+                    continue;
+                }
+
+                if (preg_match('/^(\s*)\S/', $lines[$end], $next) && strlen($next[1]) <= $indent) {
+                    break;
+                }
+
+                $end++;
+            }
+
+            array_splice($lines, $index, $end - $index);
+
+            return implode("\n", $lines);
+        }
+
+        return $raw;
+    }
+
+    /**
      * Render a scalar as a YAML value — bare where safe, double-quoted when it
      * contains characters that would otherwise change the parse.
      */

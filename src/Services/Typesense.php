@@ -238,6 +238,20 @@ class Typesense extends ServiceDefinition
     }
 
     /**
+     * Revoke this app's 8108 ingress from the env-shared node SG — the mirror of
+     * SyncTypesenseAppIngressStep. The minted keys it also wrote ride the app's
+     * per-app env file (env/.env.{app}), which destroy:app removes wholesale, so
+     * they need no service-specific step here.
+     */
+    #[\Override]
+    public function teardownAppSteps(): array
+    {
+        return [
+            Steps\Destroy\App\RevokeTypesenseIngressStep::class,
+        ];
+    }
+
+    /**
      * Build-time env injection for a consuming app, both traffic paths:
      *
      * - Server-side indexing (private, in-VPC, off the ALB/WAF — bulk reimports
