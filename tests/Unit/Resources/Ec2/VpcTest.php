@@ -19,7 +19,23 @@ function bindExistingVpcs(array $existing, array &$captured): void
         'DescribeVpcs' => new Result(['Vpcs' => collect($existing)
             ->map(fn (string $cidr): array => ['CidrBlock' => $cidr])
             ->all()]),
-        'CreateVpc' => new Result(),
+        'CreateVpc' => new Result(['Vpc' => ['VpcId' => 'vpc-0abc123']]),
+    ], $captured);
+}
+
+/**
+ * An existing VPC whose two DNS attributes read back as given — DescribeVpcAttribute
+ * answers one attribute per call, support first then hostnames (the read order in
+ * Ec2::vpcDnsAttributes).
+ */
+function bindVpcDnsAttributes(bool $support, bool $hostnames, array &$captured): void
+{
+    bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-0abc123', 'CidrBlock' => '10.1.0.0/16']]]),
+        'DescribeVpcAttribute' => [
+            new Result(['EnableDnsSupport' => ['Value' => $support]]),
+            new Result(['EnableDnsHostnames' => ['Value' => $hostnames]]),
+        ],
     ], $captured);
 }
 
@@ -66,6 +82,62 @@ it('creates the VPC with the auto-selected CIDR and a vpc tag spec', function ()
     $create = collect($captured)->firstWhere('name', 'CreateVpc');
     expect($create['args']['CidrBlock'])->toBe('10.2.0.0/16')
         ->and($create['args']['TagSpecifications'][0]['ResourceType'])->toBe('vpc');
+});
+
+it('enables DNS support and hostnames on the new VPC so private DNS resolves', function (): void {
+    $captured = [];
+    bindExistingVpcs(['10.1.0.0/16'], $captured);
+
+    (new Vpc())->create();
+
+    $modifications = collect($captured)->where('name', 'ModifyVpcAttribute');
+
+    expect($modifications)->toHaveCount(2)
+        ->and($modifications->every(fn (array $call): bool => $call['args']['VpcId'] === 'vpc-0abc123'))->toBeTrue()
+        ->and($modifications->firstWhere('args.EnableDnsSupport.Value', true))->not->toBeNull()
+        ->and($modifications->firstWhere('args.EnableDnsHostnames.Value', true))->not->toBeNull();
+});
+
+it('reconciles both DNS attributes back on when an existing VPC has them off', function (): void {
+    $captured = [];
+    bindVpcDnsAttributes(support: false, hostnames: false, captured: $captured);
+
+    $changes = (new Vpc())->synchroniseConfiguration(apply: true);
+
+    expect(collect($changes)->pluck('attribute')->all())->toBe(['EnableDnsSupport', 'EnableDnsHostnames'])
+        ->and(collect($captured)->where('name', 'ModifyVpcAttribute'))->toHaveCount(2);
+});
+
+it('only fixes the DNS attribute that is off', function (): void {
+    $captured = [];
+    bindVpcDnsAttributes(support: true, hostnames: false, captured: $captured);
+
+    $changes = (new Vpc())->synchroniseConfiguration(apply: true);
+
+    expect($changes)->toHaveCount(1)
+        ->and($changes[0]->attribute)->toBe('EnableDnsHostnames')
+        ->and($changes[0]->from)->toBe('false')
+        ->and($changes[0]->to)->toBe('true');
+
+    $modifications = collect($captured)->where('name', 'ModifyVpcAttribute');
+    expect($modifications)->toHaveCount(1)
+        ->and($modifications->first()['args']['EnableDnsHostnames']['Value'])->toBeTrue();
+});
+
+it('is a no-op when both DNS attributes are already on', function (): void {
+    $captured = [];
+    bindVpcDnsAttributes(support: true, hostnames: true, captured: $captured);
+
+    expect((new Vpc())->synchroniseConfiguration(apply: true))->toBe([])
+        ->and(collect($captured)->where('name', 'ModifyVpcAttribute'))->toHaveCount(0);
+});
+
+it('reports DNS drift on a dry run without writing', function (): void {
+    $captured = [];
+    bindVpcDnsAttributes(support: false, hostnames: false, captured: $captured);
+
+    expect((new Vpc())->synchroniseConfiguration(apply: false))->toHaveCount(2)
+        ->and(collect($captured)->where('name', 'ModifyVpcAttribute'))->toHaveCount(0);
 });
 
 it('fails clearly when every 10.x /16 is in use', function (): void {

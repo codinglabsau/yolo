@@ -85,6 +85,30 @@ class Ec2
         return $subnets;
     }
 
+    /**
+     * The two DNS attributes a Route 53 private hosted zone needs set to true
+     * to resolve inside a VPC — and therefore what Cloud Map private DNS (the
+     * backing of ECS service discovery, e.g. Typesense's Raft peer addresses)
+     * needs too. `describeVpcAttribute` returns a single attribute per call;
+     * the keys match the `modifyVpcAttribute` parameter names so a drifted key
+     * can be fed straight back in.
+     *
+     * @return array{EnableDnsSupport: bool, EnableDnsHostnames: bool}
+     */
+    public static function vpcDnsAttributes(string $vpcId): array
+    {
+        return [
+            'EnableDnsSupport' => (bool) Aws::ec2()->describeVpcAttribute([
+                'VpcId' => $vpcId,
+                'Attribute' => 'enableDnsSupport',
+            ])['EnableDnsSupport']['Value'],
+            'EnableDnsHostnames' => (bool) Aws::ec2()->describeVpcAttribute([
+                'VpcId' => $vpcId,
+                'Attribute' => 'enableDnsHostnames',
+            ])['EnableDnsHostnames']['Value'],
+        ];
+    }
+
     public static function securityGroup(string $name): array
     {
         $securityGroups = Aws::ec2()->describeSecurityGroups()['SecurityGroups'];

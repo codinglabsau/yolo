@@ -3,12 +3,14 @@
 namespace Codinglabs\Yolo\Resources\Ec2;
 
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Change;
 use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
+use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
@@ -22,9 +24,18 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * it lands in. Point `vpc` at an existing VPC name to adopt rather than create
  * one; SyncVpcStep reports that as CUSTOM_MANAGED.
  */
-class Vpc implements Resource
+class Vpc implements Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
+
+    /**
+     * The VPC attributes a Route 53 private hosted zone needs set to true to
+     * resolve inside the VPC. A created VPC defaults enableDnsSupport on but
+     * enableDnsHostnames OFF — and a private hosted zone (so Cloud Map private
+     * DNS, the backing of ECS service discovery) requires BOTH. Keys are the
+     * `modifyVpcAttribute` parameter names.
+     */
+    protected const array DNS_ATTRIBUTES = ['EnableDnsSupport', 'EnableDnsHostnames'];
 
     public function name(): string
     {
@@ -54,11 +65,62 @@ class Vpc implements Resource
 
     public function create(): void
     {
-        Aws::ec2()->createVpc([
+        $vpcId = (string) Aws::ec2()->createVpc([
             'CidrBlock' => $this->availableCidrBlock(),
             'TagSpecifications' => [
                 ['ResourceType' => 'vpc', ...Aws::tags($this->tags())],
             ],
+        ])['Vpc']['VpcId'];
+
+        // A created VPC defaults enableDnsHostnames OFF, which leaves any
+        // Route 53 private hosted zone — and therefore Cloud Map private DNS,
+        // the backing of ECS service discovery (e.g. Typesense's Raft peer
+        // addresses) — unresolvable inside it. Turn both DNS attributes on at
+        // create; synchroniseConfiguration() keeps them true thereafter.
+        foreach (self::DNS_ATTRIBUTES as $attribute) {
+            $this->enableDnsAttribute($vpcId, $attribute);
+        }
+    }
+
+    /**
+     * Reconcile the VPC's DNS attributes back to true. Both must be on for a
+     * Route 53 private hosted zone to resolve inside the VPC, so Cloud Map
+     * private DNS (ECS service discovery — e.g. the Typesense Raft peer list)
+     * stays dark until they are. This also heals any VPC created before they
+     * were set at create time. Reads regardless of $apply (so a dry-run reports
+     * the drift) and writes only the attributes that are off.
+     *
+     * @return array<int, Change>
+     */
+    public function synchroniseConfiguration(bool $apply = true): array
+    {
+        $vpcId = $this->arn();
+        $changes = [];
+
+        foreach (Ec2::vpcDnsAttributes($vpcId) as $attribute => $enabled) {
+            if ($enabled) {
+                continue;
+            }
+
+            if ($apply) {
+                $this->enableDnsAttribute($vpcId, $attribute);
+            }
+
+            $changes[] = Change::make($attribute, false, true);
+        }
+
+        return $changes;
+    }
+
+    /**
+     * Set one boolean VPC DNS attribute to true — `modifyVpcAttribute` takes a
+     * single attribute per call, so create and reconcile both funnel here.
+     */
+    protected function enableDnsAttribute(string $vpcId, string $attribute): void
+    {
+        Aws::ec2()->modifyVpcAttribute([
+            'VpcId' => $vpcId,
+            $attribute => ['Value' => true],
         ]);
     }
 
