@@ -16,10 +16,8 @@ The frame is fitted to the terminal: the global bar and tabs sit up top, the foo
 
 | Tab | What it shows |
 |---|---|
-| **Overview** | Per-group vitals, load, scaling, queue backlogs and any in-flight rollout — the same picture [`status --snapshot`](/reference/commands#yolo-status) renders |
-| **Metrics** | CPU / memory per group — and request rate / response time for the web group — as wide braille charts over the last hour. The readable replacement for the inline sparkline; for a longer window, the [CloudWatch dashboard](/reference/commands#yolo-status) |
-| **Alarms** | The app's CloudWatch alarms and their state — OK / ALARM / INSUFFICIENT_DATA — with any firing ones flagged. The same read as [`status:alarms`](/reference/commands#yolo-status-alarms) |
-| **Logs** | Recent CloudWatch logs for one service group, newest pinned to the bottom |
+| **Overview** | Per-group vitals, load, scaling, queue backlogs and any in-flight rollout — the same picture [`status --snapshot`](/reference/commands#yolo-status) renders — plus an app-wide CloudWatch alarms summary: the alarm count, and a row for each firing one. The full inventory (OK states and all) is one command away in [`status:alarms`](/reference/commands#yolo-status-alarms) |
+| **Web** · **Queue** · **Scheduler** | One tab per group the app actually runs — a combined app shows only **Web**. Each gathers everything about that group in one place: its vitals (task counts, spec, scaling, live load), CPU / memory braille charts over the last hour (and request rate / response time for the web group), and a tail of its recent CloudWatch logs. The readable replacement for the old standalone Metrics / Logs tabs; for a longer window, the [CloudWatch dashboard](/reference/commands#yolo-status) |
 | **Deployments** | Recent deployments from ECR, the running version marked; live progress while a rollout is in flight |
 | **Database** | The RDS instance or Aurora cluster behind `DB_HOST` — CPU, connections, freeable memory and latency over the last hour. YOLO reads the endpoint from the environment's `.env`; the tab is empty until [`env:push`](/reference/commands#yolo-env-push) and skips a non-RDS host |
 | **Cache** | The shared Valkey cache — status, endpoint and engine CPU / memory / connections / evictions. Empty when the environment runs no cache |
@@ -27,7 +25,7 @@ The frame is fitted to the terminal: the global bar and tabs sit up top, the foo
 
 A **global health bar** stays pinned at the top on every tab — one dot per group (web / queue / scheduler), green when healthy, red when down. When a deploy is in flight it flips to a rollout banner, **whoever triggered it** — your `yolo deploy` in another shell, CI, or a teammate's rollback. The dashboard reads that straight from ECS, so it's never out of step with what's actually rolling.
 
-Each tab also carries a single muted **AWS Console deep link** to its primary resource — the ECS service, the RDS instance, the cache cluster, the log group, the alarms list — so jumping to the full console view is one click away without cluttering the panel.
+The tabs with a single primary resource — Database, Cache, Services — also carry a muted **AWS Console deep link** to it, so jumping to the full console view is one click away without cluttering the panel.
 
 ## Navigating
 
@@ -35,13 +33,12 @@ Each tab also carries a single muted **AWS Console deep link** to its primary re
 |---|---|
 | <kbd>◂</kbd> <kbd>▸</kbd> / <kbd>Tab</kbd> | Previous / next tab |
 | <kbd>1</kbd>…<kbd>8</kbd> | Jump to a tab by number |
-| a tab's letter (`o` `m` `a` `l` `d` `b` `c` `s`) | Jump straight to it |
-| <kbd>↑</kbd> <kbd>↓</kbd> / <kbd>PgUp</kbd> <kbd>PgDn</kbd> | Scroll the active tab's body (logs, deploy history) |
-| <kbd>g</kbd> | Cycle the log group (Logs tab) |
-| <kbd>Home</kbd> / <kbd>End</kbd> | Jump to the top / back to the live tail |
+| a tab's letter (`o`, then `w` `u` `h` for the groups, `d` `b` `c` `s`) | Jump straight to it |
+| <kbd>↑</kbd> <kbd>↓</kbd> / <kbd>PgUp</kbd> <kbd>PgDn</kbd> | Scroll the active tab's body (a group's charts + logs, deploy history) |
+| <kbd>Home</kbd> / <kbd>End</kbd> | Jump to the top / bottom of the body |
 | <kbd>q</kbd> | Quit |
 
-A scrollable tab shows a `▲ / ▼ more` hint when there's content beyond the window. Logs follow the live tail until you scroll up, and re-arm the moment you scroll back to the bottom (or press <kbd>End</kbd>).
+A scrollable tab shows a `▲ / ▼ more` hint when there's content beyond the window. The group letters appear only for the groups the app runs, so a combined app exposes just `w`.
 
 ## Why read-only
 

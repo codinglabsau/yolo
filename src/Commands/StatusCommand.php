@@ -6,11 +6,10 @@ use Codinglabs\Yolo\Tui\Tui;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Tui\Screen;
 use Codinglabs\Yolo\Tui\Keyboard;
-use Codinglabs\Yolo\Tui\Panels\LogsPanel;
+use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Tui\Panels\CachePanel;
-use Codinglabs\Yolo\Tui\Panels\AlarmsPanel;
+use Codinglabs\Yolo\Tui\Panels\GroupPanel;
 use Codinglabs\Yolo\Tui\Panels\StatusPanel;
-use Codinglabs\Yolo\Tui\Panels\MetricsPanel;
 use Codinglabs\Yolo\Tui\Panels\DatabasePanel;
 use Codinglabs\Yolo\Tui\Panels\ServicesPanel;
 use Codinglabs\Yolo\Contracts\ReadOnlyCommand;
@@ -23,10 +22,11 @@ use function Laravel\Prompts\intro;
 
 /**
  * The environment status surface. In a real terminal `yolo status <env>` opens the
- * live, tabbed read-only dashboard — Overview, Logs, Deployments and the service
- * gate, polled and redrawn until you quit. `--snapshot` (and any non-interactive
- * shell) renders a single one-shot frame instead; `--json` is the machine-readable
- * contract the `/yolo` skill and scripts consume.
+ * live, tabbed read-only dashboard — Overview, a per-group tab (web/queue/scheduler)
+ * for each group the app runs, Deployments, Database, Cache and the service gate,
+ * polled and redrawn until you quit. `--snapshot` (and any non-interactive shell)
+ * renders a single one-shot frame instead; `--json` is the machine-readable contract
+ * the `/yolo` skill and scripts consume.
  */
 class StatusCommand extends Command implements ReadOnlyCommand
 {
@@ -112,9 +112,10 @@ class StatusCommand extends Command implements ReadOnlyCommand
             environment: $environment,
             panels: [
                 new StatusPanel($this->output),
-                new MetricsPanel($this->output),
-                new AlarmsPanel(),
-                new LogsPanel(),
+                ...array_map(
+                    fn (ServerGroup $group): GroupPanel => new GroupPanel($group, $this->output),
+                    Manifest::serverGroups(),
+                ),
                 new DeploymentsPanel($this->output),
                 new DatabasePanel(),
                 new CachePanel(),

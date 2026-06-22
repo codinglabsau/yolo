@@ -280,16 +280,14 @@ Read-only and navigation-only — every mutation is its own command, so nothing 
 
 | Tab | What it shows |
 |---|---|
-| **Overview** | Per-group vitals, load, scaling, queue backlogs and any in-flight rollout — the same picture `--snapshot` renders |
-| **Metrics** | CPU / memory per group (and request rate / response time for web) as wide braille charts over the last hour |
-| **Alarms** | The app's CloudWatch alarms and their state (OK / ALARM / INSUFFICIENT_DATA), with the firing ones flagged |
-| **Logs** | Recent CloudWatch logs for one service group; `g` cycles groups, newest pinned to the bottom |
+| **Overview** | Per-group vitals, load, scaling, queue backlogs and any in-flight rollout — the same picture `--snapshot` renders — plus an app-wide CloudWatch alarms summary (count + any firing alarms; full list via [`status:alarms`](#yolo-status-alarms)) |
+| **Web** · **Queue** · **Scheduler** | One tab per group the app runs (a combined app shows only **Web**) — that group's vitals, its CPU / memory braille charts over the last hour (plus request rate / response time for web), and a tail of its recent CloudWatch logs |
 | **Deployments** | Recent deployments from ECR, the running version marked; live progress while a rollout is in flight |
 | **Database** | The RDS instance/cluster behind `DB_HOST` — CPU, connections, freeable memory and latency over the last hour |
 | **Cache** | The shared Valkey cache — status, endpoint, and engine CPU / memory / connections / evictions over the last hour |
 | **Services** | The [service gate](/guide/services#the-service-lifecycle) — what's offered, which apps claim it, its lifecycle state, plus the Typesense cluster's live CPU / memory when offered |
 
-A **global health bar** stays pinned on every tab — one dot per group (web / queue / scheduler), green when healthy, red when down, flipping to a rollout banner whenever a deploy is in flight, whoever triggered it. Each tab carries one muted AWS-Console deep link to its primary resource (the ECS service, RDS instance, cache cluster, log group, alarms). Navigate with `◂ ▸` / `Tab` / number keys / a tab's letter; `↑ ↓` / `PgUp PgDn` / `Home End` scroll the active tab's body; `q` quits. See the [Status Dashboard guide](/guide/status-dashboard) for the full tour.
+A **global health bar** stays pinned on every tab — one dot per group (web / queue / scheduler), green when healthy, red when down, flipping to a rollout banner whenever a deploy is in flight, whoever triggered it. The Database, Cache and Services tabs carry a muted AWS-Console deep link to their primary resource. Navigate with `◂ ▸` / `Tab` / number keys / a tab's letter; `↑ ↓` / `PgUp PgDn` / `Home End` scroll the active tab's body; `q` quits. See the [Status Dashboard guide](/guide/status-dashboard) for the full tour.
 
 ### The snapshot frame
 
@@ -297,7 +295,7 @@ A **global health bar** stays pinned on every tab — one dot per group (web / q
 
 - **Deployment in progress** (only when a rollout is mid-flight) — a progress bar of new-revision tasks per rolling group, its rollout state, the revision, and how long it's been running.
 - **Services** — one row per group (web / queue / scheduler) with the task spec (vCPU/memory/launch type), running/desired task count, scaling bounds + policies (`1–5 auto (cpu 65%, req 1200)`, or `fixed` / `singleton`), and the deployed revision + app version.
-- **Load** (last 15 min) — ECS CPU/memory per group, shown against the CPU scaling target so headroom is obvious, plus the web service's ALB request rate and response time. Each reading trails a small braille sparkline (`⢀⡠⠔⠊`) of its recent trend; the full-width charts are the dashboard's Metrics tab.
+- **Load** (last 15 min) — ECS CPU/memory per group, shown against the CPU scaling target so headroom is obvious, plus the web service's ALB request rate and response time. Each reading trails a small braille sparkline (`⢀⡠⠔⠊`) of its recent trend; the full-width charts are on each group's dashboard tab (Web / Queue / Scheduler).
 - **Queue** (backlog) — the visible-message count for each SQS queue (one for a solo app; the landlord queue plus one per tenant when multi-tenant). Shown even when the queue worker is bundled into the web container rather than its own service.
 
 Below the panels is a clickable deep link to the app's CloudWatch dashboard for the full metrics view. The snapshot returns a non-zero exit code if a deployment is currently failed — so it doubles as a lightweight health probe. `--json` emits the same state as a structured payload: each group's `load` carries both the latest reading and a `series` of its recent datapoints per metric (`load.series.cpu`, `.memory`, `.requests`, `.response`), so a consumer sees the trend, not just a lone number; `queues` lists each queue's `{label, name, backlog}`.
