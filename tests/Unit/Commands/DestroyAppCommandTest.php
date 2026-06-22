@@ -48,11 +48,30 @@ it('refuses a partial teardown rather than orphaning resources', function (array
     'multi-tenant' => [['domain' => 'example.com', 'tasks' => ['web' => true], 'tenants' => ['t1' => ['domain' => 't1.example.com']]], 'multi-tenant'],
     'headless' => [['tasks' => ['web' => true]], 'headless'],
     'no web task' => [['domain' => 'example.com'], 'web task'],
-    'env services' => [['domain' => 'example.com', 'tasks' => ['web' => true], 'services' => ['typesense']], 'env-service'],
 ]);
 
 it('allows a standard solo web app', function () use ($soloWeb): void {
     expect(destroyReason($soloWeb))->toBeNull();
+});
+
+it('allows a solo web app that consumes services — their per-app teardown is modelled', function (): void {
+    expect(destroyReason(['domain' => 'example.com', 'tasks' => ['web' => true], 'services' => ['typesense', 'rekognition']]))->toBeNull();
+});
+
+it('composes a used service\'s per-app teardown, ahead of the task SG it references', function (): void {
+    $classes = destroyPlanClasses(['domain' => 'example.com', 'tasks' => ['web' => true], 'services' => ['typesense']]);
+    $at = fn (string $class): int|false => array_search($class, $classes, true);
+
+    expect($classes)->toContain(Steps\Destroy\App\RevokeTypesenseIngressStep::class);
+
+    // The Typesense ingress is revoked before the task SG its rule references is deleted.
+    expect($at(Steps\Destroy\App\RevokeTypesenseIngressStep::class))
+        ->toBeLessThan($at(Steps\Destroy\App\TeardownTaskSecurityGroupStep::class));
+});
+
+it('composes the MediaConvert role teardown when the app uses mediaconvert', function (): void {
+    expect(destroyPlanClasses(['domain' => 'example.com', 'tasks' => ['web' => true], 'services' => ['mediaconvert']]))
+        ->toContain(Steps\Destroy\App\TeardownMediaConvertRoleStep::class);
 });
 
 it('tears resources down in reverse dependency order', function () use ($soloWeb): void {
@@ -73,8 +92,11 @@ it('tears resources down in reverse dependency order', function () use ($soloWeb
     expect($at(Steps\Destroy\App\DeregisterWebAutoscalingStep::class))
         ->toBeLessThan($at(Steps\Destroy\App\TeardownWebServiceStep::class));
 
-    // ECR (holding the images) is the very last thing to go.
-    expect($at(Steps\Destroy\App\TeardownEcrRepositoryStep::class))->toBe(count($classes) - 1);
+    // Stripping the environment from yolo.yml is the very last act; ECR (holding
+    // the images) is the last AWS resource to go, just before it.
+    expect($at(Steps\Destroy\App\RemoveEnvironmentFromManifestStep::class))->toBe(count($classes) - 1);
+    expect($at(Steps\Destroy\App\TeardownEcrRepositoryStep::class))
+        ->toBeLessThan($at(Steps\Destroy\App\RemoveEnvironmentFromManifestStep::class));
 });
 
 it('never includes a teardown for the BYO app data bucket', function () use ($soloWeb): void {

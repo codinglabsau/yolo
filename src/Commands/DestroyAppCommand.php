@@ -4,6 +4,8 @@ namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Enums\Service;
+use Codinglabs\Yolo\Services\ServiceDefinition;
 
 use function Laravel\Prompts\error;
 
@@ -51,19 +53,45 @@ class DestroyAppCommand extends SyncSteppedCommand
      * Each refusal is a deliberate safety stop: a partial teardown would leave
      * orphaned resources behind (which `yolo audit` then flags), so an
      * unsupported shape is refused rather than half-deleted.
+     *
+     * Services no longer refuse outright — destroy:app reverses each service's
+     * per-app resources (see {@see appServiceTeardownSteps()}). The only service
+     * stop left is the honest one: a service with per-app resources whose teardown
+     * isn't modelled yet would orphan them, so it's named and refused.
      */
     protected function unsupportedReason(): ?string
     {
         return match (true) {
-            Manifest::isMultitenanted() => 'destroy:app does not yet support multi-tenant apps — their per-tenant queues and SNI certificates would be left behind. Tracked in LPX-695.',
-            Manifest::isHeadless() => 'destroy:app does not yet support headless apps (no domain / ALB). Tracked in LPX-695.',
-            ! Manifest::hasWeb() => 'destroy:app only supports apps with a web task today. Tracked in LPX-695.',
-            Manifest::services() !== [] => sprintf(
-                'destroy:app does not yet tear down env-service resources (%s) — the app\'s per-service IAM and keys would be orphaned. Remove the service(s) from yolo.yml and deploy first, or wait for service-aware teardown. Tracked in LPX-695.',
-                implode(', ', Manifest::services()),
+            Manifest::isMultitenanted() => 'destroy:app does not yet support multi-tenant apps — their per-tenant queues and SNI certificates would be left behind.',
+            Manifest::isHeadless() => 'destroy:app does not yet support headless apps (no domain / ALB).',
+            ! Manifest::hasWeb() => 'destroy:app only supports apps with a web task today.',
+            ($unmodelled = static::servicesWithoutTeardown()) !== [] => sprintf(
+                'destroy:app cannot yet tear down the per-app resources for: %s. Remove the service(s) from yolo.yml and deploy first.',
+                implode(', ', $unmodelled),
             ),
             default => null,
         };
+    }
+
+    /**
+     * The services this app uses that create per-app resources (appSteps) but
+     * model no teardown for them — tearing the app down would orphan those, so
+     * they're refused. Empty for every service today; a new service with appSteps
+     * and no teardownAppSteps trips it until its reverse steps are written.
+     *
+     * @return array<int, string>
+     */
+    protected static function servicesWithoutTeardown(): array
+    {
+        return array_values(array_map(
+            fn (ServiceDefinition $definition): string => $definition->service()->value,
+            array_filter(
+                Service::definitions(),
+                fn (ServiceDefinition $definition): bool => Manifest::usesService($definition->service())
+                    && $definition->appSteps() !== []
+                    && $definition->teardownAppSteps() === [],
+            ),
+        ));
     }
 
     #[\Override]
@@ -114,6 +142,10 @@ class DestroyAppCommand extends SyncSteppedCommand
                 Steps\Destroy\App\TeardownRedirectRuleStep::class,
                 Steps\Destroy\App\TeardownTargetGroupStep::class,
                 Steps\Destroy\App\TeardownTaskLogGroupStep::class,
+                // Per-app service resources (e.g. the Typesense node-SG ingress this
+                // app added) before the task SG / task role they hang off — each
+                // service's reverse steps, self-gating on the app's own usage.
+                ...static::appServiceTeardownSteps(),
                 // Revoke shared-SG ingress before deleting the task SG those rules
                 // reference. The cache revoke self-skips when the app has no cache SG.
                 Steps\Destroy\App\RevokeCacheIngressStep::class,
@@ -132,10 +164,35 @@ class DestroyAppCommand extends SyncSteppedCommand
                 Steps\Destroy\App\TeardownDeployerPolicyStep::class,
                 Steps\Destroy\App\TeardownAppObserverPolicyStep::class,
                 Steps\Destroy\App\UnpublishAppManifestStep::class,
+                // This app's per-app env file in the (env-shared) env config bucket —
+                // its build env channel, which also held any minted Typesense keys.
+                Steps\Destroy\App\RemoveAppEnvFileStep::class,
                 Steps\Destroy\App\TeardownAssetBucketStep::class,
                 Steps\Destroy\App\TeardownS3ConfigBucketStep::class,
                 Steps\Destroy\App\TeardownEcrRepositoryStep::class,
+                // Final act: stop yolo.yml advertising an environment whose resources
+                // are now gone — surgical, format-preserving, warns if it can't.
+                Steps\Destroy\App\RemoveEnvironmentFromManifestStep::class,
             ])),
         ];
+    }
+
+    /**
+     * Every used service's per-app teardown steps, composed from the definitions
+     * in enum order — the mirror of SyncAppCommand's app service composition. Each
+     * step self-gates, so composing them all is safe; a service the app never used
+     * tears nothing down.
+     *
+     * @return array<int, class-string>
+     */
+    protected static function appServiceTeardownSteps(): array
+    {
+        $steps = [];
+
+        foreach (Service::definitions() as $definition) {
+            $steps = [...$steps, ...$definition->teardownAppSteps()];
+        }
+
+        return $steps;
     }
 }

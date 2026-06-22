@@ -143,6 +143,20 @@ abstract class ServiceDefinition
     }
 
     /**
+     * The ordered destroy:app steps that tear this service's per-app resources
+     * down — the mirror of {@see appSteps()}, composed into destroy:app the same
+     * way appSteps composes into sync:app. Each step self-gates, so it skips for
+     * an app that never consumed the service. A service whose app side is task-role
+     * grants only (swept with the task role) needs none.
+     *
+     * @return array<int, class-string>
+     */
+    public function teardownAppSteps(): array
+    {
+        return [];
+    }
+
+    /**
      * Build-time env values injected (unconditionally — these are YOLO-owned
      * keys, not defaults) when the app consumes this service.
      *
