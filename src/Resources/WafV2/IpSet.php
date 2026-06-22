@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\WafV2;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -20,7 +21,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * it into the ACL; the operator owns what's *in* it. The set is seeded empty (an
  * empty IP-set rule matches nothing, so it's inert until populated).
  */
-abstract class IpSet implements Resource
+abstract class IpSet implements Deletable, Resource
 {
     use ResolvesTags;
 
@@ -64,5 +65,29 @@ abstract class IpSet implements Resource
     public function synchroniseTags(bool $apply): array
     {
         return Aws::synchroniseWafV2Tags($this->arn(), $this->tags(), $apply);
+    }
+
+    /**
+     * Teardown when the environment is torn down: delete the IP set. WAFv2 needs
+     * the current LockToken (optimistic concurrency) and the Id, both read from
+     * the live summary. The destroy step deletes the WebAcl that references this
+     * set first — WAFv2 refuses to delete an IP set still referenced by a rule —
+     * so by the time we get here a plain deleteIPSet succeeds. A concurrent
+     * removal (the summary lookup already 404s) is tolerated.
+     */
+    public function delete(): void
+    {
+        try {
+            $summary = WafV2::ipSet($this->name());
+        } catch (ResourceDoesNotExistException) {
+            return;
+        }
+
+        Aws::wafV2()->deleteIPSet([
+            'Name' => $this->name(),
+            'Scope' => WafV2::SCOPE,
+            'Id' => $summary['Id'],
+            'LockToken' => $summary['LockToken'],
+        ]);
     }
 }

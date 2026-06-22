@@ -8,7 +8,9 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Aws\S3;
 use Codinglabs\Yolo\Enums\Scope;
+use Aws\S3\Exception\S3Exception;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 
@@ -20,8 +22,9 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
  * lifecycle). S3 read on this bucket is what gates env-secret control; app
  * deploys never need it.
  */
-class EnvConfigBucket implements Resource, SynchronisesConfiguration
+class EnvConfigBucket implements Deletable, Resource, SynchronisesConfiguration
 {
+    use EmptiesBucket;
     use ReconcilesBucketHardening;
     use ResolvesTags;
 
@@ -75,5 +78,28 @@ class EnvConfigBucket implements Resource, SynchronisesConfiguration
             ...$this->reconcilePublicAccessBlock($apply),
             ...$this->reconcileVersioning($apply),
         ];
+    }
+
+    /**
+     * Empty then delete the bucket. S3 refuses DeleteBucket on a non-empty
+     * bucket. This bucket is versioned (create() reconciles versioning to
+     * Enabled), so emptying must clear every object version AND every delete
+     * marker — a plain object sweep would leave noncurrent versions behind and
+     * the delete would fail. A concurrent removal (NoSuchBucket / 404) is
+     * tolerated.
+     */
+    public function delete(): void
+    {
+        try {
+            $this->emptyVersions();
+
+            Aws::s3()->deleteBucket(['Bucket' => $this->name()]);
+        } catch (S3Exception $e) {
+            if (S3::isNotFound($e)) {
+                return;
+            }
+
+            throw $e;
+        }
     }
 }

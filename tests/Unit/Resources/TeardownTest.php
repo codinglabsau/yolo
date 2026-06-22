@@ -12,28 +12,48 @@ use GuzzleHttp\Promise\Create;
 use Aws\CloudFront\CloudFrontClient;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Resources\Sqs\Queue;
+use Codinglabs\Yolo\Resources\WafV2\WebAcl;
 use Aws\CloudWatchLogs\CloudWatchLogsClient;
+use Codinglabs\Yolo\Resources\Iam\AdminRole;
 use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
 use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Resources\S3\AssetBucket;
+use Codinglabs\Yolo\Resources\Iam\AdminPolicy;
+use Codinglabs\Yolo\Resources\Iam\AdminsGroup;
 use Codinglabs\Yolo\Resources\Iam\EcsTaskRole;
+use Codinglabs\Yolo\Resources\S3\S3LogsBucket;
 use Codinglabs\Yolo\Resources\Iam\DeployerRole;
+use Codinglabs\Yolo\Resources\Iam\ObserverRole;
+use Codinglabs\Yolo\Resources\WafV2\AllowIpSet;
+use Codinglabs\Yolo\Resources\WafV2\BlockIpSet;
 use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
 use Codinglabs\Yolo\Resources\ElbV2\TargetGroup;
 use Codinglabs\Yolo\Resources\Iam\EcsTaskPolicy;
 use Codinglabs\Yolo\Resources\S3\S3ConfigBucket;
 use Codinglabs\Yolo\Resources\Acm\SslCertificate;
+use Codinglabs\Yolo\Resources\ElbV2\HttpListener;
+use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
 use Codinglabs\Yolo\Resources\Iam\DeployerPolicy;
 use Codinglabs\Yolo\Resources\Iam\DeployersGroup;
+use Codinglabs\Yolo\Resources\Iam\ObserverPolicy;
+use Codinglabs\Yolo\Resources\Iam\ObserversGroup;
 use Codinglabs\Yolo\Resources\Route53\HostedZone;
+use Codinglabs\Yolo\Resources\S3\EnvConfigBucket;
+use Codinglabs\Yolo\Resources\ElbV2\HttpsListener;
 use Codinglabs\Yolo\Resources\Iam\AppObserverRole;
 use Codinglabs\Yolo\Resources\CloudWatch\Dashboard;
+use Codinglabs\Yolo\Resources\Iam\EcsExecutionRole;
 use Codinglabs\Yolo\Resources\CloudWatch\QueueAlarm;
 use Codinglabs\Yolo\Resources\Iam\AppObserverPolicy;
 use Codinglabs\Yolo\Resources\Iam\AppObserversGroup;
+use Codinglabs\Yolo\Resources\Ec2\CacheSecurityGroup;
 use Codinglabs\Yolo\Resources\Ec2\EcsTaskSecurityGroup;
+use Codinglabs\Yolo\Resources\ElastiCache\CacheCluster;
 use Codinglabs\Yolo\Resources\CloudWatchLogs\TaskLogGroup;
 use Codinglabs\Yolo\Resources\CloudFront\AssetDistribution;
+use Codinglabs\Yolo\Resources\ElastiCache\CacheSubnetGroup;
+use Codinglabs\Yolo\Resources\Ec2\LoadBalancerSecurityGroup;
+use Codinglabs\Yolo\Resources\ElastiCache\CacheParameterGroup;
 
 beforeEach(function (): void {
     writeManifest([
@@ -431,4 +451,176 @@ it('disables the distribution, waits, then deletes it', function (): void {
     // The update disables the distribution before the delete.
     expect(collect($captured)->firstWhere('name', 'UpdateDistribution')['args']['DistributionConfig']['Enabled'])->toBeFalse();
     expect(array_search('UpdateDistribution', $names, true))->toBeLessThan(array_search('DeleteDistribution', $names, true));
+});
+
+it('lifts deletion protection before deleting the load balancer', function (): void {
+    $captured = [];
+    bindRoutedElbV2Client([
+        'DescribeLoadBalancers' => new Result(['LoadBalancers' => [['LoadBalancerName' => (new LoadBalancer())->name(), 'LoadBalancerArn' => 'arn:lb']]]),
+    ], $captured);
+
+    (new LoadBalancer())->delete();
+
+    $names = array_column($captured, 'name');
+    expect($names)->toContain('ModifyLoadBalancerAttributes')->toContain('DeleteLoadBalancer')
+        ->and(array_search('ModifyLoadBalancerAttributes', $names, true))->toBeLessThan(array_search('DeleteLoadBalancer', $names, true));
+
+    expect(collect($captured)->firstWhere('name', 'ModifyLoadBalancerAttributes')['args']['Attributes'])
+        ->toContain(['Key' => 'deletion_protection.enabled', 'Value' => 'false']);
+});
+
+it('deletes the env listeners by arn', function (string $class): void {
+    $captured = [];
+    bindRoutedElbV2Client([
+        'DescribeLoadBalancers' => new Result(['LoadBalancers' => [['LoadBalancerName' => (new LoadBalancer())->name(), 'LoadBalancerArn' => 'arn:lb']]]),
+        'DescribeListeners' => new Result(['Listeners' => [['Port' => 443, 'ListenerArn' => 'arn:l443'], ['Port' => 80, 'ListenerArn' => 'arn:l80']]]),
+    ], $captured);
+
+    (new $class())->delete();
+
+    expect(array_column($captured, 'name'))->toContain('DeleteListener');
+})->with([HttpsListener::class, HttpListener::class]);
+
+it('resolves the load balancer security group id then deletes it', function (): void {
+    $group = new LoadBalancerSecurityGroup();
+
+    $captured = [];
+    bindMockEc2Client([
+        'DescribeSecurityGroups' => new Result(['SecurityGroups' => [['GroupName' => $group->name(), 'GroupId' => 'sg-lb']]]),
+    ], $captured);
+
+    $group->delete();
+
+    expect(collect($captured)->firstWhere('name', 'DeleteSecurityGroup')['args']['GroupId'])->toBe('sg-lb');
+});
+
+it('empties versions before deleting the env config and logs buckets', function (string $class): void {
+    $captured = [];
+    bindRoutedS3Client([
+        'ListObjectVersions' => new Result(['Versions' => [['Key' => 'x', 'VersionId' => 'v1']], 'DeleteMarkers' => []]),
+        'DeleteObjects' => new Result(['Deleted' => []]),
+        'DeleteBucket' => new Result([]),
+    ], $captured);
+
+    (new $class())->delete();
+
+    $names = array_column($captured, 'name');
+    expect($names)->toContain('DeleteObjects')->toContain('DeleteBucket')
+        ->and(array_search('DeleteObjects', $names, true))->toBeLessThan(array_search('DeleteBucket', $names, true));
+})->with([EnvConfigBucket::class, S3LogsBucket::class]);
+
+it('looks up the lock token then deletes the web ACL', function (): void {
+    $webAcl = new WebAcl();
+
+    $captured = [];
+    bindRoutedWafV2Client([
+        'ListWebACLs' => new Result(['WebACLs' => [['Name' => $webAcl->name(), 'Id' => 'acl-1', 'ARN' => 'arn:acl', 'LockToken' => 'lt-1']]]),
+    ], $captured);
+
+    $webAcl->delete();
+
+    $delete = collect($captured)->firstWhere('name', 'DeleteWebACL');
+    expect($delete['args']['Id'])->toBe('acl-1')
+        ->and($delete['args']['LockToken'])->toBe('lt-1')
+        ->and($delete['args']['Scope'])->toBe('REGIONAL');
+});
+
+it('looks up the lock token then deletes each IP set', function (string $class): void {
+    $ipSet = new $class();
+
+    $captured = [];
+    bindRoutedWafV2Client([
+        'ListIPSets' => new Result(['IPSets' => [['Name' => $ipSet->name(), 'Id' => 'ip-1', 'ARN' => 'arn:ip', 'LockToken' => 'lt-2']]]),
+    ], $captured);
+
+    $ipSet->delete();
+
+    $delete = collect($captured)->firstWhere('name', 'DeleteIPSet');
+    expect($delete['args']['Id'])->toBe('ip-1')->and($delete['args']['LockToken'])->toBe('lt-2');
+})->with([AllowIpSet::class, BlockIpSet::class]);
+
+it('detaches and deletes every env IAM role', function (string $class): void {
+    $captured = [];
+    bindRoutedIamClient([
+        'ListAttachedRolePolicies' => new Result(['AttachedPolicies' => [['PolicyArn' => 'arn:aws:iam::aws:policy/foo']]]),
+        'ListRolePolicies' => new Result(['PolicyNames' => ['inline-1']]),
+    ], $captured);
+
+    (new $class())->delete();
+
+    $names = array_column($captured, 'name');
+    expect($names)->toContain('DetachRolePolicy')->toContain('DeleteRole');
+})->with([EcsExecutionRole::class, ObserverRole::class, AdminRole::class]);
+
+it('detaches entities and prunes versions before deleting every env IAM policy', function (string $class): void {
+    $policy = new $class();
+
+    $captured = [];
+    bindRoutedIamClient([
+        'ListPolicies' => new Result(['Policies' => [['PolicyName' => $policy->name(), 'Arn' => 'arn:aws:iam::111111111111:policy/p']]]),
+        'ListEntitiesForPolicy' => new Result(['PolicyRoles' => [['RoleName' => 'r']], 'PolicyGroups' => [], 'PolicyUsers' => []]),
+        'ListPolicyVersions' => new Result(['Versions' => [['VersionId' => 'v1', 'IsDefaultVersion' => true], ['VersionId' => 'v2', 'IsDefaultVersion' => false]]]),
+    ], $captured);
+
+    $policy->delete();
+
+    $names = array_column($captured, 'name');
+    expect($names)->toContain('DetachRolePolicy')->toContain('DeletePolicyVersion')->toContain('DeletePolicy');
+})->with([ObserverPolicy::class, AdminPolicy::class]);
+
+it('empties members before deleting every env grant group', function (string $class): void {
+    $captured = [];
+    bindRoutedIamClient([
+        'GetGroup' => new Result(['Users' => [['UserName' => 'alice']]]),
+        'ListAttachedGroupPolicies' => new Result(['AttachedPolicies' => []]),
+        'ListGroupPolicies' => new Result(['PolicyNames' => ['inline-grp']]),
+    ], $captured);
+
+    (new $class())->delete();
+
+    $names = array_column($captured, 'name');
+    expect($names)->toContain('RemoveUserFromGroup')->toContain('DeleteGroupPolicy')->toContain('DeleteGroup');
+})->with([ObserversGroup::class, AdminsGroup::class]);
+
+it('deletes the Valkey replication group and waits for it to go', function (): void {
+    $captured = [];
+    bindMockElastiCacheClient([
+        'DeleteReplicationGroup' => new Result(),
+        // The ReplicationGroupDeleted waiter succeeds on Status=deleted, so the
+        // subnet/parameter groups + SG it pins can be removed by the steps that follow.
+        'DescribeReplicationGroups' => new Result(['ReplicationGroups' => [
+            ['ReplicationGroupId' => 'yolo-testing-cache', 'Status' => 'deleted'],
+        ]]),
+    ], $captured);
+
+    (new CacheCluster())->delete();
+
+    $names = array_column($captured, 'name');
+    expect(collect($captured)->firstWhere('name', 'DeleteReplicationGroup')['args']['ReplicationGroupId'])->toBe('yolo-testing-cache')
+        ->and(array_search('DeleteReplicationGroup', $names, true))->toBeLessThan(array_search('DescribeReplicationGroups', $names, true));
+});
+
+it('deletes the cache subnet and parameter groups by name', function (string $class, string $command, string $arg, string $name): void {
+    $captured = [];
+    bindMockElastiCacheClient([], $captured);
+
+    (new $class())->delete();
+
+    expect(collect($captured)->firstWhere('name', $command)['args'][$arg])->toBe($name);
+})->with([
+    [CacheSubnetGroup::class, 'DeleteCacheSubnetGroup', 'CacheSubnetGroupName', 'yolo-testing-cache-subnet-group'],
+    [CacheParameterGroup::class, 'DeleteCacheParameterGroup', 'CacheParameterGroupName', 'yolo-testing-cache-parameter-group'],
+]);
+
+it('resolves the cache security group id then deletes it', function (): void {
+    $group = new CacheSecurityGroup();
+
+    $captured = [];
+    bindMockEc2Client([
+        'DescribeSecurityGroups' => new Result(['SecurityGroups' => [['GroupName' => $group->name(), 'GroupId' => 'sg-cache']]]),
+    ], $captured);
+
+    $group->delete();
+
+    expect(collect($captured)->firstWhere('name', 'DeleteSecurityGroup')['args']['GroupId'])->toBe('sg-cache');
 });

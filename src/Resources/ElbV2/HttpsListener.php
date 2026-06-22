@@ -4,16 +4,20 @@ namespace Codinglabs\Yolo\Resources\ElbV2;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\ElbV2;
+use Aws\Exception\AwsException;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-class HttpsListener implements Resource
+class HttpsListener implements Deletable, Resource
 {
     use ResolvesTags;
 
-    public function __construct(private array $certificate) {}
+    // The certificate is only needed to create the listener; teardown and lookups
+    // (arn/exists/delete) don't use it, so it defaults to empty.
+    public function __construct(private array $certificate = []) {}
 
     public function name(): string
     {
@@ -68,5 +72,28 @@ class HttpsListener implements Resource
     public function synchroniseTags(bool $apply): array
     {
         return Aws::synchroniseElbV2Tags($this->arn(), $this->tags(), $apply);
+    }
+
+    /**
+     * Teardown when the environment is torn down: delete the listener. YOLO's
+     * teardown order deletes the load balancer's listener rules first, so by the
+     * time we get here the listener is unreferenced and a plain deleteListener is
+     * correct. A concurrent not-found is tolerated.
+     */
+    public function delete(): void
+    {
+        try {
+            Aws::elasticLoadBalancingV2()->deleteListener([
+                'ListenerArn' => $this->arn(),
+            ]);
+        } catch (ResourceDoesNotExistException) {
+            // arn() resolution raced a concurrent delete — already gone.
+        } catch (AwsException $e) {
+            if ($e->getAwsErrorCode() === 'ListenerNotFound') {
+                return;
+            }
+
+            throw $e;
+        }
     }
 }

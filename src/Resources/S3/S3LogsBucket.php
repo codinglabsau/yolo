@@ -9,7 +9,9 @@ use Codinglabs\Yolo\Change;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
+use Aws\S3\Exception\S3Exception;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
@@ -47,8 +49,9 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
  * class inherits expiry by default. No `yolo:app` tag — env-scoped
  * (ResolvesTags handles that automatically).
  */
-class S3LogsBucket implements Resource, SynchronisesConfiguration
+class S3LogsBucket implements Deletable, Resource, SynchronisesConfiguration
 {
+    use EmptiesBucket;
     use ReconcilesBucketHardening;
     use ResolvesTags;
 
@@ -105,6 +108,30 @@ class S3LogsBucket implements Resource, SynchronisesConfiguration
             ...$this->reconcileAccessLogDeliveryPolicy($apply),
             ...$this->reconcileLogExpiryLifecycle($apply),
         ];
+    }
+
+    /**
+     * Empty then delete the bucket. S3 refuses DeleteBucket on a non-empty
+     * bucket. This bucket is versioned (create() reconciles versioning to
+     * Enabled), so emptying must clear every object version AND every delete
+     * marker — a plain object sweep would leave noncurrent versions behind and
+     * the delete would fail. The log-delivery bucket policy and the expiry
+     * lifecycle are bucket-scoped, so they go with it — nothing else owns them.
+     * A concurrent removal (NoSuchBucket / 404) is tolerated.
+     */
+    public function delete(): void
+    {
+        try {
+            $this->emptyVersions();
+
+            Aws::s3()->deleteBucket(['Bucket' => $this->name()]);
+        } catch (S3Exception $e) {
+            if (S3::isNotFound($e)) {
+                return;
+            }
+
+            throw $e;
+        }
     }
 
     /**

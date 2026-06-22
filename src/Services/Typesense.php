@@ -252,6 +252,30 @@ class Typesense extends ServiceDefinition
     }
 
     /**
+     * Teardown order (not the inverse of environmentSteps): the cluster delete
+     * drains and removes the node services first (freeing the target group's
+     * targets and the Cloud Map instances), the listener rule goes before the
+     * target group it forwards to, and the namespace delete cascades its own
+     * discovery services. The shared :443 listener + the apex cert are env-shell
+     * (torn down after services) / deliberately kept, so neither appears here.
+     */
+    #[\Override]
+    public function teardownEnvironmentSteps(): array
+    {
+        return [
+            Steps\Sync\Environment\SyncTypesenseAlarmsStep::class,
+            Steps\Sync\Environment\SyncSearchRecordSetStep::class,
+            Steps\Sync\Environment\SyncSearchListenerRuleStep::class,
+            Steps\Sync\Environment\SyncServicesClusterStep::class,
+            Steps\Sync\Environment\SyncSearchTargetGroupStep::class,
+            Steps\Sync\Environment\SyncTypesenseSecurityGroupStep::class,
+            Steps\Sync\Environment\SyncTypesenseNamespaceStep::class,
+            Steps\Sync\Environment\SyncTypesenseLogGroupStep::class,
+            Steps\Sync\Environment\SyncTypesenseEcrRepositoryStep::class,
+        ];
+    }
+
+    /**
      * Build-time env injection for a consuming app, both traffic paths:
      *
      * - Server-side indexing (private, in-VPC, off the ALB/WAF — bulk reimports

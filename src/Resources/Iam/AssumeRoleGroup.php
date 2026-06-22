@@ -4,7 +4,9 @@ namespace Codinglabs\Yolo\Resources\Iam;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Change;
+use Aws\Iam\Exception\IamException;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
@@ -25,7 +27,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * tag — which is why `yolo audit` can't see them (the same blind spot it has for
  * scaling policies); sync-drift is the only stray-catcher.
  */
-abstract class AssumeRoleGroup implements Resource, SynchronisesConfiguration
+abstract class AssumeRoleGroup implements Deletable, Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
 
@@ -100,6 +102,60 @@ abstract class AssumeRoleGroup implements Resource, SynchronisesConfiguration
             $live === null ? 'missing' : 'drifted',
             'reconciled',
         )];
+    }
+
+    /**
+     * Teardown when the tier is dropped (the app loses its deployer, or the
+     * environment is torn down): IAM refuses to delete a group that still has
+     * members, attached managed policies, or inline policies, so remove every
+     * user from the group, detach every managed policy, and delete the inline
+     * assume-role policy (create()'s put) before deleteGroup. A concurrent delete
+     * that already removed the group is tolerated.
+     */
+    public function delete(): void
+    {
+        try {
+            $members = Aws::iam()->getGroup([
+                'GroupName' => $this->name(),
+            ])['Users'] ?? [];
+
+            foreach ($members as $user) {
+                Aws::iam()->removeUserFromGroup([
+                    'GroupName' => $this->name(),
+                    'UserName' => $user['UserName'],
+                ]);
+            }
+
+            $attached = Aws::iam()->listAttachedGroupPolicies([
+                'GroupName' => $this->name(),
+            ])['AttachedPolicies'] ?? [];
+
+            foreach ($attached as $policy) {
+                Aws::iam()->detachGroupPolicy([
+                    'GroupName' => $this->name(),
+                    'PolicyArn' => $policy['PolicyArn'],
+                ]);
+            }
+
+            $inline = Aws::iam()->listGroupPolicies([
+                'GroupName' => $this->name(),
+            ])['PolicyNames'] ?? [];
+
+            foreach ($inline as $policyName) {
+                Aws::iam()->deleteGroupPolicy([
+                    'GroupName' => $this->name(),
+                    'PolicyName' => $policyName,
+                ]);
+            }
+
+            Aws::iam()->deleteGroup([
+                'GroupName' => $this->name(),
+            ]);
+        } catch (IamException $e) {
+            if ($e->getAwsErrorCode() !== 'NoSuchEntity') {
+                throw $e;
+            }
+        }
     }
 
     protected function policyName(): string

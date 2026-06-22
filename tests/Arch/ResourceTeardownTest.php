@@ -16,8 +16,11 @@ use Codinglabs\Yolo\Resources\S3\S3Bucket;
  * resource that forgets `delete()` fails this test until it implements
  * {@see Deletable} (or, for a future shared resource, is moved off App scope).
  *
- * Env- and Account-scoped resources are intentionally NOT yet required to be
- * deletable — environment teardown is a later phase.
+ * Env-scoped resources aren't blanket-required to be deletable: `destroy:environment`
+ * tears down the compute/edge tier (those resources do implement {@see Deletable}),
+ * but the network shell it pins behind the database (VPC, subnets, the RDS security
+ * group) is deliberately left standing, so requiring it here would be wrong. Account
+ * scope is likewise out of scope. This test stays the floor for App scope only.
  */
 it('every app-scoped resource is deletable, except the BYO data bucket', function (): void {
     $instantiate = function (ReflectionClass $reflection): object {

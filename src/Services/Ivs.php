@@ -65,6 +65,20 @@ class Ivs extends ServiceDefinition
         ];
     }
 
+    /**
+     * Teardown order: the rule delete removes its own targets first (the target
+     * step is a create-only no-op), then the log group goes. Both Teardown
+     * branches of the sync steps.
+     */
+    #[\Override]
+    public function teardownEnvironmentSteps(): array
+    {
+        return [
+            Steps\Sync\Environment\SyncIvsEventBridgeRuleStep::class,
+            Steps\Sync\Environment\SyncIvsCloudWatchLogGroupStep::class,
+        ];
+    }
+
     #[\Override]
     public function dashboardContext(): array
     {
