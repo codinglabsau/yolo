@@ -133,6 +133,22 @@ it('fences AttachRolePolicy so only a yolo-* customer-managed policy can be atta
     expect($attach['Resource'])->toBe('arn:aws:iam::111111111111:role/yolo-*');
 });
 
+it('allows DetachRolePolicy unconditioned (detach only removes access, never escalates)', function (): void {
+    $detach = collect((new AdminPolicy())->document()['Statement'])
+        ->first(fn (array $statement): bool => in_array('iam:DetachRolePolicy', (array) $statement['Action'], true));
+
+    expect($detach)->not->toBeNull();
+
+    // Detach is split out from Attach: still fenced to yolo-* roles, but with NO
+    // iam:PolicyARN condition. Removing a policy can only reduce a role's access,
+    // so the tier must be able to detach an AWS-managed policy an older YOLO once
+    // attached (e.g. AmazonRekognitionReadOnlyAccess) when a service grant moves
+    // into the app's own yolo-* policy — the Attach condition would block that.
+    expect($detach['Resource'])->toBe('arn:aws:iam::111111111111:role/yolo-*');
+    expect($detach)->not->toHaveKey('Condition');
+    expect($detach['Action'])->not->toContain('iam:AttachRolePolicy');
+});
+
 it('scopes PassRole to yolo-* roles for the ECS tasks service only', function (): void {
     $passRole = collect((new AdminPolicy())->document()['Statement'])
         ->first(fn (array $statement): bool => in_array('iam:PassRole', (array) $statement['Action'], true));

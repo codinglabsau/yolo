@@ -276,19 +276,31 @@ class AdminPolicy implements Resource, SynchronisesConfiguration
                     ],
                 ],
                 [
-                    // Attach/detach is the escalation chokepoint: scoped to yolo-*
-                    // roles AND conditioned so ONLY a yolo-* customer-managed policy
-                    // can be attached. AWS-managed policies (AdministratorAccess, …)
+                    // Attach is the escalation chokepoint: scoped to yolo-* roles
+                    // AND conditioned so ONLY a yolo-* customer-managed policy can
+                    // be attached. AWS-managed policies (AdministratorAccess, …)
                     // live under account "aws" and never match — so the tier cannot
                     // grant itself broad access by attaching a managed policy.
                     'Effect' => 'Allow',
                     'Resource' => sprintf('arn:aws:iam::%s:role/yolo-*', $accountId),
-                    'Action' => ['iam:AttachRolePolicy', 'iam:DetachRolePolicy'],
+                    'Action' => ['iam:AttachRolePolicy'],
                     'Condition' => [
                         'ArnLike' => [
                             'iam:PolicyARN' => sprintf('arn:aws:iam::%s:policy/yolo-*', $accountId),
                         ],
                     ],
+                ],
+                [
+                    // Detach carries NO policy-ARN condition: removing a policy can
+                    // only ever reduce a role's access, never escalate it, so the
+                    // chokepoint that fences Attach buys nothing here. It must stay
+                    // unconditioned so the tier can clean up an AWS-managed policy an
+                    // older YOLO once attached — e.g. dropping AmazonRekognitionReadOnlyAccess
+                    // when a service grant moves into the app's own yolo-* policy.
+                    // Still fenced to yolo-* roles so it can't touch a foreign role.
+                    'Effect' => 'Allow',
+                    'Resource' => sprintf('arn:aws:iam::%s:role/yolo-*', $accountId),
+                    'Action' => ['iam:DetachRolePolicy'],
                 ],
                 [
                     // Grant groups (LPX-680): sync provisions and reconciles the
