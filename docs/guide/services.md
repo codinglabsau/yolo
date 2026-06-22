@@ -101,6 +101,54 @@ Declaring `services.typesense` (a pinned `version` plus optional `cpu`/`memory` 
 
 Sizing rule of thumb: Typesense holds the whole index in memory at ~2–3× the raw indexed size, so a few hundred MB of records fits comfortably on 1 GB nodes; resizing is an env-manifest edit and a sync. Losing all three nodes at once is genuine DR: the index is a rebuildable projection, so `scout:import` from the database restores it.
 
+### Consuming it from your app
+
+YOLO injects everything the app needs at build time — but the two traffic paths wire up differently, because only one of them is a [Laravel Scout](https://laravel.com/docs/scout#typesense) feature.
+
+**Server-side (indexing + PHP queries) is stock Scout** — `SCOUT_DRIVER`, `SCOUT_PREFIX`, and `TYPESENSE_API_KEY` (the server-side key) plus `TYPESENSE_HOST/PORT/PROTOCOL` are exactly the variables Scout's published `config/scout.php` stub already reads, so this half works with no changes. Wire `TYPESENSE_NODES` only if you want the client's native multi-node failover:
+
+```php
+'typesense' => [
+    'client-settings' => [                        // standard Scout — server-side
+        'api_key' => env('TYPESENSE_API_KEY'),    // all-actions, scoped to {app}_*
+        'nodes' => [[
+            'host'     => env('TYPESENSE_HOST'),
+            'port'     => env('TYPESENSE_PORT', '8108'),
+            'protocol' => env('TYPESENSE_PROTOCOL', 'http'),
+        ]],
+    ],
+    // ... your model-settings (collection-schema, search-parameters) ...
+],
+```
+
+**Browser-direct search is not a Scout feature** — Scout assumes every query runs through PHP, so it never reads a public key or talks to the browser. The browser half is the [`typesense-instantsearch-adapter`](https://github.com/typesense/typesense-instantsearch-adapter)'s job, and the four `TYPESENSE_SEARCH_*` variables YOLO injects (`TYPESENSE_SEARCH_KEY` + `TYPESENSE_SEARCH_HOST/PORT/PROTOCOL`) are **your app's own convention**, not values Scout knows about. Expose them through a config block of your own and hand them to the adapter:
+
+```php
+// config/scout.php — an app convention, NOT read by Scout
+'typesense' => [
+    // ... client-settings as above ...
+    'search' => [
+        'key'      => env('TYPESENSE_SEARCH_KEY'),         // documents:search only — safe in-page
+        'host'     => env('TYPESENSE_SEARCH_HOST'),        // search.{domain}
+        'port'     => env('TYPESENSE_SEARCH_PORT', '443'),
+        'protocol' => env('TYPESENSE_SEARCH_PROTOCOL', 'https'),
+    ],
+],
+```
+
+```js
+// frontend — fed the `search` block (e.g. via an Inertia shared prop)
+const adapter = new TypesenseInstantSearchAdapter({
+  server: {
+    apiKey: config.key,                                   // search-only, public by design
+    nodes: [{ host: config.host, port: config.port, protocol: config.protocol }],
+  },
+  additionalSearchParameters: { query_by: "name,description" },
+});
+```
+
+The search-only key is meant to ship in the page: it can only run searches, only over this app's own `{prefix}*` collections, and the per-IP rate limit on `search.{domain}` is the abuse control — so an origin allowlist would guard nothing (which is why the nodes answer CORS for any origin). For per-user or multi-tenant filtering, derive a [scoped search key](https://typesense.org/docs/latest/api/api-keys.html#generate-scoped-search-key) from it at request time — an HMAC with embedded filters, no admin call — rather than minting more keys.
+
 ## MediaConvert — video transcoding
 
 [AWS Elemental MediaConvert](https://aws.amazon.com/mediaconvert/) for file-based video transcoding. App-side only — jobs run on the account's default on-demand queue, so there is no environment-manifest half.
