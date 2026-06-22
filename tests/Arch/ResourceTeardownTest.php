@@ -17,7 +17,7 @@ use Codinglabs\Yolo\Resources\S3\S3Bucket;
  * {@see Deletable} (or, for a future shared resource, is moved off App scope).
  *
  * Env- and Account-scoped resources are intentionally NOT yet required to be
- * deletable — environment teardown is a later phase of LPX-695.
+ * deletable — environment teardown is a later phase.
  */
 it('every app-scoped resource is deletable, except the BYO data bucket', function (): void {
     $instantiate = function (ReflectionClass $reflection): object {

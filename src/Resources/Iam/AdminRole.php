@@ -13,7 +13,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * YOLO-managed IAM role an operator assumes to **provision** an environment — the
- * Admin tier of LPX-680 Phase 0. `yolo sync` / `yolo scale` run capped to this
+ * Admin tier. `yolo sync` / `yolo scale` run capped to this
  * role so a local operator can never exceed YOLO's own blast radius, even when
  * their personal identity is account-admin. It carries the read surface
  * ({@see ObserverPolicy}) plus the write surface ({@see AdminPolicy}).

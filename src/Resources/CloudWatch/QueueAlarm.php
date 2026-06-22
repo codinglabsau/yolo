@@ -20,13 +20,9 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * steps share it.
  *
  * A full Resource (+ SynchronisesConfiguration) so it rides the same create-or-sync
- * path as every other resource. It used to be a bespoke reconciler whose step
- * short-circuited to WOULD_SYNC on dry-run and re-put the alarm on every apply
- * regardless of drift — invisible in the plan's "Pending changes" yet still
- * tripping the confirm gate forever (so `yolo sync` on a clean account never
- * reported "Already in sync"). Modelling it as a Resource makes its tag AND config
- * drift surface symmetrically through syncResource(): a clean alarm records no
- * change and is pruned before apply; a drifted one is listed current → desired.
+ * path as every other resource, with its tag AND config drift surfacing
+ * symmetrically through syncResource(): a clean alarm records no change and is
+ * pruned before apply; a drifted one is listed current → desired.
  *
  * putMetricAlarm has no create/exists split (it's a pure upsert), which exists()
  * = DescribeAlarms + create() = putMetricAlarm resolves cleanly. Tags need their

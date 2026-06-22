@@ -41,7 +41,7 @@ trait SynchronisesPolicyDocument
         // Canonical compare, not a naive json_encode string match: IAM round-trips
         // the document with reordered keys/statements and collapses single-element
         // Action/Condition lists to scalars, which a string compare reads as drift —
-        // re-versioning on every sync and burning the 5-version cap (LPX-670). Shared
+        // re-versioning on every sync and burning the 5-version cap. Shared
         // with SynchronisesAssumeRolePolicy via CanonicalisesPolicyDocuments.
         if ($this->policyDocumentsMatch($live, $desired)) {
             return [];

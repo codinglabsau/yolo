@@ -13,8 +13,8 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * YOLO-managed IAM role an operator or an automated agent assumes for
- * **read-only** inspection of the environment — the `*-readonly` profile target
- * from LPX-635. It carries the env-shared {@see ObserverPolicy} policy (attached by
+ * **read-only** inspection of the environment — the `*-readonly` profile target.
+ * It carries the env-shared {@see ObserverPolicy} policy (attached by
  * AttachObserverRolePolicyStep), so a profile assuming it can `describe`/`list`/
  * `get` exactly the services YOLO touches and **nothing mutating** — safe by
  * construction, not by convention.

@@ -283,7 +283,7 @@ it('does not re-version the deployer policy when IAM returns the same document r
     // IAM round-trips a managed policy with reordered top-level keys, reordered
     // statements, and single-element Action lists collapsed to bare scalars. The
     // old naive json_encode string compare read all of that as drift and created a
-    // fresh version on every sync (LPX-670); the canonical compare must see it as
+    // fresh version on every sync; the canonical compare must see it as
     // in-sync and write nothing.
     manifestWithDeployer();
 

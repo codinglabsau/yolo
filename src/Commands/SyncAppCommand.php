@@ -154,7 +154,7 @@ class SyncAppCommand extends SyncSteppedCommand
                 Steps\Sync\App\SyncAppObserverRoleStep::class,
                 Steps\Sync\App\AttachDeployerRolePoliciesStep::class,
                 Steps\Sync\App\AttachAppObserverRolePolicyStep::class,
-                // per-app grant groups (LPX-680): membership grants deploy / read
+                // per-app grant groups: membership grants deploy / read
                 // on THIS app only. The deployers group is gated on a GitHub repo
                 // like the deployer role it points at; the observers group is always
                 // provisioned so a read grant can name a single app.
@@ -181,7 +181,7 @@ class SyncAppCommand extends SyncSteppedCommand
                         // alarm on it (mirrors the standalone-service melt below).
                         // Reverse-dependency order on teardown: alarm before queue.
                         // (Multi-tenant queues stay unconditional — their per-tenant
-                        // teardown is the unbuilt destroy:app gap, LPX-695.)
+                        // teardown is the unbuilt destroy:app gap.)
                         ...Manifest::queueDisabled()
                             ? [
                                 Steps\Destroy\App\TeardownQueueAlarmStep::class,

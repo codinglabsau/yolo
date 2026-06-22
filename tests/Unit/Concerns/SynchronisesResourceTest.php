@@ -95,7 +95,7 @@ it('reports SYNCED and records the changes a real sync applied to a config-drift
 it('records missing tags as Changes so tag drift survives the apply-pending filter', function (): void {
     // The bug the new shape fixes: previously, a resource missing yolo:scope=env
     // returned a clean SYNCED at plan time (synchroniseTags was a no-op void),
-    // so PR #57's "only-pending-steps" filter dropped it from apply, so the tag
+    // so the "only-pending-steps" filter dropped it from apply, so the tag
     // never got written. Now tag drift is recorded as a Change and surfaces as
     // WOULD_SYNC (dry-run) / SYNCED-with-changes (real).
     $resource = new FakeConfigResource(present: true, missingTags: ['yolo:scope' => 'env']);

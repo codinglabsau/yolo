@@ -83,7 +83,7 @@ it('stamps the missing yolo:scope tag on an existing security group when applyin
 
 it('surfaces the missing yolo:scope tag as a plan-time change without writing during a dry-run', function (): void {
     // Tag drift alone must mark the step WOULD_SYNC so the apply pass isn't
-    // dropped by the only-pending-steps filter (#57) — the rules are clean here,
+    // dropped by the only-pending-steps filter — the rules are clean here,
     // so the WOULD_SYNC can only come from the tag.
     $captured = [];
 

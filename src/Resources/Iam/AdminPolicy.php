@@ -303,7 +303,7 @@ class AdminPolicy implements Resource, SynchronisesConfiguration
                     'Action' => ['iam:DetachRolePolicy'],
                 ],
                 [
-                    // Grant groups (LPX-680): sync provisions and reconciles the
+                    // Grant groups: sync provisions and reconciles the
                     // YOLO grant groups + their inline assume-role policy, and an
                     // admin manages their membership via `yolo permissions`. Scoped
                     // to yolo-* groups — the tier can never touch a non-YOLO group.

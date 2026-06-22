@@ -82,7 +82,7 @@ it('strips the stream wildcard `:*` suffix before calling the CloudWatch Logs ta
 
 it('reads tags during a dry-run for plan-time drift but never writes', function (): void {
     // The plan pass needs to know whether tag sync would change anything (so
-    // the apply-pending filter from PR #57 doesn't drop a step with tag drift),
+    // the apply-pending filter doesn't drop a step with tag drift),
     // so ListTagsForResource is expected — but TagResource (the write) is not.
     $captured = [];
 

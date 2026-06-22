@@ -8,7 +8,7 @@ use Codinglabs\Yolo\Resources\Iam\ObserverRole;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
 
 /**
- * Provisions the env-shared read-only `yolo-{env}-observer-role` (LPX-635) an
+ * Provisions the env-shared read-only `yolo-{env}-observer-role` an
  * operator or agent assumes for safe inspection. Unconditional, like the observer
  * policy it carries — it stands up with the environment. The read-only policy is
  * attached by {@see AttachObserverRolePolicyStep}, which runs after this.

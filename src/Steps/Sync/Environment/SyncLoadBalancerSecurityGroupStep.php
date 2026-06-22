@@ -45,7 +45,7 @@ class SyncLoadBalancerSecurityGroupStep implements Step
         // Surface tag drift (e.g. the yolo:scope marker) the way
         // SynchronisesResource does: compute it regardless of --dry-run so the
         // plan lists it and the apply pass isn't dropped by the
-        // only-pending-steps filter (#57); the write happens only when applying.
+        // only-pending-steps filter; the write happens only when applying.
         $drifted = false;
 
         foreach ($securityGroup->synchroniseTags(apply: ! $dryRun) as $key => $value) {

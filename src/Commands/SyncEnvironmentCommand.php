@@ -109,11 +109,11 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 // pre-deploy `sync --check` gate can read the whole stack under the
                 // deploy role, scoped to exactly the services YOLO provisions.
                 Steps\Sync\Environment\SyncObserverPolicyStep::class,
-                // The read-only role an operator/agent assumes for safe inspection
-                // (LPX-635) — created, then the observer policy attached to it.
+                // The read-only role an operator/agent assumes for safe inspection —
+                // created, then the observer policy attached to it.
                 Steps\Sync\Environment\SyncObserverRoleStep::class,
                 Steps\Sync\Environment\AttachObserverRolePolicyStep::class,
-                // The Admin tier (LPX-680): the write surface (yolo-{env}-admin)
+                // The Admin tier: the write surface (yolo-{env}-admin)
                 // and the role an operator assumes to run `yolo sync` / `yolo scale`
                 // capped to YOLO's blast radius. The role carries the observer
                 // (read) + admin (write) policies. Self-activating — the first sync
@@ -121,7 +121,7 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 Steps\Sync\Environment\SyncAdminPolicyStep::class,
                 Steps\Sync\Environment\SyncAdminRoleStep::class,
                 Steps\Sync\Environment\AttachAdminRolePolicyStep::class,
-                // Grant groups (LPX-680): membership is the access lever. The
+                // Grant groups: membership is the access lever. The
                 // env-wide observers + admins groups each allow sts:AssumeRole on
                 // their tier role; YOLO owns the group + policy, never membership.
                 Steps\Sync\Environment\SyncObserversGroupStep::class,
