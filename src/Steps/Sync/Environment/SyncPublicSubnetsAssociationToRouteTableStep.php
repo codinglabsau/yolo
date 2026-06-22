@@ -19,7 +19,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * lookup for an association, but the route table's `Associations` block lists them,
  * so we diff against that and only associate the subnets that aren't already
  * attached — instead of re-associating all three on every sync, which recorded no
- * Change and so kept tripping the confirm gate even on a clean account (LPX-646).
+ * Change and so kept tripping the confirm gate even on a clean account.
  */
 class SyncPublicSubnetsAssociationToRouteTableStep implements Step
 {

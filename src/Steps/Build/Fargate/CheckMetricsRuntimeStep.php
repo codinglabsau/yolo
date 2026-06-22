@@ -23,7 +23,7 @@ use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
  * off FrankenPHP registers no gauges, the runtime reporter reads nothing and publishes
  * no datapoint, the burst alarm sits in INSUFFICIENT_DATA, and the deploy still goes green on the
  * target-tracking policies — burst is simply, invisibly, dark (exactly how it shipped
- * broken in #118). Probing the actual image (`docker run … grep`, matching
+ * broken). Probing the actual image (`docker run … grep`, matching
  * CheckSsrRuntimeStep / CheckSchedulerRuntimeStep) catches both a Caddyfile that never
  * got generated and a Dockerfile that doesn't copy the build context into the image.
  *

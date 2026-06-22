@@ -19,7 +19,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * block lists them, so we diff against that and only call createRoute when the
  * default route is absent — instead of re-stamping it (idempotently) on every
  * sync, which recorded no Change and so kept tripping the confirm gate even on a
- * clean account (LPX-646).
+ * clean account.
  */
 class SyncDefaultRouteStep implements Step
 {

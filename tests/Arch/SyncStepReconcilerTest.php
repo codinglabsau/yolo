@@ -10,7 +10,7 @@ use Codinglabs\Yolo\Steps\Sync\App\Tenant\SyncSslCertificateStep as TenantSslCer
 /**
  * Every sync step that mutates AWS must be able to record drift into the plan: a
  * write that records no Change is invisible to the plan pass and pruned before
- * apply — the LPX-646 / #95 class of bug. The structural floor is that every
+ * apply — the invisible-write class of bug. The structural floor is that every
  * concrete `Steps\Sync` step exposes `changes()` (via RecordsChanges, directly or
  * through SynchronisesResource / inheritance).
  *
@@ -31,7 +31,7 @@ it('every sync step can record drift into the plan, or is an explicit exemption'
         SyncInternetGatewayAttachmentStep::class, // checks the attachment state before attaching
     ];
 
-    // Known debt — does NOT belong here long-term. Tracked in LPX-669: it returns
+    // Known debt — does NOT belong here long-term: it returns
     // WOULD_SYNC on every plan pass regardless of drift, so a multi-tenant sync
     // never reaches "Already in sync". Remove once it's made diff-first.
     $knownOverReporters = [

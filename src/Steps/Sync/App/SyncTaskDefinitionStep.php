@@ -66,7 +66,7 @@ class SyncTaskDefinitionStep implements Step
 
         // The registered revision already renders the desired payload — nothing to
         // do, so the step is pruned before apply and a clean app reports "Already
-        // in sync" instead of registering a no-op revision every time (LPX-646).
+        // in sync" instead of registering a no-op revision every time.
         if ($live !== null && $this->matchesDesired(Arr::except($desired, ['tags']), $live)) {
             return StepResult::SYNCED;
         }

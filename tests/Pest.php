@@ -157,7 +157,7 @@ function bindRoutedS3Client(array $byCommand, array &$captured): void
 }
 
 /**
- * Assert a sync step honours the reconciler contract that the LPX-646 / #95 class
+ * Assert a sync step honours the reconciler contract that the invisible-write class
  * of bug violated: its plan-pass status and recorded changes must reflect ACTUAL
  * drift, and it must never write on the plan pass. This is the shared standard —
  * every sync step that mutates AWS should carry one of these:

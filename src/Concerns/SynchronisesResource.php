@@ -19,7 +19,7 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
  * apply=false so nothing is written), and any missing key / drifted attribute
  * is recorded as a Change so the plan→apply orchestrator (`SyncSteppedCommand`)
  * can list exactly what would change, and so the apply pass survives the
- * "only-pending-steps" filter from PR #57 (a step with tag drift but no
+ * "only-pending-steps" filter (a step with tag drift but no
  * config drift was silently dropped before, so the plan-clean SYNCED meant
  * the apply never ran the tag write).
  */
