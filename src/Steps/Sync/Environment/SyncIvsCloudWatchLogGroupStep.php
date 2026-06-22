@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\ServiceState;
 use Codinglabs\Yolo\Services\Lifecycle;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
+use Codinglabs\Yolo\Contracts\SkippedByDeployCheck;
 use Codinglabs\Yolo\Resources\CloudWatchLogs\IvsLogGroup;
 
 /**
@@ -16,7 +17,7 @@ use Codinglabs\Yolo\Resources\CloudWatchLogs\IvsLogGroup;
  * when the declaration is removed. One pipeline per environment — the `aws.ivs`
  * event stream is account-wide, so this was never a per-app resource.
  */
-class SyncIvsCloudWatchLogGroupStep implements Step
+class SyncIvsCloudWatchLogGroupStep implements SkippedByDeployCheck, Step
 {
     use SynchronisesResource;
 

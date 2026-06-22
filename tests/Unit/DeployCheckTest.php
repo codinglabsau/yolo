@@ -9,6 +9,7 @@ use Codinglabs\Yolo\Concerns\ChecksIfCommandsShouldBeRunning;
 use Codinglabs\Yolo\Steps\Sync\Environment\BuildTypesenseImageStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncTypesenseAdminKeyStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncTypesenseLogGroupStep;
+use Codinglabs\Yolo\Steps\Sync\Environment\SyncIvsCloudWatchLogGroupStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncTypesenseTaskDefinitionStep;
 
 function deployCheckChecker(): object
@@ -19,13 +20,14 @@ function deployCheckChecker(): object
     };
 }
 
-it('marks the deployer-fenced typesense env steps as skipped-by-deploy-check', function (string $step): void {
+it('marks the deployer-fenced env-backed-service steps as skipped-by-deploy-check', function (string $step): void {
     expect(is_subclass_of($step, SkippedByDeployCheck::class))->toBeTrue();
 })->with([
     SyncTypesenseAdminKeyStep::class,
     BuildTypesenseImageStep::class,
     SyncTypesenseTaskDefinitionStep::class,
     SyncTypesenseLogGroupStep::class,
+    SyncIvsCloudWatchLogGroupStep::class,
 ]);
 
 it('skips a SkippedByDeployCheck step only while the deploy gate is checking', function (): void {
