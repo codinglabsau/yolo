@@ -216,7 +216,7 @@ it('the nodes and discovery-services steps skip on teardown', function (string $
     SyncTypesenseDiscoveryServicesStep::class,
 ]);
 
-it('authorises the API port from the ALB SG and peering node-to-node', function (): void {
+it('authorises the API port from the ALB SG and both the API and peering ports node-to-node', function (): void {
     $captured = [];
     bindTypesenseWorld($captured);
 
@@ -233,9 +233,34 @@ it('authorises the API port from the ALB SG and peering node-to-node', function 
 
     $authorisations = collect($ec2Captured)->where('name', 'AuthorizeSecurityGroupIngress')->values();
 
-    expect($authorisations)->toHaveCount(2)
+    // 8108 from the ALB, then 8108 node-to-node (peer status + write forwarding),
+    // then 8107 node-to-node (Raft peering).
+    expect($authorisations)->toHaveCount(3)
         ->and($authorisations[0]['args']['IpPermissions'][0]['FromPort'])->toBe(8108)
         ->and($authorisations[0]['args']['IpPermissions'][0]['UserIdGroupPairs'][0]['GroupId'])->toBe('sg-alb')
-        ->and($authorisations[1]['args']['IpPermissions'][0]['FromPort'])->toBe(8107)
-        ->and($authorisations[1]['args']['IpPermissions'][0]['UserIdGroupPairs'][0]['GroupId'])->toBe('sg-typesense');
+        ->and($authorisations[1]['args']['IpPermissions'][0]['FromPort'])->toBe(8108)
+        ->and($authorisations[1]['args']['IpPermissions'][0]['UserIdGroupPairs'][0]['GroupId'])->toBe('sg-typesense')
+        ->and($authorisations[2]['args']['IpPermissions'][0]['FromPort'])->toBe(8107)
+        ->and($authorisations[2]['args']['IpPermissions'][0]['UserIdGroupPairs'][0]['GroupId'])->toBe('sg-typesense');
+});
+
+it('records all three baseline rules as pending on a greenfield plan', function (): void {
+    $captured = [];
+    bindTypesenseWorld($captured);
+
+    $ec2Captured = [];
+    bindMockEc2Client([
+        // The typesense SG itself is absent — its own create is still pending — so
+        // all three of its baseline rules are pending too.
+        'DescribeSecurityGroups' => new Result(['SecurityGroups' => [
+            ['GroupName' => 'yolo-testing-load-balancer-security-group', 'GroupId' => 'sg-alb'],
+        ]]),
+        'DescribeSecurityGroupRules' => new Result(['SecurityGroupRules' => []]),
+    ], $ec2Captured);
+
+    $step = new SyncTypesenseSecurityGroupStep();
+
+    expect($step(['dry-run' => true]))->toBe(StepResult::WOULD_CREATE)
+        ->and($step->changes())->toHaveCount(3)
+        ->and(collect($ec2Captured)->where('name', 'AuthorizeSecurityGroupIngress'))->toHaveCount(0);
 });

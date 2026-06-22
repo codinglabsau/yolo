@@ -19,10 +19,14 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * The node tasks' security group and its baseline ingress: the search API
- * (8108) from the env ALB's security group, and Raft peering (8107)
- * node-to-node (self-referencing). Rules are reconciled additively, identified
- * by content — consuming apps' task-SG 8108 ingress is the app tier's to add,
- * the RDS-3306 pattern.
+ * (8108) from the env ALB's security group, plus node-to-node (self-referencing)
+ * on BOTH the search API (8108) and Raft peering (8107) ports. The API port is
+ * needed node-to-node as well as from the ALB — Typesense polls peers' /status
+ * and forwards writes to the leader over 8108, so peering on 8107 alone leaves a
+ * follower unable to hand a write (e.g. minting a key) to the leader, and the
+ * cluster serves reads but silently fails writes. Rules are reconciled
+ * additively, identified by content — consuming apps' task-SG 8108 ingress is
+ * the app tier's to add, the RDS-3306 pattern.
  */
 class SyncTypesenseSecurityGroupStep implements Step
 {
@@ -45,6 +49,7 @@ class SyncTypesenseSecurityGroupStep implements Step
             // Greenfield plan — the group's own create is pending, so both
             // rules are too. Record them so the apply pass runs this step.
             $this->recordChange(Change::make(sprintf('ingress %d/tcp from load balancer security group', Typesense::API_PORT), null, 'authorised'));
+            $this->recordChange(Change::make(sprintf('ingress %d/tcp node-to-node', Typesense::API_PORT), null, 'authorised'));
             $this->recordChange(Change::make(sprintf('ingress %d/tcp node-to-node', Typesense::PEERING_PORT), null, 'authorised'));
 
             return $result;
@@ -60,6 +65,15 @@ class SyncTypesenseSecurityGroupStep implements Step
             sprintf('ingress %d/tcp from load balancer security group', Typesense::API_PORT),
             $dryRun,
         );
+
+        $changed = $this->reconcileIngress(
+            $groupId,
+            Typesense::API_PORT,
+            $groupId,
+            'Search API node-to-node (peer status checks + write forwarding to the leader)',
+            sprintf('ingress %d/tcp node-to-node', Typesense::API_PORT),
+            $dryRun,
+        ) || $changed;
 
         $changed = $this->reconcileIngress(
             $groupId,

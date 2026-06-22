@@ -14,9 +14,10 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * Security group on the Typesense node tasks. Models identity + tags; the
- * ingress rules (8108 from the ALB SG, 8107 node-to-node) are reconciled
- * additively by SyncTypesenseSecurityGroupStep — consuming apps' task-SG
- * ingress arrives with the app-side consumption work, the RDS-3306 pattern.
+ * ingress rules (8108 from the ALB SG, plus 8108 and 8107 node-to-node) are
+ * reconciled additively by SyncTypesenseSecurityGroupStep — consuming apps'
+ * task-SG ingress arrives with the app-side consumption work, the RDS-3306
+ * pattern.
  */
 class TypesenseSecurityGroup implements Deletable, Resource
 {
