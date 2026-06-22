@@ -155,6 +155,39 @@ it('melts a standalone queue + scheduler back down when both are switched off', 
         ->not->toContain(Steps\Sync\App\SyncSchedulerServiceStep::class);
 });
 
+it('melts the SQS queue + depth alarm when the queue is disabled (tasks.queue: false)', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'codinglabs.com.au',
+        'tasks' => ['web' => true, 'queue' => false],
+    ]);
+
+    $appSteps = (new SyncCommand())->scopes()['app'];
+
+    // `queue: false` runs jobs inline (QUEUE_CONNECTION=sync) — the SQS queue is
+    // never published to, so it's torn down rather than provisioned idle.
+    expect($appSteps)
+        ->toContain(Steps\Destroy\App\TeardownQueueAlarmStep::class)
+        ->toContain(Steps\Destroy\App\TeardownQueueStep::class)
+        ->not->toContain(Steps\Sync\App\Solo\SyncQueueStep::class)
+        ->not->toContain(Steps\Sync\App\Solo\SyncQueueAlarmStep::class);
+});
+
+it('provisions the SQS queue when the queue runs (bundled into web by default)', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'codinglabs.com.au',
+        'tasks' => ['web' => true],
+    ]);
+
+    $appSteps = (new SyncCommand())->scopes()['app'];
+
+    expect($appSteps)
+        ->toContain(Steps\Sync\App\Solo\SyncQueueStep::class)
+        ->toContain(Steps\Sync\App\Solo\SyncQueueAlarmStep::class)
+        ->not->toContain(Steps\Destroy\App\TeardownQueueStep::class);
+});
+
 it('melts a standalone queue + scheduler back down when the roles revert to bundled', function (): void {
     // No queue/scheduler block at all — the roles ride the web container. An app that
     // previously extracted them must still get the teardown wired so the revert lands.

@@ -92,7 +92,8 @@ environments:
 
       # Extract the queue into its own ECS service (scale independently of web). Like
       # web, a standalone queue must be a config map that declares `autoscaling` — there's
-      # no bare `queue: true` shorthand. `false` switches the worker off entirely. Set
+      # no bare `queue: true` shorthand. `false` switches the worker off entirely (jobs run
+      # inline, QUEUE_CONNECTION=sync) and tears the SQS queue + its depth alarm down. Set
       # autoscaling.min: 0 to scale to zero when idle — except when it also hosts the
       # scheduler (no `scheduler` block below), where min 0 is rejected so cron isn't
       # killed when it idles.
@@ -378,7 +379,7 @@ To run web in isolation, **extract the worker tier**: add a top-level [`tasks.qu
 
 Each block is **`true | false | {config}`** (the same boolean-or-object form as [`tasks.web.ssr`](#tasks-web)): `true` extracts the role with default sizing, a config object extracts it with overrides, and `false` switches it off so the role runs **nowhere** — neither bundled nor extracted. An empty block (`queue:`) or empty object (`{}`) is rejected — state the intent explicitly. The **`queue`** block is the one exception to bare `true`: like web, a standalone queue must be a config object that declares [`autoscaling`](#tasks-queue) (web and queue both need a definitive scaling decision). Only **`scheduler`** — a pinned singleton that never scales — keeps the bare `true` shorthand.
 
-Placement is reconciled, not just applied: if an app was running an extracted queue or scheduler service and you later **bundle the role back in** (remove the block) or **switch it off** (`false`), the next `sync` tears the now-orphaned ECS service down — and for the queue, its scalable target, scaling policies and scale-to-zero alarm with it — so a dropped block never strands a live service.
+Placement is reconciled, not just applied: if an app was running an extracted queue or scheduler service and you later **bundle the role back in** (remove the block) or **switch it off** (`false`), the next `sync` tears the now-orphaned ECS service down — and for the queue, its scalable target, scaling policies and scale-to-zero alarm with it — so a dropped block never strands a live service. Switching the **queue off** (`false`) goes further: because jobs then run inline (`QUEUE_CONNECTION=sync`) and nothing is ever enqueued, `sync` also tears down the app's SQS queue and its depth alarm, and the CloudWatch dashboard drops its queue panel (single-tenant apps; a multi-tenant app's per-tenant queues are torn down by `destroy:app` instead).
 
 In the placement table below, `queue: true` is shorthand for "queue extracted" — the real manifest writes `queue: { autoscaling: … }`; only `scheduler: true` is literal.
 

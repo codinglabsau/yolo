@@ -174,8 +174,23 @@ class SyncAppCommand extends SyncSteppedCommand
                     : [
                         Steps\Sync\App\Solo\SyncHostedZoneStep::class,
                         Steps\Sync\App\Solo\SyncSslCertificateStep::class,
-                        Steps\Sync\App\Solo\SyncQueueStep::class,
-                        Steps\Sync\App\Solo\SyncQueueAlarmStep::class,
+                        // The SQS queue + its depth alarm, always wired with a melt
+                        // branch: `tasks.queue: false` runs jobs inline
+                        // (QUEUE_CONNECTION=sync), so the queue is never published to
+                        // — tear it down instead of stranding an idle queue + a depth
+                        // alarm on it (mirrors the standalone-service melt below).
+                        // Reverse-dependency order on teardown: alarm before queue.
+                        // (Multi-tenant queues stay unconditional — their per-tenant
+                        // teardown is the unbuilt destroy:app gap, LPX-695.)
+                        ...Manifest::queueDisabled()
+                            ? [
+                                Steps\Destroy\App\TeardownQueueAlarmStep::class,
+                                Steps\Destroy\App\TeardownQueueStep::class,
+                            ]
+                            : [
+                                Steps\Sync\App\Solo\SyncQueueStep::class,
+                                Steps\Sync\App\Solo\SyncQueueAlarmStep::class,
+                            ],
                     ],
                 // Fargate + CDN (web tasks only)
                 ...Manifest::hasWeb()

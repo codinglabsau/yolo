@@ -190,6 +190,9 @@ class Dashboard implements Deletable
             'distributionId' => $web ? static::tryResolve(fn () => CloudFront::distributionByComment((new AssetDistribution())->name())['Id']) : null,
             'queuePrefix' => Helpers::keyedResourceName() . '-',
             'queues' => static::queueNames(),
+            // `tasks.queue: false` runs jobs inline (QUEUE_CONNECTION=sync) and YOLO
+            // melts the SQS queue, so there's nothing to chart — omit the section.
+            'queueDisabled' => Manifest::queueDisabled(),
             'rds' => static::rdsTarget(),
             'buckets' => static::bucketNames(),
             'taskLogGroup' => $web ? (new TaskLogGroup())->name() : null,
@@ -361,8 +364,10 @@ class Dashboard implements Deletable
             $widgets = [...$widgets, ...$section];
         }
 
-        [$section, $y] = static::queueSection($context, $y);
-        $widgets = [...$widgets, ...$section];
+        if (! $context['queueDisabled']) {
+            [$section, $y] = static::queueSection($context, $y);
+            $widgets = [...$widgets, ...$section];
+        }
 
         if ($context['rds'] !== null) {
             [$section, $y] = static::databaseSection($context, $y);

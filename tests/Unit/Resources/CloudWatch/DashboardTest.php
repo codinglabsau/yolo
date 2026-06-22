@@ -32,6 +32,7 @@ function dashboardContext(array $overrides = []): array
         'distributionId' => 'E123ABCDEF',
         'queuePrefix' => 'yolo-testing-my-app-',
         'queues' => ['yolo-testing-my-app'],
+        'queueDisabled' => false,
         'rds' => ['identifier' => 'my-cluster', 'cluster' => true],
         'buckets' => ['yolo-111111111111-testing-my-app-config', 'yolo-111111111111-testing-my-app-assets'],
         'taskLogGroup' => '/yolo/testing-my-app',
@@ -127,6 +128,14 @@ it('builds every section for a full web app', function (): void {
     $body = Dashboard::body(dashboardContext());
 
     expect(widgetTitles($body))->toContain('# Web', '# Queue', '# Database', '# CDN & storage', '# Logs');
+});
+
+it('omits the queue section when the queue is disabled (tasks.queue: false)', function (): void {
+    $body = Dashboard::body(dashboardContext(['queueDisabled' => true]));
+
+    expect(widgetTitles($body))->not->toContain('# Queue')
+        ->and(findWidget($body, 'Queue depth'))->toBeNull()
+        ->and(widgetTitles($body))->toContain('# Web', '# Database');   // the rest still render
 
     expect(findWidget($body, 'CPU utilisation')['properties']['metrics'][0])
         ->toContain('AWS/ECS', 'yolo-testing-my-app', 'yolo-testing-my-app-web');
