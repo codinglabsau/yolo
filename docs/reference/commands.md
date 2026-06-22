@@ -26,8 +26,9 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | [`build <env>`](#yolo-build) | Build and push the container image |
 | [`deploy <env>`](#yolo-deploy) | Build, then roll out a zero-downtime deploy |
 | [`rollback <env>`](#yolo-rollback) | Re-deploy a previously-built version from ECR, without a build |
+| [`destroy <env>`](#yolo-destroy) | Permanently tear down an application and its environment, in reverse-dependency order (the reverse of `sync`) |
 | [`destroy:app <env>`](#yolo-destroy-app) | Permanently tear down one app's resources (the reverse of `sync:app`) |
-| [`destroy:environment <env>`](#yolo-destroy-environment) | Permanently tear down an environment's shared compute/edge resources (the reverse of `sync:environment`) |
+| [`destroy:environment <env>`](#yolo-destroy-environment) | Permanently tear down an entire environment — compute, edge and network (the reverse of `sync:environment`) |
 | [`status <env>`](#yolo-status) | Live status dashboard (or a one-shot `--snapshot` / `--json` frame) |
 | [`status:app <env>`](#yolo-status-app) | App-tier status (the same as `status`, under the scope namespace) |
 | [`status:environment <env>`](#yolo-status-environment) | Roll up every app's status across an environment |
@@ -604,6 +605,30 @@ When a [`tasks.web.autoscaling`](/reference/manifest#tasks-web-autoscaling) bloc
 
 ---
 
+## `yolo destroy`
+
+Permanently tear an application **and its environment** down in one pass — the reverse of [`sync`](#sync), which builds account → environment → app. destroy runs **app → environment → account** in reverse-dependency order, behind a single **plan → confirm → apply** gate, so nothing is removed while something still references it. Everything that belongs to the environment goes — gated only on whether anything else still uses it.
+
+```bash
+yolo destroy <environment> [--check] [--force] [--no-progress]
+```
+
+Arguments and options as [`sync`](#sync-options). Scope: **app → environment → account**. Admin-tier.
+
+What it tears down, each scope self-gating:
+
+- **app** — this app's resources ([`destroy:app`](#yolo-destroy-app)).
+- **environment** — the compute/edge tier ([`destroy:environment`](#yolo-destroy-environment) Tier A) **and the network shell** (VPC, subnets, route table, internet gateway, RDS SG + subnet group) — *unless a database is attached to the VPC*, which keeps the shell standing (YOLO never deletes a database it doesn't own, and a live DB pins the whole network; the blocking instance is named in the summary).
+- **account** — the account-shared GitHub OIDC provider, reclaimed **only when no other environment remains** (no resource tagged `yolo:environment=<other>`). It fails safe: if that can't be determined, the provider is kept, never deleted on a guess.
+
+**Never deleted.** The database and the bring-your-own [app data bucket](/reference/manifest#bucket) are off-limits — not by configuration, but structurally: the data bucket isn't a deletable resource, and no destructive RDS call exists anywhere in YOLO (both enforced by tests). The confirmation names them so you can see they're safe.
+
+**Guarded.** The app must be a shape `destroy:app` supports, and no *other* app may still claim the environment — this app is torn down in the same run, so it's excused, but any sibling must be destroyed first. The yolo.yml environment block is stripped as the very last step, after everything that still needs the manifest's account/region to resolve.
+
+**The confirmation.** A destroy is irreversible, so the gate is loud: a red banner, a **PROTECTED** callout naming the database + app data bucket, and a prompt to **type the environment name** (no fat-fingerable y/N). `--force` / non-interactive skips it, as with sync. Anything deliberately kept — the network shell while a database is attached, the OIDC provider while other environments exist — is listed back at the end of the run with the reason, so it's never a silent omission.
+
+---
+
 ## `yolo destroy:app`
 
 Permanently tear one application's resources down in the given environment — the reverse of [`sync:app`](#yolo-sync-app). It uses the same **plan → confirm → apply** flow: a plan pass lists every resource that **would delete**, the confirm gate guards the irreversible apply (declining is the preview), and `--check` is the non-interactive plan-only form for CI. The apply pass deletes in reverse dependency order — CloudFront → autoscaling → ECS services → cluster → listener rules → target group → task security group → app IAM → SQS → hosted-zone records → buckets → ECR — so a resource is never deleted while something still references it.
@@ -625,11 +650,13 @@ Arguments and options as [`sync`](#sync-options). Scope: **app**. Admin-tier.
 
 **It refuses rather than partially tearing down.** To guarantee a teardown can never orphan resources (which [`yolo audit`](#yolo-audit) would then flag), destroy:app refuses — with a clear message — app shapes whose teardown isn't fully modelled yet: **multi-tenant** apps, **headless** apps (no domain), and apps with **no web task**. (Consuming an env service is no longer a refusal — destroy:app reverses each service's per-app resources; only a service that adds per-app resources with no teardown modelled would refuse, which none do today.)
 
+**The confirmation.** Like the other destroy commands, the gate is a red banner with a **PROTECTED** callout (the database + app data bucket) and a prompt to **type the environment name** before the irreversible apply. `--force` / non-interactive skips it.
+
 ---
 
 ## `yolo destroy:environment`
 
-Permanently tear an environment's shared **compute/edge** resources down — the reverse of [`sync:environment`](#yolo-sync-environment), behind the same **plan → confirm → apply** flow (`--check` is the CI plan-only form). The apply pass deletes in reverse dependency order: the env-backed **service stacks** (Typesense / IVS) first, then the **WAF** off the load balancer, the `:443`/`:80` **listeners** + the **load balancer** + its security group, the shared **Valkey cache** (replication group + its subnet/parameter groups + security group), the **SNS alarm topic**, the shared **ECS execution role** and the **observer/admin** IAM tiers, and finally the **env buckets**.
+Permanently tear an **entire environment** down — the reverse of [`sync:environment`](#yolo-sync-environment), behind the same **plan → confirm → apply** flow (`--check` is the CI plan-only form). The apply pass deletes in reverse dependency order: the env-backed **service stacks** (Typesense / IVS) first, then the **WAF** off the load balancer, the `:443`/`:80` **listeners** + the **load balancer** + its security group, the shared **Valkey cache** (replication group + its subnet/parameter groups + security group), the **SNS alarm topic**, the shared **ECS execution role** and the **observer/admin** IAM tiers, the **env buckets**, and finally the **network shell** (RDS subnet group + SG, the public subnets, the route table, the internet gateway, and the VPC last).
 
 ```bash
 yolo destroy:environment <environment> [--check] [--force] [--no-progress]
@@ -637,15 +664,16 @@ yolo destroy:environment <environment> [--check] [--force] [--no-progress]
 
 Arguments and options as [`sync`](#sync-options). Scope: **environment**. Admin-tier.
 
-**It tears down Tier A (compute/edge) and deliberately leaves Tier B (the network shell + database):**
+**It tears the whole environment down — compute/edge (Tier A) and the network shell (Tier B):**
 
-- **The VPC, subnets, route tables, internet gateway, and the RDS security group + subnet group stay standing.** A surviving RDS instance lives in the VPC's private subnets using that security group and subnet group, and AWS pins all of it (you can't delete an in-use security group, an in-use subnet, or a VPC with a live ENI) — so keeping the database keeps the whole network shell. "Decommission the compute tier, keep the data" is the likely case; full VPC reclamation is a separate, gated step.
+- **The network shell is reclaimed automatically** (VPC, subnets, route table, internet gateway, RDS security group + subnet group), after Tier A — *unless a database is attached to the VPC*. A surviving RDS instance lives in the VPC's private subnets using that security group and subnet group, and AWS pins all of it (you can't delete an in-use security group, an in-use subnet, or a VPC with a live ENI), so a live database keeps the whole shell standing; it's named in the refusal summary. Snapshot and drop the database out-of-band, then re-run to reclaim the network.
 - **RDS is never touched** — YOLO owns the security group, never the database.
+- **The env buckets go with the environment.** The env config bucket (the env manifest + env-shared `.env`) and the env logs bucket (ALB access logs) are regeneratable infrastructure config, emptied and deleted as part of the teardown. The bring-your-own app data bucket is never touched (it isn't even a deletable resource).
 - The env-backed **service stacks** come down even though the env manifest still declares them: the command forces [the service lifecycle](/guide/services#the-service-lifecycle) to *teardown* for the duration of the run, reusing the same per-service teardown the manifest-removal path uses.
 
 **Guarded — it refuses while any app still claims the environment.** If any app has a published claim file or running tasks, destroy:environment names them and stops: tear each down with [`destroy:app`](#yolo-destroy-app) first, so the shared resources never go out from under a live app.
 
-**The env buckets go with the environment.** The env config bucket (the env manifest + env-shared `.env`) and the env logs bucket (ALB access logs) are regeneratable infrastructure config, emptied and deleted as part of the teardown. The BYO app data bucket and the database are never touched.
+**The confirmation.** Same loud gate as [`destroy`](#yolo-destroy): a red banner, a **PROTECTED** callout naming the database + app data bucket, and a prompt to **type the environment name** before the irreversible apply. `--force` / non-interactive skips it.
 
 ---
 

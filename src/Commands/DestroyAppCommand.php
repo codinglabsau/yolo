@@ -61,8 +61,11 @@ class DestroyAppCommand extends SyncSteppedCommand
      * per-app resources (see {@see appServiceTeardownSteps()}). The only service
      * stop left is the honest one: a service with per-app resources whose teardown
      * isn't modelled yet would orphan them, so it's named and refused.
+     *
+     * Public so the {@see DestroyCommand} orchestrator can apply the same guard to
+     * the app it tears down before it touches the environment.
      */
-    protected function unsupportedReason(): ?string
+    public function unsupportedReason(): ?string
     {
         return match (true) {
             Manifest::isMultitenanted() => 'destroy:app does not yet support multi-tenant apps — their per-tenant queues and SNI certificates would be left behind.',

@@ -7,8 +7,10 @@ use Illuminate\Support\Str;
 use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
+use Aws\Ec2\Exception\Ec2Exception;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Enums\PublicSubnets;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -19,7 +21,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * the internet without a NAT gateway. Point `public-subnets` at three existing
  * subnet names to adopt instead.
  */
-class PublicSubnet implements Resource
+class PublicSubnet implements Deletable, Resource
 {
     use ResolvesTags;
 
@@ -91,5 +93,25 @@ class PublicSubnet implements Resource
     public function synchroniseTags(bool $apply): array
     {
         return Aws::synchroniseEc2Tags($this->arn(), $this->tags(), $apply);
+    }
+
+    /**
+     * Delete this subnet by id. Assumes upstream teardown has already removed
+     * everything in it — no Fargate ENIs remain and the route-table association
+     * goes with the subnet — so a plain delete succeeds; AWS would otherwise
+     * refuse with DependencyViolation. A concurrent removal
+     * (InvalidSubnetID.NotFound) is tolerated.
+     */
+    public function delete(): void
+    {
+        try {
+            Aws::ec2()->deleteSubnet(['SubnetId' => $this->arn()]);
+        } catch (Ec2Exception $e) {
+            if ($e->getAwsErrorCode() === 'InvalidSubnetID.NotFound') {
+                return;
+            }
+
+            throw $e;
+        }
     }
 }

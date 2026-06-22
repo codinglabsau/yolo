@@ -6,7 +6,9 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
+use Aws\Ec2\Exception\Ec2Exception;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -15,7 +17,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * routing 0.0.0.0/0 through it are separate relationship actions
  * (SyncInternetGatewayAttachmentStep, SyncDefaultRouteStep).
  */
-class InternetGateway implements Resource
+class InternetGateway implements Deletable, Resource
 {
     use ResolvesTags;
 
@@ -57,5 +59,43 @@ class InternetGateway implements Resource
     public function synchroniseTags(bool $apply): array
     {
         return Aws::synchroniseEc2Tags($this->arn(), $this->tags(), $apply);
+    }
+
+    /**
+     * Detach the gateway from the VPC, then delete it — AWS refuses to delete an
+     * internet gateway that is still attached. The detach is the inverse of
+     * SyncInternetGatewayAttachmentStep's attach. A detach against an
+     * already-detached gateway (Gateway.NotAttached) is tolerated so we still
+     * proceed to delete; a concurrent removal (InvalidInternetGatewayID.NotFound)
+     * on either call is tolerated as already-gone.
+     */
+    public function delete(): void
+    {
+        $internetGatewayId = $this->arn();
+
+        try {
+            Aws::ec2()->detachInternetGateway([
+                'InternetGatewayId' => $internetGatewayId,
+                'VpcId' => (new Vpc())->arn(),
+            ]);
+        } catch (Ec2Exception $e) {
+            if ($e->getAwsErrorCode() === 'InvalidInternetGatewayID.NotFound') {
+                return;
+            }
+
+            if ($e->getAwsErrorCode() !== 'Gateway.NotAttached') {
+                throw $e;
+            }
+        }
+
+        try {
+            Aws::ec2()->deleteInternetGateway(['InternetGatewayId' => $internetGatewayId]);
+        } catch (Ec2Exception $e) {
+            if ($e->getAwsErrorCode() === 'InvalidInternetGatewayID.NotFound') {
+                return;
+            }
+
+            throw $e;
+        }
     }
 }

@@ -8,6 +8,7 @@ use Aws\Ec2\Ec2Client;
 use Aws\Ecr\EcrClient;
 use Aws\Ecs\EcsClient;
 use Aws\Iam\IamClient;
+use Aws\Rds\RdsClient;
 use Aws\Sqs\SqsClient;
 use Aws\CommandInterface;
 use Aws\WAFV2\WAFV2Client;
@@ -454,6 +455,47 @@ function bindMockElastiCacheClient(array $byCommand, array &$captured): void
     };
 
     Helpers::app()->instance('elastiCache', new ElastiCacheClient([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+}
+
+/**
+ * Bind a mock RDS client with command-routed responses, capturing every call.
+ * Mirrors bindMockElastiCacheClient.
+ *
+ * @param  array<string, Result|array<int, Result>>  $byCommand
+ * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+ */
+function bindMockRdsClient(array $byCommand, array &$captured): void
+{
+    $mock = new class($byCommand, $captured) extends MockHandler
+    {
+        /** @var array<string, int> */
+        private array $cursors = [];
+
+        public function __construct(protected array $byCommand, protected array &$captured) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            $name = $cmd->getName();
+            $this->captured[] = ['name' => $name, 'args' => $cmd->toArray()];
+
+            $entry = $this->byCommand[$name] ?? new Result();
+
+            if (is_array($entry)) {
+                $index = min($this->cursors[$name] ?? 0, count($entry) - 1);
+                $this->cursors[$name] = $index + 1;
+                $entry = $entry[$index];
+            }
+
+            return Create::promiseFor($entry);
+        }
+    };
+
+    Helpers::app()->instance('rds', new RdsClient([
         'region' => 'ap-southeast-2',
         'version' => 'latest',
         'credentials' => false,

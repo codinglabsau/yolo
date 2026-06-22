@@ -5,16 +5,20 @@ declare(strict_types=1);
 use Aws\Result;
 use Aws\MockHandler;
 use Aws\Acm\AcmClient;
+use Aws\Rds\RdsClient;
 use Aws\CommandInterface;
 use Codinglabs\Yolo\Helpers;
 use Aws\Route53\Route53Client;
 use GuzzleHttp\Promise\Create;
 use Aws\CloudFront\CloudFrontClient;
 use Codinglabs\Yolo\Enums\ServerGroup;
+use Codinglabs\Yolo\Resources\Ec2\Vpc;
 use Codinglabs\Yolo\Resources\Sqs\Queue;
 use Codinglabs\Yolo\Resources\WafV2\WebAcl;
 use Aws\CloudWatchLogs\CloudWatchLogsClient;
 use Codinglabs\Yolo\Resources\Iam\AdminRole;
+use Codinglabs\Yolo\Resources\Rds\RdsSubnet;
+use Codinglabs\Yolo\Resources\Ec2\RouteTable;
 use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
 use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Resources\S3\AssetBucket;
@@ -22,6 +26,7 @@ use Codinglabs\Yolo\Resources\Iam\AdminPolicy;
 use Codinglabs\Yolo\Resources\Iam\AdminsGroup;
 use Codinglabs\Yolo\Resources\Iam\EcsTaskRole;
 use Codinglabs\Yolo\Resources\S3\S3LogsBucket;
+use Codinglabs\Yolo\Resources\Ec2\PublicSubnet;
 use Codinglabs\Yolo\Resources\Iam\DeployerRole;
 use Codinglabs\Yolo\Resources\Iam\ObserverRole;
 use Codinglabs\Yolo\Resources\WafV2\AllowIpSet;
@@ -39,9 +44,11 @@ use Codinglabs\Yolo\Resources\Iam\ObserverPolicy;
 use Codinglabs\Yolo\Resources\Iam\ObserversGroup;
 use Codinglabs\Yolo\Resources\Route53\HostedZone;
 use Codinglabs\Yolo\Resources\S3\EnvConfigBucket;
+use Codinglabs\Yolo\Resources\Ec2\InternetGateway;
 use Codinglabs\Yolo\Resources\ElbV2\HttpsListener;
 use Codinglabs\Yolo\Resources\Iam\AppObserverRole;
 use Codinglabs\Yolo\Resources\CloudWatch\Dashboard;
+use Codinglabs\Yolo\Resources\Ec2\RdsSecurityGroup;
 use Codinglabs\Yolo\Resources\Iam\EcsExecutionRole;
 use Codinglabs\Yolo\Resources\CloudWatch\QueueAlarm;
 use Codinglabs\Yolo\Resources\Iam\AppObserverPolicy;
@@ -618,4 +625,88 @@ it('resolves the cache security group id then deletes it', function (): void {
     $group->delete();
 
     expect(collect($captured)->firstWhere('name', 'DeleteSecurityGroup')['args']['GroupId'])->toBe('sg-cache');
+});
+
+it('resolves the rds security group id then deletes it', function (): void {
+    $group = new RdsSecurityGroup();
+
+    $captured = [];
+    bindMockEc2Client([
+        'DescribeSecurityGroups' => new Result(['SecurityGroups' => [['GroupName' => $group->name(), 'GroupId' => 'sg-rds']]]),
+    ], $captured);
+
+    $group->delete();
+
+    expect(collect($captured)->firstWhere('name', 'DeleteSecurityGroup')['args']['GroupId'])->toBe('sg-rds');
+});
+
+it('deletes the rds db subnet group by name', function (): void {
+    $subnet = new RdsSubnet();
+
+    $captured = [];
+    bindTeardownRoutedClient('rds', RdsClient::class, [], $captured);
+
+    $subnet->delete();
+
+    expect(collect($captured)->firstWhere('name', 'DeleteDBSubnetGroup')['args']['DBSubnetGroupName'])
+        ->toBe($subnet->name());
+});
+
+it('resolves each public subnet id then deletes it', function (int $index, string $subnetId): void {
+    $subnet = new PublicSubnet($index);
+
+    $captured = [];
+    bindMockEc2Client([
+        'DescribeSubnets' => new Result(['Subnets' => [['SubnetId' => $subnetId]]]),
+    ], $captured);
+
+    $subnet->delete();
+
+    expect(collect($captured)->firstWhere('name', 'DeleteSubnet')['args']['SubnetId'])->toBe($subnetId);
+})->with([
+    [0, 'subnet-a'],
+    [1, 'subnet-b'],
+    [2, 'subnet-c'],
+]);
+
+it('detaches the internet gateway from the vpc before deleting it', function (): void {
+    $captured = [];
+    bindMockEc2Client([
+        'DescribeInternetGateways' => new Result(['InternetGateways' => [['InternetGatewayId' => 'igw-1', 'Attachments' => []]]]),
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
+    ], $captured);
+
+    (new InternetGateway())->delete();
+
+    $names = array_column($captured, 'name');
+    expect($names)->toContain('DetachInternetGateway')->toContain('DeleteInternetGateway')
+        ->and(array_search('DetachInternetGateway', $names, true))->toBeLessThan(array_search('DeleteInternetGateway', $names, true));
+
+    $detach = collect($captured)->firstWhere('name', 'DetachInternetGateway');
+    expect($detach['args']['InternetGatewayId'])->toBe('igw-1')
+        ->and($detach['args']['VpcId'])->toBe('vpc-1');
+
+    expect(collect($captured)->firstWhere('name', 'DeleteInternetGateway')['args']['InternetGatewayId'])->toBe('igw-1');
+});
+
+it('resolves the route table id then deletes it', function (): void {
+    $captured = [];
+    bindMockEc2Client([
+        'DescribeRouteTables' => new Result(['RouteTables' => [['RouteTableId' => 'rtb-1']]]),
+    ], $captured);
+
+    (new RouteTable())->delete();
+
+    expect(collect($captured)->firstWhere('name', 'DeleteRouteTable')['args']['RouteTableId'])->toBe('rtb-1');
+});
+
+it('resolves the vpc id then deletes it', function (): void {
+    $captured = [];
+    bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
+    ], $captured);
+
+    (new Vpc())->delete();
+
+    expect(collect($captured)->firstWhere('name', 'DeleteVpc')['args']['VpcId'])->toBe('vpc-1');
 });

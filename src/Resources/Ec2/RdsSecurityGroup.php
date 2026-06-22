@@ -6,8 +6,10 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
+use Aws\Ec2\Exception\Ec2Exception;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Enums\SecurityGroup;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -17,7 +19,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * SyncRdsSecurityGroupStep. Point `rds.security-group` at an existing group
  * to adopt one (reported CUSTOM_MANAGED, never mutated).
  */
-class RdsSecurityGroup implements Resource
+class RdsSecurityGroup implements Deletable, Resource
 {
     use ResolvesTags;
 
@@ -62,5 +64,25 @@ class RdsSecurityGroup implements Resource
     public function synchroniseTags(bool $apply): array
     {
         return Aws::synchroniseEc2Tags($this->arn(), $this->tags(), $apply);
+    }
+
+    /**
+     * Delete the RDS security group. Assumes upstream teardown has already removed
+     * everything that references it — no database remains in the group and the
+     * 3306-from-task-SG ingress rule went with the task security group — so a plain
+     * delete succeeds; AWS would otherwise refuse with DependencyViolation. A
+     * concurrent removal (InvalidGroup.NotFound) is tolerated.
+     */
+    public function delete(): void
+    {
+        try {
+            Aws::ec2()->deleteSecurityGroup(['GroupId' => $this->arn()]);
+        } catch (Ec2Exception $e) {
+            if ($e->getAwsErrorCode() === 'InvalidGroup.NotFound') {
+                return;
+            }
+
+            throw $e;
+        }
     }
 }
