@@ -33,12 +33,12 @@ The tabs with a single primary resource — Database, Cache, Services — also c
 |---|---|
 | <kbd>◂</kbd> <kbd>▸</kbd> / <kbd>Tab</kbd> | Previous / next tab |
 | <kbd>1</kbd>…<kbd>8</kbd> | Jump to a tab by number |
-| a tab's letter (`o`, then `w` `u` `h` for the groups, `d` `b` `c` `s`) | Jump straight to it |
+| a tab's letter (`o` `d` `b` `c` `s`) | Jump straight to it. The per-group tabs (Web / Queue / Scheduler) have no letter — reach them by number or <kbd>◂</kbd> <kbd>▸</kbd> |
 | <kbd>↑</kbd> <kbd>↓</kbd> / <kbd>PgUp</kbd> <kbd>PgDn</kbd> | Scroll the active tab's body (a group's charts + logs, deploy history) |
 | <kbd>Home</kbd> / <kbd>End</kbd> | Jump to the top / bottom of the body |
 | <kbd>q</kbd> | Quit |
 
-A scrollable tab shows a `▲ / ▼ more` hint when there's content beyond the window. The group letters appear only for the groups the app runs, so a combined app exposes just `w`.
+A scrollable tab shows a `▲ / ▼ more` hint when there's content beyond the window.
 
 ## Why read-only
 

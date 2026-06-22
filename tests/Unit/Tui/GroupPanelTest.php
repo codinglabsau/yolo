@@ -24,13 +24,12 @@ function groupStatus(array $overrides = []): array
     ], $overrides);
 }
 
-it('titles and hotkeys one tab per group', function (): void {
+it('titles one tab per group, with no letter hotkey (number/arrow nav only)', function (): void {
     expect((new GroupPanel(ServerGroup::WEB, new BufferedOutput()))->title())->toBe('Web')
-        ->and((new GroupPanel(ServerGroup::WEB, new BufferedOutput()))->hotkey())->toBe('w')
         ->and((new GroupPanel(ServerGroup::QUEUE, new BufferedOutput()))->title())->toBe('Queue')
-        ->and((new GroupPanel(ServerGroup::QUEUE, new BufferedOutput()))->hotkey())->toBe('u')
         ->and((new GroupPanel(ServerGroup::SCHEDULER, new BufferedOutput()))->title())->toBe('Scheduler')
-        ->and((new GroupPanel(ServerGroup::SCHEDULER, new BufferedOutput()))->hotkey())->toBe('h');
+        ->and((new GroupPanel(ServerGroup::WEB, new BufferedOutput()))->hotkey())->toBe('')
+        ->and((new GroupPanel(ServerGroup::QUEUE, new BufferedOutput()))->hotkey())->toBe('');
 });
 
 it('renders group vitals — tasks, spec, scaling and live load', function (): void {

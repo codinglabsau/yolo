@@ -61,11 +61,11 @@ class GroupPanel implements Panel
 
     public function hotkey(): string
     {
-        return match ($this->group) {
-            ServerGroup::WEB => 'w',
-            ServerGroup::QUEUE => 'u',
-            ServerGroup::SCHEDULER => 'h',
-        };
+        // No letter hotkey — the group tabs are reached by number (1–8) and ◂ ▸.
+        // Their natural letters are taken (q is quit, s is Services), and forcing
+        // awkward picks reads worse than no letter at all. An empty string never
+        // equals a keypress, so the shell's letter-jump simply skips them.
+        return '';
     }
 
     public function gather(): void
