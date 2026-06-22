@@ -51,7 +51,7 @@ class SyncSearchRecordSetStep implements Step
 
         $live = $this->liveAlias();
 
-        if ($live !== null && strcasecmp($live, (string) $alb['DNSName']) === 0) {
+        if (static::aliasMatches($live, (string) $alb['DNSName'])) {
             return StepResult::SYNCED;
         }
 
@@ -106,6 +106,20 @@ class SyncSearchRecordSetStep implements Step
         ]);
 
         return StepResult::DELETED;
+    }
+
+    /**
+     * Whether the live alias already targets the ALB. Route 53 returns the alias
+     * target as an FQDN with a trailing dot; the ELBv2 API returns the same name
+     * without one — so both are stripped before the case-insensitive compare.
+     * Without it a converged record reads as drift, re-UPSERTs on every sync
+     * (never planning clean) and permanently fails the deploy `sync --check` gate
+     * on any env running this record. Pure + static so the normalisation is
+     * pinned in a test without mocking Route 53 and the ALB.
+     */
+    public static function aliasMatches(?string $live, string $albDnsName): bool
+    {
+        return $live !== null && strcasecmp(rtrim($live, '.'), rtrim($albDnsName, '.')) === 0;
     }
 
     /**
