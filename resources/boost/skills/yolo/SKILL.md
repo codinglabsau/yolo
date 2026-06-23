@@ -134,8 +134,9 @@ The reverse of `sync` — same scope-first model, same plan → confirm → appl
 
 **What it never touches, and the gates:**
 
-- **RDS / the database is never deleted** — YOLO owns the security group, not the instance.
-- The **BYO app data bucket stays** (holds user data). The regeneratable env config/logs buckets are deleted only with **`--delete-data`**; without it they're left standing and the plan notes it.
+- **RDS / the database is never deleted** — YOLO owns the security group, not the instance. It can't be: there is no destructive RDS call anywhere in YOLO (CI-enforced).
+- The **BYO app data bucket stays** (holds user data) — it isn't even a deletable resource. The regeneratable env config/logs buckets are deleted as part of the teardown.
+- **The confirm gate is loud** — a red banner, a PROTECTED callout naming the database + app data bucket, and a type-the-environment-name prompt (no y/N). `--force` skips it for CI.
 
 **Previewing is safe.** `--check` runs the plan pass read-only (prints the full teardown plan, writes nothing) — the way to show a human exactly what a teardown would remove before they run the apply. Only reach for it when teardown is the actual question, not during a routine sweep.
 
