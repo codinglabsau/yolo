@@ -110,14 +110,33 @@ class HostedZone implements Resource, Undeletable
     }
 
     /**
+     * The live records YOLO inserted for this app — the exact set
+     * {@see removeAppRecords()} would delete, as {Type, Name} pairs (trailing dot
+     * trimmed) so a teardown plan can name each record it withdraws rather than a
+     * vague "the app's DNS records".
+     *
+     * @return array<int, array{Type: string, Name: string}>
+     */
+    public function appRecords(): array
+    {
+        return collect(Aws::route53()->listResourceRecordSets(['HostedZoneId' => $this->zoneId()])['ResourceRecordSets'] ?? [])
+            ->filter($this->isManagedRecord(...))
+            ->map(fn (array $record): array => [
+                'Type' => (string) $record['Type'],
+                'Name' => rtrim((string) $record['Name'], '.'),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
      * Whether the zone still holds any of this app's managed records — the
      * plan-pass / re-run check, so teardown reports WOULD_DELETE vs SKIPPED without
      * writing.
      */
     public function appRecordsExist(): bool
     {
-        return collect(Aws::route53()->listResourceRecordSets(['HostedZoneId' => $this->zoneId()])['ResourceRecordSets'] ?? [])
-            ->contains($this->isManagedRecord(...));
+        return $this->appRecords() !== [];
     }
 
     protected function zoneId(): string

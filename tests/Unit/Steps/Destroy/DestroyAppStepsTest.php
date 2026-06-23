@@ -193,20 +193,29 @@ function bindDestroyRoutedClient(string $binding, string $clientClass, array $by
 
 // --- WithdrawAppDnsRecordsStep: withdraws this app's records, never deletes the zone ---
 
-it('withdraws this app\'s records and never deletes the hosted zone', function (): void {
+it('names each withdrawn record (type + host) and never deletes the hosted zone', function (): void {
     $captured = [];
     bindDestroyRoutedClient('route53', Route53Client::class, [
         'ListHostedZones' => new Result(['HostedZones' => [['Id' => '/hostedzone/Z1', 'Name' => 'example.com.']]]),
         'ListResourceRecordSets' => new Result(['ResourceRecordSets' => [
             ['Name' => 'example.com.', 'Type' => 'A', 'ResourceRecords' => [['Value' => '1.1.1.1']]],
+            ['Name' => 'example.com.', 'Type' => 'AAAA', 'ResourceRecords' => [['Value' => '::1']]],
+            ['Name' => 'www.example.com.', 'Type' => 'A', 'ResourceRecords' => [['Value' => '1.1.1.1']]],
             ['Name' => 'example.com.', 'Type' => 'MX', 'ResourceRecords' => [['Value' => '10 mail']]],
         ]]),
     ], $captured);
 
-    expect((new WithdrawAppDnsRecordsStep())(['dry-run' => false]))->toBe(StepResult::DELETED)
+    $step = new WithdrawAppDnsRecordsStep();
+
+    expect($step(['dry-run' => false]))->toBe(StepResult::DELETED)
         ->and(array_column($captured, 'name'))
         ->toContain('ChangeResourceRecordSets')
         ->not->toContain('DeleteHostedZone');
+
+    // One change per managed A/AAAA record, named type + host — the MX (and the
+    // zone) are never named because they're never touched.
+    expect(collect($step->changes())->map(fn ($change): string => $change->attribute)->all())
+        ->toBe(['A example.com', 'AAAA example.com', 'A www.example.com']);
 });
 
 it('skips when the hosted zone holds none of this app\'s records', function (): void {

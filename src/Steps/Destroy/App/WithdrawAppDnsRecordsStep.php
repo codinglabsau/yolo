@@ -30,13 +30,23 @@ class WithdrawAppDnsRecordsStep implements Step
     {
         $zone = new HostedZone(Manifest::apex());
 
-        if (! $zone->exists() || ! $zone->appRecordsExist()) {
+        if (! $zone->exists()) {
             return StepResult::SKIPPED;
         }
 
-        // Name the zone is KEPT in the change line — the only thing withdrawn is
-        // this app's own records; the shared, domain-level hosted zone stays.
-        $this->recordChange(Change::make(sprintf('%s app DNS records (hosted zone kept)', Manifest::apex()), 'present', null));
+        $records = $zone->appRecords();
+
+        if ($records === []) {
+            return StepResult::SKIPPED;
+        }
+
+        // Name each record withdrawn — type + host (e.g. `A www.example.com`). Only
+        // this app's own A/AAAA alias records go; the shared, domain-level hosted
+        // zone and everything else in it (MX, NS, sibling envs) stays. The step is
+        // a withdrawal, never a zone delete — see {@see HostedZone}.
+        foreach ($records as $record) {
+            $this->recordChange(Change::make(sprintf('%s %s', $record['Type'], $record['Name']), 'present', null));
+        }
 
         if (Arr::get($options, 'dry-run')) {
             return StepResult::WOULD_DELETE;
