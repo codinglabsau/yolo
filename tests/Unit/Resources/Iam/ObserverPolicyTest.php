@@ -109,6 +109,25 @@ it('scopes IAM document reads to YOLO-managed identities, never the whole accoun
     expect($onStar['Action'])->not->toContain('iam:GetPolicyVersion', 'iam:GetRole');
 });
 
+it('grants the IAM enumeration reads the admin teardown walks, scoped to yolo identities', function (): void {
+    // destroy:app runs under the admin tier, whose read surface is this policy. The
+    // role/policy/group delete paths enumerate inline policies, policy attachments and
+    // group attachments before detaching + deleting — reads the sync surface never
+    // needs, so AWS 403s the teardown mid-flight unless they're granted here.
+    expect(observerGrants('iam:ListRolePolicies'))->toBeTrue();          // role delete: inline policies
+    expect(observerGrants('iam:ListEntitiesForPolicy'))->toBeTrue();     // policy delete: who it's attached to
+    expect(observerGrants('iam:ListAttachedGroupPolicies'))->toBeTrue(); // group delete: managed attachments
+
+    // All three stay fenced to yolo-* identities — never granted on the account-wide *.
+    $onStar = collect((new ObserverPolicy())->document()['Statement'])
+        ->first(fn (array $s): bool => $s['Resource'] === '*');
+
+    expect($onStar['Action'])
+        ->not->toContain('iam:ListRolePolicies')
+        ->not->toContain('iam:ListEntitiesForPolicy')
+        ->not->toContain('iam:ListAttachedGroupPolicies');
+});
+
 it('scopes s3 object reads to the env-shared config only — never secrets', function (): void {
     $objectStatement = collect((new ObserverPolicy())->document()['Statement'])
         ->first(fn (array $s): bool => in_array('s3:GetObject', (array) $s['Action'], true));

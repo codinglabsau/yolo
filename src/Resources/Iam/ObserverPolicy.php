@@ -245,6 +245,13 @@ class ObserverPolicy implements Deletable, Resource, SynchronisesConfiguration
                         'iam:GetPolicyVersion',
                         'iam:ListPolicyVersions',
                         'iam:ListAttachedRolePolicies',
+                        // destroy:app runs under the admin tier (this is its read
+                        // surface): the role-teardown path enumerates a role's inline
+                        // policies, and the policy-teardown path enumerates a policy's
+                        // attachments, to detach + delete them before the role/policy
+                        // delete. Reads beyond the sync surface, so granted here.
+                        'iam:ListRolePolicies',
+                        'iam:ListEntitiesForPolicy',
                         'iam:ListRoleTags',
                         'iam:ListPolicyTags',
                         'iam:GetOpenIDConnectProvider',
@@ -263,6 +270,9 @@ class ObserverPolicy implements Deletable, Resource, SynchronisesConfiguration
                         'iam:GetGroup',
                         'iam:GetGroupPolicy',
                         'iam:ListGroupPolicies',
+                        // destroy:app (admin tier) enumerates a group's managed-policy
+                        // attachments to detach them before deleting the group.
+                        'iam:ListAttachedGroupPolicies',
                     ],
                 ],
                 [
