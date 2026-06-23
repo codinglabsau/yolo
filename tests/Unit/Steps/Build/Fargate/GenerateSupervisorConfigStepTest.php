@@ -87,6 +87,41 @@ it('defaults the octane port to 8000', function (): void {
     expect(generatedSupervisorConfig())->toContain('--port=8000');
 });
 
+it('pins the octane worker pool from the task vCPU rather than FrankenPHP auto-detect (default 0.5 vCPU → 8)', function (): void {
+    // FrankenPHP would auto-detect ~4 workers off the Fargate microVM's fixed ~2 vCPUs;
+    // YOLO pins the count from the task's real allocation instead (16 × 0.5 vCPU = 8).
+    expect(generatedSupervisorConfig())->toContain('--workers=8');
+});
+
+it('scales the pinned worker pool with the task vCPU allocation', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['cpu' => 1024, 'memory' => 2048, 'autoscaling' => false]],
+    ]);
+
+    expect(generatedSupervisorConfig())
+        ->toContain('command=php artisan octane:start --host=0.0.0.0 --port=8000 --workers=16');
+});
+
+it('pins --workers after --caddyfile on an autoscaling octane tier', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => true]],
+    ]);
+
+    expect(generatedSupervisorConfig())
+        ->toContain('command=php artisan octane:start --host=0.0.0.0 --port=8000 --caddyfile=/app/docker/Caddyfile --workers=8');
+});
+
+it('passes no --workers in classic mode (frankenphp php-server takes none)', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['octane' => false, 'autoscaling' => false]],
+    ]);
+
+    expect(generatedSupervisorConfig())->not->toContain('--workers');
+});
+
 it('runs frankenphp classic mode on the manifest port when tasks.web.octane is false', function (): void {
     // Non-autoscaling so the web command is the bare classic launcher (no emitter → no
     // request-path nice); the niced autoscaling form is covered below.

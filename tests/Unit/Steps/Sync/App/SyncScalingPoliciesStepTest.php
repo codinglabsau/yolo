@@ -26,8 +26,9 @@ function matchingCpuPolicy(string $name): array
 }
 
 /**
- * A live concurrency policy matching the default-memory target, so it reports no
- * drift either — leaving the prune as the only action under test.
+ * A live concurrency policy matching the default 0.5 vCPU task's target (8 workers
+ * at 70% → 5), so it reports no drift either — leaving the prune as the only action
+ * under test.
  *
  * @return array<string, mixed>
  */
@@ -36,7 +37,7 @@ function matchingConcurrencyPolicy(string $name): array
     return [
         'PolicyName' => $name,
         'TargetTrackingScalingPolicyConfiguration' => [
-            'TargetValue' => 23.0,
+            'TargetValue' => 5.0,
             'CustomizedMetricSpecification' => ['Metrics' => [
                 ['Id' => 'concurrency', 'Expression' => '(requests / 60) * latency', 'ReturnData' => true],
             ]],
