@@ -366,15 +366,14 @@ class Dashboard implements Deletable
             $widgets = [...$widgets, ...$section];
         }
 
-        // Per-group compute for any extracted worker — its own ECS service has
-        // CPU/memory/task panels the web section can't show. Bundled or disabled
-        // groups have no own service, so their context entry is null and the
-        // section is skipped (web → queue → scheduler order).
-        if ($context['queueService'] !== null) {
-            [$section, $y] = static::groupComputeSection('# Queue', $context['clusterName'], $context['queueService'], $context['region'], $y);
-            $widgets = [...$widgets, ...$section];
-        }
+        // The queue sits directly below web: one `# Queue` section folding the
+        // worker's own ECS compute (only when extracted to its own service) in
+        // with its SQS backlog. Self-omits when the queue is disabled + bundled.
+        [$section, $y] = static::queueSection($context, $y);
+        $widgets = [...$widgets, ...$section];
 
+        // The scheduler's own ECS compute, only when it runs as its own service
+        // (a bundled scheduler rides web's compute).
         if ($context['schedulerService'] !== null) {
             [$section, $y] = static::groupComputeSection('# Scheduler', $context['clusterName'], $context['schedulerService'], $context['region'], $y);
             $widgets = [...$widgets, ...$section];
@@ -382,11 +381,6 @@ class Dashboard implements Deletable
 
         if ($context['wafWebAcl'] !== null) {
             [$section, $y] = static::wafSection($context, $y);
-            $widgets = [...$widgets, ...$section];
-        }
-
-        if (! $context['queueDisabled']) {
-            [$section, $y] = static::queueSection($context, $y);
             $widgets = [...$widgets, ...$section];
         }
 
@@ -628,9 +622,9 @@ class Dashboard implements Deletable
     }
 
     /**
-     * An extracted worker's compute section (a standalone queue or scheduler) — a
-     * header plus the shared compute charts. No ALB panels; only web sits behind
-     * the load balancer. Pure.
+     * An extracted scheduler's compute section — a header plus the shared compute
+     * charts. No ALB panels; only web sits behind the load balancer. (The queue
+     * folds its compute into queueSection so its backlog rides alongside.) Pure.
      *
      * @return array{0: array<int, array<string, mixed>>, 1: int}
      */
@@ -645,16 +639,12 @@ class Dashboard implements Deletable
     }
 
     /**
-     * SQS depth, throughput and oldest-message age across the app's queues.
-     *
-     * @param  array<string, mixed>  $context
-     * @return array{0: array<int, array<string, mixed>>, 1: int}
-     */
-    /**
-     * The WAF panels: overall allow/block/count posture, and a per-rule blocked
-     * breakdown showing where blocks come from. The disposition panel's Counted
-     * series picks up anything left in Count (the Core Rule Set's body-size
-     * carve-out). WebACL metrics are env-shared, dimensioned on ACL + region + rule.
+     * The WAF panels: overall allow/block/count posture, a per-rule blocked
+     * breakdown showing where blocks come from, and any per-service WAF panels
+     * (e.g. the Typesense search rate limit) so everything WAF lands in one
+     * group. The disposition panel's Counted series picks up anything left in
+     * Count (the Core Rule Set's body-size carve-out). WebACL metrics are
+     * env-shared, dimensioned on ACL + region + rule.
      *
      * @param  array<string, mixed>  $context
      * @return array{0: array<int, array<string, mixed>>, 1: int}
@@ -707,10 +697,87 @@ class Dashboard implements Deletable
         ]);
         $y += 6;
 
+        // Per-service WAF panels (e.g. the Typesense search rate limit), packed
+        // two per row beneath the core posture panels.
+        $servicePanels = static::serviceWafPanels($context);
+
+        foreach ($servicePanels as $index => $properties) {
+            $widgets[] = static::metric($index % 2 === 0 ? 0 : 12, $y, 12, 6, $properties);
+
+            if ($index % 2 === 1) {
+                $y += 6;
+            }
+        }
+
+        if (count($servicePanels) % 2 === 1) {
+            $y += 6;
+        }
+
         return [$widgets, $y];
     }
 
+    /**
+     * The `# WAF` panels each consumed service's definition contributes, in
+     * enum order — a service that owns a WebACL rule charts its blocks here.
+     *
+     * @param  array<string, mixed>  $context
+     * @return array<int, array<string, mixed>>
+     */
+    protected static function serviceWafPanels(array $context): array
+    {
+        $widgets = [];
+
+        foreach (Service::definitions() as $definition) {
+            $widgets = [...$widgets, ...$definition->wafPanels($context)];
+        }
+
+        return $widgets;
+    }
+
+    /**
+     * The queue section, directly below web: a single `# Queue` header folding
+     * the worker's own ECS compute (only when the queue is EXTRACTED to its own
+     * service — a bundled worker rides web's compute) together with its SQS
+     * backlog. Returns nothing when the queue is disabled and bundled (no
+     * service, no SQS), so the whole section vanishes.
+     *
+     * @param  array<string, mixed>  $context
+     * @return array{0: array<int, array<string, mixed>>, 1: int}
+     */
     protected static function queueSection(array $context, int $y): array
+    {
+        $service = $context['queueService'];        // the extracted worker's ECS service, or null when bundled
+        $hasBacklog = ! $context['queueDisabled'];  // a live SQS queue exists unless the worker is switched off
+
+        if ($service === null && ! $hasBacklog) {
+            return [[], $y];
+        }
+
+        $widgets = [static::header($y, '# Queue')];
+        $y++;
+
+        if ($service !== null) {
+            [$compute, $y] = static::computeWidgets($context['region'], $context['clusterName'], $service, $y);
+            $widgets = [...$widgets, ...$compute];
+        }
+
+        if ($hasBacklog) {
+            [$backlog, $y] = static::queueBacklogWidgets($context, $y);
+            $widgets = [...$widgets, ...$backlog];
+        }
+
+        return [$widgets, $y];
+    }
+
+    /**
+     * SQS depth, throughput and oldest-message age across the app's queues — the
+     * backlog half of the queue section (headerless; queueSection owns the
+     * `# Queue` header).
+     *
+     * @param  array<string, mixed>  $context
+     * @return array{0: array<int, array<string, mixed>>, 1: int}
+     */
+    protected static function queueBacklogWidgets(array $context, int $y): array
     {
         $region = $context['region'];
         $queues = $context['queues'];
@@ -722,8 +789,7 @@ class Dashboard implements Deletable
         // No dedicated dead-letter-queue depth panel: the Queue resource provisions
         // a plain SQS queue with no RedrivePolicy, so there is no DLQ to chart. If a
         // DLQ is ever added, a ">0 = silent job failures" panel belongs right here.
-        $widgets = [static::header($y, '# Queue backlog')];
-        $y++;
+        $widgets = [];
 
         $widgets[] = static::metric(0, $y, 12, 6, [
             'title' => 'Queue depth',
@@ -812,20 +878,40 @@ class Dashboard implements Deletable
             'metrics' => [$metric('FreeableMemory')],
         ]);
 
-        $widgets[] = static::metric(12, $y, 12, 6, [
-            'title' => 'RDS throughput',
-            'region' => $region,
-            'view' => 'timeSeries',
-            'stacked' => true,
-            'period' => 60,
-            'stat' => 'Sum',
-            'metrics' => [
-                $metric('SelectThroughput', ['label' => 'SELECT', 'color' => static::BLUE]),
-                $metric('InsertThroughput', ['label' => 'INSERT', 'color' => static::GREEN]),
-                $metric('UpdateThroughput', ['label' => 'UPDATE', 'color' => static::ORANGE]),
-                $metric('DeleteThroughput', ['label' => 'DELETE', 'color' => static::RED]),
-            ],
-        ]);
+        // SelectThroughput/Insert/Update/Delete are Aurora-only metrics — a plain
+        // RDS instance never emits them, so it'd chart a permanently empty panel.
+        // Aurora gets the DML breakdown; a plain instance gets read/write IOPS,
+        // which every RDS engine publishes. Cluster-ness is the manifest signal
+        // (Aurora is declared by its cluster endpoint — see rdsTarget()), so the
+        // panel resolves identically under every tier without a live probe.
+        $widgets[] = $rds['cluster']
+            ? static::metric(12, $y, 12, 6, [
+                'title' => 'RDS throughput',
+                'region' => $region,
+                'view' => 'timeSeries',
+                'stacked' => true,
+                'period' => 60,
+                'stat' => 'Sum',
+                'metrics' => [
+                    $metric('SelectThroughput', ['label' => 'SELECT', 'color' => static::BLUE]),
+                    $metric('InsertThroughput', ['label' => 'INSERT', 'color' => static::GREEN]),
+                    $metric('UpdateThroughput', ['label' => 'UPDATE', 'color' => static::ORANGE]),
+                    $metric('DeleteThroughput', ['label' => 'DELETE', 'color' => static::RED]),
+                ],
+            ])
+            : static::metric(12, $y, 12, 6, [
+                'title' => 'RDS IOPS',
+                'region' => $region,
+                'view' => 'timeSeries',
+                'stacked' => false,
+                'period' => 60,
+                'stat' => 'Average',
+                'yAxis' => ['left' => ['min' => 0]],
+                'metrics' => [
+                    $metric('ReadIOPS', ['label' => 'Read', 'color' => static::BLUE]),
+                    $metric('WriteIOPS', ['label' => 'Write', 'color' => static::ORANGE]),
+                ],
+            ]);
         $y += 6;
 
         // Read/write latency is the earliest DB-degradation tell — it climbs well

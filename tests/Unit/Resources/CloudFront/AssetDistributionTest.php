@@ -286,6 +286,11 @@ function syncedDistributionMocks(string $originDomain): array
                 ]],
             ],
         ]]),
+        // Additional metrics already on → no cdn-additional-metrics drift, so the
+        // behaviour/policy assertions below stay isolated to what they test.
+        'GetMonitoringSubscription' => new Result(['MonitoringSubscription' => [
+            'RealtimeMetricsSubscriptionConfig' => ['RealtimeMetricsSubscriptionStatus' => 'Enabled'],
+        ]]),
     ];
 }
 
@@ -377,6 +382,37 @@ it('computes origin and policy drift without writing under apply:false', functio
         ->toEqualCanonicalizing(['origin', 'asset-bucket-policy']);
     expect(collect($cloudFront->calls)->pluck('name'))->not->toContain('UpdateDistribution');
     expect(collect($s3->calls)->pluck('name'))->not->toContain('PutBucketPolicy');
+});
+
+it('turns on additional CloudFront metrics when the monitoring subscription is off', function (): void {
+    // Origin, behaviour and bucket policy all in sync → the only drift is the
+    // metrics subscription being off (empty GetMonitoringSubscription result).
+    $mocks = syncedDistributionMocks('yolo-111111111111-testing-my-app-assets.s3.ap-southeast-2.amazonaws.com');
+    $mocks['GetMonitoringSubscription'] = new Result();
+    $cloudFront = bindRecordingCloudFrontClient($mocks);
+    bindAssetS3Recorder(['GetBucketPolicy' => new Result(['Policy' => json_encode(desiredOacReadPolicy())])]);
+
+    $changes = (new AssetDistribution())->synchroniseConfiguration();
+
+    expect(collect($changes)->pluck('attribute')->all())->toBe(['cdn-additional-metrics']);
+
+    $create = collect($cloudFront->calls)->firstWhere('name', 'CreateMonitoringSubscription');
+    expect($create)->not->toBeNull()
+        ->and($create['args']['MonitoringSubscription']['RealtimeMetricsSubscriptionConfig']['RealtimeMetricsSubscriptionStatus'])->toBe('Enabled');
+    // A metrics-only fix must never trigger a ~15 min edge redeploy.
+    expect(collect($cloudFront->calls)->pluck('name'))->not->toContain('UpdateDistribution');
+});
+
+it('reports the metrics-subscription drift without enabling it under apply:false', function (): void {
+    $mocks = syncedDistributionMocks('yolo-111111111111-testing-my-app-assets.s3.ap-southeast-2.amazonaws.com');
+    $mocks['GetMonitoringSubscription'] = new Result();
+    $cloudFront = bindRecordingCloudFrontClient($mocks);
+    bindAssetS3Recorder(['GetBucketPolicy' => new Result(['Policy' => json_encode(desiredOacReadPolicy())])]);
+
+    $changes = (new AssetDistribution())->synchroniseConfiguration(apply: false);
+
+    expect(collect($changes)->pluck('attribute')->all())->toBe(['cdn-additional-metrics']);
+    expect(collect($cloudFront->calls)->pluck('name'))->not->toContain('CreateMonitoringSubscription');
 });
 
 it('detects origin drift against the current asset bucket name', function (): void {

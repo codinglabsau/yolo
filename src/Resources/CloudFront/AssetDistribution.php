@@ -219,7 +219,18 @@ class AssetDistribution implements Deletable, Resource, SynchronisesConfiguratio
 
         $policyChange = $this->bucketPolicyDrift($bucket, $distribution['ARN']);
 
-        $changes = [...$distributionChanges, ...$policyChange instanceof Change ? [$policyChange] : []];
+        // Additional CloudWatch metrics (cache hit rate, origin latency, error
+        // rate by status) are off by default and cost cents/month — YOLO always
+        // turns them on so the dashboard's CDN cache-hit panel has data to chart.
+        $metricsChange = CloudFront::additionalMetricsEnabled($distribution['Id'])
+            ? null
+            : Change::make('cdn-additional-metrics', 'disabled', 'enabled');
+
+        $changes = [
+            ...$distributionChanges,
+            ...$policyChange instanceof Change ? [$policyChange] : [],
+            ...$metricsChange instanceof Change ? [$metricsChange] : [],
+        ];
 
         if ($changes === [] || ! $apply) {
             return $changes;
@@ -227,6 +238,10 @@ class AssetDistribution implements Deletable, Resource, SynchronisesConfiguratio
 
         if ($policyChange instanceof Change) {
             $this->grantBucketAccess($bucket, $distribution['ARN']);
+        }
+
+        if ($metricsChange instanceof Change) {
+            CloudFront::enableAdditionalMetrics($distribution['Id']);
         }
 
         if ($distributionChanges !== []) {

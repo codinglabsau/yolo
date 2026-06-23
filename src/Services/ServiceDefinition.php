@@ -204,4 +204,20 @@ abstract class ServiceDefinition
     {
         return [];
     }
+
+    /**
+     * WAF metric panels this service contributes to the dashboard's `# WAF`
+     * section — a service that adds its own WebACL rule (e.g. a per-host rate
+     * limit) charts its blocks here, so everything WAF lands in one group
+     * rather than scattered through `# Services`. Same property-map shape as
+     * servicesWidgets; return [] when the app doesn't consume the service or
+     * the WebACL isn't resolved yet.
+     *
+     * @param  array<string, mixed>  $context
+     * @return array<int, array<string, mixed>>
+     */
+    public function wafPanels(array $context): array
+    {
+        return [];
+    }
 }

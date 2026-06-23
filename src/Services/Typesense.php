@@ -580,21 +580,33 @@ class Typesense extends ServiceDefinition
             'metrics' => $nodeMetrics,
         ];
 
-        if (($context['wafWebAcl'] ?? null) !== null) {
-            $widgets[] = [
-                'title' => 'Search rate-limit blocks',
-                'region' => $region,
-                'view' => 'timeSeries',
-                'stacked' => false,
-                'period' => 300,
-                'stat' => 'Sum',
-                'metrics' => [
-                    ['AWS/WAFV2', 'BlockedRequests', 'WebACL', $context['wafWebAcl'], 'Rule', WebAcl::SEARCH_RATE_RULE, 'Region', $region, ['label' => 'Blocked', 'color' => Dashboard::RED]],
-                ],
-            ];
+        return $widgets;
+    }
+
+    /**
+     * The search host's own WAF rate-limit rule charts its blocks in the `# WAF`
+     * group, not `# Services` — it's a WebACL rule, so it belongs with the rest
+     * of the WAF posture. Omitted until both Typesense is consumed and the env
+     * WebACL is resolved.
+     */
+    #[\Override]
+    public function wafPanels(array $context): array
+    {
+        if (($context['typesense'] ?? null) === null || ($context['wafWebAcl'] ?? null) === null) {
+            return [];
         }
 
-        return $widgets;
+        return [[
+            'title' => 'Search rate-limit blocks',
+            'region' => $context['region'],
+            'view' => 'timeSeries',
+            'stacked' => false,
+            'period' => 300,
+            'stat' => 'Sum',
+            'metrics' => [
+                ['AWS/WAFV2', 'BlockedRequests', 'WebACL', $context['wafWebAcl'], 'Rule', WebAcl::SEARCH_RATE_RULE, 'Region', $context['region'], ['label' => 'Blocked', 'color' => Dashboard::RED]],
+            ],
+        ]];
     }
 
     #[\Override]
