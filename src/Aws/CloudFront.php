@@ -3,6 +3,8 @@
 namespace Codinglabs\Yolo\Aws;
 
 use Codinglabs\Yolo\Aws;
+use Illuminate\Support\Arr;
+use Aws\Exception\AwsException;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
@@ -74,5 +76,39 @@ class CloudFront
         } while ($marker);
 
         throw new ResourceDoesNotExistException("Could not find Origin Access Control with name $name");
+    }
+
+    /**
+     * Whether the distribution's real-time additional metrics (cache hit rate,
+     * origin latency, error rate by status) are switched on. A distribution
+     * with no monitoring subscription answers `NoSuchMonitoringSubscription` —
+     * read as "off"; any other error is re-thrown rather than masked as off.
+     */
+    public static function additionalMetricsEnabled(string $distributionId): bool
+    {
+        try {
+            $response = Aws::cloudFront()->getMonitoringSubscription(['DistributionId' => $distributionId]);
+        } catch (AwsException $exception) {
+            if ($exception->getAwsErrorCode() === 'NoSuchMonitoringSubscription') {
+                return false;
+            }
+
+            throw $exception;
+        }
+
+        return Arr::get($response->toArray(), 'MonitoringSubscription.RealtimeMetricsSubscriptionConfig.RealtimeMetricsSubscriptionStatus') === 'Enabled';
+    }
+
+    /** Switch the distribution's real-time additional metrics on. */
+    public static function enableAdditionalMetrics(string $distributionId): void
+    {
+        Aws::cloudFront()->createMonitoringSubscription([
+            'DistributionId' => $distributionId,
+            'MonitoringSubscription' => [
+                'RealtimeMetricsSubscriptionConfig' => [
+                    'RealtimeMetricsSubscriptionStatus' => 'Enabled',
+                ],
+            ],
+        ]);
     }
 }

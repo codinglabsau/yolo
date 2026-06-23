@@ -130,17 +130,30 @@ it('parses the CloudWatch dimension suffix out of ELB ARNs', function (): void {
 it('builds every section for a full web app', function (): void {
     $body = Dashboard::body(dashboardContext());
 
-    expect(widgetTitles($body))->toContain('# Web', '# Queue backlog', '# Database', '# CDN & storage', '# Logs');
+    expect(widgetTitles($body))->toContain('# Web', '# Queue', '# Database', '# CDN & storage', '# Logs');
 });
 
-it('charts per-group compute for an extracted queue / scheduler, omitting bundled ones', function (): void {
-    // Bundled by default → no own ECS service → no per-group compute section.
-    expect(widgetTitles(Dashboard::body(dashboardContext())))
-        ->not->toContain('# Queue')
-        ->not->toContain('# Scheduler');
+it('puts the queue section directly below web, ahead of WAF', function (): void {
+    $titles = widgetTitles(Dashboard::body(dashboardContext(['wafWebAcl' => 'yolo-testing-waf'])));
 
-    // Extracted → each gets a compute section (web → queue → scheduler order),
-    // charting that service's own ECS metrics.
+    expect(array_search('# Web', $titles, true))->toBeLessThan(array_search('# Queue', $titles, true))
+        ->and(array_search('# Queue', $titles, true))->toBeLessThan(array_search('# WAF', $titles, true));
+});
+
+it('folds an extracted queue worker compute into the # Queue section; a bundled worker rides web', function (): void {
+    // Bundled by default → the # Queue section still renders (its SQS backlog),
+    // but charts no compute of its own; the scheduler has no section at all.
+    $bundled = Dashboard::body(dashboardContext());
+    expect(widgetTitles($bundled))->toContain('# Queue')->not->toContain('# Scheduler');
+
+    // No queue-service compute panel — the only Tasks panel reads web's service.
+    expect(collect($bundled['widgets'])
+        ->first(fn (array $w): bool => ($w['properties']['title'] ?? null) === 'Tasks (running vs desired)'
+            && in_array('yolo-testing-my-app-queue', $w['properties']['metrics'][0], true)))
+        ->toBeNull();
+
+    // Extracted → the queue gets its own compute, folded under the SAME # Queue
+    // header (web → queue → scheduler order); the scheduler gets its own section.
     $body = Dashboard::body(dashboardContext([
         'queueService' => 'yolo-testing-my-app-queue',
         'schedulerService' => 'yolo-testing-my-app-scheduler',
@@ -151,17 +164,23 @@ it('charts per-group compute for an extracted queue / scheduler, omitting bundle
         ->and(array_search('# Web', $titles, true))->toBeLessThan(array_search('# Queue', $titles, true))
         ->and(array_search('# Queue', $titles, true))->toBeLessThan(array_search('# Scheduler', $titles, true));
 
-    // The queue section's compute charts read the queue service's own dimensions.
+    // Exactly one # Queue header — compute and backlog share it.
+    expect(collect($titles)->filter(fn (string $title): bool => $title === '# Queue'))->toHaveCount(1);
+
+    // The queue's compute charts read the queue service's own dimensions...
     expect(collect($body['widgets'])
         ->first(fn (array $w): bool => ($w['properties']['title'] ?? null) === 'Tasks (running vs desired)'
             && in_array('yolo-testing-my-app-queue', $w['properties']['metrics'][0], true)))
         ->not->toBeNull();
+
+    // ...and its backlog panels sit in the same section.
+    expect(findWidget($body, 'Queue depth'))->not->toBeNull();
 });
 
-it('omits the queue backlog section when the queue is disabled (tasks.queue: false)', function (): void {
+it('omits the whole queue section when the queue is disabled and bundled (tasks.queue: false)', function (): void {
     $body = Dashboard::body(dashboardContext(['queueDisabled' => true]));
 
-    expect(widgetTitles($body))->not->toContain('# Queue backlog')
+    expect(widgetTitles($body))->not->toContain('# Queue')
         ->and(findWidget($body, 'Queue depth'))->toBeNull()
         ->and(widgetTitles($body))->toContain('# Web', '# Database');   // the rest still render
 
@@ -311,7 +330,7 @@ it('drops the web, database and log sections for a headless app with no env DB',
         'taskLogGroup' => null,
     ]));
 
-    expect(widgetTitles($body))->toContain('# Queue backlog', '# CDN & storage');
+    expect(widgetTitles($body))->toContain('# Queue', '# CDN & storage');
     expect(widgetTitles($body))->not->toContain('# Web', '# Database', '# Logs');
 });
 
@@ -370,6 +389,52 @@ it('adds WAF panels dimensioned on the env web ACL when it exists', function ():
     $byRule = findWidget($body, 'Blocked by rule');
     expect(collect($byRule['properties']['metrics'])->pluck(7))
         ->toContain('yolo-block-ips', 'yolo-rate-limit', 'AWS-AWSManagedRulesCommonRuleSet');
+});
+
+it('charts the Typesense search rate-limit blocks in the WAF group, not # Services', function (): void {
+    $body = Dashboard::body(dashboardContext([
+        'wafWebAcl' => 'yolo-testing-waf',
+        'typesense' => [
+            'cluster' => 'yolo-testing-my-app-typesense',
+            'services' => ['yolo-testing-my-app-typesense-0'],
+            'targetGroupSuffix' => null,
+            'albSuffix' => null,
+            'logGroup' => '/yolo/testing-my-app-typesense',
+        ],
+    ]));
+
+    $panel = findWidget($body, 'Search rate-limit blocks');
+    expect($panel)->not->toBeNull()
+        ->and($panel['properties']['metrics'][0])->toContain('AWS/WAFV2', 'BlockedRequests', 'yolo-testing-waf', 'yolo-search-rate-limit');
+
+    // It sits inside the WAF group — after the # WAF header and before # Database
+    // — so it is NOT down in the later # Services section.
+    $titles = widgetTitles($body);
+    expect(array_search('# WAF', $titles, true))->toBeLessThan(array_search('Search rate-limit blocks', $titles, true))
+        ->and(array_search('Search rate-limit blocks', $titles, true))->toBeLessThan(array_search('# Database', $titles, true));
+
+    // Without Typesense the panel is absent even when the WebACL exists.
+    expect(findWidget(Dashboard::body(dashboardContext(['wafWebAcl' => 'yolo-testing-waf'])), 'Search rate-limit blocks'))->toBeNull();
+});
+
+it('charts Aurora DML throughput for a cluster and read/write IOPS for a plain instance', function (): void {
+    // Aurora cluster (the default context) → per-statement DML breakdown, which
+    // only Aurora emits.
+    $throughput = findWidget(Dashboard::body(dashboardContext()), 'RDS throughput');
+    expect($throughput)->not->toBeNull()
+        ->and(collect($throughput['properties']['metrics'])->map(fn ($m): mixed => $m[1])->all())
+        ->toBe(['SelectThroughput', 'InsertThroughput', 'UpdateThroughput', 'DeleteThroughput']);
+    expect(findWidget(Dashboard::body(dashboardContext()), 'RDS IOPS'))->toBeNull();
+
+    // Plain instance → those DML metrics never publish; chart read/write IOPS,
+    // which every RDS engine emits, dimensioned on the instance id.
+    $instance = Dashboard::body(dashboardContext(['rds' => ['identifier' => 'my-db', 'cluster' => false]]));
+    expect(findWidget($instance, 'RDS throughput'))->toBeNull();
+
+    $iops = findWidget($instance, 'RDS IOPS');
+    expect($iops)->not->toBeNull()
+        ->and(collect($iops['properties']['metrics'])->map(fn ($m): mixed => $m[1])->all())->toBe(['ReadIOPS', 'WriteIOPS'])
+        ->and($iops['properties']['metrics'][0])->toContain('AWS/RDS', 'DBInstanceIdentifier', 'my-db');
 });
 
 it('creates the dashboard when it does not exist (apply) and reports WOULD_CREATE on a dry-run', function (): void {
