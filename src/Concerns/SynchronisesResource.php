@@ -7,6 +7,8 @@ use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\Deletable;
+use Codinglabs\Yolo\Resources\Undeletable;
+use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 
 /**
@@ -74,6 +76,17 @@ trait SynchronisesResource
      */
     protected function teardownResource(Resource&Deletable $resource, array $options): StepResult
     {
+        // Belt-and-braces: a resource marked Undeletable (the BYO app data bucket)
+        // must never reach a delete(). It isn't Deletable, so it can't be typed in
+        // here — but a future class that wrongly implemented both would be caught,
+        // not silently torn down. (tests/Arch/UndeletableTest.php forbids both.)
+        if ($resource instanceof Undeletable) {
+            throw new IntegrityCheckException(sprintf(
+                'Refusing to tear down "%s": it is marked Undeletable and must never be deleted.',
+                $resource->name(),
+            ));
+        }
+
         if (! $resource->exists()) {
             return StepResult::SKIPPED;
         }

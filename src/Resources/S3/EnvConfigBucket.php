@@ -93,7 +93,7 @@ class EnvConfigBucket implements Deletable, Resource, SynchronisesConfiguration
         try {
             $this->emptyVersions();
 
-            Aws::s3()->deleteBucket(['Bucket' => $this->name()]);
+            S3::deleteBucket($this->name());
         } catch (S3Exception $e) {
             if (S3::isNotFound($e)) {
                 return;

@@ -44,15 +44,7 @@ it('skips disassociation when nothing is associated', function (): void {
         ->and(array_column($waf, 'name'))->not->toContain('DisassociateWebACL');
 });
 
-it('leaves a data bucket standing without --delete-data', function (): void {
-    $captured = [];
-    bindRoutedS3Client(['HeadBucket' => new Result([])], $captured);
-
-    expect((new TeardownEnvConfigBucketStep())(['delete-data' => false]))->toBe(StepResult::SKIPPED)
-        ->and(array_column($captured, 'name'))->not->toContain('DeleteBucket');
-});
-
-it('empties and deletes a data bucket with --delete-data', function (): void {
+it('empties and deletes the env config bucket', function (): void {
     $captured = [];
     bindRoutedS3Client([
         'HeadBucket' => new Result([]),
@@ -60,6 +52,14 @@ it('empties and deletes a data bucket with --delete-data', function (): void {
         'DeleteBucket' => new Result([]),
     ], $captured);
 
-    expect((new TeardownEnvConfigBucketStep())(['delete-data' => true]))->toBe(StepResult::DELETED)
+    expect((new TeardownEnvConfigBucketStep())(['dry-run' => false]))->toBe(StepResult::DELETED)
         ->and(array_column($captured, 'name'))->toContain('DeleteBucket');
+});
+
+it('reports the env config bucket as WOULD_DELETE on the plan pass', function (): void {
+    $captured = [];
+    bindRoutedS3Client(['HeadBucket' => new Result([])], $captured);
+
+    expect((new TeardownEnvConfigBucketStep())(['dry-run' => true]))->toBe(StepResult::WOULD_DELETE)
+        ->and(array_column($captured, 'name'))->not->toContain('DeleteBucket');
 });

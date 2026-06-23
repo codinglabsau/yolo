@@ -3,13 +3,37 @@
 namespace Codinglabs\Yolo\Aws;
 
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Manifest;
 use Aws\S3\Exception\S3Exception;
+use Codinglabs\Yolo\Resources\S3\S3Bucket;
+use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 class S3
 {
     public static function bucketExists(string $name): bool
     {
         return Aws::s3()->doesBucketExistV2($name);
+    }
+
+    /**
+     * Delete a bucket — the single chokepoint every YOLO bucket teardown routes
+     * through, guarded so the bring-your-own application data bucket (AWS_BUCKET)
+     * can NEVER be deleted: it holds user data and is not YOLO's to remove. A name
+     * match against the configured app data bucket is a hard integrity failure, the
+     * runtime last line of defence behind {@see S3Bucket}
+     * being non-deletable. (Config / asset / logs buckets are regeneratable and pass.)
+     */
+    public static function deleteBucket(string $name): void
+    {
+        if (Manifest::has('bucket') && $name === Paths::s3AppBucket()) {
+            throw new IntegrityCheckException(sprintf(
+                'Refusing to delete "%s": it is the application data bucket, which YOLO never deletes.',
+                $name,
+            ));
+        }
+
+        Aws::s3()->deleteBucket(['Bucket' => $name]);
     }
 
     /**

@@ -6,7 +6,7 @@ use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Destroying;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Services\Lifecycle;
-use Symfony\Component\Console\Input\InputOption;
+use Codinglabs\Yolo\Concerns\ConfirmsDestruction;
 
 use function Laravel\Prompts\error;
 
@@ -30,16 +30,18 @@ use function Laravel\Prompts\error;
  * via their existing sync Teardown branches, forced on by the {@see Destroying}
  * flag for the duration of the run.
  *
- * The env config + logs buckets hold data (the env manifest + shared .env, the ALB
- * access logs), so they're only emptied and deleted with `--delete-data`; otherwise
- * they're left standing.
+ * The env config + logs buckets (the env manifest + shared .env, the ALB access
+ * logs) are regeneratable infrastructure config, so they go with the environment.
+ * The bring-your-own app data bucket and the database are never touched — the
+ * database isn't YOLO's, and the data bucket isn't even Deletable.
  */
 class DestroyEnvironmentCommand extends SyncSteppedCommand
 {
+    use ConfirmsDestruction;
+
     protected function configure(): void
     {
         $this->addSyncOptions()
-            ->addOption('delete-data', null, InputOption::VALUE_NONE, 'Also empty and delete the env config + logs buckets (irreversible data loss)')
             ->setName('destroy:environment')
             ->setDescription('Permanently tear down an environment\'s shared compute/edge resources (leaves the network shell + database)');
     }
@@ -128,8 +130,8 @@ class DestroyEnvironmentCommand extends SyncSteppedCommand
                 Steps\Destroy\Environment\TeardownObserverRoleStep::class,
                 Steps\Destroy\Environment\TeardownAdminPolicyStep::class,
                 Steps\Destroy\Environment\TeardownObserverPolicyStep::class,
-                // Storage last, gated on --delete-data. Logs before the config
-                // bucket, whose deletion is the final act of the env teardown.
+                // Storage last: the env logs bucket, then the env config bucket,
+                // whose deletion is the final act of the env teardown.
                 Steps\Destroy\Environment\TeardownEnvLogsBucketStep::class,
                 Steps\Destroy\Environment\TeardownEnvConfigBucketStep::class,
             ],
