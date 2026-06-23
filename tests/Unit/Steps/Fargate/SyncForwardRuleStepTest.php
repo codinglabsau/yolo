@@ -6,7 +6,7 @@ use Aws\Result;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Steps\Sync\App\SyncForwardRuleStep;
 
-const FORWARD_APEX = 'codinglabs.com.au';
+const FORWARD_APEX = 'example.com';
 const FORWARD_CERT = 'arn:aws:acm:ap-southeast-2:111111111111:certificate/app-cert';
 
 /**

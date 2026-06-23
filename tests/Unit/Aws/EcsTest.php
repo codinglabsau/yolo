@@ -26,7 +26,7 @@ function bindMockEcsClient(MockHandler $mock): void
  */
 function ecsTargetGroupNotAttached(): AwsException
 {
-    $message = 'The target group with targetGroupArn arn:...:targetgroup/yolo-typesense-convictrecords/abc does not have an associated load balancer.';
+    $message = 'The target group with targetGroupArn arn:...:targetgroup/yolo-typesense-my-app/abc does not have an associated load balancer.';
 
     return new AwsException($message, new Command('CreateService'), [
         'code' => 'InvalidParameterException',

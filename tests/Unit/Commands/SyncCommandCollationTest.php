@@ -73,7 +73,7 @@ it('constructs every declared step with just the environment string', function (
             expect(new $stepName('testing'))->toBeInstanceOf(Step::class);
         });
 })->with([
-    'solo web app' => [['domain' => 'codinglabs.com.au', 'tasks' => ['web' => true]]],
+    'solo web app' => [['domain' => 'example.com', 'tasks' => ['web' => true]]],
     'multi-tenant app' => [['tenants' => ['alpha' => []]]],
 ]);
 
@@ -86,7 +86,7 @@ it('orchestrates the three scopes in order — account → environment → app',
 it('folds the Fargate + CDN steps into the app scope when a web task is declared', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'domain' => 'codinglabs.com.au',
+        'domain' => 'example.com',
         'tasks' => ['web' => ['cpu' => 512, 'memory' => 1024]],
     ]);
 
@@ -121,7 +121,7 @@ it('swaps the Solo steps for Landlord + Tenant steps on a multi-tenant app', fun
 it('syncs the standalone queue + scheduler services when both are extracted', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'domain' => 'codinglabs.com.au',
+        'domain' => 'example.com',
         'tasks' => ['web' => true, 'queue' => ['autoscaling' => true], 'scheduler' => true],
     ]);
 
@@ -139,7 +139,7 @@ it('syncs the standalone queue + scheduler services when both are extracted', fu
 it('melts a standalone queue + scheduler back down when both are switched off', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'domain' => 'codinglabs.com.au',
+        'domain' => 'example.com',
         'tasks' => ['web' => true, 'queue' => false, 'scheduler' => false],
     ]);
 
@@ -158,7 +158,7 @@ it('melts a standalone queue + scheduler back down when both are switched off', 
 it('melts the SQS queue + depth alarm when the queue is disabled (tasks.queue: false)', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'domain' => 'codinglabs.com.au',
+        'domain' => 'example.com',
         'tasks' => ['web' => true, 'queue' => false],
     ]);
 
@@ -176,7 +176,7 @@ it('melts the SQS queue + depth alarm when the queue is disabled (tasks.queue: f
 it('provisions the SQS queue when the queue runs (bundled into web by default)', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'domain' => 'codinglabs.com.au',
+        'domain' => 'example.com',
         'tasks' => ['web' => true],
     ]);
 
@@ -193,7 +193,7 @@ it('melts a standalone queue + scheduler back down when the roles revert to bund
     // previously extracted them must still get the teardown wired so the revert lands.
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'domain' => 'codinglabs.com.au',
+        'domain' => 'example.com',
         'tasks' => ['web' => true],
     ]);
 
@@ -227,7 +227,7 @@ it('provisions the env bucket before the load balancer in the environment scope'
 it('keys each scope distinctly so no scope is dropped on merge', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'domain' => 'codinglabs.com.au',
+        'domain' => 'example.com',
         'tasks' => ['web' => true],
     ]);
 

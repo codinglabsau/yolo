@@ -7,7 +7,7 @@ For a single (non-tenanted) app, set the domain at the environment level:
 ```yaml
 environments:
   production:
-    domain: codinglabs.com.au
+    domain: example.com
 ```
 
 YOLO provisions an ACM certificate, attaches it to the load balancer's HTTPS listener via SNI, and points DNS at the ALB. HTTP traffic on `:80` is redirected to HTTPS on `:443`.
@@ -19,7 +19,7 @@ YOLO provisions an ACM certificate, attaches it to the load balancer's HTTPS lis
 You choose the canonical host simply by which one you set as `domain`:
 
 ```yaml
-domain: codinglabs.com.au       # serves the apex; www.codinglabs.com.au → 301 → codinglabs.com.au
+domain: example.com       # serves the apex; www.example.com → 301 → example.com
 ```
 
 ```yaml
@@ -36,8 +36,8 @@ The apex record cannot itself start with `www.` — YOLO rejects that as a manif
 To serve the app from a subdomain, set `domain` to the subdomain and `apex` to the registrable root:
 
 ```yaml
-apex: codinglabs.com.au
-domain: app.codinglabs.com.au
+apex: example.com
+domain: app.example.com
 ```
 
 `apex` tells YOLO which Route 53 hosted zone to write into; `domain` is where the app is served. If you omit `apex`, it defaults to `domain`. A bare subdomain like this is served on its own — it's not one half of the apex/`www` pair, so no redirect is set up.

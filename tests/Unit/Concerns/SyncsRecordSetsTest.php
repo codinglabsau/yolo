@@ -79,20 +79,20 @@ it('upserts both the apex and www alias records for an apex domain', function ()
     bindAlbLookup($elb);
 
     $r53 = [];
-    bindMockRoute53Client([['Name' => 'codinglabs.com.au.', 'Id' => '/hostedzone/ZONE1']], $r53);
+    bindMockRoute53Client([['Name' => 'example.com.', 'Id' => '/hostedzone/ZONE1']], $r53);
 
-    recordSetSyncer()->syncRecordSet('codinglabs.com.au', 'codinglabs.com.au');
+    recordSetSyncer()->syncRecordSet('example.com', 'example.com');
 
     $change = collect($r53)->firstWhere('name', 'ChangeResourceRecordSets');
     $changes = $change['args']['ChangeBatch']['Changes'];
 
     expect($changes)->toHaveCount(2)
         ->and($changes[0]['Action'])->toBe('UPSERT')
-        ->and($changes[0]['ResourceRecordSet']['Name'])->toBe('codinglabs.com.au')
+        ->and($changes[0]['ResourceRecordSet']['Name'])->toBe('example.com')
         ->and($changes[0]['ResourceRecordSet']['Type'])->toBe('A')
         ->and($changes[0]['ResourceRecordSet']['AliasTarget']['DNSName'])->toBe('alb-1.ap-southeast-2.elb.amazonaws.com')
         ->and($changes[0]['ResourceRecordSet']['AliasTarget']['HostedZoneId'])->toBe('ZALB123')
-        ->and($changes[1]['ResourceRecordSet']['Name'])->toBe('www.codinglabs.com.au')
+        ->and($changes[1]['ResourceRecordSet']['Name'])->toBe('www.example.com')
         // the Route 53 SDK's CleanId middleware strips the /hostedzone/ prefix before the call
         ->and($change['args']['HostedZoneId'])->toBe('ZONE1');
 });
@@ -102,9 +102,9 @@ it('upserts both records for a www-canonical domain (www served, apex redirects)
     bindAlbLookup($elb);
 
     $r53 = [];
-    bindMockRoute53Client([['Name' => 'codinglabs.com.au.', 'Id' => '/hostedzone/ZONE1']], $r53);
+    bindMockRoute53Client([['Name' => 'example.com.', 'Id' => '/hostedzone/ZONE1']], $r53);
 
-    recordSetSyncer()->syncRecordSet('codinglabs.com.au', 'www.codinglabs.com.au');
+    recordSetSyncer()->syncRecordSet('example.com', 'www.example.com');
 
     $changes = collect($r53)->firstWhere('name', 'ChangeResourceRecordSets')['args']['ChangeBatch']['Changes'];
 
@@ -112,7 +112,7 @@ it('upserts both records for a www-canonical domain (www served, apex redirects)
     // sibling is 301-redirected by the listener rule.
     expect($changes)->toHaveCount(2)
         ->and(collect($changes)->pluck('ResourceRecordSet.Name')->all())
-        ->toEqualCanonicalizing(['www.codinglabs.com.au', 'codinglabs.com.au']);
+        ->toEqualCanonicalizing(['www.example.com', 'example.com']);
 });
 
 it('upserts a single alias record for a subdomain', function (): void {
@@ -120,13 +120,13 @@ it('upserts a single alias record for a subdomain', function (): void {
     bindAlbLookup($elb);
 
     $r53 = [];
-    bindMockRoute53Client([['Name' => 'codinglabs.com.au.', 'Id' => '/hostedzone/ZONE1']], $r53);
+    bindMockRoute53Client([['Name' => 'example.com.', 'Id' => '/hostedzone/ZONE1']], $r53);
 
-    recordSetSyncer()->syncRecordSet('codinglabs.com.au', 'app.codinglabs.com.au');
+    recordSetSyncer()->syncRecordSet('example.com', 'app.example.com');
 
     $changes = collect($r53)->firstWhere('name', 'ChangeResourceRecordSets')['args']['ChangeBatch']['Changes'];
 
     expect($changes)->toHaveCount(1)
-        ->and($changes[0]['ResourceRecordSet']['Name'])->toBe('app.codinglabs.com.au')
+        ->and($changes[0]['ResourceRecordSet']['Name'])->toBe('app.example.com')
         ->and($changes[0]['ResourceRecordSet']['AliasTarget']['DNSName'])->toBe('alb-1.ap-southeast-2.elb.amazonaws.com');
 });

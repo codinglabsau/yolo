@@ -37,7 +37,7 @@ it('reports the redirect as pending on the plan pass when the listener will be c
     // self-pruning SKIPPED) when the listener will be created — an issued cert.
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'apex' => 'codinglabs.com.au', 'domain' => 'codinglabs.com.au',
+        'apex' => 'example.com', 'domain' => 'example.com',
     ]);
 
     $captured = [];
@@ -45,7 +45,7 @@ it('reports the redirect as pending on the plan pass when the listener will be c
         'DescribeLoadBalancers' => new Result(['LoadBalancers' => [['LoadBalancerName' => 'yolo-testing', 'LoadBalancerArn' => 'arn:alb']]]),
         'DescribeListeners' => new Result(['Listeners' => []]),
     ], $captured);
-    bindIssuedAcmCertificate('codinglabs.com.au', 'arn:aws:acm:ap-southeast-2:111111111111:certificate/app-cert');
+    bindIssuedAcmCertificate('example.com', 'arn:aws:acm:ap-southeast-2:111111111111:certificate/app-cert');
 
     $step = new SyncRedirectRuleStep();
 
@@ -59,7 +59,7 @@ it('still defers a bare subdomain on the plan pass when the listener is absent',
     // there is nothing to plan — it must defer, not report a phantom rule.
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'apex' => 'codinglabs.com.au', 'domain' => 'app.codinglabs.com.au',
+        'apex' => 'example.com', 'domain' => 'app.example.com',
     ]);
 
     $captured = [];
@@ -67,7 +67,7 @@ it('still defers a bare subdomain on the plan pass when the listener is absent',
         'DescribeLoadBalancers' => new Result(['LoadBalancers' => [['LoadBalancerName' => 'yolo-testing', 'LoadBalancerArn' => 'arn:alb']]]),
         'DescribeListeners' => new Result(['Listeners' => []]),
     ], $captured);
-    bindIssuedAcmCertificate('codinglabs.com.au', 'arn:aws:acm:ap-southeast-2:111111111111:certificate/app-cert');
+    bindIssuedAcmCertificate('example.com', 'arn:aws:acm:ap-southeast-2:111111111111:certificate/app-cert');
 
     expect((new SyncRedirectRuleStep())(['dry-run' => true]))->toBe(StepResult::SKIPPED);
 });
@@ -75,7 +75,7 @@ it('still defers a bare subdomain on the plan pass when the listener is absent',
 it('skips a bare subdomain when there is no redirect rule to clean up', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'apex' => 'codinglabs.com.au', 'domain' => 'app.codinglabs.com.au',
+        'apex' => 'example.com', 'domain' => 'app.example.com',
     ]);
 
     $captured = [];
@@ -88,7 +88,7 @@ it('skips a bare subdomain when there is no redirect rule to clean up', function
 it('tears down its own redirect rule when the domain becomes a bare subdomain', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'apex' => 'codinglabs.com.au', 'domain' => 'app.codinglabs.com.au',
+        'apex' => 'example.com', 'domain' => 'app.example.com',
     ]);
 
     $captured = [];
@@ -96,8 +96,8 @@ it('tears down its own redirect rule when the domain becomes a bare subdomain', 
         rules: [[
             'RuleArn' => 'arn:rule:redirect',
             'Priority' => '2000',
-            'Conditions' => [['Field' => 'host-header', 'HostHeaderConfig' => ['Values' => ['www.codinglabs.com.au']]]],
-            'Actions' => [['Type' => 'redirect', 'RedirectConfig' => ['Host' => 'codinglabs.com.au']]],
+            'Conditions' => [['Field' => 'host-header', 'HostHeaderConfig' => ['Values' => ['www.example.com']]]],
+            'Actions' => [['Type' => 'redirect', 'RedirectConfig' => ['Host' => 'example.com']]],
         ]],
         tagDescriptions: [
             ['ResourceArn' => 'arn:rule:redirect', 'Tags' => [['Key' => 'Name', 'Value' => 'yolo-testing-my-app-redirect']]],
@@ -112,7 +112,7 @@ it('tears down its own redirect rule when the domain becomes a bare subdomain', 
 it('would-delete the orphaned redirect rule on a dry-run without deleting', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'apex' => 'codinglabs.com.au', 'domain' => 'app.codinglabs.com.au',
+        'apex' => 'example.com', 'domain' => 'app.example.com',
     ]);
 
     $captured = [];
@@ -120,8 +120,8 @@ it('would-delete the orphaned redirect rule on a dry-run without deleting', func
         rules: [[
             'RuleArn' => 'arn:rule:redirect',
             'Priority' => '2000',
-            'Conditions' => [['Field' => 'host-header', 'HostHeaderConfig' => ['Values' => ['www.codinglabs.com.au']]]],
-            'Actions' => [['Type' => 'redirect', 'RedirectConfig' => ['Host' => 'codinglabs.com.au']]],
+            'Conditions' => [['Field' => 'host-header', 'HostHeaderConfig' => ['Values' => ['www.example.com']]]],
+            'Actions' => [['Type' => 'redirect', 'RedirectConfig' => ['Host' => 'example.com']]],
         ]],
         tagDescriptions: [
             ['ResourceArn' => 'arn:rule:redirect', 'Tags' => [['Key' => 'Name', 'Value' => 'yolo-testing-my-app-redirect']]],

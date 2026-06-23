@@ -9,7 +9,7 @@ describe('serviceNeedsUpdate', function (): void {
     beforeEach(function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'domain' => 'codinglabs.com.au',
+            'domain' => 'example.com',
             'tasks' => ['web' => true],
         ]);
     });
@@ -99,7 +99,7 @@ describe('updatePayload', function (): void {
     it('includes healthCheckGracePeriodSeconds when not headless', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'domain' => 'codinglabs.com.au',
+            'domain' => 'example.com',
             'tasks' => ['web' => ['health-check' => ['grace-period' => 60]]],
         ]);
 

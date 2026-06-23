@@ -23,10 +23,10 @@ beforeEach(function (): void {
 it('reads the manifest fresh from the env config bucket and memoises it', function (): void {
     $captured = [];
     bindRoutedS3Client([
-        'GetObject' => new Result(['Body' => "domain: codinglabs.com.au\nservices: {}\n"]),
+        'GetObject' => new Result(['Body' => "domain: example.com\nservices: {}\n"]),
     ], $captured);
 
-    expect(EnvManifest::get('domain'))->toBe('codinglabs.com.au')
+    expect(EnvManifest::get('domain'))->toBe('example.com')
         ->and(EnvManifest::has('services'))->toBeTrue()
         ->and(EnvManifest::get('services'))->toBe([]);
 

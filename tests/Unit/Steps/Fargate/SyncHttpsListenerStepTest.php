@@ -6,7 +6,7 @@ use Aws\Result;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Steps\Sync\App\SyncHttpsListenerStep;
 
-const HTTPS_APEX = 'codinglabs.com.au';
+const HTTPS_APEX = 'example.com';
 const HTTPS_APP_CERT = 'arn:aws:acm:ap-southeast-2:111111111111:certificate/app-cert';
 const HTTPS_DEFAULT_CERT = 'arn:aws:acm:ap-southeast-2:111111111111:certificate/default-cert';
 

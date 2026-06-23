@@ -70,7 +70,7 @@ class InitCommand extends Command
                 'php artisan tenants:artisan "migrate --path=database/migrations/tenant --database=tenant --force"',
             ]);
         } else {
-            Manifest::put('domain', text('What is the domain?', placeholder: 'eg. codinglabs.com.au'));
+            Manifest::put('domain', text('What is the domain?', placeholder: 'eg. example.com'));
 
             Manifest::put('deploy', [
                 'php artisan migrate --force',

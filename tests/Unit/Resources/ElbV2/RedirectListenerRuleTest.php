@@ -18,10 +18,10 @@ describe('hosts', function (): void {
     it('redirects the www sibling when the apex is canonical', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'domain' => 'codinglabs.com.au',
+            'domain' => 'example.com',
         ]);
 
-        expect(redirectRule()->hosts())->toBe(['www.codinglabs.com.au']);
+        expect(redirectRule()->hosts())->toBe(['www.example.com']);
     });
 
     it('redirects the apex sibling when www is canonical', function (): void {
@@ -37,7 +37,7 @@ describe('hosts', function (): void {
 it('creates a 301 redirect to the canonical host, preserving path and query', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'domain' => 'codinglabs.com.au',
+        'domain' => 'example.com',
     ]);
 
     $captured = [];
@@ -53,9 +53,9 @@ it('creates a 301 redirect to the canonical host, preserving path and query', fu
     $action = $create['args']['Actions'][0];
 
     expect($condition['Field'])->toBe('host-header')
-        ->and($condition['HostHeaderConfig']['Values'])->toBe(['www.codinglabs.com.au'])
+        ->and($condition['HostHeaderConfig']['Values'])->toBe(['www.example.com'])
         ->and($action['Type'])->toBe('redirect')
-        ->and($action['RedirectConfig']['Host'])->toBe('codinglabs.com.au')
+        ->and($action['RedirectConfig']['Host'])->toBe('example.com')
         ->and($action['RedirectConfig']['StatusCode'])->toBe('HTTP_301')
         ->and($action['RedirectConfig']['Protocol'])->toBe('HTTPS')
         ->and($action['RedirectConfig']['Port'])->toBe('443')

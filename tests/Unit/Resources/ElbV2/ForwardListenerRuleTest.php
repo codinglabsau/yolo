@@ -19,19 +19,19 @@ describe('hosts', function (): void {
     it('forwards only the apex when the domain is the apex', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'domain' => 'codinglabs.com.au',
+            'domain' => 'example.com',
         ]);
 
-        expect(forwardRule()->hosts())->toBe(['codinglabs.com.au']);
+        expect(forwardRule()->hosts())->toBe(['example.com']);
     });
 
     it('forwards only the apex when only apex is set', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'apex' => 'codinglabs.com.au',
+            'apex' => 'example.com',
         ]);
 
-        expect(forwardRule()->hosts())->toBe(['codinglabs.com.au']);
+        expect(forwardRule()->hosts())->toBe(['example.com']);
     });
 
     it('forwards only www when the domain is www (www-canonical)', function (): void {
@@ -46,10 +46,10 @@ describe('hosts', function (): void {
     it('forwards only the literal domain for a bare subdomain', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'apex' => 'codinglabs.com.au', 'domain' => 'app.codinglabs.com.au',
+            'apex' => 'example.com', 'domain' => 'app.example.com',
         ]);
 
-        expect(forwardRule()->hosts())->toBe(['app.codinglabs.com.au']);
+        expect(forwardRule()->hosts())->toBe(['app.example.com']);
     });
 });
 
@@ -92,7 +92,7 @@ describe('synchroniseConfiguration', function (): void {
     it('reconciles the rule hosts in place and never touches a sibling host\'s rule', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'domain' => 'codinglabs.com.au',
+            'domain' => 'example.com',
         ]);
 
         $captured = [];
@@ -103,7 +103,7 @@ describe('synchroniseConfiguration', function (): void {
                 [
                     'RuleArn' => 'arn:rule:mine',
                     'Priority' => '1500',
-                    'Conditions' => [['Field' => 'host-header', 'HostHeaderConfig' => ['Values' => ['codinglabs.com.au', 'www.codinglabs.com.au']]]],
+                    'Conditions' => [['Field' => 'host-header', 'HostHeaderConfig' => ['Values' => ['example.com', 'www.example.com']]]],
                     'Actions' => [['Type' => 'forward', 'TargetGroupArn' => 'arn:tg:mine']],
                 ],
                 [
@@ -128,7 +128,7 @@ describe('synchroniseConfiguration', function (): void {
             ->and($modify)->toHaveCount(1)
             // only the app's own rule is modified, narrowed to the canonical host
             ->and($modify->first()['args']['RuleArn'])->toBe('arn:rule:mine')
-            ->and($modify->first()['args']['Conditions'][0]['HostHeaderConfig']['Values'])->toBe(['codinglabs.com.au'])
+            ->and($modify->first()['args']['Conditions'][0]['HostHeaderConfig']['Values'])->toBe(['example.com'])
             // the foreign custom.domain.com rule is never modified or deleted
             ->and(collect($captured)->pluck('args.RuleArn')->filter()->all())->not->toContain('arn:rule:foreign')
             ->and(collect($captured)->pluck('name')->all())->not->toContain('DeleteRule');
@@ -137,7 +137,7 @@ describe('synchroniseConfiguration', function (): void {
     it('records no change and issues no ModifyRule when the rule already matches', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'domain' => 'codinglabs.com.au',
+            'domain' => 'example.com',
         ]);
 
         $captured = [];
@@ -145,7 +145,7 @@ describe('synchroniseConfiguration', function (): void {
             'DescribeRules' => new Result(['Rules' => [[
                 'RuleArn' => 'arn:rule:mine',
                 'Priority' => '1500',
-                'Conditions' => [['Field' => 'host-header', 'HostHeaderConfig' => ['Values' => ['codinglabs.com.au']]]],
+                'Conditions' => [['Field' => 'host-header', 'HostHeaderConfig' => ['Values' => ['example.com']]]],
                 'Actions' => [['Type' => 'forward', 'TargetGroupArn' => 'arn:tg:mine']],
             ]]]),
             'DescribeTags' => new Result(['TagDescriptions' => [

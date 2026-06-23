@@ -66,14 +66,14 @@ it('reports the service state as json', function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'tasks' => ['web' => true]]);
 
     $captured = [];
-    bindServiceLifecycleWorld(offeringTypesense(claims: ['convict' => ['typesense']], clusters: ['convict' => true]), $captured);
+    bindServiceLifecycleWorld(offeringTypesense(claims: ['my-app' => ['typesense']], clusters: ['my-app' => true]), $captured);
 
     $result = invokeServices(options: ['json' => true]);
     $typesense = collect(json_decode($result['output'], true))->firstWhere('service', 'typesense');
 
     expect($result['exit'])->toBe(0)
         ->and($typesense['offered'])->toBeTrue()
-        ->and($typesense['usedBy'])->toBe(['convict'])
+        ->and($typesense['usedBy'])->toBe(['my-app'])
         ->and($typesense['state'])->toBe('provision');
 });
 
@@ -96,7 +96,7 @@ it('refuses to withdraw a service a running app still uses', function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'tasks' => ['web' => true]]);
 
     $captured = [];
-    bindServiceLifecycleWorld(offeringTypesense(claims: ['convict' => ['typesense']], clusters: ['convict' => true]), $captured);
+    bindServiceLifecycleWorld(offeringTypesense(claims: ['my-app' => ['typesense']], clusters: ['my-app' => true]), $captured);
 
     $result = invokeServices(options: ['remove' => 'typesense']);
 

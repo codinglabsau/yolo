@@ -16,7 +16,7 @@ describe('isHeadless', function (): void {
     it('is false for a solo manifest with a domain', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'domain' => 'codinglabs.com.au',
+            'domain' => 'example.com',
         ]);
 
         expect(Manifest::isHeadless())->toBeFalse();
@@ -25,7 +25,7 @@ describe('isHeadless', function (): void {
     it('is false for a solo manifest with an apex', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'apex' => 'codinglabs.com.au',
+            'apex' => 'example.com',
         ]);
 
         expect(Manifest::isHeadless())->toBeFalse();

@@ -20,8 +20,8 @@ it('renders the gate as a themed table, with the live typesense cluster detail',
     $captured = [];
     bindServiceLifecycleWorld([
         'manifest' => "domain: example.com\nservices:\n  typesense:\n    version: '29.0'\n    nodes: 3\n",
-        'claims' => ['convict' => ['typesense']],
-        'clusters' => ['convict' => true],
+        'claims' => ['my-app' => ['typesense']],
+        'clusters' => ['my-app' => true],
     ], $captured);
 
     $cloudWatch = [];
@@ -32,7 +32,7 @@ it('renders the gate as a themed table, with the live typesense cluster detail',
     $body = implode("\n", $panel->render(120, 40));
 
     expect($body)->toContain('typesense')
-        ->toContain('convict')                   // used by
+        ->toContain('my-app')                   // used by
         ->toContain('version=29.0')              // offer summary
         ->toContain('<fg=#A3E635>provision')     // healthy state colour
         ->toContain('typesense cluster')         // the live detail block

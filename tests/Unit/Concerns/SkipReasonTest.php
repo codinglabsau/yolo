@@ -57,7 +57,7 @@ it('skips web steps for a headless app', function (): void {
 it('runs web steps when the app has a domain', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'domain' => 'codinglabs.com.au',
+        'domain' => 'example.com',
     ]);
 
     expect(skipReasonFor(new class() implements ExecutesWebStep

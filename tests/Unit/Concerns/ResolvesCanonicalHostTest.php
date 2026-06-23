@@ -24,21 +24,21 @@ function canonicalHostResolver(): object
 
 describe('hasWwwSibling', function (): void {
     it('is true when the domain is the apex', function (): void {
-        expect(canonicalHostResolver()->siblingExists('codinglabs.com.au', 'codinglabs.com.au'))->toBeTrue();
+        expect(canonicalHostResolver()->siblingExists('example.com', 'example.com'))->toBeTrue();
     });
 
     it('is true when the domain is www.apex', function (): void {
-        expect(canonicalHostResolver()->siblingExists('codinglabs.com.au', 'www.codinglabs.com.au'))->toBeTrue();
+        expect(canonicalHostResolver()->siblingExists('example.com', 'www.example.com'))->toBeTrue();
     });
 
     it('is false for any other subdomain', function (): void {
-        expect(canonicalHostResolver()->siblingExists('codinglabs.com.au', 'app.codinglabs.com.au'))->toBeFalse();
+        expect(canonicalHostResolver()->siblingExists('example.com', 'app.example.com'))->toBeFalse();
     });
 });
 
 describe('wwwSibling', function (): void {
     it('pairs the apex with its www host', function (): void {
-        expect(canonicalHostResolver()->sibling('codinglabs.com.au', 'codinglabs.com.au'))->toBe('www.codinglabs.com.au');
+        expect(canonicalHostResolver()->sibling('example.com', 'example.com'))->toBe('www.example.com');
     });
 
     it('pairs the www host with the apex', function (): void {

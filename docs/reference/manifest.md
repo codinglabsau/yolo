@@ -17,8 +17,8 @@ environments:
     region: ap-southeast-2       # required
 
     # --- Routing (see /guide/domains) ---
-    domain: codinglabs.com.au    # public domain; omit domain + apex + tenants for a headless app
-    # apex: codinglabs.com.au    # default: domain — set when domain is a subdomain
+    domain: example.com    # public domain; omit domain + apex + tenants for a headless app
+    # apex: example.com    # default: domain — set when domain is a subdomain
     #
     # Multi-tenant instead of a single domain (mutually exclusive with domain/apex):
     # tenants:
