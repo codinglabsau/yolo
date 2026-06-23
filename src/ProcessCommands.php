@@ -54,6 +54,12 @@ class ProcessCommands
             $command .= ' --caddyfile=/app/docker/Caddyfile';
         }
 
+        // Pin the worker pool to the task's real vCPU allocation rather than letting
+        // FrankenPHP auto-detect it off the Fargate microVM's fixed ~2 vCPUs (which
+        // would pin ~4 workers on every task whatever its size — too few for an
+        // I/O-blocking request, and the concurrency ceiling per task). See {@see WebWorkers}.
+        $command .= ' --workers=' . WebWorkers::count();
+
         return $command;
     }
 

@@ -19,19 +19,19 @@ beforeEach(function (): void {
     ]);
 });
 
-it('derives the concurrency target from the default task memory (floor(1024/30) workers at 70%)', function (): void {
-    // 1024 MB / 30 = 34 workers; 34 * 0.7 = 23.8, floored to 23.
-    expect(concurrencyPolicy()->targetValue())->toBe(23.0);
+it('derives the concurrency target from the pinned worker pool of the default 0.5 vCPU task', function (): void {
+    // Default web task is 0.5 vCPU → 8 workers; 8 * 0.7 = 5.6, floored to 5.
+    expect(concurrencyPolicy()->targetValue())->toBe(5.0);
 });
 
-it('derives the concurrency target from a configured task memory', function (): void {
+it('scales the concurrency target with the task vCPU allocation', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['memory' => 2048, 'autoscaling' => ['min' => 1, 'max' => 6]]],
+        'tasks' => ['web' => ['cpu' => 1024, 'memory' => 2048, 'autoscaling' => ['min' => 1, 'max' => 6]]],
     ]);
 
-    // 2048 / 30 = 68 workers; 68 * 0.7 = 47.6, floored to 47.
-    expect(concurrencyPolicy()->targetValue())->toBe(47.0);
+    // 1 vCPU → 16 workers; 16 * 0.7 = 11.2, floored to 11.
+    expect(concurrencyPolicy()->targetValue())->toBe(11.0);
 });
 
 it('never targets below one in-flight request on a tiny task', function (): void {
@@ -40,14 +40,15 @@ it('never targets below one in-flight request on a tiny task', function (): void
         'tasks' => ['web' => ['memory' => 32, 'autoscaling' => ['min' => 1, 'max' => 6]]],
     ]);
 
-    // 32 / 30 = 1 worker; 1 * 0.7 = 0.7, floored to 0 → clamped up to 1.
+    // 32 MB caps the pool at 0 whole 64 MB workers → clamped to 1; 1 * 0.7 = 0.7,
+    // floored to 0 → clamped up to 1.
     expect(concurrencyPolicy()->targetValue())->toBe(1.0);
 });
 
 it('tracks in-flight concurrency per task with metric math from request rate and latency', function (): void {
     $config = concurrencyPolicy()->configuration();
 
-    expect($config['TargetValue'])->toBe(23.0);
+    expect($config['TargetValue'])->toBe(5.0);
 
     $metrics = collect($config['CustomizedMetricSpecification']['Metrics']);
 
@@ -115,7 +116,7 @@ it('reports drift without writing on a dry-run', function (): void {
 
 it('reports no drift when the live policy already matches', function (): void {
     $live = ['TargetTrackingScalingPolicyConfiguration' => [
-        'TargetValue' => 23.0,
+        'TargetValue' => 5.0,
         'CustomizedMetricSpecification' => ['Metrics' => [
             ['Id' => 'concurrency', 'Expression' => '(requests / 60) * latency', 'ReturnData' => true],
         ]],
@@ -128,7 +129,7 @@ it('reports no drift when the live policy already matches', function (): void {
 
 it('does not report drift when AWS reformats the expression whitespace on read-back', function (): void {
     $live = ['TargetTrackingScalingPolicyConfiguration' => [
-        'TargetValue' => 23.0,
+        'TargetValue' => 5.0,
         'CustomizedMetricSpecification' => ['Metrics' => [
             // Same formula, AWS-normalised spacing — must not look like drift.
             ['Id' => 'concurrency', 'Expression' => '(requests/60)*latency', 'ReturnData' => true],

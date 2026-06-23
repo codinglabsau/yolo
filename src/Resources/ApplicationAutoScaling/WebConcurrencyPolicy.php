@@ -6,8 +6,7 @@ namespace Codinglabs\Yolo\Resources\ApplicationAutoScaling;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Change;
-use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\Enums\ServerGroup;
+use Codinglabs\Yolo\WebWorkers;
 use Codinglabs\Yolo\Aws\ApplicationAutoScaling;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -31,10 +30,12 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * dimensioned by this app's own target group, so the signal is per-app even though
  * the ALB is shared across the environment.
  *
- * The target is **derived from task memory**, not hand-tuned from a load test:
- * `floor(memory_mb / 30)` workers per task (a ~30 MB/worker estimate for a typical
- * PHP app) held at 70% utilisation, leaving headroom for the within-minute peak and
- * the cold start of the next task. A 1024 MB task → 34 workers → target ~23 concurrent.
+ * The target is **derived from the pinned worker pool** ({@see WebWorkers}), not
+ * hand-tuned from a load test: the task's worker count held at 70% utilisation,
+ * leaving headroom for the within-minute peak and the cold start of the next task.
+ * A 1 vCPU task → 16 workers → target ~11 concurrent. Sharing one count with the
+ * runtime's `--workers` pin keeps the scale-out signal honest about the very pool it
+ * scales — the policy can't aim at a capacity the task doesn't actually run.
  *
  * Composes with the CPU {@see ScalingPolicy} (the safety net for a few heavy,
  * low-rate requests that saturate CPU without raising concurrency): Application
@@ -56,9 +57,6 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  */
 class WebConcurrencyPolicy implements TargetTrackingPolicy
 {
-    /** A typical PHP worker uses ~30 MB and serves one request at a time. */
-    private const int WORKER_MEMORY_MB = 30;
-
     /** Hold concurrency at 70% of worker capacity, leaving headroom for the in-minute peak. */
     private const float TARGET_UTILISATION = 0.7;
 
@@ -74,16 +72,13 @@ class WebConcurrencyPolicy implements TargetTrackingPolicy
     ) {}
 
     /**
-     * The desired concurrency per task — `floor(memory / 30)` workers at 70%
-     * utilisation, floored to a whole request and never below 1 (a tiny task still
-     * gets a meaningful target).
+     * The desired concurrency per task — the pinned worker pool ({@see WebWorkers})
+     * at 70% utilisation, floored to a whole request and never below 1 (a tiny task
+     * still gets a meaningful target).
      */
     public function targetValue(): float
     {
-        $memory = (int) Manifest::get('tasks.web.memory', ServerGroup::WEB->defaultMemory());
-        $workers = intdiv($memory, self::WORKER_MEMORY_MB);
-
-        return max(1.0, floor($workers * self::TARGET_UTILISATION));
+        return max(1.0, floor(WebWorkers::count() * self::TARGET_UTILISATION));
     }
 
     public function exists(): bool

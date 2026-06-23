@@ -426,7 +426,7 @@ The other defaults are tuned to avoid false-positive failures on a Laravel/Octan
 
 ### `tasks.web.autoscaling.*`
 
-[Application Auto Scaling](/guide/scaling) is **required** for the web service — `autoscaling` is `true | false | {config}` and the key can't be omitted (nor can web use the bare `tasks.web: true` shorthand). **`autoscaling: true`** takes the defaults (`min: 1`, `max: 5`); **`autoscaling: false`** pins a fixed single task (no scalable target); a `{min, max, …}` object sets bespoke bounds. An empty object (`{}`) is rejected — write `true` or `false`. Web **`min` must be ≥ 1** (it serves traffic and can't idle to zero). With autoscaling on, YOLO scales on **request concurrency** — the default, leading signal, with its target derived from the task's memory so there's nothing to tune — and composes a **CPU** policy alongside as a safety net. The only knobs are the bounds and cooldowns.
+[Application Auto Scaling](/guide/scaling) is **required** for the web service — `autoscaling` is `true | false | {config}` and the key can't be omitted (nor can web use the bare `tasks.web: true` shorthand). **`autoscaling: true`** takes the defaults (`min: 1`, `max: 5`); **`autoscaling: false`** pins a fixed single task (no scalable target); a `{min, max, …}` object sets bespoke bounds. An empty object (`{}`) is rejected — write `true` or `false`. Web **`min` must be ≥ 1** (it serves traffic and can't idle to zero). With autoscaling on, YOLO scales on **request concurrency** — the default, leading signal, with its target derived from the task's pinned worker pool (sized from vCPU) so there's nothing to tune — and composes a **CPU** policy alongside as a safety net. The only knobs are the bounds and cooldowns.
 
 | Key | Default | Description |
 |---|---|---|
@@ -439,7 +439,7 @@ The other defaults are tuned to avoid false-positive failures on a Laravel/Octan
 
 There's no `burst` knob: real-time [burst scale-out](/guide/scaling#faster-scale-out-burst) (a high-res worker-saturation alarm + step policy, ~10s spike detection) is just part of how web autoscaling works — provisioned with the scalable target, like the concurrency and CPU policies (a classic-mode tier never emits the signal, so it's a no-op there).
 
-The request-concurrency policy itself has no manifest knob: its target is `floor(memory / 30)` workers per task at 70% utilisation (see [Scaling](/guide/scaling#how-the-concurrency-target-is-derived)).
+The request-concurrency policy itself has no manifest knob: its target is the task's pinned worker pool (`16 × vCPU`, capped by memory) at 70% utilisation (see [Scaling](/guide/scaling#how-the-concurrency-target-is-derived)).
 
 ```yaml
 tasks:
