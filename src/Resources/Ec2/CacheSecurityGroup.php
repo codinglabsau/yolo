@@ -5,8 +5,10 @@ namespace Codinglabs\Yolo\Resources\Ec2;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Enums\Scope;
+use Aws\Ec2\Exception\Ec2Exception;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Enums\SecurityGroup;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -15,7 +17,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * only; the 6379-from-task-SG ingress rule is reconciled additively by
  * SyncCacheSecurityGroupStep. Mirrors RdsSecurityGroup.
  */
-class CacheSecurityGroup implements Resource
+class CacheSecurityGroup implements Deletable, Resource
 {
     use ResolvesTags;
 
@@ -60,5 +62,22 @@ class CacheSecurityGroup implements Resource
     public function synchroniseTags(bool $apply): array
     {
         return Aws::synchroniseEc2Tags($this->arn(), $this->tags(), $apply);
+    }
+
+    /**
+     * Teardown: delete the security group, after the cache that used it is gone
+     * and apps have revoked their 6379 ingress. A concurrent not-found is tolerated.
+     */
+    public function delete(): void
+    {
+        try {
+            Aws::ec2()->deleteSecurityGroup(['GroupId' => $this->arn()]);
+        } catch (Ec2Exception $e) {
+            if ($e->getAwsErrorCode() === 'InvalidGroup.NotFound') {
+                return;
+            }
+
+            throw $e;
+        }
     }
 }

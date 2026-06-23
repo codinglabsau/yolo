@@ -43,6 +43,7 @@ class AppObserverPolicy extends ObserverPolicy implements Deletable
      * deletePolicy. A concurrent delete that already removed the policy is
      * tolerated.
      */
+    #[\Override]
     public function delete(): void
     {
         try {

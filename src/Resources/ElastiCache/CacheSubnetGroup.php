@@ -8,7 +8,9 @@ use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Aws\ElastiCache;
 use Codinglabs\Yolo\Resources\Ec2\Vpc;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
+use Aws\ElastiCache\Exception\ElastiCacheException;
 use Codinglabs\Yolo\Enums\ElastiCache as ElastiCacheEnum;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -16,7 +18,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * ElastiCache subnet group spanning every subnet in the VPC, so the Valkey
  * cache can launch into the YOLO network. Mirrors RdsSubnet.
  */
-class CacheSubnetGroup implements Resource
+class CacheSubnetGroup implements Deletable, Resource
 {
     use ResolvesTags;
 
@@ -59,5 +61,24 @@ class CacheSubnetGroup implements Resource
     public function synchroniseTags(bool $apply): array
     {
         return Aws::synchroniseElastiCacheTags($this->arn(), $this->tags(), $apply);
+    }
+
+    /**
+     * Teardown: delete the subnet group, after the cache that used it is gone. A
+     * concurrent not-found is tolerated.
+     */
+    public function delete(): void
+    {
+        try {
+            Aws::elastiCache()->deleteCacheSubnetGroup([
+                'CacheSubnetGroupName' => $this->name(),
+            ]);
+        } catch (ElastiCacheException $e) {
+            if ($e->getAwsErrorCode() === 'CacheSubnetGroupNotFoundFault') {
+                return;
+            }
+
+            throw $e;
+        }
     }
 }

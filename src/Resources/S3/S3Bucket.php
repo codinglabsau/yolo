@@ -10,6 +10,7 @@ use Codinglabs\Yolo\Aws\S3;
 use Codinglabs\Yolo\Enums\Scope;
 use Aws\S3\Exception\S3Exception;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Undeletable;
 
 /**
  * The optional application data bucket (AWS_BUCKET) — user-facing storage for the
@@ -31,7 +32,7 @@ use Codinglabs\Yolo\Resources\Resource;
  * we only ever create when the bucket is truly absent, treating 403 as present is
  * exactly right. The upshot: YOLO needs no S3 permission on a bucket it doesn't own.
  */
-class S3Bucket implements Resource
+class S3Bucket implements Resource, Undeletable
 {
     public function name(): string
     {

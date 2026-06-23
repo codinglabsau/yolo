@@ -9,6 +9,7 @@ use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Aws\S3;
 use Codinglabs\Yolo\Aws\Ecs;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Destroying;
 use Codinglabs\Yolo\EnvManifest;
 use Symfony\Component\Yaml\Yaml;
 use Aws\S3\Exception\S3Exception;
@@ -44,6 +45,10 @@ class Lifecycle
 
     public static function state(Service $service): ServiceState
     {
+        if (Destroying::active()) {
+            return ServiceState::Teardown;
+        }
+
         if (EnvManifest::has($service->envManifestKey())) {
             return ServiceState::Provision;
         }
@@ -85,6 +90,26 @@ class Lifecycle
         sort($using);
 
         return $using;
+    }
+
+    /**
+     * Every app still claiming this environment — one that has published a claim
+     * file (apps/{app}.yml) or has running tasks. destroy:environment refuses
+     * while any remain; they must be torn down with destroy:app first, so the
+     * env-shared resources never go out from under a live app.
+     *
+     * @return array<int, string>
+     */
+    public static function claimingApps(): array
+    {
+        $apps = array_values(array_unique([
+            ...array_keys(static::published()),
+            ...static::liveApps(),
+        ]));
+
+        sort($apps);
+
+        return $apps;
     }
 
     /**

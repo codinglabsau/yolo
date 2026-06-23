@@ -113,7 +113,7 @@ class AssetBucket implements Deletable, Resource, SynchronisesConfiguration
         try {
             $this->emptyObjects();
 
-            Aws::s3()->deleteBucket(['Bucket' => $this->name()]);
+            S3::deleteBucket($this->name());
         } catch (S3Exception $e) {
             if (S3::isNotFound($e)) {
                 return;

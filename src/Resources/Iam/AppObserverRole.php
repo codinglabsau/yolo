@@ -43,6 +43,7 @@ class AppObserverRole extends ObserverRole implements Deletable
      * policies delete before deleteRole. A concurrent delete that already removed
      * the role is tolerated.
      */
+    #[\Override]
     public function delete(): void
     {
         try {

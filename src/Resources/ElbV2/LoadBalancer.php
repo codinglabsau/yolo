@@ -7,8 +7,10 @@ use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Change;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\ElbV2;
+use Aws\Exception\AwsException;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\Ec2\PublicSubnet;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
@@ -27,7 +29,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * SynchronisesConfiguration so a changed default reaches an already-provisioned
  * load balancer.
  */
-class LoadBalancer implements Resource, SynchronisesConfiguration
+class LoadBalancer implements Deletable, Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
 
@@ -93,6 +95,36 @@ class LoadBalancer implements Resource, SynchronisesConfiguration
     public function synchroniseTags(bool $apply): array
     {
         return Aws::synchroniseElbV2Tags($this->arn(), $this->tags(), $apply);
+    }
+
+    /**
+     * Teardown when the environment is torn down: delete the load balancer (its
+     * listeners go with it). `desiredAttributes` pins deletion_protection on, so
+     * lift it first — AWS rejects deleteLoadBalancer with OperationNotPermitted
+     * while it's enabled. A concurrent not-found is tolerated.
+     */
+    public function delete(): void
+    {
+        try {
+            $arn = $this->arn();
+
+            Aws::elasticLoadBalancingV2()->modifyLoadBalancerAttributes([
+                'LoadBalancerArn' => $arn,
+                'Attributes' => [['Key' => 'deletion_protection.enabled', 'Value' => 'false']],
+            ]);
+
+            Aws::elasticLoadBalancingV2()->deleteLoadBalancer([
+                'LoadBalancerArn' => $arn,
+            ]);
+        } catch (ResourceDoesNotExistException) {
+            // arn() resolution raced a concurrent delete — already gone.
+        } catch (AwsException $e) {
+            if ($e->getAwsErrorCode() === 'LoadBalancerNotFound') {
+                return;
+            }
+
+            throw $e;
+        }
     }
 
     /**

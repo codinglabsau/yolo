@@ -2,7 +2,7 @@
 
 use Aws\Result;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Steps\Sync\App\SyncCacheClusterStep;
+use Codinglabs\Yolo\Steps\Sync\Environment\SyncCacheClusterStep;
 
 it('skips when cache.store is not redis', function (): void {
     writeManifest([

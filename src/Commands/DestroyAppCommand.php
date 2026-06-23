@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Services\ServiceDefinition;
+use Codinglabs\Yolo\Concerns\ConfirmsDestruction;
 
 use function Laravel\Prompts\error;
 
@@ -29,6 +30,8 @@ use function Laravel\Prompts\error;
  */
 class DestroyAppCommand extends SyncSteppedCommand
 {
+    use ConfirmsDestruction;
+
     protected function configure(): void
     {
         $this->addSyncOptions()

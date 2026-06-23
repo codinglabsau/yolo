@@ -4,22 +4,27 @@ use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\S3\S3Bucket;
+use Codinglabs\Yolo\Resources\Undeletable;
 
 /**
  * `yolo destroy` tears an environment down by deleting the live AWS resources it
  * owns, so every App-scoped resource must be able to delete itself — otherwise a
  * teardown would orphan it (and `yolo audit` would then flag it as unexpected).
  *
- * The one deliberate exception is the bring-your-own app data bucket
- * ({@see S3Bucket}): it holds user data, is never YOLO-tagged, and must survive a
- * teardown — so it is asserted NON-deletable here on purpose. A new App-scoped
- * resource that forgets `delete()` fails this test until it implements
- * {@see Deletable} (or, for a future shared resource, is moved off App scope).
+ * The deliberate exceptions are the resources YOLO must NEVER delete — the ones
+ * marked {@see Undeletable}: the bring-your-own app data bucket ({@see S3Bucket}, holds
+ * user data) and the hosted zone (domain-level infrastructure that outlives any app —
+ * destroy:app withdraws its records but never deletes the zone). A new App-scoped
+ * resource that forgets `delete()` fails this test until it implements {@see Deletable}
+ * (or is deliberately marked {@see Undeletable}).
  *
- * Env- and Account-scoped resources are intentionally NOT yet required to be
- * deletable — environment teardown is a later phase.
+ * Env-scoped resources aren't blanket-required to be deletable: `destroy:environment`
+ * tears down the compute/edge tier (those resources do implement {@see Deletable}),
+ * but the network shell it pins behind the database (VPC, subnets, the RDS security
+ * group) is deliberately left standing, so requiring it here would be wrong. Account
+ * scope is likewise out of scope. This test stays the floor for App scope only.
  */
-it('every app-scoped resource is deletable, except the BYO data bucket', function (): void {
+it('every app-scoped resource is deletable, except the ones marked Undeletable', function (): void {
     $instantiate = function (ReflectionClass $reflection): object {
         $constructor = $reflection->getConstructor();
 
@@ -86,10 +91,10 @@ it('every app-scoped resource is deletable, except the BYO data bucket', functio
 
         $examined++;
 
-        // The BYO app data bucket is the deliberate exception — that it must NOT
-        // be Deletable is asserted directly in its own test below, never via this
-        // discovery loop (which could stop classifying it as App-scoped).
-        if ($class === S3Bucket::class) {
+        // Resources marked Undeletable (the BYO data bucket, the hosted zone) must
+        // survive a teardown by design — they're the deliberate exceptions. That
+        // they must NOT be Deletable is asserted directly in tests/Arch/UndeletableTest.php.
+        if ($reflection->implementsInterface(Undeletable::class)) {
             continue;
         }
 

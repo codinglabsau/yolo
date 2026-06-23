@@ -38,6 +38,7 @@ class AppObserversGroup extends AssumeRoleGroup implements Deletable
      * the inline assume-role policy (AssumeRoleGroup's create() put) before
      * deleteGroup. A concurrent delete that already removed the group is tolerated.
      */
+    #[\Override]
     public function delete(): void
     {
         try {

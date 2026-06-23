@@ -206,12 +206,17 @@ class SyncAppCommand extends SyncSteppedCommand
                         Steps\Sync\App\AttachEcsTaskRolePoliciesStep::class,
                         Steps\Sync\App\SyncTaskSecurityGroupStep::class,
                         Steps\Sync\App\SyncRdsSecurityGroupStep::class,
-                        // Valkey cache (gated on cache) — env-shared, bootstrapped
-                        // from sync:app like the RDS SG; the cache SG needs the task SG.
-                        Steps\Sync\App\SyncCacheSubnetGroupStep::class,
-                        Steps\Sync\App\SyncCacheParameterGroupStep::class,
-                        Steps\Sync\App\SyncCacheSecurityGroupStep::class,
-                        Steps\Sync\App\SyncCacheClusterStep::class,
+                        // Valkey cache — env-owned, bootstrapped from sync:app (gated
+                        // on cache.store). The env infrastructure (subnet/parameter
+                        // groups, the SG, the cluster) lives in the Environment
+                        // namespace; this app then authorises its own 6379 ingress on
+                        // the shared SG below, mirroring Typesense's env-SG/app-ingress
+                        // split.
+                        Steps\Sync\Environment\SyncCacheSubnetGroupStep::class,
+                        Steps\Sync\Environment\SyncCacheParameterGroupStep::class,
+                        Steps\Sync\Environment\SyncCacheSecurityGroupStep::class,
+                        Steps\Sync\Environment\SyncCacheClusterStep::class,
+                        Steps\Sync\App\AuthoriseCacheIngressStep::class,
                         Steps\Sync\App\SyncTargetGroupStep::class,
                         Steps\Sync\App\SyncHttpsListenerStep::class,
                         Steps\Sync\App\SyncForwardRuleStep::class,

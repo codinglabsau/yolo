@@ -6,7 +6,9 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Aws\ElastiCache;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
+use Aws\ElastiCache\Exception\ElastiCacheException;
 use Codinglabs\Yolo\Enums\ElastiCache as ElastiCacheEnum;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -17,7 +19,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * app cache. The parameter-group family is coupled to the engine major, so it is
  * pinned alongside CacheCluster::ENGINE_VERSION.
  */
-class CacheParameterGroup implements Resource
+class CacheParameterGroup implements Deletable, Resource
 {
     use ResolvesTags;
 
@@ -67,5 +69,24 @@ class CacheParameterGroup implements Resource
     public function synchroniseTags(bool $apply): array
     {
         return Aws::synchroniseElastiCacheTags($this->arn(), $this->tags(), $apply);
+    }
+
+    /**
+     * Teardown: delete the parameter group, after the cache that used it is gone.
+     * A concurrent not-found is tolerated.
+     */
+    public function delete(): void
+    {
+        try {
+            Aws::elastiCache()->deleteCacheParameterGroup([
+                'CacheParameterGroupName' => $this->name(),
+            ]);
+        } catch (ElastiCacheException $e) {
+            if ($e->getAwsErrorCode() === 'CacheParameterGroupNotFound') {
+                return;
+            }
+
+            throw $e;
+        }
     }
 }

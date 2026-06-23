@@ -6,7 +6,9 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Aws\ElastiCache;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
+use Aws\ElastiCache\Exception\ElastiCacheException;
 use Codinglabs\Yolo\Resources\Ec2\CacheSecurityGroup;
 use Codinglabs\Yolo\Enums\ElastiCache as ElastiCacheEnum;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -17,7 +19,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * Functionally a standard single instance — auto-failover and Multi-AZ are off.
  * Scaling is a manual vertical resize; HA, if ever needed, is an in-place add.
  */
-class CacheCluster implements Resource
+class CacheCluster implements Deletable, Resource
 {
     use ResolvesTags;
 
@@ -103,5 +105,29 @@ class CacheCluster implements Resource
     public function synchroniseTags(bool $apply): array
     {
         return Aws::synchroniseElastiCacheTags($this->arn(), $this->tags(), $apply);
+    }
+
+    /**
+     * Teardown: delete the replication group, then wait for it to actually go —
+     * it pins its subnet/parameter groups + security group until then, which the
+     * later teardown steps delete. A concurrent not-found is tolerated.
+     */
+    public function delete(): void
+    {
+        try {
+            Aws::elastiCache()->deleteReplicationGroup([
+                'ReplicationGroupId' => $this->name(),
+            ]);
+
+            Aws::waitFor(Aws::elastiCache(), 'ReplicationGroupDeleted', [
+                'ReplicationGroupId' => $this->name(),
+            ], timeout: 20 * 60);
+        } catch (ElastiCacheException $e) {
+            if ($e->getAwsErrorCode() === 'ReplicationGroupNotFoundFault') {
+                return;
+            }
+
+            throw $e;
+        }
     }
 }

@@ -11,6 +11,7 @@ use Codinglabs\Yolo\Enums\ServiceState;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Services\Lifecycle;
 use Codinglabs\Yolo\Services\Typesense;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -30,7 +31,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * in Count so a new AWS signature can't start blocking live traffic unannounced;
  * the low-false-positive groups block outright.
  */
-class WebAcl implements Resource, SynchronisesConfiguration
+class WebAcl implements Deletable, Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
 
@@ -142,6 +143,30 @@ class WebAcl implements Resource, SynchronisesConfiguration
     public function synchroniseTags(bool $apply): array
     {
         return Aws::synchroniseWafV2Tags($this->arn(), $this->tags(), $apply);
+    }
+
+    /**
+     * Teardown when the environment is torn down: delete the web ACL. WAFv2
+     * needs the current LockToken (optimistic concurrency) and the Id, both read
+     * from the live summary. The destroy step disassociates the ACL from the ALB
+     * first — WAFv2 refuses to delete an ACL still associated with a resource —
+     * so by the time we get here a plain deleteWebACL succeeds. A concurrent
+     * removal (the summary lookup already 404s) is tolerated.
+     */
+    public function delete(): void
+    {
+        try {
+            $summary = WafV2::webAcl($this->name());
+        } catch (ResourceDoesNotExistException) {
+            return;
+        }
+
+        Aws::wafV2()->deleteWebACL([
+            'Name' => $this->name(),
+            'Scope' => WafV2::SCOPE,
+            'Id' => $summary['Id'],
+            'LockToken' => $summary['LockToken'],
+        ]);
     }
 
     /**

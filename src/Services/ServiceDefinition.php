@@ -157,6 +157,21 @@ abstract class ServiceDefinition
     }
 
     /**
+     * The ordered destroy:environment steps that tear this service's env-shared
+     * resources down. Reuses the sync steps' Teardown branches (destroy:environment
+     * runs them with the lifecycle forced to Teardown), but listed in teardown
+     * order — dependents before dependencies — because create order doesn't invert
+     * cleanly (e.g. a search listener rule must go before its target group). Empty
+     * for a service with no env-shared half.
+     *
+     * @return array<int, class-string>
+     */
+    public function teardownEnvironmentSteps(): array
+    {
+        return [];
+    }
+
+    /**
      * Build-time env values injected (unconditionally — these are YOLO-owned
      * keys, not defaults) when the app consumes this service.
      *
