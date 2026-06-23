@@ -40,17 +40,27 @@ final class WebWorkers
      * Workers per allocated vCPU. Higher than FrankenPHP's 2×-CPU default because an
      * SSR / I/O-bound request parks its worker on a downstream render rather than
      * burning the core, so a task needs more resident workers than cores to stay busy
-     * without the pool becoming the artificial bottleneck. The crossover where worker-
-     * and CPU-saturation actually meet is workload-specific — this is the load-tested
-     * default, hardcoded rather than a manifest knob (one number, no override case yet).
+     * without the pool becoming the artificial bottleneck.
+     *
+     * 16 is a deliberately conservative *floor*, not a measured answer. It lifts a 1 vCPU
+     * task off the ~4-worker auto-detect floor while keeping a 0.5 vCPU task (half the
+     * compute → a shallower real ceiling) healthy rather than queuing CPU-bound renders
+     * into a death-loop. The principled ceiling is where **CPU becomes the binding
+     * constraint** under target concurrency — for bundled SSR (PHP serialise + the Node
+     * render burning the same cores) that point sits *below* the memory cap, so it's the
+     * value the load test finds by turning this dial up (on a 2 GB task memory caps the
+     * pool at ~32, so the range to explore is 16→32). Hardcoded rather than a manifest
+     * knob — one number, no override case yet.
      */
     private const int WORKERS_PER_VCPU = 16;
 
     /**
      * The memory ceiling: a resident Octane worker holds a full app copy (~64 MB is a
-     * conservative estimate for a typical Laravel app). Only binds on a deliberately
-     * memory-starved task; for every standard Fargate CPU/memory pair the vCPU term is
-     * the smaller one.
+     * conservative estimate for a typical Laravel app). This is the **outer safety
+     * bound, not the target** — the value the pool should actually settle at is the
+     * lower CPU-throughput point ({@see WORKERS_PER_VCPU}). It only binds on a
+     * deliberately memory-starved task; for every standard Fargate CPU/memory pair the
+     * vCPU term is the smaller one.
      */
     private const int WORKER_MEMORY_MB = 64;
 
