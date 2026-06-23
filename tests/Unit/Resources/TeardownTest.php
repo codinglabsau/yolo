@@ -7,11 +7,13 @@ use Aws\Command;
 use Aws\MockHandler;
 use Aws\Rds\RdsClient;
 use Aws\CommandInterface;
+use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Aws\Ecs;
 use Codinglabs\Yolo\Helpers;
 use Aws\Route53\Route53Client;
 use GuzzleHttp\Promise\Create;
 use Aws\Exception\AwsException;
+use Aws\Ec2\Exception\Ec2Exception;
 use Aws\CloudFront\CloudFrontClient;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Resources\Ec2\Vpc;
@@ -322,6 +324,47 @@ it('resolves the task security group id then deletes it', function (): void {
     $group->delete();
 
     expect(collect($captured)->firstWhere('name', 'DeleteSecurityGroup')['args']['GroupId'])->toBe('sg-abc');
+});
+
+it('retries DeleteSecurityGroup while a detaching ENI still holds the group, then succeeds', function (): void {
+    // A stopped Fargate task's ENI keeps holding the SG for a window after the task
+    // stops → DependencyViolation. The delete retries past it until the ENI clears.
+    $captured = [];
+    bindMockEc2Client([
+        'DeleteSecurityGroup' => [
+            new Ec2Exception('has a dependent object', new Command('DeleteSecurityGroup'), ['code' => 'DependencyViolation']),
+            new Ec2Exception('has a dependent object', new Command('DeleteSecurityGroup'), ['code' => 'DependencyViolation']),
+            new Result(),
+        ],
+    ], $captured);
+
+    Ec2::deleteSecurityGroupWhenDetached('sg-abc', maxAttempts: 5, sleepSeconds: 0);
+
+    expect(array_count_values(array_column($captured, 'name'))['DeleteSecurityGroup'])->toBe(3);
+});
+
+it('treats an already-removed security group (InvalidGroup.NotFound) as done', function (): void {
+    $captured = [];
+    bindMockEc2Client([
+        'DeleteSecurityGroup' => new Ec2Exception('not found', new Command('DeleteSecurityGroup'), ['code' => 'InvalidGroup.NotFound']),
+    ], $captured);
+
+    Ec2::deleteSecurityGroupWhenDetached('sg-gone', maxAttempts: 5, sleepSeconds: 0);
+
+    // One attempt, swallowed — never retried.
+    expect(array_count_values(array_column($captured, 'name'))['DeleteSecurityGroup'])->toBe(1);
+});
+
+it('rethrows a non-dependency DeleteSecurityGroup error without retrying', function (): void {
+    $captured = [];
+    bindMockEc2Client([
+        'DeleteSecurityGroup' => new Ec2Exception('denied', new Command('DeleteSecurityGroup'), ['code' => 'UnauthorizedOperation']),
+    ], $captured);
+
+    expect(fn () => Ec2::deleteSecurityGroupWhenDetached('sg-abc', maxAttempts: 5, sleepSeconds: 0))
+        ->toThrow(Ec2Exception::class);
+
+    expect(array_count_values(array_column($captured, 'name'))['DeleteSecurityGroup'])->toBe(1);
 });
 
 it('deletes the dashboard and the queue alarm by name', function (): void {

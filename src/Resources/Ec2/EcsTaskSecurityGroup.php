@@ -6,7 +6,6 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
-use Aws\Ec2\Exception\Ec2Exception;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Enums\SecurityGroup;
 use Codinglabs\Yolo\Resources\Deletable;
@@ -72,23 +71,15 @@ class EcsTaskSecurityGroup implements Deletable, Resource
     }
 
     /**
-     * Delete the security group. Assumes upstream teardown has already removed
-     * everything that references it — the ECS service/tasks are gone (so no live
-     * ENIs hold the group) and the app's RDS-SG ingress rule has been revoked —
-     * so a plain delete succeeds; AWS would otherwise refuse with
-     * DependencyViolation. A concurrent removal (InvalidGroup.NotFound) is
-     * tolerated.
+     * Delete the task security group. Upstream teardown revokes the sibling-SG
+     * ingress rules that reference it (RDS 3306, cache 6379, Typesense 8108) and
+     * stops the ECS tasks first — but a stopped Fargate task's ENI keeps holding
+     * the group for a minute or two while it detaches, so the delete is retried
+     * past that transient DependencyViolation until the ENIs clear (and a
+     * concurrent removal is tolerated). See Ec2::deleteSecurityGroupWhenDetached.
      */
     public function delete(): void
     {
-        try {
-            Aws::ec2()->deleteSecurityGroup(['GroupId' => $this->arn()]);
-        } catch (Ec2Exception $e) {
-            if ($e->getAwsErrorCode() === 'InvalidGroup.NotFound') {
-                return;
-            }
-
-            throw $e;
-        }
+        Ec2::deleteSecurityGroupWhenDetached($this->arn());
     }
 }

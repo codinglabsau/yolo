@@ -5,7 +5,6 @@ namespace Codinglabs\Yolo\Resources\Ec2;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Enums\Scope;
-use Aws\Ec2\Exception\Ec2Exception;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Enums\SecurityGroup;
 use Codinglabs\Yolo\Resources\Deletable;
@@ -66,18 +65,13 @@ class CacheSecurityGroup implements Deletable, Resource
 
     /**
      * Teardown: delete the security group, after the cache that used it is gone
-     * and apps have revoked their 6379 ingress. A concurrent not-found is tolerated.
+     * and apps have revoked their 6379 ingress. A detaching ENI can still hold the
+     * group briefly, so the delete is retried past that transient
+     * DependencyViolation (and a concurrent not-found is tolerated).
+     * See Ec2::deleteSecurityGroupWhenDetached.
      */
     public function delete(): void
     {
-        try {
-            Aws::ec2()->deleteSecurityGroup(['GroupId' => $this->arn()]);
-        } catch (Ec2Exception $e) {
-            if ($e->getAwsErrorCode() === 'InvalidGroup.NotFound') {
-                return;
-            }
-
-            throw $e;
-        }
+        Ec2::deleteSecurityGroupWhenDetached($this->arn());
     }
 }

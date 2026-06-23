@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Aws;
 
 use Codinglabs\Yolo\Aws;
+use Aws\Ec2\Exception\Ec2Exception;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class Ec2
@@ -160,5 +161,41 @@ class Ec2
         return Aws::ec2()->describeSecurityGroupRules([
             'Filters' => $filters,
         ])['SecurityGroupRules'];
+    }
+
+    /**
+     * Delete a security group, retrying while AWS still reports a dependent
+     * object. A security group can't be deleted while anything references it —
+     * most often a still-detaching ENI from a just-stopped Fargate task (ENI
+     * cleanup lags task stop by a minute or two over the graceful-drain window),
+     * or a sibling SG's ingress rule mid-revoke. Everything that references the
+     * group is torn down ahead of this, so the dependency is transient — retry
+     * against AWS's own check until it clears, rather than asserting it's already
+     * gone. A group already removed (InvalidGroup.NotFound) is the goal state and
+     * returns cleanly. Any other error (or exhausting the attempts) propagates.
+     */
+    public static function deleteSecurityGroupWhenDetached(string $groupId, int $maxAttempts = 24, int $sleepSeconds = 10): void
+    {
+        $attempt = 0;
+
+        while (true) {
+            try {
+                Aws::ec2()->deleteSecurityGroup(['GroupId' => $groupId]);
+
+                return;
+            } catch (Ec2Exception $exception) {
+                if ($exception->getAwsErrorCode() === 'InvalidGroup.NotFound') {
+                    return;
+                }
+
+                $attempt++;
+
+                if ($attempt >= $maxAttempts || $exception->getAwsErrorCode() !== 'DependencyViolation') {
+                    throw $exception;
+                }
+
+                sleep($sleepSeconds);
+            }
+        }
     }
 }

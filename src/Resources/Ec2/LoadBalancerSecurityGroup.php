@@ -5,7 +5,6 @@ namespace Codinglabs\Yolo\Resources\Ec2;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Enums\Scope;
-use Aws\Ec2\Exception\Ec2Exception;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Enums\SecurityGroup;
 use Codinglabs\Yolo\Resources\Deletable;
@@ -65,23 +64,14 @@ class LoadBalancerSecurityGroup implements Deletable, Resource
     }
 
     /**
-     * Delete the security group. Assumes upstream teardown has already removed
-     * everything that references it — the load balancer is gone (so no live ENIs
-     * hold the group) and the task security group's ingress rule referencing it
-     * has been revoked — so a plain delete succeeds; AWS would otherwise refuse
-     * with DependencyViolation. A concurrent removal (InvalidGroup.NotFound) is
-     * tolerated.
+     * Delete the security group. Upstream teardown removes the load balancer and
+     * revokes the task SG's ingress rule referencing it — but the ALB's ENIs
+     * detach asynchronously and keep holding the group for a short window, so the
+     * delete is retried past that transient DependencyViolation until they clear
+     * (and a concurrent removal is tolerated). See Ec2::deleteSecurityGroupWhenDetached.
      */
     public function delete(): void
     {
-        try {
-            Aws::ec2()->deleteSecurityGroup(['GroupId' => $this->arn()]);
-        } catch (Ec2Exception $e) {
-            if ($e->getAwsErrorCode() === 'InvalidGroup.NotFound') {
-                return;
-            }
-
-            throw $e;
-        }
+        Ec2::deleteSecurityGroupWhenDetached($this->arn());
     }
 }

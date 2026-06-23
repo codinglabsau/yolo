@@ -339,7 +339,9 @@ function bindMockEc2Client(array $byCommand, array &$captured): void
                 $entry = $entry[$index];
             }
 
-            return Create::promiseFor($entry);
+            return $entry instanceof Throwable
+                ? Create::rejectionFor($entry)
+                : Create::promiseFor($entry);
         }
     };
 

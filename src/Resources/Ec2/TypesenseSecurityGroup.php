@@ -4,7 +4,6 @@ namespace Codinglabs\Yolo\Resources\Ec2;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ec2;
-use Aws\Exception\AwsException;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Enums\SecurityGroup;
@@ -67,28 +66,13 @@ class TypesenseSecurityGroup implements Deletable, Resource
     }
 
     /**
-     * Teardown runs after the cluster cascade stopped the node tasks, but
-     * their ENIs detach asynchronously — DependencyViolation for a short
-     * window is expected, not an error. Bounded retry, then a genuine failure
-     * propagates.
+     * Teardown runs after the cluster cascade stopped the node tasks, but their
+     * ENIs detach asynchronously — DependencyViolation for a short window is
+     * expected, not an error. The delete is retried past it until the ENIs clear.
+     * See Ec2::deleteSecurityGroupWhenDetached.
      */
     public function delete(): void
     {
-        $groupId = $this->arn();
-        $deadline = time() + 120;
-
-        do {
-            try {
-                Aws::ec2()->deleteSecurityGroup(['GroupId' => $groupId]);
-
-                return;
-            } catch (AwsException $e) {
-                if ($e->getAwsErrorCode() !== 'DependencyViolation' || time() >= $deadline) {
-                    throw $e;
-                }
-
-                sleep(5);
-            }
-        } while (true);
+        Ec2::deleteSecurityGroupWhenDetached($this->arn());
     }
 }

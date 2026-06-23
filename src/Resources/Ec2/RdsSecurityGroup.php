@@ -6,7 +6,6 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
-use Aws\Ec2\Exception\Ec2Exception;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Enums\SecurityGroup;
 use Codinglabs\Yolo\Resources\Deletable;
@@ -67,22 +66,14 @@ class RdsSecurityGroup implements Deletable, Resource
     }
 
     /**
-     * Delete the RDS security group. Assumes upstream teardown has already removed
-     * everything that references it — no database remains in the group and the
-     * 3306-from-task-SG ingress rule went with the task security group — so a plain
-     * delete succeeds; AWS would otherwise refuse with DependencyViolation. A
-     * concurrent removal (InvalidGroup.NotFound) is tolerated.
+     * Delete the RDS security group (env teardown, only once no database remains
+     * in the group and the 3306-from-task-SG ingress rule went with the task
+     * security group). A detaching ENI can still hold the group briefly, so the
+     * delete is retried past that transient DependencyViolation until it clears
+     * (and a concurrent removal is tolerated). See Ec2::deleteSecurityGroupWhenDetached.
      */
     public function delete(): void
     {
-        try {
-            Aws::ec2()->deleteSecurityGroup(['GroupId' => $this->arn()]);
-        } catch (Ec2Exception $e) {
-            if ($e->getAwsErrorCode() === 'InvalidGroup.NotFound') {
-                return;
-            }
-
-            throw $e;
-        }
+        Ec2::deleteSecurityGroupWhenDetached($this->arn());
     }
 }
