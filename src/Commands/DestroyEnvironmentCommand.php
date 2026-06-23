@@ -3,12 +3,14 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Steps;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Destroying;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Services\Lifecycle;
 use Codinglabs\Yolo\Concerns\ReclaimsNetwork;
 use Codinglabs\Yolo\Contracts\PlansSequentially;
 use Codinglabs\Yolo\Concerns\ConfirmsDestruction;
+use Codinglabs\Yolo\Concerns\BootstrapsEnvironmentFromAws;
 
 use function Laravel\Prompts\error;
 
@@ -39,6 +41,7 @@ use function Laravel\Prompts\error;
  */
 class DestroyEnvironmentCommand extends SyncSteppedCommand implements PlansSequentially
 {
+    use BootstrapsEnvironmentFromAws;
     use ConfirmsDestruction;
     use ReclaimsNetwork;
 
@@ -47,6 +50,24 @@ class DestroyEnvironmentCommand extends SyncSteppedCommand implements PlansSeque
         $this->addSyncOptions()
             ->setName('destroy:environment')
             ->setDescription('Permanently tear down an entire environment — compute, edge and network (the database is never touched)');
+    }
+
+    /**
+     * Run standalone. Tearing down an environment shouldn't depend on the app still
+     * declaring it — under the normal flow `destroy:app` has already removed the
+     * yolo.yml block by now. So when the environment isn't in the local manifest,
+     * reconstruct its config from the live account (STS account-id, profile region,
+     * the published env manifest in S3) before the manifest checks run. When it IS
+     * still declared, the declared block is used unchanged.
+     */
+    #[\Override]
+    protected function bootstrapEnvironment(): ?int
+    {
+        if (Manifest::environmentExists($this->argument('environment'))) {
+            return null;
+        }
+
+        return $this->bootstrapEnvironmentFromAws($this->argument('environment'));
     }
 
     #[\Override]

@@ -14,6 +14,19 @@ class Manifest
     protected const ALLOWED_ROOT_KEYS = ['name', 'timezone', 'environments'];
 
     /**
+     * An in-memory manifest that stands in for yolo.yml when set. Default null —
+     * every command reads the file from disk, unchanged. `destroy:environment`
+     * hydrates this to reconstruct an environment YOLO once provisioned but whose
+     * yolo.yml block `destroy:app` has since removed: the config comes from the live
+     * account (STS), the AWS profile and the published env manifest in S3 instead.
+     * Read-only by nature — the surgical writers (put / removeEnvironment /
+     * setServiceList) read the file directly, and the hydrating command never writes.
+     *
+     * @var array<string, mixed>|null
+     */
+    protected static ?array $hydrated = null;
+
+    /**
      * The complete set of valid environment-block keys as dot-paths — the single
      * source of truth for the manifest's shape. There is no `aws.*` namespace:
      * every key sits at the top of the environment block. A trailing `.*` allows
@@ -62,7 +75,25 @@ class Manifest
 
     public static function exists(): bool
     {
-        return file_exists(Paths::manifest());
+        return static::$hydrated !== null || file_exists(Paths::manifest());
+    }
+
+    /**
+     * Stand an in-memory manifest in for yolo.yml for the rest of this run — see
+     * the {@see $hydrated} property. Used by `destroy:environment` to run against an
+     * environment yolo.yml no longer declares.
+     *
+     * @param  array<string, mixed>  $manifest
+     */
+    public static function hydrate(array $manifest): void
+    {
+        static::$hydrated = $manifest;
+    }
+
+    /** Drop any hydrated manifest, falling back to yolo.yml on disk (test reset). */
+    public static function flushHydration(): void
+    {
+        static::$hydrated = null;
     }
 
     public static function environments(): array
@@ -81,7 +112,7 @@ class Manifest
 
     public static function current(): array
     {
-        return Yaml::parse(file_get_contents(Paths::manifest()));
+        return static::$hydrated ?? Yaml::parse(file_get_contents(Paths::manifest()));
     }
 
     /**

@@ -674,7 +674,9 @@ Arguments and options as [`sync`](#sync-options). Scope: **environment**. Admin-
 
 **Guarded — it refuses while any app still claims the environment.** If any app has a published claim file or running tasks, destroy:environment names them and stops: tear each down with [`destroy:app`](#yolo-destroy-app) first, so the shared resources never go out from under a live app.
 
-**The confirmation.** Same loud gate as [`destroy`](#yolo-destroy): a red banner, a **PROTECTED** callout naming the database + app data bucket, and a prompt to **type the environment name** before the irreversible apply. `--force` / non-interactive skips it.
+**Runs standalone — it doesn't need the environment in `yolo.yml`.** Under the normal flow [`destroy:app`](#yolo-destroy-app) has already removed the environment's block from the manifest by the time you tear the environment itself down, so destroy:environment reconstructs the environment's config from the live account rather than the file: the **account-id** from the AWS credential (STS), the **region** from the AWS profile's config (or an explicit `YOLO_<ENV>_AWS_REGION`), and the **domain + services** from the published [environment manifest](/reference/manifest#the-environment-manifest-yolo-environment-environment-yml) in S3. Anything it can't determine — the profile, the region — it prompts for rather than failing. When the environment *is* still declared in `yolo.yml`, that block is used unchanged.
+
+**The confirmation.** Same loud gate as [`destroy`](#yolo-destroy): a red banner, a **PROTECTED** callout naming the database + app data bucket, and a prompt to **type the environment name** before the irreversible apply. On the standalone path (above) it adds a **type-the-account-id** confirm up front — the which-account check that stands in for the manifest's account-id↔profile match when there's no local block — and the admin tier's **MFA** gates minting its credentials, so an environment-wide teardown takes account-id + MFA + env-name. `--force` / non-interactive skips the typed confirms (CI).
 
 ---
 

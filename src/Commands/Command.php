@@ -71,6 +71,14 @@ abstract class Command extends SymfonyCommand
             return (int) (Helpers::app()->call([$this, 'handle']) ?: 0);
         }
 
+        // A command may reconstruct an environment YOLO once provisioned but whose
+        // yolo.yml block is gone (destroy:environment, run after destroy:app removed
+        // it) by hydrating the manifest from the live account before the checks below
+        // read it. Default no-op, so every other command reads yolo.yml unchanged.
+        if (($abort = $this->bootstrapEnvironment()) !== null) {
+            return $abort;
+        }
+
         if (! Manifest::exists()) {
             error("Could not find yolo.yml manifest in the current directory - run 'yolo init' to create one");
 
@@ -421,6 +429,20 @@ abstract class Command extends SymfonyCommand
         }
 
         return true;
+    }
+
+    /**
+     * Hook to reconstruct an environment's manifest config from the live account
+     * before the manifest checks read it — for a command that must run against an
+     * environment yolo.yml no longer declares (destroy:environment, after
+     * destroy:app removed the block). The default is a no-op: every other command
+     * reads its config from yolo.yml on disk. An overriding command hydrates the
+     * manifest (see Manifest::hydrate) and returns null to proceed, or an exit code
+     * to abort.
+     */
+    protected function bootstrapEnvironment(): ?int
+    {
+        return null;
     }
 
     /**

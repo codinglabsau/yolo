@@ -13,6 +13,7 @@ use Aws\Sqs\SqsClient;
 use Aws\CommandInterface;
 use Aws\WAFV2\WAFV2Client;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use GuzzleHttp\Psr7\Response;
 use Aws\Command as AwsCommand;
 use GuzzleHttp\Promise\Create;
@@ -77,6 +78,7 @@ file_put_contents($tempDir . '/yolo.yml', Yaml::dump([
 // sibling unit file batched into the same --parallel worker without 'environment'.
 pest()->beforeEach(function (): void {
     Helpers::app()->instance('environment', 'testing');
+    Manifest::flushHydration();
 })->in(__DIR__);
 
 /*
