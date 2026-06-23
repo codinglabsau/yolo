@@ -7,6 +7,7 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Destroying;
 use Codinglabs\Yolo\Services\Lifecycle;
 use Codinglabs\Yolo\Concerns\ReclaimsNetwork;
+use Codinglabs\Yolo\Contracts\PlansSequentially;
 use Codinglabs\Yolo\Concerns\ConfirmsDestruction;
 
 use function Laravel\Prompts\error;
@@ -31,7 +32,7 @@ use function Laravel\Prompts\error;
  * `destroy:environment`. Stripping the environment from yolo.yml runs dead last,
  * after the teardown that still needs the manifest's account/region to resolve.
  */
-class DestroyCommand extends SyncSteppedCommand
+class DestroyCommand extends SyncSteppedCommand implements PlansSequentially
 {
     use ConfirmsDestruction;
     use ReclaimsNetwork;

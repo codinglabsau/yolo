@@ -7,9 +7,14 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Commands\SyncCommand;
+use Codinglabs\Yolo\Commands\DestroyCommand;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
+use Codinglabs\Yolo\Commands\DestroyAppCommand;
 use Symfony\Component\Console\Input\ArrayInput;
+use Codinglabs\Yolo\Commands\SyncSteppedCommand;
+use Codinglabs\Yolo\Contracts\PlansSequentially;
 use Symfony\Component\Console\Output\BufferedOutput;
+use Codinglabs\Yolo\Commands\DestroyEnvironmentCommand;
 use Symfony\Component\Console\Command\Command as SymfonyCommand;
 
 /** Records the pid of the process that planned it — a forked worker reports a child pid. */
@@ -33,6 +38,9 @@ class ParallelPlanThrowingStep implements Step
     }
 }
 
+/** A teardown-style command: marked PlansSequentially, so its plan never forks. */
+class SequentialPlanFakeCommand extends SyncCommand implements PlansSequentially {}
+
 /**
  * Drive runScopes() as a plan-only (--check) pass and return [output, exitCode].
  * Accepts the BufferedOutput so callers asserting on an aborted plan can still
@@ -41,9 +49,9 @@ class ParallelPlanThrowingStep implements Step
  * @param  array<string, array<int, class-string>>  $scopes
  * @return array{0: string, 1: int}
  */
-function runParallelPlanCheck(array $scopes, ?BufferedOutput $output = null): array
+function runParallelPlanCheck(array $scopes, ?BufferedOutput $output = null, ?SyncSteppedCommand $command = null): array
 {
-    $command = new SyncCommand();
+    $command ??= new SyncCommand();
 
     $input = new ArrayInput(
         ['environment' => 'testing', '--no-progress' => true, '--check' => true],
@@ -151,3 +159,27 @@ it('caps plan workers at 8 and honours the sequential pin', function (): void {
     putenv('YOLO_PLAN_SEQUENTIAL=1');
     expect($workers(60))->toBe(1);
 })->skip(! extension_loaded('pcntl'), 'pcntl is required to fork plan workers');
+
+it('a PlansSequentially command plans in-process even with the fork pin cleared', function (): void {
+    // Clear the pin so the forked path is otherwise eligible — a plain SyncCommand
+    // would fan these three steps out. The PlansSequentially marker keeps them here.
+    putenv('YOLO_PLAN_SEQUENTIAL');
+
+    [$output] = runParallelPlanCheck(
+        ['environment' => [ParallelPlanPidStep::class, ParallelPlanPidStep::class, ParallelPlanPidStep::class]],
+        null,
+        new SequentialPlanFakeCommand(),
+    );
+
+    preg_match_all('/pid: absent → (\d+)/u', $output, $matches);
+
+    expect($matches[1])->toHaveCount(3)
+        ->and(array_unique($matches[1]))->toBe([(string) getmypid()]);
+})->skip(! extension_loaded('pcntl'), 'pcntl is required to fork plan workers');
+
+it('marks every teardown command PlansSequentially, but not sync', function (): void {
+    expect(class_implements(DestroyAppCommand::class))->toContain(PlansSequentially::class)
+        ->and(class_implements(DestroyCommand::class))->toContain(PlansSequentially::class)
+        ->and(class_implements(DestroyEnvironmentCommand::class))->toContain(PlansSequentially::class)
+        ->and(class_implements(SyncCommand::class))->not->toContain(PlansSequentially::class);
+});

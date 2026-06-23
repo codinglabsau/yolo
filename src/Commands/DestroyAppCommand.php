@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Services\ServiceDefinition;
+use Codinglabs\Yolo\Contracts\PlansSequentially;
 use Codinglabs\Yolo\Concerns\ConfirmsDestruction;
 
 use function Laravel\Prompts\error;
@@ -28,7 +29,7 @@ use function Laravel\Prompts\error;
  * rather than torn down partially (which would orphan resources) — see
  * {@see unsupportedReason()}.
  */
-class DestroyAppCommand extends SyncSteppedCommand
+class DestroyAppCommand extends SyncSteppedCommand implements PlansSequentially
 {
     use ConfirmsDestruction;
 
