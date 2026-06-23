@@ -19,7 +19,7 @@ allowed-tools:
 **Read freely. Never mutate AWS without explicit human approval.**
 
 - **Safe to run unprompted** (read-only, no AWS writes): the whole `status:*` read family (`status`, `status:environment`, `status:logs`, `status:events`, `status:alarms`, `status:budget`), `audit --json`, `services --json`, `sync <env> --check`. All take `--json`.
-- **Mutations — never run these yourself.** `sync` (apply), `deploy`, `rollback`, `scale`, `env:push`, `environment:*:push`, `services --add/--remove/--set`. Prepare them, explain them, and hand them to the human to run — or land the change as a **PR** (edit `yolo.yml`, open the PR) and let a human merge and deploy.
+- **Mutations — never run these yourself.** `sync` (apply), `deploy`, `rollback`, `scale`, `env:push`, `environment:*:push`, `services --add/--remove/--set`, `permissions` (RBAC grant-group edits), and the **teardown commands** (`destroy:app`, `destroy:environment` — irreversible; see [Teardown](#teardown)). Prepare them, explain them, and hand them to the human to run — or land the change as a **PR** (edit `yolo.yml`, open the PR) and let a human merge and deploy.
 - Even with approval, honour YOLO's own confirm gates — don't reach for `--force`/`-f` unless the human explicitly asked for an unattended apply.
 
 This mirrors the operator's standing rule: infrastructure commands never run against a real account without explicit confirmation.
@@ -124,6 +124,20 @@ Cost: `{currency, spend, budget: {amount, strategy}}` — month-to-date spend (U
 **`/loop /yolo` — attended copilot.** Quiet when everything's green; speak up only when a signal crosses a line (failed rollout, drift appears, tasks stuck pending, load pinned above target). Stay read-only.
 
 **Proposing a change.** When the data warrants a change (scale bounds, a manifest fix, drift to reconcile): describe *what* and *why* with the numbers behind it, then either (a) hand the human the exact `yolo` command to run, or (b) edit `yolo.yml` and open a PR. One change per PR. Never run the mutation yourself.
+
+## Teardown
+
+The reverse of `sync` — same scope-first model, same plan → confirm → apply runner, run in **reverse** dependency order. The most destructive thing YOLO does and **irreversible**: never run a teardown yourself. Prepare it, explain exactly what it removes and what it keeps, and hand it to a human.
+
+- **`destroy:app <env>`** — tears the manifest's app down (Fargate, storage, app IAM, CDN, DNS) and reverses the per-app slice of any service it consumes — revokes its 3306/cache/Typesense ingress rules, deletes its per-app MediaConvert role, removes its per-app env file (`env/.env.{app}`, which also held minted Typesense keys). The env-shared resources (`:443` listener, cache, search cluster, WAF) stay for other apps. Refuses the shapes whose teardown isn't modelled yet — **multi-tenant**, **headless** (no domain), **no web task**.
+- **`destroy:environment <env>`** — the mirror of `sync:environment`. Tears down **Tier A** (env-backed services, WAF, ALB + `:80`/`:443` listeners, Valkey cache, SNS, shared exec role, observer/admin IAM, env buckets) and deliberately leaves **Tier B** (the network shell + database) standing — a surviving RDS pins the VPC, so the default is "decommission the compute, keep the data". Refuses while any app still claims the env — `destroy:app` each first.
+
+**What it never touches, and the gates:**
+
+- **RDS / the database is never deleted** — YOLO owns the security group, not the instance.
+- The **BYO app data bucket stays** (holds user data). The regeneratable env config/logs buckets are deleted only with **`--delete-data`**; without it they're left standing and the plan notes it.
+
+**Previewing is safe.** `--check` runs the plan pass read-only (prints the full teardown plan, writes nothing) — the way to show a human exactly what a teardown would remove before they run the apply. Only reach for it when teardown is the actual question, not during a routine sweep.
 
 ## Reasoning notes
 
