@@ -3,12 +3,15 @@
 declare(strict_types=1);
 
 use Aws\Result;
+use Aws\Command;
 use Aws\MockHandler;
 use Aws\Rds\RdsClient;
 use Aws\CommandInterface;
+use Codinglabs\Yolo\Aws\Ecs;
 use Codinglabs\Yolo\Helpers;
 use Aws\Route53\Route53Client;
 use GuzzleHttp\Promise\Create;
+use Aws\Exception\AwsException;
 use Aws\CloudFront\CloudFrontClient;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Resources\Ec2\Vpc;
@@ -228,6 +231,50 @@ it('force-deletes every service, waits for them to drain, then deletes the clust
     // The drain wait happens before the cluster delete, never after.
     expect(array_search('DescribeServices', $names, true))->toBeLessThan(array_search('DeleteCluster', $names, true));
     expect(array_search('DeleteService', $names, true))->toBeLessThan(array_search('DeleteCluster', $names, true));
+});
+
+it('deletes the cluster even when no service is left to wait on (already torn down by its own step)', function (): void {
+    // The web service is force-deleted by TeardownWebServiceStep ahead of this and
+    // drops off ListServices the moment it enters DRAINING, so the cluster step sees
+    // an empty list. It must still reach DeleteCluster — never skip the teardown.
+    $captured = [];
+    bindRoutedEcsClient(['ListServices' => new Result(['serviceArns' => []])], $captured);
+
+    (new EcsCluster())->delete();
+
+    $names = array_column($captured, 'name');
+    expect($names)->toContain('DeleteCluster')
+        ->not->toContain('DescribeServices'); // no service discovered → no ServicesInactive wait
+});
+
+it('retries DeleteCluster while tasks are still draining, then succeeds', function (): void {
+    // AWS refuses DeleteCluster while tasks are still STOPPING over the graceful-drain
+    // window — even with no service left to wait on. The delete retries against AWS's
+    // own precondition until the drain completes.
+    $captured = [];
+    bindRoutedEcsClient([
+        'DeleteCluster' => [
+            new AwsException('tasks still active', new Command('DeleteCluster'), ['code' => 'ClusterContainsTasksException']),
+            new AwsException('tasks still active', new Command('DeleteCluster'), ['code' => 'ClusterContainsTasksException']),
+            new Result(),
+        ],
+    ], $captured);
+
+    Ecs::deleteClusterWhenDrained('yolo-testing-my-app', maxAttempts: 5, sleepSeconds: 0);
+
+    expect(array_count_values(array_column($captured, 'name'))['DeleteCluster'])->toBe(3);
+});
+
+it('rethrows a non-drain DeleteCluster error without retrying', function (): void {
+    $captured = [];
+    bindRoutedEcsClient([
+        'DeleteCluster' => new AwsException('nope', new Command('DeleteCluster'), ['code' => 'AccessDeniedException']),
+    ], $captured);
+
+    expect(fn () => Ecs::deleteClusterWhenDrained('yolo-testing-my-app', maxAttempts: 5, sleepSeconds: 0))
+        ->toThrow(AwsException::class);
+
+    expect(array_count_values(array_column($captured, 'name'))['DeleteCluster'])->toBe(1);
 });
 
 it('force-deletes a service to drain its tasks', function (): void {

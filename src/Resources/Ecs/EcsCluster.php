@@ -62,15 +62,19 @@ class EcsCluster implements Deletable, Resource
 
     /**
      * Teardown cascades: AWS refuses to delete a cluster while it still has an
-     * active service or a running task, so every remaining service is
-     * force-deleted first, then we wait for them to drain. `force` deletes a
-     * service asynchronously — its tasks keep stopping over the graceful-drain
-     * window — so without the `ServicesInactive` wait `deleteCluster` would race
-     * the drain and throw `ClusterContainsTasksException`. listServices returns
-     * ACTIVE + DRAINING services, so a service the per-app teardown steps already
-     * force-deleted is still caught here while it drains. (Reachable as the
-     * safety-net sweep: the app's web/queue/scheduler services are normally torn
-     * down by their own steps ahead of this.)
+     * active service OR a non-STOPPED task. Any service still listed is
+     * force-deleted and drained first as a safety-net sweep — listServices
+     * returns ACTIVE + DRAINING services, so one mid-drain is still caught here.
+     *
+     * But the app's own web/queue/scheduler services are normally torn down by
+     * their own steps *ahead* of this, and a force-deleted service drops off
+     * listServices the instant it enters DRAINING — well before its tasks finish
+     * stopping over the graceful-drain window. So by the time we reach here there
+     * is often no service left to wait on, yet tasks are still STOPPING. The real
+     * precondition for DeleteCluster is "no active tasks", not "no active
+     * services" — and `ServicesInactive` flips once tasks are STOPPING-or-STOPPED,
+     * not fully stopped — so the delete itself is retried against AWS's own check
+     * until the drain completes (see Ecs::deleteClusterWhenDrained).
      */
     public function delete(): void
     {
@@ -93,8 +97,6 @@ class EcsCluster implements Deletable, Resource
             ]);
         }
 
-        Aws::ecs()->deleteCluster([
-            'cluster' => $this->name(),
-        ]);
+        Ecs::deleteClusterWhenDrained($this->name());
     }
 }

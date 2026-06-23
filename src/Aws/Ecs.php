@@ -178,4 +178,36 @@ class Ecs
             }
         }
     }
+
+    /**
+     * Delete a cluster, retrying while it still reports active tasks. AWS refuses
+     * DeleteCluster while any task is non-STOPPED, and "no active services" is not
+     * the same precondition: a force-deleted service drops off ListServices the
+     * instant it enters DRAINING — well before its tasks finish stopping over the
+     * graceful-drain window — so a cluster delete can race tasks that are still
+     * STOPPING even when there's no service left to wait on. Rather than guess at
+     * task-status semantics, we retry the delete itself against AWS's own
+     * precondition check until the drain completes. Any other error (or exhausting
+     * the attempts) propagates unchanged.
+     */
+    public static function deleteClusterWhenDrained(string $cluster, int $maxAttempts = 40, int $sleepSeconds = 15): void
+    {
+        $attempt = 0;
+
+        while (true) {
+            try {
+                Aws::ecs()->deleteCluster(['cluster' => $cluster]);
+
+                return;
+            } catch (AwsException $exception) {
+                $attempt++;
+
+                if ($attempt >= $maxAttempts || $exception->getAwsErrorCode() !== 'ClusterContainsTasksException') {
+                    throw $exception;
+                }
+
+                sleep($sleepSeconds);
+            }
+        }
+    }
 }
