@@ -278,7 +278,27 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                         's3:PutLifecycleConfiguration',
                         's3:PutReplicationConfiguration',
                         's3:DeleteBucketPolicy',
+                        // Teardown empties then removes the regeneratable yolo-*
+                        // buckets — ListBucketVersions for the versioned config
+                        // bucket's version sweep (ListBucket comes from the observer
+                        // read tier), then DeleteBucket. DeleteBucket can never reach
+                        // the app data bucket: it isn't yolo-named, and S3::deleteBucket
+                        // hard-blocks it by name regardless.
+                        's3:ListBucketVersions',
+                        's3:DeleteBucket',
                     ],
+                ],
+                [
+                    // Teardown object deletes — emptying the per-app asset + config
+                    // buckets (asset keys are arbitrary builds/* paths, so this can't
+                    // be key-scoped) and removing the env-config claim/env files
+                    // (destroy:app) and env-shared channels (destroy:environment).
+                    // Delete-only on the yolo-* namespace — never GetObject — so the
+                    // tier can clear a bucket without ever reading the per-app
+                    // developer `.env` (or anything else) it isn't already granted.
+                    'Effect' => 'Allow',
+                    'Resource' => 'arn:aws:s3:::yolo-*/*',
+                    'Action' => ['s3:DeleteObject', 's3:DeleteObjectVersion'],
                 ],
                 [
                     // The two objects sync writes into the env config bucket: the

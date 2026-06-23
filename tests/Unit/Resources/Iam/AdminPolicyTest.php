@@ -211,3 +211,29 @@ it('grants get+put on YOLO env-tier secret channels: the env-shared .env and eac
         'arn:aws:s3:::yolo-111111111111-testing-config/env/*',
     ]);
 });
+
+it('grants delete-only on the yolo-* object namespace for teardown, never a new read', function (): void {
+    // destroy empties the per-app asset + config buckets (arbitrary builds/* keys, so
+    // it can't be key-scoped) and removes the env-config claim/env files. Delete-only,
+    // so the tier can clear a bucket without gaining any new read — the per-app
+    // developer `.env` stays unreadable by admin.
+    $objectDelete = collect((new AdminPolicy())->document()['Statement'])
+        ->first(fn (array $statement): bool => (array) $statement['Action'] === ['s3:DeleteObject', 's3:DeleteObjectVersion']);
+
+    expect($objectDelete)->not->toBeNull();
+    expect($objectDelete['Resource'])->toBe('arn:aws:s3:::yolo-*/*');
+    expect($objectDelete['Action'])->not->toContain('s3:GetObject');
+});
+
+it('grants the bucket empty+delete teardown, fenced to yolo-* (never the data bucket)', function (): void {
+    // Emptying a versioned config bucket needs ListBucketVersions (ListBucket comes
+    // from the observer read tier); DeleteBucket removes the regeneratable yolo-*
+    // buckets. The app data bucket isn't yolo-named — and S3::deleteBucket hard-blocks
+    // it by name — so this can never reach user data.
+    $bucketLifecycle = collect((new AdminPolicy())->document()['Statement'])
+        ->first(fn (array $statement): bool => in_array('s3:DeleteBucket', (array) $statement['Action'], true));
+
+    expect($bucketLifecycle)->not->toBeNull();
+    expect($bucketLifecycle['Resource'])->toBe('arn:aws:s3:::yolo-*');
+    expect($bucketLifecycle['Action'])->toContain('s3:ListBucketVersions', 's3:DeleteBucket');
+});
