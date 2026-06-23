@@ -10,19 +10,20 @@ use Aws\CommandInterface;
 use Codinglabs\Yolo\Helpers;
 use Aws\Route53\Route53Client;
 use GuzzleHttp\Promise\Create;
-use Aws\Acm\Exception\AcmException;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\Ec2\RdsSecurityGroup;
 use Codinglabs\Yolo\Resources\Ec2\EcsTaskSecurityGroup;
 use Codinglabs\Yolo\Steps\Destroy\App\RevokeRdsIngressStep;
-use Codinglabs\Yolo\Steps\Destroy\App\TeardownHostedZoneStep;
+use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
 use Codinglabs\Yolo\Steps\Destroy\App\TeardownForwardRuleStep;
 use Codinglabs\Yolo\Steps\Destroy\App\TeardownTargetGroupStep;
+use Codinglabs\Yolo\Steps\Destroy\App\DetachSslCertificateStep;
 use Codinglabs\Yolo\Steps\Destroy\App\UnpublishAppManifestStep;
-use Codinglabs\Yolo\Steps\Destroy\App\TeardownSslCertificateStep;
+use Codinglabs\Yolo\Steps\Destroy\App\WithdrawAppDnsRecordsStep;
 use Codinglabs\Yolo\Steps\Destroy\App\DeregisterWebAutoscalingStep;
 use Codinglabs\Yolo\Steps\Destroy\App\DeregisterTaskDefinitionsStep;
 use Codinglabs\Yolo\Steps\Destroy\App\TeardownCloudWatchDashboardStep;
+use Aws\ElasticLoadBalancingV2\Exception\ElasticLoadBalancingV2Exception;
 
 beforeEach(function (): void {
     writeManifest([
@@ -190,7 +191,7 @@ function bindDestroyRoutedClient(string $binding, string $clientClass, array $by
     ]));
 }
 
-// --- TeardownHostedZoneStep: withdraws this app's records, never deletes the zone ---
+// --- WithdrawAppDnsRecordsStep: withdraws this app's records, never deletes the zone ---
 
 it('withdraws this app\'s records and never deletes the hosted zone', function (): void {
     $captured = [];
@@ -202,7 +203,7 @@ it('withdraws this app\'s records and never deletes the hosted zone', function (
         ]]),
     ], $captured);
 
-    expect((new TeardownHostedZoneStep())(['dry-run' => false]))->toBe(StepResult::DELETED)
+    expect((new WithdrawAppDnsRecordsStep())(['dry-run' => false]))->toBe(StepResult::DELETED)
         ->and(array_column($captured, 'name'))
         ->toContain('ChangeResourceRecordSets')
         ->not->toContain('DeleteHostedZone');
@@ -219,7 +220,7 @@ it('skips when the hosted zone holds none of this app\'s records', function (): 
         ]]),
     ], $captured);
 
-    expect((new TeardownHostedZoneStep())(['dry-run' => false]))->toBe(StepResult::SKIPPED)
+    expect((new WithdrawAppDnsRecordsStep())(['dry-run' => false]))->toBe(StepResult::SKIPPED)
         ->and(array_column($captured, 'name'))->not->toContain('ChangeResourceRecordSets');
 });
 
@@ -229,13 +230,13 @@ it('skips when the hosted zone does not exist', function (): void {
         'ListHostedZones' => new Result(['HostedZones' => []]),
     ], $captured);
 
-    expect((new TeardownHostedZoneStep())(['dry-run' => false]))->toBe(StepResult::SKIPPED)
+    expect((new WithdrawAppDnsRecordsStep())(['dry-run' => false]))->toBe(StepResult::SKIPPED)
         ->and(array_column($captured, 'name'))->not->toContain('ChangeResourceRecordSets');
 });
 
-// --- TeardownSslCertificateStep: detach + InUse-skip (WARNING fix / coverage) ---
+// --- DetachSslCertificateStep: withdraws the listener association, NEVER deletes the ACM cert ---
 
-it('detaches the cert from the listener and deletes it', function (): void {
+it('detaches the cert from this env\'s listener and keeps the ACM cert', function (): void {
     $acm = [];
     bindDestroyRoutedClient('acm', AcmClient::class, [
         'ListCertificates' => new Result(['CertificateSummaryList' => [['DomainName' => 'example.com', 'CertificateArn' => 'arn:aws:acm:ap-southeast-2:111111111111:certificate/x']]]),
@@ -247,37 +248,55 @@ it('detaches the cert from the listener and deletes it', function (): void {
         'DescribeListeners' => new Result(['Listeners' => [['ListenerArn' => 'arn:listener', 'Port' => 443]]]),
     ], $elb);
 
-    expect((new TeardownSslCertificateStep())(['dry-run' => false]))->toBe(StepResult::DELETED);
+    expect((new DetachSslCertificateStep())(['dry-run' => false]))->toBe(StepResult::DELETED);
+    // The app's SNI association is withdrawn from the listener, but the ACM cert
+    // itself is never deleted — it's domain-level and may be a sibling env's.
     expect(array_column($elb, 'name'))->toContain('RemoveListenerCertificates');
-    expect(array_column($acm, 'name'))->toContain('DeleteCertificate');
+    expect(array_column($acm, 'name'))->not->toContain('DeleteCertificate');
 });
 
-it('skips (does not abort) when the cert is the listener default and still in use', function (): void {
+it('tolerates a default cert that can\'t be detached and still never deletes the ACM cert', function (): void {
     $acm = [];
     bindDestroyRoutedClient('acm', AcmClient::class, [
         'ListCertificates' => new Result(['CertificateSummaryList' => [['DomainName' => 'example.com', 'CertificateArn' => 'arn:aws:acm:ap-southeast-2:111111111111:certificate/x']]]),
-        'DeleteCertificate' => new AcmException('in use', new Command('DeleteCertificate'), ['code' => 'ResourceInUseException']),
+    ], $acm);
+
+    // RemoveListenerCertificates rejects the listener's default cert — the step
+    // swallows it (the cert is kept regardless) and still reports DELETED.
+    $elb = [];
+    bindDestroyRoutedClient('elasticLoadBalancingV2', ElasticLoadBalancingV2Client::class, [
+        'DescribeLoadBalancers' => new Result(['LoadBalancers' => [['LoadBalancerName' => 'yolo-testing', 'LoadBalancerArn' => 'arn:lb', 'DNSName' => 'd', 'CanonicalHostedZoneId' => 'Z']]]),
+        'DescribeListeners' => new Result(['Listeners' => [['ListenerArn' => 'arn:listener', 'Port' => 443]]]),
+        'RemoveListenerCertificates' => new ElasticLoadBalancingV2Exception('default cert', new Command('RemoveListenerCertificates'), ['code' => 'ValidationError']),
+    ], $elb);
+
+    expect((new DetachSslCertificateStep())(['dry-run' => false]))->toBe(StepResult::DELETED)
+        ->and(array_column($acm, 'name'))->not->toContain('DeleteCertificate');
+});
+
+it('skips when this env\'s HTTPS listener is already gone, keeping the ACM cert', function (): void {
+    $acm = [];
+    bindDestroyRoutedClient('acm', AcmClient::class, [
+        'ListCertificates' => new Result(['CertificateSummaryList' => [['DomainName' => 'example.com', 'CertificateArn' => 'arn:aws:acm:ap-southeast-2:111111111111:certificate/x']]]),
     ], $acm);
 
     $elb = [];
     bindRoutedElbV2Client([
         'DescribeLoadBalancers' => new Result(['LoadBalancers' => [['LoadBalancerName' => 'yolo-testing', 'LoadBalancerArn' => 'arn:lb', 'DNSName' => 'd', 'CanonicalHostedZoneId' => 'Z']]]),
-        'DescribeListeners' => new Result(['Listeners' => [['ListenerArn' => 'arn:listener', 'Port' => 443]]]),
+        'DescribeListeners' => new Result(['Listeners' => []]),
     ], $elb);
 
-    $step = new TeardownSslCertificateStep();
-
-    // The InUse cert is left in place (not deleted) and the step does NOT rethrow.
-    expect($step(['dry-run' => false]))->toBe(StepResult::SKIPPED)
-        ->and($step->recordedWarnings())->not->toBeEmpty();
+    expect((new DetachSslCertificateStep())(['dry-run' => false]))->toBe(StepResult::SKIPPED)
+        ->and(array_column($elb, 'name'))->not->toContain('RemoveListenerCertificates')
+        ->and(array_column($acm, 'name'))->not->toContain('DeleteCertificate');
 });
 
-it('skips the cert teardown when the certificate is already gone', function (): void {
+it('skips the cert detach when the certificate is already gone', function (): void {
     $acm = [];
     bindDestroyRoutedClient('acm', AcmClient::class, [
         'ListCertificates' => new Result(['CertificateSummaryList' => []]),
     ], $acm);
 
-    expect((new TeardownSslCertificateStep())(['dry-run' => false]))->toBe(StepResult::SKIPPED)
+    expect((new DetachSslCertificateStep())(['dry-run' => false]))->toBe(StepResult::SKIPPED)
         ->and(array_column($acm, 'name'))->not->toContain('DeleteCertificate');
 });

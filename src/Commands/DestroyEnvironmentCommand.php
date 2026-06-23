@@ -7,6 +7,7 @@ use Codinglabs\Yolo\Destroying;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Services\Lifecycle;
 use Codinglabs\Yolo\Concerns\ReclaimsNetwork;
+use Codinglabs\Yolo\Contracts\PlansSequentially;
 use Codinglabs\Yolo\Concerns\ConfirmsDestruction;
 
 use function Laravel\Prompts\error;
@@ -36,7 +37,7 @@ use function Laravel\Prompts\error;
  * bring-your-own app data bucket and the database are never touched — the database
  * isn't YOLO's, and the data bucket isn't even Deletable.
  */
-class DestroyEnvironmentCommand extends SyncSteppedCommand
+class DestroyEnvironmentCommand extends SyncSteppedCommand implements PlansSequentially
 {
     use ConfirmsDestruction;
     use ReclaimsNetwork;

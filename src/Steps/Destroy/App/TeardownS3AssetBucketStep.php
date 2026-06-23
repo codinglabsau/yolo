@@ -10,7 +10,7 @@ use Codinglabs\Yolo\Steps\Destroy\TeardownStep;
 /**
  * Tears down this app's S3 asset bucket.
  */
-class TeardownAssetBucketStep extends TeardownStep
+class TeardownS3AssetBucketStep extends TeardownStep
 {
     protected function resource(): AssetBucket
     {

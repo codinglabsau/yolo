@@ -277,7 +277,7 @@ class SyncAppCommand extends SyncSteppedCommand
                             : [
                                 Steps\Destroy\App\TeardownSchedulerServiceStep::class,
                             ],
-                        Steps\Sync\App\SyncAssetDistributionStep::class,
+                        Steps\Sync\App\SyncCloudFrontAssetDistributionStep::class,
                     ]
                     : [],
                 // observability — runs last so every resource it charts already exists

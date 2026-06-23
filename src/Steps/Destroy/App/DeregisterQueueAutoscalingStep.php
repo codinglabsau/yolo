@@ -11,6 +11,7 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
+use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\ScalableTarget;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\QueueScaleToZeroBootstrap;
 
@@ -39,11 +40,15 @@ class DeregisterQueueAutoscalingStep implements Step
         }
 
         if ($live !== null) {
-            $this->recordChange(Change::make('queue autoscaling', sprintf('%d-%d', $live['min'], $live['max']), null));
+            $this->recordChange(Change::make(
+                sprintf('%s autoscaling', (new EcsService(ServerGroup::QUEUE))->name()),
+                sprintf('min %d / max %d', $live['min'], $live['max']),
+                null,
+            ));
         }
 
         if ($hasBootstrapAlarm) {
-            $this->recordChange(Change::make('queue scale-to-zero alarm', 'provisioned', null));
+            $this->recordChange(Change::make($bootstrap->alarmName() . ' (scale-to-zero alarm)', 'provisioned', null));
         }
 
         if ($dryRun) {

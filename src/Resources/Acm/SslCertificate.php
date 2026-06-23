@@ -4,8 +4,6 @@ namespace Codinglabs\Yolo\Resources\Acm;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Acm;
-use Aws\Exception\AwsException;
-use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\Route53\HostedZone;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -17,8 +15,14 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * (request → pending validation → issued), so it doesn't implement the Resource
  * contract — the step drives the states and this class owns the AWS calls,
  * including the DNS-validation record + the wait for issuance.
+ *
+ * It is deliberately NOT Deletable: a cert is domain-level (a sibling environment
+ * serving the same domain may hold one too, and ACM keys only by domain name), so
+ * YOLO never deletes one — teardown withdraws the app's listener association (the
+ * destroy:app cert-detach step) and leaves the certificate standing, the same
+ * treatment the hosted zone gets.
  */
-class SslCertificate implements Deletable
+class SslCertificate
 {
     public function __construct(protected string $domain) {}
 
@@ -34,36 +38,6 @@ class SslCertificate implements Deletable
             return Acm::certificate($this->domain);
         } catch (ResourceDoesNotExistException) {
             return null;
-        }
-    }
-
-    /**
-     * Teardown removes the certificate. ACM refuses to delete a cert still
-     * associated with a load-balancer listener (ResourceInUseException), so this
-     * runs late in the teardown order — after the app's listener rule and the
-     * listener's SNI certificate association have both been removed upstream. By
-     * then the cert is detached and a plain deleteCertificate is correct; this
-     * class never manages the listener association itself, so there's nothing to
-     * unwind here. A concurrent not-found is tolerated.
-     */
-    public function delete(): void
-    {
-        $certificate = $this->find();
-
-        if ($certificate === null) {
-            return;
-        }
-
-        try {
-            Aws::acm()->deleteCertificate([
-                'CertificateArn' => $certificate['CertificateArn'],
-            ]);
-        } catch (AwsException $e) {
-            if ($e->getAwsErrorCode() === 'ResourceNotFoundException') {
-                return;
-            }
-
-            throw $e;
         }
     }
 

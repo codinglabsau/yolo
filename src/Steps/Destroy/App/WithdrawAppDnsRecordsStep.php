@@ -22,7 +22,7 @@ use Codinglabs\Yolo\Resources\Route53\HostedZone;
  * shared resource: withdraw this app's slice, never delete the shared thing. See
  * {@see HostedZone::removeAppRecords()}.
  */
-class TeardownHostedZoneStep implements Step
+class WithdrawAppDnsRecordsStep implements Step
 {
     use RecordsChanges;
 
@@ -34,7 +34,9 @@ class TeardownHostedZoneStep implements Step
             return StepResult::SKIPPED;
         }
 
-        $this->recordChange(Change::make(sprintf('%s app DNS records', Manifest::apex()), 'present', null));
+        // Name the zone is KEPT in the change line — the only thing withdrawn is
+        // this app's own records; the shared, domain-level hosted zone stays.
+        $this->recordChange(Change::make(sprintf('%s app DNS records (hosted zone kept)', Manifest::apex()), 'present', null));
 
         if (Arr::get($options, 'dry-run')) {
             return StepResult::WOULD_DELETE;

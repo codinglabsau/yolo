@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use Aws\Result;
 use Aws\MockHandler;
-use Aws\Acm\AcmClient;
 use Aws\Rds\RdsClient;
 use Aws\CommandInterface;
 use Codinglabs\Yolo\Helpers;
@@ -35,7 +34,6 @@ use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
 use Codinglabs\Yolo\Resources\ElbV2\TargetGroup;
 use Codinglabs\Yolo\Resources\Iam\EcsTaskPolicy;
 use Codinglabs\Yolo\Resources\S3\S3ConfigBucket;
-use Codinglabs\Yolo\Resources\Acm\SslCertificate;
 use Codinglabs\Yolo\Resources\ElbV2\HttpListener;
 use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
 use Codinglabs\Yolo\Resources\Iam\DeployerPolicy;
@@ -309,20 +307,6 @@ it('deletes the target group', function (): void {
     (new TargetGroup())->delete();
 
     expect(collect($captured)->firstWhere('name', 'DeleteTargetGroup')['args']['TargetGroupArn'])->toBe('arn:tg');
-});
-
-it('finds and deletes the ssl certificate', function (): void {
-    $captured = [];
-    bindTeardownRoutedClient('acm', AcmClient::class, [
-        'ListCertificates' => new Result(['CertificateSummaryList' => [
-            ['DomainName' => 'example.com', 'CertificateArn' => 'arn:aws:acm:ap-southeast-2:111111111111:certificate/abc-123'],
-        ]]),
-    ], $captured);
-
-    (new SslCertificate('example.com'))->delete();
-
-    expect(collect($captured)->firstWhere('name', 'DeleteCertificate')['args']['CertificateArn'])
-        ->toBe('arn:aws:acm:ap-southeast-2:111111111111:certificate/abc-123');
 });
 
 it('removes only its managed A records and never deletes the zone', function (): void {

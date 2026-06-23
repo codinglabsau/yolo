@@ -17,6 +17,7 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\HasSubSteps;
 use Codinglabs\Yolo\Contracts\LongRunning;
 use Codinglabs\Yolo\Contracts\RunsOnBuild;
+use Codinglabs\Yolo\Contracts\PlansSequentially;
 use Codinglabs\Yolo\Contracts\ExecutesTenantStep;
 use Codinglabs\Yolo\Contracts\ExecutesCommandStep;
 use Codinglabs\Yolo\Steps\ExecuteBuildCommandStep;
@@ -278,6 +279,11 @@ trait RunsSteppedCommands
      * concurrent execution needs. Apply always runs sequentially — once
      * writes start, declaration order IS the dependency order.
      *
+     * A command marked {@see PlansSequentially} (teardown) opts out of the
+     * fan-out and plans in-process: the speed-up is irrelevant for a rare
+     * interactive teardown, and its steps make fork-unsafe AWS calls that can
+     * deadlock a worker. The plan output is identical either way.
+     *
      * @param  Collection<int, array{scope: string, step: Step}>  $plan
      * @return Collection<int, array{index: int, scope: string, step: Step, status: StepResult|string, elapsed: int, changes: array<int, Change>, warnings: array<int, string>}>
      */
@@ -287,7 +293,7 @@ trait RunsSteppedCommands
             ? $this->input->getOptions()
             : [...$this->input->getOptions(), 'dry-run' => true];
 
-        if (! $apply && static::planWorkers($plan->count()) > 1) {
+        if (! $apply && ! $this instanceof PlansSequentially && static::planWorkers($plan->count()) > 1) {
             return $this->executePlanConcurrently($plan, $options);
         }
 

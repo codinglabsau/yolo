@@ -103,7 +103,7 @@ it('never includes a teardown for the BYO app data bucket', function () use ($so
     // There is deliberately no S3Bucket teardown step — the data bucket must survive.
     expect(class_exists('Codinglabs\\Yolo\\Steps\\Destroy\\App\\TeardownS3BucketStep'))->toBeFalse();
 
-    expect(destroyPlanClasses($soloWeb))->toContain(Steps\Destroy\App\TeardownAssetBucketStep::class)
+    expect(destroyPlanClasses($soloWeb))->toContain(Steps\Destroy\App\TeardownS3AssetBucketStep::class)
         ->toContain(Steps\Destroy\App\TeardownS3ConfigBucketStep::class);
 });
 
