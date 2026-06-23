@@ -6,7 +6,9 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
+use Aws\Ec2\Exception\Ec2Exception;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -14,7 +16,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * Shared public route table for the environment. The default 0.0.0.0/0 route
  * and the subnet associations are separate relationship actions.
  */
-class RouteTable implements Resource
+class RouteTable implements Deletable, Resource
 {
     use ResolvesTags;
 
@@ -57,5 +59,25 @@ class RouteTable implements Resource
     public function synchroniseTags(bool $apply): array
     {
         return Aws::synchroniseEc2Tags($this->arn(), $this->tags(), $apply);
+    }
+
+    /**
+     * Delete the route table by id. The subnet associations go when the subnets
+     * themselves are deleted (upstream teardown order) and the default 0.0.0.0/0
+     * route goes with the table, so a plain delete succeeds; AWS would otherwise
+     * refuse with DependencyViolation while a subnet is still associated. A
+     * concurrent removal (InvalidRouteTableID.NotFound) is tolerated.
+     */
+    public function delete(): void
+    {
+        try {
+            Aws::ec2()->deleteRouteTable(['RouteTableId' => $this->arn()]);
+        } catch (Ec2Exception $e) {
+            if ($e->getAwsErrorCode() === 'InvalidRouteTableID.NotFound') {
+                return;
+            }
+
+            throw $e;
+        }
     }
 }

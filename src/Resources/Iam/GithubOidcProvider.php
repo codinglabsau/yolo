@@ -6,7 +6,9 @@ namespace Codinglabs\Yolo\Resources\Iam;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Enums\Scope;
+use Aws\Iam\Exception\IamException;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -24,7 +26,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * GitHub Actions workflow exchange its OIDC token for short-lived AWS credentials
  * via sts:AssumeRoleWithWebIdentity — keyless.
  */
-class GithubOidcProvider implements Resource
+class GithubOidcProvider implements Deletable, Resource
 {
     use ResolvesTags;
 
@@ -84,5 +86,24 @@ class GithubOidcProvider implements Resource
     public function synchroniseTags(bool $apply): array
     {
         return Aws::synchroniseIamOidcProviderTags($this->arn(), $this->tags(), $apply);
+    }
+
+    /**
+     * Teardown: delete the OIDC provider. Account-scoped and shared across every
+     * environment, so this only ever runs once the last environment is gone (the
+     * destroy orchestrator gates it on no other environment remaining). A
+     * concurrent not-found is tolerated.
+     */
+    public function delete(): void
+    {
+        try {
+            Aws::iam()->deleteOpenIDConnectProvider([
+                'OpenIDConnectProviderArn' => $this->arn(),
+            ]);
+        } catch (IamException $e) {
+            if ($e->getAwsErrorCode() !== 'NoSuchEntity') {
+                throw $e;
+            }
+        }
     }
 }

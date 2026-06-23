@@ -7,7 +7,9 @@ use Codinglabs\Yolo\Change;
 use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
+use Aws\Ec2\Exception\Ec2Exception;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
@@ -24,7 +26,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * it lands in. Point `vpc` at an existing VPC name to adopt rather than create
  * one; SyncVpcStep reports that as CUSTOM_MANAGED.
  */
-class Vpc implements Resource, SynchronisesConfiguration
+class Vpc implements Deletable, Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
 
@@ -147,6 +149,26 @@ class Vpc implements Resource, SynchronisesConfiguration
     public function synchroniseTags(bool $apply): array
     {
         return Aws::synchroniseEc2Tags($this->arn(), $this->tags(), $apply);
+    }
+
+    /**
+     * Delete the VPC by id. The network shell inside it — subnets, route table,
+     * internet gateway, security groups — has been torn down by the earlier
+     * destroy steps, so a plain delete succeeds; AWS would otherwise refuse with
+     * DependencyViolation. A concurrent removal (InvalidVpcID.NotFound) is
+     * tolerated.
+     */
+    public function delete(): void
+    {
+        try {
+            Aws::ec2()->deleteVpc(['VpcId' => $this->arn()]);
+        } catch (Ec2Exception $e) {
+            if ($e->getAwsErrorCode() === 'InvalidVpcID.NotFound') {
+                return;
+            }
+
+            throw $e;
+        }
     }
 
     /**

@@ -6,44 +6,46 @@ use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Destroying;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Services\Lifecycle;
+use Codinglabs\Yolo\Concerns\ReclaimsNetwork;
 use Codinglabs\Yolo\Concerns\ConfirmsDestruction;
 
 use function Laravel\Prompts\error;
 
 /**
- * Tears down an environment's shared "Tier A" resources — the compute/edge layer:
- * the env-backed service stacks (Typesense/IVS), the WAF, the load balancer +
- * listeners + its security group, the shared Valkey cache, the SNS alarm topic,
- * the shared exec role + the observer/admin IAM tiers, and the env buckets. The
- * reverse of
- * `sync:environment`, behind the same plan → confirm → apply runner.
+ * Tears an environment all the way down — the reverse of `sync:environment`, behind
+ * the same plan → confirm → apply runner. First the shared "Tier A" compute/edge
+ * layer (the env-backed service stacks, the WAF, the load balancer + listeners + its
+ * security group, the shared Valkey cache, the SNS alarm topic, the shared exec role
+ * + observer/admin IAM tiers, the env buckets), then "Tier B" — the network shell
+ * (VPC, subnets, route table, internet gateway, RDS security group + subnet group).
  *
- * Tier B — the network shell (VPC, subnets, route tables, the RDS security group +
- * subnet group) — is deliberately LEFT STANDING: a surviving RDS instance lives in
- * it, and YOLO never touches a database it doesn't own. "Decommission the compute
- * tier, keep the data" is the likely 90% case; full VPC reclamation is a separate,
- * gated step.
+ * The network is reclaimed automatically once nothing else needs it. The one thing
+ * that holds it back is a database: a surviving RDS instance lives in the VPC's
+ * private subnets and pins the whole network, and YOLO NEVER deletes a database it
+ * doesn't own — so a live DB leaves the network shell standing and is named in the
+ * summary (snapshot + drop the DB out-of-band to fully reclaim). RDS is never touched.
  *
- * Guarded: refuses while any app still claims the environment (a published claim
- * file or running tasks) — tear those down with `destroy:app` first, so the shared
- * resources never go out from under a live app. The env-backed services come down
- * via their existing sync Teardown branches, forced on by the {@see Destroying}
- * flag for the duration of the run.
+ * Guarded: refuses while any app still claims the environment (a published claim file
+ * or running tasks) — tear those down with `destroy:app` first, so the shared
+ * resources never go out from under a live app. The env-backed services come down via
+ * their existing sync Teardown branches, forced on by the {@see Destroying} flag for
+ * the duration of the run.
  *
- * The env config + logs buckets (the env manifest + shared .env, the ALB access
- * logs) are regeneratable infrastructure config, so they go with the environment.
- * The bring-your-own app data bucket and the database are never touched — the
- * database isn't YOLO's, and the data bucket isn't even Deletable.
+ * The env config + logs buckets (the env manifest + shared .env, the ALB access logs)
+ * are regeneratable infrastructure config, so they go with the environment. The
+ * bring-your-own app data bucket and the database are never touched — the database
+ * isn't YOLO's, and the data bucket isn't even Deletable.
  */
 class DestroyEnvironmentCommand extends SyncSteppedCommand
 {
     use ConfirmsDestruction;
+    use ReclaimsNetwork;
 
     protected function configure(): void
     {
         $this->addSyncOptions()
             ->setName('destroy:environment')
-            ->setDescription('Permanently tear down an environment\'s shared compute/edge resources (leaves the network shell + database)');
+            ->setDescription('Permanently tear down an entire environment — compute, edge and network (the database is never touched)');
     }
 
     #[\Override]
@@ -74,7 +76,7 @@ class DestroyEnvironmentCommand extends SyncSteppedCommand
     #[\Override]
     protected function confirmQuestion(string $environment): string
     {
-        return sprintf('Permanently delete the shared compute/edge resources for %s? This cannot be undone.', $environment);
+        return sprintf('Permanently delete every resource in the %s environment? This cannot be undone.', $environment);
     }
 
     #[\Override]
@@ -84,11 +86,8 @@ class DestroyEnvironmentCommand extends SyncSteppedCommand
     }
 
     /**
-     * Tier A teardown in reverse-dependency order: the env-backed service stacks
-     * first (their listener rules + target groups hang off the shared ALB), then
-     * the WAF + listeners + load balancer + its security group, the SNS topic, the
-     * shared exec role and the observer/admin IAM tiers, and finally the env
-     * buckets. Tier B (the VPC and everything the database pins) is never listed.
+     * Tier A (compute/edge), then Tier B (the network shell) — reclaimed unless a
+     * database is attached to the VPC (see {@see ReclaimsNetwork::networkSteps()}).
      *
      * @return array<string, array<int, class-string>>
      */
@@ -96,45 +95,104 @@ class DestroyEnvironmentCommand extends SyncSteppedCommand
     {
         return [
             'environment' => [
-                // Env-backed service stacks (Typesense/IVS): the Destroying flag
-                // forces each service's lifecycle to Teardown, so these reuse the
-                // sync steps' Teardown branches, ordered for teardown by the service.
-                ...static::environmentServiceTeardownSteps(),
-                // WAF off the ALB before either goes (a web ACL can't be deleted
-                // while associated), then the listeners + load balancer, then the
-                // now-unreferenced web ACL + its IP sets.
-                Steps\Destroy\Environment\DisassociateWafStep::class,
-                Steps\Destroy\Environment\TeardownHttpsListenerStep::class,
-                Steps\Destroy\Environment\TeardownHttpListenerStep::class,
-                Steps\Destroy\Environment\TeardownLoadBalancerStep::class,
-                Steps\Destroy\Environment\TeardownWebAclStep::class,
-                Steps\Destroy\Environment\TeardownAllowIpSetStep::class,
-                Steps\Destroy\Environment\TeardownBlockIpSetStep::class,
-                // The LB security group, once the load balancer that used it is gone.
-                Steps\Destroy\Environment\TeardownLoadBalancerSecurityGroupStep::class,
-                // The shared Valkey cache (env-owned, bootstrapped by sync:app): the
-                // replication group first — its delete waits for completion — then the
-                // subnet/parameter groups + security group it pinned.
-                Steps\Destroy\Environment\TeardownCacheClusterStep::class,
-                Steps\Destroy\Environment\TeardownCacheSecurityGroupStep::class,
-                Steps\Destroy\Environment\TeardownCacheSubnetGroupStep::class,
-                Steps\Destroy\Environment\TeardownCacheParameterGroupStep::class,
-                Steps\Destroy\Environment\TeardownSnsAlarmTopicStep::class,
-                // Shared identity: the exec role, then grant groups → tier roles →
-                // tier policies (each delete() self-detaches; reverse of create order
-                // keeps it tidy).
-                Steps\Destroy\Environment\TeardownEcsExecutionRoleStep::class,
-                Steps\Destroy\Environment\TeardownAdminsGroupStep::class,
-                Steps\Destroy\Environment\TeardownObserversGroupStep::class,
-                Steps\Destroy\Environment\TeardownAdminRoleStep::class,
-                Steps\Destroy\Environment\TeardownObserverRoleStep::class,
-                Steps\Destroy\Environment\TeardownAdminPolicyStep::class,
-                Steps\Destroy\Environment\TeardownObserverPolicyStep::class,
-                // Storage last: the env logs bucket, then the env config bucket,
-                // whose deletion is the final act of the env teardown.
-                Steps\Destroy\Environment\TeardownEnvLogsBucketStep::class,
-                Steps\Destroy\Environment\TeardownEnvConfigBucketStep::class,
+                ...static::tierASteps(),
+                ...$this->networkSteps(),
             ],
+        ];
+    }
+
+    /**
+     * The refusal summary: the network shell line when a database keeps it standing.
+     *
+     * @return array<int, string>
+     */
+    #[\Override]
+    public function warnings(): array
+    {
+        return $this->networkWarnings();
+    }
+
+    /**
+     * The databases YOLO will never delete, named in the confirmation banner — the
+     * live RDS instances attached to this environment's VPC.
+     *
+     * @return array<int, string>
+     */
+    protected function protectedDatabases(): array
+    {
+        return $this->liveDatabases();
+    }
+
+    /**
+     * Tier A (compute/edge) teardown in reverse-dependency order: the env-backed
+     * service stacks first (their listener rules + target groups hang off the
+     * shared ALB), then the WAF + listeners + load balancer + its security group,
+     * the Valkey cache, the SNS topic, the shared exec role and the observer/admin
+     * IAM tiers, and finally the env buckets. Shared with the destroy orchestrator.
+     *
+     * @return array<int, class-string>
+     */
+    public static function tierASteps(): array
+    {
+        return [
+            // Env-backed service stacks (Typesense/IVS): the Destroying flag forces
+            // each service's lifecycle to Teardown, so these reuse the sync steps'
+            // Teardown branches, ordered for teardown by the service.
+            ...static::environmentServiceTeardownSteps(),
+            // WAF off the ALB before either goes (a web ACL can't be deleted while
+            // associated), then the listeners + load balancer, then the
+            // now-unreferenced web ACL + its IP sets.
+            Steps\Destroy\Environment\DisassociateWafStep::class,
+            Steps\Destroy\Environment\TeardownHttpsListenerStep::class,
+            Steps\Destroy\Environment\TeardownHttpListenerStep::class,
+            Steps\Destroy\Environment\TeardownLoadBalancerStep::class,
+            Steps\Destroy\Environment\TeardownWebAclStep::class,
+            Steps\Destroy\Environment\TeardownAllowIpSetStep::class,
+            Steps\Destroy\Environment\TeardownBlockIpSetStep::class,
+            // The LB security group, once the load balancer that used it is gone.
+            Steps\Destroy\Environment\TeardownLoadBalancerSecurityGroupStep::class,
+            // The shared Valkey cache: the replication group first — its delete
+            // waits for completion — then the subnet/parameter groups + SG it pinned.
+            Steps\Destroy\Environment\TeardownCacheClusterStep::class,
+            Steps\Destroy\Environment\TeardownCacheSecurityGroupStep::class,
+            Steps\Destroy\Environment\TeardownCacheSubnetGroupStep::class,
+            Steps\Destroy\Environment\TeardownCacheParameterGroupStep::class,
+            Steps\Destroy\Environment\TeardownSnsAlarmTopicStep::class,
+            // Shared identity: the exec role, then grant groups → tier roles → tier
+            // policies (each delete() self-detaches; reverse of create order is tidy).
+            Steps\Destroy\Environment\TeardownEcsExecutionRoleStep::class,
+            Steps\Destroy\Environment\TeardownAdminsGroupStep::class,
+            Steps\Destroy\Environment\TeardownObserversGroupStep::class,
+            Steps\Destroy\Environment\TeardownAdminRoleStep::class,
+            Steps\Destroy\Environment\TeardownObserverRoleStep::class,
+            Steps\Destroy\Environment\TeardownAdminPolicyStep::class,
+            Steps\Destroy\Environment\TeardownObserverPolicyStep::class,
+            // Storage last: the env logs bucket, then the env config bucket, whose
+            // deletion is the final act of the env (Tier A) teardown.
+            Steps\Destroy\Environment\TeardownEnvLogsBucketStep::class,
+            Steps\Destroy\Environment\TeardownEnvConfigBucketStep::class,
+        ];
+    }
+
+    /**
+     * Tier B (the network shell) teardown in reverse-dependency order, only ever
+     * reached once no database is attached to the VPC: the RDS subnet group + SG
+     * first, then the public subnets, the route table, the internet gateway
+     * (detached then deleted) and, last, the VPC itself.
+     *
+     * @return array<int, class-string>
+     */
+    public static function tierBSteps(): array
+    {
+        return [
+            Steps\Destroy\Environment\TeardownRdsSubnetStep::class,
+            Steps\Destroy\Environment\TeardownRdsSecurityGroupStep::class,
+            Steps\Destroy\Environment\TeardownPublicSubnetAStep::class,
+            Steps\Destroy\Environment\TeardownPublicSubnetBStep::class,
+            Steps\Destroy\Environment\TeardownPublicSubnetCStep::class,
+            Steps\Destroy\Environment\TeardownRouteTableStep::class,
+            Steps\Destroy\Environment\TeardownInternetGatewayStep::class,
+            Steps\Destroy\Environment\TeardownVpcStep::class,
         ];
     }
 

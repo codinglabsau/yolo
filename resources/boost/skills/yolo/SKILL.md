@@ -19,7 +19,7 @@ allowed-tools:
 **Read freely. Never mutate AWS without explicit human approval.**
 
 - **Safe to run unprompted** (read-only, no AWS writes): the whole `status:*` read family (`status`, `status:environment`, `status:logs`, `status:events`, `status:alarms`, `status:budget`), `audit --json`, `services --json`, `sync <env> --check`. All take `--json`.
-- **Mutations — never run these yourself.** `sync` (apply), `deploy`, `rollback`, `scale`, `env:push`, `environment:*:push`, `services --add/--remove/--set`, `permissions` (RBAC grant-group edits), and the **teardown commands** (`destroy:app`, `destroy:environment` — irreversible; see [Teardown](#teardown)). Prepare them, explain them, and hand them to the human to run — or land the change as a **PR** (edit `yolo.yml`, open the PR) and let a human merge and deploy.
+- **Mutations — never run these yourself.** `sync` (apply), `deploy`, `rollback`, `scale`, `env:push`, `environment:*:push`, `services --add/--remove/--set`, `permissions` (RBAC grant-group edits), and the **teardown commands** (`destroy`, `destroy:app`, `destroy:environment` — irreversible; see [Teardown](#teardown)). Prepare them, explain them, and hand them to the human to run — or land the change as a **PR** (edit `yolo.yml`, open the PR) and let a human merge and deploy.
 - Even with approval, honour YOLO's own confirm gates — don't reach for `--force`/`-f` unless the human explicitly asked for an unattended apply.
 
 This mirrors the operator's standing rule: infrastructure commands never run against a real account without explicit confirmation.
@@ -129,13 +129,15 @@ Cost: `{currency, spend, budget: {amount, strategy}}` — month-to-date spend (U
 
 The reverse of `sync` — same scope-first model, same plan → confirm → apply runner, run in **reverse** dependency order. The most destructive thing YOLO does and **irreversible**: never run a teardown yourself. Prepare it, explain exactly what it removes and what it keeps, and hand it to a human.
 
+- **`destroy <env>`** — the full orchestrator: tears an app **and its environment** down in one pass (app → environment → account), the reverse of `sync`. Each scope self-gates: the network shell is reclaimed unless a database is attached, and the account-shared OIDC provider only when no other environment remains. Refuses while any *other* app still claims the env (this one is torn down in the same run).
 - **`destroy:app <env>`** — tears the manifest's app down (Fargate, storage, app IAM, CDN, DNS) and reverses the per-app slice of any service it consumes — revokes its 3306/cache/Typesense ingress rules, deletes its per-app MediaConvert role, removes its per-app env file (`env/.env.{app}`, which also held minted Typesense keys). The env-shared resources (`:443` listener, cache, search cluster, WAF) stay for other apps. Refuses the shapes whose teardown isn't modelled yet — **multi-tenant**, **headless** (no domain), **no web task**.
-- **`destroy:environment <env>`** — the mirror of `sync:environment`. Tears down **Tier A** (env-backed services, WAF, ALB + `:80`/`:443` listeners, Valkey cache, SNS, shared exec role, observer/admin IAM, env buckets) and deliberately leaves **Tier B** (the network shell + database) standing — a surviving RDS pins the VPC, so the default is "decommission the compute, keep the data". Refuses while any app still claims the env — `destroy:app` each first.
+- **`destroy:environment <env>`** — the mirror of `sync:environment`. Tears down **Tier A** (env-backed services, WAF, ALB + `:80`/`:443` listeners, Valkey cache, SNS, shared exec role, observer/admin IAM, env buckets) **then Tier B** (the network shell: VPC, subnets, route table, IGW, RDS SG + subnet group). The network is reclaimed automatically — *unless a database is attached to the VPC*, which keeps the whole shell standing (a live RDS pins it) and is named in the summary. Refuses while any app still claims the env — `destroy:app` each first.
 
 **What it never touches, and the gates:**
 
 - **RDS / the database is never deleted** — YOLO owns the security group, not the instance. It can't be: there is no destructive RDS call anywhere in YOLO (CI-enforced).
 - The **BYO app data bucket stays** (holds user data) — it isn't even a deletable resource. The regeneratable env config/logs buckets are deleted as part of the teardown.
+- **Shared infrastructure is reclaimed only when safe** — the network shell stays while a database is attached to the VPC; the account-shared GitHub OIDC provider is kept unless no other environment remains (and kept on *any* uncertainty — never deleted on a guess). Each is named in the end-of-run summary when kept.
 - **The confirm gate is loud** — a red banner, a PROTECTED callout naming the database + app data bucket, and a type-the-environment-name prompt (no y/N). `--force` skips it for CI.
 
 **Previewing is safe.** `--check` runs the plan pass read-only (prints the full teardown plan, writes nothing) — the way to show a human exactly what a teardown would remove before they run the apply. Only reach for it when teardown is the actual question, not during a routine sweep.

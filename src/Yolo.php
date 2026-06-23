@@ -33,7 +33,8 @@ class Yolo
         // Rollback
         Commands\RollbackCommand::class,
 
-        // Destroy (teardown — the reverse of sync:app / sync:environment)
+        // Destroy (teardown — the reverse of sync; app → environment → account)
+        Commands\DestroyCommand::class,
         Commands\DestroyAppCommand::class,
         Commands\DestroyEnvironmentCommand::class,
 

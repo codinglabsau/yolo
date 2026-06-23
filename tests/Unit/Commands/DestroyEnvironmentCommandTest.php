@@ -7,6 +7,7 @@ use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Destroying;
 use Codinglabs\Yolo\Enums\Service;
+use Codinglabs\Yolo\Resources\Ec2\Vpc;
 use Codinglabs\Yolo\Enums\ServiceState;
 use Codinglabs\Yolo\Services\Lifecycle;
 use Symfony\Component\Console\Command\Command;
@@ -27,10 +28,26 @@ beforeEach(function (): void {
 });
 
 /**
+ * Bind a VPC with no databases attached — the default destroy path, where the
+ * network shell (Tier B) is reclaimed.
+ */
+function bindEnvironmentWithoutDatabase(): void
+{
+    $ec2 = [];
+    bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1', 'Tags' => [['Key' => 'Name', 'Value' => (new Vpc())->name()]]]]]),
+    ], $ec2);
+    $rds = [];
+    bindMockRdsClient(['DescribeDBInstances' => new Result(['DBInstances' => []])], $rds);
+}
+
+/**
  * @return array<int, class-string>
  */
 function destroyEnvPlanClasses(): array
 {
+    bindEnvironmentWithoutDatabase();
+
     $command = new DestroyEnvironmentCommand();
     $input = new ArrayInput(['environment' => 'testing'], $command->getDefinition());
     $input->setInteractive(false);
@@ -41,6 +58,74 @@ function destroyEnvPlanClasses(): array
 
     return $plan->pluck('step')->map(fn (object $step): string => $step::class)->values()->all();
 }
+
+it('reclaims the network shell when no database is attached', function (): void {
+    $classes = destroyEnvPlanClasses();
+    $at = fn (string $class): int|false => array_search($class, $classes, true);
+
+    expect($classes)->toContain(Steps\Destroy\Environment\TeardownVpcStep::class)
+        ->toContain(Steps\Destroy\Environment\TeardownRdsSubnetStep::class);
+    // RDS subnet group + SG go before the subnets; the VPC is the very last step.
+    expect($at(Steps\Destroy\Environment\TeardownRdsSubnetStep::class))
+        ->toBeLessThan($at(Steps\Destroy\Environment\TeardownPublicSubnetAStep::class));
+    expect($at(Steps\Destroy\Environment\TeardownVpcStep::class))->toBe(count($classes) - 1);
+});
+
+it('refuses the network reclaim while a database is attached, naming it in the summary', function (): void {
+    $ec2 = [];
+    bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1', 'Tags' => [['Key' => 'Name', 'Value' => (new Vpc())->name()]]]]]),
+    ], $ec2);
+    $rds = [];
+    bindMockRdsClient([
+        'DescribeDBInstances' => new Result(['DBInstances' => [
+            ['DBInstanceIdentifier' => 'codinglabs', 'DBSubnetGroup' => ['VpcId' => 'vpc-1']],
+        ]]),
+    ], $rds);
+
+    $command = new DestroyEnvironmentCommand();
+    $input = new ArrayInput(['environment' => 'testing'], $command->getDefinition());
+    $input->setInteractive(false);
+    $command->input = $input;
+    $command->output = new BufferedOutput();
+
+    $classes = (new ReflectionMethod($command, 'collateSteps'))->invoke($command, $command->scopes(), 'testing')[0]
+        ->pluck('step')->map(fn (object $step): string => $step::class)->values()->all();
+
+    // The network shell is left standing — no Tier-B steps composed.
+    expect($classes)->not->toContain(Steps\Destroy\Environment\TeardownVpcStep::class);
+    // The refusal names the blocking database.
+    expect(implode(' ', $command->warnings()))
+        ->toContain('codinglabs')
+        ->toContain('Refusing to reclaim the network shell');
+});
+
+it('reclaims the network shell when the only database is in a different VPC', function (): void {
+    $ec2 = [];
+    bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1', 'Tags' => [['Key' => 'Name', 'Value' => (new Vpc())->name()]]]]]),
+    ], $ec2);
+    $rds = [];
+    bindMockRdsClient([
+        // A live database, but in a different VPC — it does NOT pin this env's
+        // network, so it must not block the reclaim.
+        'DescribeDBInstances' => new Result(['DBInstances' => [
+            ['DBInstanceIdentifier' => 'someone-else', 'DBSubnetGroup' => ['VpcId' => 'vpc-other']],
+        ]]),
+    ], $rds);
+
+    $command = new DestroyEnvironmentCommand();
+    $input = new ArrayInput(['environment' => 'testing'], $command->getDefinition());
+    $input->setInteractive(false);
+    $command->input = $input;
+    $command->output = new BufferedOutput();
+
+    $classes = (new ReflectionMethod($command, 'collateSteps'))->invoke($command, $command->scopes(), 'testing')[0]
+        ->pluck('step')->map(fn (object $step): string => $step::class)->values()->all();
+
+    expect($classes)->toContain(Steps\Destroy\Environment\TeardownVpcStep::class)
+        ->and($command->warnings())->toBe([]);
+});
 
 it('forces env-backed services to teardown only for the duration of the run', function (): void {
     expect(Destroying::active())->toBeFalse();
@@ -53,7 +138,7 @@ it('forces env-backed services to teardown only for the duration of the run', fu
         ->and(Destroying::active())->toBeFalse();
 });
 
-it('tears the service stacks down before the shared edge, and the env config bucket last', function (): void {
+it('tears the service stacks down before the shared edge, and the env config bucket before the network', function (): void {
     $classes = destroyEnvPlanClasses();
     $at = fn (string $class): int|false => array_search($class, $classes, true);
 
@@ -76,8 +161,9 @@ it('tears the service stacks down before the shared edge, and the env config buc
     expect($at(Steps\Destroy\Environment\TeardownLoadBalancerStep::class))
         ->toBeLessThan($at(Steps\Destroy\Environment\TeardownLoadBalancerSecurityGroupStep::class));
 
-    // Deleting the env config bucket is the final act.
-    expect($at(Steps\Destroy\Environment\TeardownEnvConfigBucketStep::class))->toBe(count($classes) - 1);
+    // The env config bucket (Tier A's last) is deleted before the network shell goes.
+    expect($at(Steps\Destroy\Environment\TeardownEnvConfigBucketStep::class))
+        ->toBeLessThan($at(Steps\Destroy\Environment\TeardownVpcStep::class));
 });
 
 it('tears the Valkey cache cluster down before the groups and SG it pins', function (): void {
@@ -90,19 +176,6 @@ it('tears the Valkey cache cluster down before the groups and SG it pins', funct
         ->toBeLessThan($at(Steps\Destroy\Environment\TeardownCacheParameterGroupStep::class))
         ->and($at(Steps\Destroy\Environment\TeardownCacheClusterStep::class))
         ->toBeLessThan($at(Steps\Destroy\Environment\TeardownCacheSecurityGroupStep::class));
-});
-
-it('never touches the network shell (Tier B) or the database', function (): void {
-    // The cache subnet group is Tier A (YOLO-owned), so match the network-shell
-    // resources by their specific names rather than a loose "Subnet" substring.
-    foreach (destroyEnvPlanClasses() as $class) {
-        expect($class)->not->toContain('Vpc')
-            ->not->toContain('PublicSubnet')
-            ->not->toContain('RouteTable')
-            ->not->toContain('InternetGateway')
-            ->not->toContain('RdsSubnet')
-            ->not->toContain('RdsSecurityGroup');
-    }
 });
 
 it('reframes the runner wording as an irreversible destroy', function (): void {
