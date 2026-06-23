@@ -48,6 +48,7 @@ use Codinglabs\Yolo\Resources\Iam\ObserversGroup;
 use Codinglabs\Yolo\Resources\Route53\HostedZone;
 use Codinglabs\Yolo\Resources\S3\EnvConfigBucket;
 use Codinglabs\Yolo\Resources\Ec2\InternetGateway;
+use Codinglabs\Yolo\Resources\Ecs\ServicesCluster;
 use Codinglabs\Yolo\Resources\ElbV2\HttpsListener;
 use Codinglabs\Yolo\Resources\Iam\AppObserverRole;
 use Codinglabs\Yolo\Resources\CloudWatch\Dashboard;
@@ -232,6 +233,23 @@ it('force-deletes every service, waits for them to drain, then deletes the clust
 
     // The drain wait happens before the cluster delete, never after.
     expect(array_search('DescribeServices', $names, true))->toBeLessThan(array_search('DeleteCluster', $names, true));
+    expect(array_search('DeleteService', $names, true))->toBeLessThan(array_search('DeleteCluster', $names, true));
+});
+
+it('drains the node services to zero then drain-deletes the services cluster', function (): void {
+    // The services cluster (Typesense nodes) must drain like the per-app cluster —
+    // force-delete the services, then the cluster delete is retried past the node
+    // tasks still stopping (Ecs::deleteClusterWhenDrained), not fired immediately.
+    $captured = [];
+    bindRoutedEcsClient([
+        'ListServices' => new Result(['serviceArns' => ['arn:svc:typesense']]),
+    ], $captured);
+
+    (new ServicesCluster())->delete();
+
+    $names = array_column($captured, 'name');
+    expect($names)->toContain('UpdateService')->toContain('DeleteService')->toContain('DeleteCluster')
+        ->and(collect($captured)->firstWhere('name', 'DeleteService')['args']['force'])->toBeTrue();
     expect(array_search('DeleteService', $names, true))->toBeLessThan(array_search('DeleteCluster', $names, true));
 });
 

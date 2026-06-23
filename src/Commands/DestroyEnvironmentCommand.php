@@ -10,6 +10,7 @@ use Codinglabs\Yolo\Services\Lifecycle;
 use Codinglabs\Yolo\Concerns\ReclaimsNetwork;
 use Codinglabs\Yolo\Contracts\PlansSequentially;
 use Codinglabs\Yolo\Concerns\ConfirmsDestruction;
+use Codinglabs\Yolo\Contracts\RunsOnBaseCredentials;
 use Codinglabs\Yolo\Concerns\BootstrapsEnvironmentFromAws;
 
 use function Laravel\Prompts\error;
@@ -119,6 +120,10 @@ class DestroyEnvironmentCommand extends SyncSteppedCommand implements PlansSeque
             'environment' => [
                 ...static::tierASteps(),
                 ...$this->networkSteps(),
+                // The IAM tier goes dead last, on base credentials — it deletes the
+                // role + policy this run is authenticated under, so it can't run any
+                // earlier or under the assumed tier (see iamTierTeardownSteps).
+                ...static::iamTierTeardownSteps(),
             ],
         ];
     }
@@ -149,8 +154,9 @@ class DestroyEnvironmentCommand extends SyncSteppedCommand implements PlansSeque
      * Tier A (compute/edge) teardown in reverse-dependency order: the env-backed
      * service stacks first (their listener rules + target groups hang off the
      * shared ALB), then the WAF + listeners + load balancer + its security group,
-     * the Valkey cache, the SNS topic, the shared exec role and the observer/admin
-     * IAM tiers, and finally the env buckets. Shared with the destroy orchestrator.
+     * the Valkey cache, the SNS topic, and finally the env buckets. The IAM tier is
+     * torn down separately, dead last and on base credentials (see
+     * iamTierTeardownSteps). Shared with the destroy orchestrator.
      *
      * @return array<int, class-string>
      */
@@ -180,8 +186,31 @@ class DestroyEnvironmentCommand extends SyncSteppedCommand implements PlansSeque
             Steps\Destroy\Environment\TeardownCacheSubnetGroupStep::class,
             Steps\Destroy\Environment\TeardownCacheParameterGroupStep::class,
             Steps\Destroy\Environment\TeardownSnsAlarmTopicStep::class,
-            // Shared identity: the exec role, then grant groups → tier roles → tier
-            // policies (each delete() self-detaches; reverse of create order is tidy).
+            // Storage last: the env logs bucket, then the env config bucket, whose
+            // deletion is the final act of the env (Tier A) teardown. The IAM tier
+            // (exec role + observer/admin) is NOT here — it deletes the very role the
+            // run is authenticated as, so it goes dead last on base credentials
+            // (see iamTierTeardownSteps).
+            Steps\Destroy\Environment\TeardownEnvLogsBucketStep::class,
+            Steps\Destroy\Environment\TeardownEnvConfigBucketStep::class,
+        ];
+    }
+
+    /**
+     * The IAM-tier teardown, run **dead last** (after every resource it grants the
+     * permission to delete) and on the operator's **base credentials** (every step
+     * is {@see RunsOnBaseCredentials}). The run assumed
+     * the env admin role for its MFA gate, so it can't delete that role + AdminPolicy
+     * under the very session they authorise — detaching AdminPolicy mid-run would
+     * strip the permissions the teardown still needs. Order: the shared exec role,
+     * then grant groups → tier roles → tier policies (each delete() self-detaches;
+     * reverse of create order is tidy). Shared with the destroy orchestrator.
+     *
+     * @return array<int, class-string>
+     */
+    public static function iamTierTeardownSteps(): array
+    {
+        return [
             Steps\Destroy\Environment\TeardownEcsExecutionRoleStep::class,
             Steps\Destroy\Environment\TeardownAdminsGroupStep::class,
             Steps\Destroy\Environment\TeardownObserversGroupStep::class,
@@ -189,10 +218,6 @@ class DestroyEnvironmentCommand extends SyncSteppedCommand implements PlansSeque
             Steps\Destroy\Environment\TeardownObserverRoleStep::class,
             Steps\Destroy\Environment\TeardownAdminPolicyStep::class,
             Steps\Destroy\Environment\TeardownObserverPolicyStep::class,
-            // Storage last: the env logs bucket, then the env config bucket, whose
-            // deletion is the final act of the env (Tier A) teardown.
-            Steps\Destroy\Environment\TeardownEnvLogsBucketStep::class,
-            Steps\Destroy\Environment\TeardownEnvConfigBucketStep::class,
         ];
     }
 

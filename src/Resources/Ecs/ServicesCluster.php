@@ -69,10 +69,14 @@ class ServicesCluster implements Deletable, Resource
     }
 
     /**
-     * Teardown cascades: AWS refuses to delete a cluster with active services,
-     * so every service is drained (desired 0) and force-deleted first. The
-     * node-services step defers its own teardown here for the same reason the
-     * IVS target defers to its rule — one atomic act, no cross-step ordering.
+     * Teardown cascades: AWS refuses to delete a cluster with active services OR a
+     * non-STOPPED task, so every service is drained (desired 0) and force-deleted
+     * first. But force-delete drains the node tasks asynchronously — they keep
+     * stopping over the graceful-drain window — so the cluster delete is retried
+     * past the transient ClusterContainsTasksException until the drain completes,
+     * exactly as the per-app EcsCluster does (the same race, the same helper). The
+     * node-services step defers its own teardown here for the same reason the IVS
+     * target defers to its rule — one atomic act, no cross-step ordering.
      */
     public function delete(): void
     {
@@ -94,8 +98,6 @@ class ServicesCluster implements Deletable, Resource
             ]);
         }
 
-        Aws::ecs()->deleteCluster([
-            'cluster' => $this->name(),
-        ]);
+        Ecs::deleteClusterWhenDrained($this->name());
     }
 }

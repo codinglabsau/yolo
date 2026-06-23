@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Aws;
 
 use RuntimeException;
 use Codinglabs\Yolo\Aws;
+use Aws\ServiceDiscovery\Exception\ServiceDiscoveryException;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
@@ -80,6 +81,36 @@ class ServiceDiscovery
         } while ($token !== null);
 
         return $services;
+    }
+
+    /**
+     * Delete a Cloud Map discovery service, retrying while it still holds
+     * registered instances. AWS refuses to delete a service with instances, and
+     * the ECS → Cloud Map instance deregistration that follows a node task
+     * stopping is eventual — so a delete right after the cluster teardown can race
+     * the deregistration and throw ResourceInUse even though the tasks are gone.
+     * Retry past it until the instances clear. Any other error (or exhausting the
+     * attempts) propagates unchanged.
+     */
+    public static function deleteServiceWhenDrained(string $serviceId, int $maxAttempts = 24, int $sleepSeconds = 5): void
+    {
+        $attempt = 0;
+
+        while (true) {
+            try {
+                Aws::serviceDiscovery()->deleteService(['Id' => $serviceId]);
+
+                return;
+            } catch (ServiceDiscoveryException $exception) {
+                $attempt++;
+
+                if ($attempt >= $maxAttempts || $exception->getAwsErrorCode() !== 'ResourceInUse') {
+                    throw $exception;
+                }
+
+                sleep($sleepSeconds);
+            }
+        }
     }
 
     /**

@@ -71,17 +71,19 @@ class PrivateDnsNamespace implements Deletable, Resource
     }
 
     /**
-     * Teardown cascades: AWS refuses to delete a namespace with services in
-     * it, so every discovery service is deleted first (their ECS-registered
-     * instances deregistered when the node services died — the cluster's
-     * teardown runs earlier in the declared order).
+     * Teardown cascades: AWS refuses to delete a namespace with services in it, so
+     * every discovery service is deleted first. The node services' ECS-registered
+     * instances deregister when the cluster teardown (earlier in the declared
+     * order) stops the tasks — but that deregistration is eventual, so each service
+     * delete is retried past the transient ResourceInUse until its instances clear
+     * (see deleteServiceWhenDrained).
      */
     public function delete(): void
     {
         $namespaceId = $this->id();
 
         foreach (ServiceDiscoveryApi::services($namespaceId) as $service) {
-            Aws::serviceDiscovery()->deleteService(['Id' => $service['Id']]);
+            ServiceDiscoveryApi::deleteServiceWhenDrained($service['Id']);
         }
 
         $operationId = Aws::serviceDiscovery()->deleteNamespace(['Id' => $namespaceId])['OperationId'];

@@ -148,10 +148,11 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
     /**
      * Teardown when the environment is torn down: delete the web ACL. WAFv2
      * needs the current LockToken (optimistic concurrency) and the Id, both read
-     * from the live summary. The destroy step disassociates the ACL from the ALB
-     * first — WAFv2 refuses to delete an ACL still associated with a resource —
-     * so by the time we get here a plain deleteWebACL succeeds. A concurrent
-     * removal (the summary lookup already 404s) is tolerated.
+     * from the live summary. The destroy step disassociates the ACL from the ALB a
+     * few steps earlier — WAFv2 refuses to delete an ACL still associated with a
+     * resource — but that disassociation is eventually consistent, so the delete is
+     * retried past the transient WAFAssociatedItemException until it lands. A
+     * concurrent removal (the summary lookup already 404s) is tolerated.
      */
     public function delete(): void
     {
@@ -161,12 +162,12 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
             return;
         }
 
-        Aws::wafV2()->deleteWebACL([
+        WafV2::retryWhileAssociated(fn () => Aws::wafV2()->deleteWebACL([
             'Name' => $this->name(),
             'Scope' => WafV2::SCOPE,
             'Id' => $summary['Id'],
             'LockToken' => $summary['LockToken'],
-        ]);
+        ]));
     }
 
     /**

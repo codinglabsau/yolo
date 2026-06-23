@@ -9,7 +9,9 @@ use Laravel\Prompts\Prompt;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Enums\Iam;
 use Aws\Credentials\Credentials;
+use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Commands\Command;
+use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Commands\RunCommand;
 use Codinglabs\Yolo\Commands\SyncCommand;
 use Codinglabs\Yolo\Commands\AuditCommand;
@@ -31,6 +33,7 @@ use Codinglabs\Yolo\Commands\StatusAlarmsCommand;
 use Codinglabs\Yolo\Commands\StatusBudgetCommand;
 use Codinglabs\Yolo\Commands\StatusEventsCommand;
 use Codinglabs\Yolo\Commands\SyncEnvironmentCommand;
+use Codinglabs\Yolo\Contracts\RunsOnBaseCredentials;
 use Symfony\Component\Console\Input\InputDefinition;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Codinglabs\Yolo\Commands\AuditEnvironmentCommand;
@@ -498,4 +501,51 @@ it('still mints in CI when the caller is not yet the tier role (e.g. static-key 
     expect($captured)->toHaveCount(1)
         ->and($captured[0]['name'])->toBe('AssumeRole')
         ->and($captured[0]['args']['RoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-my-app-deployer');
+});
+
+it('ensureBaseCredentials drops the assumed tier credentials back to the base identity', function (): void {
+    // runningInAws short-circuits credential resolution to the task-role chain, so
+    // the re-registration needs no local AWS profile.
+    Helpers::app()->instance('runningInAws', true);
+    Helpers::app()->instance('yoloAssumedCredentials', new Credentials('ASIA-ADMIN', 'admin-secret', 'admin-session'));
+
+    (new ReflectionMethod(new SyncCommand(), 'ensureBaseCredentials'))->invoke(new SyncCommand());
+
+    // The assumed-tier binding is gone — subsequent AWS calls resolve the base identity.
+    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
+});
+
+it('ensureBaseCredentials is a no-op when no tier was assumed (break-glass / CI OIDC)', function (): void {
+    Helpers::app()->instance('runningInAws', true);
+    Helpers::app()->forgetInstance('yoloAssumedCredentials');
+
+    (new ReflectionMethod(new SyncCommand(), 'ensureBaseCredentials'))->invoke(new SyncCommand());
+
+    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
+});
+
+it('drops to base credentials before a RunsOnBaseCredentials step on apply, but never on the plan pass', function (): void {
+    Helpers::app()->instance('runningInAws', true);
+
+    $step = new class() implements RunsOnBaseCredentials, Step
+    {
+        public function __invoke(array $options): StepResult
+        {
+            return StepResult::DELETED;
+        }
+    };
+
+    $command = new SyncCommand();
+    $invokeStep = new ReflectionMethod($command, 'invokeStep');
+
+    // Apply (no dry-run): the assumed credentials are dropped before the step runs,
+    // so the IAM-tier teardown deletes its own role + policy on the base identity.
+    Helpers::app()->instance('yoloAssumedCredentials', new Credentials('ASIA-ADMIN', 'admin-secret', 'admin-session'));
+    $invokeStep->invoke($command, $step, null, 'step', time(), []);
+    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
+
+    // Plan (dry-run): credentials are untouched — the plan reads fine under the cap.
+    Helpers::app()->instance('yoloAssumedCredentials', new Credentials('ASIA-ADMIN', 'admin-secret', 'admin-session'));
+    $invokeStep->invoke($command, $step, null, 'step', time(), ['dry-run' => true]);
+    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeTrue();
 });

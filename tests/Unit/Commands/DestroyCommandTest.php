@@ -55,6 +55,11 @@ it('orchestrates app → environment → account, stripping the manifest dead la
     // The app teardown precedes the environment teardown.
     expect($at(Steps\Destroy\App\TeardownWebServiceStep::class))
         ->toBeLessThan($at(Steps\Destroy\Environment\TeardownLoadBalancerStep::class));
+    // The env IAM tier runs after the whole network shell — it deletes the role +
+    // policy the run is authenticated under, so it can't precede anything needing
+    // them (and it runs on base credentials, asserted in DestroyEnvironmentCommandTest).
+    expect($at(Steps\Destroy\Environment\TeardownVpcStep::class))
+        ->toBeLessThan($at(Steps\Destroy\Environment\TeardownObserverPolicyStep::class));
     // The network shell (env, Tier B) comes before the account-shared provider.
     expect($at(Steps\Destroy\Environment\TeardownVpcStep::class))
         ->toBeLessThan($at(Steps\Destroy\Account\TeardownGithubOidcProviderStep::class));

@@ -12,6 +12,7 @@ use Codinglabs\Yolo\Enums\ServiceState;
 use Codinglabs\Yolo\Services\Lifecycle;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\ArrayInput;
+use Codinglabs\Yolo\Contracts\RunsOnBaseCredentials;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Codinglabs\Yolo\Commands\DestroyEnvironmentCommand;
 
@@ -65,10 +66,31 @@ it('reclaims the network shell when no database is attached', function (): void 
 
     expect($classes)->toContain(Steps\Destroy\Environment\TeardownVpcStep::class)
         ->toContain(Steps\Destroy\Environment\TeardownRdsSubnetStep::class);
-    // RDS subnet group + SG go before the subnets; the VPC is the very last step.
+    // RDS subnet group + SG go before the subnets.
     expect($at(Steps\Destroy\Environment\TeardownRdsSubnetStep::class))
         ->toBeLessThan($at(Steps\Destroy\Environment\TeardownPublicSubnetAStep::class));
-    expect($at(Steps\Destroy\Environment\TeardownVpcStep::class))->toBe(count($classes) - 1);
+    // The whole network shell (VPC is the last of Tier B) tears down before the IAM
+    // tier, which runs dead last on base credentials — it deletes the role + policy
+    // the run is authenticated under, so it can't precede anything that needs them.
+    expect($at(Steps\Destroy\Environment\TeardownVpcStep::class))
+        ->toBeLessThan($at(Steps\Destroy\Environment\TeardownEcsExecutionRoleStep::class));
+    expect($at(Steps\Destroy\Environment\TeardownObserverPolicyStep::class))->toBe(count($classes) - 1);
+});
+
+it('runs every IAM-tier teardown step on base credentials (it deletes the tier it assumed)', function (): void {
+    $classes = destroyEnvPlanClasses();
+
+    $iamTier = DestroyEnvironmentCommand::iamTierTeardownSteps();
+
+    // Every IAM-tier step is marked RunsOnBaseCredentials so the runner drops the
+    // assumed admin credentials before deleting the role + policy that grant them.
+    foreach ($iamTier as $stepClass) {
+        expect(new $stepClass('testing'))->toBeInstanceOf(RunsOnBaseCredentials::class);
+    }
+
+    // And they are the final steps of the plan, after the network.
+    $at = fn (string $class): int|false => array_search($class, $classes, true);
+    expect($at($iamTier[0]))->toBeGreaterThan($at(Steps\Destroy\Environment\TeardownVpcStep::class));
 });
 
 it('refuses the network reclaim while a database is attached, naming it in the summary', function (): void {

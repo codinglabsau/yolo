@@ -39,6 +39,39 @@ class WafV2
      */
     public static function retryWhileUnavailable(callable $operation, int $maxAttempts = 5, int $sleepSeconds = 5): mixed
     {
+        return self::retryWhileCode($operation, 'WAFUnavailableEntityException', $maxAttempts, $sleepSeconds);
+    }
+
+    /**
+     * Run a WAFv2 deletion that follows a disassociation, retrying on
+     * WAFAssociatedItemException. The destroy disassociates the web ACL from the
+     * ALB a few steps before deleting it, but WAFv2 association state is eventually
+     * consistent — a delete racing the propagation reports the ACL still associated.
+     * Retry until the disassociation lands. Any other error (or exhausting the
+     * attempts) propagates unchanged.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $operation
+     * @return T
+     */
+    public static function retryWhileAssociated(callable $operation, int $maxAttempts = 6, int $sleepSeconds = 5): mixed
+    {
+        return self::retryWhileCode($operation, 'WAFAssociatedItemException', $maxAttempts, $sleepSeconds);
+    }
+
+    /**
+     * The shared bounded-retry loop: run $operation, retrying only while it throws
+     * the given eventually-consistent WAFv2 error code, then let anything else (or
+     * exhaustion) propagate.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $operation
+     * @return T
+     */
+    private static function retryWhileCode(callable $operation, string $retryableCode, int $maxAttempts, int $sleepSeconds): mixed
+    {
         $attempt = 0;
 
         while (true) {
@@ -47,7 +80,7 @@ class WafV2
             } catch (AwsException $exception) {
                 $attempt++;
 
-                if ($attempt >= $maxAttempts || $exception->getAwsErrorCode() !== 'WAFUnavailableEntityException') {
+                if ($attempt >= $maxAttempts || $exception->getAwsErrorCode() !== $retryableCode) {
                     throw $exception;
                 }
 

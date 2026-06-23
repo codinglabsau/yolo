@@ -113,6 +113,10 @@ class DestroyCommand extends SyncSteppedCommand implements PlansSequentially
             'environment' => [
                 ...DestroyEnvironmentCommand::tierASteps(),
                 ...$this->networkSteps(),
+                // The IAM tier last, on base credentials — it deletes the role + policy
+                // this run assumed, so it can't run under the tier it's tearing down
+                // (see DestroyEnvironmentCommand::iamTierTeardownSteps).
+                ...DestroyEnvironmentCommand::iamTierTeardownSteps(),
             ],
             // The account-shared OIDC provider, reclaimed only when this is the last
             // environment — the step self-gates on the live yolo:environment tags and

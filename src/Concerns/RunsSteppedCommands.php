@@ -21,6 +21,7 @@ use Codinglabs\Yolo\Contracts\PlansSequentially;
 use Codinglabs\Yolo\Contracts\ExecutesTenantStep;
 use Codinglabs\Yolo\Contracts\ExecutesCommandStep;
 use Codinglabs\Yolo\Steps\ExecuteBuildCommandStep;
+use Codinglabs\Yolo\Contracts\RunsOnBaseCredentials;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Symfony\Component\Console\Command\Command as SymfonyCommand;
 
@@ -491,6 +492,14 @@ trait RunsSteppedCommands
     protected function invokeStep(Step $step, ?Progress $progress, string $label, int $now, array $options): array
     {
         $started = time();
+
+        // A step that must run on the operator's base identity rather than the tier
+        // cap (the IAM-tier teardown deletes the very role the run assumed) drops the
+        // assumed credentials before it executes. Apply only — `dry-run` means the
+        // plan pass, which reads fine under the cap, so it never touches credentials.
+        if ($step instanceof RunsOnBaseCredentials && empty($options['dry-run'])) {
+            $this->ensureBaseCredentials();
+        }
 
         // A LongRunning step blocks inside an AWS waiter, so its progress frame
         // would freeze at "0 seconds elapsed" and read as hung. Show the patience

@@ -23,6 +23,7 @@ use Codinglabs\Yolo\Resources\Iam\DeployerRole;
 use Codinglabs\Yolo\Resources\Iam\ObserverRole;
 use Codinglabs\Yolo\Resources\Iam\AppObserverRole;
 use Symfony\Component\Console\Input\InputInterface;
+use Codinglabs\Yolo\Contracts\RunsOnBaseCredentials;
 use Symfony\Component\Console\Output\OutputInterface;
 use Codinglabs\Yolo\Concerns\ChecksIfCommandsShouldBeRunning;
 use Symfony\Component\Console\Command\Command as SymfonyCommand;
@@ -579,6 +580,27 @@ abstract class Command extends SymfonyCommand
 
             return self::FAILURE;
         }
+    }
+
+    /**
+     * Drop the assumed tier credentials and fall back to the operator's base
+     * profile identity — the mirror of {@see mintTierCredentials()}. Used by the
+     * IAM-tier teardown (see {@see RunsOnBaseCredentials}):
+     * a command can't delete the role + policy it's authenticated under, so the
+     * final teardown slice runs on the broader base identity instead. Idempotent;
+     * a no-op when no tier was minted (a --dangerously-skip-permissions run, or the
+     * CI/OIDC path where the process already IS the tier role and there's nothing
+     * broader to fall back to — that edge keeps the cap).
+     */
+    public function ensureBaseCredentials(): void
+    {
+        if (! Helpers::app()->bound('yoloAssumedCredentials')) {
+            return;
+        }
+
+        Helpers::app()->forgetInstance('yoloAssumedCredentials');
+        static::forgetAwsClients();
+        $this->registerAwsServices();
     }
 
     /**
