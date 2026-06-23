@@ -81,6 +81,8 @@ Even instant detection still waits ~55s for the new task to boot and pass ALB he
 The in-request publish is also best-effort: on a single hard-pinned task (`min 1` on a small box at ~99% CPU) where no request even completes, nothing inside the container escapes and burst can go dark. The CPU fallback covers the busy-but-serving case, but the CPU/concurrency target-tracking policies are the guaranteed backstop and `min ≥ 2` or a larger task is the lever — burst sharpens the light-pin and multi-task case, it isn't a substitute for either.
 :::
 
+The burst signal is graphed on the app's [CloudWatch dashboard](/guide/provisioning#scope-first-provisioning): the **Worker saturation** panel charts the busiest task's saturation with the **Burst** trip threshold (70%) drawn as a reference line, so you can see how close the tier runs to a burst and when one fired. The panel appears only on an autoscaling Octane web tier — the only place the metric exists.
+
 The burst alarm and step policy aren't taggable, so (like the target-tracking policies) they don't appear in [`yolo audit`](/reference/commands#yolo-audit); setting `autoscaling: false` (or switching the web tier to classic mode) deletes both on the next sync.
 
 ### Shedding SSR under load

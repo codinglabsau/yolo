@@ -23,6 +23,7 @@ use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
 use Codinglabs\Yolo\Resources\CloudWatchLogs\TaskLogGroup;
 use Codinglabs\Yolo\Resources\CloudFront\AssetDistribution;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
+use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
 
 /**
  * A per-app CloudWatch dashboard giving at-a-glance visibility across every
@@ -58,7 +59,11 @@ class Dashboard implements Deletable
 
     protected const RESPONSE_TIME_TARGET = 0.25;
 
-    protected const RESPONSE_TIME_ALARM = 1.5;
+    // Response-time SLO ceiling (seconds), a visual reference line only — there is
+    // no CloudWatch alarm on TargetResponseTime, so nothing fires when it's
+    // breached. The only real web-scaling trigger is the burst worker-saturation
+    // alarm (see WebBurstPolicy), drawn on the Worker saturation panel below.
+    protected const RESPONSE_TIME_SLO = 1.5;
 
     // The ALB should always have at least one task in rotation; anything below
     // this floor means the service is degraded or fully out of rotation.
@@ -181,6 +186,11 @@ class Dashboard implements Deletable
         return [
             'region' => Manifest::get('region'),
             'web' => $web,
+            // The burst worker-saturation metric only exists on an autoscaling
+            // Octane web tier (classic mode never emits it), so the Worker
+            // saturation panel — and its burst threshold line — is drawn only
+            // there. Same gate the runtime reporter and Caddyfile key off.
+            'burst' => $web && Manifest::usesMetricsCaddyfile(),
             'clusterName' => $web ? (new EcsCluster())->name() : null,
             'serviceName' => $web ? (new EcsService())->name() : null,
             // Per-group compute is charted only for a group that runs as its own
@@ -503,7 +513,7 @@ class Dashboard implements Deletable
                     ['AWS/ApplicationELB', 'TargetResponseTime', ...static::appAlbDimensions($targetGroup, $alb), ['label' => 'p99', 'stat' => 'p99', 'color' => static::RED]],
                 ],
                 'annotations' => ['horizontal' => [
-                    ['color' => static::RED, 'label' => 'Alarm', 'value' => static::RESPONSE_TIME_ALARM, 'fill' => 'above'],
+                    ['color' => static::RED, 'label' => 'SLO', 'value' => static::RESPONSE_TIME_SLO, 'fill' => 'above'],
                     ['color' => static::GREEN, 'label' => 'Target', 'value' => static::RESPONSE_TIME_TARGET],
                 ]],
             ]);
@@ -538,6 +548,32 @@ class Dashboard implements Deletable
                     // to a target group, so this one line stays env-wide (labelled as such).
                     ['AWS/ApplicationELB', 'HTTPCode_ELB_5XX_Count', 'LoadBalancer', $alb, ['label' => 'ELB 5xx (LB-wide)', 'color' => static::PURPLE]],
                 ],
+            ]);
+            $y += 6;
+        }
+
+        // The burst scale-out signal: the FrankenPHP worker-saturation metric the
+        // container emits itself, with the burst alarm's trip threshold drawn on it
+        // — the one real-time web scaling trigger (the CPU `Scale` line below is the
+        // slower target-tracking companion). Maximum matches the alarm, which trips
+        // on the most-saturated task. Only present on an autoscaling Octane tier.
+        if ($context['burst']) {
+            $widgets[] = static::metric(0, $y, 12, 6, [
+                'title' => 'Worker saturation',
+                'region' => $region,
+                'view' => 'timeSeries',
+                'stacked' => false,
+                'period' => WebBurstPolicy::COOLDOWN,
+                'yAxis' => ['left' => ['min' => 0, 'max' => 100]],
+                'metrics' => [
+                    [WebBurstPolicy::METRIC_NAMESPACE, WebBurstPolicy::METRIC_NAME, WebBurstPolicy::METRIC_DIMENSION, $service, ['label' => 'Busiest task', 'stat' => 'Maximum', 'color' => static::ORANGE]],
+                ],
+                'annotations' => ['horizontal' => [
+                    ['color' => static::ORANGE, 'label' => 'Burst', 'value' => WebBurstPolicy::ALARM_THRESHOLD, 'fill' => 'above'],
+                    // The reporter only publishes at or above this floor, so the line
+                    // explains the metric's absence below it (not a gap in coverage).
+                    ['color' => static::BLUE, 'label' => 'Emit floor', 'value' => WebBurstPolicy::EMIT_FLOOR],
+                ]],
             ]);
             $y += 6;
         }

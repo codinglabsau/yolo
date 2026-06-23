@@ -11,6 +11,7 @@ use Aws\Exception\AwsException;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\CloudWatch\Dashboard;
 use Codinglabs\Yolo\Steps\Sync\App\SyncCloudWatchDashboardStep;
+use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
 
 /**
  * A resolved dashboard context — the struct body() is a pure function of, so the
@@ -25,6 +26,7 @@ function dashboardContext(array $overrides = []): array
     return array_merge([
         'region' => 'ap-southeast-2',
         'web' => true,
+        'burst' => true,
         'clusterName' => 'yolo-testing-my-app',
         'serviceName' => 'yolo-testing-my-app-web',
         'albSuffix' => 'app/yolo-testing/abc123def456',
@@ -269,6 +271,31 @@ it('scopes response time, slow requests and the target HTTP errors to the app ta
         ->first(fn (array $metric): bool => $metric[1] === 'HTTPCode_ELB_5XX_Count');
     expect($elb)->toContain('LoadBalancer', 'app/yolo-testing/abc123def456')
         ->and($elb)->not->toContain('TargetGroup');
+});
+
+it('labels the response-time ceiling as an SLO reference, not an alarm (no TargetResponseTime alarm exists)', function (): void {
+    $labels = collect(findWidget(Dashboard::body(dashboardContext()), 'Response time')['properties']['annotations']['horizontal'])
+        ->pluck('label')->all();
+
+    expect($labels)->toContain('SLO', 'Target')->not->toContain('Alarm');
+});
+
+it('draws the burst worker-saturation panel with the burst threshold line on an autoscaling Octane web tier', function (): void {
+    $panel = findWidget(Dashboard::body(dashboardContext()), 'Worker saturation');
+
+    // Reads the same metric the burst alarm reads, dimensioned by this web service.
+    expect($panel['properties']['metrics'][0])
+        ->toContain(WebBurstPolicy::METRIC_NAMESPACE, WebBurstPolicy::METRIC_NAME, 'yolo-testing-my-app-web')
+        ->and(end($panel['properties']['metrics'][0])['stat'])->toBe('Maximum'); // most-saturated task, like the alarm
+
+    $burst = collect($panel['properties']['annotations']['horizontal'])
+        ->first(fn (array $annotation): bool => $annotation['label'] === 'Burst');
+
+    expect($burst['value'])->toBe(WebBurstPolicy::ALARM_THRESHOLD);
+});
+
+it('omits the worker-saturation panel when burst is inactive (classic mode or no web autoscaling)', function (): void {
+    expect(findWidget(Dashboard::body(dashboardContext(['burst' => false])), 'Worker saturation'))->toBeNull();
 });
 
 it('falls back to the load-balancer dimension for the front-end panels before the target group resolves', function (): void {
