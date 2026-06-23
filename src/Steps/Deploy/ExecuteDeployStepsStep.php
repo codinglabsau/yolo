@@ -14,6 +14,19 @@ use Codinglabs\Yolo\Resources\Ec2\EcsTaskSecurityGroup;
 
 class ExecuteDeployStepsStep implements LongRunning
 {
+    /**
+     * Task-level CPU/memory the one-off deploy task runs with, overriding the
+     * deploy group's task definition. The deploy group is usually a standalone
+     * queue or scheduler (0.25 vCPU / 512 MiB) — too thin for migrations and
+     * other deploy hooks, which are a one-shot, latency-sensitive cost on every
+     * deploy. Bumping to 1 vCPU here speeds them up without growing the
+     * long-running service. Must stay a valid Fargate CPU/memory pair: 1024 CPU
+     * requires at least 2048 MiB.
+     */
+    protected const string DEPLOY_TASK_CPU = '1024';
+
+    protected const string DEPLOY_TASK_MEMORY = '2048';
+
     public function __construct(protected string $environment) {}
 
     public function patienceMessage(): string
@@ -50,6 +63,8 @@ class ExecuteDeployStepsStep implements LongRunning
             'count' => 1,
             'startedBy' => 'yolo-deploy',
             'overrides' => [
+                'cpu' => self::DEPLOY_TASK_CPU,
+                'memory' => self::DEPLOY_TASK_MEMORY,
                 'containerOverrides' => [
                     [
                         'name' => $group->value,
