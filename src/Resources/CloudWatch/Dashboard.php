@@ -154,7 +154,7 @@ class Dashboard implements Deletable
         }
 
         return [Change::make(
-            'dashboard',
+            $this->name(),
             $live === null ? 'absent' : 'drifted',
             sprintf('%d widgets', count($desired['widgets'])),
         )];

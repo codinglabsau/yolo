@@ -28,7 +28,7 @@ class TeardownCloudWatchDashboardStep implements Step
             return StepResult::SKIPPED;
         }
 
-        $this->recordChange(Change::make('CloudWatch dashboard', 'provisioned', null));
+        $this->recordChange(Change::make($dashboard->name(), 'provisioned', null));
 
         if (Arr::get($options, 'dry-run')) {
             return StepResult::WOULD_DELETE;

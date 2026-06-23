@@ -27,21 +27,30 @@ class DeregisterTaskDefinitionsStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        $arns = $this->families()
-            ->flatMap(fn (string $family): array => $this->activeRevisions($family))
-            ->all();
+        // Keyed by family (the service name) so each family's revision count is
+        // reported on its own line — "which task definitions, how many" — rather
+        // than a single opaque total across every family.
+        $revisionsByFamily = $this->families()
+            ->mapWithKeys(fn (string $family): array => [$family => $this->activeRevisions($family)])
+            ->filter(fn (array $arns): bool => $arns !== []);
 
-        if ($arns === []) {
+        if ($revisionsByFamily->isEmpty()) {
             return StepResult::SKIPPED;
         }
 
-        $this->recordChange(Change::make('task definitions', sprintf('%d active revision(s)', count($arns)), null));
+        foreach ($revisionsByFamily as $family => $arns) {
+            $this->recordChange(Change::make(
+                sprintf('%s task definitions', $family),
+                sprintf('%d active revision(s)', count($arns)),
+                null,
+            ));
+        }
 
         if (Arr::get($options, 'dry-run')) {
             return StepResult::WOULD_DELETE;
         }
 
-        foreach ($arns as $arn) {
+        foreach ($revisionsByFamily->flatten() as $arn) {
             Aws::ecs()->deregisterTaskDefinition(['taskDefinition' => $arn]);
         }
 

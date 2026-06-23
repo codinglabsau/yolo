@@ -10,6 +10,7 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
+use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\ScalableTarget;
 
 /**
@@ -32,7 +33,11 @@ class DeregisterWebAutoscalingStep implements Step
             return StepResult::SKIPPED;
         }
 
-        $this->recordChange(Change::make('web autoscaling', sprintf('%d-%d', $live['min'], $live['max']), null));
+        $this->recordChange(Change::make(
+            sprintf('%s autoscaling', (new EcsService(ServerGroup::WEB))->name()),
+            sprintf('min %d / max %d', $live['min'], $live['max']),
+            null,
+        ));
 
         if ((bool) Arr::get($options, 'dry-run')) {
             return StepResult::WOULD_DELETE;

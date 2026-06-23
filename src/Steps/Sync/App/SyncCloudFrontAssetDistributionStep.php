@@ -7,7 +7,7 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Resources\CloudFront\AssetDistribution;
 
-class SyncAssetDistributionStep implements Step
+class SyncCloudFrontAssetDistributionStep implements Step
 {
     use SynchronisesResource;
 

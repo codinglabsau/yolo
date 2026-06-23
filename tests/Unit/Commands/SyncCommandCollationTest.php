@@ -93,7 +93,7 @@ it('folds the Fargate + CDN steps into the app scope when a web task is declared
     $appSteps = (new SyncCommand())->scopes()['app'];
 
     expect($appSteps)->toContain(Steps\Sync\App\SyncEcsServiceStep::class)
-        ->and($appSteps)->toContain(Steps\Sync\App\SyncAssetDistributionStep::class);
+        ->and($appSteps)->toContain(Steps\Sync\App\SyncCloudFrontAssetDistributionStep::class);
 });
 
 it('omits the Fargate + CDN steps from a solo app with no web task', function (): void {

@@ -13,7 +13,7 @@ use Codinglabs\Yolo\Resources\CloudFront\AssetDistribution;
  * disables the distribution and blocks on the DistributionDeployed waiter
  * (~5–15 min) before removing it.
  */
-class TeardownAssetDistributionStep extends TeardownStep implements LongRunning
+class TeardownCloudFrontAssetDistributionStep extends TeardownStep implements LongRunning
 {
     protected function resource(): AssetDistribution
     {

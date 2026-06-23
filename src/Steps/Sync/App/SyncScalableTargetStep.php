@@ -67,7 +67,11 @@ class SyncScalableTargetStep implements Step
                 return StepResult::SKIPPED;
             }
 
-            $this->recordChanges([Change::make($this->group()->value . ' autoscaling', sprintf('%d-%d', $live['min'], $live['max']), null)]);
+            $this->recordChanges([Change::make(
+                sprintf('%s autoscaling', (new EcsService($this->group()))->name()),
+                sprintf('min %d / max %d', $live['min'], $live['max']),
+                null,
+            )]);
 
             if (! $dryRun) {
                 $target->deregister();

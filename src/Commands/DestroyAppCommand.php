@@ -132,7 +132,7 @@ class DestroyAppCommand extends SyncSteppedCommand
         return [
             'app' => array_values(array_filter([
                 Steps\Destroy\App\TeardownCloudWatchDashboardStep::class,
-                Steps\Destroy\App\TeardownAssetDistributionStep::class,
+                Steps\Destroy\App\TeardownCloudFrontAssetDistributionStep::class,
                 // Autoscaling before the service it scales: burst (policy + its
                 // standalone alarm), then the scalable target (cascades the rest).
                 Steps\Destroy\App\DeregisterWebBurstStep::class,
@@ -159,10 +159,10 @@ class DestroyAppCommand extends SyncSteppedCommand
                 Steps\Destroy\App\TeardownTaskSecurityGroupStep::class,
                 Steps\Destroy\App\TeardownEcsTaskRoleStep::class,
                 Steps\Destroy\App\TeardownEcsTaskPolicyStep::class,
-                Steps\Destroy\App\TeardownSslCertificateStep::class,
+                Steps\Destroy\App\DetachSslCertificateStep::class,
                 Steps\Destroy\App\TeardownQueueAlarmStep::class,
                 Steps\Destroy\App\TeardownQueueStep::class,
-                Steps\Destroy\App\TeardownHostedZoneStep::class,
+                Steps\Destroy\App\WithdrawAppDnsRecordsStep::class,
                 Steps\Destroy\App\TeardownDeployersGroupStep::class,
                 Steps\Destroy\App\TeardownAppObserversGroupStep::class,
                 Steps\Destroy\App\TeardownDeployerRoleStep::class,
@@ -173,7 +173,7 @@ class DestroyAppCommand extends SyncSteppedCommand
                 // This app's per-app env file in the (env-shared) env config bucket —
                 // its build env channel, which also held any minted Typesense keys.
                 Steps\Destroy\App\RemoveAppEnvFileStep::class,
-                Steps\Destroy\App\TeardownAssetBucketStep::class,
+                Steps\Destroy\App\TeardownS3AssetBucketStep::class,
                 Steps\Destroy\App\TeardownS3ConfigBucketStep::class,
                 Steps\Destroy\App\TeardownEcrRepositoryStep::class,
                 // Final act: stop yolo.yml advertising an environment whose resources
