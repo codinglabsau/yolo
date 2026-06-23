@@ -606,7 +606,7 @@ When a [`tasks.web.autoscaling`](/reference/manifest#tasks-web-autoscaling) bloc
 
 ## `yolo destroy:app`
 
-Permanently tear one application's resources down in the given environment — the reverse of [`sync:app`](#yolo-sync-app). It uses the same **plan → confirm → apply** flow: a plan pass lists every resource that **would delete**, the confirm gate guards the irreversible apply (declining is the preview), and `--check` is the non-interactive plan-only form for CI. The apply pass deletes in reverse dependency order — CloudFront → autoscaling → ECS services → cluster → listener rules → target group → task security group → app IAM → SQS → hosted zone → buckets → ECR — so a resource is never deleted while something still references it.
+Permanently tear one application's resources down in the given environment — the reverse of [`sync:app`](#yolo-sync-app). It uses the same **plan → confirm → apply** flow: a plan pass lists every resource that **would delete**, the confirm gate guards the irreversible apply (declining is the preview), and `--check` is the non-interactive plan-only form for CI. The apply pass deletes in reverse dependency order — CloudFront → autoscaling → ECS services → cluster → listener rules → target group → task security group → app IAM → SQS → hosted-zone records → buckets → ECR — so a resource is never deleted while something still references it.
 
 ```bash
 yolo destroy:app <environment> [--check] [--force] [--no-progress]
@@ -618,6 +618,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **app**. Admin-tier.
 
 - The **app data bucket** (the BYO [`bucket`](/reference/manifest#bucket)) holds user data and is never deleted — it isn't even YOLO-tagged. The regenerable asset and config buckets *are* emptied and removed.
 - **RDS is never touched** (YOLO owns the security group, not the database) — destroy:app *revokes this app's 3306 ingress rule* from the shared RDS security group, never the group itself.
+- **The hosted zone is never deleted** — it's domain-level infrastructure (the registrar's NS delegation points at it, and the domain's email/verification DNS and any sibling environment's records live in it). destroy:app *withdraws only the A/AAAA records it added* and leaves the zone — and everything else in it — standing.
 - The shared **`:443` listener** and the **Valkey cache** stay for the environment's other apps — destroy:app removes only this app's listener rule + SNI certificate, and revokes this app's cache ingress rule. (If the certificate is the listener's *default*, it can't be removed app-side and is left for environment teardown.)
 - **Env-service per-app resources are torn down** — for an app consuming a service, destroy:app reverses its per-app half: it revokes this app's Typesense node-SG ingress, deletes the per-app MediaConvert role, and removes the app's per-app env file (which also held its minted Typesense keys). The env-shared service stack itself (the search cluster, the WAF, …) is environment-scoped and left standing.
 - **Environment- and account-scoped** resources (VPC, subnets, ALB, OIDC provider, …) are out of scope — tear the whole environment down with [`destroy:environment`](#yolo-destroy-environment).
@@ -631,10 +632,10 @@ Arguments and options as [`sync`](#sync-options). Scope: **app**. Admin-tier.
 Permanently tear an environment's shared **compute/edge** resources down — the reverse of [`sync:environment`](#yolo-sync-environment), behind the same **plan → confirm → apply** flow (`--check` is the CI plan-only form). The apply pass deletes in reverse dependency order: the env-backed **service stacks** (Typesense / IVS) first, then the **WAF** off the load balancer, the `:443`/`:80` **listeners** + the **load balancer** + its security group, the shared **Valkey cache** (replication group + its subnet/parameter groups + security group), the **SNS alarm topic**, the shared **ECS execution role** and the **observer/admin** IAM tiers, and finally the **env buckets**.
 
 ```bash
-yolo destroy:environment <environment> [--delete-data] [--check] [--force] [--no-progress]
+yolo destroy:environment <environment> [--check] [--force] [--no-progress]
 ```
 
-Arguments and options as [`sync`](#sync-options), plus `--delete-data`. Scope: **environment**. Admin-tier.
+Arguments and options as [`sync`](#sync-options). Scope: **environment**. Admin-tier.
 
 **It tears down Tier A (compute/edge) and deliberately leaves Tier B (the network shell + database):**
 
@@ -644,7 +645,7 @@ Arguments and options as [`sync`](#sync-options), plus `--delete-data`. Scope: *
 
 **Guarded — it refuses while any app still claims the environment.** If any app has a published claim file or running tasks, destroy:environment names them and stops: tear each down with [`destroy:app`](#yolo-destroy-app) first, so the shared resources never go out from under a live app.
 
-**The data buckets need an explicit opt-in.** The env config bucket (the env manifest + env-shared `.env`) and the env logs bucket (ALB access logs) hold data, so they're only emptied and deleted with **`--delete-data`**; without it they're left standing and the plan notes it. Everything else comes down under the normal confirm gate.
+**The env buckets go with the environment.** The env config bucket (the env manifest + env-shared `.env`) and the env logs bucket (ALB access logs) are regeneratable infrastructure config, emptied and deleted as part of the teardown. The BYO app data bucket and the database are never touched.
 
 ---
 
