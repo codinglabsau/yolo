@@ -177,6 +177,23 @@ it('folds an extracted queue worker compute into the # Queue section; a bundled 
     expect(findWidget($body, 'Queue depth'))->not->toBeNull();
 });
 
+it('draws the CPU scale line only on web (CPU-scaled), not the backlog-scaled queue', function (): void {
+    $body = Dashboard::body(dashboardContext(['queueService' => 'yolo-testing-my-app-queue']));
+
+    $cpuAnnotations = function (string $service) use ($body): array {
+        $panel = collect($body['widgets'])->first(fn (array $w): bool => ($w['properties']['title'] ?? null) === 'CPU utilisation'
+            && in_array($service, $w['properties']['metrics'][0], true));
+
+        return collect($panel['properties']['annotations']['horizontal'])->pluck('label')->all();
+    };
+
+    // Web scales on CPU → both the Scale and Critical lines.
+    expect($cpuAnnotations('yolo-testing-my-app-web'))->toContain('Scale', 'Critical');
+
+    // The queue scales on backlog-per-task, not CPU → Critical only, no Scale line.
+    expect($cpuAnnotations('yolo-testing-my-app-queue'))->toContain('Critical')->not->toContain('Scale');
+});
+
 it('omits the whole queue section when the queue is disabled and bundled (tasks.queue: false)', function (): void {
     $body = Dashboard::body(dashboardContext(['queueDisabled' => true]));
 

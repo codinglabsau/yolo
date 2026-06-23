@@ -542,7 +542,8 @@ class Dashboard implements Deletable
             $y += 6;
         }
 
-        [$compute, $y] = static::computeWidgets($region, $cluster, $service, $y);
+        // Web is the only group that scales on CPU, so it gets the `Scale` line.
+        [$compute, $y] = static::computeWidgets($region, $cluster, $service, $y, cpuScaled: true);
 
         return [[...$widgets, ...$compute], $y];
     }
@@ -552,9 +553,14 @@ class Dashboard implements Deletable
      * network in/out. Used by the web section (after its ALB panels) and by each
      * extracted worker's compute section. Pure.
      *
+     * $cpuScaled draws the CPU `Scale` threshold line — only the web group scales
+     * on CPU. The queue scales on backlog-per-task and the scheduler is a pinned
+     * singleton, so a `Scale` line on their CPU panels would imply a trigger that
+     * doesn't exist; they keep only the generic `Critical` high-CPU marker.
+     *
      * @return array{0: array<int, array<string, mixed>>, 1: int}
      */
-    protected static function computeWidgets(string $region, string $cluster, string $service, int $y): array
+    protected static function computeWidgets(string $region, string $cluster, string $service, int $y, bool $cpuScaled = false): array
     {
         $widgets = [
             static::metric(0, $y, 12, 6, [
@@ -570,7 +576,7 @@ class Dashboard implements Deletable
                     ['AWS/ECS', 'CPUUtilization', 'ClusterName', $cluster, 'ServiceName', $service, ['label' => 'Max', 'stat' => 'Maximum', 'color' => static::ORANGE]],
                 ],
                 'annotations' => ['horizontal' => [
-                    ['color' => static::ORANGE, 'label' => 'Scale', 'value' => static::CPU_SCALE_THRESHOLD],
+                    ...$cpuScaled ? [['color' => static::ORANGE, 'label' => 'Scale', 'value' => static::CPU_SCALE_THRESHOLD]] : [],
                     ['color' => static::RED, 'label' => 'Critical', 'value' => static::CPU_CRITICAL_THRESHOLD, 'fill' => 'above'],
                 ]],
             ]),
