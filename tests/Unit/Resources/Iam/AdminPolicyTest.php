@@ -42,6 +42,17 @@ it('grants the write surface for the services YOLO provisions', function (): voi
     );
 });
 
+it('grants the DB subnet group lifecycle but never a destructive database action', function (): void {
+    // The DB subnet group is YOLO's own network resource — sync creates it,
+    // destroy:environment reclaims it (a capped teardown 403s on the delete
+    // without this). RDS is otherwise wildcard-free so the tier can never reach
+    // the database itself; the source-level NeverDeletesDatabaseTest is the
+    // companion guarantee.
+    expect(adminActions())
+        ->toContain('rds:CreateDBSubnetGroup', 'rds:DeleteDBSubnetGroup')
+        ->not->toContain('rds:*', 'rds:Delete*', 'rds:DeleteDBInstance', 'rds:DeleteDBCluster');
+});
+
 it('grants the ECR login + layer-upload chain sync needs to push the Typesense image', function (): void {
     // BuildTypesenseImageStep runs under the admin tier (it's a sync:environment
     // step), so admin must hold the same push chain the deployer uses — the

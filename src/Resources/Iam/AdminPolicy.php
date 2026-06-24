@@ -230,6 +230,14 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                         // data / cache / queues
                         'elasticache:Create*', 'elasticache:Modify*',
                         'elasticache:Delete*', 'elasticache:Add*', 'elasticache:Remove*',
+                        // RDS stays wildcard-free so the tier can NEVER touch a
+                        // database. The one exception is the DB *subnet group* — YOLO's
+                        // own network resource: sync creates it, destroy:environment
+                        // reclaims it. Never the instance/cluster/snapshot. (Bootstrap
+                        // syncs run --dangerously-skip-permissions, which is why create
+                        // never needed this until a capped teardown deletes it.) See
+                        // NeverDeletesDatabaseTest.
+                        'rds:CreateDBSubnetGroup', 'rds:DeleteDBSubnetGroup',
                         'rds:AddTagsToResource', 'rds:RemoveTagsFromResource',
                         'sqs:CreateQueue', 'sqs:DeleteQueue', 'sqs:SetQueueAttributes',
                         'sqs:TagQueue', 'sqs:UntagQueue',
