@@ -2,6 +2,7 @@
 
 namespace Codinglabs\Yolo\Steps\Sync\Environment;
 
+use Codinglabs\Yolo\Destroying;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -32,6 +33,8 @@ class SyncTypesenseNamespaceStep implements LongRunning, Step
 
     public function patienceMessage(): string
     {
-        return 'Provisioning the private DNS namespace — usually under a minute.';
+        return Destroying::active()
+            ? 'Removing the private DNS namespace and its node records — usually under a minute.'
+            : 'Provisioning the private DNS namespace — usually under a minute.';
     }
 }

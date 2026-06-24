@@ -6,12 +6,14 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Change;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Aws\Ec2;
+use Codinglabs\Yolo\Destroying;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\ServiceState;
 use Codinglabs\Yolo\Services\Lifecycle;
 use Codinglabs\Yolo\Services\Typesense;
+use Codinglabs\Yolo\Contracts\LongRunning;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Resources\Ec2\TypesenseSecurityGroup;
 use Codinglabs\Yolo\Resources\Ec2\LoadBalancerSecurityGroup;
@@ -28,9 +30,23 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * additively, identified by content — consuming apps' task-SG 8108 ingress is
  * the app tier's to add, the RDS-3306 pattern.
  */
-class SyncTypesenseSecurityGroupStep implements Step
+class SyncTypesenseSecurityGroupStep implements LongRunning, Step
 {
     use SynchronisesResource;
+
+    /**
+     * LongRunning for its teardown: deleting the node SG blocks while AWS detaches
+     * the load-balancer + node ENIs that still reference it, which the resource
+     * waits out (see TypesenseSecurityGroup::delete()) — up to a couple of minutes.
+     * Provisioning the group + its ingress is quick, so the patience line reflects
+     * whichever direction is running.
+     */
+    public function patienceMessage(): string
+    {
+        return Destroying::active()
+            ? 'Removing the search cluster security group — waiting for its network interfaces to detach (up to ~2 minutes).'
+            : 'Configuring the search cluster security group.';
+    }
 
     public function __invoke(array $options): StepResult
     {

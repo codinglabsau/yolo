@@ -5,6 +5,7 @@ use Codinglabs\Yolo\Change;
 use Illuminate\Support\Arr;
 use Laravel\Prompts\Prompt;
 use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Destroying;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Commands\SyncCommand;
@@ -30,6 +31,22 @@ class RunScopesCleanStep implements Step
     public function __invoke(array $options): StepResult
     {
         return StepResult::SYNCED;
+    }
+}
+
+/**
+ * A "Sync"-prefixed step that records a change so its label surfaces in the plan —
+ * used to prove a destroy run relabels the reused Sync verb to "Teardown".
+ */
+class SyncRunScopesRelabelStep implements Step
+{
+    use RecordsChanges;
+
+    public function __invoke(array $options): StepResult
+    {
+        $this->recordChange(Change::make('thing', 'absent', 'present'));
+
+        return Arr::get($options, 'dry-run') ? StepResult::WOULD_CREATE : StepResult::CREATED;
     }
 }
 
@@ -189,6 +206,28 @@ it('omits the changes section entirely when nothing drifted', function (): void 
     expect($output)
         ->not->toContain('Pending changes')
         ->not->toContain('Changes applied');
+});
+
+it('keeps the Sync verb in a normal sync run', function (): void {
+    $output = runScopesCapture(
+        ['environment' => [SyncRunScopesRelabelStep::class]],
+        ['--no-progress' => true],
+    );
+
+    expect($output)
+        ->toContain('Sync run scopes relabel')
+        ->not->toContain('Teardown run scopes relabel');
+});
+
+it('relabels a reused Sync step as Teardown while an environment is being destroyed', function (): void {
+    $output = Destroying::during(fn (): string => runScopesCapture(
+        ['environment' => [SyncRunScopesRelabelStep::class]],
+        ['--no-progress' => true],
+    ));
+
+    expect($output)
+        ->toContain('Teardown run scopes relabel')
+        ->not->toContain('Sync run scopes relabel');
 });
 
 it('names brand-new resources under Will create, before the confirm gate', function (): void {

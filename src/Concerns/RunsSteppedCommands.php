@@ -9,6 +9,7 @@ use Laravel\Prompts\Prompt;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Laravel\Prompts\Progress;
+use Codinglabs\Yolo\Destroying;
 use Codinglabs\Yolo\WaitReporter;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Stringable;
@@ -878,6 +879,11 @@ trait RunsSteppedCommands
                 ->headline()
                 ->lower()
                 ->ucfirst()
+                // The env-backed services (Typesense/IVS) tear down by reusing their
+                // Sync steps' Teardown branch, so a destroy run would otherwise show
+                // "Sync typesense security group" while it's deleting it. Relabel the
+                // verb to match what's happening while an environment is being destroyed.
+                ->when(Destroying::active(), fn (Stringable $string) => $string->replaceFirst('Sync ', 'Teardown '))
                 ->when($step instanceof ExecutesTenantStep, fn (Stringable $string) => $string->prepend($tenantPrefix))
                 ->when($bold && ! $step instanceof ExecutesTenantStep, fn (Stringable $string) => $string->wrap(before: '<options=bold>', after: '</>'))
         };
