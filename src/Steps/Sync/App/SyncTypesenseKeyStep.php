@@ -21,6 +21,7 @@ use GuzzleHttp\Exception\GuzzleException;
 use Codinglabs\Yolo\Contracts\LongRunning;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
 use Codinglabs\Yolo\Concerns\RecordsWarnings;
+use Codinglabs\Yolo\Contracts\SkippedByDeployCheck;
 
 /**
  * Mints this app its two Typesense keys, both scoped to its own `{prefix}*`
@@ -45,8 +46,14 @@ use Codinglabs\Yolo\Concerns\RecordsWarnings;
  * ingress isn't up yet (first sync ordering: claim published → env tier
  * provisions → this step), it skips with instructions rather than failing the
  * sync.
+ *
+ * Its once-minted idempotency check reads the app's per-app `.env` (env/.env.{app},
+ * which carries the minted keys) — a secret the Observer tier is deliberately fenced
+ * from. So like its env-backed-service siblings it is {@see SkippedByDeployCheck}:
+ * the deploy gate and the `audit` health check (both read tiers) skip it rather than
+ * 403 on that read; `yolo sync` (admin) remains its drift check.
  */
-class SyncTypesenseKeyStep implements LongRunning
+class SyncTypesenseKeyStep implements LongRunning, SkippedByDeployCheck
 {
     use RecordsChanges;
     use RecordsWarnings;

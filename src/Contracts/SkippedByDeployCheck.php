@@ -7,15 +7,22 @@ namespace Codinglabs\Yolo\Contracts;
 use Codinglabs\Yolo\DeployCheck;
 
 /**
- * Marks a sync step the pre-deploy in-sync gate (EnsureInSyncStep) must NOT run.
+ * Marks a sync step a read-only `sync --check` tier must NOT run.
  *
- * The gate runs the full `sync --check` under the least-privilege *deployer*
- * tier, but these steps reconcile admin-owned env-backed-service state the
- * deployer is deliberately fenced from reading — the env-shared admin key (the
- * Typesense cluster key in `.env.environment.{env}`) and env-tier log-group
- * tags. Running them under the deployer 403s, and the deployer can't reconcile
- * them anyway, so the gate skips them: `yolo sync <env>` (admin) is their drift
- * check. The skip is scoped to the gate (via {@see DeployCheck});
- * a direct `yolo sync` / `sync --check` runs them as normal.
+ * Two callers run the full `sync --check` under a least-privilege read tier: the
+ * pre-deploy in-sync gate (EnsureInSyncStep, *deployer* tier) and the `audit`
+ * health check (AuditCommand, *Observer* tier). These steps reconcile
+ * env-backed-service state a read tier is deliberately fenced from reading:
+ *
+ * - the env-shared Typesense admin key + env-tier log-group tags — fenced from
+ *   both the deployer and the Observer; and
+ * - an app's per-app `.env` (env/.env.{app}, holding its minted Typesense keys) —
+ *   fenced from the Observer (the deployer may read it, but minting needs the admin
+ *   key it can't, so it can't reconcile this anyway).
+ *
+ * Running them under a fenced tier 403s, and that tier can't reconcile them regardless,
+ * so the gate/audit skips them: `yolo sync <env>` (admin) is their drift check. The
+ * skip is scoped via {@see DeployCheck}; a direct admin `yolo sync` / `sync --check`
+ * runs them as normal.
  */
 interface SkippedByDeployCheck {}

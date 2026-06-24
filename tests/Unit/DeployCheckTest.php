@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Codinglabs\Yolo\DeployCheck;
 use Codinglabs\Yolo\Contracts\SkippedByDeployCheck;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncVpcStep;
+use Codinglabs\Yolo\Steps\Sync\App\SyncTypesenseKeyStep;
 use Codinglabs\Yolo\Concerns\ChecksIfCommandsShouldBeRunning;
 use Codinglabs\Yolo\Steps\Sync\Environment\BuildTypesenseImageStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncTypesenseAdminKeyStep;
@@ -20,7 +21,7 @@ function deployCheckChecker(): object
     };
 }
 
-it('marks the deployer-fenced env-backed-service steps as skipped-by-deploy-check', function (string $step): void {
+it('marks the read-tier-fenced env-backed-service steps as skipped-by-deploy-check', function (string $step): void {
     expect(is_subclass_of($step, SkippedByDeployCheck::class))->toBeTrue();
 })->with([
     SyncTypesenseAdminKeyStep::class,
@@ -28,6 +29,9 @@ it('marks the deployer-fenced env-backed-service steps as skipped-by-deploy-chec
     SyncTypesenseTaskDefinitionStep::class,
     SyncTypesenseLogGroupStep::class,
     SyncIvsCloudWatchLogGroupStep::class,
+    // The app-scope key step reads the Observer-fenced per-app `.env`, so `audit`
+    // (Observer tier) must skip it rather than 403 on the once-minted check.
+    SyncTypesenseKeyStep::class,
 ]);
 
 it('skips a SkippedByDeployCheck step only while the deploy gate is checking', function (): void {
