@@ -110,7 +110,9 @@ class DestroyEnvironmentCommand extends SyncSteppedCommand implements PlansSeque
 
     /**
      * Tier A (compute/edge), then Tier B (the network shell) — reclaimed unless a
-     * database is attached to the VPC (see {@see ReclaimsNetwork::networkSteps()}).
+     * database is attached to the VPC (see {@see ReclaimsNetwork::networkSteps()}) —
+     * then the local yolo.yml block, dropped dead last so the teardown above it can
+     * still read the environment's account/region out of the manifest.
      *
      * @return array<string, array<int, class-string>>
      */
@@ -124,6 +126,12 @@ class DestroyEnvironmentCommand extends SyncSteppedCommand implements PlansSeque
                 // role + policy this run is authenticated under, so it can't run any
                 // earlier or under the assumed tier (see iamTierTeardownSteps).
                 ...static::iamTierTeardownSteps(),
+            ],
+            // The manifest block is dropped after every AWS resource is gone (a
+            // standalone run whose block was already removed SKIPs) — a local-file
+            // change kept in its own scope so it never reads or writes live AWS.
+            'manifest' => [
+                Steps\Destroy\Environment\RemoveEnvironmentFromManifestStep::class,
             ],
         ];
     }

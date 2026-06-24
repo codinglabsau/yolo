@@ -65,12 +65,12 @@ it('orchestrates app → environment → account, stripping the manifest dead la
         ->toBeLessThan($at(Steps\Destroy\Account\TeardownGithubOidcProviderStep::class));
     // The account provider precedes the manifest strip.
     expect($at(Steps\Destroy\Account\TeardownGithubOidcProviderStep::class))
-        ->toBeLessThan($at(Steps\Destroy\App\RemoveEnvironmentFromManifestStep::class));
+        ->toBeLessThan($at(Steps\Destroy\Environment\RemoveEnvironmentFromManifestStep::class));
     // Stripping yolo.yml is the very last step — after everything that still needs
     // the manifest's account/region to resolve.
-    expect($at(Steps\Destroy\App\RemoveEnvironmentFromManifestStep::class))->toBe(count($classes) - 1);
+    expect($at(Steps\Destroy\Environment\RemoveEnvironmentFromManifestStep::class))->toBe(count($classes) - 1);
     // It appears exactly once — deferred out of the app scope, never duplicated.
-    expect(array_keys($classes, Steps\Destroy\App\RemoveEnvironmentFromManifestStep::class, true))->toHaveCount(1);
+    expect(array_keys($classes, Steps\Destroy\Environment\RemoveEnvironmentFromManifestStep::class, true))->toHaveCount(1);
 });
 
 it('always composes the account provider teardown, which self-gates on no other environment', function (): void {
@@ -82,7 +82,7 @@ it('always composes the account provider teardown, which self-gates on no other 
     expect($classes)->toContain(Steps\Destroy\Account\TeardownGithubOidcProviderStep::class);
     expect($at(Steps\Destroy\Account\TeardownGithubOidcProviderStep::class))
         ->toBeGreaterThan($at(Steps\Destroy\Environment\TeardownEnvConfigBucketStep::class))
-        ->toBeLessThan($at(Steps\Destroy\App\RemoveEnvironmentFromManifestStep::class));
+        ->toBeLessThan($at(Steps\Destroy\Environment\RemoveEnvironmentFromManifestStep::class));
 });
 
 it('reframes the runner wording as an irreversible destroy', function (): void {

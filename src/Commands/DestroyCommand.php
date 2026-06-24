@@ -108,7 +108,7 @@ class DestroyCommand extends SyncSteppedCommand implements PlansSequentially
             // the account/region out of the manifest.
             'app' => array_values(array_filter(
                 (new DestroyAppCommand())->scopes()['app'],
-                fn (string $step): bool => $step !== Steps\Destroy\App\RemoveEnvironmentFromManifestStep::class,
+                fn (string $step): bool => $step !== Steps\Destroy\Environment\RemoveEnvironmentFromManifestStep::class,
             )),
             'environment' => [
                 ...DestroyEnvironmentCommand::tierASteps(),
@@ -122,7 +122,7 @@ class DestroyCommand extends SyncSteppedCommand implements PlansSequentially
             // environment — the step self-gates on the live yolo:environment tags and
             // keeps itself (named in the summary) otherwise.
             'account' => [Steps\Destroy\Account\TeardownGithubOidcProviderStep::class],
-            'manifest' => [Steps\Destroy\App\RemoveEnvironmentFromManifestStep::class],
+            'manifest' => [Steps\Destroy\Environment\RemoveEnvironmentFromManifestStep::class],
         ];
     }
 

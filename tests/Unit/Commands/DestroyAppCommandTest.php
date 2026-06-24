@@ -94,9 +94,9 @@ it('tears resources down in reverse dependency order', function () use ($soloWeb
 
     // Stripping the environment from yolo.yml is the very last act; ECR (holding
     // the images) is the last AWS resource to go, just before it.
-    expect($at(Steps\Destroy\App\RemoveEnvironmentFromManifestStep::class))->toBe(count($classes) - 1);
+    expect($at(Steps\Destroy\Environment\RemoveEnvironmentFromManifestStep::class))->toBe(count($classes) - 1);
     expect($at(Steps\Destroy\App\TeardownEcrRepositoryStep::class))
-        ->toBeLessThan($at(Steps\Destroy\App\RemoveEnvironmentFromManifestStep::class));
+        ->toBeLessThan($at(Steps\Destroy\Environment\RemoveEnvironmentFromManifestStep::class));
 });
 
 it('never includes a teardown for the BYO app data bucket', function () use ($soloWeb): void {

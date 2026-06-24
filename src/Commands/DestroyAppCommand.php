@@ -179,7 +179,7 @@ class DestroyAppCommand extends SyncSteppedCommand implements PlansSequentially
                 Steps\Destroy\App\TeardownEcrRepositoryStep::class,
                 // Final act: stop yolo.yml advertising an environment whose resources
                 // are now gone — surgical, format-preserving, warns if it can't.
-                Steps\Destroy\App\RemoveEnvironmentFromManifestStep::class,
+                Steps\Destroy\Environment\RemoveEnvironmentFromManifestStep::class,
             ])),
         ];
     }

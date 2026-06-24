@@ -7,6 +7,7 @@ use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Destroying;
 use Codinglabs\Yolo\Enums\Service;
+use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\Ec2\Vpc;
 use Codinglabs\Yolo\Enums\ServiceState;
 use Codinglabs\Yolo\Services\Lifecycle;
@@ -70,11 +71,31 @@ it('reclaims the network shell when no database is attached', function (): void 
     expect($at(Steps\Destroy\Environment\TeardownRdsSubnetStep::class))
         ->toBeLessThan($at(Steps\Destroy\Environment\TeardownPublicSubnetAStep::class));
     // The whole network shell (VPC is the last of Tier B) tears down before the IAM
-    // tier, which runs dead last on base credentials — it deletes the role + policy
-    // the run is authenticated under, so it can't precede anything that needs them.
+    // tier, which runs on base credentials — it deletes the role + policy the run is
+    // authenticated under, so it can't precede anything that needs them.
     expect($at(Steps\Destroy\Environment\TeardownVpcStep::class))
         ->toBeLessThan($at(Steps\Destroy\Environment\TeardownEcsExecutionRoleStep::class));
-    expect($at(Steps\Destroy\Environment\TeardownObserverPolicyStep::class))->toBe(count($classes) - 1);
+    // The yolo.yml block is dropped dead last — after even the IAM tier — so every
+    // teardown step above it can still read the env's account/region from the manifest.
+    expect($at(Steps\Destroy\Environment\RemoveEnvironmentFromManifestStep::class))->toBe(count($classes) - 1);
+    expect($at(Steps\Destroy\Environment\TeardownObserverPolicyStep::class))->toBe(count($classes) - 2);
+});
+
+it('drops the yolo.yml environment block as its final act, but skips when already gone', function (): void {
+    // Declared → the strip records a pending change and would remove the block.
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'example.com', 'services' => ['typesense'], 'tasks' => ['web' => true],
+    ]);
+    $step = new Steps\Destroy\Environment\RemoveEnvironmentFromManifestStep();
+    expect($step(['dry-run' => true]))->toBe(StepResult::WOULD_DELETE);
+
+    // Standalone run whose block was already removed (destroy:app stripped it, or it
+    // never lived in the local manifest) → the env it's tearing down isn't declared,
+    // so there is nothing to drop.
+    Helpers::app()->instance('environment', 'gone');
+    $fresh = new Steps\Destroy\Environment\RemoveEnvironmentFromManifestStep();
+    expect($fresh(['dry-run' => true]))->toBe(StepResult::SKIPPED);
 });
 
 it('runs every IAM-tier teardown step on base credentials (it deletes the tier it assumed)', function (): void {
