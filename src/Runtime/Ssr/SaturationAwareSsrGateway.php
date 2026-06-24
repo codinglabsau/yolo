@@ -39,6 +39,12 @@ use Codinglabs\Yolo\Runtime\WorkerSaturationReporter;
  *
  * Bound from {@see YoloServiceProvider} on the autoscaling web tier only
  * (the same gate that runs the reporter), so it's inert everywhere else.
+ *
+ * YOLO owns the `Inertia\Ssr\Gateway` binding. Container binding is last-writer-wins and YOLO
+ * binds in its own provider boot, so an app that rebinds the interface in its own provider
+ * silently drops this load-shedding — the saturation bypass and the render timeout both vanish,
+ * with no error. An app that needs custom SSR behaviour must EXTEND this class and call
+ * `parent::dispatch()`, never bind `Inertia\Ssr\Gateway` fresh.
  */
 class SaturationAwareSsrGateway implements Gateway
 {
