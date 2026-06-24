@@ -25,7 +25,7 @@ function bindRedirectStepAws(array $rules, array $tagDescriptions, array &$captu
     ], $captured);
 }
 
-it('skips a headless app with no domain or apex', function (): void {
+it('skips a headless app with no domain', function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 
     expect((new SyncRedirectRuleStep())(['dry-run' => true]))->toBe(StepResult::SKIPPED);
@@ -37,10 +37,11 @@ it('reports the redirect as pending on the plan pass when the listener will be c
     // self-pruning SKIPPED) when the listener will be created — an issued cert.
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'apex' => 'example.com', 'domain' => 'example.com',
+        'domain' => 'example.com',
     ]);
 
     $captured = [];
+    bindHostedZones();
     bindRoutedElbV2Client([
         'DescribeLoadBalancers' => new Result(['LoadBalancers' => [['LoadBalancerName' => 'yolo-testing', 'LoadBalancerArn' => 'arn:alb']]]),
         'DescribeListeners' => new Result(['Listeners' => []]),
@@ -59,10 +60,11 @@ it('still defers a bare subdomain on the plan pass when the listener is absent',
     // there is nothing to plan — it must defer, not report a phantom rule.
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'apex' => 'example.com', 'domain' => 'app.example.com',
+        'domain' => 'app.example.com',
     ]);
 
     $captured = [];
+    bindHostedZones(['example.com']);
     bindRoutedElbV2Client([
         'DescribeLoadBalancers' => new Result(['LoadBalancers' => [['LoadBalancerName' => 'yolo-testing', 'LoadBalancerArn' => 'arn:alb']]]),
         'DescribeListeners' => new Result(['Listeners' => []]),
@@ -75,10 +77,11 @@ it('still defers a bare subdomain on the plan pass when the listener is absent',
 it('skips a bare subdomain when there is no redirect rule to clean up', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'apex' => 'example.com', 'domain' => 'app.example.com',
+        'domain' => 'app.example.com',
     ]);
 
     $captured = [];
+    bindHostedZones(['example.com']);
     bindRedirectStepAws(rules: [], tagDescriptions: [], captured: $captured);
 
     expect((new SyncRedirectRuleStep())(['dry-run' => false]))->toBe(StepResult::SKIPPED)
@@ -88,10 +91,11 @@ it('skips a bare subdomain when there is no redirect rule to clean up', function
 it('tears down its own redirect rule when the domain becomes a bare subdomain', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'apex' => 'example.com', 'domain' => 'app.example.com',
+        'domain' => 'app.example.com',
     ]);
 
     $captured = [];
+    bindHostedZones(['example.com']);
     bindRedirectStepAws(
         rules: [[
             'RuleArn' => 'arn:rule:redirect',
@@ -112,10 +116,11 @@ it('tears down its own redirect rule when the domain becomes a bare subdomain', 
 it('would-delete the orphaned redirect rule on a dry-run without deleting', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'apex' => 'example.com', 'domain' => 'app.example.com',
+        'domain' => 'app.example.com',
     ]);
 
     $captured = [];
+    bindHostedZones(['example.com']);
     bindRedirectStepAws(
         rules: [[
             'RuleArn' => 'arn:rule:redirect',

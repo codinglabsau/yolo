@@ -49,10 +49,9 @@ use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
  */
 class Dashboard implements Deletable
 {
-    // Sensible default annotation thresholds. The queue-depth line instead
-    // reuses sqs.depth-alarm-threshold so the graph and the existing
-    // QueueAlarm agree. CPU bands stay hardcoded until the web-scaling config
-    // lands with autoscaling, at which point the scale line reads from it.
+    // Sensible default annotation thresholds. CPU bands stay hardcoded until the
+    // web-scaling config lands with autoscaling, at which point the scale line
+    // reads from it.
     protected const CPU_SCALE_THRESHOLD = 60;
 
     protected const CPU_CRITICAL_THRESHOLD = 80;
@@ -217,7 +216,6 @@ class Dashboard implements Deletable
             // always returning its keys (null/false when the app doesn't
             // consume the service) so the body builder can rely on them.
             ...static::servicesContext(),
-            'depthThreshold' => (int) Manifest::get('sqs.depth-alarm-threshold', 100),
         ];
     }
 
@@ -801,9 +799,6 @@ class Dashboard implements Deletable
             'period' => 60,
             'stat' => 'Maximum',
             'metrics' => $series('ApproximateNumberOfMessagesVisible'),
-            'annotations' => ['horizontal' => [
-                ['label' => 'Depth alarm', 'value' => $context['depthThreshold'], 'color' => static::RED],
-            ]],
         ]);
 
         $widgets[] = static::metric(12, $y, 12, 6, [

@@ -329,7 +329,7 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
         // The apex/www DNS cutover only runs for apps with a public domain. Scope
         // the record change to the app's hosted zone; the change-status poll
         // can't be scoped (change ids aren't known ahead of time).
-        if (Manifest::has('apex') || Manifest::has('domain')) {
+        if (Manifest::has('domain')) {
             $statements = [...$statements, ...$this->route53Statements()];
         }
 

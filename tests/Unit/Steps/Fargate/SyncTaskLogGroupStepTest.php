@@ -42,7 +42,7 @@ function bindMockCloudWatchLogsClient(array $byCommand, array &$captured): void
 beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['log-group' => '/yolo/my-app']],
+        'tasks' => ['web' => true],
     ]);
 });
 
@@ -55,8 +55,8 @@ it('strips the stream wildcard `:*` suffix before calling the CloudWatch Logs ta
         // currentRetentionInDays, arn) — same response each time, no memoisation.
         'DescribeLogGroups' => new Result([
             'logGroups' => [[
-                'logGroupName' => '/yolo/my-app',
-                'arn' => 'arn:aws:logs:ap-southeast-2:111111111111:log-group:/yolo/my-app:*',
+                'logGroupName' => '/yolo/yolo-testing-my-app',
+                'arn' => 'arn:aws:logs:ap-southeast-2:111111111111:log-group:/yolo/yolo-testing-my-app:*',
                 'retentionInDays' => 30,
             ]],
         ]),
@@ -75,7 +75,7 @@ it('strips the stream wildcard `:*` suffix before calling the CloudWatch Logs ta
 
     foreach ($tagCalls as $call) {
         expect($call['args']['resourceArn'])
-            ->toBe('arn:aws:logs:ap-southeast-2:111111111111:log-group:/yolo/my-app')
+            ->toBe('arn:aws:logs:ap-southeast-2:111111111111:log-group:/yolo/yolo-testing-my-app')
             ->not->toEndWith(':*');
     }
 });
@@ -89,8 +89,8 @@ it('reads tags during a dry-run for plan-time drift but never writes', function 
     bindMockCloudWatchLogsClient([
         'DescribeLogGroups' => new Result([
             'logGroups' => [[
-                'logGroupName' => '/yolo/my-app',
-                'arn' => 'arn:aws:logs:ap-southeast-2:111111111111:log-group:/yolo/my-app:*',
+                'logGroupName' => '/yolo/yolo-testing-my-app',
+                'arn' => 'arn:aws:logs:ap-southeast-2:111111111111:log-group:/yolo/yolo-testing-my-app:*',
                 'retentionInDays' => 30,
             ]],
         ]),

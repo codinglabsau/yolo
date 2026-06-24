@@ -68,7 +68,7 @@ For your image to work with YOLO, the Dockerfile must:
    ENTRYPOINT ["/app/.yolo-entrypoint.sh"]
    CMD ["web"]
    ```
-4. **Expose the web port**, and make sure it matches `tasks.web.port` in your manifest (default `8000`). The ALB health-checks this port at `/up` (Laravel's built-in [health route](https://laravel.com/docs/deployment#the-health-route)) — override the path or timing via [`tasks.web.health-check.*`](/reference/manifest#tasks-web-health-check).
+4. **Expose port `8000`** — the web port is hardcoded to `8000` (no manifest key). The ALB health-checks this port at `/up` (Laravel's built-in [health route](https://laravel.com/docs/deployment#the-health-route)) — override the path or timing via [`tasks.web.health-check.*`](/reference/manifest#tasks-web-health-check).
 5. Have **`supervisor`** and **`supercronic`** installed (the default Dockerfile installs both via `apk add`). supervisord runs the container's process tree; [supercronic](https://github.com/aptible/supercronic) drives the scheduler's cron — the container runs as `www-data`, and busybox `crond` silently loads zero jobs for a non-root user, so it cannot stand in.
 
 ## Runtime checks
@@ -90,10 +90,10 @@ Every app runs three roles — web, the queue worker, and the scheduler — and 
 ```yaml
 tasks:
   web:
-    port: 8000
+    autoscaling: true
 ```
 
-- **Web** always runs the web server. By default that's `php artisan octane:start` serving Laravel Octane: `octane:start` boots whichever server your app's `OCTANE_SERVER` names; `yolo init` seeds `OCTANE_SERVER=frankenphp` in your `.env` to match the scaffolded Dockerfile. The server is an app concern, not infrastructure YOLO injects — to run a different Octane server, change the base image **and** `OCTANE_SERVER` together. Set [`tasks.web.octane: false`](/reference/manifest#tasks-web) to run FrankenPHP in **classic mode** (`frankenphp php-server`) instead — per-request boot, no resident app — for an app that isn't Octane-safe yet; the `frankenphp` binary ships in the base image independent of `laravel/octane`, so it serves even with no octane package.
+- **Web** always runs the web server on port `8000`. By default that's `php artisan octane:start` serving Laravel Octane on FrankenPHP: the image is FrankenPHP and YOLO enforces `OCTANE_SERVER=frankenphp` at build (a conflicting value in your `.env` hard-fails the build), so there's nothing to seed or set. Set [`tasks.web.octane: false`](/reference/manifest#tasks-web) to run FrankenPHP in **classic mode** (`frankenphp php-server`) instead — per-request boot, no resident app — for an app that isn't Octane-safe yet; the `frankenphp` binary ships in the base image independent of `laravel/octane`, so it serves even with no octane package.
 - **The queue worker** runs `queue:work`, bundled in the web container until you extract it.
 - **The scheduler** runs [supercronic](https://github.com/aptible/supercronic), firing `php artisan schedule:run` every minute, bundled until you extract it. (YOLO uses cron, not `schedule:work`, so the scheduler survives `SIGTERM` cleanly — supercronic stops scheduling on stop and waits out the in-flight run.)
 - **`ssr: true`** adds Inertia's SSR renderer — see [Inertia SSR](#inertia-ssr) below.

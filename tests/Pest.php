@@ -16,6 +16,7 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use GuzzleHttp\Psr7\Response;
 use Aws\Command as AwsCommand;
+use Aws\Route53\Route53Client;
 use GuzzleHttp\Promise\Create;
 use Codinglabs\Yolo\EnvManifest;
 use Symfony\Component\Yaml\Yaml;
@@ -1035,6 +1036,39 @@ function bindNoAcmCertificates(): void
     };
 
     Helpers::app()->instance('acm', new AcmClient([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+}
+
+/**
+ * Bind a mock Route 53 client whose listHostedZones returns the given zone
+ * names (apex derivation lists zones and matches a domain's longest
+ * label-suffix against them). Pass nothing for an account with no zones, where
+ * apex derivation falls back to the domain with any leading `www.` stripped.
+ *
+ * @param  array<int, string>  $zoneNames
+ */
+function bindHostedZones(array $zoneNames = []): void
+{
+    $hostedZones = array_map(
+        fn (string $name): array => ['Name' => rtrim($name, '.') . '.'],
+        $zoneNames,
+    );
+
+    $mock = new class($hostedZones) extends MockHandler
+    {
+        public function __construct(private readonly array $hostedZones) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            return Create::promiseFor(new Result(['HostedZones' => $this->hostedZones]));
+        }
+    };
+
+    Helpers::app()->instance('route53', new Route53Client([
         'region' => 'ap-southeast-2',
         'version' => 'latest',
         'credentials' => false,

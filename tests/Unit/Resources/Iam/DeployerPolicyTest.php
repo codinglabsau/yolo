@@ -219,7 +219,7 @@ it('omits Route 53 permissions for a headless app with no domain', function (): 
 
 it('grants Route 53 record changes scoped to the hosted-zone resource type when a domain is set', function (): void {
     writeManifest([
-        'apex' => 'example.com',
+        'domain' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
 
@@ -234,7 +234,7 @@ it('grants Route 53 record changes scoped to the hosted-zone resource type when 
         ->toBe('arn:aws:route53:::change/*');
 });
 
-it('includes Route 53 statements for a subdomain canary (domain only, no apex)', function (): void {
+it('includes Route 53 statements for a subdomain canary', function (): void {
     writeManifest([
         'domain' => 'fargate.example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',

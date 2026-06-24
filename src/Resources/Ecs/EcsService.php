@@ -203,7 +203,7 @@ class EcsService implements Deletable, Resource
                     [
                         'targetGroupArn' => (new TargetGroup())->arn(),
                         'containerName' => $this->group->value,
-                        'containerPort' => (int) Manifest::get('tasks.web.port', 8000),
+                        'containerPort' => 8000,
                     ],
                 ],
             ] : [],
@@ -271,7 +271,7 @@ class EcsService implements Deletable, Resource
     public function enableExecuteCommand(): bool
     {
         return Helpers::validateStrictBool(
-            Manifest::get("{$this->group->manifestPrefix()}.enable-execute-command", false),
+            Manifest::get("{$this->group->manifestPrefix()}.enable-execute-command", true),
             "{$this->group->manifestPrefix()}.enable-execute-command",
         );
     }

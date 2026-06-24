@@ -12,7 +12,6 @@ beforeEach(function (): void {
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => [
             'web' => [
-                'port' => 9000,
                 'cpu' => '1024',
                 'memory' => '2048',
             ],
@@ -39,14 +38,14 @@ it('renders a Fargate-compatible task definition payload', function (): void {
     expect($payload['taskRoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-my-app-ecs-task-role');
 });
 
-it('renders web container with manifest port', function (): void {
+it('renders web container with the hardcoded 8000 port', function (): void {
     $payload = SyncTaskDefinitionStep::payload();
 
     expect($payload['containerDefinitions'])->toHaveCount(1);
     expect($payload['containerDefinitions'][0]['name'])->toBe('web');
     expect($payload['containerDefinitions'][0]['portMappings'][0])->toBe([
-        'containerPort' => 9000,
-        'hostPort' => 9000,
+        'containerPort' => 8000,
+        'hostPort' => 8000,
         'protocol' => 'tcp',
     ]);
 });

@@ -17,10 +17,10 @@ environments:
     region: ap-southeast-2       # required
 
     # --- Routing (see /guide/domains) ---
-    domain: example.com    # public domain; omit domain + apex + tenants for a headless app
-    # apex: example.com    # default: domain — set when domain is a subdomain
+    domain: example.com    # public domain; omit domain + tenants for a headless app
+    #                      # the apex is derived automatically from the matching Route 53 zone
     #
-    # Multi-tenant instead of a single domain (mutually exclusive with domain/apex):
+    # Multi-tenant instead of a single domain (mutually exclusive with domain):
     # tenants:
     #   acme:   { domain: acme.example.com }
     #   globex: { domain: globex.example.com }
@@ -32,7 +32,6 @@ environments:
 
     # --- App storage & shared infra names ---
     # bucket: my-app-bucket                          # app S3 bucket, injected as AWS_BUCKET
-    # alb: yolo-production                           # default: yolo-{env} — shared ALB to attach to
 
     # --- Cache & session (web apps default to these; uncomment only to override) ---
     # cache:
@@ -51,12 +50,6 @@ environments:
     #   - arn:aws:iam::123456789012:policy/my-app-extra-access
     #   - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
 
-    # --- Queue depth alarm tuning ---
-    # sqs:
-    #   depth-alarm-threshold: 100          # default: 100 — messages before the alarm fires
-    #   depth-alarm-period: 300             # default: 300 — evaluation period (seconds)
-    #   depth-alarm-evaluation-periods: 3   # default: 3 — periods that must breach
-
     # Every app runs three roles — web, the queue worker, and the scheduler. With
     # just `web` below they share the one web container; uncommenting `queue` and/or
     # `scheduler` further down extracts them into their own service (see the cascade
@@ -65,17 +58,16 @@ environments:
       web:
         cpu: '512'               # default: '512' — Fargate CPU units
         memory: '1024'           # default: '1024' — Fargate memory (MB)
-        port: 8000               # default: 8000 — must match the Dockerfile & health check
-        enable-execute-command: true   # default: false — enables `yolo run` to attach (gate with MFA)
+        # enable-execute-command: false  # default: true — ECS Exec shell access (gated by MFA on the admin tier)
         # ssr: true                       # default: false — bundle Inertia SSR (needs Node in the Dockerfile)
         # platform: linux/amd64           # default: linux/amd64
-        # shutdown-grace-period: 10       # default: 10 — web SIGTERM→SIGKILL window (also the ALB drain)
+        # shutdown-grace-period: 15       # default: 15 — web SIGTERM→SIGKILL window (also the ALB drain)
         # log-retention: 30               # default: 30 — CloudWatch Logs retention (days)
         #
         # health-check:
         #   path: /up                     # default: /up (Laravel's built-in health route)
         #   interval: 10                  # default: 10 (seconds between checks)
-        #   timeout: 8                    # default: 8 — tolerant of a slow /up under load
+        #   timeout: 5                    # default: 5 — tolerant of a slow /up under load
         #   healthy-threshold: 2          # default: 2
         #   unhealthy-threshold: 5        # default: 5 — cushion for a slow-but-alive task
         #   grace-period: 60              # default: 60 (ECS health-check grace period)
@@ -93,7 +85,7 @@ environments:
       # Extract the queue into its own ECS service (scale independently of web). Like
       # web, a standalone queue must be a config map that declares `autoscaling` — there's
       # no bare `queue: true` shorthand. `false` switches the worker off entirely (jobs run
-      # inline, QUEUE_CONNECTION=sync) and tears the SQS queue + its depth alarm down. Set
+      # inline, QUEUE_CONNECTION=sync) and tears the SQS queue down. Set
       # autoscaling.min: 0 to scale to zero when idle — except when it also hosts the
       # scheduler (no `scheduler` block below), where min 0 is rejected so cron isn't
       # killed when it idles.
@@ -105,8 +97,8 @@ environments:
       #   cpu: '256'                      # default: '256'
       #   memory: '512'                   # default: '512'
       #   spot: false                     # default: false — true = Fargate Spot (~70% cheaper)
-      #   shutdown-grace-period: 70       # default: 70 — let an in-flight job finish on SIGTERM
-      #   enable-execute-command: false   # default: false
+      #   shutdown-grace-period: 60       # default: 60 — let an in-flight job finish on SIGTERM
+      #   enable-execute-command: false   # default: true
 
       # Extract the scheduler into its own pinned-singleton service (always one
       # task; deploys stop-then-start so a rollout never runs two crons), which
@@ -116,7 +108,7 @@ environments:
       #   cpu: '256'                      # default: '256'
       #   memory: '512'                   # default: '512'
       #   shutdown-grace-period: 115      # default: 115 — the in-flight schedule:run gets the whole stop window
-      #   enable-execute-command: false   # default: false
+      #   enable-execute-command: false   # default: true
 
     build:
       - composer install --no-cache --no-interaction --optimize-autoloader --no-progress --classmap-authoritative --no-dev
@@ -176,13 +168,11 @@ These live directly under an environment and determine how the app is reached. S
 
 The canonical public domain the app is served on (e.g. `app.example.com`). When it's one half of the apex/`www` pair (the apex itself, or `www.{apex}`), YOLO serves it and 301-redirects the other half to it. Omit for a [headless app](/guide/domains#headless-apps).
 
-### `apex`
-
-The registrable root domain, naming the Route 53 hosted zone to write into. Defaults to `domain`. Set it explicitly when `domain` is a subdomain. Cannot start with `www.`.
+The apex (registrable root, naming the Route 53 hosted zone) is **derived automatically** — there is no `apex` key. YOLO walks the domain's label-suffixes longest-first and uses the longest one that already has a hosted zone in the account (so `app.example.com` resolves to the `example.com` zone). When no ancestor zone exists yet, the domain itself is the apex (sync then creates the zone), with any leading `www.` stripped. See [Domains](/guide/domains).
 
 ### `tenants`
 
-A map of tenant id → `{ domain, apex }` that puts the app in [multi-tenant mode](/guide/multi-tenancy). When set, `domain`/`apex` must **not** be set at the environment level.
+A map of tenant id → `{ domain }` that puts the app in [multi-tenant mode](/guide/multi-tenancy); each tenant's apex is derived from its domain the same way. When set, `domain` must **not** be set at the environment level.
 
 ```yaml
 tenants:
@@ -259,16 +249,6 @@ task-role-policies:
 ```
 
 The list is reconciled on every `yolo sync`: an ARN you add gets attached, and one you remove gets detached — the role's attachment set is YOLO's to own, so there's no left-behind grant. Each entry must be a customer- or AWS-managed IAM policy ARN; a malformed value fails the sync plan rather than silently dropping the grant. The YOLO baseline policy (ECS Exec channels, this app's SQS queues, SES send, and read+write on the [`bucket`](#bucket) when declared) is always attached and isn't listed here.
-
-### `sqs.*`
-
-Queue depth CloudWatch alarm tuning:
-
-| Key | Default | Description |
-|---|---|---|
-| `sqs.depth-alarm-threshold` | `100` | Messages before the alarm fires. |
-| `sqs.depth-alarm-period` | `300` | Evaluation period in seconds. |
-| `sqs.depth-alarm-evaluation-periods` | `3` | Number of periods that must breach. |
 
 ### Adopting existing infrastructure (advanced)
 
@@ -398,13 +378,12 @@ The scheduler rides the worker container (the `web` + `queue` row) rather than g
 | Key | Default | Description |
 |---|---|---|
 | `tasks.web.octane` | `true` | Run the web tier on Octane (FrankenPHP **worker mode**) via `octane:start`. Set `false` to run FrankenPHP in **classic mode** (`frankenphp php-server` — per-request boot, no resident app) for an app that isn't Octane-safe yet. Same image and port either way; only the launch command differs, and the build's [Octane preflight](/guide/building-and-deploying) is skipped (classic mode needs no `laravel/octane`). |
-| `tasks.web.port` | `8000` | Container port. Must match the Dockerfile's exposed port and the health check. |
 | `tasks.web.cpu` | `'512'` | Fargate CPU units. |
 | `tasks.web.memory` | `'1024'` | Fargate memory (MB). |
 | `tasks.web.platform` | `linux/amd64` | Docker build platform. |
-| `tasks.web.enable-execute-command` | `false` | Enable ECS Exec so [`yolo run`](/reference/commands#yolo-run) can attach. Gate access with MFA on your IAM. |
+| `tasks.web.enable-execute-command` | `true` | Enable ECS Exec so [`yolo run`](/reference/commands#yolo-run) can attach. Access is gated by MFA on the admin IAM tier; set `false` to disable it for this group. |
 | `tasks.web.ssr` | `false` | Run Inertia's SSR renderer (`inertia:start-ssr`, a Node process on `127.0.0.1:13714`) **bundled** in the web container, so PHP server-renders your Vue pages. `true`, or an object to override its `shutdown-grace-period`. SSR is always bundled — never its own service. Needs a Node runtime in your Dockerfile and an SSR bundle from `npm run build`; YOLO injects `INERTIA_SSR_ENABLED=true` unless your `.env` sets it. See [Inertia SSR](/guide/images#inertia-ssr). |
-| `tasks.web.shutdown-grace-period` | `10` | Seconds the web process gets on `SIGTERM` before `SIGKILL`. It's also the ALB drain window and the container `stopTimeout`. See [graceful shutdown](/guide/images#graceful-shutdown). |
+| `tasks.web.shutdown-grace-period` | `15` | Seconds the web process gets on `SIGTERM` before `SIGKILL`. It's also the ALB drain window and the container `stopTimeout`. See [graceful shutdown](/guide/images#graceful-shutdown). |
 | `tasks.web.log-retention` | `30` | CloudWatch Logs retention (days). Must be a valid CloudWatch retention value. |
 
 YOLO manages the ECS task and execution roles for you — the task role is per-app (extend it with [`task-role-policies`](#task-role-policies)); the execution role is shared per environment.
@@ -413,13 +392,13 @@ YOLO manages the ECS task and execution roles for you — the task role is per-a
 
 ALB target-group health check. The path defaults to Laravel's built-in [`/up` health route](https://laravel.com/docs/deployment#the-health-route), which returns `200` only once the framework boots without exceptions (and `500` otherwise) — so a broken boot fails the check. Requests to it also dispatch Laravel's `Illuminate\Foundation\Events\DiagnosingHealth` event, so you can add a listener that checks your database or cache and throws to mark the app unhealthy.
 
-The other defaults are tuned to avoid false-positive failures on a Laravel/Octane app under load: when the FrankenPHP worker pool is saturated the `/up` probe answers slowly (6–7s) rather than failing, so the timeout sits at `8`s — a slow-but-alive task stays in service — with a roomier `5`-failure unhealthy threshold for cushion. A genuine deadlock (no response / 30s+) still trips within ~a minute. Capacity is [autoscaling](/guide/scaling)'s job, not the health check's. (An app on classic mode — [`tasks.web.octane: false`](#tasks-web) — boots per request rather than saturating a worker pool, so its latency shape differs, but the same generous defaults apply.) Override any field per app if you need to:
+The other defaults are tuned to avoid false-positive failures on a Laravel/Octane app under load: when the FrankenPHP worker pool is saturated the `/up` probe answers slowly (4–5s) rather than failing, so the timeout sits at `5`s — a slow-but-alive task stays in service — with a roomier `5`-failure unhealthy threshold for cushion. A genuine deadlock (no response / 30s+) still trips within ~a minute. Capacity is [autoscaling](/guide/scaling)'s job, not the health check's. (An app on classic mode — [`tasks.web.octane: false`](#tasks-web) — boots per request rather than saturating a worker pool, so its latency shape differs, but the same generous defaults apply.) Override any field per app if you need to:
 
 | Key | Default | Description |
 |---|---|---|
 | `health-check.path` | `/up` | Path the ALB requests — defaults to Laravel's built-in `/up` health route. Keep it on a route that exercises PHP so a broken boot still fails the check. |
 | `health-check.interval` | `10` | Seconds between checks. |
-| `health-check.timeout` | `8` | Seconds before a check times out. Must stay below the interval. |
+| `health-check.timeout` | `5` | Seconds before a check times out. Must stay below the interval. |
 | `health-check.healthy-threshold` | `2` | Consecutive successes to mark healthy. |
 | `health-check.unhealthy-threshold` | `5` | Consecutive failures to mark unhealthy. |
 | `health-check.grace-period` | `60` | Seconds after task start before health checks count (the ECS health-check grace period). |
@@ -473,8 +452,8 @@ Scaling is **backlog-per-task** target tracking (`ApproximateNumberOfMessagesVis
 | `tasks.queue.cpu` | `'256'` | Fargate CPU units. |
 | `tasks.queue.memory` | `'512'` | Fargate memory (MB). |
 | `tasks.queue.spot` | `false` | `true` runs the queue on Fargate Spot (~70% cheaper, interruptible — fine for a worker whose jobs retry). |
-| `tasks.queue.shutdown-grace-period` | `70` | Seconds the worker gets on `SIGTERM` to finish its in-flight job before `SIGKILL`. |
-| `tasks.queue.enable-execute-command` | `false` | Enable ECS Exec on the queue service. |
+| `tasks.queue.shutdown-grace-period` | `60` | Seconds the worker gets on `SIGTERM` to finish its in-flight job before `SIGKILL`. |
+| `tasks.queue.enable-execute-command` | `true` | Enable ECS Exec on the queue service. |
 
 See [Scaling → the queue](/guide/scaling#the-queue-scale-to-zero).
 
@@ -491,7 +470,7 @@ The scheduler never scales (a per-minute cron can't tolerate a cold start), so i
 | `tasks.scheduler.cpu` | `'256'` | Fargate CPU units (the scheduler is light — the smallest tier is usually plenty). |
 | `tasks.scheduler.memory` | `'512'` | Fargate memory (MB). |
 | `tasks.scheduler.shutdown-grace-period` | `115` | Seconds an in-flight `schedule:run` gets to finish after `SIGTERM` — supercronic stops launching new runs immediately, and its stop overlaps the other programs', so the default hands the run the whole stop window (Fargate's 120s `stopTimeout` cap minus buffer). A run cut off at the wire should self-heal on a later tick; routinely long work still belongs on the queue. |
-| `tasks.scheduler.enable-execute-command` | `false` | Enable ECS Exec on the scheduler service. |
+| `tasks.scheduler.enable-execute-command` | `true` | Enable ECS Exec on the scheduler service. |
 
 ---
 
@@ -519,9 +498,9 @@ Your manifest implies one of three modes:
 
 | Mode | Condition | Behaviour |
 |---|---|---|
-| **Solo** | `domain`/`apex` set at the environment level | One app, one hosted zone + certificate, served on its domain. |
-| **Multi-tenant** | `tenants` set (no env-level `domain`/`apex`) | Per-tenant domains and queues; certs attach per tenant via SNI. |
-| **Headless** | no `domain`, `apex`, or tenant domains | No ALB attachment or DNS. Still deploys and processes queues/scheduled work. |
+| **Solo** | `domain` set at the environment level | One app, one hosted zone + certificate, served on its domain. |
+| **Multi-tenant** | `tenants` set (no env-level `domain`) | Per-tenant domains and queues; certs attach per tenant via SNI. |
+| **Headless** | no `domain` or tenant domains | No ALB attachment or DNS. Still deploys and processes queues/scheduled work. |
 
 ---
 

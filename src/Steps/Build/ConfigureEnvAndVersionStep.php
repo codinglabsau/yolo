@@ -67,11 +67,24 @@ class ConfigureEnvAndVersionStep implements Step
         $values['ASSET_URL'] = sprintf('https://%s/builds/%s', (new AssetDistribution())->domain(), $appVersion);
         $values['VITE_ASSET_URL'] = '${ASSET_URL}';
 
+        // Platform invariants — values the YOLO image cannot run without — are
+        // SET unconditionally, and a conflicting explicit value in the app's .env
+        // hard-fails the build rather than shipping a silently-broken image:
+        //   LOG_CHANNEL=stderr  — awslogs only captures stdout/stderr; single/daily
+        //                         would write to a file nothing collects.
+        //   OCTANE_HTTPS=true   — the ALB terminates TLS, so without this Octane
+        //                         generates http:// URLs and redirect loops.
+        //   OCTANE_SERVER=frankenphp — the image is FrankenPHP; it won't boot otherwise.
+        $this->enforce($envPath, $values, 'LOG_CHANNEL', 'stderr');
+        $this->enforce($envPath, $values, 'OCTANE_HTTPS', 'true');
+        $this->enforce($envPath, $values, 'OCTANE_SERVER', 'frankenphp');
+
         // Fargate-sane defaults injected only when the consumer's .env doesn't
         // already set them — the app "just works" with zero config but can still
         // override.
         $defaults = [
             'AWS_DEFAULT_REGION' => Manifest::get('region'),
+            'APP_ENV' => $this->environment,
         ];
 
         // QUEUE_CONNECTION is one value baked into the one image every task shares
@@ -100,6 +113,7 @@ class ConfigureEnvAndVersionStep implements Step
 
         if (Manifest::has('bucket')) {
             $defaults['AWS_BUCKET'] = Manifest::get('bucket');
+            $defaults['FILESYSTEM_DISK'] = 's3';
         }
 
         // Cache store: web apps default to the shared Valkey (Manifest::cacheStore).
@@ -202,6 +216,29 @@ class ConfigureEnvAndVersionStep implements Step
                 $connection,
             ));
         }
+    }
+
+    /**
+     * Inject a platform-invariant env value, hard-failing if the app's own .env
+     * pins a conflicting value. These keys are non-negotiable on the YOLO image
+     * (the awslogs log channel, ALB TLS termination, the FrankenPHP server), so
+     * an explicit override would silently break the build — surface it loudly
+     * instead. When the app sets the required value (or nothing), inject it.
+     */
+    protected function enforce(string $envPath, array &$values, string $key, string $required): void
+    {
+        $current = $this->envValue($envPath, $key);
+
+        if ($current !== null && $current !== $required) {
+            throw new IntegrityCheckException(sprintf(
+                '%s must be `%s` on YOLO, but the app\'s .env sets it to `%s`. Remove the override.',
+                $key,
+                $required,
+                $current,
+            ));
+        }
+
+        $values[$key] = $required;
     }
 
     /**

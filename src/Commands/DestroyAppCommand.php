@@ -161,7 +161,6 @@ class DestroyAppCommand extends SyncSteppedCommand implements PlansSequentially
                 Steps\Destroy\App\TeardownEcsTaskRoleStep::class,
                 Steps\Destroy\App\TeardownEcsTaskPolicyStep::class,
                 Steps\Destroy\App\DetachSslCertificateStep::class,
-                Steps\Destroy\App\TeardownQueueAlarmStep::class,
                 Steps\Destroy\App\TeardownQueueStep::class,
                 Steps\Destroy\App\WithdrawAppDnsRecordsStep::class,
                 Steps\Destroy\App\TeardownDeployersGroupStep::class,

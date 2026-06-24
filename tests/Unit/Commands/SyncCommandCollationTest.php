@@ -155,7 +155,7 @@ it('melts a standalone queue + scheduler back down when both are switched off', 
         ->not->toContain(Steps\Sync\App\SyncSchedulerServiceStep::class);
 });
 
-it('melts the SQS queue + depth alarm when the queue is disabled (tasks.queue: false)', function (): void {
+it('melts the SQS queue when the queue is disabled (tasks.queue: false)', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'domain' => 'example.com',
@@ -167,10 +167,8 @@ it('melts the SQS queue + depth alarm when the queue is disabled (tasks.queue: f
     // `queue: false` runs jobs inline (QUEUE_CONNECTION=sync) — the SQS queue is
     // never published to, so it's torn down rather than provisioned idle.
     expect($appSteps)
-        ->toContain(Steps\Destroy\App\TeardownQueueAlarmStep::class)
         ->toContain(Steps\Destroy\App\TeardownQueueStep::class)
-        ->not->toContain(Steps\Sync\App\Solo\SyncQueueStep::class)
-        ->not->toContain(Steps\Sync\App\Solo\SyncQueueAlarmStep::class);
+        ->not->toContain(Steps\Sync\App\Solo\SyncQueueStep::class);
 });
 
 it('provisions the SQS queue when the queue runs (bundled into web by default)', function (): void {
@@ -184,7 +182,6 @@ it('provisions the SQS queue when the queue runs (bundled into web by default)',
 
     expect($appSteps)
         ->toContain(Steps\Sync\App\Solo\SyncQueueStep::class)
-        ->toContain(Steps\Sync\App\Solo\SyncQueueAlarmStep::class)
         ->not->toContain(Steps\Destroy\App\TeardownQueueStep::class);
 });
 

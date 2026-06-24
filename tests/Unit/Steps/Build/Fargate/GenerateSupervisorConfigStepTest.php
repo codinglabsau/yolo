@@ -69,22 +69,18 @@ function generatedSupervisorConfig(): string
     return file_get_contents(Paths::build('docker/supervisord.conf'));
 }
 
-it('runs octane on the manifest port by default', function (): void {
+it('runs octane on the hardcoded 8000 port by default', function (): void {
     // Non-autoscaling so the web command is the bare octane:start (no emitter → no
     // request-path nice, no --caddyfile); the autoscaling forms are covered below.
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['port' => 9000, 'autoscaling' => false]],
+        'tasks' => ['web' => ['autoscaling' => false]],
     ]);
 
     $config = generatedSupervisorConfig();
 
     expect($config)->toContain('[program:web]');
-    expect($config)->toContain('command=php artisan octane:start --host=0.0.0.0 --port=9000');
-});
-
-it('defaults the octane port to 8000', function (): void {
-    expect(generatedSupervisorConfig())->toContain('--port=8000');
+    expect($config)->toContain('command=php artisan octane:start --host=0.0.0.0 --port=8000');
 });
 
 it('pins the octane worker pool from the task vCPU rather than FrankenPHP auto-detect (default 0.5 vCPU → 8)', function (): void {
@@ -122,19 +118,19 @@ it('passes no --workers in classic mode (frankenphp php-server takes none)', fun
     expect(generatedSupervisorConfig())->not->toContain('--workers');
 });
 
-it('runs frankenphp classic mode on the manifest port when tasks.web.octane is false', function (): void {
+it('runs frankenphp classic mode on the hardcoded 8000 port when tasks.web.octane is false', function (): void {
     // Non-autoscaling so the web command is the bare classic launcher (no emitter → no
     // request-path nice); the niced autoscaling form is covered below.
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['octane' => false, 'port' => 9000, 'autoscaling' => false]],
+        'tasks' => ['web' => ['octane' => false, 'autoscaling' => false]],
     ]);
 
     $config = generatedSupervisorConfig();
 
     // Same web program slot, classic-mode command — no octane:start, no worker boot.
     expect($config)->toContain('[program:web]');
-    expect($config)->toContain('command=frankenphp php-server --listen 0.0.0.0:9000 --root public/');
+    expect($config)->toContain('command=frankenphp php-server --listen 0.0.0.0:8000 --root public/');
     expect($config)->not->toContain('octane:start');
 });
 

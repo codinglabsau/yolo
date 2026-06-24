@@ -40,7 +40,7 @@ function destroyPlanClasses(array $config): array
     return $plan->pluck('step')->map(fn (object $step): string => $step::class)->values()->all();
 }
 
-$soloWeb = ['domain' => 'example.com', 'tasks' => ['web' => ['port' => 8000]]];
+$soloWeb = ['domain' => 'example.com', 'tasks' => ['web' => true]];
 
 it('refuses a partial teardown rather than orphaning resources', function (array $config, string $needle): void {
     expect(destroyReason($config))->toContain($needle);

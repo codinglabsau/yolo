@@ -45,7 +45,6 @@ function dashboardContext(array $overrides = []): array
         'wafWebAcl' => null,
         'mediaConvertQueueArn' => null,
         'rekognition' => false,
-        'depthThreshold' => 100,
     ], $overrides);
 }
 
@@ -311,10 +310,9 @@ it('queries CloudFront in us-east-1 with the Global region dimension', function 
     expect($requests['properties']['metrics'][0])->toContain('AWS/CloudFront', 'Global', 'E123ABCDEF');
 });
 
-it('annotates queue depth with the same threshold the alarm uses', function (): void {
-    $depth = findWidget(Dashboard::body(dashboardContext(['depthThreshold' => 250])), 'Queue depth');
+it('graphs the queue depth metric', function (): void {
+    $depth = findWidget(Dashboard::body(dashboardContext()), 'Queue depth');
 
-    expect($depth['properties']['annotations']['horizontal'][0]['value'])->toBe(250);
     expect($depth['properties']['metrics'][0])->toContain('AWS/SQS', 'ApproximateNumberOfMessagesVisible');
 });
 

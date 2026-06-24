@@ -19,10 +19,7 @@ class TaskLogGroup implements Deletable, Resource
 
     public function name(): string
     {
-        return Manifest::get(
-            'tasks.web.log-group',
-            sprintf('/yolo/%s', $this->keyedName())
-        );
+        return sprintf('/yolo/%s', $this->keyedName());
     }
 
     public function scope(): Scope

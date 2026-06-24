@@ -223,7 +223,7 @@ it('accepts the known shape of every task group', function (): void {
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => [
             'web' => [
-                'port' => 8000, 'cpu' => '512', 'memory' => '1024', 'platform' => 'linux/amd64',
+                'cpu' => '512', 'memory' => '1024', 'platform' => 'linux/amd64',
                 'enable-execute-command' => true, 'shutdown-grace-period' => 10, 'ssr' => true,
                 'health-check' => ['timeout' => 8], 'autoscaling' => ['min' => 1, 'max' => 4],
             ],
