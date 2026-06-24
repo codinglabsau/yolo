@@ -210,7 +210,7 @@ class Dashboard implements Deletable
             // `tasks.queue: false` runs jobs inline (QUEUE_CONNECTION=sync) and YOLO
             // melts the SQS queue, so there's nothing to chart — omit the section.
             'queueDisabled' => Manifest::queueDisabled(),
-            'rds' => static::rdsTarget(),
+            'rds' => Manifest::rdsTarget(),
             'buckets' => static::bucketNames(),
             'taskLogGroup' => $web ? (new TaskLogGroup())->name() : null,
             // Each service definition contributes its own context entries —
@@ -278,46 +278,6 @@ class Dashboard implements Deletable
             (new AssetBucket())->name(),
             Manifest::has('bucket') ? Paths::s3AppBucket() : null,
         ])->filter()->values()->all();
-    }
-
-    /**
-     * The RDS metric target for the Database section, DECLARED by the flat
-     * `database:` manifest key. Accepts either a bare RDS identifier (charted as a
-     * plain instance via DBInstanceIdentifier) or a full endpoint hostname — which
-     * auto-detects an Aurora cluster (DBClusterIdentifier + Role=WRITER, so it
-     * follows failovers) vs an instance, and skips an RDS Proxy / non-RDS host.
-     *
-     * Read from the manifest, never the app's secret `.env`: the dashboard is
-     * written by `yolo sync` (the admin tier, deliberately barred from reading
-     * secrets) and checked by the deploy gate + status observer — so its desired
-     * body MUST resolve identically under every tier, which a secret read can't
-     * guarantee. Null when nothing's declared, omitting the section.
-     *
-     * @return array{identifier: string, cluster: bool}|null
-     */
-    public static function rdsTarget(): ?array
-    {
-        $database = Manifest::get('database');
-
-        if (! is_string($database) || $database === '') {
-            return null;
-        }
-
-        // A bare value is a plain instance identifier; a full endpoint hostname
-        // self-describes its kind.
-        if (! str_ends_with($database, '.rds.amazonaws.com')) {
-            return ['identifier' => $database, 'cluster' => false];
-        }
-
-        // RDS Proxy endpoints don't map to a DB metric identifier.
-        if (str_contains($database, '.proxy-')) {
-            return null;
-        }
-
-        return [
-            'identifier' => strtok($database, '.'),
-            'cluster' => str_contains($database, '.cluster-'),
-        ];
     }
 
     /**

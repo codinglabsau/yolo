@@ -44,7 +44,7 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | [`sync:account <env>`](#yolo-sync-account) | Provision account-global resources |
 | [`sync:environment <env>`](#yolo-sync-environment) | Provision environment-shared resources |
 | [`sync:app <env>`](#yolo-sync-app) | Provision one app's resources |
-| [`audit <env>`](#yolo-audit) | Audit tagged resources and flag anything unexpected |
+| [`audit <env>`](#yolo-audit) | Health-check: tagged-resource inventory + drift check + RDS deletion-protection probe |
 | [`audit:environment <env>`](#yolo-audit-environment) | Audit environment-tier resources |
 | [`audit:app <env> <app>`](#yolo-audit-app) | Audit one app's resources |
 
@@ -682,7 +682,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **environment**. Admin-
 
 ## `yolo audit`
 
-Audit YOLO-tagged resources for an environment (account → environment → app) and flag anything not accounted for. Read-only.
+Health-check an environment. Bare `audit` does three things: the **tag inventory** (every YOLO-tagged resource, account → environment → app, flagging anything not accounted for), a **whole-stack drift check** (the same `sync --check` plan the deploy gate runs), and an **RDS deletion-protection / topology probe**. Read-only — it never writes, and runs under the env observer tier.
 
 ```bash
 yolo audit <environment> [--unexpected] [--json]
@@ -694,10 +694,18 @@ yolo audit <environment> [--unexpected] [--json]
 
 | Option | Value | Description |
 |---|---|---|
-| `--unexpected` | flag | Only show unexpected resources — anything not accounted for by YOLO. |
-| `--json` | flag | Emit the audit as JSON (`{environment, liveApps, okCount, unexpectedCount, resources}`) and exit — machine-readable for the `/yolo` skill and scripts. Honours the same scope and `--unexpected` filtering as the table. |
+| `--unexpected` | flag | Only show unexpected resources — anything not accounted for by YOLO. (Filters the inventory table; the drift and RDS probes still run.) |
+| `--json` | flag | Emit the audit as JSON (`{environment, liveApps, okCount, unexpectedCount, resources, health, findings, healthy}`) and exit — machine-readable for the `/yolo` skill and scripts. The `health` block carries the RDS snapshot and drift verdict; `findings` lists the same errors/warnings the table prints. Honours the same scope and `--unexpected` filtering as the table. |
 
-Queries the Resource Groups Tagging API for everything tagged `yolo:environment=<env>` and classifies each resource as **`ok`** or **`unexpected`**, with a **Reason** explaining each unexpected row — `no ownership tag`, `service no longer provisioned`, or `app cluster gone` (see [Provisioning › Auditing](/guide/provisioning#auditing-what-s-deployed)). Audit is an ownership/inventory check; it does not inspect a resource's configuration (that's `sync`'s job). Results are grouped by scope, unexpected-first within a scope, with clickable AWS Console links where the terminal supports them.
+**The tag inventory** queries the Resource Groups Tagging API for everything tagged `yolo:environment=<env>` and classifies each resource as **`ok`** or **`unexpected`**, with a **Reason** explaining each unexpected row — `no ownership tag`, `service no longer provisioned`, or `app cluster gone` (see [Provisioning › Auditing](/guide/provisioning#auditing-what-s-deployed)). Results are grouped by scope, unexpected-first within a scope, with clickable AWS Console links where the terminal supports them.
+
+**The drift check** runs the whole-stack `sync --check` plan (account → environment → app) in-process, reusing the deploy gate's machinery verbatim. It plans only — never writes — and inherits the audit's read-only cap, so there's no escalation and no MFA prompt. A drifted environment surfaces the sync plan (so you see *which* resources drifted) and points you at `yolo sync <env>` to reconcile. The admin-owned env-service reconcilers a read tier can't inspect are skipped, exactly as in the deploy gate — `yolo sync` is their drift check.
+
+**The RDS probe** looks up the database the manifest [`database:`](/reference/manifest#database) key declares — instance or Aurora cluster, MySQL or Aurora — and reports its **deletion protection**, engine/version, size and (for Aurora) the writer + reader members. It reads the database directly by identifier (RDS isn't YOLO-tagged, so it isn't in the inventory). When no `database:` is declared the probe is skipped.
+
+**Exit code & severity.** Bare `audit` is a green/red health gate: it exits **non-zero on any error** and `0` otherwise. **Errors** (fail the run): unexpected resources, drift, and a database with **deletion protection off**. **Warnings** (never fail the run): a database that can't be read (it doesn't exist, or the tier was denied) — we can't confirm protection is on, only that it isn't confirmed off. Findings render in one block at the end, warnings then errors.
+
+> The RDS deletion-protection probe and the drift check are **bare `audit` only**. The scoped verbs below (`audit:environment`, `audit:app`) stay focused inventory tools — they classify tagged resources and flag unexpected ones (which still exit non-zero), but run no drift or RDS probe.
 
 ---
 

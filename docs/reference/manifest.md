@@ -288,7 +288,7 @@ By default YOLO creates and names shared networking under `yolo-{env}-…`. To p
 
 ## `database`
 
-Declares the RDS instance or Aurora cluster the app connects to, so YOLO can chart it — the **Database** section of the app's CloudWatch dashboard and the **Database** tab of [`yolo status`](/reference/commands#yolo-status) (CPU, connections, freeable memory, read/write latency). Entirely optional: omit it and the database panels are simply dropped.
+Declares the RDS instance or Aurora cluster the app connects to, so YOLO can chart it — the **Database** section of the app's CloudWatch dashboard and the **Database** tab of [`yolo status`](/reference/commands#yolo-status) (CPU, connections, freeable memory, read/write latency) — and health-check it: [`yolo audit`](/reference/commands#yolo-audit) reads the same identifier to verify **deletion protection** is on (an error if it isn't) and report the instance/cluster basics. Entirely optional: omit it and the database panels and the audit probe are simply dropped.
 
 YOLO doesn't manage your database, so it can't discover the identifier on its own. It's declared in the manifest — rather than read from `DB_HOST` in the app's `.env` — because the dashboard is written by `yolo sync` under the admin tier, which is deliberately barred from reading app secrets; a manifest value is read identically by every tier, so the dashboard never drifts between who writes it and who checks it.
 

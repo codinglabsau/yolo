@@ -96,31 +96,6 @@ it('names the dashboard per app + environment', function (): void {
     expect((new Dashboard())->name())->toBe('yolo-testing-my-app-dashboard');
 });
 
-it('reads the RDS target from the flat manifest key — a bare value is an instance, a full endpoint auto-detects Aurora', function (): void {
-    // Sourced from the manifest, never the app's secret .env, so the dashboard's
-    // writer (admin, barred from reading secrets) and the deploy gate resolve the
-    // SAME target — no identity-dependent drift.
-    writeManifest(['database' => 'my-db']);
-    expect(Dashboard::rdsTarget())->toBe(['identifier' => 'my-db', 'cluster' => false]);
-
-    writeManifest(['database' => 'my-cluster.cluster-cabc123.ap-southeast-2.rds.amazonaws.com']);
-    expect(Dashboard::rdsTarget())->toBe(['identifier' => 'my-cluster', 'cluster' => true]);
-
-    writeManifest(['database' => 'my-instance.cabc123.ap-southeast-2.rds.amazonaws.com']);
-    expect(Dashboard::rdsTarget())->toBe(['identifier' => 'my-instance', 'cluster' => false]);
-});
-
-it('returns no RDS target when nothing is declared, the value is blank, or it is an RDS Proxy', function (): void {
-    writeManifest([]);
-    expect(Dashboard::rdsTarget())->toBeNull();
-
-    writeManifest(['database' => '']);
-    expect(Dashboard::rdsTarget())->toBeNull();
-
-    writeManifest(['database' => 'my-proxy.proxy-cabc.ap-southeast-2.rds.amazonaws.com']);
-    expect(Dashboard::rdsTarget())->toBeNull();
-});
-
 it('parses the CloudWatch dimension suffix out of ELB ARNs', function (): void {
     expect(Dashboard::loadBalancerDimension('arn:aws:elasticloadbalancing:ap-southeast-2:111111111111:loadbalancer/app/yolo-testing/abc123'))
         ->toBe('app/yolo-testing/abc123');

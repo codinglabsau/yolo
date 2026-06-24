@@ -468,9 +468,12 @@ function bindMockElastiCacheClient(array $byCommand, array &$captured): void
 
 /**
  * Bind a mock RDS client with command-routed responses, capturing every call.
- * Mirrors bindMockElastiCacheClient.
+ * A command's value may be a single Result/Throwable (repeated) or an array used
+ * as a queue (the last entry repeats once exhausted); a Throwable is returned as
+ * a rejection (e.g. a DescribeDBInstances DBInstanceNotFound). Mirrors
+ * bindMockElastiCacheClient.
  *
- * @param  array<string, Result|array<int, Result>>  $byCommand
+ * @param  array<string, Result|Throwable|array<int, Result|Throwable>>  $byCommand
  * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
  */
 function bindMockRdsClient(array $byCommand, array &$captured): void
@@ -495,7 +498,9 @@ function bindMockRdsClient(array $byCommand, array &$captured): void
                 $entry = $entry[$index];
             }
 
-            return Create::promiseFor($entry);
+            return $entry instanceof Throwable
+                ? Create::rejectionFor($entry)
+                : Create::promiseFor($entry);
         }
     };
 
