@@ -34,8 +34,6 @@ environments:
     # standalone queue if there is one, else stays in web.
     tasks:
       web:
-        cpu: '512'
-        memory: '1024'
         # enable-execute-command defaults to true (ECS Exec shell access, gated by
         # MFA on the admin IAM tier). Set to false to disable it for this group.
         # enable-execute-command: false
