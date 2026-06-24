@@ -153,6 +153,7 @@ class InitCommand extends Command
         if (! file_exists(Paths::base('.env.production'))) {
             file_put_contents(
                 Paths::base('.env.production'),
+                'APP_ENV=production' . PHP_EOL .
                 'APP_KEY=' . PHP_EOL .
                 'APP_DEBUG=false' . PHP_EOL .
                 FILE_APPEND
