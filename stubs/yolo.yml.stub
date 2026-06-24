@@ -1,7 +1,7 @@
 name: {NAME}
 
 environments:
-  production:
+  {ENVIRONMENT}:
     # Public domain. Omit for a headless app (no ALB / DNS). The apex (registrable
     # root) is derived automatically from the longest domain suffix that has a
     # Route 53 hosted zone, so a subdomain like app.example.com just works.

@@ -65,10 +65,10 @@ abstract class Command extends SymfonyCommand
             return 1;
         }
 
-        // special handling for `yolo init` command to execute early
+        // special handling for `yolo init` command to execute early — it runs
+        // without a manifest or an environment argument, prompting for (and binding)
+        // the target environment itself before it writes the scaffold.
         if ($this instanceof InitCommand) {
-            Helpers::app()->instance('environment', 'production');
-
             return (int) (Helpers::app()->call([$this, 'handle']) ?: 0);
         }
 

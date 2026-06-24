@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Symfony\Component\Process\Process;
 use Symfony\Component\Process\ExecutableFinder;
@@ -16,6 +17,10 @@ use function Laravel\Prompts\warning;
 
 class InitCommand extends Command
 {
+    protected string $appName;
+
+    protected string $environment;
+
     protected function configure(): void
     {
         $this
@@ -30,6 +35,13 @@ class InitCommand extends Command
         }
 
         intro('Initialising yolo.yml');
+
+        $this->appName = text('What is the name of this app?', placeholder: 'eg. codinglabs');
+        $this->environment = text('Which environment do you want to add?', placeholder: 'eg. production', required: true);
+
+        // Everything below writes under the chosen environment — the manifest block,
+        // the starter env file, the gitignore entry — so bind it before they run.
+        Helpers::app()->instance('environment', $this->environment);
 
         $this->gitIgnoreFilesAndDirectories();
         $this->initialiseManifest();
@@ -48,11 +60,13 @@ class InitCommand extends Command
             str_replace(
                 search: [
                     '{NAME}',
+                    '{ENVIRONMENT}',
                     '{AWS_ACCOUNT_ID}',
                     '{AWS_REGION}',
                 ],
                 replace: [
-                    text('What is the name of this app?', placeholder: 'eg. codinglabs'),
+                    $this->appName,
+                    $this->environment,
                     text('What is the account ID of the AWS account you want to deploy to?'),
                     text('Which AWS region do you want to deploy to?', default: env('AWS_DEFAULT_REGION', 'ap-southeast-2')),
                 ],
@@ -133,30 +147,36 @@ class InitCommand extends Command
 
     protected function gitIgnoreFilesAndDirectories(): void
     {
-        if (file_exists(Paths::base('.gitignore'))) {
-            file_put_contents(
-                Paths::base('.gitignore'),
-                '.yolo' . PHP_EOL .
-                '.env.staging' . PHP_EOL .
-                '.env.production' . PHP_EOL .
-                '.env.environment.*' . PHP_EOL .
-                // env-manifest working copies (yolo-environment-production.yml
-                // etc.) — never matches the app manifest yolo.yml
-                'yolo-environment-*.yml' . PHP_EOL,
-                FILE_APPEND
-            );
+        if (! file_exists(Paths::base('.gitignore'))) {
+            return;
         }
+
+        // The chosen environment's .env file plus the common ones, deduped so a
+        // `production`/`staging` environment doesn't list its pattern twice.
+        $entries = collect([
+            '.yolo',
+            '.env.staging',
+            '.env.production',
+            '.env.' . $this->environment,
+            '.env.environment.*',
+            // env-manifest working copies (yolo-environment-production.yml
+            // etc.) — never matches the app manifest yolo.yml
+            'yolo-environment-*.yml',
+        ])->unique()->implode(PHP_EOL);
+
+        file_put_contents(Paths::base('.gitignore'), $entries . PHP_EOL, FILE_APPEND);
     }
 
     protected function initialiseEnv(): void
     {
-        if (! file_exists(Paths::base('.env.production'))) {
+        $envFile = '.env.' . $this->environment;
+
+        if (! file_exists(Paths::base($envFile))) {
             file_put_contents(
-                Paths::base('.env.production'),
-                'APP_ENV=production' . PHP_EOL .
+                Paths::base($envFile),
+                'APP_ENV=' . $this->environment . PHP_EOL .
                 'APP_KEY=' . PHP_EOL .
-                'APP_DEBUG=false' . PHP_EOL .
-                FILE_APPEND
+                'APP_DEBUG=false' . PHP_EOL,
             );
         }
     }

@@ -60,12 +60,12 @@ yolo init
 
 **Arguments:** none · **Options:** none
 
-Interactive. Prompts for the app name, AWS account ID, region, and (unless multi-tenant) a domain and optional S3 bucket. It then:
+Interactive. Prompts for the app name, the environment to add (e.g. `production`), AWS account ID, region, and (unless multi-tenant) a domain and optional S3 bucket. It then:
 
-- Writes `yolo.yml` from the stub — with web [autoscaling](/guide/scaling) declared (`tasks.web.autoscaling: true`, bounds 1–5; it's a required key).
+- Writes `yolo.yml` from the stub — the environment block keyed by the name you gave, with web [autoscaling](/guide/scaling) declared (`tasks.web.autoscaling: true`, bounds 1–5; it's a required key).
 - Writes a default `Dockerfile` and `.dockerignore` (asks before overwriting existing ones).
-- Creates a starter `.env.production`.
-- Appends `.yolo`, `.env.staging`, `.env.production`, and the env-shared working copies (`.env.environment.*`, `yolo-environment-*.yml`) to `.gitignore`.
+- Creates a starter `.env.<environment>`.
+- Appends `.yolo`, `.env.<environment>` (plus `.env.staging`/`.env.production`), and the env-shared working copies (`.env.environment.*`, `yolo-environment-*.yml`) to `.gitignore`.
 - Offers to install the AWS Session Manager plugin (used by [`run`](#yolo-run)).
 
 This is the only command that runs without an existing manifest.

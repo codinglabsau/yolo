@@ -29,8 +29,8 @@ it('scaffolds web autoscaling on by default', function (): void {
     // Drive the literal stub (placeholders filled) through the real Manifest
     // reader — proves the scaffold parses to autoscaling-on, not just a string match.
     file_put_contents(Paths::manifest(), str_replace(
-        ['{NAME}', '{AWS_ACCOUNT_ID}', '{AWS_REGION}'],
-        ['my-app', '111111111111', 'ap-southeast-2'],
+        ['{NAME}', '{ENVIRONMENT}', '{AWS_ACCOUNT_ID}', '{AWS_REGION}'],
+        ['my-app', 'production', '111111111111', 'ap-southeast-2'],
         file_get_contents(Paths::stubs('yolo.yml.stub'))
     ));
     Helpers::app()->instance('environment', 'production');
@@ -42,8 +42,8 @@ it('scaffolds a manifest that satisfies the autoscaling-required integrity gate'
     // The stub declares an explicit `autoscaling`, so the scaffold a fresh app gets
     // must pass `ensureManifestIntegrity` rather than tripping the new requirement.
     file_put_contents(Paths::manifest(), str_replace(
-        ['{NAME}', '{AWS_ACCOUNT_ID}', '{AWS_REGION}'],
-        ['my-app', '111111111111', 'ap-southeast-2'],
+        ['{NAME}', '{ENVIRONMENT}', '{AWS_ACCOUNT_ID}', '{AWS_REGION}'],
+        ['my-app', 'production', '111111111111', 'ap-southeast-2'],
         file_get_contents(Paths::stubs('yolo.yml.stub'))
     ));
     Helpers::app()->instance('environment', 'production');
@@ -64,3 +64,22 @@ it('scaffolds a .dockerignore when none exists', function (): void {
     expect(file_exists($path))->toBeTrue()
         ->and(file_get_contents($path))->toBe(file_get_contents(Paths::stubs('.dockerignore.stub')));
 })->after(fn (): bool => @unlink(Paths::base('.dockerignore')));
+
+it('templates the environment block rather than hardcoding production', function (): void {
+    $stub = file_get_contents(Paths::stubs('yolo.yml.stub'));
+
+    expect($stub)->toContain('{ENVIRONMENT}:')
+        ->and($stub)->not->toContain("\n  production:");
+});
+
+it('scaffolds the starter env file under the chosen environment', function (): void {
+    (function (): void {
+        $this->environment = 'staging';
+        $this->initialiseEnv();
+    })->call(new InitCommand());
+
+    $path = Paths::base('.env.staging');
+
+    expect(file_exists($path))->toBeTrue()
+        ->and(file_get_contents($path))->toBe("APP_ENV=staging\nAPP_KEY=\nAPP_DEBUG=false\n");
+})->after(fn (): bool => @unlink(Paths::base('.env.staging')));
