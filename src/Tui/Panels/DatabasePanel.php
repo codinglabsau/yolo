@@ -13,7 +13,6 @@ use Codinglabs\Yolo\Tui\Theme;
 use Codinglabs\Yolo\ConsoleUrl;
 use Codinglabs\Yolo\Tui\Viewport;
 use Codinglabs\Yolo\Aws\CloudWatch;
-use Codinglabs\Yolo\Resources\CloudWatch\Dashboard;
 
 /**
  * The app's database at a glance — the RDS instance/cluster declared by the
@@ -54,7 +53,7 @@ class DatabasePanel implements Panel
 
     public function gather(): void
     {
-        $this->target = Dashboard::rdsTarget();
+        $this->target = Manifest::rdsTarget();
         $this->series = self::EMPTY_SERIES;
 
         if ($this->target === null) {

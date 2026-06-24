@@ -942,6 +942,45 @@ class Manifest
         return $apex;
     }
 
+    /**
+     * The RDS target DECLARED by the flat `database:` manifest key. Accepts either
+     * a bare RDS identifier (a plain instance, charted via DBInstanceIdentifier) or
+     * a full endpoint hostname — which auto-detects an Aurora cluster
+     * (`.cluster-` in the host) vs a plain instance, and skips an RDS Proxy /
+     * non-RDS host. Null when nothing's declared.
+     *
+     * Read from the manifest, never the app's secret `.env`: every consumer (the
+     * CloudWatch dashboard body, the status TUI, the audit health probe) must
+     * resolve the same target under every RBAC tier, which a secret read can't
+     * guarantee. The dashboard tier-parity contract leans on this directly.
+     *
+     * @return array{identifier: string, cluster: bool}|null
+     */
+    public static function rdsTarget(): ?array
+    {
+        $database = static::get('database');
+
+        if (! is_string($database) || $database === '') {
+            return null;
+        }
+
+        // A bare value is a plain instance identifier; a full endpoint hostname
+        // self-describes its kind.
+        if (! str_ends_with($database, '.rds.amazonaws.com')) {
+            return ['identifier' => $database, 'cluster' => false];
+        }
+
+        // RDS Proxy endpoints don't map to a DB metric identifier.
+        if (str_contains($database, '.proxy-')) {
+            return null;
+        }
+
+        return [
+            'identifier' => strtok($database, '.'),
+            'cluster' => str_contains($database, '.cluster-'),
+        ];
+    }
+
     public static function isMultitenanted(): bool
     {
         return ! empty(static::get('tenants'));

@@ -7,6 +7,7 @@ use Codinglabs\Yolo\Aws\Ecs;
 use Codinglabs\Yolo\ConsoleUrl;
 use Codinglabs\Yolo\Audit\Audit;
 use Illuminate\Support\Collection;
+use Codinglabs\Yolo\Concerns\RecordsWarnings;
 use Codinglabs\Yolo\Contracts\ReadOnlyCommand;
 use Codinglabs\Yolo\Contracts\ReadsEnvironment;
 use Symfony\Component\Console\Input\InputOption;
@@ -15,6 +16,7 @@ use Symfony\Component\Console\Input\InputArgument;
 
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
+use function Laravel\Prompts\error;
 use function Laravel\Prompts\table;
 use function Laravel\Prompts\warning;
 
@@ -28,6 +30,19 @@ use function Laravel\Prompts\warning;
  */
 abstract class AbstractAuditCommand extends Command implements ReadOnlyCommand, ReadsEnvironment
 {
+    // Warnings reuse the step runner's deferred-warning buffer verbatim (record
+    // now, render in one block at the end) — a non-stepped command, same pattern.
+    use RecordsWarnings;
+
+    /**
+     * Health-check errors: anything that should fail the run (exit 1). Warnings
+     * (recordWarning, above) never affect the exit code. The split is the whole
+     * point of the audit-as-health-check exit contract.
+     *
+     * @var array<int, string>
+     */
+    protected array $errors = [];
+
     protected function configure(): void
     {
         $this
@@ -46,11 +61,91 @@ abstract class AbstractAuditCommand extends Command implements ReadOnlyCommand, 
 
         $report = Audit::classify($tagged, $this->liveApps($environment));
 
-        if ($this->option('json')) {
-            return $this->renderJson($report, $environment);
+        $json = (bool) $this->option('json');
+
+        $this->flagUnexpected($report);
+
+        if (! $json) {
+            $this->renderInventory($report, $environment);
         }
 
-        return $this->render($report, $environment);
+        // Bare `audit` overrides gatherHealth to add the drift + RDS probes; the
+        // scoped verbs (audit:environment / audit:app) keep inventory-only. Human
+        // runs render the probe tables inline; JSON gathers the same data silently
+        // for the payload. Either way the findings drive the exit code.
+        $health = $this->gatherHealth($environment, render: ! $json);
+
+        if ($json) {
+            return $this->renderJson($report, $environment, $health);
+        }
+
+        return $this->concludeHealth();
+    }
+
+    /**
+     * Health probes beyond the tag inventory. Returns a structured health block
+     * for the JSON payload (empty by default). No-op for the scoped audit verbs —
+     * they're focused inventory tools; {@see AuditCommand} overrides it to run the
+     * whole-stack drift check and the RDS deletion-protection probe. When $render
+     * is true the probes also print their human tables; when false (JSON) they
+     * stay silent and only the returned block and recorded findings carry through.
+     *
+     * @return array<string, mixed>
+     */
+    protected function gatherHealth(string $environment, bool $render): array
+    {
+        return [];
+    }
+
+    /**
+     * Record any unexpected resources in this command's scope as an error finding
+     * — it fails the run regardless of --unexpected (which only narrows the table,
+     * never what counts against the health verdict). Scope-aware so audit:app fails
+     * on that app's strays, not the whole environment's.
+     *
+     * @param  array{resources: array<int, array<string, mixed>>, liveApps: array<int, string>, okCount: int, unexpectedCount: int}  $report
+     */
+    protected function flagUnexpected(array $report): void
+    {
+        $unexpectedInScope = collect($report['resources'])
+            ->filter(fn (array $resource): bool => $this->includes($resource))
+            ->where('status', Audit::STATUS_UNEXPECTED)
+            ->count();
+
+        if ($unexpectedInScope > 0) {
+            $this->recordError(sprintf(
+                '%d resource(s) unexpected — not accounted for by YOLO. Check the Reason column before removing anything.',
+                $unexpectedInScope,
+            ));
+        }
+    }
+
+    /**
+     * Record a health-check error — a finding that fails the run (exit 1). Drift,
+     * unexpected resources and RDS deletion-protection-off are all errors.
+     */
+    protected function recordError(string $error): void
+    {
+        $this->errors[] = $error;
+    }
+
+    /**
+     * Replay the buffered warnings and errors in one block (warnings then errors,
+     * so the most serious lands last and nearest the prompt), then resolve the
+     * exit code: FAILURE if anything errored, SUCCESS otherwise. Mirrors the step
+     * runner's renderDeferredWarnings, with errors driving the code.
+     */
+    protected function concludeHealth(): int
+    {
+        foreach ($this->recordedWarnings() as $warning) {
+            warning($warning);
+        }
+
+        foreach ($this->errors as $error) {
+            error($error);
+        }
+
+        return $this->errors === [] ? self::SUCCESS : self::FAILURE;
     }
 
     /**
@@ -82,14 +177,18 @@ abstract class AbstractAuditCommand extends Command implements ReadOnlyCommand, 
     }
 
     /**
+     * Render the tag-inventory table (the unexpected-resource finding is recorded
+     * separately in flagUnexpected). Void — the exit code is resolved later in
+     * concludeHealth() from the accumulated findings, not from this render.
+     *
      * @param  array{resources: array<int, array<string, mixed>>, liveApps: array<int, string>, okCount: int, unexpectedCount: int}  $report
      */
-    protected function render(array $report, string $environment): int
+    protected function renderInventory(array $report, string $environment): void
     {
         if (empty($report['resources'])) {
             info(sprintf("Nothing tagged for '%s'.", $environment));
 
-            return self::SUCCESS;
+            return;
         }
 
         note(sprintf('Live apps: %s', $report['liveApps'] ? implode(', ', $report['liveApps']) : 'none'));
@@ -99,11 +198,7 @@ abstract class AbstractAuditCommand extends Command implements ReadOnlyCommand, 
         if ($rows->isEmpty()) {
             info($this->emptyFilterMessage($environment));
 
-            return self::SUCCESS;
-        }
-
-        if (! $this->option('unexpected') && $report['unexpectedCount'] > 0) {
-            warning(sprintf('%d resource(s) are unexpected — not accounted for by YOLO. Check the Reason column before removing anything.', $report['unexpectedCount']));
+            return;
         }
 
         table(
@@ -125,8 +220,6 @@ abstract class AbstractAuditCommand extends Command implements ReadOnlyCommand, 
             $report['okCount'],
             $report['unexpectedCount'],
         ));
-
-        return self::SUCCESS;
     }
 
     /**
@@ -134,11 +227,15 @@ abstract class AbstractAuditCommand extends Command implements ReadOnlyCommand, 
      * scripts): the same scope-filtered + `--unexpected`-filtered rows the table
      * would show, plus the environment, live apps and counts derived from those
      * rows — so the payload is internally consistent (unlike the human note,
-     * which prints the env-wide totals alongside a filtered table).
+     * which prints the env-wide totals alongside a filtered table). The `health`
+     * block carries the probe results (empty for the scoped verbs) and `findings`
+     * the same errors/warnings the human run prints, so a consumer sees exactly
+     * what drove the exit code.
      *
      * @param  array{resources: array<int, array<string, mixed>>, liveApps: array<int, string>, okCount: int, unexpectedCount: int}  $report
+     * @param  array<string, mixed>  $health
      */
-    protected function renderJson(array $report, string $environment): int
+    protected function renderJson(array $report, string $environment, array $health = []): int
     {
         $rows = $this->filtered($report['resources']);
 
@@ -148,9 +245,15 @@ abstract class AbstractAuditCommand extends Command implements ReadOnlyCommand, 
             'okCount' => $rows->where('status', Audit::STATUS_OK)->count(),
             'unexpectedCount' => $rows->where('status', Audit::STATUS_UNEXPECTED)->count(),
             'resources' => static::auditJsonRows($rows->all()),
+            'health' => $health,
+            'findings' => [
+                'errors' => array_values($this->errors),
+                'warnings' => array_values($this->recordedWarnings()),
+            ],
+            'healthy' => $this->errors === [],
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
-        return self::SUCCESS;
+        return $this->errors === [] ? self::SUCCESS : self::FAILURE;
     }
 
     /**

@@ -161,13 +161,23 @@ Writes that land in the fallback store during an outage are **not** synced back 
 
 ## Auditing what's deployed
 
-`yolo audit` is the read-only counterpart to `sync`. It's an **ownership/inventory** check — it queries every resource tagged `yolo:environment=<env>` and asks "is this accounted for?". It does **not** inspect a resource's configuration; comparing live attributes against the manifest is `sync`'s job (and `sync`'s "drift" — config superseded — is a different thing from anything here).
+`yolo audit` is the read-only **health check** for an environment. It rolls up three things and exits **non-zero if any of them turns up an error** — a green/red gate you can wire into CI or run by hand:
+
+1. **A tag inventory** — every resource tagged `yolo:environment=<env>`, classified `ok` or `unexpected` (the ownership check below).
+2. **A drift check** — the whole-stack `sync --check` plan, so "what's drifted from the manifest?" is part of the same answer (it reuses the deploy gate's machinery, read-only, no MFA).
+3. **An RDS deletion-protection probe** — reads the manifest [`database:`](/reference/manifest#database) target and verifies deletion protection is on (an **error** if it's off), reporting the instance/cluster basics alongside.
 
 ```bash
 yolo audit production
 ```
 
-There are two statuses, and a **Reason** column explains every `unexpected` row:
+**Errors fail the run** (exit 1): unexpected resources, drift, and a database with deletion protection off. **Warnings never do**: e.g. a database the tier couldn't read, where protection can't be confirmed either way. Findings print in one block at the end.
+
+> The drift check and RDS probe are **bare `audit` only**. The scoped verbs — `audit:environment`, `audit:app` — stay focused inventory tools (they still exit non-zero on an unexpected resource, but run no drift or RDS probe).
+
+### The tag inventory
+
+The inventory is the ownership half — it asks "is this resource accounted for?", **not** "does its config match the manifest?" (that attribute-level comparison is the drift check's job, via `sync`). There are two statuses, and a **Reason** column explains every `unexpected` row:
 
 | Status | Meaning |
 |---|---|

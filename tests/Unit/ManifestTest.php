@@ -593,3 +593,30 @@ describe('unified autoscaling', function (): void {
         expect(Manifest::autoscales(ServerGroup::SCHEDULER))->toBeFalse();
     });
 });
+
+describe('rdsTarget', function (): void {
+    it('reads the RDS target from the flat manifest key — a bare value is an instance, a full endpoint auto-detects Aurora', function (): void {
+        // Sourced from the manifest, never the app's secret .env, so every
+        // consumer (dashboard writer, deploy gate, audit probe) resolves the SAME
+        // target under any RBAC tier — no identity-dependent drift.
+        writeManifest(['database' => 'my-db']);
+        expect(Manifest::rdsTarget())->toBe(['identifier' => 'my-db', 'cluster' => false]);
+
+        writeManifest(['database' => 'my-cluster.cluster-cabc123.ap-southeast-2.rds.amazonaws.com']);
+        expect(Manifest::rdsTarget())->toBe(['identifier' => 'my-cluster', 'cluster' => true]);
+
+        writeManifest(['database' => 'my-instance.cabc123.ap-southeast-2.rds.amazonaws.com']);
+        expect(Manifest::rdsTarget())->toBe(['identifier' => 'my-instance', 'cluster' => false]);
+    });
+
+    it('returns no RDS target when nothing is declared, the value is blank, or it is an RDS Proxy', function (): void {
+        writeManifest([]);
+        expect(Manifest::rdsTarget())->toBeNull();
+
+        writeManifest(['database' => '']);
+        expect(Manifest::rdsTarget())->toBeNull();
+
+        writeManifest(['database' => 'my-proxy.proxy-cabc.ap-southeast-2.rds.amazonaws.com']);
+        expect(Manifest::rdsTarget())->toBeNull();
+    });
+});
