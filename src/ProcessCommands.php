@@ -34,13 +34,11 @@ class ProcessCommands
      */
     public static function web(): string
     {
-        $port = (int) Manifest::get('tasks.web.port', 8000);
-
         if (! Manifest::usesOctane()) {
-            return sprintf('frankenphp php-server --listen 0.0.0.0:%d --root public/', $port);
+            return 'frankenphp php-server --listen 0.0.0.0:8000 --root public/';
         }
 
-        $command = sprintf('php artisan octane:start --host=0.0.0.0 --port=%d', $port);
+        $command = 'php artisan octane:start --host=0.0.0.0 --port=8000';
 
         // Burst autoscaling reads FrankenPHP's worker metrics, which Octane only exposes
         // when Caddy metrics are enabled. octane:start rebuilds CADDY_GLOBAL_OPTIONS for

@@ -19,7 +19,7 @@ class ForwardListenerRule extends ListenerRule
 
     public function hosts(): array
     {
-        return [Manifest::get('domain', Manifest::apex())];
+        return [Manifest::get('domain') ?? Manifest::apex()];
     }
 
     protected function action(): array

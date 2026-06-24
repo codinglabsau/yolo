@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo;
 
 use Illuminate\Support\Arr;
+use Codinglabs\Yolo\Aws\Route53;
 use Symfony\Component\Yaml\Yaml;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServerGroup;
@@ -27,6 +28,15 @@ class Manifest
     protected static ?array $hydrated = null;
 
     /**
+     * Per-domain apex-derivation cache. {@see deriveApex()} probes Route 53 for the
+     * registrable root; memoising keeps a single run from re-listing zones for the
+     * same domain across steps. Cleared by {@see flushHydration()} (test reset).
+     *
+     * @var array<string, string>
+     */
+    protected static array $apexCache = [];
+
+    /**
      * The complete set of valid environment-block keys as dot-paths — the single
      * source of truth for the manifest's shape. There is no `aws.*` namespace:
      * every key sits at the top of the environment block. A trailing `.*` allows
@@ -37,16 +47,15 @@ class Manifest
      */
     protected const ALLOWED_ENVIRONMENT_KEYS = [
         'account-id', 'region',
-        'domain', 'apex', 'branch', 'tag', 'repository',
+        'domain', 'branch', 'tag', 'repository',
         'tenants.*',
-        'bucket', 'alb',
+        'bucket',
         'public-subnets',
         'internet-gateway', 'route-table', 'vpc',
         'services',
         'rds.subnet', 'rds.security-group',
         'database',
         'ecs.security-group',
-        'sqs.depth-alarm-threshold', 'sqs.depth-alarm-period', 'sqs.depth-alarm-evaluation-periods',
         'cache.store',
         'session.driver',
         'task-role-policies',
@@ -58,9 +67,9 @@ class Manifest
         // nested subtrees.
         'tasks.web',
         'tasks.web.octane',
-        'tasks.web.port', 'tasks.web.cpu', 'tasks.web.memory', 'tasks.web.platform',
+        'tasks.web.cpu', 'tasks.web.memory', 'tasks.web.platform',
         'tasks.web.enable-execute-command', 'tasks.web.shutdown-grace-period',
-        'tasks.web.log-retention', 'tasks.web.log-group',
+        'tasks.web.log-retention',
         'tasks.web.ssr', 'tasks.web.ssr.*',
         'tasks.web.health-check.*', 'tasks.web.autoscaling.*',
         'tasks.queue',
@@ -94,6 +103,7 @@ class Manifest
     public static function flushHydration(): void
     {
         static::$hydrated = null;
+        static::$apexCache = [];
     }
 
     public static function environments(): array
@@ -933,13 +943,36 @@ class Manifest
             return throw new IntegrityCheckException('Cannot determine apex domain for multitenanted environments.');
         }
 
-        $apex = static::get('apex', static::get('domain'));
+        return static::deriveApex((string) static::get('domain'));
+    }
 
-        if (str_starts_with((string) $apex, 'www.')) {
-            return throw new IntegrityCheckException(sprintf("The apex record %s cannot start with 'www'.", $apex));
+    /**
+     * Derive the apex (registrable root) for a domain by walking its labels
+     * longest-suffix-first and returning the longest suffix that already has a
+     * Route 53 hosted zone in the account — so `app.example.com` resolves to the
+     * existing `example.com` zone with no explicit key. When no ancestor zone
+     * exists yet the domain itself is the apex (sync then creates the zone), with
+     * any leading `www.` stripped so the apex is never the www host.
+     */
+    public static function deriveApex(string $domain): string
+    {
+        return static::$apexCache[$domain] ??= static::resolveApex($domain);
+    }
+
+    protected static function resolveApex(string $domain): string
+    {
+        $zones = Route53::hostedZoneNames();
+        $labels = explode('.', $domain);
+
+        for ($i = 0, $count = count($labels); $i < $count - 1; $i++) {
+            $candidate = implode('.', array_slice($labels, $i));
+
+            if (in_array($candidate, $zones, true)) {
+                return $candidate;
+            }
         }
 
-        return $apex;
+        return (string) preg_replace('/^www\./', '', $domain);
     }
 
     /**
@@ -988,13 +1021,13 @@ class Manifest
 
     public static function isHeadless(): bool
     {
-        if (static::has('apex') || static::has('domain')) {
+        if (static::has('domain')) {
             return false;
         }
 
         // Read raw — tenants() normaliser TypeErrors on a headless tenant.
         return collect(static::get('tenants', []))
-            ->every(fn (array $config): bool => ! isset($config['apex']) && ! isset($config['domain']));
+            ->every(fn (array $config): bool => ! isset($config['domain']));
     }
 
     /**
@@ -1029,10 +1062,10 @@ class Manifest
         $tenants = [];
 
         foreach ($configured as $tenantId => $config) {
-            $config['apex'] ??= $config['domain'] ?? null;
-
-            if ($config['apex'] !== null && str_starts_with($config['apex'], 'www.')) {
-                throw new IntegrityCheckException(sprintf("The apex record %s cannot start with 'www'.", $config['apex']));
+            // Per-tenant apex is derived from the tenant's domain the same way the
+            // solo apex is (deriveApex) — a headless tenant (no domain) keeps none.
+            if (isset($config['domain'])) {
+                $config['apex'] = static::deriveApex($config['domain']);
             }
 
             $tenants[$tenantId] = $config;

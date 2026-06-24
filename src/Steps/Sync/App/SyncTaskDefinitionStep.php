@@ -184,8 +184,8 @@ class SyncTaskDefinitionStep implements Step
                     ...$group->attachesToLoadBalancer() ? [
                         'portMappings' => [
                             [
-                                'containerPort' => (int) Manifest::get('tasks.web.port', 8000),
-                                'hostPort' => (int) Manifest::get('tasks.web.port', 8000),
+                                'containerPort' => 8000,
+                                'hostPort' => 8000,
                                 'protocol' => 'tcp',
                             ],
                         ],

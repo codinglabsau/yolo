@@ -108,7 +108,7 @@ yolo run production                              # interactive shell
 yolo run production --command="php artisan tinker"
 ```
 
-(Requires `enable-execute-command: true` in your manifest and the Session Manager plugin — see [`yolo run`](/reference/commands#yolo-run).)
+(ECS Exec is on by default — `enable-execute-command` defaults to `true` — so this just needs the Session Manager plugin installed locally. See [`yolo run`](/reference/commands#yolo-run).)
 
 ## Where to next
 

@@ -23,24 +23,22 @@ domain: example.com       # serves the apex; www.example.com → 301 → example
 ```
 
 ```yaml
-apex: example.com
-domain: www.example.com         # serves www; example.com → 301 → www.example.com
+domain: www.example.com   # serves www; example.com → 301 → www.example.com
 ```
 
-Both halves resolve to the load balancer (so the redirect can catch the non-canonical one), and the certificate already covers both (`apex` + the `*.apex` wildcard). You don't configure `www` separately — there's nothing to toggle.
+Both halves resolve to the load balancer (so the redirect can catch the non-canonical one), and the certificate already covers both (the apex + the `*.apex` wildcard). You don't configure `www` separately — there's nothing to toggle.
 
-The apex record cannot itself start with `www.` — YOLO rejects that as a manifest integrity error.
+There is no `apex` key — YOLO **derives** the apex (the registrable root, naming the Route 53 hosted zone to write into) from `domain`. It walks the domain's label-suffixes longest-first and uses the longest one that already has a hosted zone in the account; when none exists yet, the domain itself is the apex (with any leading `www.` stripped, so the apex is never the `www` host).
 
 ## Serving from a subdomain
 
-To serve the app from a subdomain, set `domain` to the subdomain and `apex` to the registrable root:
+To serve the app from a subdomain, just set `domain` to the subdomain:
 
 ```yaml
-apex: example.com
 domain: app.example.com
 ```
 
-`apex` tells YOLO which Route 53 hosted zone to write into; `domain` is where the app is served. If you omit `apex`, it defaults to `domain`. A bare subdomain like this is served on its own — it's not one half of the apex/`www` pair, so no redirect is set up.
+YOLO finds the `example.com` hosted zone by walking up the labels from `app.example.com`, and writes the `app.example.com` record into it — no `apex` key to set. A bare subdomain like this is served on its own — it's not one half of the apex/`www` pair, so no redirect is set up.
 
 ## One app across two environments
 
@@ -53,12 +51,12 @@ That's safe by design:
 
 ## Headless apps
 
-An app with no public web front — a background worker, a queue consumer, an internal job runner — can run **headless**: omit `domain`, `apex`, and any tenant domains.
+An app with no public web front — a background worker, a queue consumer, an internal job runner — can run **headless**: omit `domain` and any tenant domains.
 
 ```yaml
 environments:
   production:
-    # no domain / apex / tenants → headless
+    # no domain / tenants → headless
     tasks:
       web:
         autoscaling: true
@@ -70,4 +68,4 @@ Need an image that builds but runs no container at all? Omit the `tasks` block e
 
 ## Multi-tenant domains
 
-Multi-tenant apps configure domains per tenant rather than at the environment level — see [Multi-Tenancy](/guide/multi-tenancy). A multi-tenant app must **not** set `domain`/`apex` at the environment level; each tenant carries its own.
+Multi-tenant apps configure domains per tenant rather than at the environment level — see [Multi-Tenancy](/guide/multi-tenancy). A multi-tenant app must **not** set `domain` at the environment level; each tenant carries its own (and its apex is derived from it the same way).

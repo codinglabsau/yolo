@@ -13,6 +13,7 @@ function forwardRule(): ForwardListenerRule
 
 beforeEach(function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
+    bindHostedZones();
 });
 
 describe('hosts', function (): void {
@@ -25,19 +26,10 @@ describe('hosts', function (): void {
         expect(forwardRule()->hosts())->toBe(['example.com']);
     });
 
-    it('forwards only the apex when only apex is set', function (): void {
-        writeManifest([
-            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'apex' => 'example.com',
-        ]);
-
-        expect(forwardRule()->hosts())->toBe(['example.com']);
-    });
-
     it('forwards only www when the domain is www (www-canonical)', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'apex' => 'tenant.com', 'domain' => 'www.tenant.com',
+            'domain' => 'www.tenant.com',
         ]);
 
         expect(forwardRule()->hosts())->toBe(['www.tenant.com']);
@@ -46,7 +38,7 @@ describe('hosts', function (): void {
     it('forwards only the literal domain for a bare subdomain', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'apex' => 'example.com', 'domain' => 'app.example.com',
+            'domain' => 'app.example.com',
         ]);
 
         expect(forwardRule()->hosts())->toBe(['app.example.com']);

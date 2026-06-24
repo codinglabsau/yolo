@@ -17,7 +17,7 @@ use Codinglabs\Yolo\YoloServiceProvider;
  * Generates each container's supervisord.conf into the build context from the
  * manifest — the same way GenerateEntrypointScriptStep generates the entrypoint,
  * so the running processes can't drift from the manifest and the web port
- * always matches tasks.web.port (the same value the target group health-checks).
+ * is hardcoded to 8000 (the same value the target group health-checks).
  *
  * Which program runs where is derived from task presence (Manifest::queueHost /
  * schedulerHost), not flags. The web container always runs the web server (plus the SSR

@@ -51,7 +51,7 @@ class TargetGroup implements Deletable, Resource, SynchronisesConfiguration
         $arn = Aws::elasticLoadBalancingV2()->createTargetGroup([
             'Name' => $this->name(),
             'Protocol' => 'HTTP',
-            'Port' => (int) Manifest::get('tasks.web.port', 8000),
+            'Port' => 8000,
             'TargetType' => 'ip',
             'VpcId' => (new Vpc())->arn(),
             'HealthCheckProtocol' => 'HTTP',
@@ -221,7 +221,7 @@ class TargetGroup implements Deletable, Resource, SynchronisesConfiguration
         return [
             'HealthCheckPath' => Manifest::get('tasks.web.health-check.path', '/up'),
             'HealthCheckIntervalSeconds' => (int) Manifest::get('tasks.web.health-check.interval', 10),
-            'HealthCheckTimeoutSeconds' => (int) Manifest::get('tasks.web.health-check.timeout', 8),
+            'HealthCheckTimeoutSeconds' => (int) Manifest::get('tasks.web.health-check.timeout', 5),
             'HealthyThresholdCount' => (int) Manifest::get('tasks.web.health-check.healthy-threshold', 2),
             'UnhealthyThresholdCount' => (int) Manifest::get('tasks.web.health-check.unhealthy-threshold', 5),
             'Matcher' => ['HttpCode' => '200'],

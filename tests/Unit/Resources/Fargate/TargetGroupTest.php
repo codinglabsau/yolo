@@ -56,7 +56,7 @@ function liveTargetGroup(array $overrides = []): array
         'TargetGroupArn' => 'arn:aws:elasticloadbalancing:ap-southeast-2:111111111111:targetgroup/yolo-testing-my-app/abc',
         'HealthCheckPath' => '/up',
         'HealthCheckIntervalSeconds' => 10,
-        'HealthCheckTimeoutSeconds' => 8,
+        'HealthCheckTimeoutSeconds' => 5,
         'HealthyThresholdCount' => 2,
         'UnhealthyThresholdCount' => 5,
         'Matcher' => ['HttpCode' => '200'],
@@ -72,7 +72,7 @@ it('shares one health-check config between create and sync', function (): void {
     expect(TargetGroup::reconcilableHealthCheck())->toBe([
         'HealthCheckPath' => '/up',
         'HealthCheckIntervalSeconds' => 10,
-        'HealthCheckTimeoutSeconds' => 8,
+        'HealthCheckTimeoutSeconds' => 5,
         'HealthyThresholdCount' => 2,
         'UnhealthyThresholdCount' => 5,
         'Matcher' => ['HttpCode' => '200'],
@@ -103,11 +103,11 @@ it('lets the manifest override each health-check field', function (): void {
 
 it('reconciles a target group still on the old aggressive health-check defaults to the tolerant ones', function (): void {
     // A live target group from before the tolerance change sits on the old
-    // values (5s timeout, 3 unhealthy). A plain `yolo sync` must drag it onto the new defaults via
+    // values (8s timeout, 3 unhealthy). A plain `yolo sync` must drag it onto the new defaults via
     // ModifyTargetGroup — the health check is reconciled, not create-only.
     $recorder = bindRecordingElbV2Client(
-        liveTargetGroup(['HealthCheckTimeoutSeconds' => 5, 'UnhealthyThresholdCount' => 3]),
-        deregistrationDelayAttributes('10'),
+        liveTargetGroup(['HealthCheckTimeoutSeconds' => 8, 'UnhealthyThresholdCount' => 3]),
+        deregistrationDelayAttributes('15'),
     );
 
     $changes = collect((new TargetGroup())->synchroniseConfiguration());
@@ -115,8 +115,8 @@ it('reconciles a target group still on the old aggressive health-check defaults 
     expect($recorder->calls)->toContain('ModifyTargetGroup');
 
     $timeout = $changes->firstWhere('attribute', 'HealthCheckTimeoutSeconds');
-    expect($timeout->from)->toBe('5');
-    expect($timeout->to)->toBe('8');
+    expect($timeout->from)->toBe('8');
+    expect($timeout->to)->toBe('5');
 
     $unhealthy = $changes->firstWhere('attribute', 'UnhealthyThresholdCount');
     expect($unhealthy->from)->toBe('3');
@@ -124,7 +124,7 @@ it('reconciles a target group still on the old aggressive health-check defaults 
 });
 
 it('modifies the target group when a health-check field has drifted', function (): void {
-    $recorder = bindRecordingElbV2Client(liveTargetGroup(['HealthCheckIntervalSeconds' => 30]), deregistrationDelayAttributes('10'));
+    $recorder = bindRecordingElbV2Client(liveTargetGroup(['HealthCheckIntervalSeconds' => 30]), deregistrationDelayAttributes('15'));
 
     (new TargetGroup())->synchroniseConfiguration();
 
@@ -132,7 +132,7 @@ it('modifies the target group when a health-check field has drifted', function (
 });
 
 it('makes no write when health-check and deregistration both already match', function (): void {
-    $recorder = bindRecordingElbV2Client(liveTargetGroup(), deregistrationDelayAttributes('10'));
+    $recorder = bindRecordingElbV2Client(liveTargetGroup(), deregistrationDelayAttributes('15'));
 
     (new TargetGroup())->synchroniseConfiguration();
 
@@ -148,8 +148,8 @@ it('reads the live target group only once (reuses the lookup, no second describe
     expect(collect($recorder->calls)->filter(fn ($c): bool => $c === 'DescribeTargetGroups'))->toHaveCount(1);
 });
 
-it('defaults the deregistration delay to 10s', function (): void {
-    expect((new TargetGroup())->deregistrationDelay())->toBe(10);
+it('defaults the deregistration delay to 15s', function (): void {
+    expect((new TargetGroup())->deregistrationDelay())->toBe(15);
 });
 
 it('respects a manifest shutdown-grace-period override', function (): void {
@@ -170,7 +170,7 @@ it('caps the deregistration delay when it is still on the AWS 300s default', fun
 });
 
 it('returns the drifted health-check field as a current → desired change', function (): void {
-    bindRecordingElbV2Client(liveTargetGroup(['HealthCheckIntervalSeconds' => 30]), deregistrationDelayAttributes('10'));
+    bindRecordingElbV2Client(liveTargetGroup(['HealthCheckIntervalSeconds' => 30]), deregistrationDelayAttributes('15'));
 
     $change = collect((new TargetGroup())->synchroniseConfiguration())
         ->firstWhere('attribute', 'HealthCheckIntervalSeconds');
@@ -187,17 +187,17 @@ it('returns the deregistration delay as a change when on the AWS default', funct
         ->firstWhere('attribute', 'deregistration_delay.timeout_seconds');
 
     expect($change->from)->toBe('300');
-    expect($change->to)->toBe('10');
+    expect($change->to)->toBe('15');
 });
 
 it('returns no changes when health-check and deregistration both match', function (): void {
-    bindRecordingElbV2Client(liveTargetGroup(), deregistrationDelayAttributes('10'));
+    bindRecordingElbV2Client(liveTargetGroup(), deregistrationDelayAttributes('15'));
 
     expect((new TargetGroup())->synchroniseConfiguration())->toBe([]);
 });
 
 it('computes the diff without writing under apply:false', function (): void {
-    $recorder = bindRecordingElbV2Client(liveTargetGroup(['HealthCheckIntervalSeconds' => 30]), deregistrationDelayAttributes('10'));
+    $recorder = bindRecordingElbV2Client(liveTargetGroup(['HealthCheckIntervalSeconds' => 30]), deregistrationDelayAttributes('15'));
 
     expect((new TargetGroup())->synchroniseConfiguration(apply: false))->not->toBeEmpty();
     expect($recorder->calls)->not->toContain('ModifyTargetGroup');

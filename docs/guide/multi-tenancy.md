@@ -24,10 +24,10 @@ environments:
       scheduler: true
 ```
 
-The tenant id (`acme`, `globex`) identifies that tenant's resources throughout YOLO. Each tenant follows the same domain rules as a solo app — set `apex` separately if the tenant is served from a subdomain (see [Domains](/guide/domains)).
+The tenant id (`acme`, `globex`) identifies that tenant's resources throughout YOLO. Each tenant follows the same domain rules as a solo app — set only its `domain`, and YOLO derives the tenant's apex (its hosted zone) from it, subdomains included (see [Domains](/guide/domains)).
 
 ::: warning
-A multi-tenant app must not set `domain` or `apex` at the **environment** level — those belong to each tenant. Declaring `tenants` is what puts the app in multi-tenant mode.
+A multi-tenant app must not set `domain` at the **environment** level — it belongs to each tenant. Declaring `tenants` is what puts the app in multi-tenant mode.
 :::
 
 When you answer "yes" to the multi-tenant prompt in `yolo init`, it scaffolds a `tenants` block and sets up landlord/tenant migration hooks for you:

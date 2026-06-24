@@ -29,11 +29,12 @@ function bindForwardStepWithoutListener(array &$captured): void
 beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'apex' => FORWARD_APEX, 'domain' => FORWARD_APEX,
+        'domain' => FORWARD_APEX,
     ]);
+    bindHostedZones();
 });
 
-it('skips a headless app with no domain or apex', function (): void {
+it('skips a headless app with no domain', function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 
     expect((new SyncForwardRuleStep())(['dry-run' => true]))->toBe(StepResult::SKIPPED);

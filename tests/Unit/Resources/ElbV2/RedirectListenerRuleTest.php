@@ -12,6 +12,7 @@ function redirectRule(): RedirectListenerRule
 
 beforeEach(function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
+    bindHostedZones();
 });
 
 describe('hosts', function (): void {
@@ -27,7 +28,7 @@ describe('hosts', function (): void {
     it('redirects the apex sibling when www is canonical', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'apex' => 'tenant.com', 'domain' => 'www.tenant.com',
+            'domain' => 'www.tenant.com',
         ]);
 
         expect(redirectRule()->hosts())->toBe(['tenant.com']);
@@ -69,7 +70,7 @@ it('reconciles a swapped redirect rule in place (host + redirect target)', funct
     // its stable Name) must flip from "www → apex" to "apex → www" in place.
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'apex' => 'tenant.com', 'domain' => 'www.tenant.com',
+        'domain' => 'www.tenant.com',
     ]);
 
     $captured = [];

@@ -35,7 +35,7 @@ class LoadBalancer implements Deletable, Resource, SynchronisesConfiguration
 
     public function name(): string
     {
-        return Manifest::get('alb', $this->keyedName());
+        return $this->keyedName();
     }
 
     public function scope(): Scope

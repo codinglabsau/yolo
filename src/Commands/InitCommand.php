@@ -156,11 +156,6 @@ class InitCommand extends Command
                 'APP_ENV=production' . PHP_EOL .
                 'APP_KEY=' . PHP_EOL .
                 'APP_DEBUG=false' . PHP_EOL .
-                // The web process runs `octane:start`, which boots whichever server
-                // OCTANE_SERVER names. Seed it to frankenphp to match the scaffolded
-                // Dockerfile's base image. To run a different Octane server, change
-                // the base image and this value together.
-                'OCTANE_SERVER=frankenphp' . PHP_EOL .
                 FILE_APPEND
             );
         }

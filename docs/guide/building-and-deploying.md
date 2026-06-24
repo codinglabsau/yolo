@@ -108,4 +108,4 @@ yolo run production --command="php artisan tinker"    # one-off command
 yolo run production --command="php artisan queue:restart" --group=web,queue
 ```
 
-This needs `tasks.web.enable-execute-command: true` in your manifest and the AWS Session Manager plugin installed locally (`yolo init` offers to install it). See [`yolo run`](/reference/commands#yolo-run).
+ECS Exec is on by default (`tasks.web.enable-execute-command` defaults to `true`), so this just needs the AWS Session Manager plugin installed locally (`yolo init` offers to install it). See [`yolo run`](/reference/commands#yolo-run).

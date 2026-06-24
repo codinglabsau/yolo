@@ -56,6 +56,6 @@ class RedirectListenerRule extends ListenerRule
 
     protected function canonicalHost(): string
     {
-        return Manifest::get('domain', Manifest::apex());
+        return Manifest::get('domain') ?? Manifest::apex();
     }
 }

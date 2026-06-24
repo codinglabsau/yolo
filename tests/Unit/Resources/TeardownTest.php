@@ -54,7 +54,6 @@ use Codinglabs\Yolo\Resources\Iam\AppObserverRole;
 use Codinglabs\Yolo\Resources\CloudWatch\Dashboard;
 use Codinglabs\Yolo\Resources\Ec2\RdsSecurityGroup;
 use Codinglabs\Yolo\Resources\Iam\EcsExecutionRole;
-use Codinglabs\Yolo\Resources\CloudWatch\QueueAlarm;
 use Codinglabs\Yolo\Resources\Iam\AppObserverPolicy;
 use Codinglabs\Yolo\Resources\Iam\AppObserversGroup;
 use Codinglabs\Yolo\Resources\Ec2\CacheSecurityGroup;
@@ -385,16 +384,13 @@ it('rethrows a non-dependency DeleteSecurityGroup error without retrying', funct
     expect(array_count_values(array_column($captured, 'name'))['DeleteSecurityGroup'])->toBe(1);
 });
 
-it('deletes the dashboard and the queue alarm by name', function (): void {
+it('deletes the dashboard by name', function (): void {
     $captured = [];
     bindMockCloudWatchClient([], $captured);
 
     (new Dashboard())->delete();
-    (new QueueAlarm('yolo-testing-my-app-queue-backlog', 'yolo-testing-my-app'))->delete();
 
-    $names = array_column($captured, 'name');
-    expect($names)->toContain('DeleteDashboards')->toContain('DeleteAlarms');
-    expect(collect($captured)->firstWhere('name', 'DeleteAlarms')['args']['AlarmNames'])->toBe(['yolo-testing-my-app-queue-backlog']);
+    expect(array_column($captured, 'name'))->toContain('DeleteDashboards');
 });
 
 it('deletes the task log group, tolerating an already-absent group', function (): void {

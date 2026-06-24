@@ -5,7 +5,7 @@ use Codinglabs\Yolo\Steps\Build\Fargate\GenerateEntrypointScriptStep;
 
 beforeEach(function (): void {
     writeManifest([
-        'apex' => 'example.com',
+        'domain' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => true],
     ]);
@@ -24,7 +24,7 @@ function generatedEntrypointScript(): string
 
 it('starts with a shebang and fails fast through the deploy-all hooks', function (): void {
     writeManifest([
-        'apex' => 'example.com',
+        'domain' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => true],
         'deploy-all' => ['php artisan migrate --force', 'php artisan config:cache'],
@@ -58,7 +58,7 @@ it('dispatches the web role to supervisord and signals the bundled scheduler bef
     // backgrounded, so waiting out the in-flight run overlaps the window instead
     // of delaying the forward.
     expect($script)->toContain("supervisorctl -c /etc/supervisord.conf stop scheduler >/dev/null 2>&1 &\n");
-    expect($script)->toContain("sleep 10\n");
+    expect($script)->toContain("sleep 15\n");
 });
 
 it('execs an unknown command directly instead of booting the web server', function (): void {
@@ -73,7 +73,7 @@ it('execs an unknown command directly instead of booting the web server', functi
 
 it('runs a standalone queue under supervisord when it co-hosts the scheduler', function (): void {
     writeManifest([
-        'apex' => 'example.com',
+        'domain' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => true, 'queue' => true],
     ]);
@@ -86,13 +86,13 @@ it('runs a standalone queue under supervisord when it co-hosts the scheduler', f
     expect($script)->toContain("queue)     cmd='supervisord -c /app/docker/supervisord.queue.conf -n'");
     expect($script)->not->toContain('stop scheduler');
     // The web container no longer hosts the scheduler — its drain is a plain sleep.
-    expect($script)->toContain("sleep 10\n");
+    expect($script)->toContain("sleep 15\n");
     expect($script)->not->toContain('scheduler) cmd=');
 });
 
 it('runs a standalone queue as a single worker process when the scheduler is its own service', function (): void {
     writeManifest([
-        'apex' => 'example.com',
+        'domain' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => true, 'queue' => true, 'scheduler' => true],
     ]);
@@ -107,7 +107,7 @@ it('runs a standalone queue as a single worker process when the scheduler is its
 
 it('adds a scheduler branch running cron when the scheduler is its own service', function (): void {
     writeManifest([
-        'apex' => 'example.com',
+        'domain' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => true, 'scheduler' => true],
     ]);
@@ -119,24 +119,24 @@ it('adds a scheduler branch running cron when the scheduler is its own service',
     expect($script)->toContain("scheduler) cmd='supercronic");
     expect($script)->not->toContain('stop scheduler');
     // The queue still rides the web container; the web drain is a plain sleep.
-    expect($script)->toContain("sleep 10\n");
+    expect($script)->toContain("sleep 15\n");
     expect($script)->not->toContain('queue)     cmd=');
 });
 
 it('drains for the web shutdown-grace-period before forwarding the stop', function (): void {
     // Extract the scheduler so the web drain is the plain ALB-window sleep.
     writeManifest([
-        'apex' => 'example.com',
+        'domain' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => true, 'scheduler' => true],
     ]);
 
-    expect(generatedEntrypointScript())->toContain("sleep 10\n");
+    expect(generatedEntrypointScript())->toContain("sleep 15\n");
 });
 
 it('tracks the manifest web shutdown-grace-period for the drain duration', function (): void {
     writeManifest([
-        'apex' => 'example.com',
+        'domain' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['shutdown-grace-period' => 45], 'scheduler' => true],
     ]);

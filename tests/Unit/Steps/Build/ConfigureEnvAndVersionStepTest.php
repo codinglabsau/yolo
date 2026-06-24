@@ -105,6 +105,53 @@ it('does not inject AWS_BUCKET when the manifest does not define one', function 
     expect(file_get_contents(Paths::build('.env.testing')))->not->toContain('AWS_BUCKET=');
 });
 
+it('injects FILESYSTEM_DISK=s3 when a bucket is set', function (): void {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
+    ]);
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    expect(file_get_contents(Paths::build('.env.testing')))->toContain('FILESYSTEM_DISK=s3');
+});
+
+it('does not inject FILESYSTEM_DISK when no bucket is set', function (): void {
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    expect(file_get_contents(Paths::build('.env.testing')))->not->toContain('FILESYSTEM_DISK=');
+});
+
+it('respects a FILESYSTEM_DISK already set in the .env', function (): void {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
+    ]);
+    file_put_contents(Paths::build('.env.testing'), "FILESYSTEM_DISK=local\n");
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('FILESYSTEM_DISK=local')
+        ->not->toContain('FILESYSTEM_DISK=s3');
+});
+
+it('defaults APP_ENV to the environment name', function (): void {
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    expect(file_get_contents(Paths::build('.env.testing')))->toContain('APP_ENV=testing');
+});
+
+it('respects an APP_ENV already set in the .env', function (): void {
+    file_put_contents(Paths::build('.env.testing'), "APP_ENV=staging\n");
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('APP_ENV=staging')
+        ->not->toContain('APP_ENV=testing');
+});
+
 it('wires the SQS connection for every web app (the worker always runs somewhere)', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
@@ -295,7 +342,7 @@ it('defaults a web app to the shared redis cache and redis sessions when neither
     expect($env)->not->toContain('SESSION_CONNECTION');
 });
 
-it('does not inject OCTANE_SERVER — the app owns it (seeded by yolo init)', function (): void {
+it('enforces the platform-invariant env values (LOG_CHANNEL, OCTANE_HTTPS, OCTANE_SERVER)', function (): void {
     rebuildEnvFixture([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => true],
@@ -303,7 +350,58 @@ it('does not inject OCTANE_SERVER — the app owns it (seeded by yolo init)', fu
 
     (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
 
-    expect(file_get_contents(Paths::build('.env.testing')))->not->toContain('OCTANE_SERVER');
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('LOG_CHANNEL=stderr')
+        ->toContain('OCTANE_HTTPS=true')
+        ->toContain('OCTANE_SERVER=frankenphp');
+});
+
+it('hard-fails when LOG_CHANNEL is set to a conflicting value', function (): void {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => true],
+    ]);
+    file_put_contents(Paths::build('.env.testing'), "LOG_CHANNEL=daily\n");
+
+    expect(fn (): mixed => (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']))
+        ->toThrow(IntegrityCheckException::class);
+});
+
+it('hard-fails when OCTANE_HTTPS is set to a conflicting value', function (): void {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => true],
+    ]);
+    file_put_contents(Paths::build('.env.testing'), "OCTANE_HTTPS=false\n");
+
+    expect(fn (): mixed => (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']))
+        ->toThrow(IntegrityCheckException::class);
+});
+
+it('hard-fails when OCTANE_SERVER is set to a conflicting value', function (): void {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => true],
+    ]);
+    file_put_contents(Paths::build('.env.testing'), "OCTANE_SERVER=swoole\n");
+
+    expect(fn (): mixed => (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']))
+        ->toThrow(IntegrityCheckException::class);
+});
+
+it('does not hard-fail when the app already sets the required platform value', function (): void {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => true],
+    ]);
+    file_put_contents(Paths::build('.env.testing'), "LOG_CHANNEL=stderr\nOCTANE_SERVER=frankenphp\n");
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    expect(file_get_contents(Paths::build('.env.testing')))
+        ->toContain('LOG_CHANNEL=stderr')
+        ->toContain('OCTANE_SERVER=frankenphp');
 });
 
 it('pins SESSION_DRIVER from the manifest', function (): void {

@@ -20,18 +20,18 @@ use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
  *
  *     tasks:
  *       web:
- *         shutdown-grace-period: 10     # web (octane) process; also the ALB drain window
+ *         shutdown-grace-period: 15     # web (octane) process; also the ALB drain window
  *       queue:
- *         shutdown-grace-period: 90     # standalone queue worker — let a long job finish
+ *         shutdown-grace-period: 60     # standalone queue worker — let a long job finish
  */
 final class ShutdownTimings
 {
     // Queue jobs routinely outlast an ALB drain, so the worker defaults to a
     // longer window than the web process to finish the in-flight job on shutdown.
-    public const int QUEUE_DEFAULT_GRACE = 70;
+    public const int QUEUE_DEFAULT_GRACE = 60;
 
     // The web process's graceful-stop window when not set in the manifest.
-    private const int WEB_DEFAULT_GRACE = 10;
+    private const int WEB_DEFAULT_GRACE = 15;
 
     // The bundled SSR renderer's graceful-stop window. A render is sub-second and
     // stateless (Inertia falls back to client-side rendering if it's gone), so it

@@ -13,10 +13,10 @@ const HTTPS_DEFAULT_CERT = 'arn:aws:acm:ap-southeast-2:111111111111:certificate/
 beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'apex' => HTTPS_APEX,
         'domain' => HTTPS_APEX,
     ]);
 
+    bindHostedZones();
     bindIssuedAcmCertificate(HTTPS_APEX, HTTPS_APP_CERT);
 });
 
@@ -60,7 +60,7 @@ it('records drift on the plan pass and attaches the cert on apply', function ():
     expect(array_column($captured, 'name'))->toContain('AddListenerCertificates');
 });
 
-it('skips when no apex or domain is configured', function (): void {
+it('skips when no domain is configured', function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 
     $captured = [];

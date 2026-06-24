@@ -43,7 +43,7 @@ class SyncTaskSecurityGroupStep implements Step
             return;
         }
 
-        $port = (int) Manifest::get('tasks.web.port', 8000);
+        $port = 8000;
 
         // Record the missing rule before the dry-run guard (mirroring AuthorisesTaskIngress)
         // so the plan pass flags this step pending. Without it a SG that exists but lacks

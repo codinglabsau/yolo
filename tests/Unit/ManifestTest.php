@@ -67,34 +67,39 @@ describe('multitenancy', function (): void {
     it('is multitenanted with tenants config', function (): void {
         writeManifest([
             'tenants' => [
-                'au' => ['domain' => 'au.example.com', 'apex' => 'au.example.com'],
+                'au' => ['domain' => 'au.example.com'],
             ],
         ]);
 
         expect(Manifest::isMultitenanted())->toBeTrue();
     });
 
-    it('normalises tenant apex from domain', function (): void {
+    it('derives each tenant apex from its domain', function (): void {
         writeManifest([
             'tenants' => [
                 'au' => ['domain' => 'au.example.com'],
             ],
         ]);
 
+        bindHostedZones();
+
         $tenants = Manifest::tenants();
 
         expect($tenants['au']['apex'])->toBe('au.example.com');
     });
 
-    it('rejects www apex', function (): void {
+    it('derives a tenant apex from the longest matching hosted zone', function (): void {
         writeManifest([
             'tenants' => [
-                'au' => ['domain' => 'au.example.com', 'apex' => 'www.example.com'],
+                'au' => ['domain' => 'shop.au.example.com'],
             ],
         ]);
 
-        expect(fn (): array => Manifest::tenants())
-            ->toThrow(IntegrityCheckException::class);
+        bindHostedZones(['au.example.com']);
+
+        $tenants = Manifest::tenants();
+
+        expect($tenants['au']['apex'])->toBe('au.example.com');
     });
 });
 
@@ -308,26 +313,25 @@ describe('services', function (): void {
 });
 
 describe('apex', function (): void {
-    it('returns the apex domain', function (): void {
+    it('returns the domain itself when no ancestor hosted zone exists', function (): void {
         writeManifest(['domain' => 'example.com']);
+        bindHostedZones();
 
         expect(Manifest::apex())->toBe('example.com');
     });
 
-    it('prefers explicit apex over domain', function (): void {
-        writeManifest([
-            'domain' => 'www.example.com',
-            'apex' => 'example.com',
-        ]);
+    it('strips a leading www. when no hosted zone matches', function (): void {
+        writeManifest(['domain' => 'www.example.com']);
+        bindHostedZones();
 
         expect(Manifest::apex())->toBe('example.com');
     });
 
-    it('rejects www apex', function (): void {
-        writeManifest(['apex' => 'www.example.com']);
+    it('returns the longest matching hosted-zone suffix', function (): void {
+        writeManifest(['domain' => 'app.example.com']);
+        bindHostedZones(['example.com']);
 
-        expect(fn (): string => Manifest::apex())
-            ->toThrow(IntegrityCheckException::class);
+        expect(Manifest::apex())->toBe('example.com');
     });
 
     it('throws for multitenanted environments', function (): void {

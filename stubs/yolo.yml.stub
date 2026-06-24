@@ -2,9 +2,10 @@ name: {NAME}
 
 environments:
   production:
-    # Public domain. Omit both for a headless app (no ALB / DNS).
-    # apex: example.com
-    # domain: app.example.com   # defaults to apex; set for a subdomain
+    # Public domain. Omit for a headless app (no ALB / DNS). The apex (registrable
+    # root) is derived automatically from the longest domain suffix that has a
+    # Route 53 hosted zone, so a subdomain like app.example.com just works.
+    # domain: app.example.com
 
     # Source ref this environment deploys from — drives the local deploy guard
     # and, when this repo is on GitHub, the CI deployer role's OIDC trust. The
@@ -18,7 +19,6 @@ environments:
     account-id: {AWS_ACCOUNT_ID}
     region: {AWS_REGION}
     # bucket: my-app-bucket   # optional app S3 bucket, injected as AWS_BUCKET
-    # alb: my-shared-alb      # optional ALB name to adopt/create; defaults to a per-env shared yolo-{env} ALB
 
     # Web apps default to a shared Valkey cache + Valkey-backed sessions (provisioned and
     # wired automatically). Uncomment only to override or opt out:
@@ -36,8 +36,9 @@ environments:
       web:
         cpu: '512'
         memory: '1024'
-        port: 8000
-        enable-execute-command: true   # ECS Exec shell access (gate with MFA on your IAM)
+        # enable-execute-command defaults to true (ECS Exec shell access, gated by
+        # MFA on the admin IAM tier). Set to false to disable it for this group.
+        # enable-execute-command: false
 
         # Request-based autoscaling — REQUIRED for web and queue (there is no implicit default,
         # and the bare `web: true` shorthand isn't accepted for these two). `true` scales out on
@@ -46,9 +47,9 @@ environments:
         autoscaling: true
 
         # shutdown-grace-period: seconds the web process gets to finish work on SIGTERM before it's
-        # killed (default 10). It's also the ALB drain window (no deploy 502s) and the container stop
+        # killed (default 15). It's also the ALB drain window (no deploy 502s) and the container stop
         # timeout derives from it — bump for long in-flight requests (uploads, exports, SSE).
-        # shutdown-grace-period: 10
+        # shutdown-grace-period: 15
 
       # Extract a workload into its own ECS service so it scales independently of
       # web — just uncomment its block (presence is the opt-in). The scheduler is a
@@ -61,7 +62,7 @@ environments:
       #     max: 10
       #     backlog-per-task: 100  # target messages per running task
       #   spot: true             # ~70% cheaper interruptible capacity
-      #   shutdown-grace-period: 70   # let an in-flight job finish on SIGTERM
+      #   shutdown-grace-period: 60   # let an in-flight job finish on SIGTERM
       # scheduler:
       #   cpu: '256'
       #   memory: '512'

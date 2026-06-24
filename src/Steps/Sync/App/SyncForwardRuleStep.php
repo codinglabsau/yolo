@@ -18,7 +18,7 @@ class SyncForwardRuleStep implements ExecutesWebStep
 
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::has('apex') && ! Manifest::has('domain')) {
+        if (! Manifest::has('domain')) {
             return StepResult::SKIPPED;
         }
 
