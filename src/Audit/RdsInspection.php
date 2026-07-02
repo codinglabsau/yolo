@@ -15,10 +15,15 @@ use Aws\Rds\Exception\RdsException;
  * so it never shows up in the tag-based audit inventory; the audit health check
  * looks it up directly by the manifest identifier instead.
  *
- * Two things matter to the health check:
+ * Three things matter to the health check:
  *  - **deletion protection** — an unprotected production database is an error
  *    (the audit exits non-zero on it), so a single fat-fingered console delete
  *    can't take the app's data with it.
+ *  - **network posture** — which VPC and subnet group the database actually sits
+ *    in, which security groups it carries and whether it's publicly accessible;
+ *    classified by {@see RdsNetworkPosture}. Audit-only, never sync drift: an
+ *    externally-hosted database must not block deploys (the deploy gate runs
+ *    `sync --check`).
  *  - **topology basics** — engine, version, size and (for Aurora) the writer +
  *    reader members, surfaced as informational context, never a failure.
  *
@@ -32,6 +37,7 @@ final readonly class RdsInspection
 {
     /**
      * @param  array<int, array{identifier: string, role: string, class: string|null, promotionTier: int|null}>  $members
+     * @param  array<int, string>  $securityGroupIds
      */
     private function __construct(
         public bool $readable,
@@ -46,6 +52,10 @@ final readonly class RdsInspection
         public ?int $allocatedStorage,
         public ?bool $multiAz,
         public array $members,
+        public ?string $subnetGroupName = null,
+        public ?string $vpcId = null,
+        public array $securityGroupIds = [],
+        public ?bool $publiclyAccessible = null,
     ) {}
 
     /**
@@ -133,6 +143,10 @@ final readonly class RdsInspection
             allocatedStorage: isset($instance['AllocatedStorage']) ? (int) $instance['AllocatedStorage'] : null,
             multiAz: isset($instance['MultiAZ']) ? (bool) $instance['MultiAZ'] : null,
             members: [],
+            subnetGroupName: $instance['DBSubnetGroup']['DBSubnetGroupName'] ?? null,
+            vpcId: $instance['DBSubnetGroup']['VpcId'] ?? null,
+            securityGroupIds: self::securityGroupIds($instance),
+            publiclyAccessible: isset($instance['PubliclyAccessible']) ? (bool) $instance['PubliclyAccessible'] : null,
         );
     }
 
@@ -148,13 +162,28 @@ final readonly class RdsInspection
             return self::unreadable($identifier, true, 'no matching DB cluster');
         }
 
-        // Per-member instance class is a best-effort nicety — an access gap on the
-        // instance describe just omits the sizes, never fails the cluster read.
+        // Per-member instance detail is a best-effort nicety — an access gap on
+        // the instance describe just omits the sizes and the member-derived
+        // posture facts, never fails the cluster read.
         try {
-            $classes = Rds::clusterInstanceClasses($identifier);
+            $instances = Rds::clusterInstances($identifier);
         } catch (RdsException) {
-            $classes = [];
+            $instances = [];
         }
+
+        $classes = [];
+
+        foreach ($instances as $instance) {
+            $classes[$instance['DBInstanceIdentifier']] = $instance['DBInstanceClass'] ?? '—';
+        }
+
+        // The cluster describe carries the subnet group NAME and security groups
+        // but not the VPC or public accessibility — those are per-member facts,
+        // so derive them from the instances: any publicly accessible member
+        // exposes the cluster.
+        $publiclyAccessible = collect($instances)
+            ->filter(fn (array $instance): bool => array_key_exists('PubliclyAccessible', $instance))
+            ->map(fn (array $instance): bool => (bool) $instance['PubliclyAccessible']);
 
         return new self(
             readable: true,
@@ -169,7 +198,26 @@ final readonly class RdsInspection
             allocatedStorage: null,
             multiAz: null,
             members: self::members($cluster['DBClusterMembers'] ?? [], $classes),
+            subnetGroupName: $cluster['DBSubnetGroup'] ?? null,
+            vpcId: $instances[0]['DBSubnetGroup']['VpcId'] ?? null,
+            securityGroupIds: self::securityGroupIds($cluster),
+            publiclyAccessible: $publiclyAccessible->isEmpty() ? null : $publiclyAccessible->contains(true),
         );
+    }
+
+    /**
+     * The active VPC security group ids attached to an instance or cluster record.
+     *
+     * @param  array<string, mixed>  $record
+     * @return array<int, string>
+     */
+    protected static function securityGroupIds(array $record): array
+    {
+        return collect($record['VpcSecurityGroups'] ?? [])
+            ->pluck('VpcSecurityGroupId')
+            ->filter()
+            ->values()
+            ->all();
     }
 
     /**

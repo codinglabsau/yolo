@@ -50,7 +50,7 @@ class Manifest
         'domain', 'branch', 'tag', 'repository',
         'tenants.*',
         'bucket',
-        'public-subnets',
+        'public-subnets', 'private-subnets',
         'internet-gateway', 'route-table', 'vpc',
         'services',
         'rds.subnet', 'rds.security-group',

@@ -245,7 +245,11 @@ class DestroyEnvironmentCommand extends SyncSteppedCommand implements PlansSeque
             Steps\Destroy\Environment\TeardownPublicSubnetAStep::class,
             Steps\Destroy\Environment\TeardownPublicSubnetBStep::class,
             Steps\Destroy\Environment\TeardownPublicSubnetCStep::class,
+            Steps\Destroy\Environment\TeardownPrivateSubnetAStep::class,
+            Steps\Destroy\Environment\TeardownPrivateSubnetBStep::class,
+            Steps\Destroy\Environment\TeardownPrivateSubnetCStep::class,
             Steps\Destroy\Environment\TeardownRouteTableStep::class,
+            Steps\Destroy\Environment\TeardownPrivateRouteTableStep::class,
             Steps\Destroy\Environment\TeardownInternetGatewayStep::class,
             Steps\Destroy\Environment\TeardownVpcStep::class,
         ];
