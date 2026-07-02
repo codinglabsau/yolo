@@ -15,6 +15,16 @@ deployments.
 
 ## Rules
 
+- **This is a PUBLIC repository. Every artefact ships to the open internet** — code, comments, tests,
+  docs, commit messages, PR titles/bodies, review comments, and issue text. Never include: client or
+  app names, production incident details or the security posture of any live environment, live
+  infrastructure identifiers (account ids, ARNs, real domains/endpoints), internal ticket keys, or
+  people's names/emails. Motivate changes from the **problem class**, never from an internal incident —
+  "audit didn't inspect X, so Y could report green" is fine; "we found our production database exposed"
+  is not, even anonymised. Test fixtures and doc examples use neutral placeholders only (`my-app`,
+  `example.com`). If context from a private discussion is needed to justify a change, it belongs in the
+  private tracker, not here. GitHub keeps **edit history** on PR/issue bodies publicly visible, so a
+  leak isn't fixed by editing — get it right the first time.
 - Always format code with pint after making changes
 - Always run tests before pushing changes
 - **Any new/changed sync step or reconciler must survive the plan pass with nothing created yet** — work
