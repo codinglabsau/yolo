@@ -165,7 +165,7 @@ it('reads the network posture facts off the instance describe', function (): voi
         'DescribeDBInstances' => new Result(['DBInstances' => [[
             'DBInstanceIdentifier' => 'app-db',
             'DeletionProtection' => true,
-            'DBSubnetGroup' => ['DBSubnetGroupName' => 'vapor-group', 'VpcId' => 'vpc-vapor'],
+            'DBSubnetGroup' => ['DBSubnetGroupName' => 'external-group', 'VpcId' => 'vpc-external'],
             'VpcSecurityGroups' => [
                 ['VpcSecurityGroupId' => 'sg-1', 'Status' => 'active'],
                 ['VpcSecurityGroupId' => 'sg-2', 'Status' => 'active'],
@@ -176,8 +176,8 @@ it('reads the network posture facts off the instance describe', function (): voi
 
     $rds = RdsInspection::inspect();
 
-    expect($rds->subnetGroupName)->toBe('vapor-group')
-        ->and($rds->vpcId)->toBe('vpc-vapor')
+    expect($rds->subnetGroupName)->toBe('external-group')
+        ->and($rds->vpcId)->toBe('vpc-external')
         ->and($rds->securityGroupIds)->toBe(['sg-1', 'sg-2'])
         ->and($rds->publiclyAccessible)->toBeTrue();
 });

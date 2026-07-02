@@ -62,8 +62,8 @@ it('classifies the end-state as managed: env VPC, private subnet group, YOLO SG'
 
 it('classifies a database in a different VPC as external — valid, informational', function (): void {
     bindInstanceWorld([
-        'DBSubnetGroup' => ['DBSubnetGroupName' => 'vapor-subnet-group', 'VpcId' => 'vpc-vapor'],
-        'VpcSecurityGroups' => [['VpcSecurityGroupId' => 'sg-vapor']],
+        'DBSubnetGroup' => ['DBSubnetGroupName' => 'external-subnet-group', 'VpcId' => 'vpc-external'],
+        'VpcSecurityGroups' => [['VpcSecurityGroupId' => 'sg-external']],
         'PubliclyAccessible' => false,
     ]);
     bindManagedNetworkWorld([
