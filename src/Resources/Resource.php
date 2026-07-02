@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Codinglabs\Yolo\Resources;
 
+use Aws\Exception\AwsException;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -38,6 +39,8 @@ interface Resource
 
     /**
      * @throws ResourceDoesNotExistException
+     * @throws AwsException the live lookup itself can fail — e.g. the describe
+     *                      is denied under a read tier
      */
     public function arn(): string;
 

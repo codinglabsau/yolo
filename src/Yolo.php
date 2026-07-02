@@ -51,6 +51,9 @@ class Yolo
         // Exec
         Commands\RunCommand::class,
 
+        // Database tunnel (port-forward the private database to localhost)
+        Commands\DbTunnelCommand::class,
+
         // Scale
         Commands\ScaleCommand::class,
 

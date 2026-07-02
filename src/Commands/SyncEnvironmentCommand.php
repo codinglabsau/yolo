@@ -92,10 +92,19 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 Steps\Sync\Environment\SyncPublicSubnetAStep::class,
                 Steps\Sync\Environment\SyncPublicSubnetBStep::class,
                 Steps\Sync\Environment\SyncPublicSubnetCStep::class,
+                // The private tier: three per-AZ subnets with no public IPs and a
+                // route table carrying only the VPC-local route — where the RDS DB
+                // subnet group lives, so a database in it is unreachable from
+                // outside the VPC.
+                Steps\Sync\Environment\SyncPrivateSubnetAStep::class,
+                Steps\Sync\Environment\SyncPrivateSubnetBStep::class,
+                Steps\Sync\Environment\SyncPrivateSubnetCStep::class,
                 Steps\Sync\Environment\SyncRdsSubnetStep::class,
                 Steps\Sync\Environment\SyncRouteTableStep::class,
                 Steps\Sync\Environment\SyncDefaultRouteStep::class,
                 Steps\Sync\Environment\SyncPublicSubnetsAssociationToRouteTableStep::class,
+                Steps\Sync\Environment\SyncPrivateRouteTableStep::class,
+                Steps\Sync\Environment\SyncPrivateSubnetsAssociationToRouteTableStep::class,
                 Steps\Sync\Environment\SyncLoadBalancerSecurityGroupStep::class,
                 Steps\Sync\Environment\SyncSnsAlarmTopicStep::class,
                 // shared IAM — the ECS execution role (ECR pull + log write) is

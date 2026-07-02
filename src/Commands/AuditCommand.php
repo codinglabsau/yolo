@@ -7,6 +7,7 @@ namespace Codinglabs\Yolo\Commands;
 use Laravel\Prompts\Prompt;
 use Codinglabs\Yolo\DeployCheck;
 use Codinglabs\Yolo\Audit\RdsInspection;
+use Codinglabs\Yolo\Audit\RdsNetworkPosture;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\ConsoleOutput;
 use Symfony\Component\Console\Output\BufferedOutput;
@@ -72,7 +73,10 @@ class AuditCommand extends AbstractAuditCommand
      * Probe the manifest-declared database (instance or Aurora cluster). Deletion
      * protection OFF is an error — a single fat-fingered console delete could take
      * the app's data with it. An unreadable target is only a warning: we can't
-     * assert protection is off, just that we couldn't confirm it's on. Topology
+     * assert protection is off, just that we couldn't confirm it's on. The network
+     * posture warns on a publicly accessible endpoint and on a missing
+     * task-SG ingress; the managed/external classification itself is
+     * informational (an externally-hosted database is a valid posture). Topology
      * basics are informational. Returns the structured snapshot for `--json`, or
      * null when no `database:` is declared (nothing to check).
      *
@@ -100,8 +104,27 @@ class AuditCommand extends AbstractAuditCommand
             ));
         }
 
+        $posture = RdsNetworkPosture::evaluate($rds);
+
+        if ($posture instanceof RdsNetworkPosture) {
+            if ($posture->publiclyAccessible === true) {
+                $this->recordWarning(sprintf(
+                    'RDS %s "%s" is PUBLICLY ACCESSIBLE — it has an internet-facing endpoint. Move it behind the private subnet tier (or disable public access) and reach it with `yolo db:tunnel`.',
+                    $rds->kind(),
+                    $rds->identifier,
+                ));
+            }
+
+            if ($posture->taskIngress === false) {
+                $this->recordWarning(sprintf(
+                    'No attached security group on "%s" allows 3306 from the app\'s task security group — Fargate tasks may not be able to reach the database.',
+                    $rds->identifier,
+                ));
+            }
+        }
+
         if ($render) {
-            $this->renderRds($rds);
+            $this->renderRds($rds, $posture);
         }
 
         return [
@@ -117,10 +140,18 @@ class AuditCommand extends AbstractAuditCommand
             'allocatedStorage' => $rds->allocatedStorage,
             'multiAz' => $rds->multiAz,
             'members' => $rds->members,
+            'network' => $posture instanceof RdsNetworkPosture ? [
+                'classification' => $posture->classification,
+                'vpcId' => $posture->vpcId,
+                'subnetGroup' => $rds->subnetGroupName,
+                'securityGroups' => $rds->securityGroupIds,
+                'publiclyAccessible' => $posture->publiclyAccessible,
+                'taskIngress' => $posture->taskIngress,
+            ] : null,
         ];
     }
 
-    protected function renderRds(RdsInspection $rds): void
+    protected function renderRds(RdsInspection $rds, ?RdsNetworkPosture $posture): void
     {
         note(sprintf('Database: %s "%s"', ucfirst($rds->kind()), $rds->identifier));
 
@@ -141,6 +172,7 @@ class AuditCommand extends AbstractAuditCommand
         table(['Property', 'Value'], [
             ['Deletion protection', $protection],
             ...$basics,
+            ...($posture instanceof RdsNetworkPosture ? $this->postureRows($rds, $posture) : []),
         ]);
 
         if ($rds->members !== []) {
@@ -154,6 +186,35 @@ class AuditCommand extends AbstractAuditCommand
                 ], $rds->members),
             );
         }
+    }
+
+    /**
+     * The network-posture rows appended to the basics table: the classification
+     * verdict, then the raw facts behind it so an unexpected verdict can be read
+     * straight off the table.
+     *
+     * @return array<int, array{0: string, 1: string}>
+     */
+    protected function postureRows(RdsInspection $rds, RdsNetworkPosture $posture): array
+    {
+        $classification = match ($posture->classification) {
+            RdsNetworkPosture::EXPOSED => '<fg=red;options=bold>EXPOSED</> (publicly accessible)',
+            RdsNetworkPosture::MANAGED => '<fg=green>managed</> (private subnet tier)',
+            RdsNetworkPosture::EXTERNAL => 'externally managed',
+            default => 'unknown',
+        };
+
+        return array_filter([
+            ['Network', $classification],
+            $posture->vpcId === null ? null : ['VPC', $posture->vpcId],
+            $rds->subnetGroupName === null ? null : ['Subnet group', $rds->subnetGroupName],
+            $rds->securityGroupIds === [] ? null : ['Security groups', implode(', ', $rds->securityGroupIds)],
+            ['Task ingress 3306', match ($posture->taskIngress) {
+                true => '<fg=green>yes</>',
+                false => '<fg=yellow>none found</>',
+                null => 'unknown',
+            }],
+        ]);
     }
 
     /**

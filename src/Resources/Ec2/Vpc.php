@@ -175,8 +175,10 @@ class Vpc implements Deletable, Resource, SynchronisesConfiguration
      * Whether two IPv4 CIDR blocks share any address, compared as integer ranges.
      * ip2long is masked to 32 bits so a high existing block can't sign-flip the
      * arithmetic; the candidate 10.x blocks are always well inside positive range.
+     * Public because PrivateSubnet's free-/24 discovery diffs candidates against
+     * live subnet CIDRs with the same arithmetic.
      */
-    protected static function cidrsOverlap(string $a, string $b): bool
+    public static function cidrsOverlap(string $a, string $b): bool
     {
         [$startA, $endA] = static::cidrRange($a);
         [$startB, $endB] = static::cidrRange($b);
@@ -189,7 +191,7 @@ class Vpc implements Deletable, Resource, SynchronisesConfiguration
      *
      * @return array{0: int, 1: int}
      */
-    protected static function cidrRange(string $cidr): array
+    public static function cidrRange(string $cidr): array
     {
         [$network, $prefix] = explode('/', $cidr);
         $hostBits = 32 - (int) $prefix;
