@@ -31,6 +31,16 @@ class TypesenseService implements Resource
 {
     use ResolvesTags;
 
+    /**
+     * How long ECS ignores target-group health after a task starts. The check
+     * itself is liveness (answers as soon as the API is up), but a replacement
+     * node's port stays closed through its whole entrypoint boot gate — DNS
+     * for itself and a peer to join — so the window covers a worst-case gate
+     * plus image pull with room to spare. Generous is free here: the moment
+     * the API answers 401s the check passes and the grace stops mattering.
+     */
+    public const int HEALTH_CHECK_GRACE_SECONDS = 600;
+
     public function __construct(protected int $node) {}
 
     public function node(): int
@@ -101,10 +111,10 @@ class TypesenseService implements Resource
             'serviceRegistries' => [
                 ['registryArn' => (new TypesenseDiscoveryService($this->node))->arn()],
             ],
-            // All three nodes register into the one search target group —
-            // /health doubles as readiness, so a catching-up replacement stays
-            // out of rotation while the quorum serves. The grace period covers
-            // a fresh node's snapshot pull before health checks count.
+            // All the nodes register into the one search target group; its
+            // health check is process liveness (see SearchTargetGroup), so a
+            // replacement counts as healthy once its API answers, quorum or
+            // not — readiness is the node sync step's roll gate.
             'loadBalancers' => [
                 [
                     'targetGroupArn' => (new SearchTargetGroup())->arn(),
@@ -112,7 +122,7 @@ class TypesenseService implements Resource
                     'containerPort' => Typesense::API_PORT,
                 ],
             ],
-            'healthCheckGracePeriodSeconds' => 120,
+            'healthCheckGracePeriodSeconds' => self::HEALTH_CHECK_GRACE_SECONDS,
             'tags' => Aws::ecsTags($this->tags()),
             'propagateTags' => 'SERVICE',
         ]);
@@ -121,7 +131,9 @@ class TypesenseService implements Resource
     /**
      * Adopt the family's latest task-definition revision — how a version bump
      * or key rotation rolls a node. The caller sequences nodes and waits for
-     * stability between them.
+     * stability between them. The grace period rides along so a service
+     * created under an older, tighter window picks the current one up on its
+     * next roll.
      */
     public function adoptLatestRevision(): void
     {
@@ -129,6 +141,7 @@ class TypesenseService implements Resource
             'cluster' => (new ServicesCluster())->name(),
             'service' => $this->name(),
             'taskDefinition' => $this->taskDefinitionFamily(),
+            'healthCheckGracePeriodSeconds' => self::HEALTH_CHECK_GRACE_SECONDS,
         ]);
     }
 

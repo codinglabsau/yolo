@@ -28,16 +28,18 @@ class SyncCommand extends SyncSteppedCommand
 
     /**
      * The orchestrating `sync` composes the tier commands' scopes but not their
-     * handle(), so compose their plan warnings the same way.
+     * handle(), so compose their plan warnings the same way — deduplicated,
+     * since an advisory both tiers raise (the version-skew warning) should
+     * read once, not once per tier.
      */
     #[\Override]
     public function warnings(): array
     {
-        return [
+        return array_values(array_unique([
             ...(new SyncAccountCommand())->warnings(),
             ...(new SyncEnvironmentCommand())->warnings(),
             ...(new SyncAppCommand())->warnings(),
-        ];
+        ]));
     }
 
     /**

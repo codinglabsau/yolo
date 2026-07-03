@@ -27,6 +27,7 @@ use Codinglabs\Yolo\Commands\Command;
 use Codinglabs\Yolo\Enums\StepResult;
 use Aws\ElastiCache\ElastiCacheClient;
 use Aws\EventBridge\EventBridgeClient;
+use Codinglabs\Yolo\EnvironmentVersion;
 use Codinglabs\Yolo\Services\Lifecycle;
 use Codinglabs\Yolo\Services\Typesense;
 use Codinglabs\Yolo\Resources\WafV2\WebAcl;
@@ -104,13 +105,14 @@ function writeManifest(array $config, string $environment = 'testing'): void
 
     Helpers::app()->instance('environment', $environment);
 
-    // The env manifest, the service-claims registry and the Typesense admin
-    // key memoise their AWS reads per process; every test that rewrites the
-    // app manifest gets a fresh slate so a previously mocked (or unmocked)
-    // read can't leak across cases.
+    // The env manifest, the service-claims registry, the Typesense admin
+    // key and the environment version marker memoise their AWS reads per
+    // process; every test that rewrites the app manifest gets a fresh slate
+    // so a previously mocked (or unmocked) read can't leak across cases.
     EnvManifest::reset();
     Lifecycle::reset();
     Typesense::reset();
+    EnvironmentVersion::reset();
 }
 
 /**
