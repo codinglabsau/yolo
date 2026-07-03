@@ -23,12 +23,14 @@ use Codinglabs\Yolo\Resources\Ecr\TypesenseRepository;
 
 /**
  * Conditionally builds and pushes the environment's Typesense image: the
- * pinned upstream base plus a config file carrying the admin key and the
- * static Raft peer list. The content tag is version + key fingerprint, so the
- * build is skipped entirely while neither has changed — and the plan pass
- * reports WOULD_BUILD Docker-free (an ECR tag lookup, never a daemon call).
- * Secret control = env-bucket S3 read + ECR pull; the task definition carries
- * no secret and DescribeTaskDefinition reveals nothing.
+ * pinned upstream base plus a config file carrying the admin key, the static
+ * Raft peer list (hostnames — the fail-closed entrypoint resolves them to IPs
+ * at runtime, so Typesense itself never touches DNS), and that entrypoint. The
+ * content tag fingerprints all of it, so the build is skipped entirely while
+ * nothing has changed — and the plan pass reports WOULD_BUILD Docker-free (an
+ * ECR tag lookup, never a daemon call). Secret control = env-bucket S3 read +
+ * ECR pull; the task definition carries no secret and DescribeTaskDefinition
+ * reveals nothing.
  *
  * Teardown is a skip: the repository's force-delete (the previous step) takes
  * the images with it.
@@ -104,9 +106,10 @@ class BuildTypesenseImageStep implements LongRunning, SkippedByDeployCheck, Step
 
     /**
      * The whole build context: a FROM+COPY Dockerfile, the server config with
-     * the baked admin key, and the static peer list (host:peering:api per
-     * node — identical on every node; each identifies itself by matching a
-     * local interface address).
+     * the baked admin key, the static peer list (host:peering:api per node —
+     * identical on every node; each identifies itself by matching a local
+     * interface address), and the fail-closed entrypoint that resolves those
+     * hostnames to IPs into the nodes file Typesense actually reads.
      */
     protected function writeBuildContext(string $directory): void
     {
@@ -119,14 +122,19 @@ class BuildTypesenseImageStep implements LongRunning, SkippedByDeployCheck, Step
         file_put_contents($directory . '/Dockerfile', implode("\n", [
             sprintf('FROM typesense/typesense:%s', Typesense::version()),
             'COPY typesense-server.ini /etc/typesense/typesense-server.ini',
-            'COPY nodes /etc/typesense/nodes',
+            'COPY peers /etc/typesense/peers',
+            'COPY typesense-entrypoint /usr/local/bin/typesense-entrypoint',
+            'RUN chmod +x /usr/local/bin/typesense-entrypoint',
+            'ENTRYPOINT ["/usr/local/bin/typesense-entrypoint"]',
             'CMD ["--config=/etc/typesense/typesense-server.ini"]',
             '',
         ]));
 
         file_put_contents($directory . '/typesense-server.ini', Typesense::serverConfig());
 
-        file_put_contents($directory . '/nodes', implode(',', Typesense::peers()) . "\n");
+        file_put_contents($directory . '/peers', implode(',', Typesense::peers()) . "\n");
+
+        file_put_contents($directory . '/typesense-entrypoint', Typesense::entrypointScript());
     }
 
     protected function loginToEcr(): void

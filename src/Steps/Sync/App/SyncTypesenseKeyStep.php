@@ -38,8 +38,15 @@ use Codinglabs\Yolo\Contracts\SkippedByDeployCheck;
  * fenced from) and apart from the env-shared `.env` (which carries the cluster
  * admin key), so each app's build reads only its own minted keys — never the
  * admin key, never a sibling's. Minted exactly once, the pair together — the
- * keys already in the env-side file are the source of truth, so sync never
- * re-mints or rotates (rotation = delete the lines, run sync:app again).
+ * keys already in the env-side file are the VALUE truth, so sync never rotates
+ * them (rotation = delete the lines, run sync:app again). But the cluster is
+ * the HONOUR truth: minted keys are cluster data (raft-replicated, ephemeral
+ * disks), so a full node replacement boots a cluster that no longer recognises
+ * them while apps keep serving the baked values — every search 401s behind a
+ * green /health. So "already minted" is verified with a scoped probe, and a
+ * dead pair is re-created with the SAME stored values (POST /keys accepts an
+ * explicit `value`): the keys baked into every existing build work again the
+ * moment sync applies — no rebuild, no release.
  *
  * The mint talks to the cluster's data plane over the public search host with
  * the admin key — the one place YOLO does — so while the cluster or its
@@ -80,8 +87,10 @@ class SyncTypesenseKeyStep implements LongRunning, SkippedByDeployCheck
             return StepResult::SKIPPED;
         }
 
-        if (Typesense::appKey() !== null) {
-            return StepResult::SYNCED;
+        $serverKey = Typesense::appKey();
+
+        if ($serverKey !== null) {
+            return $this->reconcileStoredKeys($serverKey, $options);
         }
 
         $this->recordChange(Change::make(Typesense::CLIENT_KEY_NAME, 'absent', 'minted (scoped to ' . $this->prefix() . '*)'));
@@ -131,6 +140,96 @@ class SyncTypesenseKeyStep implements LongRunning, SkippedByDeployCheck
         ]);
 
         return StepResult::CREATED;
+    }
+
+    /**
+     * The already-minted path: verify the cluster still honours the stored pair,
+     * and re-create it with the SAME values when it doesn't. The probe runs on
+     * the plan pass too (a bounded read of live state, like any reconciler), so
+     * drift is recorded before the dry-run guard and the step survives to apply.
+     * An unverifiable probe (connection error, ALB 5xx — the cluster saying
+     * nothing about the key) reads as honoured with a warning: node health has
+     * its own alarms, and a down cluster must not wedge every sync.
+     */
+    protected function reconcileStoredKeys(string $serverKey, array $options): StepResult
+    {
+        // A hand-edited file holding only half the pair (mid-rotation), or no
+        // public host to probe — nothing verifiable, the stored marker stands.
+        $searchKey = Typesense::appSearchKey();
+
+        if ($searchKey === null) {
+            return StepResult::SYNCED;
+        }
+
+        $searchHost = Typesense::searchHost();
+
+        if ($searchHost === null) {
+            return StepResult::SYNCED;
+        }
+
+        $honoured = $this->clusterHonours($searchHost, $searchKey);
+
+        if ($honoured === null) {
+            $this->recordWarning(sprintf('Could not verify the stored Typesense keys against https://%s — treating them as honoured. Run `yolo sync:app` again if search is failing.', $searchHost));
+
+            return StepResult::SYNCED;
+        }
+
+        if ($honoured) {
+            return StepResult::SYNCED;
+        }
+
+        $this->recordChange(Change::make(Typesense::CLIENT_KEY_NAME, 'not honoured by the cluster', 're-created (same value)'));
+        $this->recordChange(Change::make(Typesense::SEARCH_KEY_NAME, 'not honoured by the cluster', 're-created (same value)'));
+
+        if (Arr::get($options, 'dry-run')) {
+            return StepResult::WOULD_SYNC;
+        }
+
+        $adminKey = Typesense::adminKey();
+
+        if ($adminKey === null) {
+            $this->recordWarning('Typesense keys not re-created — the cluster admin key is missing from the env-shared .env. Run `yolo sync:environment` first.');
+
+            return StepResult::SKIPPED;
+        }
+
+        if ($this->mint($searchHost, $adminKey, ['*'], 'server-side', $serverKey) === null
+            || $this->mint($searchHost, $adminKey, ['documents:search'], 'browser search-only', $searchKey) === null) {
+            $this->recordWarning(sprintf('Typesense keys not re-created — https://%s became unreachable mid-mint. Run `yolo sync:app` again shortly.', $searchHost));
+
+            return StepResult::SKIPPED;
+        }
+
+        return StepResult::SYNCED;
+    }
+
+    /**
+     * Whether the cluster still recognises the stored search key: a scoped
+     * probe search against a collection name inside the key's own prefix. 401
+     * is the one answer that means the key is dead; any other status the
+     * cluster itself answers (404 collection-not-found is the usual) proves
+     * auth passed. A connection error or an ALB 5xx says nothing about the
+     * key — null, for the caller to fail open on.
+     */
+    protected function clusterHonours(string $searchHost, string $searchKey): ?bool
+    {
+        try {
+            $response = ($this->http ?? new Client())->get(sprintf('https://%s/collections/%sprobe/documents/search', $searchHost, $this->prefix()), [
+                'headers' => ['X-TYPESENSE-API-KEY' => $searchKey],
+                'query' => ['q' => '*', 'query_by' => 'id'],
+                'timeout' => 5,
+                'http_errors' => false,
+            ]);
+        } catch (GuzzleException) {
+            return null;
+        }
+
+        if ($response->getStatusCode() >= 500) {
+            return null;
+        }
+
+        return $response->getStatusCode() !== 401;
     }
 
     /**
@@ -200,11 +299,13 @@ class SyncTypesenseKeyStep implements LongRunning, SkippedByDeployCheck
     /**
      * POST /keys with the given actions on this app's own collection prefix
      * only. `role` names the key in its Typesense description so the two are
-     * told apart on the cluster.
+     * told apart on the cluster. An explicit `$value` re-creates a key
+     * deterministically — same value, so every build that baked it keeps
+     * working — instead of letting the cluster generate one.
      *
      * @param  array<int, string>  $actions
      */
-    protected function mint(string $searchHost, string $adminKey, array $actions, string $role): ?string
+    protected function mint(string $searchHost, string $adminKey, array $actions, string $role, ?string $value = null): ?string
     {
         try {
             $response = ($this->http ?? new Client())->post(sprintf('https://%s/keys', $searchHost), [
@@ -213,6 +314,7 @@ class SyncTypesenseKeyStep implements LongRunning, SkippedByDeployCheck
                     'description' => sprintf('%s %s key (YOLO managed)', Manifest::name(), $role),
                     'actions' => $actions,
                     'collections' => [$this->prefix() . '.*'],
+                    ...($value !== null ? ['value' => $value] : []),
                 ],
                 'timeout' => 15,
             ]);
