@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Aws\Result;
 use GuzzleHttp\Client;
+use GuzzleHttp\Middleware;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
 use Codinglabs\Yolo\Enums\Service;
@@ -157,6 +158,98 @@ it('plans the mint without any HTTP call, and mints + persists on apply', functi
     expect($put['args']['Key'])->toBe('env/.env.my-app')
         ->and((string) $put['args']['Body'])->toContain('TYPESENSE_API_KEY=server-key')
         ->and((string) $put['args']['Body'])->toContain('TYPESENSE_SEARCH_KEY=search-key');
+});
+
+it('verifies stored keys against the cluster and stays SYNCED when they are honoured', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'services' => ['typesense'],
+    ]);
+
+    $captured = [];
+    bindServiceLifecycleWorld([
+        'manifest' => EDGE_OFFER,
+        'sharedEnv' => "TYPESENSE_API_KEY=admin-key\n",
+        'appEnvSide' => ['my-app' => "TYPESENSE_API_KEY=stored-server\nTYPESENSE_SEARCH_KEY=stored-search\n"],
+    ], $captured);
+
+    // 404 = collection not found — auth passed, so the key pair is honoured.
+    $guzzle = new GuzzleMockHandler([
+        new Response(404, [], (string) json_encode(['message' => 'Not Found'])),
+    ]);
+
+    $step = new SyncTypesenseKeyStep('testing', new Client(['handler' => HandlerStack::create($guzzle)]));
+
+    expect($step([]))->toBe(StepResult::SYNCED);
+    expect($step->changes())->toBeEmpty();
+    expect($guzzle->count())->toBe(0); // exactly the one probe, no re-mint
+    expect(array_column($captured, 'name'))->not->toContain('PutObject');
+});
+
+it('re-creates a dead key pair with the SAME stored values — recovery without a rebuild', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'services' => ['typesense'],
+    ]);
+
+    $captured = [];
+    bindServiceLifecycleWorld([
+        'manifest' => EDGE_OFFER,
+        'sharedEnv' => "TYPESENSE_API_KEY=admin-key\n",
+        'appEnvSide' => ['my-app' => "TYPESENSE_API_KEY=stored-server\nTYPESENSE_SEARCH_KEY=stored-search\n"],
+    ], $captured);
+
+    // A replaced (empty) cluster answers 401: stored keys are cluster data and
+    // died with it, while the app keeps serving the baked values.
+    $history = [];
+    $guzzle = new GuzzleMockHandler([
+        new Response(401, [], (string) json_encode(['message' => 'Forbidden'])), // plan probe
+        new Response(401, [], (string) json_encode(['message' => 'Forbidden'])), // apply probe
+        new Response(201, [], (string) json_encode(['value' => 'stored-server'])),
+        new Response(201, [], (string) json_encode(['value' => 'stored-search'])),
+    ]);
+    $stack = HandlerStack::create($guzzle);
+    $stack->push(Middleware::history($history));
+
+    $planned = new SyncTypesenseKeyStep('testing', new Client(['handler' => $stack]));
+    expect($planned(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC);
+    expect($planned->changes())->toHaveCount(2);
+
+    $step = new SyncTypesenseKeyStep('testing', new Client(['handler' => $stack]));
+    expect($step([]))->toBe(StepResult::SYNCED);
+
+    // Both re-mints carried the stored values explicitly — deterministic, so
+    // every existing build's baked keys work again the moment this applies.
+    $mints = array_values(array_filter($history, fn (array $call): bool => $call['request']->getMethod() === 'POST'));
+    expect($mints)->toHaveCount(2)
+        ->and(json_decode((string) $mints[0]['request']->getBody(), true)['value'])->toBe('stored-server')
+        ->and(json_decode((string) $mints[1]['request']->getBody(), true)['value'])->toBe('stored-search');
+
+    // The values never changed, so the env-side file is left alone.
+    expect(array_column($captured, 'name'))->not->toContain('PutObject');
+});
+
+it('fails open with a warning when the stored keys cannot be verified', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'services' => ['typesense'],
+    ]);
+
+    $captured = [];
+    bindServiceLifecycleWorld([
+        'manifest' => EDGE_OFFER,
+        'sharedEnv' => "TYPESENSE_API_KEY=admin-key\n",
+        'appEnvSide' => ['my-app' => "TYPESENSE_API_KEY=stored-server\nTYPESENSE_SEARCH_KEY=stored-search\n"],
+    ], $captured);
+
+    // An ALB with no healthy targets answers 5xx — that says nothing about the
+    // key, and a down cluster must not wedge every sync.
+    $guzzle = new GuzzleMockHandler([
+        new Response(503, [], 'Service Unavailable'),
+    ]);
+
+    $step = new SyncTypesenseKeyStep('testing', new Client(['handler' => HandlerStack::create($guzzle)]));
+
+    expect($step([]))->toBe(StepResult::SYNCED);
+    expect($step->recordedWarnings())->toHaveCount(1)
+        ->and($step->recordedWarnings()[0])->toContain('Could not verify');
 });
 
 it('skips the mint with instructions while the cluster is not provisioned yet', function (): void {

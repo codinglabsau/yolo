@@ -393,10 +393,27 @@ class Typesense extends ServiceDefinition
      * SyncTypesenseKeyStep mints it, or while the bucket/file doesn't exist yet
      * (a greenfield env). The search-only key is minted in the same pass, so a
      * present server key implies a present search key; this is the pair's
-     * once-minted idempotency marker. Read fresh every time (no memoisation): it
-     * must reflect the live object, not a stale per-process cache.
+     * once-minted marker (which the key step then verifies against the cluster —
+     * stored values are value-truth, the cluster is honour-truth). Read fresh
+     * every time (no memoisation): it must reflect the live object, not a stale
+     * per-process cache.
      */
     public static function appKey(): ?string
+    {
+        return static::appEnvValue(static::CLIENT_KEY_NAME);
+    }
+
+    /**
+     * This app's scoped search-only key from the same environment-side per-app
+     * `.env` — the browser-safe half of the minted pair, and the one the key
+     * step probes the cluster with.
+     */
+    public static function appSearchKey(): ?string
+    {
+        return static::appEnvValue(static::SEARCH_KEY_NAME);
+    }
+
+    protected static function appEnvValue(string $name): ?string
     {
         try {
             $body = (string) Aws::s3()->getObject([
@@ -411,9 +428,9 @@ class Typesense extends ServiceDefinition
             throw $e;
         }
 
-        $key = Dotenv::parse($body)[static::CLIENT_KEY_NAME] ?? null;
+        $value = Dotenv::parse($body)[$name] ?? null;
 
-        return is_string($key) && $key !== '' ? $key : null;
+        return is_string($value) && $value !== '' ? $value : null;
     }
 
     /**
