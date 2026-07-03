@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo\Steps\Sync\App;
 
 use Illuminate\Support\Arr;
+use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Aws\Rds;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\EnvManifest;
 use Aws\Rds\Exception\RdsException;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -60,6 +62,24 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
             return StepResult::SKIPPED;
         }
 
+        $databaseVpcId = $instance['DBSubnetGroup']['VpcId'] ?? null;
+
+        // A cross-VPC security-group reference is only valid over an ACTIVE
+        // peering, so an external database whose VPC is neither peered nor
+        // declared for peering gets a nudge, not a mid-apply AWS error. A
+        // declared-but-not-yet-active peer proceeds: the env tier activates it
+        // earlier in the same sync, so by the time this step's apply runs the
+        // reference is valid (and the plan pass reports the pending rule).
+        if ($databaseVpcId === null || ! $this->reachable($databaseVpcId)) {
+            $this->recordWarning(sprintf(
+                'The database "%s" is externally hosted (%s) with no peering to its VPC — the 3306-from-task-SG rule was not written. Declare the VPC in the env manifest `peering` list to bridge it.',
+                $target['identifier'],
+                $databaseVpcId ?? 'unknown VPC',
+            ));
+
+            return StepResult::SKIPPED;
+        }
+
         $securityGroupIds = collect($instance['VpcSecurityGroups'] ?? [])
             ->pluck('VpcSecurityGroupId')
             ->filter()
@@ -98,5 +118,24 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
         } catch (ResourceDoesNotExistException) {
             return false;
         }
+    }
+
+    /**
+     * Whether the database's VPC is reachable for a cross-VPC SG reference —
+     * an active peering already joins it to the env VPC (YOLO-owned or not),
+     * or the env manifest declares it, meaning this same sync's environment
+     * tier brings the peering active before this step's apply runs.
+     */
+    protected function reachable(string $databaseVpcId): bool
+    {
+        try {
+            if (Ec2::activePeeringBetween((new Vpc())->arn(), $databaseVpcId)) {
+                return true;
+            }
+        } catch (ResourceDoesNotExistException) {
+            // No env VPC yet (greenfield) — fall through to the declaration.
+        }
+
+        return in_array($databaseVpcId, EnvManifest::peering(), true);
     }
 }

@@ -152,6 +152,24 @@ class Ec2
     }
 
     /**
+     * Whether an ACTIVE peering connection joins the two VPCs, either
+     * orientation, YOLO-owned or not — a security group in one VPC can only
+     * reference a group in the other once this is true.
+     */
+    public static function activePeeringBetween(string $vpcId, string $otherVpcId): bool
+    {
+        return collect(Aws::ec2()->describeVpcPeeringConnections([
+            'Filters' => [['Name' => 'status-code', 'Values' => ['active']]],
+        ])['VpcPeeringConnections'] ?? [])->contains(function (array $connection) use ($vpcId, $otherVpcId): bool {
+            $requesterVpcId = $connection['RequesterVpcInfo']['VpcId'] ?? null;
+            $accepterVpcId = $connection['AccepterVpcInfo']['VpcId'] ?? null;
+
+            return ($requesterVpcId === $vpcId && $accepterVpcId === $otherVpcId)
+                || ($requesterVpcId === $otherVpcId && $accepterVpcId === $vpcId);
+        });
+    }
+
+    /**
      * A VPC by its id, or null when it doesn't exist — a declared peer VPC is
      * operator input, so absence is reported as pending drift, never a crash.
      *
