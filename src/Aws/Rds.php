@@ -50,16 +50,17 @@ class Rds
     }
 
     /**
-     * The instance class for each member of an Aurora cluster, keyed by instance
-     * identifier — so the audit can show the writer's and readers' sizes. A single
-     * describe filtered to the cluster; read-only. Best-effort detail, so the probe
-     * tolerates an empty result.
+     * The full instance record for each member of an Aurora cluster — the audit
+     * derives the writer's and readers' sizes plus the network posture facts the
+     * cluster describe doesn't carry (the subnet group's VPC, public
+     * accessibility). A single describe filtered to the cluster; read-only.
+     * Best-effort detail, so the probe tolerates an empty result.
      *
-     * @return array<string, string>
+     * @return array<int, array<string, mixed>>
      */
-    public static function clusterInstanceClasses(string $clusterIdentifier): array
+    public static function clusterInstances(string $clusterIdentifier): array
     {
-        $classes = [];
+        $instances = [];
         $marker = null;
 
         do {
@@ -68,14 +69,12 @@ class Rds
                 'Marker' => $marker,
             ]));
 
-            foreach ($page['DBInstances'] ?? [] as $instance) {
-                $classes[$instance['DBInstanceIdentifier']] = $instance['DBInstanceClass'] ?? '—';
-            }
+            $instances = [...$instances, ...($page['DBInstances'] ?? [])];
 
             $marker = $page['Marker'] ?? null;
         } while ($marker !== null);
 
-        return $classes;
+        return $instances;
     }
 
     /**

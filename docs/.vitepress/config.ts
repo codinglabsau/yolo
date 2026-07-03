@@ -45,6 +45,7 @@ export default defineConfig({
         text: 'Features',
         items: [
           { text: 'Domains', link: '/guide/domains' },
+          { text: 'Databases', link: '/guide/databases' },
           { text: 'Multi-Tenancy', link: '/guide/multi-tenancy' },
           { text: 'Scaling', link: '/guide/scaling' },
           { text: 'Services', link: '/guide/services' },

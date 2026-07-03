@@ -37,6 +37,7 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | [`status:alarms <env>`](#yolo-status-alarms) | The app's CloudWatch alarms and their state |
 | [`status:budget <env>`](#yolo-status-budget) | Month-to-date spend against the app's declared budget |
 | [`run <env>`](#yolo-run) | Open a shell / run a command in a running container |
+| [`db:tunnel <env>`](#yolo-db-tunnel) | Port-forward the manifest-declared database to localhost through a running web task |
 | [`scale <env> [count]`](#yolo-scale) | Adjust the web service's task count out of band |
 | [`permissions <env>`](#yolo-permissions) | Grant or revoke a team member's access by editing their YOLO group membership |
 | [`services <env>`](#yolo-services) | View and manage the services an environment offers |
@@ -66,7 +67,7 @@ Interactive. Prompts for the app name, the environment to add (e.g. `production`
 - Writes a default `Dockerfile` and `.dockerignore` (asks before overwriting existing ones).
 - Creates a starter `.env.<environment>`.
 - Appends `.yolo`, `.env.<environment>` (plus `.env.staging`/`.env.production`), and the env-shared working copies (`.env.environment.*`, `yolo-environment-*.yml`) to `.gitignore`.
-- Offers to install the AWS Session Manager plugin (used by [`run`](#yolo-run)).
+- Offers to install the AWS Session Manager plugin (used by [`run`](#yolo-run) and [`db:tunnel`](#yolo-db-tunnel)).
 
 This is the only command that runs without an existing manifest.
 
@@ -440,6 +441,35 @@ yolo run production --command="php artisan queue:restart" --group=web,queue
 
 ---
 
+## `yolo db:tunnel`
+
+Port-forward the manifest-declared database to localhost through a running web task — the laptop path to a database in the [private subnet tier](/guide/provisioning#the-network), which has no public endpoint by design. (See the [Databases](/guide/databases) guide for the full picture.)
+
+```bash
+yolo db:tunnel <environment> [--port=<local-port>]
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `environment` | yes | The environment name |
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--port` | number | `13306` | The local port to listen on. |
+
+**Behaviour:** resolves the [`database:`](/reference/manifest#database) endpoint (a bare **instance** identifier is resolved to its endpoint with a describe; declare an Aurora cluster by its full endpoint), picks a running web task, and opens an SSM port-forwarding session (`AWS-StartPortForwardingSessionToRemoteHost`) through that task to the database on `3306`. It prints the local port and streams the session until you Ctrl-C. Point your database client at `127.0.0.1:<port>` with the app's usual credentials.
+
+Read-only convenience — nothing is created or changed. The session rides the same task-side ECS Exec plumbing `yolo run` uses (`enable-execute-command` on the service, the `ssmmessages` channels on the task role), but the caller-side permission differs: `yolo run` needs `ecs:ExecuteCommand`, while `db:tunnel` needs `ssm:StartSession` on the task target and the `AWS-StartPortForwardingSessionToRemoteHost` document. Scope that grant tightly — a port-forwarding session's host and port are chosen by the client, so `ssm:StartSession` through a task can reach anything the task can, not just the database on 3306.
+
+**Requirements:** the AWS [Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) installed locally, a `database:` key in the manifest, and a running web task (the tunnel rides through it).
+
+```bash
+yolo db:tunnel production
+yolo db:tunnel production --port=3307
+```
+
+---
+
 ## `yolo scale`
 
 Adjust a service's capacity out of band — no build, no task-definition revision. Mirrors [`env:push`](#yolo-env-push): reads live state, shows a current → new comparison, and asks before applying.
@@ -575,7 +605,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **account**.
 
 ## `yolo sync:environment`
 
-Sync the environment-shared (environment-tier) resources — VPC, subnets, internet gateway and routes, the load balancer security group, the env config bucket holding [the environment's declaration](/guide/provisioning#the-environment-declaration) (env manifest + env-shared `.env`, the manifest seeded once on first sync), the env-backed services governed by [the service lifecycle](/guide/services#the-service-lifecycle) (the IVS event-logging pipeline and the [Typesense search cluster](/guide/services#typesense-the-environment-s-search-cluster) — each provisioned while the env manifest declares it, planned as a `WOULD DELETE` teardown once the entry is removed, and flagged as idle if declared but unused), the ALB and its `:80` listener, the SNS alarm topic, the shared ECS execution IAM role, the env-shared `yolo-{env}-observer` read-only policy (the drift-check inspection surface every app's deployer role attaches — see [CI/CD](/guide/ci-cd#what-yolo-sync-provisions-for-ci)), the `yolo-{env}-observer-role` an operator or agent assumes for safe **read-only** inspection (it carries that policy — point a `*-readonly` profile at it), the env-wide [grant groups](#conventions) (`yolo-{env}-observers`, `yolo-{env}-admins`) whose membership grants the read / admin tier, and the [WAF web ACL](/guide/provisioning#web-application-firewall) (with its allow/block IP sets) fronting the ALB.
+Sync the environment-shared (environment-tier) resources — VPC, the public and private subnet tiers with their route tables ([the network](/guide/provisioning#the-network)), the internet gateway, the private-only RDS DB subnet group, the load balancer security group, the env config bucket holding [the environment's declaration](/guide/provisioning#the-environment-declaration) (env manifest + env-shared `.env`, the manifest seeded once on first sync), the env-backed services governed by [the service lifecycle](/guide/services#the-service-lifecycle) (the IVS event-logging pipeline and the [Typesense search cluster](/guide/services#typesense-the-environment-s-search-cluster) — each provisioned while the env manifest declares it, planned as a `WOULD DELETE` teardown once the entry is removed, and flagged as idle if declared but unused), the ALB and its `:80` listener, the SNS alarm topic, the shared ECS execution IAM role, the env-shared `yolo-{env}-observer` read-only policy (the drift-check inspection surface every app's deployer role attaches — see [CI/CD](/guide/ci-cd#what-yolo-sync-provisions-for-ci)), the `yolo-{env}-observer-role` an operator or agent assumes for safe **read-only** inspection (it carries that policy — point a `*-readonly` profile at it), the env-wide [grant groups](#conventions) (`yolo-{env}-observers`, `yolo-{env}-admins`) whose membership grants the read / admin tier, and the [WAF web ACL](/guide/provisioning#web-application-firewall) (with its allow/block IP sets) fronting the ALB.
 
 ```bash
 yolo sync:environment <environment> [--check] [--force] [--no-progress] [--tenant=<id>]
@@ -703,7 +733,15 @@ yolo audit <environment> [--unexpected] [--json]
 
 **The RDS probe** looks up the database the manifest [`database:`](/reference/manifest#database) key declares — instance or Aurora cluster, MySQL or Aurora — and reports its **deletion protection**, engine/version, size and (for Aurora) the writer + reader members. It reads the database directly by identifier (RDS isn't YOLO-tagged, so it isn't in the inventory). When no `database:` is declared the probe is skipped.
 
-**Exit code & severity.** Bare `audit` is a green/red health gate: it exits **non-zero on any error** and `0` otherwise. **Errors** (fail the run): unexpected resources, drift, and a database with **deletion protection off**. **Warnings** (never fail the run): a database that can't be read (it doesn't exist, or the tier was denied) — we can't confirm protection is on, only that it isn't confirmed off. Findings render in one block at the end, warnings then errors.
+It also classifies the database's **network posture** — which VPC and subnet group it actually sits in, and whether it's reachable:
+
+- **managed** — the end-state: the env VPC, the [private DB subnet group](/guide/provisioning#the-network), the YOLO RDS security group.
+- **externally managed** — a different VPC (or hand-wired networking): valid, informational. The transitional peered pattern while migrating a database into the yolo VPC lands here.
+- **EXPOSED** — `PubliclyAccessible` is on: the database has an internet-facing endpoint regardless of VPC. A warning.
+
+The posture is **audit-only, never sync drift** — the deploy gate runs `sync --check`, and an externally-hosted database must not block deploys. Each cross-service read degrades to *unknown* when the tier can't make it; an unknown fact is never a warning.
+
+**Exit code & severity.** Bare `audit` is a green/red health gate: it exits **non-zero on any error** and `0` otherwise. **Errors** (fail the run): unexpected resources, drift, and a database with **deletion protection off**. **Warnings** (never fail the run): a database that can't be read (it doesn't exist, or the tier was denied) — we can't confirm protection is on, only that it isn't confirmed off; a **publicly accessible** database; and no attached security group allowing `3306` from the app's task security group (the app may not be able to reach it). Findings render in one block at the end, warnings then errors.
 
 > The RDS deletion-protection probe and the drift check are **bare `audit` only**. The scoped verbs below (`audit:environment`, `audit:app`) stay focused inventory tools — they classify tagged resources and flag unexpected ones (which still exit non-zero), but run no drift or RDS probe.
 

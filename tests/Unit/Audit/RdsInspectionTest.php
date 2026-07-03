@@ -158,3 +158,56 @@ it('tolerates a member-class describe failure on a cluster — sizes omitted, no
         ->and($rds->members)->toHaveCount(1)
         ->and($rds->members[0]['class'])->toBeNull();
 });
+
+it('reads the network posture facts off the instance describe', function (): void {
+    $captured = [];
+    bindMockRdsClient([
+        'DescribeDBInstances' => new Result(['DBInstances' => [[
+            'DBInstanceIdentifier' => 'app-db',
+            'DeletionProtection' => true,
+            'DBSubnetGroup' => ['DBSubnetGroupName' => 'external-group', 'VpcId' => 'vpc-external'],
+            'VpcSecurityGroups' => [
+                ['VpcSecurityGroupId' => 'sg-1', 'Status' => 'active'],
+                ['VpcSecurityGroupId' => 'sg-2', 'Status' => 'active'],
+            ],
+            'PubliclyAccessible' => true,
+        ]]]),
+    ], $captured);
+
+    $rds = RdsInspection::inspect();
+
+    expect($rds->subnetGroupName)->toBe('external-group')
+        ->and($rds->vpcId)->toBe('vpc-external')
+        ->and($rds->securityGroupIds)->toBe(['sg-1', 'sg-2'])
+        ->and($rds->publiclyAccessible)->toBeTrue();
+});
+
+it('derives a cluster\'s VPC and public accessibility from its member instances', function (): void {
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'app.cluster-abc123.ap-southeast-2.rds.amazonaws.com']);
+
+    $captured = [];
+    bindMockRdsClient([
+        'DescribeDBClusters' => new Result(['DBClusters' => [[
+            'DBClusterIdentifier' => 'app',
+            'DeletionProtection' => true,
+            'DBSubnetGroup' => 'app-cluster-group',
+            'VpcSecurityGroups' => [['VpcSecurityGroupId' => 'sg-cluster']],
+            'DBClusterMembers' => [
+                ['DBInstanceIdentifier' => 'app-writer', 'IsClusterWriter' => true],
+            ],
+        ]]]),
+        'DescribeDBInstances' => new Result(['DBInstances' => [[
+            'DBInstanceIdentifier' => 'app-writer',
+            'DBInstanceClass' => 'db.r6g.large',
+            'DBSubnetGroup' => ['DBSubnetGroupName' => 'app-cluster-group', 'VpcId' => 'vpc-env'],
+            'PubliclyAccessible' => false,
+        ]]]),
+    ], $captured);
+
+    $rds = RdsInspection::inspect();
+
+    expect($rds->subnetGroupName)->toBe('app-cluster-group')
+        ->and($rds->vpcId)->toBe('vpc-env')
+        ->and($rds->securityGroupIds)->toBe(['sg-cluster'])
+        ->and($rds->publiclyAccessible)->toBeFalse();
+});

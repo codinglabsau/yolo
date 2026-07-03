@@ -3,22 +3,22 @@
 namespace Codinglabs\Yolo\Resources\Rds;
 
 use Codinglabs\Yolo\Aws;
-use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Aws\Rds;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
 use Aws\Rds\Exception\RdsException;
-use Codinglabs\Yolo\Resources\Ec2\Vpc;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Enums\Rds as RdsEnum;
 use Codinglabs\Yolo\Resources\ResolvesTags;
+use Codinglabs\Yolo\Resources\Ec2\PrivateSubnet;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * RDS DB subnet group spanning every subnet in the VPC, so a database can be
- * launched into the YOLO network. Point `rds.subnet` at an existing group
- * name to adopt one instead.
+ * RDS DB subnet group spanning the three private subnets — so a database
+ * launched into the YOLO network lands in the tier with no public IPs and no
+ * internet route, never in a public subnet. Point `rds.subnet` at an existing
+ * group name to adopt one instead.
  */
 class RdsSubnet implements Deletable, Resource
 {
@@ -26,7 +26,7 @@ class RdsSubnet implements Deletable, Resource
 
     public function name(): string
     {
-        return Manifest::get('rds.subnet', $this->keyedName(RdsEnum::PUBLIC_SUBNET_GROUP));
+        return Manifest::get('rds.subnet', $this->keyedName(RdsEnum::PRIVATE_SUBNET_GROUP));
     }
 
     public function scope(): Scope
@@ -55,7 +55,7 @@ class RdsSubnet implements Deletable, Resource
         Aws::rds()->createDBSubnetGroup([
             'DBSubnetGroupName' => $this->name(),
             'DBSubnetGroupDescription' => 'YOLO private subnet group',
-            'SubnetIds' => collect(Ec2::vpcSubnets((new Vpc())->arn()))->pluck('SubnetId')->all(),
+            'SubnetIds' => PrivateSubnet::ids(),
             ...Aws::tags($this->tags()),
         ]);
     }

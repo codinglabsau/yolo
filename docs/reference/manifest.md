@@ -127,6 +127,7 @@ environments:
     # internet-gateway: igw-0abc123         # default: yolo-{env}
     # route-table: rtb-0abc123              # default: yolo-{env}
     # public-subnets: [subnet-0aaa, subnet-0bbb]   # default: derived per env
+    # private-subnets: [subnet-0ccc, subnet-0ddd]  # default: derived per env (the database tier)
     # rds:
     #   subnet: my-db-subnet-group          # adopt an existing RDS subnet group
     #   security-group: sg-0abc123          # default: yolo-{env}-rds
@@ -259,8 +260,9 @@ By default YOLO creates and names shared networking under `yolo-{env}-…`. To p
 | `vpc` | `yolo-{env}` | VPC |
 | `internet-gateway` | `yolo-{env}` | Internet gateway |
 | `route-table` | `yolo-{env}` | Route table |
-| `public-subnets` | derived per env | Public subnet CIDRs |
-| `rds.subnet` | — | RDS subnet |
+| `public-subnets` | derived per env | Public subnets (the compute tier) |
+| `private-subnets` | derived per env | Private subnets (the database tier — adopted subnets keep their owner's routing) |
+| `rds.subnet` | `yolo-{env}-private-subnet-group` | RDS DB subnet group (spans the private tier) |
 | `rds.security-group` | `yolo-{env}-rds` | RDS security group |
 | `ecs.security-group` | `yolo-{env}-{app}` | ECS task security group |
 
@@ -268,7 +270,7 @@ By default YOLO creates and names shared networking under `yolo-{env}-…`. To p
 
 ## `database`
 
-Declares the RDS instance or Aurora cluster the app connects to, so YOLO can chart it — the **Database** section of the app's CloudWatch dashboard and the **Database** tab of [`yolo status`](/reference/commands#yolo-status) (CPU, connections, freeable memory, read/write latency) — and health-check it: [`yolo audit`](/reference/commands#yolo-audit) reads the same identifier to verify **deletion protection** is on (an error if it isn't) and report the instance/cluster basics. Entirely optional: omit it and the database panels and the audit probe are simply dropped.
+Declares the RDS instance or Aurora cluster the app connects to, so YOLO can chart it — the **Database** section of the app's CloudWatch dashboard and the **Database** tab of [`yolo status`](/reference/commands#yolo-status) (CPU, connections, freeable memory, read/write latency) — and health-check it: [`yolo audit`](/reference/commands#yolo-audit) reads the same identifier to verify **deletion protection** is on (an error if it isn't), classify its [network posture](/guide/provisioning#the-network) (managed / external / exposed — warnings, never sync drift), and report the instance/cluster basics. It's also what [`yolo db:tunnel`](/reference/commands#yolo-db-tunnel) forwards to. Entirely optional: omit it and the database panels, the audit probes and the tunnel are simply dropped.
 
 YOLO doesn't manage your database, so it can't discover the identifier on its own. It's declared in the manifest — rather than read from `DB_HOST` in the app's `.env` — because the dashboard is written by `yolo sync` under the admin tier, which is deliberately barred from reading app secrets; a manifest value is read identically by every tier, so the dashboard never drifts between who writes it and who checks it.
 
@@ -285,6 +287,8 @@ database: my-app.cluster-cabc123.ap-southeast-2.rds.amazonaws.com
 ```
 
 A bare value (no `.rds.amazonaws.com`) is charted as a plain instance; a full endpoint hostname self-describes whether it's an Aurora cluster or an instance. For a plain RDS instance the short name is enough; for Aurora use the endpoint so the writer metrics are charted.
+
+Where the database should live, the managed/external/exposed postures, and how to reach a private one are covered in the **[Databases](/guide/databases)** guide.
 
 ---
 
