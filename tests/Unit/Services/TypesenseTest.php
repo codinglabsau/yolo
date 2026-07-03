@@ -132,7 +132,7 @@ it('content-tags the image by version + server-config fingerprint, unresolvable 
     $tag = Typesense::imageTag();
 
     expect($tag)->toStartWith('29.0-')
-        ->and($tag)->toBe('29.0-' . substr(hash('sha256', Typesense::serverConfig() . '|' . implode(',', Typesense::peers())), 0, 12));
+        ->and($tag)->toBe('29.0-' . substr(hash('sha256', Typesense::serverConfig() . '|' . implode(',', Typesense::peers()) . '|' . Typesense::entrypointScript()), 0, 12));
 });
 
 it('bakes the admin key and any-origin CORS into the server config — so a CORS flip re-tags the image', function (): void {
@@ -151,7 +151,24 @@ it('bakes the admin key and any-origin CORS into the server config — so a CORS
 
     // The image tag fingerprints the whole config, so the CORS line is part of it.
     expect(Typesense::imageTag())->not->toBeNull()
-        ->and(Typesense::imageTag())->toContain(substr(hash('sha256', $config . '|' . implode(',', Typesense::peers())), 0, 12));
+        ->and(Typesense::imageTag())->toContain(substr(hash('sha256', $config . '|' . implode(',', Typesense::peers()) . '|' . Typesense::entrypointScript()), 0, 12));
+});
+
+it('bakes a fail-closed peer-resolution entrypoint so Typesense never resolves DNS itself', function (): void {
+    $script = Typesense::entrypointScript();
+
+    // The wrapper owns resolution: it reads the baked hostname peer list and
+    // writes the nodes file Typesense watches — IPs only, and only on a round
+    // where every peer resolved, so a resolver wobble never reaches raft.
+    expect($script)->toStartWith('#!/usr/bin/env bash')
+        ->toContain('PEERS_FILE=/etc/typesense/peers')
+        ->toContain('NODES_FILE=/etc/typesense/nodes')
+        ->toContain('getent ahostsv4')
+        ->toContain('return 1')
+        ->toContain('exec /opt/typesense-server "$@"');
+
+    // The server config still points Typesense at the runtime-written file.
+    expect(Typesense::serverConfig())->toContain('nodes = /etc/typesense/nodes');
 });
 
 it('has no image tag while the version is undeclared', function (): void {

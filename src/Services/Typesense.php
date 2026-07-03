@@ -425,6 +425,10 @@ class Typesense extends ServiceDefinition
      * the key would let an edited config ship under the old tag and never
      * deploy.
      *
+     * The nodes file it points at is NOT baked — {@see entrypointScript} writes
+     * it at runtime from the baked hostname peer list, so Typesense only ever
+     * reads IPs and never resolves DNS itself.
+     *
      * CORS is any-origin on purpose: the key the browser carries is a
      * search-only scoped key (public by design — it ships in the page), so an
      * origin allowlist guards nothing a determined caller can't sidestep
@@ -449,10 +453,11 @@ class Typesense extends ServiceDefinition
     /**
      * The content tag the image build pushes: the declared version + a
      * fingerprint of everything baked into the image (the server config — which
-     * carries the admin key and CORS — and the peer list) — so a version bump,
-     * key rotation, config change or node-count change produces a new tag (and
-     * a task-def revision that rolls the nodes), while unchanged inputs skip the
-     * build entirely. Null until the inputs exist.
+     * carries the admin key and CORS — the peer list, and the entrypoint
+     * script) — so a version bump, key rotation, config change, node-count
+     * change or entrypoint change produces a new tag (and a task-def revision
+     * that rolls the nodes), while unchanged inputs skip the build entirely.
+     * Null until the inputs exist.
      */
     public static function imageTag(): ?string
     {
@@ -463,7 +468,89 @@ class Typesense extends ServiceDefinition
             return null;
         }
 
-        return sprintf('%s-%s', $version, substr(hash('sha256', static::serverConfig() . '|' . implode(',', static::peers())), 0, 12));
+        return sprintf('%s-%s', $version, substr(hash('sha256', static::serverConfig() . '|' . implode(',', static::peers()) . '|' . static::entrypointScript()), 0, 12));
+    }
+
+    /**
+     * The fail-closed peer-resolution entrypoint baked into the node image.
+     * Typesense's own peer refresh treats every DNS answer as new raft
+     * membership truth, so a transient resolver failure becomes a peer-list
+     * rewrite — which braft appends as a fatal, REPLICATING empty-peers config
+     * entry that can kill every node in turn and leave a fresh empty cluster
+     * behind a green /health (typesense/typesense#2189, #2238).
+     * The wrapper takes DNS out of Typesense's hands entirely: it resolves the
+     * baked hostname peer list itself and (re)writes the nodes file Typesense
+     * watches only when EVERY peer resolves, so a failed or partial round
+     * leaves the last-known-good membership standing. Boot blocks until the
+     * full peer set resolves once — a node that can't see its peers can't form
+     * a quorum anyway, and /health stays red while it waits. A stale IP after
+     * a task replacement heals on the next successful round.
+     */
+    public static function entrypointScript(): string
+    {
+        return <<<'BASH'
+        #!/usr/bin/env bash
+        # Fail-closed peer resolution: Typesense only ever reads IPs from the
+        # nodes file, never hostnames — so its internal DNS re-resolution (which
+        # rewrites raft membership on whatever a round returns, including a
+        # transient resolver failure) never runs. This wrapper owns resolution
+        # instead, and only rewrites the nodes file when every peer resolves.
+        set -u
+
+        readonly PEERS_FILE=/etc/typesense/peers
+        readonly NODES_FILE=/etc/typesense/nodes
+        readonly REFRESH_SECONDS=15
+
+        # Resolve every baked host:peering:api entry to ip:peering:api. Prints
+        # the full comma-joined list only when every host resolved; any miss
+        # returns non-zero so the caller leaves the nodes file untouched.
+        resolve_all() {
+            local entries entry host ports ip resolved=()
+
+            IFS=',' read -ra entries < "$PEERS_FILE"
+
+            for entry in "${entries[@]}"; do
+                host=${entry%%:*}
+                ports=${entry#*:}
+                ip=$(getent ahostsv4 "$host" | awk '{ print $1; exit }') || true
+
+                if [[ -z ${ip:-} ]]; then
+                    return 1
+                fi
+
+                resolved+=("$ip:$ports")
+            done
+
+            (IFS=','; printf '%s' "${resolved[*]}")
+        }
+
+        # Atomic same-filesystem replace so Typesense never reads a partial file.
+        write_if_changed() {
+            if [[ ! -f $NODES_FILE || $1 != "$(cat "$NODES_FILE")" ]]; then
+                printf '%s' "$1" > "$NODES_FILE.tmp" && mv "$NODES_FILE.tmp" "$NODES_FILE"
+            fi
+        }
+
+        until nodes=$(resolve_all); do
+            echo "typesense-entrypoint: waiting for every peer in $PEERS_FILE to resolve" >&2
+            sleep 5
+        done
+
+        write_if_changed "$nodes"
+
+        (
+            while true; do
+                sleep "$REFRESH_SECONDS"
+
+                if nodes=$(resolve_all); then
+                    write_if_changed "$nodes"
+                fi
+            done
+        ) &
+
+        exec /opt/typesense-server "$@"
+
+        BASH;
     }
 
     /**
