@@ -288,6 +288,8 @@ database: my-app.cluster-cabc123.ap-southeast-2.rds.amazonaws.com
 
 A bare value (no `.rds.amazonaws.com`) is charted as a plain instance; a full endpoint hostname self-describes whether it's an Aurora cluster or an instance. For a plain RDS instance the short name is enough; for Aurora use the endpoint so the writer metrics are charted.
 
+Where the database should live, the managed/external/exposed postures, and how to reach a private one are covered in the **[Databases](/guide/databases)** guide.
+
 ---
 
 ## `cache.*`

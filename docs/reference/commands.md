@@ -443,7 +443,7 @@ yolo run production --command="php artisan queue:restart" --group=web,queue
 
 ## `yolo db:tunnel`
 
-Port-forward the manifest-declared database to localhost through a running web task — the laptop path to a database in the [private subnet tier](/guide/provisioning#the-network), which has no public endpoint by design.
+Port-forward the manifest-declared database to localhost through a running web task — the laptop path to a database in the [private subnet tier](/guide/provisioning#the-network), which has no public endpoint by design. (See the [Databases](/guide/databases) guide for the full picture.)
 
 ```bash
 yolo db:tunnel <environment> [--port=<local-port>]

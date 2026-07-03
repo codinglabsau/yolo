@@ -41,7 +41,7 @@ The **RDS DB subnet group** (`yolo-{env}-private-subnet-group`) spans only the p
 
 On an **adopted VPC** (the [`vpc`](/reference/manifest#adopting-existing-infrastructure-advanced) escape hatch) the private tier's `/24`s are discovered from whatever address space is free at create time, and resolved by tag thereafter. To adopt existing private subnets instead, point `private-subnets` at them — like `public-subnets`, they're then reported `CUSTOM_MANAGED` and never touched (their routing stays with their owner).
 
-A database hosted elsewhere — the transitional posture while migrating into the yolo VPC — keeps working: declare it via [`database:`](/reference/manifest#database) and peer the VPCs. [`yolo audit`](/reference/commands#yolo-audit) classifies where the database actually sits (managed / external / **exposed**) and warns when it's publicly accessible or unreachable from the app's tasks — audit-only, so an external database never blocks a deploy.
+A database hosted elsewhere — the transitional posture while migrating into the yolo VPC — keeps working: declare it via [`database:`](/reference/manifest#database) and peer the VPCs. [`yolo audit`](/reference/commands#yolo-audit) classifies where the database actually sits (managed / external / **exposed**) and warns when it's publicly accessible or unreachable from the app's tasks — audit-only, so an external database never blocks a deploy. The full database story — the three postures, launching into the managed end-state, peering, and tunnelling — lives on its own page: **[Databases](/guide/databases)**.
 
 ## The environment declaration
 
