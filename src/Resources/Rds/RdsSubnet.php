@@ -4,7 +4,6 @@ namespace Codinglabs\Yolo\Resources\Rds;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Rds;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
 use Aws\Rds\Exception\RdsException;
 use Codinglabs\Yolo\Resources\Resource;
@@ -17,8 +16,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 /**
  * RDS DB subnet group spanning the three private subnets — so a database
  * launched into the YOLO network lands in the tier with no public IPs and no
- * internet route, never in a public subnet. Point `rds.subnet` at an existing
- * group name to adopt one instead.
+ * internet route, never in a public subnet.
  */
 class RdsSubnet implements Deletable, Resource
 {
@@ -26,7 +24,7 @@ class RdsSubnet implements Deletable, Resource
 
     public function name(): string
     {
-        return Manifest::get('rds.subnet', $this->keyedName(RdsEnum::PRIVATE_SUBNET_GROUP));
+        return $this->keyedName(RdsEnum::PRIVATE_SUBNET_GROUP);
     }
 
     public function scope(): Scope

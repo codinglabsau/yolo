@@ -4,7 +4,6 @@ namespace Codinglabs\Yolo\Resources\Ec2;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ec2;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
 use Aws\Ec2\Exception\Ec2Exception;
 use Codinglabs\Yolo\Resources\Resource;
@@ -22,7 +21,7 @@ class RouteTable implements Deletable, Resource
 
     public function name(): string
     {
-        return Manifest::get('route-table', $this->keyedName());
+        return $this->keyedName();
     }
 
     public function scope(): Scope

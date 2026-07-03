@@ -35,7 +35,7 @@ A database hosted outside the env VPC keeps working: declare it via `database:` 
 
 This is the natural transitional posture while migrating a database into the managed end-state: peer first (app keeps working), then move the data (snapshot-restore or replication) into an instance launched per the managed checklist above, re-point `database:` (and the app's `DB_HOST`), and retire the peering.
 
-Adopting existing infrastructure wholesale? The [`rds.subnet` / `rds.security-group` / `private-subnets`](/reference/manifest#adopting-existing-infrastructure-advanced) manifest keys point YOLO at groups and subnets you already own (`CUSTOM_MANAGED` — never mutated).
+There is deliberately no way to point YOLO at someone else's network: **YOLO owns the network layer, full stop** — that ownership is what makes every posture verdict, security assumption and teardown guarantee on this page true. An external database is reached by peering, never by adoption.
 
 ## Exposed — what audit exists to catch
 

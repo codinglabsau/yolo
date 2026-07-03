@@ -12,27 +12,23 @@ use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Enums\PrivateSubnets;
 use Codinglabs\Yolo\Resources\ResolvesTags;
-use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * One of the three private subnets (one per availability zone), addressed by AZ
  * index 0-2 — the database tier. No public IPs and no internet route: their
  * route table carries only the VPC-local route, so nothing in them is ever
- * reachable from outside the VPC. On a YOLO-created VPC each gets a /24 carved
- * deterministically from the VPC's /16 (`10.N.{10 + index}.0/24` — offset past
- * the public tier's 10.N.0-2 with room for it to grow); on an adopted VPC the
- * free /24s are discovered from the live subnet layout at create time, and
- * resolved by Name tag ever after. Point `private-subnets` at three existing
- * subnet names to adopt instead.
+ * reachable from outside the VPC. Each gets a /24 carved deterministically from
+ * the VPC's /16 (`10.N.{10 + index}.0/24` — offset past the public tier's
+ * 10.N.0-2 with room for it to grow).
  */
 class PrivateSubnet implements Deletable, Resource
 {
     use ResolvesTags;
 
     /**
-     * Where the private tier's /24s start inside a YOLO-created /16 — the
-     * public tier owns 10.N.0-2, so starting at .10 leaves it room to grow.
+     * Where the private tier's /24s start inside the VPC's /16 — the public
+     * tier owns 10.N.0-2, so starting at .10 leaves it room to grow.
      */
     protected const int CIDR_OFFSET = 10;
 
@@ -53,10 +49,6 @@ class PrivateSubnet implements Deletable, Resource
 
     public function name(): string
     {
-        if (Manifest::has('private-subnets')) {
-            return Manifest::get('private-subnets')[$this->index];
-        }
-
         return $this->keyedName(PrivateSubnets::cases()[$this->index]->value);
     }
 
@@ -88,7 +80,7 @@ class PrivateSubnet implements Deletable, Resource
 
         Aws::ec2()->createSubnet([
             'AvailabilityZone' => $availabilityZones[$this->index]['ZoneName'],
-            'CidrBlock' => $this->cidrBlock($vpc),
+            'CidrBlock' => $this->carveFrom($vpc['CidrBlock']),
             'VpcId' => $vpc['VpcId'],
             'TagSpecifications' => [
                 ['ResourceType' => 'subnet', ...Aws::tags($this->tags())],
@@ -106,11 +98,9 @@ class PrivateSubnet implements Deletable, Resource
     public function availableCidrBlock(): string
     {
         try {
-            return $this->cidrBlock(Ec2::vpc((new Vpc())->name()));
+            return $this->carveFrom(Ec2::vpc((new Vpc())->name())['CidrBlock']);
         } catch (ResourceDoesNotExistException) {
-            $block = Str::before((new Vpc())->availableCidrBlock(), '.0.0/16');
-
-            return "{$block}." . (self::CIDR_OFFSET + $this->index) . '.0/24';
+            return $this->carveFrom((new Vpc())->availableCidrBlock());
         }
     }
 
@@ -140,72 +130,13 @@ class PrivateSubnet implements Deletable, Resource
     }
 
     /**
-     * The /24 for this subnet. A YOLO-created VPC always holds a `10.N.0.0/16`,
-     * so the carve is deterministic (`10.N.{10 + index}.0/24`). An adopted VPC's
-     * layout is whatever the owner built, so the index-th free /24 inside its
-     * CIDR is discovered instead.
-     *
-     * @param  array<string, mixed>  $vpc
+     * Carve this subnet's /24 from the VPC's /16 — YOLO owns the network, so
+     * every VPC holds a `10.N.0.0/16` and the carve is always deterministic.
      */
-    protected function cidrBlock(array $vpc): string
+    protected function carveFrom(string $vpcCidrBlock): string
     {
-        if (! Manifest::has('vpc')) {
-            $block = Str::before($vpc['CidrBlock'], '.0.0/16');
+        $block = Str::before($vpcCidrBlock, '.0.0/16');
 
-            return "{$block}." . (self::CIDR_OFFSET + $this->index) . '.0/24';
-        }
-
-        return $this->discoveredCidrBlock($vpc);
-    }
-
-    /**
-     * The index-th free /24 inside an adopted VPC's CIDR, diffed against every
-     * live subnet except this tier's own — so the plan pass (nothing created
-     * yet) and each sequential create land on the same three blocks: sibling A
-     * occupying its slot doesn't shift sibling B onto a different candidate.
-     * Only used until the subnets exist; thereafter they resolve by Name tag,
-     * so the plan output is identical run-to-run.
-     *
-     * @param  array<string, mixed>  $vpc
-     */
-    protected function discoveredCidrBlock(array $vpc): string
-    {
-        $tierNames = collect(PrivateSubnets::cases())
-            ->map(fn (PrivateSubnets $case): string => $this->keyedName($case->value))
-            ->all();
-
-        $cidrsInUse = collect(Aws::ec2()->describeSubnets([
-            'Filters' => [['Name' => 'vpc-id', 'Values' => [$vpc['VpcId']]]],
-        ])['Subnets'] ?? [])
-            ->reject(fn (array $subnet): bool => in_array(
-                collect($subnet['Tags'] ?? [])->firstWhere('Key', 'Name')['Value'] ?? null,
-                $tierNames,
-                true,
-            ))
-            ->pluck('CidrBlock')
-            ->all();
-
-        [$vpcStart, $vpcEnd] = Vpc::cidrRange($vpc['CidrBlock']);
-        $free = 0;
-
-        for ($base = $vpcStart; $base + 255 <= $vpcEnd; $base += 256) {
-            $candidate = long2ip($base) . '/24';
-
-            if (collect($cidrsInUse)->contains(fn (string $cidr): bool => Vpc::cidrsOverlap($candidate, $cidr))) {
-                continue;
-            }
-
-            if ($free === $this->index) {
-                return $candidate;
-            }
-
-            $free++;
-        }
-
-        throw new IntegrityCheckException(sprintf(
-            'No free /24 left in %s for %s — the adopted VPC\'s CIDR is fully allocated.',
-            $vpc['CidrBlock'],
-            $this->name(),
-        ));
+        return "{$block}." . (self::CIDR_OFFSET + $this->index) . '.0/24';
     }
 }

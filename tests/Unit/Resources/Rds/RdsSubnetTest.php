@@ -9,16 +9,8 @@ beforeEach(function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 });
 
-it('names the group after the private tier by default and adopts via rds.subnet', function (): void {
+it('names the group after the private tier', function (): void {
     expect((new RdsSubnet())->name())->toBe('yolo-testing-private-subnet-group');
-
-    writeManifest([
-        'account-id' => '111111111111',
-        'region' => 'ap-southeast-2',
-        'rds' => ['subnet' => 'their-group'],
-    ]);
-
-    expect((new RdsSubnet())->name())->toBe('their-group');
 });
 
 it('spans only the private subnets', function (): void {

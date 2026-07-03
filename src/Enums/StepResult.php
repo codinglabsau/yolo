@@ -22,7 +22,6 @@ enum StepResult
     case BUILT;
     case WOULD_BUILD;
 
-    case CUSTOM_MANAGED;
     case TIMEOUT;
     case SKIPPED;
     case MANIFEST_INVALID;

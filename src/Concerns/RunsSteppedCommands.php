@@ -129,7 +129,7 @@ trait RunsSteppedCommands
      *
      * A step has pending work when it would create, sync or delete a resource, or
      * when it recorded an attribute-level Change. Everything else — clean SYNCED,
-     * SKIPPED, CUSTOM_MANAGED — is dropped before apply.
+     * SKIPPED — is dropped before apply.
      *
      * @param  array{status: StepResult|string, changes: array<int, Change>}  $entry
      */
@@ -853,7 +853,6 @@ trait RunsSteppedCommands
 
             // yellow
             StepResult::SKIPPED => '<fg=yellow>SKIPPED</>',
-            StepResult::CUSTOM_MANAGED => '<fg=yellow>CUSTOM MANAGED</>',
             StepResult::WOULD_CREATE => '<fg=yellow>WOULD CREATE</>',
             StepResult::WOULD_SYNC => '<fg=yellow>WOULD SYNC</>',
             StepResult::WOULD_DELETE => '<fg=yellow>WOULD DELETE</>',

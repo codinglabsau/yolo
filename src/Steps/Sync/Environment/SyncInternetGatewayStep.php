@@ -2,7 +2,6 @@
 
 namespace Codinglabs\Yolo\Steps\Sync\Environment;
 
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
@@ -15,10 +14,6 @@ class SyncInternetGatewayStep implements Step
     public function __invoke(array $options): StepResult
     {
         $internetGateway = new InternetGateway();
-
-        if (Manifest::has('internet-gateway') && $internetGateway->exists()) {
-            return StepResult::CUSTOM_MANAGED;
-        }
 
         return $this->syncResource($internetGateway, $options);
     }

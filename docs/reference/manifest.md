@@ -121,18 +121,6 @@ environments:
 
     deploy-all:
       - php artisan optimize
-
-    # --- Adopting existing infrastructure (advanced escape hatches; most apps never set these) ---
-    # vpc: vpc-0abc123                      # default: yolo-{env}
-    # internet-gateway: igw-0abc123         # default: yolo-{env}
-    # route-table: rtb-0abc123              # default: yolo-{env}
-    # public-subnets: [subnet-0aaa, subnet-0bbb]   # default: derived per env
-    # private-subnets: [subnet-0ccc, subnet-0ddd]  # default: derived per env (the database tier)
-    # rds:
-    #   subnet: my-db-subnet-group          # adopt an existing RDS subnet group
-    #   security-group: sg-0abc123          # default: yolo-{env}-rds
-    # ecs:
-    #   security-group: sg-0def456          # default: yolo-{env}-{app}
 ```
 
 > Every commented key above has its own section below with the full semantics — this block is the map; the sections are the detail.
@@ -250,21 +238,6 @@ task-role-policies:
 ```
 
 The list is reconciled on every `yolo sync`: an ARN you add gets attached, and one you remove gets detached — the role's attachment set is YOLO's to own, so there's no left-behind grant. Each entry must be a customer- or AWS-managed IAM policy ARN; a malformed value fails the sync plan rather than silently dropping the grant. The YOLO baseline policy (ECS Exec channels, this app's SQS queues, SES send, and read+write on the [`bucket`](#bucket) when declared) is always attached and isn't listed here.
-
-### Adopting existing infrastructure (advanced)
-
-By default YOLO creates and names shared networking under `yolo-{env}-…`. To point it at resources you already have, set their id/name. These are escape hatches — most apps never touch them.
-
-| Key | Default | Adopts |
-|---|---|---|
-| `vpc` | `yolo-{env}` | VPC |
-| `internet-gateway` | `yolo-{env}` | Internet gateway |
-| `route-table` | `yolo-{env}` | Route table |
-| `public-subnets` | derived per env | Public subnets (the compute tier) |
-| `private-subnets` | derived per env | Private subnets (the database tier — adopted subnets keep their owner's routing) |
-| `rds.subnet` | `yolo-{env}-private-subnet-group` | RDS DB subnet group (spans the private tier) |
-| `rds.security-group` | `yolo-{env}-rds` | RDS security group |
-| `ecs.security-group` | `yolo-{env}-{app}` | ECS task security group |
 
 ---
 

@@ -3,7 +3,6 @@
 namespace Codinglabs\Yolo\Steps\Sync\App;
 
 use Illuminate\Support\Arr;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
@@ -26,10 +25,6 @@ class SyncRdsSecurityGroupStep implements Step
     public function __invoke(array $options): StepResult
     {
         $securityGroup = new RdsSecurityGroup();
-
-        if (Manifest::has('rds.security-group') && $securityGroup->exists()) {
-            return StepResult::CUSTOM_MANAGED;
-        }
 
         $dryRun = (bool) Arr::get($options, 'dry-run');
         $result = $this->syncResource($securityGroup, $options);

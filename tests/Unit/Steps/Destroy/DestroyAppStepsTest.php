@@ -79,15 +79,6 @@ it('revokes only this app\'s 3306 rule from the shared RDS security group', func
         ->and($revoke['args']['SecurityGroupRuleIds'])->toBe(['sgr-1']);
 });
 
-it('leaves an adopted RDS security group entirely alone', function (): void {
-    writeManifest([
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'domain' => 'example.com',
-        'tasks' => ['web' => true], 'rds' => ['security-group' => 'my-existing-sg'],
-    ]);
-
-    expect((new RevokeRdsIngressStep())(['dry-run' => false]))->toBe(StepResult::SKIPPED);
-});
-
 it('deregisters every active task-definition revision in the app\'s families', function (): void {
     $captured = [];
     bindRoutedEcsClient([

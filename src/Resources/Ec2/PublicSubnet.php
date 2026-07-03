@@ -18,8 +18,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * One of the three public subnets (one per availability zone), addressed by AZ
  * index 0-2. Each gets a /24 carved from whichever /16 the VPC was allocated
  * (its `10.N.{index}.0/24`) and auto-assigns public IPs so Fargate tasks reach
- * the internet without a NAT gateway. Point `public-subnets` at three existing
- * subnet names to adopt instead.
+ * the internet without a NAT gateway.
  */
 class PublicSubnet implements Deletable, Resource
 {
@@ -42,10 +41,6 @@ class PublicSubnet implements Deletable, Resource
 
     public function name(): string
     {
-        if (Manifest::has('public-subnets')) {
-            return Manifest::get('public-subnets')[$this->index];
-        }
-
         return $this->keyedName(PublicSubnets::cases()[$this->index]->value);
     }
 

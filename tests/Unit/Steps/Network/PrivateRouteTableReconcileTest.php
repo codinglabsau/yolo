@@ -54,21 +54,6 @@ it('reports WOULD_CREATE for the private route table on the plan pass', function
         ->and(collect($captured)->pluck('name'))->not->toContain('CreateRouteTable');
 });
 
-it('leaves adopted private subnets to their own routing', function (): void {
-    writeManifest([
-        'account-id' => '111111111111',
-        'region' => 'ap-southeast-2',
-        'private-subnets' => ['their-private-a', 'their-private-b', 'their-private-c'],
-    ]);
-
-    $captured = [];
-    bindMockEc2Client([], $captured);
-
-    expect((new SyncPrivateRouteTableStep())(['dry-run' => true]))->toBe(StepResult::CUSTOM_MANAGED)
-        ->and((new SyncPrivateSubnetsAssociationToRouteTableStep())(['dry-run' => true]))->toBe(StepResult::CUSTOM_MANAGED)
-        ->and($captured)->toBeEmpty();
-});
-
 // ── Private subnet associations ──────────────────────────────────────────────
 
 it('honours the reconciler contract for the private subnet associations', function (): void {
