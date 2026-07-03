@@ -488,11 +488,14 @@ Your manifest implies one of three modes:
 ```yaml
 domain: example.com.au   # the env's canonical domain for shared-service ingress
 services: {}             # env-shared services — the extension point for what sync:environment provisions
+# peering:               # VPC peering to infrastructure outside the YOLO network (e.g. a database mid-migration)
+#   - vpc-0abc123
 ```
 
 | Key | Purpose |
 |---|---|
 | `domain` | The environment's canonical domain for shared-service hostnames (e.g. `search.{domain}`). Distinct from any app's `domain` — shared services are served on the *environment's* name, reachable from every app regardless of their own domains. |
+| `peering` | A list of VPC ids this environment peers with — the declared bridge to infrastructure outside the YOLO network, typically an [externally-hosted database mid-migration](/guide/databases). For each entry, `sync:environment` creates and accepts the peering connection (same-account), routes both ways (the peer's CIDR into the env's public route table; the env's CIDR into the peer's main route table), and enables DNS resolution over the peering so private hostnames resolve across it. Entries must be VPC ids (`vpc-…`); anything else hard-fails. **Removing an entry tears the bridge down** on the next sync — connection deleted, the env-side route reclaimed (the peer-side return route is left inert for its owner). Environment-scoped on purpose: peering is VPC-to-VPC, so it can never live in an app's manifest. |
 | `services` | The env-shared services this environment runs — a map of service ⇒ config (`services.ivs: {}`). The declaration is the whole trigger of [the service lifecycle](/guide/services#the-service-lifecycle): `sync:environment` provisions a declared service (independent of any consumer) and plans its teardown once the entry is removed; a declared service no running app uses is flagged as **idle** (a plan warning), not torn down. `environment:manifest:push` refuses to remove a service apps still use. Each entry is a map (never a scalar or list); its allowed keys come from the service's definition. |
 | `services.typesense` | The environment's [Typesense search cluster](/guide/services#typesense-the-environment-s-search-cluster). `version` (the `typesense/typesense` image tag) is required — an environment never runs an implicit search engine version. `nodes`, `cpu` and `memory` follow the [`tasks.*` conventions](#tasks-web): optional, defaulting to `3` nodes at `'256'`/`'1024'` each. `nodes` accepts `3` or `5` — five spreads read load wider and survives two losses; an even count pays for an extra node without gaining the ability to lose another one, and a single node would lose its search data whenever the task is replaced, so neither is offered. `services: { typesense: { version: "30.2" } }` is a complete entry. A version bump or resize is a manifest edit + `sync:environment` — the nodes roll one at a time. |
 

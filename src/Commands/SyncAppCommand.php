@@ -201,6 +201,11 @@ class SyncAppCommand extends SyncSteppedCommand
                         Steps\Sync\App\AttachEcsTaskRolePoliciesStep::class,
                         Steps\Sync\App\SyncTaskSecurityGroupStep::class,
                         Steps\Sync\App\SyncRdsSecurityGroupStep::class,
+                        // An externally-hosted (peered) database gets the same
+                        // additive 3306-from-task-SG rule on its own discovered
+                        // security group; skipped by the deploy gate (its tier
+                        // may not hold the RDS / foreign-SG reads).
+                        Steps\Sync\App\SyncExternalDatabaseIngressStep::class,
                         // Valkey cache — env-owned, bootstrapped from sync:app (gated
                         // on cache.store). The env infrastructure (subnet/parameter
                         // groups, the SG, the cluster) lives in the Environment

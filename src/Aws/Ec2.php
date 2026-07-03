@@ -110,6 +110,84 @@ class Ec2
         ];
     }
 
+    /**
+     * The statuses in which a peering connection is "live" for YOLO's purposes.
+     * Deleted/failed/expired connections linger in describe results for hours,
+     * so every lookup must filter to these or a torn-down connection reads as
+     * still existing.
+     */
+    public const array LIVE_PEERING_STATUSES = ['initiating-request', 'pending-acceptance', 'provisioning', 'active'];
+
+    /**
+     * A live VPC peering connection by its `Name` tag, or null when none is in
+     * a live status (a deleted connection lingering in the describe is absence,
+     * not presence).
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function livePeeringConnection(string $name): ?array
+    {
+        return Aws::ec2()->describeVpcPeeringConnections([
+            'Filters' => [
+                ['Name' => 'tag:Name', 'Values' => [$name]],
+                ['Name' => 'status-code', 'Values' => self::LIVE_PEERING_STATUSES],
+            ],
+        ])['VpcPeeringConnections'][0] ?? null;
+    }
+
+    /**
+     * Every live YOLO-owned peering connection in this environment's tag
+     * namespace — the set sync reconciles the declared `peering` list against.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function livePeeringConnections(string $environment): array
+    {
+        return Aws::ec2()->describeVpcPeeringConnections([
+            'Filters' => [
+                ['Name' => 'tag:yolo:environment', 'Values' => [$environment]],
+                ['Name' => 'status-code', 'Values' => self::LIVE_PEERING_STATUSES],
+            ],
+        ])['VpcPeeringConnections'] ?? [];
+    }
+
+    /**
+     * A VPC by its id, or null when it doesn't exist — a declared peer VPC is
+     * operator input, so absence is reported as pending drift, never a crash.
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function vpcById(string $vpcId): ?array
+    {
+        try {
+            return Aws::ec2()->describeVpcs(['VpcIds' => [$vpcId]])['Vpcs'][0] ?? null;
+        } catch (Ec2Exception $exception) {
+            if (str_starts_with($exception->getAwsErrorCode() ?? '', 'InvalidVpcID')) {
+                return null;
+            }
+
+            throw $exception;
+        }
+    }
+
+    /**
+     * A VPC's main route table — the one subnets fall back to when nothing is
+     * explicitly associated. Where the return route lands in a peered VPC YOLO
+     * doesn't otherwise manage. Null when the VPC (or its main table) can't be
+     * found.
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function mainRouteTable(string $vpcId): ?array
+    {
+        return Aws::ec2()->describeRouteTables([
+            'Filters' => [
+                ['Name' => 'vpc-id', 'Values' => [$vpcId]],
+                ['Name' => 'association.main', 'Values' => ['true']],
+            ],
+        ])['RouteTables'][0] ?? null;
+    }
+
     public static function securityGroup(string $name): array
     {
         $securityGroups = Aws::ec2()->describeSecurityGroups()['SecurityGroups'];

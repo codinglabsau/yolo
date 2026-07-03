@@ -105,6 +105,12 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 Steps\Sync\Environment\SyncPublicSubnetsAssociationToRouteTableStep::class,
                 Steps\Sync\Environment\SyncPrivateRouteTableStep::class,
                 Steps\Sync\Environment\SyncPrivateSubnetsAssociationToRouteTableStep::class,
+                // Declared VPC peering (env manifest `peering:`) — the bridge to
+                // infrastructure outside the YOLO network, typically a database
+                // mid-migration: the connection set first, then the routes both
+                // ways that ride on it.
+                Steps\Sync\Environment\SyncVpcPeeringStep::class,
+                Steps\Sync\Environment\SyncVpcPeeringRoutesStep::class,
                 Steps\Sync\Environment\SyncLoadBalancerSecurityGroupStep::class,
                 Steps\Sync\Environment\SyncSnsAlarmTopicStep::class,
                 // shared IAM — the ECS execution role (ECR pull + log write) is

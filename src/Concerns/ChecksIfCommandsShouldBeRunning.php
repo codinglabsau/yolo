@@ -28,7 +28,7 @@ trait ChecksIfCommandsShouldBeRunning
         // (the env-shared admin key, env log-group tags). `yolo sync <env>`
         // verifies them; the gate skips them rather than 403.
         if ($instance instanceof SkippedByDeployCheck && DeployCheck::active()) {
-            return 'env-backed service (admin-owned) — verified by `yolo sync`, not the deploy gate';
+            return 'admin-owned reconciler — verified by `yolo sync`, not the deploy gate';
         }
 
         if ($instance instanceof ExecutesSoloStep && Manifest::isMultitenanted()) {
