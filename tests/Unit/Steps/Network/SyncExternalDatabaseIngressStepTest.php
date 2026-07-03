@@ -24,12 +24,24 @@ function bindExternalInstance(array $securityGroupIds, string $vpcId = 'vpc-exte
     ], $captured);
 }
 
+/** An active peering joining the env VPC and the database's VPC. */
+function activePeeringResult(): Result
+{
+    return new Result(['VpcPeeringConnections' => [[
+        'VpcPeeringConnectionId' => 'pcx-1',
+        'Status' => ['Code' => 'active'],
+        'RequesterVpcInfo' => ['VpcId' => 'vpc-env'],
+        'AccepterVpcInfo' => ['VpcId' => 'vpc-external'],
+    ]]]);
+}
+
 it('authorises 3306 from the task SG on the external database\'s discovered security group', function (): void {
     bindExternalInstance(['sg-external']);
 
     $captured = [];
     bindMockEc2Client([
         'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-env']]]),
+        'DescribeVpcPeeringConnections' => activePeeringResult(),
         'DescribeSecurityGroups' => new Result(['SecurityGroups' => [
             ['GroupName' => 'yolo-testing-my-app-ecs-task-security-group', 'GroupId' => 'sg-task'],
         ]]),
@@ -51,6 +63,7 @@ it('reports pending on the plan pass without writing', function (): void {
     $captured = [];
     bindMockEc2Client([
         'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-env']]]),
+        'DescribeVpcPeeringConnections' => activePeeringResult(),
         'DescribeSecurityGroups' => new Result(['SecurityGroups' => [
             ['GroupName' => 'yolo-testing-my-app-ecs-task-security-group', 'GroupId' => 'sg-task'],
         ]]),
@@ -82,6 +95,7 @@ it('warns and skips when the external database carries more than one security gr
     $captured = [];
     bindMockEc2Client([
         'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-env']]]),
+        'DescribeVpcPeeringConnections' => activePeeringResult(),
     ], $captured);
 
     $step = new SyncExternalDatabaseIngressStep();
@@ -90,6 +104,47 @@ it('warns and skips when the external database carries more than one security gr
         ->and($step->recordedWarnings())->toHaveCount(1)
         ->and($step->recordedWarnings()[0])->toContain('ambiguous')
         ->and(collect($captured)->pluck('name'))->not->toContain('AuthorizeSecurityGroupIngress');
+});
+
+it('warns and skips an external database whose VPC is neither peered nor declared', function (): void {
+    bindExternalInstance(['sg-external']);
+
+    $s3Captured = [];
+    bindRoutedS3Client(['GetObject' => new Result(['Body' => 'peering: []'])], $s3Captured);
+
+    $captured = [];
+    bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-env']]]),
+        'DescribeVpcPeeringConnections' => new Result(['VpcPeeringConnections' => []]),
+    ], $captured);
+
+    $step = new SyncExternalDatabaseIngressStep();
+
+    expect($step([]))->toBe(StepResult::SKIPPED)
+        ->and($step->recordedWarnings()[0])->toContain('no peering')
+        ->and(collect($captured)->pluck('name'))->not->toContain('AuthorizeSecurityGroupIngress');
+});
+
+it('proceeds when the peering is declared but not yet active — the env tier activates it this sync', function (): void {
+    bindExternalInstance(['sg-external'], vpcId: 'vpc-0abc123');
+
+    $s3Captured = [];
+    bindRoutedS3Client(['GetObject' => new Result(['Body' => "peering:\n  - vpc-0abc123\n"])], $s3Captured);
+
+    $captured = [];
+    bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-env']]]),
+        'DescribeVpcPeeringConnections' => new Result(['VpcPeeringConnections' => []]),
+        'DescribeSecurityGroups' => new Result(['SecurityGroups' => [
+            ['GroupName' => 'yolo-testing-my-app-ecs-task-security-group', 'GroupId' => 'sg-task'],
+        ]]),
+        'DescribeSecurityGroupRules' => new Result(['SecurityGroupRules' => []]),
+    ], $captured);
+
+    $step = new SyncExternalDatabaseIngressStep();
+
+    expect($step(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC)
+        ->and($step->changes())->not->toBeEmpty();
 });
 
 it('skips when no database is declared', function (): void {
