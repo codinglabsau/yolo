@@ -92,23 +92,6 @@ it('does not authorise again when a matching task-SG rule already exists', funct
         ->not->toContain('RevokeSecurityGroupIngress');
 });
 
-it('treats a manifest-specified RDS security group as custom-managed', function (): void {
-    writeManifest([
-        'account-id' => '111111111111',
-        'region' => 'ap-southeast-2',
-        'rds' => ['security-group' => 'yolo-testing-rds-security-group'],
-    ]);
-
-    $captured = [];
-
-    bindMockEc2Client([
-        'DescribeSecurityGroups' => describeRdsAndTaskGroups(),
-    ], $captured);
-
-    expect((new SyncRdsSecurityGroupStep())([]))->toBe(StepResult::CUSTOM_MANAGED);
-    expect(array_column($captured, 'name'))->not->toContain('AuthorizeSecurityGroupIngress');
-});
-
 it('does not authorise during a dry-run', function (): void {
     $captured = [];
 

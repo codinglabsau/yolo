@@ -157,6 +157,7 @@ class DestroyAppCommand extends SyncSteppedCommand implements PlansSequentially
                 // reference. The cache revoke self-skips when the app has no cache SG.
                 Steps\Destroy\App\RevokeCacheIngressStep::class,
                 Steps\Destroy\App\RevokeRdsIngressStep::class,
+                Steps\Destroy\App\RevokeExternalDatabaseIngressStep::class,
                 Steps\Destroy\App\TeardownTaskSecurityGroupStep::class,
                 Steps\Destroy\App\TeardownEcsTaskRoleStep::class,
                 Steps\Destroy\App\TeardownEcsTaskPolicyStep::class,

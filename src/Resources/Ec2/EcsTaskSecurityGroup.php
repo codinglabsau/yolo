@@ -4,7 +4,6 @@ namespace Codinglabs\Yolo\Resources\Ec2;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ec2;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Enums\SecurityGroup;
@@ -23,10 +22,7 @@ class EcsTaskSecurityGroup implements Deletable, Resource
 
     public function name(): string
     {
-        return Manifest::get(
-            'ecs.security-group',
-            $this->keyedName(SecurityGroup::ECS_TASK_SECURITY_GROUP),
-        );
+        return $this->keyedName(SecurityGroup::ECS_TASK_SECURITY_GROUP);
     }
 
     public function scope(): Scope

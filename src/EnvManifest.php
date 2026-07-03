@@ -66,7 +66,43 @@ class EnvManifest
             }
         }
 
-        return ['domain', 'services', 'budget', 'budget.amount', 'budget.strategy', ...$serviceKeys];
+        return ['domain', 'services', 'budget', 'budget.amount', 'budget.strategy', 'peering', ...$serviceKeys];
+    }
+
+    /**
+     * The VPCs this environment declares peering connections to — the bridge to
+     * infrastructure outside the YOLO network (typically a database mid-
+     * migration; see the Databases guide). Env-shared by nature (peering is
+     * VPC-to-VPC), so it lives here rather than in any app's manifest. Each
+     * entry must be a VPC id; anything else hard-fails rather than silently
+     * provisioning nothing.
+     *
+     * @return array<int, string>
+     */
+    public static function peering(): array
+    {
+        $peering = static::get('peering', []);
+
+        // A bare `peering:` key with every entry removed parses as null — the
+        // same "nothing declared" as an absent key, not a shape error.
+        if ($peering === null) {
+            return [];
+        }
+
+        if (! is_array($peering) || ! array_is_list($peering)) {
+            throw new IntegrityCheckException('The env manifest `peering` key must be a list of VPC ids (e.g. [vpc-0abc123]).');
+        }
+
+        foreach ($peering as $vpcId) {
+            if (! is_string($vpcId) || preg_match('/^vpc-[0-9a-f]+$/', $vpcId) !== 1) {
+                throw new IntegrityCheckException(sprintf(
+                    'Invalid `peering` entry "%s" — each entry must be a VPC id (vpc-…).',
+                    is_scalar($vpcId) ? (string) $vpcId : gettype($vpcId),
+                ));
+            }
+        }
+
+        return $peering;
     }
 
     /** @var array<string, mixed>|null */

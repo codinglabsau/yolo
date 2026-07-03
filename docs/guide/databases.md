@@ -29,13 +29,26 @@ Launching a database into the managed posture (console or CLI — YOLO won't do 
 
 Then set `database:` in the manifest and `yolo sync:app <env>` — the dashboard, status tab and audit pick it up from there. Day-to-day access from a laptop is [`yolo db:tunnel`](#reaching-a-private-database).
 
-## External — bring your own network (transitional or permanent)
+## External — declared peering (transitional or permanent)
 
-A database hosted outside the env VPC keeps working: declare it via `database:` and wire the network path yourself. The common shape is **VPC peering** — peer the external VPC with the env VPC, route between them, and allow `3306` on the database's security group from the app's task SG (same-region peering supports SG references; otherwise use the env VPC's CIDR). Audit reports the posture as *externally managed* — informational, never a deploy blocker — and still runs the reachability and deletion-protection checks against it.
+A database hosted outside the env VPC keeps working, and the bridge to it is **declared, not console-clicked**. Two declarations drive everything:
 
-This is the natural transitional posture while migrating a database into the managed end-state: peer first (app keeps working), then move the data (snapshot-restore or replication) into an instance launched per the managed checklist above, re-point `database:` (and the app's `DB_HOST`), and retire the peering.
+```yaml
+# yolo-environment-{env}.yml — the env manifest (peering is VPC-to-VPC, env-shared)
+peering:
+  - vpc-0abc123   # the VPC holding the database
 
-Adopting existing infrastructure wholesale? The [`rds.subnet` / `rds.security-group` / `private-subnets`](/reference/manifest#adopting-existing-infrastructure-advanced) manifest keys point YOLO at groups and subnets you already own (`CUSTOM_MANAGED` — never mutated).
+# yolo.yml — each app that uses the database, as always
+database: my-app-db
+```
+
+From the [`peering`](/reference/manifest#the-environment-manifest-yolo-environment-environment-yml) entry, `sync:environment` reconciles the whole bridge: the peering connection created and accepted (same-account), routes both ways (the peer's CIDR into the env's public route table, the env's CIDR into the peer's main route table), and DNS resolution over the peering so the RDS hostname resolves to its private IP from inside the env VPC. From `database:`, `sync:app` discovers the external instance's security group live and writes the same additive `3306`-from-task-SG rule the managed path gets — nothing about the foreign network is ever declared, so nothing can go stale. (A database carrying several security groups is ambiguous — sync warns and leaves that one rule to you; `yolo audit` verifies whichever rule exists.)
+
+Audit reports the posture as *externally managed* — informational, never a deploy blocker — and still runs the reachability and deletion-protection checks against it. The external-ingress reconcile is skipped by the deploy gate for the same reason (`yolo sync` is its drift check).
+
+This is the natural transitional posture while migrating a database into the managed end-state: **declare the peering first** (the app keeps working and public access can be disabled immediately), then move the data (snapshot-restore or replication) into an instance launched per the managed checklist above, re-point `database:` (and the app's `DB_HOST`), and **remove the `peering` entry** — the next sync tears the bridge down and reclaims the routes.
+
+There is deliberately no way to point YOLO at someone else's network: **YOLO owns the network layer, full stop** — that ownership is what makes every posture verdict, security assumption and teardown guarantee on this page true. An external database is reached by peering, never by adoption.
 
 ## Exposed — what audit exists to catch
 

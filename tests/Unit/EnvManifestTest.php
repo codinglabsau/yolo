@@ -128,3 +128,31 @@ it('rejects unknown keys inside an offer block via the per-service offer keys', 
     expect(fn (): array => EnvManifest::parse("services:\n  ivs:\n    nodes: 3\n"))
         ->toThrow(IntegrityCheckException::class, 'services.ivs.nodes');
 });
+
+it('exposes the declared peering VPCs and validates their shape', function (): void {
+    $captured = [];
+    bindRoutedS3Client([
+        'GetObject' => new Result(['Body' => "peering:\n  - vpc-0abc123\n  - vpc-0def456\n"]),
+    ], $captured);
+
+    expect(EnvManifest::peering())->toBe(['vpc-0abc123', 'vpc-0def456']);
+});
+
+it('defaults peering to an empty list when undeclared', function (): void {
+    $captured = [];
+    bindRoutedS3Client([
+        'GetObject' => new Result(['Body' => "domain: example.com\n"]),
+    ], $captured);
+
+    expect(EnvManifest::peering())->toBe([]);
+});
+
+it('hard-fails a peering entry that is not a VPC id', function (): void {
+    $captured = [];
+    bindRoutedS3Client([
+        'GetObject' => new Result(['Body' => "peering:\n  - my-other-vpc\n"]),
+    ], $captured);
+
+    expect(fn (): array => EnvManifest::peering())
+        ->toThrow(IntegrityCheckException::class, 'Invalid `peering` entry');
+});

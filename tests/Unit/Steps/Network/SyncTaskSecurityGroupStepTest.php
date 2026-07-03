@@ -79,23 +79,6 @@ it('does not authorise again when a matching load-balancer ingress rule already 
     expect($ingressChanges)->toBeEmpty();
 });
 
-it('treats a manifest-specified task security group as custom-managed', function (): void {
-    writeManifest([
-        'account-id' => '111111111111',
-        'region' => 'ap-southeast-2',
-        'ecs' => ['security-group' => 'yolo-testing-my-app-ecs-task-security-group'],
-    ]);
-
-    $captured = [];
-
-    bindMockEc2Client([
-        'DescribeSecurityGroups' => describeTaskAndLoadBalancerGroups(),
-    ], $captured);
-
-    expect((new SyncTaskSecurityGroupStep())([]))->toBe(StepResult::CUSTOM_MANAGED);
-    expect(array_column($captured, 'name'))->not->toContain('AuthorizeSecurityGroupIngress');
-});
-
 it('does not authorise during a dry-run', function (): void {
     $captured = [];
 

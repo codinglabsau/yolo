@@ -5,7 +5,6 @@ namespace Codinglabs\Yolo\Resources\Ec2;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Change;
 use Codinglabs\Yolo\Aws\Ec2;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
 use Aws\Ec2\Exception\Ec2Exception;
 use Codinglabs\Yolo\Resources\Resource;
@@ -23,8 +22,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * co-located Vapor stack's block); a fresh account still lands on 10.1, the
  * previous fixed default. The CIDR is chosen once at create (the VPC is keyed by
  * Name, so sync never re-picks); the subnets carve their /24s from whatever block
- * it lands in. Point `vpc` at an existing VPC name to adopt rather than create
- * one; SyncVpcStep reports that as CUSTOM_MANAGED.
+ * it lands in.
  */
 class Vpc implements Deletable, Resource, SynchronisesConfiguration
 {
@@ -41,7 +39,7 @@ class Vpc implements Deletable, Resource, SynchronisesConfiguration
 
     public function name(): string
     {
-        return Manifest::get('vpc', $this->keyedName());
+        return $this->keyedName();
     }
 
     public function scope(): Scope
@@ -175,10 +173,8 @@ class Vpc implements Deletable, Resource, SynchronisesConfiguration
      * Whether two IPv4 CIDR blocks share any address, compared as integer ranges.
      * ip2long is masked to 32 bits so a high existing block can't sign-flip the
      * arithmetic; the candidate 10.x blocks are always well inside positive range.
-     * Public because PrivateSubnet's free-/24 discovery diffs candidates against
-     * live subnet CIDRs with the same arithmetic.
      */
-    public static function cidrsOverlap(string $a, string $b): bool
+    protected static function cidrsOverlap(string $a, string $b): bool
     {
         [$startA, $endA] = static::cidrRange($a);
         [$startB, $endB] = static::cidrRange($b);
@@ -191,7 +187,7 @@ class Vpc implements Deletable, Resource, SynchronisesConfiguration
      *
      * @return array{0: int, 1: int}
      */
-    public static function cidrRange(string $cidr): array
+    protected static function cidrRange(string $cidr): array
     {
         [$network, $prefix] = explode('/', $cidr);
         $hostBits = 32 - (int) $prefix;

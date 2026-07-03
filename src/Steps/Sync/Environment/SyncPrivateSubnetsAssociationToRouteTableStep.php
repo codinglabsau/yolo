@@ -8,7 +8,6 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Change;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Aws\Ec2;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\PrivateSubnets;
@@ -22,8 +21,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * they'd fall back to the VPC's main route table, whose routing YOLO doesn't
  * control. Mirrors the public association step: diff against the route table's
  * `Associations` block and only associate the subnets that aren't already
- * attached, so a clean environment reports no change. Adopted `private-subnets`
- * keep their owner's routing and are never re-associated.
+ * attached, so a clean environment reports no change.
  */
 class SyncPrivateSubnetsAssociationToRouteTableStep implements Step
 {
@@ -31,10 +29,6 @@ class SyncPrivateSubnetsAssociationToRouteTableStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        if (Manifest::has('private-subnets')) {
-            return StepResult::CUSTOM_MANAGED;
-        }
-
         $dryRun = (bool) Arr::get($options, 'dry-run');
 
         $associatedSubnetIds = $this->associatedSubnetIds();

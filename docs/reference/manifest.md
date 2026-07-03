@@ -121,18 +121,6 @@ environments:
 
     deploy-all:
       - php artisan optimize
-
-    # --- Adopting existing infrastructure (advanced escape hatches; most apps never set these) ---
-    # vpc: vpc-0abc123                      # default: yolo-{env}
-    # internet-gateway: igw-0abc123         # default: yolo-{env}
-    # route-table: rtb-0abc123              # default: yolo-{env}
-    # public-subnets: [subnet-0aaa, subnet-0bbb]   # default: derived per env
-    # private-subnets: [subnet-0ccc, subnet-0ddd]  # default: derived per env (the database tier)
-    # rds:
-    #   subnet: my-db-subnet-group          # adopt an existing RDS subnet group
-    #   security-group: sg-0abc123          # default: yolo-{env}-rds
-    # ecs:
-    #   security-group: sg-0def456          # default: yolo-{env}-{app}
 ```
 
 > Every commented key above has its own section below with the full semantics — this block is the map; the sections are the detail.
@@ -250,21 +238,6 @@ task-role-policies:
 ```
 
 The list is reconciled on every `yolo sync`: an ARN you add gets attached, and one you remove gets detached — the role's attachment set is YOLO's to own, so there's no left-behind grant. Each entry must be a customer- or AWS-managed IAM policy ARN; a malformed value fails the sync plan rather than silently dropping the grant. The YOLO baseline policy (ECS Exec channels, this app's SQS queues, SES send, and read+write on the [`bucket`](#bucket) when declared) is always attached and isn't listed here.
-
-### Adopting existing infrastructure (advanced)
-
-By default YOLO creates and names shared networking under `yolo-{env}-…`. To point it at resources you already have, set their id/name. These are escape hatches — most apps never touch them.
-
-| Key | Default | Adopts |
-|---|---|---|
-| `vpc` | `yolo-{env}` | VPC |
-| `internet-gateway` | `yolo-{env}` | Internet gateway |
-| `route-table` | `yolo-{env}` | Route table |
-| `public-subnets` | derived per env | Public subnets (the compute tier) |
-| `private-subnets` | derived per env | Private subnets (the database tier — adopted subnets keep their owner's routing) |
-| `rds.subnet` | `yolo-{env}-private-subnet-group` | RDS DB subnet group (spans the private tier) |
-| `rds.security-group` | `yolo-{env}-rds` | RDS security group |
-| `ecs.security-group` | `yolo-{env}-{app}` | ECS task security group |
 
 ---
 
@@ -515,11 +488,14 @@ Your manifest implies one of three modes:
 ```yaml
 domain: example.com.au   # the env's canonical domain for shared-service ingress
 services: {}             # env-shared services — the extension point for what sync:environment provisions
+# peering:               # VPC peering to infrastructure outside the YOLO network (e.g. a database mid-migration)
+#   - vpc-0abc123
 ```
 
 | Key | Purpose |
 |---|---|
 | `domain` | The environment's canonical domain for shared-service hostnames (e.g. `search.{domain}`). Distinct from any app's `domain` — shared services are served on the *environment's* name, reachable from every app regardless of their own domains. |
+| `peering` | A list of VPC ids this environment peers with — the declared bridge to infrastructure outside the YOLO network, typically an [externally-hosted database mid-migration](/guide/databases). For each entry, `sync:environment` creates and accepts the peering connection (same-account), routes both ways (the peer's CIDR into the env's public route table; the env's CIDR into the peer's main route table), and enables DNS resolution over the peering so private hostnames resolve across it. Entries must be VPC ids (`vpc-…`); anything else hard-fails. **Removing an entry tears the bridge down** on the next sync — connection deleted, the env-side route reclaimed (the peer-side return route is left inert for its owner). Environment-scoped on purpose: peering is VPC-to-VPC, so it can never live in an app's manifest. |
 | `services` | The env-shared services this environment runs — a map of service ⇒ config (`services.ivs: {}`). The declaration is the whole trigger of [the service lifecycle](/guide/services#the-service-lifecycle): `sync:environment` provisions a declared service (independent of any consumer) and plans its teardown once the entry is removed; a declared service no running app uses is flagged as **idle** (a plan warning), not torn down. `environment:manifest:push` refuses to remove a service apps still use. Each entry is a map (never a scalar or list); its allowed keys come from the service's definition. |
 | `services.typesense` | The environment's [Typesense search cluster](/guide/services#typesense-the-environment-s-search-cluster). `version` (the `typesense/typesense` image tag) is required — an environment never runs an implicit search engine version. `nodes`, `cpu` and `memory` follow the [`tasks.*` conventions](#tasks-web): optional, defaulting to `3` nodes at `'256'`/`'1024'` each. `nodes` accepts `3` or `5` — five spreads read load wider and survives two losses; an even count pays for an extra node without gaining the ability to lose another one, and a single node would lose its search data whenever the task is replaced, so neither is offered. `services: { typesense: { version: "30.2" } }` is a complete entry. A version bump or resize is a manifest edit + `sync:environment` — the nodes roll one at a time. |
 

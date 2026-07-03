@@ -4,7 +4,6 @@ namespace Codinglabs\Yolo\Resources\Ec2;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws\Ec2;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Enums\SecurityGroup;
@@ -15,8 +14,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 /**
  * Shared security group attached to RDS. Models identity + tags only; the
  * 3306-from-task-SG ingress rule is reconciled additively by
- * SyncRdsSecurityGroupStep. Point `rds.security-group` at an existing group
- * to adopt one (reported CUSTOM_MANAGED, never mutated).
+ * SyncRdsSecurityGroupStep.
  */
 class RdsSecurityGroup implements Deletable, Resource
 {
@@ -24,7 +22,7 @@ class RdsSecurityGroup implements Deletable, Resource
 
     public function name(): string
     {
-        return Manifest::get('rds.security-group', $this->keyedName(SecurityGroup::RDS_SECURITY_GROUP));
+        return $this->keyedName(SecurityGroup::RDS_SECURITY_GROUP);
     }
 
     public function scope(): Scope

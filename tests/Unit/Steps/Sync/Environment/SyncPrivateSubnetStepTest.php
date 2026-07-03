@@ -24,21 +24,6 @@ it('surfaces the planned /24 as a change before the subnet exists', function ():
         ->and(collect($captured)->pluck('name'))->not->toContain('CreateSubnet');
 });
 
-it('reports an adopted private subnet as CUSTOM_MANAGED', function (): void {
-    writeManifest([
-        'account-id' => '111111111111',
-        'region' => 'ap-southeast-2',
-        'private-subnets' => ['their-private-a', 'their-private-b', 'their-private-c'],
-    ]);
-
-    $captured = [];
-    bindMockEc2Client([
-        'DescribeSubnets' => new Result(['Subnets' => [['SubnetId' => 'subnet-theirs']]]),
-    ], $captured);
-
-    expect((new SyncPrivateSubnetAStep())(['dry-run' => true]))->toBe(StepResult::CUSTOM_MANAGED);
-});
-
 it('survives a greenfield plan pass — no VPC yet, the carve derives from the /16 the VPC sync will claim', function (): void {
     $captured = [];
     bindMockEc2Client([

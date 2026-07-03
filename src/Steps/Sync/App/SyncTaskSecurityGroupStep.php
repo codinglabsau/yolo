@@ -6,7 +6,6 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Change;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Aws\Ec2;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\SecurityGroupRule;
@@ -21,10 +20,6 @@ class SyncTaskSecurityGroupStep implements Step
     public function __invoke(array $options): StepResult
     {
         $securityGroup = new EcsTaskSecurityGroup();
-
-        if ($securityGroup->exists() && Manifest::has('ecs.security-group')) {
-            return StepResult::CUSTOM_MANAGED;
-        }
 
         $result = $this->syncResource($securityGroup, $options);
 

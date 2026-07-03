@@ -240,6 +240,9 @@ class DestroyEnvironmentCommand extends SyncSteppedCommand implements PlansSeque
     public static function tierBSteps(): array
     {
         return [
+            // Peering first — a peered VPC can't be deleted, and the routes that
+            // rode on the connections go down with the route tables below.
+            Steps\Destroy\Environment\TeardownVpcPeeringConnectionsStep::class,
             Steps\Destroy\Environment\TeardownRdsSubnetStep::class,
             Steps\Destroy\Environment\TeardownRdsSecurityGroupStep::class,
             Steps\Destroy\Environment\TeardownPublicSubnetAStep::class,
