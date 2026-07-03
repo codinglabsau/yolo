@@ -56,3 +56,29 @@ it('pins AWS_CLIENT_BINDINGS to exactly what registerAwsServices() binds', funct
 
     unset($_ENV['YOLO_TESTING_AWS_PROFILE']);
 });
+
+it('builds every client with a request timeout and standard-mode retries', function (): void {
+    Helpers::app()->instance('runningInAws', false);
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
+
+    $_ENV['YOLO_TESTING_AWS_PROFILE'] = 'pin-test';
+
+    $command = new class() extends Command
+    {
+        /** @return array<string, mixed> */
+        public static function arguments(): array
+        {
+            return self::awsClientArguments();
+        }
+    };
+
+    $arguments = $command::arguments();
+
+    // Without a timeout the SDK waits on a stalled response forever, hanging
+    // a forked plan worker; standard-mode retries turn that timeout into a
+    // retryable connection error instead of a fatal one.
+    expect($arguments['http'])->toBe(['connect_timeout' => 5, 'timeout' => 60])
+        ->and($arguments['retries'])->toBe(['mode' => 'standard', 'max_attempts' => 4]);
+
+    unset($_ENV['YOLO_TESTING_AWS_PROFILE']);
+});

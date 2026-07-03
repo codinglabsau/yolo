@@ -83,14 +83,30 @@ trait RegistersAws
         }
     }
 
-    protected function registerAwsServices(): void
+    /**
+     * The arguments every AWS client is constructed with. The SDK ships no
+     * request timeout, so one stalled response would wedge a plan worker
+     * forever. A timeout surfaces as a connection error, which standard-mode
+     * retries treat as retryable — so a flaky read costs a backoff-and-retry,
+     * not a hung sync. 60s per request also holds for S3: the asset push goes
+     * through the Transfer manager, which chunks anything large into multipart.
+     *
+     * @return array<string, mixed>
+     */
+    protected static function awsClientArguments(): array
     {
-        // common arguments for all AWS clients
-        $arguments = [
+        return [
             'region' => Manifest::get('region'),
             'version' => 'latest',
             'credentials' => static::awsCredentials(),
+            'http' => ['connect_timeout' => 5, 'timeout' => 60],
+            'retries' => ['mode' => 'standard', 'max_attempts' => 4],
         ];
+    }
+
+    protected function registerAwsServices(): void
+    {
+        $arguments = static::awsClientArguments();
 
         // register all required AWS clients
         Helpers::app()->singleton('acm', fn (): AcmClient => new AcmClient($arguments));
