@@ -77,8 +77,8 @@ it('builds every client with a request timeout and standard-mode retries', funct
     // Without a timeout the SDK waits on a stalled response forever, hanging
     // a forked plan worker; standard-mode retries turn that timeout into a
     // retryable connection error instead of a fatal one.
-    expect($arguments['http'])->toBe(['connect_timeout' => 5, 'timeout' => 60])
-        ->and($arguments['retries'])->toBe(['mode' => 'standard', 'max_attempts' => 4]);
+    expect($arguments['http'])->toBe(['connect_timeout' => 5, 'timeout' => 15])
+        ->and($arguments['retries'])->toBe(['mode' => 'standard', 'max_attempts' => 3]);
 
     unset($_ENV['YOLO_TESTING_AWS_PROFILE']);
 });

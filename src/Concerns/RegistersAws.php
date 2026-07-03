@@ -88,8 +88,9 @@ trait RegistersAws
      * request timeout, so one stalled response would wedge a plan worker
      * forever. A timeout surfaces as a connection error, which standard-mode
      * retries treat as retryable — so a flaky read costs a backoff-and-retry,
-     * not a hung sync. 60s per request also holds for S3: the asset push goes
-     * through the Transfer manager, which chunks anything large into multipart.
+     * not a hung sync. Control-plane calls complete in single-digit seconds,
+     * so 15s is ~7x headroom; S3 alone gets longer (see registerAwsServices)
+     * because it moves real payloads.
      *
      * @return array<string, mixed>
      */
@@ -99,8 +100,8 @@ trait RegistersAws
             'region' => Manifest::get('region'),
             'version' => 'latest',
             'credentials' => static::awsCredentials(),
-            'http' => ['connect_timeout' => 5, 'timeout' => 60],
-            'retries' => ['mode' => 'standard', 'max_attempts' => 4],
+            'http' => ['connect_timeout' => 5, 'timeout' => 15],
+            'retries' => ['mode' => 'standard', 'max_attempts' => 3],
         ];
     }
 
@@ -130,7 +131,10 @@ trait RegistersAws
         // returned by a us-east-1 query, so the audit needs a second client pinned there to see them.
         Helpers::app()->singleton('resourceGroupsTaggingApiGlobal', fn (): ResourceGroupsTaggingAPIClient => new ResourceGroupsTaggingAPIClient([...$arguments, 'region' => 'us-east-1']));
         Helpers::app()->singleton('route53', fn (): Route53Client => new Route53Client($arguments));
-        Helpers::app()->singleton('s3', fn (): S3Client => new S3Client($arguments));
+        // S3 moves real payloads — a single-part asset upload can be ≤16MB (the
+        // Transfer manager's multipart threshold), so the control-plane timeout
+        // would kill legitimate uploads on a slow uplink.
+        Helpers::app()->singleton('s3', fn (): S3Client => new S3Client([...$arguments, 'http' => ['connect_timeout' => 5, 'timeout' => 120]]));
         Helpers::app()->singleton('serviceDiscovery', fn (): ServiceDiscoveryClient => new ServiceDiscoveryClient($arguments));
         Helpers::app()->singleton('sns', fn (): SnsClient => new SnsClient($arguments));
         Helpers::app()->singleton('sqs', fn (): SqsClient => new SqsClient($arguments));
