@@ -53,10 +53,12 @@ class SearchableModels
      * Whether a class is a searchable Eloquent model — the runtime proof
      * behind the Model&SearchableModel type the discovery methods return
      * ({@see SearchableModel} is analysis-only; no model implements it).
+     * Public so the commands can validate operator-supplied class names
+     * against the same definition.
      *
      * @phpstan-assert-if-true class-string<Model&SearchableModel> $class
      */
-    protected static function isSearchableModel(string $class): bool
+    public static function isSearchableModel(string $class): bool
     {
         return class_exists($class)
             && is_subclass_of($class, Model::class)

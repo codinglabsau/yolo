@@ -87,17 +87,19 @@ class SearchReimportCommand extends Command
         $given = (array) $this->argument('model');
 
         if ($given !== []) {
+            $targets = [];
+
             foreach ($given as $class) {
-                if (! class_exists($class)
-                    || ! is_subclass_of($class, Model::class)
-                    || ! in_array(SearchableModels::SEARCHABLE_TRAIT, class_uses_recursive($class), true)) {
+                if (! SearchableModels::isSearchableModel($class)) {
                     $this->components->error(sprintf('%s is not a searchable model this app knows.', $class));
 
                     return [];
                 }
+
+                $targets[] = $class;
             }
 
-            return array_values($given);
+            return $targets;
         }
 
         // One COUNT per model, not one per usort comparison — these are the
