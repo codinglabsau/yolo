@@ -65,6 +65,19 @@ class YoloServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // The search self-heal/reimport commands register unconditionally —
+        // they're console-only and guard their own applicability (Scout +
+        // Typesense configured), so a non-search app just carries two inert
+        // commands. Ahead of the burst gate on purpose: the burst environment
+        // exists only on the web task-def, and these run on queue/scheduler
+        // tasks and operator shells.
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                Runtime\Commands\SearchHealCommand::class,
+                Runtime\Commands\SearchReimportCommand::class,
+            ]);
+        }
+
         if (! $this->burstEnabled()) {
             return;
         }
