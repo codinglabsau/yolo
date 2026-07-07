@@ -30,12 +30,17 @@ use Codinglabs\Yolo\Runtime\Search\ZeroDowntimeReimport;
  * churn makes count-matching a false-alarm machine, and `yolo:search:reimport`
  * exists for the deliberate rebuild.
  *
- * Self-guarded with a cache lock, NOT `onOneServer()`: on combined-services
- * apps the scheduler fires on every web task, and a wipe must trigger one
- * rebuild, not one per task. Detection failures (cluster unreachable, key no
- * longer honoured) are reported and skipped — the cluster's own alarms page
- * for node health, and a key the cluster stopped honouring is `yolo
- * sync:app`'s to fix, not ours.
+ * Self-guarded with a cache lock so run-once is the command's own property,
+ * not each app's schedule decorations: on combined-services apps the
+ * scheduler fires on every web task, and `onOneServer()` would solve that —
+ * but only for apps that remember to add it, only for same-minute firings
+ * (a long heal pass overlapping the next tick is `withoutOverlapping()`,
+ * a second decoration to forget), and not at all for a manual run racing
+ * the scheduled one. One baked-in lock covers all three; adding the
+ * decorations anyway is harmless. Detection failures (cluster unreachable,
+ * key no longer honoured) are reported and skipped — the cluster's own
+ * alarms page for node health, and a key the cluster stopped honouring is
+ * `yolo sync:app`'s to fix, not ours.
  */
 class SearchHealCommand extends Command
 {
