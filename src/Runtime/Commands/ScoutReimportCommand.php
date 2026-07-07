@@ -12,12 +12,20 @@ use Codinglabs\Yolo\Runtime\Search\TypesenseClient;
 use Codinglabs\Yolo\Runtime\Search\SearchableModels;
 use Codinglabs\Yolo\Runtime\Search\ZeroDowntimeReimport;
 
+use function Laravel\Prompts\multiselect;
+
 /**
  * The deliberate rebuild: `scout:import --fresh` without the blackout.
  * Each model's collection is rebuilt beside the live one and swapped in via
  * a Typesense alias ({@see ZeroDowntimeReimport}) — exact mirror, current
  * schema applied, searches served throughout. Use it for schema changes,
- * drift repair, or anything that used to reach for `--fresh`.
+ * drift repair, or anything that used to reach for `--fresh`. (The name
+ * follows scout-extended's command for the same temp-index pattern.)
+ *
+ * With no models given, an interactive run offers a picker over the app's
+ * discovered searchable models; a non-interactive run requires an explicit
+ * model or `--all`, so a fat-fingered scheduler entry can't rebuild the
+ * world by accident.
  *
  * Models run sequentially, smallest collection first: during each swap the
  * old and new collections coexist, so peak node memory grows by one
@@ -26,10 +34,11 @@ use Codinglabs\Yolo\Runtime\Search\ZeroDowntimeReimport;
  * holds indexes in RAM (~2-3× raw size); rebuilding a large collection on
  * tightly-sized nodes may need `services.typesense.memory` bumped first.
  */
-class SearchReimportCommand extends Command
+class ScoutReimportCommand extends Command
 {
-    protected $signature = 'yolo:search:reimport
-        {model?* : Model classes to rebuild (defaults to every searchable model)}';
+    protected $signature = 'scout:reimport
+        {model?* : Model classes to rebuild}
+        {--all : Rebuild every searchable model}';
 
     protected $description = 'Rebuild search collections with zero downtime (temporary collection + alias swap)';
 
@@ -44,8 +53,6 @@ class SearchReimportCommand extends Command
         $models = $this->targets();
 
         if ($models === []) {
-            $this->components->error('No searchable models to reimport.');
-
             return self::FAILURE;
         }
 
@@ -75,9 +82,10 @@ class SearchReimportCommand extends Command
     }
 
     /**
-     * The models to rebuild: the given classes, or every searchable model —
-     * smallest collection first, so the per-swap memory spike peaks last,
-     * when everything else has already settled.
+     * The models to rebuild: the given classes; else every searchable model
+     * under `--all`; else (interactively) a picker — never an implicit
+     * everything. The full set runs smallest collection first, so the
+     * per-swap memory spike peaks last, when everything else has settled.
      *
      * @return array<int, class-string<Model&SearchableModel>>
      */
@@ -102,11 +110,45 @@ class SearchReimportCommand extends Command
             return $targets;
         }
 
-        // One COUNT per model, not one per usort comparison — these are the
-        // multi-million-row tables the command exists for.
+        $discovered = SearchableModels::all();
+
+        if ($discovered === []) {
+            $this->components->error('No searchable models discovered.');
+
+            return [];
+        }
+
+        if (! $this->option('all')) {
+            if (! $this->input->isInteractive()) {
+                $this->components->error('No models given — name them, or pass --all to rebuild every searchable model.');
+
+                return [];
+            }
+
+            $discovered = array_values(multiselect(
+                label: 'Which models should be rebuilt?',
+                options: $discovered,
+                default: $discovered,
+                required: true,
+                hint: 'Every rebuild swaps in beside the live index — zero search downtime.',
+            ));
+        }
+
+        return $this->smallestFirst($discovered);
+    }
+
+    /**
+     * One COUNT per model, not one per sort comparison — these are the
+     * multi-million-row tables the command exists for.
+     *
+     * @param  array<int, class-string<Model&SearchableModel>>  $models
+     * @return array<int, class-string<Model&SearchableModel>>
+     */
+    protected function smallestFirst(array $models): array
+    {
         $counts = [];
 
-        foreach (SearchableModels::all() as $modelClass) {
+        foreach ($models as $modelClass) {
             $counts[$modelClass] = (new $modelClass())->newQuery()->count();
         }
 

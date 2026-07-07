@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Tests\Fixtures\Search\Sku;
 use Tests\SearchTestbenchCase;
 use Tests\Fixtures\Search\Product;
+use Tests\Fixtures\Search\Voucher;
 use Codinglabs\Yolo\Runtime\Search\SearchableModels;
 
 uses(SearchTestbenchCase::class);
@@ -12,10 +13,11 @@ uses(SearchTestbenchCase::class);
 it('sweeps a PSR-4 root for searchable models, resolving a wrapper trait and skipping abstracts', function (): void {
     $swept = SearchableModels::swept(__DIR__ . '/../../Fixtures/Search', 'Tests\\Fixtures\\Search\\');
 
-    // Product uses Searchable directly; Sku only through the app's own
-    // AppSearchable wrapper — class_uses_recursive resolves both. Widget
-    // (not searchable) and BaseSearchableModel (abstract) are out.
-    expect($swept)->toBe([Product::class, Sku::class]);
+    // Product and Voucher use Searchable directly; Sku only through the
+    // app's own AppSearchable wrapper — class_uses_recursive resolves all
+    // three. Widget (not searchable) and BaseSearchableModel (abstract)
+    // are out.
+    expect($swept)->toBe([Product::class, Sku::class, Voucher::class]);
 });
 
 it('reads the configured set from scout.typesense.model-settings', function (): void {

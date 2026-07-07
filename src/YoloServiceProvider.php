@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Cache;
 use Codinglabs\Yolo\Runtime\CgroupCpu;
 use Illuminate\Support\ServiceProvider;
 use Codinglabs\Yolo\Runtime\MetricsScraper;
+use Illuminate\Console\Scheduling\Schedule;
 use Codinglabs\Yolo\Runtime\InFlightRequests;
 use Codinglabs\Yolo\Runtime\WorkerSaturationReporter;
 use Codinglabs\Yolo\Runtime\Http\TrackInFlightRequests;
@@ -73,9 +74,20 @@ class YoloServiceProvider extends ServiceProvider
         // tasks and operator shells.
         if ($this->app->runningInConsole()) {
             $this->commands([
-                Runtime\Commands\SearchHealCommand::class,
-                Runtime\Commands\SearchReimportCommand::class,
+                Runtime\Commands\ScoutHealCommand::class,
+                Runtime\Commands\ScoutReimportCommand::class,
             ]);
+
+            // Set-and-forget: the provider schedules the heal itself, so a
+            // wiped index rebuilds without any app remembering a kernel line.
+            // Gated on the app actually being wired for Typesense (the same
+            // config the command reads) and on the `yolo.search.heal` opt-out.
+            // The command is self-locking, so no schedule decorations needed.
+            $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
+                if (config('yolo.search.heal') && (array) config('scout.typesense.client-settings', []) !== []) {
+                    $schedule->command('scout:heal')->everyFiveMinutes();
+                }
+            });
         }
 
         if (! $this->burstEnabled()) {

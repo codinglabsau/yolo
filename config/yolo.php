@@ -28,4 +28,20 @@ return [
         'cpu' => env('YOLO_BURST_CPU'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Search self-healing
+    |--------------------------------------------------------------------------
+    |
+    | When the app is wired for the Typesense Scout driver, YOLO's provider
+    | schedules `scout:heal` itself (every five minutes) — the search index is
+    | a rebuildable projection, and a wiped collection should rebuild without
+    | anyone remembering a kernel line. This flag is the opt-out.
+    |
+    */
+
+    'search' => [
+        'heal' => env('YOLO_SEARCH_HEAL', true),
+    ],
+
 ];
