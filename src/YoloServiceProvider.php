@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Cache;
 use Codinglabs\Yolo\Runtime\CgroupCpu;
 use Illuminate\Support\ServiceProvider;
 use Codinglabs\Yolo\Runtime\MetricsScraper;
+use Illuminate\Console\Scheduling\Schedule;
 use Codinglabs\Yolo\Runtime\InFlightRequests;
 use Codinglabs\Yolo\Runtime\WorkerSaturationReporter;
 use Codinglabs\Yolo\Runtime\Http\TrackInFlightRequests;
@@ -65,6 +66,30 @@ class YoloServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // The search self-heal/reimport commands register unconditionally —
+        // they're console-only and guard their own applicability (Scout +
+        // Typesense configured), so a non-search app just carries two inert
+        // commands. Ahead of the burst gate on purpose: the burst environment
+        // exists only on the web task-def, and these run on queue/scheduler
+        // tasks and operator shells.
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                Runtime\Commands\ScoutHealCommand::class,
+                Runtime\Commands\ScoutReimportCommand::class,
+            ]);
+
+            // Set-and-forget: the provider schedules the heal itself, so a
+            // wiped index rebuilds without any app remembering a kernel line.
+            // Gated on the app actually being wired for Typesense (the same
+            // config the command reads) and on the `yolo.search.heal` opt-out.
+            // The command is self-locking, so no schedule decorations needed.
+            $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
+                if (config('yolo.search.heal') && (array) config('scout.typesense.client-settings', []) !== []) {
+                    $schedule->command('scout:heal')->everyFiveMinutes();
+                }
+            });
+        }
+
         if (! $this->burstEnabled()) {
             return;
         }
