@@ -63,7 +63,7 @@ class CopyApplicationStep implements LongRunning
             command: [
                 'rsync',
                 '-avq',
-                ...array_map(fn ($item): string => "--include=$item", $include),
+                ...array_map(fn (string $item): string => "--include=$item", $include),
                 ...array_map(fn (string $item): string => "--exclude=$item", $exclude),
                 '.',
                 Paths::build(),
