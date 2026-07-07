@@ -97,7 +97,7 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
 
         $dryRun = (bool) Arr::get($options, 'dry-run');
 
-        if ($this->reconcileTaskIngressRule($securityGroupIds->first(), 3306, 'Enable Fargate tasks to connect to the external database', $dryRun)) {
+        if ($this->reconcileTaskIngressRule($securityGroupIds->first(), 3306, 'Enable Fargate tasks to connect to the external database', $dryRun, foreign: true)) {
             return $dryRun ? StepResult::WOULD_SYNC : StepResult::SYNCED;
         }
 

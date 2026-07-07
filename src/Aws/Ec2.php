@@ -189,21 +189,51 @@ class Ec2
     }
 
     /**
-     * A VPC's main route table — the one subnets fall back to when nothing is
-     * explicitly associated. Where the return route lands in a peered VPC YOLO
-     * doesn't otherwise manage. Null when the VPC (or its main table) can't be
-     * found.
+     * Every route table in a VPC, sorted by id so callers plan and reclaim
+     * deterministically. Empty when the VPC has none (it's gone).
      *
-     * @return array<string, mixed>|null
+     * @return array<int, array<string, mixed>>
      */
-    public static function mainRouteTable(string $vpcId): ?array
+    public static function vpcRouteTables(string $vpcId): array
     {
-        return Aws::ec2()->describeRouteTables([
-            'Filters' => [
-                ['Name' => 'vpc-id', 'Values' => [$vpcId]],
-                ['Name' => 'association.main', 'Values' => ['true']],
-            ],
-        ])['RouteTables'][0] ?? null;
+        $routeTables = Aws::ec2()->describeRouteTables([
+            'Filters' => [['Name' => 'vpc-id', 'Values' => [$vpcId]]],
+        ])['RouteTables'] ?? [];
+
+        usort($routeTables, fn (array $first, array $second): int => strcmp((string) $first['RouteTableId'], (string) $second['RouteTableId']));
+
+        return $routeTables;
+    }
+
+    /**
+     * The route tables that actually govern traffic in a VPC — those with at
+     * least one subnet association. A route written anywhere else steers
+     * nothing: a VPC built by another tool routinely leaves its main table
+     * with zero subnet associations, so the main table is only the fallback
+     * when NO table in the VPC has any (then every subnet uses it
+     * implicitly). Sorted by id (see vpcRouteTables).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function subnetAssociatedRouteTables(string $vpcId): array
+    {
+        $routeTables = static::vpcRouteTables($vpcId);
+
+        $subnetAssociated = array_values(array_filter(
+            $routeTables,
+            fn (array $routeTable): bool => collect($routeTable['Associations'] ?? [])
+                ->contains(fn (array $association): bool => isset($association['SubnetId'])),
+        ));
+
+        if ($subnetAssociated !== []) {
+            return $subnetAssociated;
+        }
+
+        return array_values(array_filter(
+            $routeTables,
+            fn (array $routeTable): bool => collect($routeTable['Associations'] ?? [])
+                ->contains(fn (array $association): bool => (bool) ($association['Main'] ?? false)),
+        ));
     }
 
     public static function securityGroup(string $name): array

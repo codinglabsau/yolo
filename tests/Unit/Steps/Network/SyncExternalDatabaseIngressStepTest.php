@@ -74,6 +74,9 @@ it('reports pending on the plan pass without writing', function (): void {
 
     expect($step(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC)
         ->and($step->changes())->not->toBeEmpty()
+        // The rule lands on a security group YOLO doesn't own — the plan must
+        // name it and mark it foreign.
+        ->and($step->changes()[0]->attribute)->toBe('ingress 3306/tcp from task security group (sg-external — not yolo-managed)')
         ->and(collect($captured)->pluck('name'))->not->toContain('AuthorizeSecurityGroupIngress');
 });
 

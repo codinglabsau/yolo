@@ -14,21 +14,27 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * by its content — AWS rejects duplicate permissions, so no marker tag is needed.
  * Never revokes (any out-of-band rule is left untouched), records the change it
  * makes, and writes nothing under --dry-run. Returns whether the rule was missing
- * (a change is pending/applied).
+ * (a change is pending/applied). A group YOLO doesn't own (an external
+ * database's) is a foreign write — pass $foreign so the plan names the group
+ * and marks it not yolo-managed.
  */
 trait AuthorisesTaskIngress
 {
     use RecordsChanges;
 
-    protected function reconcileTaskIngressRule(string $groupId, int $port, string $description, bool $dryRun): bool
+    protected function reconcileTaskIngressRule(string $groupId, int $port, string $description, bool $dryRun, bool $foreign = false): bool
     {
+        $attribute = $foreign
+            ? "ingress {$port}/tcp from task security group ({$groupId} — not yolo-managed)"
+            : "ingress {$port}/tcp from task security group";
+
         try {
             // Name lookup throws if the task SG is missing — sync:app provisions it
             // before this step runs, but a dry-run on a fresh environment can reach
             // here before it exists.
             $taskSecurityGroupId = (new EcsTaskSecurityGroup())->arn();
         } catch (ResourceDoesNotExistException) {
-            $this->recordChange(Change::make("ingress {$port}/tcp from task security group", null, 'authorised (task SG pending)'));
+            $this->recordChange(Change::make($attribute, null, 'authorised (task SG pending)'));
 
             return true;
         }
@@ -44,7 +50,7 @@ trait AuthorisesTaskIngress
             return false;
         }
 
-        $this->recordChange(Change::make("ingress {$port}/tcp from task security group", null, $taskSecurityGroupId));
+        $this->recordChange(Change::make($attribute, null, $taskSecurityGroupId));
 
         if (! $dryRun) {
             Aws::ec2()->authorizeSecurityGroupIngress([
