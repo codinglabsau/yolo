@@ -193,7 +193,7 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                     'Resource' => '*',
                     'Action' => [
                         // compute / networking
-                        'ec2:Create*', 'ec2:Delete*', 'ec2:Modify*',
+                        'ec2:Create*', 'ec2:Delete*', 'ec2:Modify*', 'ec2:Accept*',
                         'ec2:Associate*', 'ec2:Disassociate*',
                         'ec2:Attach*', 'ec2:Detach*',
                         'ec2:Authorize*', 'ec2:Revoke*',
