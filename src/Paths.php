@@ -24,6 +24,11 @@ class Paths
         return __DIR__ . '/../stubs' . ($path ? '/' . ltrim((string) $path, '/') : '');
     }
 
+    public static function bin($path = null): string
+    {
+        return __DIR__ . '/../bin' . ($path ? '/' . ltrim((string) $path, '/') : '');
+    }
+
     public static function manifest(): string
     {
         return static::base(Helpers::manifestName());

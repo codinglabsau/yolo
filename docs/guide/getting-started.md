@@ -63,6 +63,8 @@ YOLO_PRODUCTION_AWS_PROFILE=myapp-production
 
 The pattern is `YOLO_<ENVIRONMENT>_AWS_PROFILE`. Before YOLO touches AWS it calls STS to confirm the profile resolves to the same account ID you declared in `yolo.yml` — so a wrong profile fails fast instead of provisioning into the wrong account.
 
+Don't have the profile yet? [`yolo configure production`](/reference/commands#yolo-configure) sets the whole thing up interactively — the profile, a short-lived-session credential helper, and this `.env` line. See [Developer Credentials](/guide/credentials).
+
 ::: warning
 Don't point this at your `default` profile. YOLO rejects it deliberately — a named profile makes "which account am I about to change?" unambiguous.
 :::

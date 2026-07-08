@@ -17,6 +17,7 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | Command | Purpose |
 |---|---|
 | [`init`](#yolo-init) | Scaffold `yolo.yml`, Dockerfile, and supporting files |
+| [`configure <env>`](#yolo-configure) | Set up this machine's AWS profile and credentials for an environment |
 | [`env:pull <env>`](#yolo-env-pull) | Download the app's `.env` from S3 |
 | [`env:push <env>`](#yolo-env-push) | Upload the app's `.env` to S3 (with diff) |
 | [`environment:manifest:pull <env>`](#yolo-environment-manifest-pull) | Download the environment manifest (`yolo-<env>.yml`) |
@@ -70,6 +71,31 @@ Interactive. Prompts for the app name, the environment to add (e.g. `production`
 - Offers to install the AWS Session Manager plugin (used by [`run`](#yolo-run) and [`db:tunnel`](#yolo-db-tunnel)).
 
 This is the only command that runs without an existing manifest.
+
+---
+
+## `yolo configure`
+
+Set this machine up to authenticate an environment — the developer-laptop half of [onboarding](/guide/credentials) (the account half is an IAM user plus [`permissions`](#yolo-permissions)). Runs entirely locally: it needs the manifest and a valid environment, but no AWS credentials — creating them is its job.
+
+```bash
+yolo configure <environment> [--driver=<driver>]
+```
+
+| Option | Value | Description |
+|---|---|---|
+| `--driver` | `1password` \| `process` | Credential source. `1password` (default) uses the bundled `yolo-credentials` helper; `process` accepts any `credential_process` command that emits credential JSON on stdout. |
+
+Interactive; each step is checked and offered a fix rather than left to fail later:
+
+1. **Binaries** — verifies `aws` (plus `jq` and `op` for the 1Password driver) and prints the Homebrew install lines for anything missing.
+2. **Helper install** (1Password driver) — copies `yolo-credentials` from the composer package to `~/.local/bin`, so the profile survives checkout moves and `composer update` refreshes reach it on the next run.
+3. **Item verification** (1Password driver) — confirms the named item exists and carries `aws_access_key_id` / `aws_secret_access_key` before anything is written.
+4. **Profile write** — writes `credential_process` + the manifest's region as `[profile <name>]` in `~/.aws/config`, replacing an existing block only after confirmation. Leftover `sso_*` keys are called out by name — the CLI resolves SSO configuration ahead of `credential_process`, so remnants silently break the setup.
+5. **Shadow check** — a same-named section in `~/.aws/credentials` takes precedence over `credential_process`; `configure` detects it and offers to remove it.
+6. **Wire and verify** — sets `YOLO_<ENVIRONMENT>_AWS_PROFILE` in the app's local `.env`, then proves the chain with `aws sts get-caller-identity` and holds the resolved account against the manifest's `account-id`.
+
+Profiles map to AWS **accounts**, not apps — run `configure` once per account, then reuse the profile name in each sibling app's `.env` (step 6 is the only per-app part). See [Developer Credentials](/guide/credentials).
 
 ---
 
