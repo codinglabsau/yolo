@@ -56,9 +56,19 @@ it('federates to the GitHub OIDC provider scoped to the repo and branch, and tru
                 'Effect' => 'Allow',
                 'Principal' => ['AWS' => 'arn:aws:iam::111111111111:root'],
                 'Action' => 'sts:AssumeRole',
+                'Condition' => [
+                    'Bool' => ['aws:MultiFactorAuthPresent' => 'true'],
+                ],
             ],
         ],
     ]);
+});
+
+it('requires MFA on the human statement only — the OIDC path stays keyless', function (): void {
+    $statements = (new DeployerRole())->assumeRolePolicyDocument()['Statement'];
+
+    expect($statements[0]['Condition'])->not->toHaveKey('Bool')
+        ->and($statements[1]['Condition'])->toBe(['Bool' => ['aws:MultiFactorAuthPresent' => 'true']]);
 });
 
 it('keeps the OIDC web-identity statement first so the sub-claim reconciler still finds the ref', function (): void {

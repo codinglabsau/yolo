@@ -140,6 +140,14 @@ class ObserverRole implements Deletable, Resource, SynchronisesConfiguration
                     'Effect' => 'Allow',
                     'Principal' => ['AWS' => sprintf('arn:aws:iam::%s:root', Aws::accountId())],
                     'Action' => 'sts:AssumeRole',
+                    // Every YOLO tier requires MFA — even read-only. The tier cap
+                    // limits what YOLO does, not what the underlying key pair could
+                    // do elsewhere, so the weakest credential on the team is still
+                    // an MFA'd one. A yolo-credentials session carries the MFA
+                    // context automatically; bare static keys are denied.
+                    'Condition' => [
+                        'Bool' => ['aws:MultiFactorAuthPresent' => 'true'],
+                    ],
                 ],
             ],
         ];

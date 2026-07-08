@@ -357,7 +357,9 @@ class ConfigureCommand extends Command implements RunsWithoutAws
             return false;
         }
 
-        $this->reportMfaPosture($this->userHasMfaDevice($profile), $this->itemHasTotp);
+        if (! $this->enforceMfaPosture($this->userHasMfaDevice($profile), $this->itemHasTotp)) {
+            return false;
+        }
 
         outro(sprintf('Authenticated as %s — this machine is ready for %s. 🚀', $identity['Arn'], Helpers::environment()));
 
@@ -386,32 +388,36 @@ class ConfigureCommand extends Command implements RunsWithoutAws
     /**
      * MFA is invisible in a green verify — the helper warns on stderr when it
      * mints without MFA, but a successful credential_process never surfaces
-     * that, so a missing device or TOTP would otherwise stay hidden until the
-     * admin tier refuses the user. Report the posture explicitly instead.
+     * that. And it's a hard requirement: every YOLO tier role's trust demands
+     * `aws:MultiFactorAuthPresent`, so a session minted without MFA can't
+     * assume anything. Fail here, at setup, with the missing half named —
+     * never at the first real command with an opaque AccessDenied.
      */
-    protected function reportMfaPosture(?bool $deviceRegistered, ?bool $itemHasTotp): void
+    protected function enforceMfaPosture(?bool $deviceRegistered, ?bool $itemHasTotp): bool
     {
-        if ($deviceRegistered === null) {
-            note('MFA posture unknown — iam:ListMFADevices was denied for this user. Grant it on self (a standard force-MFA policy carves it out) so MFA can be discovered.');
+        if ($deviceRegistered === false) {
+            error('No MFA device is registered on this IAM user. Every YOLO tier requires MFA to assume — register a device in IAM, add its TOTP to your credential source, then re-run configure.');
 
-            return;
+            return false;
         }
 
-        if (! $deviceRegistered) {
-            warning('No MFA device is registered on this IAM user. Sessions will mint WITHOUT MFA — fine for observer/deployer tiers, but the admin tier refuses without a device. Register one in IAM before granting admin.');
+        if ($deviceRegistered === null) {
+            warning('MFA posture unknown — iam:ListMFADevices was denied for this user. Grant it on self (a standard force-MFA policy carves it out). Every YOLO tier requires MFA, so commands will refuse if sessions mint without it.');
 
-            return;
+            return true;
         }
 
         if ($itemHasTotp === false) {
-            warning('An MFA device is registered, but the 1Password item has no one-time-password field — sessions will mint WITHOUT MFA and the admin tier will refuse. Seed a TOTP field from the IAM device.');
+            error('An MFA device is registered, but the 1Password item has no one-time-password field — sessions will mint WITHOUT MFA, and every YOLO tier requires it. Seed a TOTP field from the IAM device, then re-run configure.');
 
-            return;
+            return false;
         }
 
         info($itemHasTotp === true
             ? 'MFA device registered and TOTP present — sessions will be MFA-forwarded.'
-            : 'MFA device registered — ensure your credential_process forwards a TOTP, or the admin tier will refuse.');
+            : 'MFA device registered — every YOLO tier requires MFA, so make sure your credential_process forwards a TOTP.');
+
+        return true;
     }
 
     protected function awsConfigFile(): SharedIniFile

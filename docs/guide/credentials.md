@@ -11,9 +11,9 @@ Access is granted by **grant-group membership**, never by attaching policies to 
 | Observer — environment | `yolo-{env}-observers` | read every app in the environment |
 | Observer — one app | `yolo-{env}-{app}-observers` | read one app (log content fenced to its log group) |
 | Deployer — one app | `yolo-{env}-{app}-deployers` | build and deploy one app |
-| Admin — environment | `yolo-{env}-admins` | `sync` / `scale` / manage access (**MFA required**) |
+| Admin — environment | `yolo-{env}-admins` | `sync` / `scale` / manage access (**fresh MFA code per run**) |
 
-Most developers want **environment observer + deployer on the apps they ship**. Keep the admins group small — its role trust requires MFA, AWS-enforced.
+**Every tier requires MFA to assume** — the trust condition is on all four roles, AWS-enforced, so a bare static key can't hold even read-only access. Sessions minted by the `yolo-credentials` helper carry the MFA context automatically; only the admin tier adds a per-run prompt. Most developers want **environment observer + deployer on the apps they ship**. Keep the admins group small.
 
 ## Onboard a developer
 
@@ -22,7 +22,7 @@ Most developers want **environment observer + deployer on the apps they ship**. 
 YOLO never creates or owns users — an account admin does this once per person, in the console or CLI:
 
 - Create the user with **no console password** (programmatic access only) and create one **access key**.
-- If they'll ever hold the admin tier, register an **MFA device** on the user — the admin role's trust policy denies AssumeRole without it.
+- Register an **MFA device** on the user — not optional: every YOLO tier's trust policy denies AssumeRole without MFA, and `yolo configure` refuses to finish without a device.
 - Grant `iam:ListMFADevices` on self (a standard force-MFA policy carves this out) so tooling can discover the device without storing its ARN.
 
 ### 2. Grant tiers
@@ -41,7 +41,7 @@ The developer stores the access key in a 1Password item (their private **Employe
 
 - `aws_access_key_id`
 - `aws_secret_access_key`
-- a **one-time-password** (TOTP) field seeded from the IAM MFA device, if one is registered
+- a **one-time-password** (TOTP) field seeded from the IAM MFA device
 
 The long-lived key lives only in 1Password — it never sits in `~/.aws/credentials`.
 
@@ -60,7 +60,7 @@ One interactive command wires the whole machine — see [`yolo configure`](/refe
 3. **Writes the AWS profile** (`credential_process` + the manifest's region) into `~/.aws/config`. Profiles map to AWS **accounts** — reuse one profile for every app in the same account.
 4. **Detects the silent killers** before they bite: leftover `sso_*` keys in the profile (the CLI would try SSO and ignore `credential_process`) and a same-named section in `~/.aws/credentials` (static keys there **shadow** `credential_process`) — each is named and offered a fix.
 5. **Verifies the 1Password item** has the required fields, sets `YOLO_<ENVIRONMENT>_AWS_PROFILE` in the app's `.env`, and **proves the chain** with a live `sts:GetCallerIdentity` held against the manifest's `account-id`.
-6. **Reports the MFA posture** — whether the IAM user has a device registered *and* the item carries a TOTP to forward. A missing device or TOTP is invisible in a green verify (sessions still mint, just without MFA) and would otherwise surface only when the admin tier refuses — so it's checked and named here.
+6. **Enforces MFA** — checks the IAM user has a device registered *and* the item carries a TOTP to forward, and **fails if either is missing**. A session minted without MFA verifies green but can't assume any tier, so this would otherwise surface as an opaque AccessDenied at the first real command.
 
 The result in `~/.aws/config`:
 
