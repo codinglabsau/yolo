@@ -54,7 +54,7 @@ Open `yolo.yml` and skim it — it's short and commented. You can tweak it now o
 
 ## 3. Point YOLO at AWS
 
-YOLO authenticates to AWS using a **named profile per environment**. Set one up — profile, short-lived-session credential helper, and the `.env` wiring in one interactive run:
+YOLO authenticates to AWS using a **named profile per environment**. `init` offers this step at the end of its run; if you skipped it there, set it up now — profile, short-lived-session credential helper, and the `.env` wiring in one interactive run:
 
 ```bash
 yolo configure production

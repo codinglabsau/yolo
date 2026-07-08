@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Symfony\Component\Process\Process;
+use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Process\ExecutableFinder;
 
 use function Laravel\Prompts\info;
@@ -51,6 +52,38 @@ class InitCommand extends Command
         $this->ensureSessionManagerPlugin();
 
         info('Manifest generated successfully.');
+
+        $this->offerCredentialsSetup();
+    }
+
+    /**
+     * The natural next step after scaffolding is authenticating the machine, so
+     * offer `configure` inline — same pattern as the Session Manager plugin
+     * offer. Init and configure stay separate commands because their cadences
+     * differ (once per app vs once per machine per account): a dev joining an
+     * existing app runs configure without ever running init, and an
+     * already-configured machine scaffolding a second app declines here.
+     */
+    protected function offerCredentialsSetup(): void
+    {
+        if (! $this->input->isInteractive() || $this->getApplication() === null) {
+            return;
+        }
+
+        if (! confirm(sprintf("Set up this machine's AWS credentials for %s now?", $this->environment), default: true)) {
+            note(sprintf('Run `yolo configure %s` when you are ready.', $this->environment));
+
+            return;
+        }
+
+        $exitCode = $this->getApplication()->find('configure')->run(
+            new ArrayInput(['environment' => $this->environment]),
+            $this->output,
+        );
+
+        if ($exitCode !== self::SUCCESS) {
+            note(sprintf('Credential setup did not finish — re-run `yolo configure %s` any time.', $this->environment));
+        }
     }
 
     protected function initialiseManifest(): void

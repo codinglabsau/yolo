@@ -69,6 +69,7 @@ Interactive. Prompts for the app name, the environment to add (e.g. `production`
 - Creates a starter `.env.<environment>`.
 - Appends `.yolo`, `.env.<environment>` (plus `.env.staging`/`.env.production`), and the env-shared working copies (`.env.environment.*`, `yolo-environment-*.yml`) to `.gitignore`.
 - Offers to install the AWS Session Manager plugin (used by [`run`](#yolo-run) and [`db:tunnel`](#yolo-db-tunnel)).
+- Offers to run [`configure`](#yolo-configure) at the end — the natural next step on a fresh app. Decline if this machine already has the account's profile set up.
 
 This is the only command that runs without an existing manifest.
 
