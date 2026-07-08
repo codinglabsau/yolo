@@ -37,6 +37,7 @@ export default defineConfig({
         items: [
           { text: 'The Container Image', link: '/guide/images' },
           { text: 'Environment Files', link: '/guide/environment-files' },
+          { text: 'Developer Credentials', link: '/guide/credentials' },
           { text: 'Provisioning', link: '/guide/provisioning' },
           { text: 'Building & Deploying', link: '/guide/building-and-deploying' },
         ],
