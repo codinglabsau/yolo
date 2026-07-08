@@ -95,6 +95,26 @@ it('describes scaling bounds, policies, or a fixed/singleton service', function 
     expect(StatusCommand::formatScaling($queue, ServerGroup::QUEUE))->toBe('0–10 auto (backlog)');
 });
 
+it('ranks scaling policies into a stable display order', function (): void {
+    $probe = new class()
+    {
+        use RendersServiceStatus;
+
+        public function rank(string $metric): int
+        {
+            return self::policyRank($metric);
+        }
+    };
+
+    // DescribeScalingPolicies has no ordering guarantee, so the overview sorts by
+    // rank — cpu, concurrency, burst, backlog, then anything unrecognised.
+    $shuffled = ['burst', 'custom', 'concurrency', 'backlog', 'ECSServiceAverageCPUUtilization'];
+
+    usort($shuffled, fn (string $a, string $b): int => $probe->rank($a) <=> $probe->rank($b));
+
+    expect($shuffled)->toBe(['ECSServiceAverageCPUUtilization', 'concurrency', 'burst', 'backlog', 'custom']);
+});
+
 it('reduces a live policy to its metric and target', function (): void {
     $probe = new class()
     {
