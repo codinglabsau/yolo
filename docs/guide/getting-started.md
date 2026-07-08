@@ -8,7 +8,7 @@ You don't need prior YOLO knowledge. Each step links to a deeper page if you wan
 
 - **PHP 8.3+** and **Composer**
 - **Docker**, running locally — YOLO builds your container image on your machine
-- An **AWS account** and a **named AWS profile** configured on your machine (in `~/.aws/config` / `~/.aws/credentials`). Don't use the `default` profile — give it a specific name like `myapp-production`. (Setting up a whole team, or want short-lived MFA-backed sessions instead of static keys? See [Developer Credentials](/guide/credentials).)
+- An **AWS account** and an **access key for your IAM user** — step 3's `yolo configure` turns it into a named profile with short-lived sessions. (Already have a named profile in `~/.aws/config`? That works too — just don't use the `default` profile.)
 - **For a public app:** a domain you can manage in **Route 53** on that account. (You can skip this and run a [headless app](/guide/domains#headless-apps) with no public URL.)
 
 ::: tip The whole thing in one line
@@ -54,16 +54,22 @@ Open `yolo.yml` and skim it — it's short and commented. You can tweak it now o
 
 ## 3. Point YOLO at AWS
 
-YOLO authenticates to AWS using a **named profile per environment**, set in your local `.env` file:
+YOLO authenticates to AWS using a **named profile per environment**. Set one up — profile, short-lived-session credential helper, and the `.env` wiring in one interactive run:
+
+```bash
+yolo configure production
+```
+
+It ends with a live STS verification, so when it goes green this machine is provably ready. See [`yolo configure`](/reference/commands#yolo-configure) for each step, and [Developer Credentials](/guide/credentials) for the full team-onboarding picture (IAM users, access tiers, MFA).
+
+Already have a named profile? Point YOLO at it in your local `.env` instead:
 
 ```bash
 # .env
 YOLO_PRODUCTION_AWS_PROFILE=myapp-production
 ```
 
-The pattern is `YOLO_<ENVIRONMENT>_AWS_PROFILE`. Before YOLO touches AWS it calls STS to confirm the profile resolves to the same account ID you declared in `yolo.yml` — so a wrong profile fails fast instead of provisioning into the wrong account.
-
-Don't have the profile yet? [`yolo configure production`](/reference/commands#yolo-configure) sets the whole thing up interactively — the profile, a short-lived-session credential helper, and this `.env` line. See [Developer Credentials](/guide/credentials).
+The pattern is `YOLO_<ENVIRONMENT>_AWS_PROFILE`. Either way, before YOLO touches AWS it calls STS to confirm the profile resolves to the same account ID you declared in `yolo.yml` — so a wrong profile fails fast instead of provisioning into the wrong account.
 
 ::: warning
 Don't point this at your `default` profile. YOLO rejects it deliberately — a named profile makes "which account am I about to change?" unambiguous.
