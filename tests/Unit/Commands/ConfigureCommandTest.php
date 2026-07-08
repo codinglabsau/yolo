@@ -158,3 +158,33 @@ it('installs the bundled helper executable into the local bin directory', functi
         ->and(is_executable($helper))->toBeTrue()
         ->and(file_get_contents($helper))->toContain('yolo-credentials — emit short-lived AWS credentials');
 });
+
+it('reports MFA forwarding when a device and TOTP are both present', function (): void {
+    invokeConfigure(configureCommand(), 'reportMfaPosture', true, true);
+
+    expect(test()->promptOutput->fetch())->toContain('MFA-forwarded');
+});
+
+it('warns when a device is registered but the item has no TOTP', function (): void {
+    invokeConfigure(configureCommand(), 'reportMfaPosture', true, false);
+
+    expect(test()->promptOutput->fetch())->toContain('no one-time-password field');
+});
+
+it('warns when no MFA device is registered on the user', function (): void {
+    invokeConfigure(configureCommand(), 'reportMfaPosture', false, null);
+
+    expect(test()->promptOutput->fetch())->toContain('No MFA device is registered');
+});
+
+it('notes an unknown MFA posture when the device check is denied', function (): void {
+    invokeConfigure(configureCommand(), 'reportMfaPosture', null, true);
+
+    expect(test()->promptOutput->fetch())->toContain('iam:ListMFADevices was denied');
+});
+
+it('leaves TOTP knowledge open for the custom-process driver', function (): void {
+    invokeConfigure(configureCommand(), 'reportMfaPosture', true, null);
+
+    expect(test()->promptOutput->fetch())->toContain('ensure your credential_process forwards a TOTP');
+});

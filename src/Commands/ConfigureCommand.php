@@ -35,6 +35,13 @@ use function Laravel\Prompts\warning;
  */
 class ConfigureCommand extends Command implements RunsWithoutAws
 {
+    /**
+     * Whether the verified 1Password item carries a TOTP field — null until
+     * (unless) the 1Password driver verified an item. Feeds the MFA posture
+     * report; the custom-process driver leaves it unknown.
+     */
+    protected ?bool $itemHasTotp = null;
+
     protected function configure(): void
     {
         $this
@@ -214,17 +221,22 @@ class ConfigureCommand extends Command implements RunsWithoutAws
             return false;
         }
 
-        $fields = collect(json_decode($process->getOutput(), true)['fields'] ?? [])
-            ->pluck('label')
-            ->all();
+        $fields = collect(json_decode($process->getOutput(), true)['fields'] ?? []);
 
-        $missing = array_values(array_diff(['aws_access_key_id', 'aws_secret_access_key'], $fields));
+        $missing = array_values(array_diff(
+            ['aws_access_key_id', 'aws_secret_access_key'],
+            $fields->pluck('label')->all(),
+        ));
 
         if ($missing !== []) {
             warning(sprintf("'%s' is missing the %s field%s.", $item, implode(' and ', $missing), count($missing) === 1 ? '' : 's'));
 
             return false;
         }
+
+        // Remembered for the MFA posture report after verification — the helper
+        // can only forward MFA when the item carries a TOTP to forward.
+        $this->itemHasTotp = $fields->contains(fn (array $field): bool => ($field['type'] ?? null) === 'OTP');
 
         info(sprintf("1Password item '%s' verified.", $item));
 
@@ -345,9 +357,61 @@ class ConfigureCommand extends Command implements RunsWithoutAws
             return false;
         }
 
+        $this->reportMfaPosture($this->userHasMfaDevice($profile), $this->itemHasTotp);
+
         outro(sprintf('Authenticated as %s — this machine is ready for %s. 🚀', $identity['Arn'], Helpers::environment()));
 
         return true;
+    }
+
+    /**
+     * Whether the IAM user behind the profile has an MFA device registered —
+     * null when the check itself fails (iam:ListMFADevices not granted). Uses
+     * the just-verified profile, so it exercises the same session every other
+     * command will.
+     */
+    protected function userHasMfaDevice(string $profile): ?bool
+    {
+        $process = new Process(['aws', 'iam', 'list-mfa-devices', '--profile', $profile, '--query', 'MFADevices[0].SerialNumber', '--output', 'text']);
+        $process->setTimeout(60);
+        $process->run();
+
+        if (! $process->isSuccessful()) {
+            return null;
+        }
+
+        return trim($process->getOutput()) !== 'None';
+    }
+
+    /**
+     * MFA is invisible in a green verify — the helper warns on stderr when it
+     * mints without MFA, but a successful credential_process never surfaces
+     * that, so a missing device or TOTP would otherwise stay hidden until the
+     * admin tier refuses the user. Report the posture explicitly instead.
+     */
+    protected function reportMfaPosture(?bool $deviceRegistered, ?bool $itemHasTotp): void
+    {
+        if ($deviceRegistered === null) {
+            note('MFA posture unknown — iam:ListMFADevices was denied for this user. Grant it on self (a standard force-MFA policy carves it out) so MFA can be discovered.');
+
+            return;
+        }
+
+        if (! $deviceRegistered) {
+            warning('No MFA device is registered on this IAM user. Sessions will mint WITHOUT MFA — fine for observer/deployer tiers, but the admin tier refuses without a device. Register one in IAM before granting admin.');
+
+            return;
+        }
+
+        if ($itemHasTotp === false) {
+            warning('An MFA device is registered, but the 1Password item has no one-time-password field — sessions will mint WITHOUT MFA and the admin tier will refuse. Seed a TOTP field from the IAM device.');
+
+            return;
+        }
+
+        info($itemHasTotp === true
+            ? 'MFA device registered and TOTP present — sessions will be MFA-forwarded.'
+            : 'MFA device registered — ensure your credential_process forwards a TOTP, or the admin tier will refuse.');
     }
 
     protected function awsConfigFile(): SharedIniFile

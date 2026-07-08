@@ -94,6 +94,7 @@ Interactive; each step is checked and offered a fix rather than left to fail lat
 4. **Profile write** — writes `credential_process` + the manifest's region as `[profile <name>]` in `~/.aws/config`, replacing an existing block only after confirmation. Leftover `sso_*` keys are called out by name — the CLI resolves SSO configuration ahead of `credential_process`, so remnants silently break the setup.
 5. **Shadow check** — a same-named section in `~/.aws/credentials` takes precedence over `credential_process`; `configure` detects it and offers to remove it.
 6. **Wire and verify** — sets `YOLO_<ENVIRONMENT>_AWS_PROFILE` in the app's local `.env`, then proves the chain with `aws sts get-caller-identity` and holds the resolved account against the manifest's `account-id`.
+7. **MFA posture report** — a green verify can't show whether MFA was forwarded (the helper only warns on stderr), so `configure` checks explicitly: is an MFA device registered on the IAM user, and does the 1Password item carry a TOTP to forward? Both present → confirmed forwarding; either missing → a named warning, since the [admin tier](#conventions) refuses without MFA.
 
 Profiles map to AWS **accounts**, not apps — run `configure` once per account, then reuse the profile name in each sibling app's `.env` (step 6 is the only per-app part). See [Developer Credentials](/guide/credentials).
 

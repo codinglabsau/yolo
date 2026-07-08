@@ -60,6 +60,7 @@ One interactive command wires the whole machine — see [`yolo configure`](/refe
 3. **Writes the AWS profile** (`credential_process` + the manifest's region) into `~/.aws/config`. Profiles map to AWS **accounts** — reuse one profile for every app in the same account.
 4. **Detects the silent killers** before they bite: leftover `sso_*` keys in the profile (the CLI would try SSO and ignore `credential_process`) and a same-named section in `~/.aws/credentials` (static keys there **shadow** `credential_process`) — each is named and offered a fix.
 5. **Verifies the 1Password item** has the required fields, sets `YOLO_<ENVIRONMENT>_AWS_PROFILE` in the app's `.env`, and **proves the chain** with a live `sts:GetCallerIdentity` held against the manifest's `account-id`.
+6. **Reports the MFA posture** — whether the IAM user has a device registered *and* the item carries a TOTP to forward. A missing device or TOTP is invisible in a green verify (sessions still mint, just without MFA) and would otherwise surface only when the admin tier refuses — so it's checked and named here.
 
 The result in `~/.aws/config`:
 
