@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Symfony\Component\Process\Process;
+use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Process\ExecutableFinder;
 
@@ -66,7 +67,7 @@ class InitCommand extends Command
      */
     protected function offerCredentialsSetup(): void
     {
-        if (! $this->input->isInteractive() || $this->getApplication() === null) {
+        if (! $this->input->isInteractive() || ! $this->getApplication() instanceof Application) {
             return;
         }
 
