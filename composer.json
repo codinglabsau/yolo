@@ -40,8 +40,7 @@
     }
   },
   "bin": [
-    "yolo",
-    "bin/yolo-creds"
+    "yolo"
   ],
   "config": {
     "sort-packages": true,

@@ -1,6 +1,6 @@
 # Developer Credentials
 
-YOLO authenticates to AWS as **you** — a named profile per environment on each developer's machine (see [Getting Started](/guide/getting-started#_3-point-yolo-at-aws)). This page covers the team side of that: creating an IAM user for a new developer, granting them a tier, and setting their machine up with short-lived, MFA-forwarding credentials via the bundled `yolo-creds` helper.
+YOLO authenticates to AWS as **you** — a named profile per environment on each developer's machine (see [Getting Started](/guide/getting-started#_3-point-yolo-at-aws)). This page covers the team side of that: creating an IAM user for a new developer, granting them a tier, and setting their machine up with short-lived, MFA-forwarding credentials via the `yolo-credentials` helper.
 
 ## Who can do what
 
@@ -45,14 +45,15 @@ The developer stores the access key in a 1Password item (their private **Employe
 
 The long-lived key lives only in 1Password — it never sits in `~/.aws/credentials`.
 
-## Short-lived sessions with `yolo-creds`
+## Short-lived sessions with `yolo-credentials`
 
-YOLO ships a `credential_process` helper at `vendor/bin/yolo-creds` (installed by Composer alongside `vendor/bin/yolo`). It reads the long-lived key from 1Password at mint time, calls `sts:GetSessionToken` — forwarding MFA automatically when the user has a device registered — and caches the short-lived session (12 hours, under `~/.aws/yolo-cache` with owner-only permissions) so the CLI doesn't re-prompt, and never reuses a TOTP, on every call. Long-lived keys never touch disk; only the expiring session does.
+YOLO's repository carries a `credential_process` helper, [`bin/yolo-credentials`](https://github.com/codinglabsau/yolo/blob/main/bin/yolo-credentials). It reads the long-lived key from 1Password at mint time, calls `sts:GetSessionToken` — forwarding MFA automatically when the user has a device registered — and caches the short-lived session (4 hours, under `~/.aws/yolo-cache` with owner-only permissions) so the CLI doesn't re-prompt, and never reuses a TOTP, on every call. Long-lived keys never touch disk; only the expiring session does.
 
-Copy it somewhere stable — `~/.aws/config` outlives any one repository checkout:
+Install it once, somewhere stable on your machine:
 
 ```bash
-cp vendor/bin/yolo-creds ~/.local/bin/yolo-creds
+curl -fsSL -o ~/.local/bin/yolo-credentials https://raw.githubusercontent.com/codinglabsau/yolo/main/bin/yolo-credentials
+chmod +x ~/.local/bin/yolo-credentials
 ```
 
 Then wire the profile:
@@ -60,7 +61,7 @@ Then wire the profile:
 ```ini
 # ~/.aws/config
 [profile my-app-production]
-credential_process = /Users/you/.local/bin/yolo-creds "AWS my-app production"
+credential_process = /Users/you/.local/bin/yolo-credentials "AWS my-app production"
 region = ap-southeast-2
 ```
 
@@ -74,9 +75,9 @@ YOLO_PRODUCTION_AWS_PROFILE=my-app-production
 ```
 
 ::: tip MFA is automatic
-`yolo-creds` discovers the user's MFA device from AWS at mint time (`iam:ListMFADevices`) and takes the TOTP from the same 1Password item — no device ARN stored anywhere. A user with no device (or no TOTP field) gets a plain session, with a warning on stderr. Forwarding MFA to an account that doesn't enforce it is harmless — and future-proof if enforcement is turned on later.
+`yolo-credentials` discovers the user's MFA device from AWS at mint time (`iam:ListMFADevices`) and takes the TOTP from the same 1Password item — no device ARN stored anywhere. A user with no device (or no TOTP field) gets a plain session, with a warning on stderr. Forwarding MFA to an account that doesn't enforce it is harmless — and future-proof if enforcement is turned on later.
 :::
 
 ::: warning Not a secret store
-The cache under `~/.aws/yolo-cache` holds working session credentials until they expire. It's `0700`/owner-only, but treat a lost laptop as a rotation event regardless — the exposure window is at most the 12-hour session, not the long-lived key.
+The cache under `~/.aws/yolo-cache` holds working session credentials until they expire. It's `0700`/owner-only, but treat a lost laptop as a rotation event regardless — the exposure window is at most the 4-hour session, not the long-lived key.
 :::
