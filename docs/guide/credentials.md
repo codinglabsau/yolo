@@ -67,6 +67,10 @@ region = ap-southeast-2
 
 The argument is the 1Password item name; an optional second argument names the vault (default `Employee`). It needs the [1Password CLI](https://developer.1password.com/docs/cli/) (`op`), the AWS CLI, and `jq`.
 
+::: info 1Password is the implementation, not a requirement
+`credential_process` only cares that the script emits a credentials JSON on stdout — where the long-lived key comes from is up to you. Everything 1Password-specific in `yolo-credentials` is the single `op item get` fetch near the top; adapt it ad hoc for another password manager (Bitwarden, `pass`, a corporate vault) or another key source by swapping that one call. Keep the properties that matter: the long-lived key is fetched at mint time and never written to disk, sessions are cached until near expiry, and MFA is forwarded when the user has a device.
+:::
+
 Point YOLO at the profile in the app's local `.env` and you're done:
 
 ```bash
