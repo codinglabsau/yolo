@@ -212,6 +212,11 @@ trait RendersServiceStatus
             ApplicationAutoScaling::scalingPolicies(ScalableTarget::resourceId($group)),
         )));
 
+        // DescribeScalingPolicies returns policies in no guaranteed order, so pin a
+        // canonical one — otherwise the overview reshuffles cpu/concurrency/burst
+        // between redraws.
+        usort($policies, static fn (array $a, array $b): int => static::policyRank($a['metric']) <=> static::policyRank($b['metric']));
+
         return [...$bounds, 'policies' => $policies];
     }
 
@@ -242,6 +247,21 @@ trait RendersServiceStatus
             ?? (str_contains($policy['PolicyName'] ?? '', 'concurrency') ? 'concurrency' : 'custom');
 
         return ['metric' => $metric, 'target' => (float) ($config['TargetValue'] ?? 0)];
+    }
+
+    /**
+     * The display position of a scaling policy in the overview: cpu, then
+     * concurrency, then burst/backlog, then anything unrecognised.
+     */
+    protected static function policyRank(string $metric): int
+    {
+        return match ($metric) {
+            'ECSServiceAverageCPUUtilization' => 0,
+            'concurrency' => 1,
+            'burst' => 2,
+            'backlog' => 3,
+            default => 4,
+        };
     }
 
     protected static function cpuTargetFrom(?array $scaling): ?float
