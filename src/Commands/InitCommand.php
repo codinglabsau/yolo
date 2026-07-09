@@ -5,17 +5,14 @@ namespace Codinglabs\Yolo\Commands;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Symfony\Component\Process\Process;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Input\ArrayInput;
-use Symfony\Component\Process\ExecutableFinder;
 
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\text;
 use function Laravel\Prompts\intro;
 use function Laravel\Prompts\confirm;
-use function Laravel\Prompts\warning;
 
 class InitCommand extends Command
 {
@@ -50,7 +47,6 @@ class InitCommand extends Command
         $this->initialiseDockerfile();
         $this->initialiseDockerignore();
         $this->initialiseEnv();
-        $this->ensureSessionManagerPlugin();
 
         info('Manifest generated successfully.');
 
@@ -149,34 +145,6 @@ class InitCommand extends Command
         }
 
         copy(Paths::stubs('.dockerignore.stub'), Paths::base('.dockerignore'));
-    }
-
-    /**
-     * `yolo run` opens a shell / runs one-off commands in a running container
-     * via ECS Exec, which needs AWS's Session Manager plugin on this machine.
-     * Offer to install it at setup so it's there before it's needed. (A future
-     * `yolo doctor` will report its status alongside Docker / the AWS CLI.)
-     */
-    protected function ensureSessionManagerPlugin(): void
-    {
-        if ((new ExecutableFinder())->find('session-manager-plugin')) {
-            info('AWS Session Manager plugin found.');
-
-            return;
-        }
-
-        note("The AWS Session Manager plugin isn't installed — `yolo run` needs it to open a shell or run one-off commands in a running container.");
-
-        if (PHP_OS_FAMILY === 'Darwin' && $this->input->isInteractive() && (new ExecutableFinder())->find('brew') && confirm('Install it now with Homebrew? (you may be prompted for your password)', default: true)) {
-            (new Process(['brew', 'install', '--cask', 'session-manager-plugin']))
-                ->setTty(Process::isTtySupported())
-                ->setTimeout(null)
-                ->run();
-
-            return;
-        }
-
-        warning('Install it before using `yolo run`: https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html');
     }
 
     protected function gitIgnoreFilesAndDirectories(): void

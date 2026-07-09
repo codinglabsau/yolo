@@ -61,6 +61,8 @@ class ConfigureCommand extends Command implements RunsWithoutAws
             return self::FAILURE;
         }
 
+        $this->ensureSessionManagerPlugin();
+
         $credentialProcess = $driver === CredentialsDriver::OnePassword
             ? $this->onePasswordCredentialProcess()
             : $this->customCredentialProcess();
@@ -136,6 +138,36 @@ class ConfigureCommand extends Command implements RunsWithoutAws
         note("Install with Homebrew:\n  brew install awscli jq\n  brew install --cask 1password-cli\nThen enable 1Password → Settings → Developer → Integrate with 1Password CLI.");
 
         return false;
+    }
+
+    /**
+     * `yolo run` / `yolo db:tunnel` open a shell (or forward a port) into a
+     * running container via ECS Exec, which needs AWS's Session Manager plugin
+     * on this machine — a per-machine tool, same cadence as the binaries above,
+     * so it's set up here rather than at app scaffolding. Non-fatal: it's not
+     * needed for configure itself, only for those later commands, so a missing
+     * plugin offers an install and warns rather than aborting.
+     */
+    protected function ensureSessionManagerPlugin(): void
+    {
+        if ((new ExecutableFinder())->find('session-manager-plugin')) {
+            info('AWS Session Manager plugin found.');
+
+            return;
+        }
+
+        note("The AWS Session Manager plugin isn't installed — `yolo run` and `yolo db:tunnel` need it to reach a running container.");
+
+        if (PHP_OS_FAMILY === 'Darwin' && $this->input->isInteractive() && (new ExecutableFinder())->find('brew') && confirm('Install it now with Homebrew? (you may be prompted for your password)', default: true)) {
+            (new Process(['brew', 'install', '--cask', 'session-manager-plugin']))
+                ->setTty(Process::isTtySupported())
+                ->setTimeout(null)
+                ->run();
+
+            return;
+        }
+
+        warning('Install it before using `yolo run` / `yolo db:tunnel`: https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html');
     }
 
     /**

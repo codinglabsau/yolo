@@ -48,7 +48,7 @@ This interactive command scaffolds everything you need:
 - **`yolo.yml`** — your manifest, pre-filled with the environment you named (e.g. `production`) from your answers (app name, AWS account ID, region, domain).
 - **`Dockerfile`** and **`.dockerignore`** — sensible defaults you can customise. See [The Container Image](/guide/images).
 - **`.env.<environment>`** — a starter environment file.
-- It appends `.yolo` and your environment's `.env` file (plus `.env.staging`/`.env.production`) to your `.gitignore`, and offers to install the [AWS Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) (needed later for `yolo run`).
+- It appends `.yolo` and your environment's `.env` file (plus `.env.staging`/`.env.production`) to your `.gitignore`, and offers to run [`yolo configure`](/reference/commands#yolo-configure) at the end to set up this machine's credentials (step 3).
 
 Open `yolo.yml` and skim it — it's short and commented. You can tweak it now or come back later. The full key reference is in the [Manifest reference](/reference/manifest).
 
