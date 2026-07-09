@@ -7,7 +7,7 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 - **`<environment>`** — almost every command takes a required `environment` argument naming a key under `environments` in your `yolo.yml` (e.g. `production`, `staging`).
 - **AWS authentication** — outside CI, YOLO reads a named AWS profile from `YOLO_<ENVIRONMENT>_AWS_PROFILE` in your local `.env`. Before any AWS call it verifies (via STS) that the profile resolves to the `account-id` declared in the manifest. The `default` profile is rejected. In CI it falls back to the AWS SDK default credential chain (GitHub OIDC, SSO).
 - **Permission tiers** — you authenticate as yourself; YOLO then assumes a scoped role per command and runs capped to it, so it can never exceed what the command needs: read commands (`status`, `audit`) → an observer role, the deploy lifecycle (`deploy`, `build`, `run`) → the per-app deployer role, and provisioning (`sync`, `scale`) → the `yolo-*`-scoped admin role. The observer tier is **scope-aware**: a single-app read (`status`, `status:logs`) caps to a **per-app** observer role whose log-content reads are fenced to that app's log group, while an env-wide read (`status:environment`, every `audit`) caps to the env observer role. The guard is **fail-closed** — a command refuses if it can't assume its role rather than running on your full identity. See [provisioning](/guide/provisioning).
-- **Admin requires MFA** — the admin role's trust requires `aws:MultiFactorAuthPresent`, so `sync` / `scale` / `permissions` prompt for a fresh 6-digit MFA code each run. Escalating to admin is therefore always an **explicit human act** an agent can't perform (it's AWS-enforced, not just a CLI prompt — a direct AssumeRole without MFA is denied). Observer and deployer carry no MFA. YOLO resolves your MFA device automatically (`iam:ListMFADevices`); set `YOLO_<ENVIRONMENT>_MFA_SERIAL` to the device ARN to skip discovery (or when it isn't permitted).
+- **Every tier requires MFA** — each tier role's trust demands `aws:MultiFactorAuthPresent`, even read-only observer, so a bare static key can't assume anything: the tier cap limits what YOLO does, not what the key pair could do elsewhere, and the weakest credential on the team is still an MFA'd one. Sessions minted by [`yolo configure`](#yolo-configure)'s helper carry the MFA context automatically, so observer and deployer add **no prompts**. The **admin tier additionally demands a fresh 6-digit code** each run (`sync` / `scale` / `permissions` prompt for it), so escalating to admin is always an **explicit human act** an agent can't perform — AWS-enforced, not just a CLI prompt; a direct AssumeRole without MFA is denied. The CI path is unaffected: GitHub OIDC federation carries no MFA context and its trust statement doesn't ask for one. YOLO resolves your MFA device automatically (`iam:ListMFADevices`); set `YOLO_<ENVIRONMENT>_MFA_SERIAL` to the device ARN to skip discovery (or when it isn't permitted).
 - **Grant groups** — access is granted by **group membership**, not by editing identities. YOLO provisions convention-named IAM groups (`yolo-{env}-observers`, `yolo-{env}-{app}-observers`, `yolo-{env}-{app}-deployers`, `yolo-{env}-admins`), each allowing `sts:AssumeRole` on one tier role. Add a user to a group to grant the tier, remove to revoke — managed with [`permissions`](#yolo-permissions) (or the IAM console). YOLO never creates or owns the users themselves — see [Developer Credentials](/guide/credentials) for the full onboarding flow, including each developer's local credential setup.
 - **`--dangerously-skip-permissions`** — a global flag that bypasses the tier cap and runs on your full AWS identity (with a loud warning). It's the deliberate escape for **bootstrapping a fresh environment** (the first `yolo sync <env> --dangerously-skip-permissions` creates the tier roles) and for break-glass / diagnostics. Avoid it otherwise.
 - **Required manifest keys** — every command except `init` checks that `name`, `region`, and `account-id` are declared, and fails fast if not.
@@ -17,6 +17,7 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | Command | Purpose |
 |---|---|
 | [`init`](#yolo-init) | Scaffold `yolo.yml`, Dockerfile, and supporting files |
+| [`configure <env>`](#yolo-configure) | Set up this machine's AWS profile and credentials for an environment |
 | [`env:pull <env>`](#yolo-env-pull) | Download the app's `.env` from S3 |
 | [`env:push <env>`](#yolo-env-push) | Upload the app's `.env` to S3 (with diff) |
 | [`environment:manifest:pull <env>`](#yolo-environment-manifest-pull) | Download the environment manifest (`yolo-<env>.yml`) |
@@ -67,9 +68,36 @@ Interactive. Prompts for the app name, the environment to add (e.g. `production`
 - Writes a default `Dockerfile` and `.dockerignore` (asks before overwriting existing ones).
 - Creates a starter `.env.<environment>`.
 - Appends `.yolo`, `.env.<environment>` (plus `.env.staging`/`.env.production`), and the env-shared working copies (`.env.environment.*`, `yolo-environment-*.yml`) to `.gitignore`.
-- Offers to install the AWS Session Manager plugin (used by [`run`](#yolo-run) and [`db:tunnel`](#yolo-db-tunnel)).
+- Offers to run [`configure`](#yolo-configure) at the end — the natural next step on a fresh app (it handles machine setup, including the Session Manager plugin). Decline if this machine already has the account's profile set up.
 
 This is the only command that runs without an existing manifest.
+
+---
+
+## `yolo configure`
+
+Set this machine up to authenticate an environment — the developer-laptop half of [onboarding](/guide/credentials) (the account half is an IAM user plus [`permissions`](#yolo-permissions)). Runs entirely locally: it needs the manifest and a valid environment, but no AWS credentials — creating them is its job.
+
+```bash
+yolo configure <environment> [--driver=<driver>]
+```
+
+| Option | Value | Description |
+|---|---|---|
+| `--driver` | `1password` \| `process` | Credential source. `1password` (default) uses the bundled `yolo-credentials-1password` helper; `process` accepts any `credential_process` command that emits credential JSON on stdout. |
+
+Interactive; each step is checked and offered a fix rather than left to fail later:
+
+1. **Binaries** — verifies `aws` (plus `jq` and `op` for the 1Password driver) and prints the Homebrew install lines for anything missing.
+2. **Session Manager plugin** — a per-machine tool [`run`](#yolo-run) and [`db:tunnel`](#yolo-db-tunnel) need to reach a running container; offers to install it (non-fatal — it isn't needed for `configure` itself).
+3. **Helper install** (1Password driver) — copies `yolo-credentials-1password` from the composer package to `~/.local/bin`, so the profile survives checkout moves and `composer update` refreshes reach it on the next run.
+4. **Item verification** (1Password driver) — confirms the named item exists and carries `aws_access_key_id` / `aws_secret_access_key` before anything is written.
+5. **Profile write** — writes `credential_process` + the manifest's region as `[profile <name>]` in `~/.aws/config`, replacing an existing block only after confirmation. Leftover `sso_*` keys are called out by name — the CLI resolves SSO configuration ahead of `credential_process`, so remnants silently break the setup.
+6. **Shadow check** — a same-named section in `~/.aws/credentials` takes precedence over `credential_process`; `configure` detects it and offers to remove it.
+7. **Wire and verify** — sets `YOLO_<ENVIRONMENT>_AWS_PROFILE` in the app's local `.env`, then proves the chain with `aws sts get-caller-identity` and holds the resolved account against the manifest's `account-id`.
+8. **MFA gate** — a green verify can't show whether MFA was forwarded (the helper only warns on stderr), so `configure` checks explicitly: is an MFA device registered on the IAM user, and does the 1Password item carry a TOTP to forward? [Every tier requires MFA](#conventions), so a missing device or TOTP **fails the command** with the missing half named — the alternative is an opaque AccessDenied at the first real command.
+
+Profiles map to AWS **accounts**, not apps — run `configure` once per account, then reuse the profile name in each sibling app's `.env` (the `.env` wiring in step 7 is the only per-app part). See [Developer Credentials](/guide/credentials).
 
 ---
 

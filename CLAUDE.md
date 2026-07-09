@@ -87,7 +87,9 @@ All commands extend `Command` (base) or, for multi-step work, `SteppedCommand` /
   the preview), and `--check` is the non-interactive plan-only/fail-on-drift form for CI. `DestroyAppCommand`
   (`destroy:app`) extends it too — the teardown reverse of `sync:app`, reusing the same plan → confirm → apply runner.
 
-The full command set: `init`; the env-file and env-manifest pull/push pairs (`env:pull`/`env:push`,
+The full command set: `init`; `configure` (developer-machine credential setup — installs the `bin/yolo-credentials-1password`
+helper, writes the AWS profile, wires the app's `.env`; runs with no AWS credentials via the `RunsWithoutAws`
+contract); the env-file and env-manifest pull/push pairs (`env:pull`/`env:push`,
 `environment:manifest:pull`/`push`, `environment:env:pull`/`push`); `build`, `deploy`, `rollback`, `run`, `scale`,
 and `destroy:app` (app teardown); the scope-grouped `status` / `status:*` read surfaces; `permissions`; `services`;
 and the scope-grouped `sync` / `audit` verbs below.

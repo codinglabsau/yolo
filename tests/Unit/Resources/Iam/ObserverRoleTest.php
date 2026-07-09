@@ -27,3 +27,9 @@ it('trusts the account principal, so an identity granted sts:AssumeRole can assu
     // the deployer role uses.
     expect($statement['Action'])->not->toBe('sts:AssumeRoleWithWebIdentity');
 });
+
+it('requires MFA to assume — every tier does, even read-only', function (): void {
+    $statement = (new ObserverRole())->assumeRolePolicyDocument()['Statement'][0];
+
+    expect($statement['Condition'])->toBe(['Bool' => ['aws:MultiFactorAuthPresent' => 'true']]);
+});

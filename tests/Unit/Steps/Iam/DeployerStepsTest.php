@@ -59,6 +59,9 @@ function deployerTrustDocument(string $subject): string
                 'Effect' => 'Allow',
                 'Principal' => ['AWS' => 'arn:aws:iam::111111111111:root'],
                 'Action' => 'sts:AssumeRole',
+                'Condition' => [
+                    'Bool' => ['aws:MultiFactorAuthPresent' => 'true'],
+                ],
             ],
         ],
     ]));

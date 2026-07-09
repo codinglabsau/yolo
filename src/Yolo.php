@@ -13,6 +13,9 @@ class Yolo
     protected array $commands = [
         Commands\InitCommand::class,
 
+        // Machine credentials (the developer-laptop half of onboarding)
+        Commands\ConfigureCommand::class,
+
         // App env files
         Commands\EnvPullCommand::class,
         Commands\EnvPushCommand::class,

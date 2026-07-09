@@ -15,6 +15,7 @@ use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Concerns\RegistersAws;
 use Codinglabs\Yolo\Contracts\AdminCommand;
 use Codinglabs\Yolo\Resources\Iam\AdminRole;
+use Codinglabs\Yolo\Contracts\RunsWithoutAws;
 use Codinglabs\Yolo\Contracts\DeployerCommand;
 use Codinglabs\Yolo\Contracts\ReadOnlyCommand;
 use Codinglabs\Yolo\Concerns\HasAfterCallbacks;
@@ -94,7 +95,7 @@ abstract class Command extends SymfonyCommand
 
         Helpers::app()->instance('environment', $this->argument('environment'));
 
-        if (static::requiresAwsProfile() && ! Helpers::keyedEnv('AWS_PROFILE')) {
+        if (static::requiresAwsProfile() && ! $this instanceof RunsWithoutAws && ! Helpers::keyedEnv('AWS_PROFILE')) {
             error(sprintf('You need to specify YOLO_%s_AWS_PROFILE in your .env file before proceeding', strtoupper((string) Helpers::environment())));
 
             return 1;
@@ -102,6 +103,20 @@ abstract class Command extends SymfonyCommand
 
         if (! $this->ensureManifestIntegrity()) {
             return 1;
+        }
+
+        // A RunsWithoutAws command works against the manifest and the local
+        // machine only — resolving credentials here would be circular, since
+        // creating them is the command's own job. Manifest and environment
+        // checks above still apply; everything AWS below does not.
+        if ($this instanceof RunsWithoutAws) {
+            $exitCode = (int) (Helpers::app()->call([$this, 'handle']) ?: 0);
+
+            foreach ($this->after as $closure) {
+                $closure();
+            }
+
+            return $exitCode;
         }
 
         $this->registerAwsServices();
@@ -572,10 +587,12 @@ abstract class Command extends SymfonyCommand
         } catch (\Throwable $e) {
             error(sprintf(
                 "Refusing to run '%s' on your full AWS identity: could not assume %s (%s).\n"
+                . 'Every YOLO tier requires MFA — sessions minted without it are denied, so if this is an AccessDenied check your credentials carry MFA (`yolo configure %s` sets that up and verifies it). '
                 . 'Bootstrap a fresh environment once with --dangerously-skip-permissions; otherwise check the role exists and that your identity may assume it.',
                 $this->getName(),
                 $role->name(),
                 $e->getMessage(),
+                Helpers::environment(),
             ));
 
             return self::FAILURE;
