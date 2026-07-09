@@ -26,7 +26,7 @@ use function Laravel\Prompts\warning;
 /**
  * Set this machine up to authenticate an environment — the developer-laptop
  * half of onboarding (the account half is an IAM user + `yolo permissions`).
- * Installs the yolo-credentials helper, writes the AWS profile with a
+ * Installs the yolo-credentials-1password helper, writes the AWS profile with a
  * credential_process line, wires YOLO_{ENV}_AWS_PROFILE into the app's .env,
  * and proves the whole chain with a live STS call. Every known way this setup
  * silently breaks — SSO remnants in the profile, a static-key section
@@ -211,12 +211,12 @@ class ConfigureCommand extends Command implements RunsWithoutAws
             mkdir($directory, 0755, true);
         }
 
-        $helper = $directory . '/yolo-credentials';
+        $helper = $directory . '/yolo-credentials-1password';
 
-        copy(Paths::bin('yolo-credentials'), $helper);
+        copy(Paths::bin('yolo-credentials-1password'), $helper);
         chmod($helper, 0755);
 
-        info(sprintf('Installed the yolo-credentials helper to %s.', $helper));
+        info(sprintf('Installed the yolo-credentials-1password helper to %s.', $helper));
 
         return $helper;
     }
@@ -224,7 +224,7 @@ class ConfigureCommand extends Command implements RunsWithoutAws
     /**
      * The driver seam: any command that emits AWS credential JSON on stdout —
      * another password manager's CLI wrapped in a script, a corporate vault,
-     * an adapted copy of yolo-credentials.
+     * an adapted copy of yolo-credentials-1password.
      */
     protected function customCredentialProcess(): ?string
     {

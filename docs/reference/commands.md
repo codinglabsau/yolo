@@ -84,13 +84,13 @@ yolo configure <environment> [--driver=<driver>]
 
 | Option | Value | Description |
 |---|---|---|
-| `--driver` | `1password` \| `process` | Credential source. `1password` (default) uses the bundled `yolo-credentials` helper; `process` accepts any `credential_process` command that emits credential JSON on stdout. |
+| `--driver` | `1password` \| `process` | Credential source. `1password` (default) uses the bundled `yolo-credentials-1password` helper; `process` accepts any `credential_process` command that emits credential JSON on stdout. |
 
 Interactive; each step is checked and offered a fix rather than left to fail later:
 
 1. **Binaries** — verifies `aws` (plus `jq` and `op` for the 1Password driver) and prints the Homebrew install lines for anything missing.
 2. **Session Manager plugin** — a per-machine tool [`run`](#yolo-run) and [`db:tunnel`](#yolo-db-tunnel) need to reach a running container; offers to install it (non-fatal — it isn't needed for `configure` itself).
-3. **Helper install** (1Password driver) — copies `yolo-credentials` from the composer package to `~/.local/bin`, so the profile survives checkout moves and `composer update` refreshes reach it on the next run.
+3. **Helper install** (1Password driver) — copies `yolo-credentials-1password` from the composer package to `~/.local/bin`, so the profile survives checkout moves and `composer update` refreshes reach it on the next run.
 4. **Item verification** (1Password driver) — confirms the named item exists and carries `aws_access_key_id` / `aws_secret_access_key` before anything is written.
 5. **Profile write** — writes `credential_process` + the manifest's region as `[profile <name>]` in `~/.aws/config`, replacing an existing block only after confirmation. Leftover `sso_*` keys are called out by name — the CLI resolves SSO configuration ahead of `credential_process`, so remnants silently break the setup.
 6. **Shadow check** — a same-named section in `~/.aws/credentials` takes precedence over `credential_process`; `configure` detects it and offers to remove it.

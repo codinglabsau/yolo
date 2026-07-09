@@ -154,9 +154,9 @@ it('installs the bundled helper executable into the local bin directory', functi
 
     $helper = invokeConfigure(configureCommand(), 'installHelper');
 
-    expect($helper)->toBe($localBin . '/yolo-credentials')
+    expect($helper)->toBe($localBin . '/yolo-credentials-1password')
         ->and(is_executable($helper))->toBeTrue()
-        ->and(file_get_contents($helper))->toContain('yolo-credentials — emit short-lived AWS credentials');
+        ->and(file_get_contents($helper))->toContain('yolo-credentials-1password — emit short-lived AWS credentials');
 });
 
 it('passes the MFA gate when a device and TOTP are both present', function (): void {
