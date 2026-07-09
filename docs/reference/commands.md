@@ -86,13 +86,15 @@ yolo configure <environment> [--driver=<driver>]
 |---|---|---|
 | `--driver` | `1password` \| `process` | Credential source. `1password` (default) uses the bundled `yolo-credentials-1password` helper; `process` accepts any `credential_process` command that emits credential JSON on stdout. |
 
-Interactive; each step is checked and offered a fix rather than left to fail later:
+It first asks the **profile name** (defaulting to `<app>-<environment>`). If that profile already exists, `configure` offers to just re-verify it and finish instead of walking the whole setup again — reconfiguring is the opt-in, defaulted on only when the existing block carries `sso_*` remnants that would break resolution (called out by name). Choosing verify-only jumps straight to the wire-and-verify + MFA checks below.
+
+Otherwise it runs the full setup; each step is checked and offered a fix rather than left to fail later:
 
 1. **Binaries** — verifies `aws` (plus `jq` and `op` for the 1Password driver) and prints the Homebrew install lines for anything missing.
 2. **Session Manager plugin** — a per-machine tool [`run`](#yolo-run) and [`db:tunnel`](#yolo-db-tunnel) need to reach a running container; offers to install it (non-fatal — it isn't needed for `configure` itself).
 3. **Helper install** (1Password driver) — copies `yolo-credentials-1password` from the composer package to `~/.local/bin`, so the profile survives checkout moves and `composer update` refreshes reach it on the next run.
 4. **Item verification** (1Password driver) — confirms the named item exists and carries `aws_access_key_id` / `aws_secret_access_key` before anything is written.
-5. **Profile write** — writes `credential_process` + the manifest's region as `[profile <name>]` in `~/.aws/config`, replacing an existing block only after confirmation. Leftover `sso_*` keys are called out by name — the CLI resolves SSO configuration ahead of `credential_process`, so remnants silently break the setup.
+5. **Profile write** — writes `credential_process` + the manifest's region as `[profile <name>]` in `~/.aws/config`. An existing block is only reached here once you've opted to reconfigure it above, so it's replaced without a second prompt.
 6. **Shadow check** — a same-named section in `~/.aws/credentials` takes precedence over `credential_process`; `configure` detects it and offers to remove it.
 7. **Wire and verify** — sets `YOLO_<ENVIRONMENT>_AWS_PROFILE` in the app's local `.env`, then proves the chain with `aws sts get-caller-identity` and holds the resolved account against the manifest's `account-id`.
 8. **MFA gate** — a green verify can't show whether MFA was forwarded (the helper only warns on stderr), so `configure` checks explicitly: is an MFA device registered on the IAM user, and does the 1Password item carry a TOTP to forward? [Every tier requires MFA](#conventions), so a missing device or TOTP **fails the command** with the missing half named — the alternative is an opaque AccessDenied at the first real command.

@@ -35,17 +35,38 @@ beforeEach(function (): void {
 });
 
 it('writes a fresh profile block with the manifest region', function (): void {
-    $wrote = invokeConfigure(configureCommand(), 'writeProfile', 'my-app-testing', '/usr/local/bin/helper "AWS My App"');
+    invokeConfigure(configureCommand(), 'writeProfile', 'my-app-testing', '/usr/local/bin/helper "AWS My App"');
 
-    expect($wrote)->toBeTrue()
-        ->and(file_get_contents($this->awsDirectory . '/config'))->toBe(
-            "[profile my-app-testing]\n"
-            . "credential_process = /usr/local/bin/helper \"AWS My App\"\n"
-            . "region = ap-southeast-2\n"
-        );
+    expect(file_get_contents($this->awsDirectory . '/config'))->toBe(
+        "[profile my-app-testing]\n"
+        . "credential_process = /usr/local/bin/helper \"AWS My App\"\n"
+        . "region = ap-southeast-2\n"
+    );
 });
 
-it('replaces an SSO-remnant profile after warning, naming the stale keys', function (): void {
+it('defaults an already-configured profile to verify-only, not reconfigure', function (): void {
+    if (! is_dir($this->awsDirectory)) {
+        mkdir($this->awsDirectory, 0700, true);
+    }
+    file_put_contents($this->awsDirectory . '/config', "[profile my-app-testing]\ncredential_process = /usr/local/bin/helper\nregion = us-west-2\n");
+
+    Prompt::fake([Key::ENTER]);
+
+    expect(invokeConfigure(configureCommand(), 'confirmReconfigure', 'my-app-testing'))->toBeFalse();
+});
+
+it('reconfigures an already-configured profile when opted in', function (): void {
+    if (! is_dir($this->awsDirectory)) {
+        mkdir($this->awsDirectory, 0700, true);
+    }
+    file_put_contents($this->awsDirectory . '/config', "[profile my-app-testing]\ncredential_process = /usr/local/bin/helper\nregion = us-west-2\n");
+
+    Prompt::fake(['y', Key::ENTER]);
+
+    expect(invokeConfigure(configureCommand(), 'confirmReconfigure', 'my-app-testing'))->toBeTrue();
+});
+
+it('defaults to reconfigure when the existing profile carries SSO remnants', function (): void {
     if (! is_dir($this->awsDirectory)) {
         mkdir($this->awsDirectory, 0700, true);
     }
@@ -55,28 +76,12 @@ it('replaces an SSO-remnant profile after warning, naming the stale keys', funct
         'sso_account_id = 111111111111',
     ]) . "\n");
 
+    // ENTER accepts the default — reconfigure, because SSO remnants would
+    // otherwise steer resolution away from credential_process. Contrast the
+    // healthy-profile case above, where the same ENTER leaves it as verify-only.
     Prompt::fake([Key::ENTER]);
 
-    $wrote = invokeConfigure(configureCommand(), 'writeProfile', 'my-app-testing', '/usr/local/bin/helper "AWS My App"');
-
-    expect($wrote)->toBeTrue()
-        ->and(file_get_contents($this->awsDirectory . '/config'))
-        ->toContain('credential_process')
-        ->not->toContain('sso_session');
-});
-
-it('leaves an existing profile untouched when replacement is declined', function (): void {
-    if (! is_dir($this->awsDirectory)) {
-        mkdir($this->awsDirectory, 0700, true);
-    }
-    file_put_contents($this->awsDirectory . '/config', "[profile my-app-testing]\nregion = us-west-2\n");
-
-    Prompt::fake(['n', Key::ENTER]);
-
-    $wrote = invokeConfigure(configureCommand(), 'writeProfile', 'my-app-testing', '/usr/local/bin/helper "AWS My App"');
-
-    expect($wrote)->toBeFalse()
-        ->and(file_get_contents($this->awsDirectory . '/config'))->toBe("[profile my-app-testing]\nregion = us-west-2\n");
+    expect(invokeConfigure(configureCommand(), 'confirmReconfigure', 'my-app-testing'))->toBeTrue();
 });
 
 it('removes a shadowing static-key section on confirmation', function (): void {

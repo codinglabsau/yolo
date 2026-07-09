@@ -55,6 +55,16 @@ class ConfigureCommand extends Command implements RunsWithoutAws
     {
         intro(sprintf('Configure AWS credentials — %s', Helpers::environment()));
 
+        $profile = $this->askProfileName();
+
+        // Already set up? Don't march the developer back through the driver +
+        // item + vault gauntlet just to re-run — verify the existing profile
+        // and finish. Reconfiguring is the opt-in (defaulted on only when the
+        // profile is visibly broken by SSO remnants).
+        if ($this->awsConfigFile()->hasSection($profile) && ! $this->confirmReconfigure($profile)) {
+            return $this->verify($profile) ? self::SUCCESS : self::FAILURE;
+        }
+
         $driver = $this->resolveDriver();
 
         if (! $driver instanceof CredentialsDriver || ! $this->ensureBinaries($driver)) {
@@ -71,22 +81,47 @@ class ConfigureCommand extends Command implements RunsWithoutAws
             return self::FAILURE;
         }
 
-        $profile = text(
+        $this->writeProfile($profile, $credentialProcess);
+        $this->ensureNoShadowingStaticKeys($profile);
+        $this->writeEnvProfile($profile);
+
+        return $this->verify($profile) ? self::SUCCESS : self::FAILURE;
+    }
+
+    protected function askProfileName(): string
+    {
+        return text(
             label: 'AWS profile name',
             placeholder: 'eg. myapp-production',
             default: sprintf('%s-%s', Manifest::name(), Helpers::environment()),
             required: true,
             hint: 'Profiles map to AWS accounts — reuse one profile for every app in the same account.',
         );
+    }
 
-        if (! $this->writeProfile($profile, $credentialProcess)) {
-            return self::FAILURE;
+    /**
+     * An already-configured profile shouldn't force a full reconfigure just to
+     * re-run configure. Offer to leave it in place and only verify; reconfigure
+     * is the opt-in — defaulted on only when the profile is visibly broken by
+     * SSO remnants (which steer resolution away from credential_process), whose
+     * names are surfaced so the choice is informed.
+     */
+    protected function confirmReconfigure(string $profile): bool
+    {
+        $ssoKeys = $this->awsConfigFile()->sectionKeysMatching($profile, 'sso');
+
+        if ($ssoKeys !== []) {
+            warning(sprintf(
+                'The existing [%s] profile carries SSO configuration (%s) — the CLI would try SSO and ignore credential_process.',
+                $profile,
+                implode(', ', $ssoKeys),
+            ));
         }
 
-        $this->ensureNoShadowingStaticKeys($profile);
-        $this->writeEnvProfile($profile);
-
-        return $this->verify($profile) ? self::SUCCESS : self::FAILURE;
+        return confirm(
+            sprintf('Profile [%s] is already configured — reconfigure it? (No just verifies it still works.)', $profile),
+            default: $ssoKeys !== [],
+        );
     }
 
     protected function resolveDriver(): ?CredentialsDriver
@@ -183,7 +218,7 @@ class ConfigureCommand extends Command implements RunsWithoutAws
             label: '1Password item holding the AWS access key',
             placeholder: 'eg. AWS Acme Production',
             required: true,
-            hint: 'Fields: aws_access_key_id, aws_secret_access_key — plus a one-time-password field when the IAM user has an MFA device.',
+            hint: 'Required fields: aws_access_key_id, aws_secret_access_key, and a one-time-password (TOTP) field — every YOLO tier requires MFA.',
         );
 
         $vault = text(label: '1Password vault', default: 'Employee');
@@ -276,41 +311,18 @@ class ConfigureCommand extends Command implements RunsWithoutAws
     }
 
     /**
-     * Write the profile block. An existing profile is replaced, not layered
-     * onto — SSO remnants (`sso_*` keys, an `sso_session` reference) steer
-     * credential resolution away from credential_process entirely, so they're
-     * surfaced by name before the block is overwritten.
+     * Write the profile block — replaced in place when it exists, appended
+     * otherwise. The overwrite decision belongs to the caller
+     * (`confirmReconfigure`); by the time we're here it has been made.
      */
-    protected function writeProfile(string $profile, string $credentialProcess): bool
+    protected function writeProfile(string $profile, string $credentialProcess): void
     {
-        $config = $this->awsConfigFile();
-
-        if ($config->hasSection($profile)) {
-            $ssoKeys = $config->sectionKeysMatching($profile, 'sso');
-
-            if ($ssoKeys !== []) {
-                warning(sprintf(
-                    'The existing [%s] profile carries SSO configuration (%s) — the CLI would try SSO and ignore credential_process.',
-                    $profile,
-                    implode(', ', $ssoKeys),
-                ));
-            }
-
-            if (! confirm(sprintf('Replace the existing [%s] profile block?', $profile), default: true)) {
-                error('Aborted — the existing profile block was left untouched.');
-
-                return false;
-            }
-        }
-
-        $config->putSection($profile, [
+        $this->awsConfigFile()->putSection($profile, [
             'credential_process = ' . $credentialProcess,
             'region = ' . Manifest::get('region'),
         ]);
 
         info(sprintf('Wrote profile [%s] to %s.', $profile, $this->awsDirectory() . '/config'));
-
-        return true;
     }
 
     /**
