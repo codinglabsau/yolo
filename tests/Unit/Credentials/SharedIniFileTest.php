@@ -60,7 +60,8 @@ it('replaces a section in place leaving neighbours untouched', function (): void
     expect($contents)
         ->toContain("# hand-written comment\n[profile before]\nregion = us-west-2")
         ->toContain("[profile my-app-production]\ncredential_process = /usr/local/bin/helper \"AWS My App\"\nregion = ap-southeast-2")
-        ->toContain("[profile after]\nregion = eu-west-1")
+        // The replaced block keeps a blank line before the next section.
+        ->toContain("region = ap-southeast-2\n\n[profile after]\nregion = eu-west-1")
         ->not->toContain('sso_start_url');
 });
 

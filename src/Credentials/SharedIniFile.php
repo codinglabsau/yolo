@@ -86,11 +86,19 @@ class SharedIniFile
         }
 
         [$start, $end] = $bounds;
+        $tail = array_slice($existing, $end);
+
+        // An in-place replace consumes the blank line the old section carried
+        // before the next header — restore it so the new block never abuts the
+        // following section.
+        if ($tail !== [] && trim($tail[0]) !== '') {
+            $section[] = '';
+        }
 
         $this->write([
             ...array_slice($existing, 0, $start),
             ...$section,
-            ...array_slice($existing, $end),
+            ...$tail,
         ]);
     }
 
