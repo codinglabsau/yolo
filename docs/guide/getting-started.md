@@ -8,7 +8,7 @@ You don't need prior YOLO knowledge. Each step links to a deeper page if you wan
 
 - **PHP 8.3+** and **Composer**
 - **Docker**, running locally — YOLO builds your container image on your machine
-- An **AWS account** and a **named AWS profile** configured on your machine (in `~/.aws/config` / `~/.aws/credentials`). Don't use the `default` profile — give it a specific name like `myapp-production`.
+- An **AWS account** and a **named AWS profile** configured on your machine (in `~/.aws/config` / `~/.aws/credentials`). Don't use the `default` profile — give it a specific name like `myapp-production`. (Setting up a whole team, or want short-lived MFA-backed sessions instead of static keys? See [Developer Credentials](/guide/credentials).)
 - **For a public app:** a domain you can manage in **Route 53** on that account. (You can skip this and run a [headless app](/guide/domains#headless-apps) with no public URL.)
 
 ::: tip The whole thing in one line

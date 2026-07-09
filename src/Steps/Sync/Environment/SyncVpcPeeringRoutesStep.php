@@ -12,20 +12,27 @@ use Codinglabs\Yolo\EnvManifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\Ec2\Vpc;
+use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
 use Codinglabs\Yolo\Resources\Ec2\RouteTable;
+use Codinglabs\Yolo\Resources\Ec2\PrivateRouteTable;
 use Codinglabs\Yolo\Resources\Ec2\VpcPeeringConnection;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Reconciles the routes each declared peering rides on, both directions: the
- * peer VPC's CIDR into the environment's public route table (where the Fargate
- * tasks live), and the environment's CIDR into the peer VPC's main route table
- * (where an unmanaged VPC's subnets fall back to). Also prunes blackhole
- * peering routes from the public route table — the debris a torn-down
- * connection leaves behind; the peer side's return route is inert and left to
- * its owner. Diffs against the live `Routes` blocks so a clean environment
- * reports no change.
+ * Reconciles the routes each declared peering rides on, both directions.
+ * Outbound, the peer VPC's CIDR goes into EVERY yolo-managed route table — the
+ * public table (the Fargate tasks) and the private table (the database tier),
+ * so a resource in either tier can dial across the peer. Return, the
+ * environment's CIDR goes into every peer-VPC route table that actually
+ * governs a subnet (has at least one subnet association), falling back to the
+ * peer's main table only when nothing in that VPC is associated — a route
+ * written into an unassociated main table steers no subnet, and every reply
+ * black-holes. The writes into the peer's tables are foreign, so the plan
+ * names each target table and marks it not yolo-managed. Also prunes blackhole
+ * peering routes from the yolo-managed tables — the debris an interrupted
+ * teardown leaves behind. Diffs against the live `Routes` blocks so a clean
+ * environment reports no change.
  */
 class SyncVpcPeeringRoutesStep implements Step
 {
@@ -35,13 +42,22 @@ class SyncVpcPeeringRoutesStep implements Step
     {
         $dryRun = (bool) Arr::get($options, 'dry-run');
 
-        // Route entries to write, resolved as far as live state allows —
-        // [routeTableId|null, destination CIDR, peer vpc id, direction label].
-        // Unresolvable parts (a greenfield plan pass, a peer VPC that doesn't
-        // exist yet) are reported as pending, never thrown on.
-        $missing = [];
-
         $environmentCidrBlock = $this->environmentCidrBlock();
+
+        // The yolo-managed tables — each may be null on a greenfield plan pass
+        // (the table steps above create them), so a missing route is reported
+        // as pending and the table id resolves at apply time instead.
+        $environmentRouteTables = [
+            [new RouteTable(), $this->liveRouteTableOrNull(new RouteTable())],
+            [new PrivateRouteTable(), $this->liveRouteTableOrNull(new PrivateRouteTable())],
+        ];
+
+        // Route entries to write, resolved as far as live state allows —
+        // [routeTableId|null, env table resource for late resolution|null,
+        // destination CIDR, peer vpc id, plan attribute]. Unresolvable parts
+        // (a greenfield plan pass, a peer VPC that doesn't exist yet) are
+        // reported as pending, never thrown on.
+        $missingRoutes = [];
 
         foreach (EnvManifest::peering() as $peerVpcId) {
             $peerVpc = Ec2::vpcById($peerVpcId);
@@ -52,54 +68,67 @@ class SyncVpcPeeringRoutesStep implements Step
                 continue;
             }
 
-            $publicRouteTable = $this->routeTableOrNull(fn (): array => Ec2::routeTable((new RouteTable())->name()));
-
-            if (! $this->hasPeeringRoute($publicRouteTable, $peerVpc['CidrBlock'])) {
-                $missing[] = [$publicRouteTable['RouteTableId'] ?? null, $peerVpc['CidrBlock'], $peerVpcId, 'outbound'];
+            foreach ($environmentRouteTables as [$routeTableResource, $liveRouteTable]) {
+                if (! $this->hasPeeringRoute($liveRouteTable, $peerVpc['CidrBlock'])) {
+                    $missingRoutes[] = [
+                        $liveRouteTable['RouteTableId'] ?? null,
+                        $routeTableResource,
+                        $peerVpc['CidrBlock'],
+                        $peerVpcId,
+                        sprintf('outbound route %s (%s)', $peerVpc['CidrBlock'], $liveRouteTable['RouteTableId'] ?? $routeTableResource->name()),
+                    ];
+                }
             }
 
-            // Every VPC has a main route table, so a peer that resolved above
-            // always yields one — the null guard just ensures a failed lookup
-            // can never fall back onto the environment's own table at apply.
-            $peerMainRouteTable = Ec2::mainRouteTable($peerVpcId);
+            if ($environmentCidrBlock === null) {
+                continue;
+            }
 
-            if ($environmentCidrBlock !== null && $peerMainRouteTable !== null && ! $this->hasPeeringRoute($peerMainRouteTable, $environmentCidrBlock)) {
-                $missing[] = [$peerMainRouteTable['RouteTableId'], $environmentCidrBlock, $peerVpcId, 'return'];
+            foreach (Ec2::subnetAssociatedRouteTables($peerVpcId) as $peerRouteTable) {
+                if (! $this->hasPeeringRoute($peerRouteTable, $environmentCidrBlock)) {
+                    $missingRoutes[] = [
+                        $peerRouteTable['RouteTableId'],
+                        null,
+                        $environmentCidrBlock,
+                        $peerVpcId,
+                        sprintf('return route %s (peer %s — not yolo-managed)', $environmentCidrBlock, $peerRouteTable['RouteTableId']),
+                    ];
+                }
             }
         }
 
-        $blackholes = $this->blackholePeeringRoutes();
+        $blackholeRoutes = $this->blackholePeeringRoutes($environmentRouteTables);
 
-        if ($missing === [] && $blackholes === []) {
+        if ($missingRoutes === [] && $blackholeRoutes === []) {
             // A declared peer VPC that doesn't exist recorded a change above —
             // that's genuine drift (fix or remove the manifest entry), so the
             // plan must say so even though there's nothing to write.
             return $this->changes() === [] || ! $dryRun ? StepResult::SYNCED : StepResult::WOULD_SYNC;
         }
 
-        foreach ($missing as [$routeTableId, $destination, $peerVpcId, $direction]) {
-            $this->recordChange(Change::make("{$direction} route {$destination} ({$peerVpcId})", null, 'peering connection'));
+        foreach ($missingRoutes as [$routeTableId, $routeTableResource, $destination, $peerVpcId, $attribute]) {
+            $this->recordChange(Change::make($attribute, null, 'peering connection'));
         }
 
-        foreach ($blackholes as $route) {
-            $this->recordChange(Change::make("blackhole route {$route['DestinationCidrBlock']}", $route['VpcPeeringConnectionId'], null));
+        foreach ($blackholeRoutes as [$routeTableId, $route]) {
+            $this->recordChange(Change::make("blackhole route {$route['DestinationCidrBlock']} ({$routeTableId})", $route['VpcPeeringConnectionId'], null));
         }
 
         if ($dryRun) {
             return StepResult::WOULD_SYNC;
         }
 
-        foreach ($missing as [$routeTableId, $destination, $peerVpcId, $direction]) {
+        foreach ($missingRoutes as [$routeTableId, $routeTableResource, $destination, $peerVpcId, $attribute]) {
             Aws::ec2()->createRoute([
                 'DestinationCidrBlock' => $destination,
                 'VpcPeeringConnectionId' => (new VpcPeeringConnection($peerVpcId))->arn(),
-                'RouteTableId' => $routeTableId ?? (new RouteTable())->arn(),
+                'RouteTableId' => $routeTableId ?? $routeTableResource->arn(),
             ]);
         }
 
-        foreach ($blackholes as $route) {
+        foreach ($blackholeRoutes as [$routeTableId, $route]) {
             Aws::ec2()->deleteRoute([
-                'RouteTableId' => (new RouteTable())->arn(),
+                'RouteTableId' => $routeTableId,
                 'DestinationCidrBlock' => $route['DestinationCidrBlock'],
             ]);
         }
@@ -124,22 +153,28 @@ class SyncVpcPeeringRoutesStep implements Step
     }
 
     /**
-     * Peering routes in the public route table whose connection is gone — a
-     * torn-down peering leaves its routes in blackhole state; sync reclaims
-     * them so the table stays exactly what the manifest declares.
+     * Peering routes in the yolo-managed tables whose connection is gone — an
+     * interrupted teardown leaves its routes in blackhole state; sync reclaims
+     * them so each table stays exactly what the manifest declares.
      *
-     * @return array<int, array<string, mixed>>
+     * @param  array<int, array{0: RouteTable|PrivateRouteTable, 1: array<string, mixed>|null}>  $environmentRouteTables
+     * @return array<int, array{0: string, 1: array<string, mixed>}>
      */
-    protected function blackholePeeringRoutes(): array
+    protected function blackholePeeringRoutes(array $environmentRouteTables): array
     {
-        $routeTable = $this->routeTableOrNull(fn (): array => Ec2::routeTable((new RouteTable())->name()));
+        $blackholeRoutes = [];
 
-        return collect($routeTable['Routes'] ?? [])
-            ->filter(fn (array $route): bool => str_starts_with($route['VpcPeeringConnectionId'] ?? '', 'pcx-')
-                && ($route['State'] ?? '') === 'blackhole'
-                && isset($route['DestinationCidrBlock']))
-            ->values()
-            ->all();
+        foreach ($environmentRouteTables as [$routeTableResource, $liveRouteTable]) {
+            foreach ($liveRouteTable['Routes'] ?? [] as $route) {
+                if (str_starts_with($route['VpcPeeringConnectionId'] ?? '', 'pcx-')
+                    && ($route['State'] ?? '') === 'blackhole'
+                    && isset($route['DestinationCidrBlock'])) {
+                    $blackholeRoutes[] = [$liveRouteTable['RouteTableId'], $route];
+                }
+            }
+        }
+
+        return $blackholeRoutes;
     }
 
     protected function environmentCidrBlock(): ?string
@@ -152,13 +187,12 @@ class SyncVpcPeeringRoutesStep implements Step
     }
 
     /**
-     * @param  callable(): array<string, mixed>  $lookup
      * @return array<string, mixed>|null
      */
-    protected function routeTableOrNull(callable $lookup): ?array
+    protected function liveRouteTableOrNull(Resource $routeTable): ?array
     {
         try {
-            return $lookup();
+            return Ec2::routeTable($routeTable->name());
         } catch (ResourceDoesNotExistException) {
             return null;
         }

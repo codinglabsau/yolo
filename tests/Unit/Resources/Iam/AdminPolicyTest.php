@@ -33,6 +33,7 @@ it('grants the write surface for the services YOLO provisions', function (): voi
     expect(adminActions())->toContain(
         'ecs:Create*',
         'ec2:Create*',
+        'ec2:Accept*',
         'elasticloadbalancing:Create*',
         'application-autoscaling:RegisterScalableTarget',
         'application-autoscaling:PutScalingPolicy',

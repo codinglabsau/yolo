@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Codinglabs\Yolo\Steps\Sync\Environment;
 
+use Codinglabs\Yolo\Change;
 use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\EnvManifest;
@@ -15,7 +16,8 @@ use Codinglabs\Yolo\Resources\Ec2\VpcPeeringConnection;
 /**
  * Reconciles the environment's peering connections against the env manifest
  * `peering` list — the plan stays declared either way: a listed VPC gets a
- * connection created, accepted and DNS-enabled; a live YOLO connection whose
+ * connection created and accepted (DNS resolution comes last, from
+ * SyncVpcPeeringDnsStep, once the routes exist); a live YOLO connection whose
  * VPC is no longer listed is torn down (the migration is over, the bridge
  * comes down). With nothing declared and nothing live, there is nothing to do.
  */
@@ -34,7 +36,20 @@ class SyncVpcPeeringStep implements Step
         }
 
         foreach ($this->undeclaredPeerVpcIds($declared) as $peerVpcId) {
-            $results[] = $this->teardownResource(new VpcPeeringConnection($peerVpcId), $options);
+            $connection = new VpcPeeringConnection($peerVpcId);
+
+            // The return routes sync wrote into the peer's tables are foreign
+            // writes — the teardown that reclaims them must be as visible in
+            // the plan as the sync that wrote them.
+            foreach ($connection->foreignReturnRoutes() as $foreignReturnRoute) {
+                $this->recordChange(Change::make(
+                    sprintf('return route %s (peer %s — not yolo-managed)', $foreignReturnRoute['DestinationCidrBlock'], $foreignReturnRoute['RouteTableId']),
+                    'peering connection',
+                    null,
+                ));
+            }
+
+            $results[] = $this->teardownResource($connection, $options);
         }
 
         return $this->aggregate($results);

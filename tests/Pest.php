@@ -12,6 +12,7 @@ use Aws\Rds\RdsClient;
 use Aws\Sqs\SqsClient;
 use Aws\CommandInterface;
 use Aws\WAFV2\WAFV2Client;
+use Laravel\Prompts\Prompt;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use GuzzleHttp\Psr7\Response;
@@ -81,6 +82,14 @@ file_put_contents($tempDir . '/yolo.yml', Yaml::dump([
 pest()->beforeEach(function (): void {
     Helpers::app()->instance('environment', 'testing');
     Manifest::flushHydration();
+
+    // Running any console command in a Testbench app makes the framework set
+    // Laravel Prompts' fallback flag (ConfiguresPrompts does so whenever
+    // runningUnitTests()), and that static is sticky with no public unset —
+    // so one Testbench artisan test would flip every later CLI test's prompts
+    // onto the Symfony fallback path and break their prompt stubs. Reset it.
+    $shouldFallback = new ReflectionProperty(Prompt::class, 'shouldFallback');
+    $shouldFallback->setValue(null, false);
 })->in(__DIR__);
 
 /*
