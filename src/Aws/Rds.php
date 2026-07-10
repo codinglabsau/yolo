@@ -78,6 +78,34 @@ class Rds
     }
 
     /**
+     * Every DB instance in the account that has an endpoint, as
+     * identifier => endpoint address — the candidate list for the cutover
+     * target picker. Instances still creating (no endpoint yet) are omitted;
+     * read-only.
+     *
+     * @return array<string, string>
+     */
+    public static function instanceEndpoints(): array
+    {
+        $endpoints = [];
+        $marker = null;
+
+        do {
+            $page = Aws::rds()->describeDBInstances(array_filter(['Marker' => $marker]));
+
+            foreach ($page['DBInstances'] ?? [] as $instance) {
+                if (($address = $instance['Endpoint']['Address'] ?? null) !== null) {
+                    $endpoints[(string) $instance['DBInstanceIdentifier']] = (string) $address;
+                }
+            }
+
+            $marker = $page['Marker'] ?? null;
+        } while ($marker !== null);
+
+        return $endpoints;
+    }
+
+    /**
      * The identifiers of every live DB instance whose subnet group sits in the
      * given VPC. A network-shell teardown refuses while this isn't empty — the
      * database lives in the VPC's private subnets and pins the whole network, and
