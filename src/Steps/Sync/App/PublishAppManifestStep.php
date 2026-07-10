@@ -19,12 +19,15 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
 
 /**
- * Publishes this app's claim file (`apps/{app}.yml` — the app name + the
- * services it consumes) into the env config bucket, on every sync:app and
- * every deploy. The env tier reads the union of published claims to flag
- * declared-but-idle services and to refuse removing a service apps still
- * consume — not to gate provisioning. So unlike the env manifest
- * (operator-owned, seed-only), the claim file is YOLO's and reconciles freely.
+ * Publishes this app's claim file (`apps/{app}.yml` — the app name plus its
+ * complete environment-resolved manifest block) into the env config bucket,
+ * on every sync:app and every deploy. The env tier reads the union of
+ * published claims to flag declared-but-idle services and to refuse removing
+ * a service apps still consume — not to gate provisioning — and env-level
+ * read surfaces (`db:status`) report from the same claims. Manifests carry
+ * no secrets, so the whole environment block ships rather than a trimmed
+ * projection. Unlike the env manifest (operator-owned, seed-only), the claim
+ * file is YOLO's and reconciles freely.
  */
 class PublishAppManifestStep implements Step
 {
@@ -32,10 +35,14 @@ class PublishAppManifestStep implements Step
 
     public function __invoke(array $options): StepResult
     {
+        // `name` is pinned first and `services` last in its normalised list
+        // shape (the env tier's claim parser requires both); everything in
+        // between is the environment block exactly as declared.
         $desired = Yaml::dump([
             'name' => Manifest::name(),
+            ...Arr::except(Manifest::current()['environments'][Helpers::environment()] ?? [], ['services']),
             'services' => Manifest::services(),
-        ]);
+        ], 10, 2);
 
         $current = $this->currentClaim();
 

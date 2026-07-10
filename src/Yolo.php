@@ -51,8 +51,10 @@ class Yolo
         // Exec
         Commands\RunCommand::class,
 
-        // Database tunnel (port-forward the private database to localhost)
+        // Database operations (tunnel to localhost, in-place cutover, env-wide assignment map)
         Commands\DbTunnelCommand::class,
+        Commands\DbCutoverCommand::class,
+        Commands\DbStatusCommand::class,
 
         // Scale
         Commands\ScaleCommand::class,

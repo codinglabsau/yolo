@@ -38,6 +38,8 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | [`status:budget <env>`](#yolo-status-budget) | Month-to-date spend against the app's declared budget |
 | [`run <env>`](#yolo-run) | Open a shell / run a command in a running container |
 | [`db:tunnel <env>`](#yolo-db-tunnel) | Port-forward the manifest-declared database to localhost through a running web task |
+| [`db:cutover <env>`](#yolo-db-cutover) | Flip every running task onto a new database host in place, then verify the fleet |
+| [`db:status <env>`](#yolo-db-status) | Show every environment app's declared database, from the published claim files |
 | [`scale <env> [count]`](#yolo-scale) | Adjust the web service's task count out of band |
 | [`permissions <env>`](#yolo-permissions) | Grant or revoke a team member's access by editing their YOLO group membership |
 | [`services <env>`](#yolo-services) | View and manage the services an environment offers |
@@ -466,6 +468,68 @@ Read-only convenience — nothing is created or changed. The session rides the s
 ```bash
 yolo db:tunnel production
 yolo db:tunnel production --port=3307
+```
+
+---
+
+## `yolo db:cutover`
+
+Flip every running task of the app onto a new database host **in place**, then verify the whole fleet — the migration endgame move. `DB_HOST` lives in the baked image, so repointing via `env:push` + deploy costs the full rolling-deploy duration as the write window, with a mixed-fleet moment where old and new tasks write to different hosts. The cutover shrinks that window to the length of a loop over the running tasks. (See [Rolling a database over](/guide/databases#rolling-a-database-over) for when to use which.)
+
+```bash
+yolo db:cutover <environment> [--host=<endpoint-or-identifier>] [--verify] [--url=<url>]
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `environment` | yes | The environment name |
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--host` | endpoint / identifier | interactive picker | The target database. A bare instance identifier is resolved to its endpoint with a describe. |
+| `--verify` | flag | off | Verify-only: run the read-only checks and exit non-zero on any failure. Idempotent — safe to re-run, and scriptable as an automation gate. |
+| `--url` | URL | none | A public URL to probe (expects HTTP 200) at the end of verification. |
+
+**Behaviour:** picks the target (`--host`, or a picker over the account's DB instances with a manual-entry escape), reads each running web/queue/scheduler task's current `DB_HOST`, renders the plan (task, current host, action) and asks for confirmation. Then, in phases: maintenance page up on every task to flip → patch `.env` and rebuild the cached config (`php artisan optimize`) per container → `octane:reload` (web) / `queue:restart` (queue) so booted workers actually re-read the change → prove each container sees the new host → maintenance page down everywhere. Finally it runs the full verification pass (below). Tasks already on the target are skipped, so a cutover that dies mid-loop is safe to simply re-run.
+
+**Verification** proves independent layers per container — the `.env` line, the *cached* config value the booted app actually reads, a live query answering (and which server answered), maintenance mode off, and running workers on queue tasks — then the split-brain detector: every container must report the **same** `@@server_uuid`. One straggler still talking to the old database fails this even when every hostname reads clean.
+
+Two sharp edges the command warns about but cannot own:
+
+- **Freeze writes on the source first**, so a straggler or in-flight queue job fails loudly instead of silently writing to the old side. If the source still replicates to the target: `REVOKE` is binlogged and **replicates too** (re-`GRANT` on the target after it arrives), and `read_only=1` on a **shared** parameter group freezes both instances at once.
+- **The flip is transient.** Env lives in the baked image, so any task replaced afterwards boots the *old* host. Follow promptly with `env:push` + a deploy, and repoint [`database:`](/reference/manifest#database) in the manifest.
+
+Admin-tier (MFA per run): the flip rewrites the live runtime configuration of every task in the fleet. The container execs ride the same ECS Exec plumbing as [`run`](#yolo-run), so the [Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) and `enable-execute-command` are required.
+
+```bash
+yolo db:cutover production                                   # interactive: pick the target, confirm the plan
+yolo db:cutover production --host=my-app-db-2                # identifier resolved to its endpoint
+yolo db:cutover production --verify --host=my-app-db-2      # read-only proof, exits non-zero on failure
+```
+
+---
+
+## `yolo db:status`
+
+The environment's database assignment map: every app that has published a claim file and the [`database:`](/reference/manifest#database) its manifest declares — the fleet-level answer to "who is on which database?" during a migration. Declared truth only, read from S3 alone; prove the live truth per app with [`db:cutover --verify`](#yolo-db-cutover).
+
+```bash
+yolo db:status <environment> [--json]
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `environment` | yes | The environment name |
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--json` | flag | off | Emit the map as JSON and exit (machine-readable; for the /yolo skill and scripts). |
+
+Claims carry the app's full environment-resolved manifest block (published on every `sync:app` and every deploy), so an app that hasn't synced or deployed since upgrading shows `—` until it republishes.
+
+```bash
+yolo db:status production
+yolo db:status production --json
 ```
 
 ---
