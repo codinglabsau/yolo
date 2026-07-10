@@ -125,12 +125,16 @@ class ScoutReimportCommand extends Command
                 return [];
             }
 
+            // Nothing pre-selected, on purpose: a pre-selected-everything
+            // default turns a bare Enter — or a prompt that can't actually
+            // interact (a shell without a real TTY silently resolves the
+            // DEFAULT) — into a full rebuild of every collection. Selecting
+            // is the deliberate act; --all is the explicit everything.
             $discovered = array_values(multiselect(
                 label: 'Which models should be rebuilt?',
                 options: $discovered,
-                default: $discovered,
-                required: true,
-                hint: 'Every rebuild swaps in beside the live index — zero search downtime.',
+                required: 'Select at least one model (space selects, enter confirms) — or run with --all.',
+                hint: 'Space selects, enter confirms. Every rebuild swaps in beside the live index — zero search downtime.',
             ));
         }
 
