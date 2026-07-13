@@ -54,7 +54,7 @@ Open `yolo.yml` and skim it — it's short and commented. You can tweak it now o
 
 ## 3. Point YOLO at AWS
 
-YOLO authenticates to AWS using a **named profile per environment**. `init` offers this step at the end of its run; if you skipped it there, set it up now — profile, short-lived-session credential helper, and the `.env` wiring in one interactive run:
+YOLO authenticates to AWS using a **named profile per environment**. If you accepted the `configure` offer at the end of `init`, this is already done — skip to step 4. Otherwise run it now — profile, short-lived-session credential helper, and the `.env` wiring in one interactive run:
 
 ```bash
 yolo configure production
@@ -75,17 +75,7 @@ The pattern is `YOLO_<ENVIRONMENT>_AWS_PROFILE`. Either way, before YOLO touches
 Don't point this at your `default` profile. YOLO rejects it deliberately — a named profile makes "which account am I about to change?" unambiguous.
 :::
 
-## 4. Push your environment file
-
-Your application's runtime `.env` lives in S3, not in the image source. Fill in `.env.production` (database, cache, mail, etc.), then push it:
-
-```bash
-yolo env:push production
-```
-
-YOLO shows a diff of what's changing and asks for confirmation before uploading. This `.env.production` is baked into the image at build time. More in [Environment Files](/guide/environment-files).
-
-## 5. Provision your infrastructure
+## 4. Provision your infrastructure
 
 This is the big one — `yolo sync` creates the VPC, load balancer, ECS cluster, IAM roles, S3 buckets, certificate, and DNS for your app:
 
@@ -96,6 +86,16 @@ yolo sync production
 YOLO **always shows the plan before it touches anything** — a diff grouped by scope (account → environment → app) of exactly what would be created or changed — then asks you to confirm. So to preview, just run it and read the plan; decline (or Ctrl-C) if it's not what you expected, confirm when it looks right. The first sync provisions a fair amount and can take several minutes (ACM certificate validation and load balancer provisioning are the slow parts). It's safe to re-run any time — a second `sync` on an unchanged manifest reports "already in sync" and does nothing.
 
 See [Provisioning](/guide/provisioning) for what each scope creates and how the plan/confirm/apply flow works.
+
+## 5. Push your environment file
+
+Your application's runtime `.env` lives in S3, not in the image source — in the app config bucket the sync you just ran created. Fill in `.env.production` (database, cache, mail, etc.), then push it:
+
+```bash
+yolo env:push production
+```
+
+YOLO shows a diff of what's changing and asks for confirmation before uploading. This `.env.production` is baked into the image at build time. More in [Environment Files](/guide/environment-files).
 
 ## 6. Deploy
 

@@ -69,12 +69,26 @@ class EnvPushCommand extends Command
 
         note(sprintf('Uploading %s → s3://%s/%s...', $filename, Paths::s3ConfigBucket(), $filename));
 
-        Aws::s3()
-            ->putObject([
-                'Body' => file_get_contents($path),
-                'Bucket' => Paths::s3ConfigBucket(),
-                'Key' => $filename,
-            ]);
+        try {
+            Aws::s3()
+                ->putObject([
+                    'Body' => file_get_contents($path),
+                    'Bucket' => Paths::s3ConfigBucket(),
+                    'Key' => $filename,
+                ]);
+        } catch (S3Exception $e) {
+            // On a fresh app the config bucket doesn't exist until the first
+            // sync — point at the fix instead of dumping the SDK exception.
+            if ($e->getAwsErrorCode() === 'NoSuchBucket') {
+                error(sprintf('The config bucket does not exist yet — run `yolo sync %s` to provision it, then push again.', $environment));
+
+                $this->deleteTemporaryCopy($temporaryPath);
+
+                return;
+            }
+
+            throw $e;
+        }
 
         $this->deleteTemporaryCopy($temporaryPath);
 

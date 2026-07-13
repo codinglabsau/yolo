@@ -13,7 +13,7 @@ Each environment has its own file, named `.env.<environment>`:
 
 ## Initial setup
 
-After `yolo init` you'll have a starter `.env.production`. Fill it in with your real production configuration (copy from an existing `.env` if you have one), then push it to S3.
+After `yolo init` you'll have a starter `.env.production`. Fill it in with your real production configuration (copy from an existing `.env` if you have one), then push it to S3. The config bucket it uploads to is created by your first [`yolo sync`](/guide/getting-started#_4-provision-your-infrastructure), so sync before the first push.
 
 ## Push
 
