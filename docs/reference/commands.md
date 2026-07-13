@@ -64,11 +64,11 @@ yolo init
 
 **Arguments:** none · **Options:** none
 
-Interactive. Prompts for the app name, the environment to add (e.g. `production`), AWS account ID, region, and (unless multi-tenant) a domain and optional S3 bucket. It then:
+Interactive. Prompts for the app name, the environment to add (e.g. `production`), AWS account ID, region (a picker of the commercial AWS regions, defaulting to `AWS_DEFAULT_REGION` when set), and (unless multi-tenant) a domain and optional S3 bucket. It then:
 
 - Writes `yolo.yml` from the stub — the environment block keyed by the name you gave, with web [autoscaling](/guide/scaling) declared (`tasks.web.autoscaling: true`, bounds 1–5; it's a required key).
 - Writes a default `Dockerfile` and `.dockerignore` (asks before overwriting existing ones).
-- Creates a starter `.env.<environment>`.
+- Offers to create a starter `.env.<environment>` (default yes): your `.env.example` corrected for the target environment — `APP_ENV`, `APP_DEBUG=false`, a freshly generated `APP_KEY`, and `APP_URL` when a domain was given. Every `AWS_*` key and every platform-owned key (`LOG_CHANNEL`, `QUEUE_CONNECTION`, cache/session/Redis wiring, …) is stripped — [the build injects those from the manifest](/guide/environment-files#how-it-s-used-at-deploy-time), so a copy here would only drift (and the stock `LOG_CHANNEL=stack` would fail the first build against the enforced `stderr`). It finishes by reminding you to review the file and [`env:push`](#yolo-env-push) it. An existing file is never touched.
 - Appends `.yolo`, `.env.<environment>` (plus `.env.staging`/`.env.production`), and the env-shared working copies (`.env.environment.*`, `yolo-environment-*.yml`) to `.gitignore`.
 - Offers to run [`configure`](#yolo-configure) at the end — the natural next step on a fresh app (it handles machine setup, including the Session Manager plugin). Decline if this machine already has the account's profile set up.
 

@@ -1,6 +1,8 @@
 <?php
 
+use Laravel\Prompts\Key;
 use Codinglabs\Yolo\Paths;
+use Laravel\Prompts\Prompt;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Commands\InitCommand;
@@ -72,14 +74,132 @@ it('templates the environment block rather than hardcoding production', function
         ->and($stub)->not->toContain("\n  production:");
 });
 
-it('scaffolds the starter env file under the chosen environment', function (): void {
-    (function (): void {
-        $this->environment = 'staging';
+function scaffoldEnv(string $environment = 'testing'): void
+{
+    (function () use ($environment): void {
+        $this->environment = $environment;
         $this->initialiseEnv();
     })->call(new InitCommand());
+}
 
-    $path = Paths::base('.env.staging');
+it('builds the starter env from .env.example corrected for the environment', function (): void {
+    writeManifest(['account-id' => '111111111111', 'domain' => 'example.com']);
+    file_put_contents(Paths::base('.env.example'), implode("\n", [
+        'APP_NAME=Laravel',
+        'APP_ENV=local',
+        'APP_KEY=',
+        'APP_DEBUG=true',
+        'APP_URL=http://localhost',
+        'MAIL_MAILER=log',
+    ]) . "\n");
 
-    expect(file_exists($path))->toBeTrue()
-        ->and(file_get_contents($path))->toBe("APP_ENV=staging\nAPP_KEY=\nAPP_DEBUG=false\n");
-})->after(fn (): bool => @unlink(Paths::base('.env.staging')));
+    Prompt::fake([Key::ENTER]);
+    scaffoldEnv();
+
+    $contents = file_get_contents(Paths::base('.env.testing'));
+
+    expect($contents)
+        ->toContain("APP_NAME=Laravel\n")   // app-specific keys survive
+        ->toContain("MAIL_MAILER=log\n")
+        ->toContain("APP_ENV=testing\n")
+        ->toContain("APP_DEBUG=false\n")
+        ->toContain("APP_URL=https://example.com\n")
+        ->and($contents)->toMatch('/^APP_KEY=base64:.{44}$/m');
+});
+
+it('strips AWS_* and build-injected keys the platform owns', function (): void {
+    writeManifest(['account-id' => '111111111111']);
+    file_put_contents(Paths::base('.env.example'), implode("\n", [
+        'APP_NAME=Laravel',
+        '',
+        // The whole stock AWS block, plus the keys the build enforces or
+        // injects from the manifest — LOG_CHANNEL=stack would otherwise
+        // hard-fail the first build against the enforced stderr.
+        'AWS_ACCESS_KEY_ID=',
+        'AWS_SECRET_ACCESS_KEY=',
+        'AWS_DEFAULT_REGION=us-east-1',
+        'AWS_BUCKET=',
+        'AWS_USE_PATH_STYLE_ENDPOINT=false',
+        '',
+        'LOG_CHANNEL=stack',
+        'QUEUE_CONNECTION=database',
+        'CACHE_STORE=database',
+        'SESSION_DRIVER=database',
+        'REDIS_HOST=127.0.0.1',
+        'REDIS_PORT=6379',
+        'FILESYSTEM_DISK=local',
+        '',
+        'MAIL_MAILER=log',
+    ]) . "\n");
+
+    Prompt::fake([Key::ENTER]);
+    scaffoldEnv();
+
+    $contents = file_get_contents(Paths::base('.env.testing'));
+
+    expect($contents)
+        ->toContain("APP_NAME=Laravel\n")
+        ->toContain("MAIL_MAILER=log\n")
+        ->not->toContain('AWS_')
+        ->not->toContain('LOG_CHANNEL')
+        ->not->toContain('QUEUE_CONNECTION')
+        ->not->toContain('CACHE_STORE')
+        ->not->toContain('SESSION_DRIVER')
+        ->not->toContain('REDIS_')
+        ->not->toContain('FILESYSTEM_DISK')
+        ->and($contents)->not->toMatch('/\n{3,}/');    // stripped blocks leave no gaps
+});
+
+it('appends environment keys the example does not declare', function (): void {
+    writeManifest(['account-id' => '111111111111']);
+    file_put_contents(Paths::base('.env.example'), "MAIL_MAILER=log\n");
+
+    Prompt::fake([Key::ENTER]);
+    scaffoldEnv();
+
+    expect(file_get_contents(Paths::base('.env.testing')))
+        ->toContain("MAIL_MAILER=log\n")
+        ->toContain("APP_ENV=testing\n")
+        ->toContain("APP_DEBUG=false\n")
+        ->not->toContain('APP_URL');    // no domain in the manifest, no URL guess
+});
+
+it('scaffolds a minimal starter env when the app has no .env.example', function (): void {
+    writeManifest(['account-id' => '111111111111']);
+
+    Prompt::fake([Key::ENTER]);
+    scaffoldEnv();
+
+    $contents = file_get_contents(Paths::base('.env.testing'));
+
+    expect($contents)
+        ->toContain("APP_ENV=testing\n")
+        ->toContain("APP_DEBUG=false\n")
+        ->and($contents)->toMatch('/^APP_KEY=base64:.{44}$/m');
+});
+
+it('never overwrites an existing env file', function (): void {
+    file_put_contents(Paths::base('.env.testing'), "APP_ENV=testing\nAPP_KEY=base64:existing\n");
+
+    Prompt::fake();
+    scaffoldEnv();
+
+    expect(file_get_contents(Paths::base('.env.testing')))->toContain('APP_KEY=base64:existing');
+});
+
+it('skips the starter env when declined', function (): void {
+    writeManifest(['account-id' => '111111111111']);
+
+    Prompt::fake(['n', Key::ENTER]);
+    scaffoldEnv();
+
+    expect(file_exists(Paths::base('.env.testing')))->toBeFalse();
+});
+
+afterEach(function (): void {
+    foreach (['.env.testing', '.env.example'] as $file) {
+        if (file_exists(Paths::base($file))) {
+            unlink(Paths::base($file));
+        }
+    }
+});

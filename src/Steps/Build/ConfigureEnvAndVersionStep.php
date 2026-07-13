@@ -21,6 +21,33 @@ use Codinglabs\Yolo\Resources\CloudFront\AssetDistribution;
 
 class ConfigureEnvAndVersionStep implements Step
 {
+    /**
+     * Every static key this step writes into the built env — enforced platform
+     * invariants plus the manifest-derived defaults below. InitCommand strips
+     * these (and anything AWS_*) from the starter env it scaffolds, so the file
+     * never carries a second copy of a value the build owns; keep this list in
+     * step with the keys written in __invoke(). Service buildValues() keys are
+     * dynamic and deliberately not listed.
+     */
+    public const array INJECTED_KEYS = [
+        'APP_VERSION',
+        'ASSET_URL',
+        'VITE_ASSET_URL',
+        'LOG_CHANNEL',
+        'OCTANE_HTTPS',
+        'OCTANE_SERVER',
+        'QUEUE_CONNECTION',
+        'SQS_PREFIX',
+        'SQS_QUEUE',
+        'FILESYSTEM_DISK',
+        'CACHE_STORE',
+        'REDIS_HOST',
+        'REDIS_PORT',
+        'REDIS_PREFIX',
+        'SESSION_DRIVER',
+        'INERTIA_SSR_ENABLED',
+    ];
+
     public function __construct(
         protected string $environment,
         protected $filesystem = new Filesystem()
