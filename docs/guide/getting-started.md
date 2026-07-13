@@ -77,11 +77,15 @@ Don't point this at your `default` profile. YOLO rejects it deliberately — a n
 
 ## 4. Provision your infrastructure
 
-This is the big one — `yolo sync` creates the VPC, load balancer, ECS cluster, IAM roles, S3 buckets, certificate, and DNS for your app:
+This is the big one — `yolo sync` creates the VPC, load balancer, ECS cluster, IAM roles, S3 buckets, certificate, and DNS for your app. On a **fresh environment** the very first sync needs the bootstrap flag:
 
 ```bash
-yolo sync production
+yolo sync production --dangerously-skip-permissions
 ```
+
+::: info Why the flag?
+Normally `sync` caps itself to the [admin tier](/guide/provisioning) by assuming a YOLO-provisioned role — but on the first run that role doesn't exist yet (creating it is part of what this sync does), and the tier guard fails closed rather than silently falling back to your full identity. The flag runs this one sync uncapped to break the loop; every sync after it is capped as usual: just `yolo sync production`.
+:::
 
 YOLO **always shows the plan before it touches anything** — a diff grouped by scope (account → environment → app) of exactly what would be created or changed — then asks you to confirm. So to preview, just run it and read the plan; decline (or Ctrl-C) if it's not what you expected, confirm when it looks right. The first sync provisions a fair amount and can take several minutes (ACM certificate validation and load balancer provisioning are the slow parts). It's safe to re-run any time — a second `sync` on an unchanged manifest reports "already in sync" and does nothing.
 
