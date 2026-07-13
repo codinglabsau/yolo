@@ -92,11 +92,20 @@ it('composes only the CPU policy when the ALB/TG are not resolvable yet', functi
     expect(SyncScalingPoliciesStep::policies())->toHaveCount(1);
 });
 
-it('skips when the ECS service does not exist yet', function (): void {
-    $captured = [];
-    bindRoutedEcsClient(['DescribeServices' => new Result(['services' => []])], $captured);
+it('records the pending CPU policy on a greenfield plan pass instead of skipping', function (): void {
+    // Nothing exists yet — no ECS service, no ALB/TG. The step must survive the
+    // plan pass (two-pass contract) with the CPU policy pending; the concurrency
+    // policy defers until the ALB/TG resolve, which they do by the time the
+    // apply pass reaches this step.
+    bindUnresolvableLoadBalancer();
+    $aa = [];
+    bindMockApplicationAutoScalingClient(['DescribeScalingPolicies' => new Result(['ScalingPolicies' => []])], $aa);
 
-    expect((new SyncScalingPoliciesStep())([]))->toBe(StepResult::SKIPPED);
+    $step = new SyncScalingPoliciesStep();
+
+    expect($step(['dry-run' => true]))->toBe(StepResult::WOULD_CREATE)
+        ->and($step->changes())->not->toBeEmpty()
+        ->and(collect($aa)->pluck('name'))->not->toContain('PutScalingPolicy');
 });
 
 it('would-create the policies on a dry-run without putting', function (): void {

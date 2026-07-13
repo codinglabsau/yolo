@@ -8,7 +8,6 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
-use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\ScalableTarget;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\QueueScaleToZeroBootstrap;
 
@@ -26,11 +25,12 @@ class SyncQueueScaleToZeroAlarmStep implements Step
     public function __invoke(array $options): StepResult
     {
         // Only meaningful for a scale-to-zero queue: the queue must autoscale
-        // (a fixed single task never idles to zero), its floor must be 0, and its
-        // scalable target must exist (the bootstrap policy attaches to it).
+        // (a fixed single task never idles to zero) and its floor must be 0. Never
+        // gated on the queue service existing — a bare SKIPPED on the greenfield
+        // plan pass would prune the step from apply (two-pass contract); the apply
+        // runs after the service and scalable target it attaches to are created.
         if (! Manifest::autoscales(ServerGroup::QUEUE)
-            || (new ScalableTarget(ServerGroup::QUEUE))->min() !== 0
-            || ! (new EcsService(ServerGroup::QUEUE))->exists()) {
+            || (new ScalableTarget(ServerGroup::QUEUE))->min() !== 0) {
             return StepResult::SKIPPED;
         }
 

@@ -29,7 +29,7 @@ deployments.
 - Always run tests before pushing changes
 - **Any new/changed sync step or reconciler must survive the plan pass with nothing created yet** — work
   through [the two-pass contract checklist](#the-two-pass-contract--read-this-before-writing-any-sync-step-or-reconciler)
-  before shipping; this exact crash class has shipped four times
+  before shipping; this exact crash class has shipped five times
 - **Update the docs when you change behaviour or the public surface.** Any change to a command's
   arguments/options, a manifest key (name, default, or semantics), the Dockerfile/entrypoint contract, the
   manifest-required keys, or the sync/audit scope model must update the matching page under `docs/` in the same
@@ -155,12 +155,15 @@ decide *what* the resource is.
 `sync` runs every step **twice**: a **plan pass** (every step, dry, against live AWS, *before anything has been
 created*) and an **apply pass** (confirmed steps, in declaration order). The plan pass therefore runs on
 first-ever syncs and on migrations where resources have been renamed — i.e. **exactly when sibling resources
-don't exist yet**. The same crash class has shipped four times (a step eager-resolving a not-yet-created
+don't exist yet**. The same crash class has shipped five times (a step eager-resolving a not-yet-created
 sibling's live state: the WAF web ACL ARN in `5ca02fe`, the asset bucket's OAC policy in `0d9fbe8`; plus the
 eventual-consistency cousin in `4899c76`; plus the forward/redirect listener-rule steps returning a bare
 `SKIPPED` — not a `WOULD_*` — when the env `:443` listener wasn't created yet on the plan pass, so they pruned
 themselves out of apply and left the target group unattached, which surfaced two steps later as ECS
-`CreateService` rejecting the service). Checklist for any code that reads or writes live AWS state:
+`CreateService` rejecting the service; plus every autoscaling step gating on the not-yet-created ECS service
+with a bare `SKIPPED`, so a greenfield first sync reported success with no scalable target, policies, or burst
+alarm — and the very next deploy's drift gate refused). Checklist for any code that reads or writes live AWS
+state:
 
 1. **Walk the first-sync scenario by hand.** Before shipping, answer: *"what does every AWS read in this code
    return when NOTHING exists yet — fresh account, fresh env, renamed sibling?"* If the answer is "it throws",

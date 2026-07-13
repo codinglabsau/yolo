@@ -14,11 +14,20 @@ beforeEach(function (): void {
     ]);
 });
 
-it('skips when the ECS service does not exist yet', function (): void {
-    $captured = [];
-    bindRoutedEcsClient(['DescribeServices' => new Result(['services' => []])], $captured);
+it('records the pending registration on a greenfield plan pass instead of skipping', function (): void {
+    // Nothing exists yet — the plan pass runs before any sibling is created. A
+    // bare SKIPPED here prunes the step from the apply pass, leaving a fresh app
+    // without autoscaling until a second sync (the two-pass contract's disguised
+    // form: a skip condition reading an uncreated sibling). No ECS client is
+    // bound at all: the step must not gate on the live service.
+    $aa = [];
+    bindMockApplicationAutoScalingClient(['DescribeScalableTargets' => new Result(['ScalableTargets' => []])], $aa);
 
-    expect((new SyncScalableTargetStep())([]))->toBe(StepResult::SKIPPED);
+    $step = new SyncScalableTargetStep();
+
+    expect($step(['dry-run' => true]))->toBe(StepResult::WOULD_CREATE)
+        ->and($step->changes())->toHaveCount(2)
+        ->and(collect($aa)->pluck('name'))->not->toContain('RegisterScalableTarget');
 });
 
 it('would-create the target on a dry-run without registering', function (): void {

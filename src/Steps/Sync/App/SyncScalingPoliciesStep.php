@@ -9,7 +9,6 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
-use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Aws\ApplicationAutoScaling;
 use Codinglabs\Yolo\Resources\ElbV2\TargetGroup;
 use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
@@ -47,11 +46,15 @@ use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebConcurrencyPolicy;
  * not because YOLO remembers it. `yolo sync --check` surfaces the prune as drift
  * before it's applied.
  *
- * Skips on a greenfield first sync when the ECS service doesn't exist yet, and
- * silently defers the concurrency policy when the ALB / target group aren't
- * resolvable yet (it needs them to build its metric dimensions; it lands on the
- * next sync once they are — never throwing in the plan pass). The CPU policy has
- * no such dependency and is always present. The managed set is keyed by name
+ * Never gates on the ECS service existing — on a greenfield PLAN pass nothing
+ * exists yet, and a bare SKIPPED there would prune the step from the apply pass
+ * (two-pass contract); the apply runs after SyncEcsServiceStep and
+ * SyncScalableTargetStep have created what the policies attach to. The
+ * concurrency policy is silently deferred while the ALB / target group aren't
+ * resolvable (it needs them to build its metric dimensions — unresolvable on the
+ * greenfield plan pass, resolvable by the time the apply pass reaches this step,
+ * so it lands in the same sync). The CPU policy has no such dependency and is
+ * always present. The managed set is keyed by name
  * independently of resolution, so a merely-deferred concurrency policy is never
  * mistaken for an orphan. When the whole autoscaling block is removed this step
  * no-ops — SyncScalableTargetStep deregisters the scalable target, which cascades
@@ -70,10 +73,6 @@ class SyncScalingPoliciesStep implements Step
         // Autoscaling removed entirely → the scalable target is deregistered by
         // SyncScalableTargetStep, cascading every policy and alarm. Nothing to do.
         if (! Manifest::isAutoscaling()) {
-            return StepResult::SKIPPED;
-        }
-
-        if (! (new EcsService())->exists()) {
             return StepResult::SKIPPED;
         }
 

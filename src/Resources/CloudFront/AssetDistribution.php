@@ -129,6 +129,12 @@ class AssetDistribution implements Deletable, Resource, SynchronisesConfiguratio
 
         // Grant the new distribution (and only it) read access to the bucket.
         $this->grantBucketAccess($bucket, $distribution['ARN']);
+
+        // Additional metrics are part of the desired state (the dashboard's CDN
+        // cache-hit panel charts them), so enable them at create — leaving it to
+        // synchroniseConfiguration() would make every first sync self-drift and
+        // trip the next deploy's drift gate.
+        CloudFront::enableAdditionalMetrics($distribution['Id']);
     }
 
     /**
