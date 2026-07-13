@@ -290,7 +290,8 @@ image, and push it.
 revision → run deploy hooks (migrate, etc.) as a one-off `ecs:RunTask` (`ExecuteDeployStepsStep`) → update the ECS
 service → `WaitForDeploymentHealthyStep` (the ECS deployment circuit breaker fast-fails and auto-rolls-back on a
 broken deploy) → UPSERT the Route 53 record(s) once healthy. Once the rollout settles it prints an end-of-deploy
-recap — the per-group summary table + CloudWatch dashboard link from the `RendersServiceStatus` concern.
+recap — the per-group summary table + CloudWatch dashboard link from the `RendersServiceStatus` concern, plus
+the app's live URL(s).
 
 `yolo status` (`StatusCommand`) is the read-only live dashboard built on the same `RendersServiceStatus` concern: per
 group (web/queue/scheduler) it reads ECS, Application Auto Scaling and CloudWatch to show what's running, the task
