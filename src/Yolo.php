@@ -107,7 +107,7 @@ class Yolo
     protected function registerCommands(): void
     {
         foreach ($this->commands as $command) {
-            $this->app->add(new $command());
+            $this->app->addCommand(new $command());
         }
     }
 }
