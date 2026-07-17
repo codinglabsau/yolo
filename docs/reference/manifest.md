@@ -17,7 +17,7 @@ environments:
     region: ap-southeast-2       # required
 
     # --- Routing (see /guide/domains) ---
-    domain: example.com    # public domain; omit domain + tenants for a headless app
+    domain: example.com    # public domain — required for a web app; omit for a worker app
     #                      # the apex is derived automatically from the matching Route 53 zone
     #
     # Multi-tenant instead of a single domain (mutually exclusive with domain):
@@ -155,7 +155,7 @@ These live directly under an environment and determine how the app is reached. S
 
 ### `domain`
 
-The canonical public domain the app is served on (e.g. `app.example.com`). When it's one half of the apex/`www` pair (the apex itself, or `www.{apex}`), YOLO serves it and 301-redirects the other half to it. Omit for a [headless app](/guide/domains#headless-apps).
+The canonical public domain the app is served on (e.g. `app.example.com`). When it's one half of the apex/`www` pair (the apex itself, or `www.{apex}`), YOLO serves it and 301-redirects the other half to it. **Required for a web app** — a `tasks.web` block with no domain (or, multi-tenant, no tenant domains) is refused, since no listener rule would ever route to it. Omit it for a [worker app](/guide/domains#headless-apps); declaring one there is allowed (the zone + certificate stay provisioned, unattached).
 
 The apex (registrable root, naming the Route 53 hosted zone) is **derived automatically** — there is no `apex` key. YOLO walks the domain's label-suffixes longest-first and uses the longest one that already has a hosted zone in the account (so `app.example.com` resolves to the `example.com` zone). When no ancestor zone exists yet, the domain itself is the apex (sync then creates the zone), with any leading `www.` stripped. See [Domains](/guide/domains).
 
@@ -349,7 +349,7 @@ In the placement table below, `queue: true` is shorthand for "queue extracted" �
 
 The scheduler rides the worker container (the `web` + `queue` row) rather than getting its own task — there's no point paying for a separate one-task service for cron when the queue is already a managed tier. Because cron then runs on the autoscaling queue, guard scheduled tasks with `->onOneServer()`, or add `tasks.scheduler` for a true singleton. A queue that hosts the scheduler can't scale to zero — cron would stop when it idled — so its floor stays at `1` (an explicit `tasks.queue.autoscaling.min: 0` there is rejected).
 
-The last three rows are **web-less worker apps**: a pure queue consumer, a scheduled-job runner, or both. They get the same shared plumbing a web app does (ECR, cluster, task role, security groups, database access, log group) with no ALB attachment, target group, CDN, or web autoscaling. A scheduler-only app runs no worker anywhere, so its queue behaves exactly like `queue: false` — jobs run inline (`QUEUE_CONNECTION=sync`, enforced at build) and no SQS queue is provisioned. Web-less apps are usually also [headless](/guide/domains#headless-apps) (no `domain`); acceptance-test a first deploy by watching the service actually consume its queue or fire its schedule — there's no health-checked URL to probe.
+The last three rows are **web-less worker apps**: a pure queue consumer, a scheduled-job runner, or both. They get the same shared plumbing a web app does (ECR, cluster, task role, security groups, database access, log group) with no ALB attachment, target group, CDN, or web autoscaling. A scheduler-only app runs no worker anywhere, so its queue behaves exactly like `queue: false` — jobs run inline (`QUEUE_CONNECTION=sync`, enforced at build) and no SQS queue is provisioned. Worker apps are the [headless](/guide/domains#headless-apps) shape — they need no `domain` (declaring one anyway is fine; it's metadata) — while a web task always requires one. Acceptance-test a worker's first deploy by watching the service actually consume its queue or fire its schedule — there's no health-checked URL to probe.
 
 **Disabling the queue (`queue: false`)** means no worker runs anywhere, so jobs can't be processed off-request: YOLO bakes `QUEUE_CONNECTION=sync` (jobs run inline at dispatch) and **fails the build** if your `.env` pins it to anything else, rather than ship an app that black-holes queued work. **Disabling the scheduler (`scheduler: false`)** stops `schedule:run` running anywhere — framework and package maintenance that rides cron (model pruning, `auth:clear-resets`, Telescope/Pulse pruning, …) silently stops, so `sync` surfaces a warning. Reach for these only when the app genuinely has no background work.
 
@@ -478,7 +478,7 @@ Your manifest implies one of three modes:
 |---|---|---|
 | **Solo** | `domain` set at the environment level | One app, one hosted zone + certificate, served on its domain. |
 | **Multi-tenant** | `tenants` set (no env-level `domain`) | Per-tenant domains and queues; certs attach per tenant via SNI. |
-| **Headless** | no `domain` or tenant domains | No ALB attachment or DNS. Still deploys and processes queues/scheduled work. |
+| **Headless** | no `domain` or tenant domains | A [worker app](#where-each-role-runs) — no web task (web requires a domain), no ALB attachment or DNS. Still deploys and processes queued/scheduled work. |
 
 The mode is the **domain axis** — whether and how the app is exposed. The `tasks` block sets the orthogonal **topology axis**: a web service, a [web-less worker app](#where-each-role-runs) (a standalone queue and/or scheduler with no web container), or a build-only app (no `tasks` at all).
 

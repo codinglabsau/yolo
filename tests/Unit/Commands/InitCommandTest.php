@@ -43,9 +43,11 @@ it('scaffolds web autoscaling on by default', function (): void {
 it('scaffolds a manifest that satisfies the autoscaling-required integrity gate', function (): void {
     // The stub declares an explicit `autoscaling`, so the scaffold a fresh app gets
     // must pass `ensureManifestIntegrity` rather than tripping the new requirement.
+    // The domain is filled the way `init` does interactively (its prompt writes it
+    // after scaffolding) — a web task without one is refused.
     file_put_contents(Paths::manifest(), str_replace(
-        ['{NAME}', '{ENVIRONMENT}', '{AWS_ACCOUNT_ID}', '{AWS_REGION}'],
-        ['my-app', 'production', '111111111111', 'ap-southeast-2'],
+        ['{NAME}', '{ENVIRONMENT}', '{AWS_ACCOUNT_ID}', '{AWS_REGION}', '# domain: app.example.com'],
+        ['my-app', 'production', '111111111111', 'ap-southeast-2', 'domain: app.example.com'],
         file_get_contents(Paths::stubs('yolo.yml.stub'))
     ));
     Helpers::app()->instance('environment', 'production');

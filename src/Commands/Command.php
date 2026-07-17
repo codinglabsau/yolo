@@ -153,8 +153,31 @@ abstract class Command extends SymfonyCommand
             && $this->ensureSessionDriverValid()
             && $this->ensureServicesValid()
             && $this->ensureTasksRunnable()
+            && $this->ensureWebReachable()
             && $this->ensureAutoscalingDeclared()
             && $this->ensureSchedulerHostNotScaleToZero();
+    }
+
+    /**
+     * A web task must be reachable: the task security group only accepts ingress
+     * from the ALB, and with no domain no listener rule ever points at the
+     * service — a web server nobody can reach, burning a Fargate task. So a solo
+     * web app must declare `domain`, and a multi-tenant web app needs at least
+     * one tenant domain. An app with no public host runs as a worker instead
+     * (standalone queue/scheduler, no web task).
+     */
+    protected function ensureWebReachable(): bool
+    {
+        if (! Manifest::hasWeb() || ! Manifest::isHeadless()) {
+            return true;
+        }
+
+        error(
+            "yolo.yml declares `tasks.web` but no `domain` — a web task with no public host serves nothing (no listener rule ever routes to it).\n"
+            . 'Declare `domain` (or a tenant domain), or drop `tasks.web` and run a worker app (standalone tasks.queue / tasks.scheduler).'
+        );
+
+        return false;
     }
 
     /**
