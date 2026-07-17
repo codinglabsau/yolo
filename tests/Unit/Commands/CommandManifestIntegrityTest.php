@@ -130,6 +130,41 @@ it('accepts a web-less worker app with a standalone queue or scheduler', functio
     'queue + scheduler worker' => [['web' => false, 'queue' => ['autoscaling' => true], 'scheduler' => true]],
 ]);
 
+it('refuses a web task with no public host — web requires a domain', function (array $manifest): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        ...$manifest,
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    expect(test()->promptOutput->fetch())->toContain('no `domain`');
+})->with([
+    // No listener rule ever routes to a domain-less web task — it's a web
+    // server nobody can reach. Workers (no web task) are the headless shape.
+    'solo, no domain' => [['tasks' => ['web' => ['autoscaling' => true]]]],
+    'multi-tenant, no tenant domains' => [[
+        'tenants' => ['alpha' => [], 'beta' => []],
+        'tasks' => ['web' => ['autoscaling' => true]],
+    ]],
+]);
+
+it('accepts a web task when a public host exists', function (array $manifest): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        ...$manifest,
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+})->with([
+    'solo with a domain' => [['domain' => 'example.com', 'tasks' => ['web' => ['autoscaling' => true]]]],
+    // One routed tenant is enough — a domain-less sibling may be mid-onboarding.
+    'multi-tenant with one tenant domain' => [[
+        'tenants' => ['alpha' => ['domain' => 'alpha.example.com'], 'beta' => []],
+        'tasks' => ['web' => ['autoscaling' => true]],
+    ]],
+]);
+
 it('accepts a manifest with no tasks at all (a build-only app)', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
@@ -259,6 +294,7 @@ it('accepts every known service as a consumed service', function (): void {
 it('accepts the known shape of every task group', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'example.com',
         'tasks' => [
             'web' => [
                 'cpu' => '512', 'memory' => '1024', 'platform' => 'linux/amd64',
@@ -283,6 +319,7 @@ it('accepts the known shape of every task group', function (): void {
 it('bails on an unrecognised key inside a task group', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'example.com',
         'tasks' => ['web' => ['nonsense' => true]],
     ]);
 
@@ -293,6 +330,7 @@ it('bails on an unrecognised key inside a task group', function (): void {
 it('bails when a web config map omits autoscaling', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'example.com',
         'tasks' => ['web' => ['cpu' => '512']],
     ]);
 
@@ -306,6 +344,7 @@ it('bails when a web config map omits autoscaling', function (): void {
 it('bails on the bare `tasks.web: true` shorthand — web needs an explicit autoscaling decision', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'example.com',
         'tasks' => ['web' => true],
     ]);
 
@@ -316,6 +355,7 @@ it('bails on the bare `tasks.web: true` shorthand — web needs an explicit auto
 it('bails when a standalone queue omits autoscaling', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'example.com',
         'tasks' => ['web' => ['autoscaling' => true], 'queue' => ['spot' => true]],
     ]);
 
@@ -329,6 +369,7 @@ it('bails when a standalone queue omits autoscaling', function (): void {
 it('bails on the bare `tasks.queue: true` shorthand', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'example.com',
         'tasks' => ['web' => ['autoscaling' => true], 'queue' => true],
     ]);
 
@@ -350,6 +391,7 @@ it('demands no autoscaling declaration of a disabled web tier', function (): voi
 it('keeps the bare `tasks.scheduler: true` shorthand — the scheduler never scales', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'example.com',
         'tasks' => ['web' => ['autoscaling' => true], 'scheduler' => true],
     ]);
 
@@ -359,6 +401,7 @@ it('keeps the bare `tasks.scheduler: true` shorthand — the scheduler never sca
 it('bails when the scheduler rides a queue explicitly set to scale to zero', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'example.com',
         'tasks' => ['web' => ['autoscaling' => true], 'queue' => ['autoscaling' => ['min' => 0]]],
     ]);
 
@@ -372,6 +415,7 @@ it('bails when the scheduler rides a queue explicitly set to scale to zero', fun
 it('accepts a scheduler-hosting queue with a standing floor of one', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'example.com',
         'tasks' => ['web' => ['autoscaling' => true], 'queue' => ['autoscaling' => ['min' => 1]]],
     ]);
 
@@ -381,6 +425,7 @@ it('accepts a scheduler-hosting queue with a standing floor of one', function ()
 it('accepts a scheduler-hosting queue with no explicit floor (defaults to one)', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'example.com',
         'tasks' => ['web' => ['autoscaling' => true], 'queue' => ['autoscaling' => true]],
     ]);
 
@@ -390,6 +435,7 @@ it('accepts a scheduler-hosting queue with no explicit floor (defaults to one)',
 it('accepts a scale-to-zero queue when the scheduler is its own service', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'example.com',
         'tasks' => ['web' => ['autoscaling' => true], 'queue' => ['autoscaling' => ['min' => 0]], 'scheduler' => true],
     ]);
 

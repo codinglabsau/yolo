@@ -83,20 +83,7 @@ describe('serviceNeedsUpdate when headless', function (): void {
 });
 
 describe('updatePayload', function (): void {
-    it('omits healthCheckGracePeriodSeconds when headless', function (): void {
-        writeManifest([
-            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tasks' => ['web' => true],
-        ]);
-
-        // which require live AWS lookups, so we can't fully invoke it here. updatePayload is
-        // purely manifest-driven (no AWS lookups), so it pins the headless conditional shape.
-        $payload = (new EcsService())->updatePayload();
-
-        expect($payload)->not->toHaveKey('healthCheckGracePeriodSeconds');
-    });
-
-    it('includes healthCheckGracePeriodSeconds when not headless', function (): void {
+    it('includes healthCheckGracePeriodSeconds from the manifest', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'domain' => 'example.com',

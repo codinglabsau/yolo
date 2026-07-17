@@ -144,21 +144,6 @@ it('tracks the manifest web shutdown-grace-period for the drain duration', funct
     expect(generatedEntrypointScript())->toContain("sleep 45\n");
 });
 
-it('omits the ALB drain window when headless — no target to drain', function (): void {
-    writeManifest([
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['shutdown-grace-period' => 45], 'scheduler' => true],
-    ]);
-
-    $script = generatedEntrypointScript();
-
-    // Still supervises + traps so the stop is forwarded cleanly, just no lame-duck
-    // ALB sleep window.
-    expect($script)->not->toContain('sleep 45');
-    expect($script)->toContain('trap drain TERM');
-    expect($script)->toContain('kill -TERM "$child"');
-});
-
 it('emits no web branch and defaults the role to scheduler for a scheduler-only worker app', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',

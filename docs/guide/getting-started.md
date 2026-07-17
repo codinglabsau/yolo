@@ -9,7 +9,7 @@ You don't need prior YOLO knowledge. Each step links to a deeper page if you wan
 - **PHP 8.3+** and **Composer**
 - **Docker**, running locally — YOLO builds your container image on your machine
 - An **AWS account** and an **access key for your IAM user** — step 3's `yolo configure` turns it into a named profile with short-lived sessions. (Already have a named profile in `~/.aws/config`? That works too — just don't use the `default` profile.)
-- **For a public app:** a domain you can manage in **Route 53** on that account. (You can skip this and run a [headless app](/guide/domains#headless-apps) with no public URL.)
+- **For a web app:** a domain you can manage in **Route 53** on that account — a web task requires one. (A [worker app](/guide/domains#headless-apps) — a standalone queue/scheduler with no web task — needs no domain.)
 
 ::: tip The whole thing in one line
 Once you've done the setup below, day-to-day it's just:

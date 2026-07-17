@@ -297,12 +297,12 @@ class EcsService implements Deletable, Resource
     }
 
     /**
-     * Whether this service sits behind the ALB — web only, and only when the app
-     * isn't headless (no domain → no ALB to attach to).
+     * Whether this service sits behind the ALB — web only. A web task always
+     * attaches (it requires a domain, so the ALB path always exists).
      */
     protected function attachesToLoadBalancer(): bool
     {
-        return $this->group->attachesToLoadBalancer() && ! Manifest::isHeadless();
+        return $this->group->attachesToLoadBalancer();
     }
 
     protected function reconcilesGracePeriod(): bool

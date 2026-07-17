@@ -51,30 +51,21 @@ That's safe by design:
 
 ## Headless apps
 
-An app with no public web front — a background worker, a queue consumer, an internal job runner — can run **headless**: omit `domain` and any tenant domains.
+An app with no public web front — a background worker, a queue consumer, an internal job runner — runs **headless**: omit `domain` (and any tenant domains) *and* the web tier. A headless app is a [web-less worker app](/reference/manifest#where-each-role-runs) — a standalone `tasks.queue` and/or `tasks.scheduler` with no `tasks.web`:
 
 ```yaml
 environments:
   production:
-    # no domain / tenants → headless
-    tasks:
-      web:
-        autoscaling: true
-```
-
-This one still declares `tasks.web`: the queue worker and scheduler ride inside the web container by default ([where each role runs](/reference/manifest#where-each-role-runs)), so "headless" isn't about dropping the web tier — it's about not exposing it. With no domain to route, YOLO skips the hosted zone, certificate, ALB attachment, and DNS; the container still deploys and still processes queued and scheduled work, it just has no public URL.
-
-Headless is the **domain axis**. You can also drop the web tier itself — the **topology axis**: a [web-less worker app](/reference/manifest#where-each-role-runs) declares no `tasks.web` (or `web: false`) and runs a standalone `tasks.queue` and/or `tasks.scheduler` instead, so you're not paying for an idle web server in front of a pure worker:
-
-```yaml
-environments:
-  production:
-    # no domain → headless; no web task → a scheduler-only worker app
+    # no domain → nothing exposed; no web task → a scheduler-only worker app
     tasks:
       web: false
       queue: false
       scheduler: true
 ```
+
+With no domain there is no hosted zone, certificate, ALB attachment, or DNS — and nothing that needs them. The worker still deploys, consumes its queue and fires its schedule; it just has no URL.
+
+A **web task always requires a domain**: the task security group only accepts traffic from the load balancer, and without a domain no listener rule ever routes to the service — a web server nobody can reach, burning a Fargate task. A `tasks.web` block with no `domain` (or, multi-tenant, no tenant domains) is refused at validation. A worker app may still *declare* a `domain` — it's metadata, and YOLO keeps the hosted zone and certificate provisioned (unattached) so the web tier can return later.
 
 Need an image that builds but runs no container at all? Omit the `tasks` block entirely — see [App modes](/reference/manifest#app-modes).
 

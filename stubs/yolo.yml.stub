@@ -2,9 +2,10 @@ name: {NAME}
 
 environments:
   {ENVIRONMENT}:
-    # Public domain. Omit for a headless app (no ALB / DNS). The apex (registrable
-    # root) is derived automatically from the longest domain suffix that has a
-    # Route 53 hosted zone, so a subdomain like app.example.com just works.
+    # Public domain — required for a web app (tasks.web). Omit it only for a
+    # worker app (a standalone tasks.queue / tasks.scheduler with no web task).
+    # The apex (registrable root) is derived automatically from the longest domain
+    # suffix that has a Route 53 hosted zone, so app.example.com just works.
     # domain: app.example.com
 
     # Source ref this environment deploys from — drives the local deploy guard
