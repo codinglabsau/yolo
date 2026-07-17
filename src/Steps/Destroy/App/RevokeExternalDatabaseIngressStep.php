@@ -6,11 +6,11 @@ namespace Codinglabs\Yolo\Steps\Destroy\App;
 
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Aws\Rds;
-use Codinglabs\Yolo\Manifest;
 use Aws\Rds\Exception\RdsException;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Concerns\RevokesTaskIngress;
+use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * Revokes this app's "3306 from the task SG" rule from an externally-hosted
@@ -26,7 +26,13 @@ class RevokeExternalDatabaseIngressStep implements ExecutesWebStep
 
     public function __invoke(array $options): StepResult
     {
-        $target = Manifest::rdsTarget();
+        try {
+            $target = Rds::target();
+        } catch (RdsException|ResourceDoesNotExistException) {
+            // A declared database that no longer resolves (already deleted, or
+            // unreadable) referenced nothing — teardown must not wedge on it.
+            return StepResult::SKIPPED;
+        }
 
         if ($target === null || $target['cluster']) {
             return StepResult::SKIPPED;

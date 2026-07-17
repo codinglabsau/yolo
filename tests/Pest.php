@@ -13,6 +13,7 @@ use Aws\Sqs\SqsClient;
 use Aws\CommandInterface;
 use Aws\WAFV2\WAFV2Client;
 use Laravel\Prompts\Prompt;
+use Codinglabs\Yolo\Aws\Rds;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use GuzzleHttp\Psr7\Response;
@@ -81,6 +82,7 @@ file_put_contents($tempDir . '/yolo.yml', Yaml::dump([
 pest()->beforeEach(function (): void {
     Helpers::app()->instance('environment', 'testing');
     Manifest::flushHydration();
+    Rds::flushTargets();
 
     // Running any console command in a Testbench app makes the framework set
     // Laravel Prompts' fallback flag (ConfiguresPrompts does so whenever

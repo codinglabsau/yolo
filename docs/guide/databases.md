@@ -2,7 +2,7 @@
 
 YOLO **never creates, modifies, or deletes a database** — not the instance, the cluster, or a snapshot (a CI tripwire enforces it). What YOLO owns is everything *around* the database: the network it should live in, the security group that admits the app, the audit that tells you where it actually sits, and the tunnel that gets you to it. The database itself is always yours.
 
-Declare the database with the manifest [`database:`](/reference/manifest#database) key — a bare instance identifier or a full endpoint hostname. That one key powers the CloudWatch dashboard's Database section, the `yolo status` Database tab, the [`yolo audit`](/reference/commands#yolo-audit) probes, and [`yolo db:tunnel`](/reference/commands#yolo-db-tunnel). Omit it and all four are simply dropped.
+Declare the database with the manifest [`database:`](/reference/manifest#database) key — its bare name (the instance or cluster identifier; YOLO looks the name up and detects which kind it is). That one key powers the CloudWatch dashboard's Database section, the `yolo status` Database tab, the [`yolo audit`](/reference/commands#yolo-audit) probes, and [`yolo db:tunnel`](/reference/commands#yolo-db-tunnel). Omit it and all four are simply dropped.
 
 ## The three postures
 

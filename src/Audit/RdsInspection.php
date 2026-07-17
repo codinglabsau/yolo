@@ -7,11 +7,12 @@ namespace Codinglabs\Yolo\Audit;
 use Codinglabs\Yolo\Aws\Rds;
 use Codinglabs\Yolo\Manifest;
 use Aws\Rds\Exception\RdsException;
+use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * A read-only health snapshot of the database an app is wired to — the RDS
  * instance or Aurora cluster DECLARED by the manifest `database:` key (see
- * {@see Manifest::rdsTarget()}). It is NOT a YOLO-managed, YOLO-tagged resource,
+ * {@see Rds::target()}). It is NOT a YOLO-managed, YOLO-tagged resource,
  * so it never shows up in the tag-based audit inventory; the audit health check
  * looks it up directly by the manifest identifier instead.
  *
@@ -64,10 +65,20 @@ final readonly class RdsInspection
      */
     public static function inspect(): ?self
     {
-        $target = Manifest::rdsTarget();
-
-        if ($target === null) {
+        if (($database = Manifest::database()) === null) {
             return null;
+        }
+
+        // Classification itself can fail — the declared name matches nothing, or
+        // the running tier was denied the describe. Either degrades to an
+        // unreadable snapshot (a warning, never an error), same as a failed read
+        // of a classified target; the kind is simply unknown at that point.
+        try {
+            $target = Rds::target();
+        } catch (RdsException $exception) {
+            return self::unreadable($database, false, self::reason($exception));
+        } catch (ResourceDoesNotExistException) {
+            return self::unreadable($database, false, 'no matching database in this account/region');
         }
 
         return $target['cluster']
@@ -87,6 +98,12 @@ final readonly class RdsInspection
 
     public function kind(): string
     {
+        // An unreadable snapshot may predate classification — the kind is
+        // unknown, so don't render a guess.
+        if (! $this->readable) {
+            return 'database';
+        }
+
         return $this->cluster ? 'Aurora cluster' : 'instance';
     }
 

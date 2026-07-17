@@ -76,7 +76,7 @@ it('defaults deletion protection to off when the attribute is absent — fail sa
 });
 
 it('reads an Aurora cluster: writer first then readers, with member classes and deletion protection', function (): void {
-    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'app.cluster-abc123.ap-southeast-2.rds.amazonaws.com']);
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'app']);
 
     $captured = [];
     bindMockRdsClient([
@@ -137,7 +137,7 @@ it('degrades to unreadable when the read is denied', function (): void {
 });
 
 it('tolerates a member-class describe failure on a cluster — sizes omitted, not fatal', function (): void {
-    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'app.cluster-abc123.ap-southeast-2.rds.amazonaws.com']);
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'app']);
 
     $captured = [];
     bindMockRdsClient([
@@ -183,7 +183,7 @@ it('reads the network posture facts off the instance describe', function (): voi
 });
 
 it('derives a cluster\'s VPC and public accessibility from its member instances', function (): void {
-    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'app.cluster-abc123.ap-southeast-2.rds.amazonaws.com']);
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'app']);
 
     $captured = [];
     bindMockRdsClient([

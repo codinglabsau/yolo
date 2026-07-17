@@ -7,7 +7,6 @@ namespace Codinglabs\Yolo\Steps\Sync\App;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Aws\Rds;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\EnvManifest;
 use Aws\Rds\Exception\RdsException;
 use Codinglabs\Yolo\Contracts\Step;
@@ -42,11 +41,17 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
 
     public function __invoke(array $options): StepResult
     {
-        $target = Manifest::rdsTarget();
+        try {
+            $target = Rds::target();
+        } catch (RdsException|ResourceDoesNotExistException) {
+            // Unreadable or matching nothing (the dashboard step hard-fails on
+            // that, and the audit's posture probe reports it) — sync moves on.
+            return StepResult::SKIPPED;
+        }
 
         if ($target === null || $target['cluster']) {
-            // Nothing declared, or an Aurora cluster (declare those by endpoint
-            // and wire ingress by hand for now) — nothing to reconcile.
+            // Nothing declared, or an Aurora cluster (wire ingress by hand for
+            // now) — nothing to reconcile.
             return StepResult::SKIPPED;
         }
 

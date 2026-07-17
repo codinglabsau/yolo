@@ -3,10 +3,91 @@
 namespace Codinglabs\Yolo\Aws;
 
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Manifest;
+use Aws\Rds\Exception\RdsException;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class Rds
 {
+    /** @var array<string, array{identifier: string, cluster: bool}> */
+    protected static array $targets = [];
+
+    /**
+     * The RDS target the manifest `database:` key declares — the bare human name
+     * of a plain instance or an Aurora cluster — classified live: a name that
+     * describes as a cluster is a cluster, otherwise a plain instance. Null when
+     * no database is declared; a name matching neither throws — a declared
+     * database that doesn't exist is a manifest error to surface, not an empty
+     * dashboard panel to puzzle over.
+     *
+     * Memoised per process: which kind a name is is a stable fact (a name can't
+     * flip cluster↔instance run-to-run), and every RBAC tier holds the
+     * `rds:Describe*` read (ObserverPolicy — inherited by the deployer's
+     * AppObserverPolicy and attached to the admin role), so the plan and apply
+     * passes and every tier resolve the same classification. The dashboard
+     * body's tier-parity contract leans on this.
+     *
+     * @return array{identifier: string, cluster: bool}|null
+     */
+    public static function target(): ?array
+    {
+        $database = Manifest::database();
+
+        if ($database === null) {
+            return null;
+        }
+
+        return static::$targets[$database] ??= static::classify($database);
+    }
+
+    /** Drop memoised classifications (test reset). */
+    public static function flushTargets(): void
+    {
+        static::$targets = [];
+    }
+
+    /**
+     * @return array{identifier: string, cluster: bool}
+     */
+    protected static function classify(string $identifier): array
+    {
+        try {
+            if (static::cluster($identifier) !== null) {
+                return ['identifier' => $identifier, 'cluster' => true];
+            }
+        } catch (RdsException $exception) {
+            if (! static::isNotFound($exception)) {
+                throw $exception;
+            }
+        }
+
+        try {
+            if (static::instance($identifier) !== null) {
+                return ['identifier' => $identifier, 'cluster' => false];
+            }
+        } catch (RdsException $exception) {
+            if (! static::isNotFound($exception)) {
+                throw $exception;
+            }
+        }
+
+        throw new ResourceDoesNotExistException(
+            "The manifest `database:` declares \"$identifier\" but no RDS cluster or instance with that identifier exists in this account/region."
+        );
+    }
+
+    /**
+     * RDS not-found codes come in bare and `Fault`-suffixed forms depending on
+     * the operation (DBInstanceNotFound vs DBClusterNotFoundFault) — match both.
+     */
+    protected static function isNotFound(RdsException $exception): bool
+    {
+        return in_array($exception->getAwsErrorCode(), [
+            'DBClusterNotFound', 'DBClusterNotFoundFault',
+            'DBInstanceNotFound', 'DBInstanceNotFoundFault',
+        ], true);
+    }
+
     public static function subnetGroup(string $name): array
     {
         foreach (Aws::rds()->describeDBSubnetGroups()['DBSubnetGroups'] ?? [] as $subnetGroup) {

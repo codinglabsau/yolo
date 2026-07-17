@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Change;
 use Illuminate\Support\Str;
+use Codinglabs\Yolo\Aws\Rds;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\WafV2;
@@ -31,7 +32,7 @@ use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
  * queue/scheduler, charted in their own compute sections), the ALB it sits behind,
  * its SQS queues, the asset CloudFront distribution, its S3 buckets and its log
  * groups — plus the RDS database it connects to (declared by the manifest
- * `database:` key; see rdsTarget()).
+ * `database:` key; see {@see Rds::target()}).
  *
  * A standalone reconciler, NOT a Resource: a dashboard carries no meaningful tags
  * (CloudWatch only tags alarms / Contributor Insights rules) and PutDashboard is a
@@ -209,7 +210,7 @@ class Dashboard implements Deletable
             // `tasks.queue: false` runs jobs inline (QUEUE_CONNECTION=sync) and YOLO
             // melts the SQS queue, so there's nothing to chart — omit the section.
             'queueDisabled' => Manifest::queueDisabled(),
-            'rds' => Manifest::rdsTarget(),
+            'rds' => Rds::target(),
             'buckets' => static::bucketNames(),
             'taskLogGroup' => $web ? (new TaskLogGroup())->name() : null,
             // Each service definition contributes its own context entries —
@@ -827,8 +828,12 @@ class Dashboard implements Deletable
     }
 
     /**
-     * RDS health for the database the app connects to (Aurora cluster writer or a
-     * plain instance), derived from DB_HOST.
+     * RDS health for the database the app connects to (an Aurora cluster or a
+     * plain instance), declared by the manifest `database:` key. A cluster is
+     * charted through the static Role dimensions — the writer series follows
+     * failovers, and the READER series aggregates whatever readers exist — so
+     * the body never depends on enumerating members (a dynamic set that would
+     * make the plan drift run-to-run).
      *
      * @param  array<string, mixed>  $context
      * @return array{0: array<int, array<string, mixed>>, 1: int}
@@ -839,6 +844,7 @@ class Dashboard implements Deletable
         $rds = $context['rds'];
 
         $metric = fn (string $name, array $options = []): array => ['AWS/RDS', $name, ...static::rdsDimensions($rds), $options];
+        $reader = fn (string $name, array $options = []): array => ['AWS/RDS', $name, 'DBClusterIdentifier', $rds['identifier'], 'Role', 'READER', $options];
 
         $widgets = [static::header($y, '# Database')];
         $y++;
@@ -851,7 +857,9 @@ class Dashboard implements Deletable
             'period' => 60,
             'stat' => 'Average',
             'yAxis' => ['left' => ['min' => 0, 'max' => 100]],
-            'metrics' => [$metric('CPUUtilization')],
+            'metrics' => $rds['cluster']
+                ? [$metric('CPUUtilization', ['label' => 'Writer', 'color' => static::BLUE]), $reader('CPUUtilization', ['label' => 'Readers', 'color' => static::PURPLE])]
+                : [$metric('CPUUtilization')],
         ]);
 
         $widgets[] = static::metric(12, $y, 12, 6, [
@@ -861,7 +869,9 @@ class Dashboard implements Deletable
             'stacked' => false,
             'period' => 60,
             'stat' => 'Average',
-            'metrics' => [$metric('DatabaseConnections')],
+            'metrics' => $rds['cluster']
+                ? [$metric('DatabaseConnections', ['label' => 'Writer', 'color' => static::BLUE]), $reader('DatabaseConnections', ['label' => 'Readers', 'color' => static::PURPLE])]
+                : [$metric('DatabaseConnections')],
         ]);
         $y += 6;
 
@@ -878,9 +888,9 @@ class Dashboard implements Deletable
         // SelectThroughput/Insert/Update/Delete are Aurora-only metrics — a plain
         // RDS instance never emits them, so it'd chart a permanently empty panel.
         // Aurora gets the DML breakdown; a plain instance gets read/write IOPS,
-        // which every RDS engine publishes. Cluster-ness is the manifest signal
-        // (Aurora is declared by its cluster endpoint — see rdsTarget()), so the
-        // panel resolves identically under every tier without a live probe.
+        // which every RDS engine publishes. Cluster-ness is the memoised live
+        // classification of the manifest name (see Rds::target()) — a stable
+        // fact every tier resolves identically, so the body stays deterministic.
         $widgets[] = $rds['cluster']
             ? static::metric(12, $y, 12, 6, [
                 'title' => 'RDS throughput',
@@ -928,6 +938,26 @@ class Dashboard implements Deletable
                 $metric('WriteLatency', ['label' => 'Write p90', 'stat' => 'p90', 'color' => static::ORANGE]),
             ],
         ]);
+
+        // Replica lag is the reader-side health signal: a reader serving stale
+        // reads shows here long before it errors. Milliseconds; charted through
+        // the aggregate READER role, so it needs no member enumeration and is
+        // simply empty while the cluster runs writer-only.
+        if ($rds['cluster']) {
+            $widgets[] = static::metric(12, $y, 12, 6, [
+                'title' => 'Aurora replica lag',
+                'region' => $region,
+                'view' => 'timeSeries',
+                'stacked' => false,
+                'period' => 60,
+                'stat' => 'Average',
+                'yAxis' => ['left' => ['min' => 0]],
+                'metrics' => [
+                    $reader('AuroraReplicaLag', ['label' => 'Avg', 'color' => static::BLUE]),
+                    $reader('AuroraReplicaLag', ['label' => 'Max', 'stat' => 'Maximum', 'color' => static::ORANGE]),
+                ],
+            ]);
+        }
         $y += 6;
 
         return [$widgets, $y];

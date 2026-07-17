@@ -247,19 +247,15 @@ Declares the RDS instance or Aurora cluster the app connects to, so YOLO can cha
 
 YOLO doesn't manage your database, so it can't discover the identifier on its own. It's declared in the manifest — rather than read from `DB_HOST` in the app's `.env` — because the dashboard is written by `yolo sync` under the admin tier, which is deliberately barred from reading app secrets; a manifest value is read identically by every tier, so the dashboard never drifts between who writes it and who checks it.
 
-A single flat value, taken two ways:
+A single flat value: the database's **name** (its `DBInstanceIdentifier` or `DBClusterIdentifier`), never an endpoint hostname.
 
 ```yaml
-# A plain RDS instance — the bare identifier (its DBInstanceIdentifier):
 database: my-app-db
-
-# An Aurora cluster — paste the full cluster endpoint host; YOLO detects the
-# cluster and charts the writer (DBClusterIdentifier + Role=WRITER), which
-# follows failovers. An RDS Proxy / non-RDS host is skipped.
-database: my-app.cluster-cabc123.ap-southeast-2.rds.amazonaws.com
 ```
 
-A bare value (no `.rds.amazonaws.com`) is charted as a plain instance; a full endpoint hostname self-describes whether it's an Aurora cluster or an instance. For a plain RDS instance the short name is enough; for Aurora use the endpoint so the writer metrics are charted.
+YOLO looks the name up and detects which kind it is. An Aurora cluster is charted through its cluster roles — the writer series follows failovers, and readers chart as an aggregate alongside (with a replica-lag panel) — while anything else is charted as a plain instance. Endpoints are resolved live wherever one is needed: [`yolo db:tunnel`](/reference/commands#yolo-db-tunnel) describes the name and forwards to a cluster's writer endpoint or the instance endpoint.
+
+A name that matches no RDS cluster or instance in the account/region **fails the sync**: a declared database that doesn't exist is a manifest typo to surface loudly, not an empty dashboard panel to puzzle over.
 
 Where the database should live, the managed/external/exposed postures, and how to reach a private one are covered in the **[Databases](/guide/databases)** guide.
 

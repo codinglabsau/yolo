@@ -17,6 +17,7 @@ use Codinglabs\Yolo\Contracts\ReadOnlyCommand;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Input\InputArgument;
+use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\error;
@@ -80,34 +81,45 @@ class DbTunnelCommand extends Command implements ReadOnlyCommand
     }
 
     /**
-     * The database endpoint hostname to forward to. The manifest `database:` key
-     * holds either a full endpoint (used as-is) or a bare instance identifier,
-     * which is resolved to its endpoint with a describe.
+     * The database endpoint hostname to forward to, resolved with a describe
+     * from the bare name the manifest `database:` key declares. A cluster
+     * forwards to its cluster (writer) endpoint, so the tunnel follows
+     * failovers; an instance forwards to its instance endpoint.
      */
     protected function databaseHost(): ?string
     {
-        $database = Manifest::get('database');
+        try {
+            $target = Rds::target();
+        } catch (ResourceDoesNotExistException $exception) {
+            error($exception->getMessage());
 
-        if (! is_string($database) || $database === '') {
+            return null;
+        } catch (RdsException $exception) {
+            error(sprintf('Could not resolve "%s": %s.', (string) Manifest::database(), $exception->getAwsErrorCode() ?? 'unknown error'));
+
+            return null;
+        }
+
+        if ($target === null) {
             error('No `database:` declared in the manifest — nothing to tunnel to.');
 
             return null;
         }
 
-        if (str_ends_with($database, '.rds.amazonaws.com')) {
-            return $database;
-        }
-
         try {
-            $instance = Rds::instance($database);
+            $record = $target['cluster'] ? Rds::cluster($target['identifier']) : Rds::instance($target['identifier']);
         } catch (RdsException $exception) {
-            error(sprintf('Could not resolve the endpoint for "%s": %s.', $database, $exception->getAwsErrorCode() ?? 'unknown error'));
+            error(sprintf('Could not resolve the endpoint for "%s": %s.', $target['identifier'], $exception->getAwsErrorCode() ?? 'unknown error'));
 
             return null;
         }
 
-        if (($endpoint = $instance['Endpoint']['Address'] ?? null) === null) {
-            error(sprintf('Could not resolve the endpoint for "%s" — no matching DB instance.', $database));
+        $endpoint = $target['cluster']
+            ? ($record['Endpoint'] ?? null)
+            : ($record['Endpoint']['Address'] ?? null);
+
+        if ($endpoint === null) {
+            error(sprintf('Could not resolve the endpoint for "%s" — the database reports no endpoint yet.', $target['identifier']));
 
             return null;
         }

@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo;
 
 use Illuminate\Support\Arr;
+use Codinglabs\Yolo\Aws\Rds;
 use Codinglabs\Yolo\Aws\Route53;
 use Symfony\Component\Yaml\Yaml;
 use Codinglabs\Yolo\Enums\Service;
@@ -972,20 +973,18 @@ class Manifest
     }
 
     /**
-     * The RDS target DECLARED by the flat `database:` manifest key. Accepts either
-     * a bare RDS identifier (a plain instance, charted via DBInstanceIdentifier) or
-     * a full endpoint hostname — which auto-detects an Aurora cluster
-     * (`.cluster-` in the host) vs a plain instance, and skips an RDS Proxy /
-     * non-RDS host. Null when nothing's declared.
+     * The database DECLARED by the flat `database:` manifest key — the bare human
+     * name of an RDS instance or Aurora cluster (its DBInstanceIdentifier /
+     * DBClusterIdentifier, never an endpoint hostname). Null when nothing's
+     * declared. Whether the name is a cluster or a plain instance is resolved
+     * live by {@see Rds::target()}.
      *
      * Read from the manifest, never the app's secret `.env`: every consumer (the
      * CloudWatch dashboard body, the status TUI, the audit health probe) must
      * resolve the same target under every RBAC tier, which a secret read can't
      * guarantee. The dashboard tier-parity contract leans on this directly.
-     *
-     * @return array{identifier: string, cluster: bool}|null
      */
-    public static function rdsTarget(): ?array
+    public static function database(): ?string
     {
         $database = static::get('database');
 
@@ -993,21 +992,7 @@ class Manifest
             return null;
         }
 
-        // A bare value is a plain instance identifier; a full endpoint hostname
-        // self-describes its kind.
-        if (! str_ends_with($database, '.rds.amazonaws.com')) {
-            return ['identifier' => $database, 'cluster' => false];
-        }
-
-        // RDS Proxy endpoints don't map to a DB metric identifier.
-        if (str_contains($database, '.proxy-')) {
-            return null;
-        }
-
-        return [
-            'identifier' => strtok($database, '.'),
-            'cluster' => str_contains($database, '.cluster-'),
-        ];
+        return $database;
     }
 
     public static function isMultitenanted(): bool

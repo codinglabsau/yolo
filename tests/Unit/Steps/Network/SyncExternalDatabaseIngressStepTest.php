@@ -156,6 +156,27 @@ it('skips when no database is declared', function (): void {
     expect((new SyncExternalDatabaseIngressStep())([]))->toBe(StepResult::SKIPPED);
 });
 
+it('skips an Aurora cluster — its ingress is wired by hand for now', function (): void {
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'app-cluster']);
+
+    $captured = [];
+    bindMockRdsClient([
+        'DescribeDBClusters' => new Result(['DBClusters' => [['DBClusterIdentifier' => 'app-cluster']]]),
+    ], $captured);
+
+    expect((new SyncExternalDatabaseIngressStep())([]))->toBe(StepResult::SKIPPED);
+});
+
+it('skips when the declared database matches nothing — the dashboard step owns failing loudly on that', function (): void {
+    $captured = [];
+    bindMockRdsClient([
+        'DescribeDBClusters' => new Result(['DBClusters' => []]),
+        'DescribeDBInstances' => new Result(['DBInstances' => []]),
+    ], $captured);
+
+    expect((new SyncExternalDatabaseIngressStep())([]))->toBe(StepResult::SKIPPED);
+});
+
 it('is skipped by the deploy gate — yolo sync is its drift check', function (): void {
     $checker = new class()
     {

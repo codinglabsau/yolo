@@ -454,6 +454,30 @@ it('charts Aurora DML throughput for a cluster and read/write IOPS for a plain i
         ->and($iops['properties']['metrics'][0])->toContain('AWS/RDS', 'DBInstanceIdentifier', 'my-db');
 });
 
+it('splits a cluster\'s CPU and connections into writer and reader series — a plain instance charts one', function (): void {
+    // The READER role is a static aggregate dimension: readers chart without
+    // enumerating members, so the body stays deterministic as readers scale.
+    $cpu = findWidget(Dashboard::body(dashboardContext()), 'RDS CPU');
+    expect(collect($cpu['properties']['metrics'])->map(fn (array $m): mixed => end($m)['label'])->all())->toBe(['Writer', 'Readers'])
+        ->and($cpu['properties']['metrics'][0])->toContain('DBClusterIdentifier', 'my-cluster', 'Role', 'WRITER')
+        ->and($cpu['properties']['metrics'][1])->toContain('DBClusterIdentifier', 'my-cluster', 'Role', 'READER');
+
+    $connections = findWidget(Dashboard::body(dashboardContext()), 'RDS connections');
+    expect($connections['properties']['metrics'])->toHaveCount(2);
+
+    $instance = Dashboard::body(dashboardContext(['rds' => ['identifier' => 'my-db', 'cluster' => false]]));
+    expect(findWidget($instance, 'RDS CPU')['properties']['metrics'])->toHaveCount(1)
+        ->and(findWidget($instance, 'RDS connections')['properties']['metrics'])->toHaveCount(1);
+});
+
+it('charts Aurora replica lag for a cluster only', function (): void {
+    $lag = findWidget(Dashboard::body(dashboardContext()), 'Aurora replica lag');
+    expect($lag)->not->toBeNull()
+        ->and($lag['properties']['metrics'][0])->toContain('AWS/RDS', 'AuroraReplicaLag', 'DBClusterIdentifier', 'my-cluster', 'Role', 'READER');
+
+    expect(findWidget(Dashboard::body(dashboardContext(['rds' => ['identifier' => 'my-db', 'cluster' => false]])), 'Aurora replica lag'))->toBeNull();
+});
+
 it('creates the dashboard when it does not exist (apply) and reports WOULD_CREATE on a dry-run', function (): void {
     bindDashboardEnv("APP_ENV=production\n");
 
