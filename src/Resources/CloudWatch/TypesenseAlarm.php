@@ -104,6 +104,23 @@ class TypesenseAlarm implements Deletable, Resource, SynchronisesConfiguration
             }
         }
 
+        // Re-point the alarm after a topic rename: an alarm keeps firing to
+        // whatever ARN it was created with, so AlarmActions is drift like any
+        // other field. Resolving the desired ARN needs the topic to exist —
+        // on the plan pass of the very sync that creates it (greenfield, or a
+        // rename), absence itself proves the re-point is pending, so record
+        // the change without resolving; the apply pass runs after the topic
+        // step and resolves it (the two-pass contract).
+        try {
+            $desiredActions = [(new SnsAlarmTopic())->arn()];
+
+            if (($live['AlarmActions'] ?? []) != $desiredActions) {
+                $changes[] = Change::make('AlarmActions', $live['AlarmActions'][0] ?? null, $desiredActions[0]);
+            }
+        } catch (ResourceDoesNotExistException) {
+            $changes[] = Change::make('AlarmActions', $live['AlarmActions'][0] ?? null, (new SnsAlarmTopic())->name());
+        }
+
         if ($changes !== [] && $apply) {
             Aws::cloudWatch()->putMetricAlarm($this->payload());
         }
