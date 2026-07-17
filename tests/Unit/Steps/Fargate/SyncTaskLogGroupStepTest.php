@@ -60,7 +60,9 @@ it('strips the stream wildcard `:*` suffix before calling the CloudWatch Logs ta
                 'retentionInDays' => 30,
             ]],
         ]),
-        'ListTagsForResource' => new Result(['tags' => []]),
+        // Owned (the scope marker is present) so the adoption guard passes;
+        // the missing yolo:app/yolo:environment keys keep the tag write firing.
+        'ListTagsForResource' => new Result(['tags' => ['yolo:scope' => 'app']]),
         'TagResource' => new Result(),
     ], $captured);
 
@@ -94,6 +96,7 @@ it('reads tags during a dry-run for plan-time drift but never writes', function 
                 'retentionInDays' => 30,
             ]],
         ]),
+        'ListTagsForResource' => new Result(['tags' => ['yolo:scope' => 'app']]),
     ], $captured);
 
     (new SyncTaskLogGroupStep())(['dry-run' => true]);

@@ -10,7 +10,7 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\ServiceState;
 use Codinglabs\Yolo\Services\Lifecycle;
 use Codinglabs\Yolo\Services\Typesense;
-use Codinglabs\Yolo\Concerns\RecordsChanges;
+use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Resources\ServiceDiscovery\TypesenseDiscoveryService;
 
 /**
@@ -27,7 +27,7 @@ use Codinglabs\Yolo\Resources\ServiceDiscovery\TypesenseDiscoveryService;
  */
 class SyncTypesenseDiscoveryServicesStep implements Step
 {
-    use RecordsChanges;
+    use SynchronisesResource;
 
     public function __invoke(array $options): StepResult
     {
@@ -53,7 +53,7 @@ class SyncTypesenseDiscoveryServicesStep implements Step
                 continue;
             }
 
-            foreach ($service->synchroniseTags(apply: ! $dryRun) as $key => $value) {
+            foreach ($this->synchroniseOwnedTags($service, $dryRun) as $key => $value) {
                 $this->recordChange(Change::make(sprintf('%s tag %s', $service->name(), $key), null, $value));
                 $pendingSync = true;
             }

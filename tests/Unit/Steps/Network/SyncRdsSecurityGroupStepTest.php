@@ -8,10 +8,29 @@ function describeRdsAndTaskGroups(): Result
 {
     return new Result([
         'SecurityGroups' => [
-            ['GroupName' => 'yolo-testing-rds-security-group', 'GroupId' => 'sg-rds123'],
-            ['GroupName' => 'yolo-testing-my-app-ecs-task-security-group', 'GroupId' => 'sg-task456'],
+            ['GroupName' => 'yolo-testing-rds-security-group', 'GroupId' => 'sg-rds123', 'VpcId' => 'vpc-1'],
+            ['GroupName' => 'yolo-testing-my-app-ecs-task-security-group', 'GroupId' => 'sg-task456', 'VpcId' => 'vpc-1'],
         ],
     ]);
+}
+
+/**
+ * The base mock map for an existing YOLO-owned RDS SG: the VPC the lookup is
+ * scoped to, the RDS + task groups, and live tags already matching desired.
+ *
+ * @return array<string, Result>
+ */
+function rdsSecurityGroupMocks(): array
+{
+    return [
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
+        'DescribeSecurityGroups' => describeRdsAndTaskGroups(),
+        'DescribeTags' => new Result(['Tags' => [
+            ['Key' => 'Name', 'Value' => 'yolo-testing-rds-security-group'],
+            ['Key' => 'yolo:scope', 'Value' => 'env'],
+            ['Key' => 'yolo:environment', 'Value' => 'testing'],
+        ]]),
+    ];
 }
 
 beforeEach(function (): void {
@@ -46,7 +65,7 @@ it('additively authorises 3306 from the task security group on an existing RDS S
     $captured = [];
 
     bindMockEc2Client([
-        'DescribeSecurityGroups' => describeRdsAndTaskGroups(),
+        ...rdsSecurityGroupMocks(),
         'DescribeSecurityGroupRules' => new Result(['SecurityGroupRules' => []]),
         'AuthorizeSecurityGroupIngress' => new Result(),
     ], $captured);
@@ -70,7 +89,7 @@ it('does not authorise again when a matching task-SG rule already exists', funct
     $captured = [];
 
     bindMockEc2Client([
-        'DescribeSecurityGroups' => describeRdsAndTaskGroups(),
+        ...rdsSecurityGroupMocks(),
         // An existing 3306-from-task-SG rule — note it carries no marker tag, so
         // matching by content (not a tag) is what lets us spot it.
         'DescribeSecurityGroupRules' => new Result(['SecurityGroupRules' => [
@@ -96,7 +115,7 @@ it('does not authorise during a dry-run', function (): void {
     $captured = [];
 
     bindMockEc2Client([
-        'DescribeSecurityGroups' => describeRdsAndTaskGroups(),
+        ...rdsSecurityGroupMocks(),
         'DescribeSecurityGroupRules' => new Result(['SecurityGroupRules' => []]),
     ], $captured);
 

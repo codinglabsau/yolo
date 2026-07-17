@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Change;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Adoptable;
 use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\Undeletable;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
@@ -36,7 +37,7 @@ trait SynchronisesResource
         if ($resource->exists()) {
             $hasChanges = false;
 
-            $missingTags = $resource->synchroniseTags(apply: ! $dryRun);
+            $missingTags = $this->synchroniseOwnedTags($resource, $dryRun);
 
             foreach ($missingTags as $key => $value) {
                 $this->recordChange(Change::make("tag {$key}", null, $value));
@@ -63,6 +64,41 @@ trait SynchronisesResource
         $resource->create();
 
         return StepResult::CREATED;
+    }
+
+    /**
+     * Tag-sync an existing resource, refusing to adopt a stranger. A live
+     * resource that matches by name but carries no `yolo:scope` ownership
+     * marker was not created by YOLO — most dangerously it belongs to another
+     * deployment tool or an earlier YOLO generation sharing the account, and
+     * stamping YOLO tags on it would claim live infrastructure that isn't
+     * ours (and put it in teardown's sights). The guard runs before any
+     * write, on the plan and apply passes alike, so the sync fails loudly at
+     * plan time instead of silently defacing the resource. Resources marked
+     * {@see Adoptable} (the hosted zone, the GitHub OIDC provider — account
+     * singletons that legitimately pre-exist) are exempt.
+     *
+     * @return array<string, string> the missing tags, as synchroniseTags() reports them
+     */
+    protected function synchroniseOwnedTags(Resource $resource, bool $dryRun): array
+    {
+        $missingTags = $resource->synchroniseTags(apply: false);
+
+        if (! $resource instanceof Adoptable && array_key_exists('yolo:scope', $missingTags)) {
+            throw new IntegrityCheckException(sprintf(
+                'Refusing to adopt "%s": it already exists but does not carry the yolo:scope ownership tag, ' .
+                'so it was not created by YOLO — it may belong to another deployment tool sharing this account. ' .
+                'Remove or rename the conflicting resource, or tag it with yolo:scope=%s manually if it is genuinely YOLO-managed, then re-run the sync.',
+                $resource->name(),
+                $resource->scope()->value,
+            ));
+        }
+
+        if (! $dryRun) {
+            $resource->synchroniseTags(apply: true);
+        }
+
+        return $missingTags;
     }
 
     /**

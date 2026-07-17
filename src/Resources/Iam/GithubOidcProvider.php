@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Enums\Scope;
 use Aws\Iam\Exception\IamException;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Adoptable;
 use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Resources\ResolvesTags;
@@ -26,7 +27,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * GitHub Actions workflow exchange its OIDC token for short-lived AWS credentials
  * via sts:AssumeRoleWithWebIdentity — keyless.
  */
-class GithubOidcProvider implements Deletable, Resource
+class GithubOidcProvider implements Adoptable, Deletable, Resource
 {
     use ResolvesTags;
 

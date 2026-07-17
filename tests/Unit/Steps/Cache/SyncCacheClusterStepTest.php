@@ -21,6 +21,7 @@ it('creates the replication group when cache.store is redis', function (): void 
     $captured = [];
 
     bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
         'DescribeSecurityGroups' => new Result(['SecurityGroups' => [
             ['GroupName' => 'yolo-testing-cache-security-group', 'GroupId' => 'sg-cache1'],
         ]]),

@@ -30,7 +30,10 @@ it('skips when cache.store is not redis', function (): void {
 
 it('skips while the cache security group is not provisioned yet', function (): void {
     $captured = [];
-    bindMockEc2Client(['DescribeSecurityGroups' => new Result(['SecurityGroups' => []])], $captured);
+    bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
+        'DescribeSecurityGroups' => new Result(['SecurityGroups' => []]),
+    ], $captured);
 
     expect((new AuthoriseCacheIngressStep())([]))->toBe(StepResult::SKIPPED)
         ->and(array_column($captured, 'name'))->not->toContain('AuthorizeSecurityGroupIngress');
@@ -40,6 +43,7 @@ it('additively authorises 6379 from the task SG on the cache SG', function (): v
     $captured = [];
 
     bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
         'DescribeSecurityGroups' => describeCacheAndTaskGroups(),
         'DescribeSecurityGroupRules' => new Result(['SecurityGroupRules' => []]),
         'AuthorizeSecurityGroupIngress' => new Result(),
@@ -60,6 +64,7 @@ it('does not authorise again when a matching 6379 rule already exists', function
     $captured = [];
 
     bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
         'DescribeSecurityGroups' => describeCacheAndTaskGroups(),
         'DescribeSecurityGroupRules' => new Result(['SecurityGroupRules' => [
             [
@@ -80,6 +85,7 @@ it('does not authorise during a dry-run', function (): void {
     $captured = [];
 
     bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
         'DescribeSecurityGroups' => describeCacheAndTaskGroups(),
         'DescribeSecurityGroupRules' => new Result(['SecurityGroupRules' => []]),
     ], $captured);

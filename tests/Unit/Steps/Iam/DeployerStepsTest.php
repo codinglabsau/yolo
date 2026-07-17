@@ -210,6 +210,7 @@ it('attaches the deployer policy to the deployer role', function (): void {
     $captured = [];
     bindRoutedIamClient([
         'ListPolicies' => new Result(['Policies' => [existingDeployerPolicy()]]),
+        'ListPolicyTags' => deployerPolicyTagsResult(),
     ], $captured);
 
     expect((new AttachDeployerRolePoliciesStep())([]))->toBe(StepResult::SYNCED);
@@ -230,6 +231,7 @@ it('attaches the per-app observer policy so the pre-deploy sync check reads env 
     // Neither policy attached yet → both get attached.
     bindRoutedIamClient([
         'ListPolicies' => new Result(['Policies' => [existingDeployerPolicy()]]),
+        'ListPolicyTags' => deployerPolicyTagsResult(),
     ], $captured);
 
     expect((new AttachDeployerRolePoliciesStep())([]))->toBe(StepResult::SYNCED);
@@ -253,6 +255,7 @@ it('detaches the old env-wide observer policy when reconciling an adopted deploy
     $captured = [];
     bindRoutedIamClient([
         'ListPolicies' => new Result(['Policies' => [existingDeployerPolicy()]]),
+        'ListPolicyTags' => deployerPolicyTagsResult(),
         'ListAttachedRolePolicies' => new Result(['AttachedPolicies' => [
             ['PolicyName' => 'yolo-testing-my-app-deployer-policy', 'PolicyArn' => 'arn:aws:iam::111111111111:policy/yolo-testing-my-app-deployer-policy'],
             ['PolicyName' => 'yolo-testing-observer', 'PolicyArn' => 'arn:aws:iam::111111111111:policy/yolo-testing-observer'],
@@ -267,6 +270,28 @@ it('detaches the old env-wide observer policy when reconciling an adopted deploy
         ->toContain('arn:aws:iam::111111111111:policy/yolo-testing-observer');
 });
 
+/** Live tags matching desired, so the adoption guard sees an owned policy. */
+function deployerPolicyTagsResult(): Result
+{
+    return new Result(['Tags' => [
+        ['Key' => 'Name', 'Value' => 'yolo-testing-my-app-deployer-policy'],
+        ['Key' => 'yolo:scope', 'Value' => 'app'],
+        ['Key' => 'yolo:app', 'Value' => 'my-app'],
+        ['Key' => 'yolo:environment', 'Value' => 'testing'],
+    ]]);
+}
+
+/** Live tags matching desired, so the adoption guard sees an owned role. */
+function deployerRoleTagsResult(): Result
+{
+    return new Result(['Tags' => [
+        ['Key' => 'Name', 'Value' => 'yolo-testing-my-app-deployer'],
+        ['Key' => 'yolo:scope', 'Value' => 'app'],
+        ['Key' => 'yolo:app', 'Value' => 'my-app'],
+        ['Key' => 'yolo:environment', 'Value' => 'testing'],
+    ]]);
+}
+
 it('does not create a new policy version when the deployer document is unchanged', function (): void {
     manifestWithDeployer();
 
@@ -275,6 +300,7 @@ it('does not create a new policy version when the deployer document is unchanged
     $captured = [];
     bindRoutedIamClient([
         'ListPolicies' => new Result(['Policies' => [existingDeployerPolicy()]]),
+        'ListPolicyTags' => deployerPolicyTagsResult(),
         'GetPolicyVersion' => new Result(['PolicyVersion' => ['Document' => rawurlencode($document)]]),
     ], $captured);
 
@@ -311,6 +337,7 @@ it('does not re-version the deployer policy when IAM returns the same document r
     $captured = [];
     bindRoutedIamClient([
         'ListPolicies' => new Result(['Policies' => [existingDeployerPolicy()]]),
+        'ListPolicyTags' => deployerPolicyTagsResult(),
         'GetPolicyVersion' => new Result(['PolicyVersion' => ['Document' => rawurlencode(json_encode($reordered))]]),
     ], $captured);
 
@@ -324,6 +351,7 @@ it('reconciles the deployer policy by creating a new default version when it dri
     $captured = [];
     bindRoutedIamClient([
         'ListPolicies' => new Result(['Policies' => [existingDeployerPolicy()]]),
+        'ListPolicyTags' => deployerPolicyTagsResult(),
         // A stale document that no longer matches the rendered one.
         'GetPolicyVersion' => new Result(['PolicyVersion' => ['Document' => rawurlencode('{"Version":"2012-10-17","Statement":[]}')]]),
     ], $captured);
@@ -341,6 +369,7 @@ it('reconciles the deployer role trust policy when the env ref changes', functio
     $captured = [];
     bindRoutedIamClient([
         'ListRoles' => new Result(['Roles' => [existingDeployerRole()]]),
+        'ListRoleTags' => deployerRoleTagsResult(),
     ], $captured);
 
     expect((new SyncDeployerRoleStep())([]))->toBe(StepResult::SYNCED);
@@ -365,6 +394,7 @@ it('records deployer trust drift on the plan pass so the step survives the prune
     bindRoutedIamClient([
         // Live trust still pinned to the old main-branch ref.
         'ListRoles' => new Result(['Roles' => [existingDeployerRole('repo:my-org/my-repo:ref:refs/heads/main')]]),
+        'ListRoleTags' => deployerRoleTagsResult(),
     ], $captured);
 
     $step = new SyncDeployerRoleStep();
@@ -457,6 +487,7 @@ it('flags deployer document drift during the plan pass without creating a versio
     $captured = [];
     bindRoutedIamClient([
         'ListPolicies' => new Result(['Policies' => [existingDeployerPolicy()]]),
+        'ListPolicyTags' => deployerPolicyTagsResult(),
         // A stale document — drift the plan must surface so the apply pass isn't
         // dropped by SyncSteppedCommand's only-pending-steps filter.
         'GetPolicyVersion' => new Result(['PolicyVersion' => [
@@ -476,6 +507,7 @@ it('prunes the oldest non-default version when the policy is at the 5-version li
     $captured = [];
     bindRoutedIamClient([
         'ListPolicies' => new Result(['Policies' => [existingDeployerPolicy()]]),
+        'ListPolicyTags' => deployerPolicyTagsResult(),
         'GetPolicyVersion' => new Result(['PolicyVersion' => [
             'Document' => rawurlencode('{"Version":"2012-10-17","Statement":[]}'),
         ]]),

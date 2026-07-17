@@ -8,10 +8,31 @@ function describeTaskAndLoadBalancerGroups(): Result
 {
     return new Result([
         'SecurityGroups' => [
-            ['GroupName' => 'yolo-testing-my-app-ecs-task-security-group', 'GroupId' => 'sg-task456'],
-            ['GroupName' => 'yolo-testing-load-balancer-security-group', 'GroupId' => 'sg-lb789'],
+            ['GroupName' => 'yolo-testing-my-app-ecs-task-security-group', 'GroupId' => 'sg-task456', 'VpcId' => 'vpc-1'],
+            ['GroupName' => 'yolo-testing-load-balancer-security-group', 'GroupId' => 'sg-lb789', 'VpcId' => 'vpc-1'],
         ],
     ]);
+}
+
+/**
+ * The base mock map for an existing YOLO-owned task SG: the VPC the lookup is
+ * scoped to, both groups, and live tags already matching desired (so the sync
+ * is clean and the adoption guard sees an owned group).
+ *
+ * @return array<string, Result>
+ */
+function taskSecurityGroupMocks(): array
+{
+    return [
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
+        'DescribeSecurityGroups' => describeTaskAndLoadBalancerGroups(),
+        'DescribeTags' => new Result(['Tags' => [
+            ['Key' => 'Name', 'Value' => 'yolo-testing-my-app-ecs-task-security-group'],
+            ['Key' => 'yolo:scope', 'Value' => 'app'],
+            ['Key' => 'yolo:app', 'Value' => 'my-app'],
+            ['Key' => 'yolo:environment', 'Value' => 'testing'],
+        ]]),
+    ];
 }
 
 beforeEach(function (): void {
@@ -27,7 +48,7 @@ it('authorises the load-balancer ingress rule on the apply pass when the dry-run
     $captured = [];
 
     bindMockEc2Client([
-        'DescribeSecurityGroups' => describeTaskAndLoadBalancerGroups(),
+        ...taskSecurityGroupMocks(),
         'DescribeSecurityGroupRules' => new Result(['SecurityGroupRules' => []]),
         'AuthorizeSecurityGroupIngress' => new Result(),
     ], $captured);
@@ -51,7 +72,7 @@ it('does not authorise again when a matching load-balancer ingress rule already 
     $captured = [];
 
     bindMockEc2Client([
-        'DescribeSecurityGroups' => describeTaskAndLoadBalancerGroups(),
+        ...taskSecurityGroupMocks(),
         'DescribeSecurityGroupRules' => new Result(['SecurityGroupRules' => [
             [
                 'SecurityGroupRuleId' => 'sgr-existing',
@@ -83,7 +104,7 @@ it('does not authorise during a dry-run', function (): void {
     $captured = [];
 
     bindMockEc2Client([
-        'DescribeSecurityGroups' => describeTaskAndLoadBalancerGroups(),
+        ...taskSecurityGroupMocks(),
         'DescribeSecurityGroupRules' => new Result(['SecurityGroupRules' => []]),
     ], $captured);
 
@@ -101,7 +122,7 @@ it('records a pending change on the plan pass when the rule is absent so the ste
     $captured = [];
 
     bindMockEc2Client([
-        'DescribeSecurityGroups' => describeTaskAndLoadBalancerGroups(),
+        ...taskSecurityGroupMocks(),
         'DescribeSecurityGroupRules' => new Result(['SecurityGroupRules' => []]),
     ], $captured);
 

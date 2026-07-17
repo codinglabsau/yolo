@@ -9,6 +9,7 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\Route53;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Adoptable;
 use Codinglabs\Yolo\Resources\Undeletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Commands\SyncAppCommand;
@@ -31,7 +32,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * environments' deploy in-sync gate). The shared ownership surfaces as a sync
  * plan warning instead ({@see SyncAppCommand}).
  */
-class HostedZone implements Resource, Undeletable
+class HostedZone implements Adoptable, Resource, Undeletable
 {
     use ResolvesCanonicalHost;
     use ResolvesTags;
