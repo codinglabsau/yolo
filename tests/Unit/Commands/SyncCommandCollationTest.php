@@ -96,13 +96,69 @@ it('folds the Fargate + CDN steps into the app scope when a web task is declared
         ->and($appSteps)->toContain(Steps\Sync\App\SyncCloudFrontAssetDistributionStep::class);
 });
 
-it('omits the Fargate + CDN steps from a solo app with no web task', function (): void {
+it('omits the Fargate + CDN steps from a solo app with no tasks at all', function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 
     $appSteps = (new SyncCommand())->scopes()['app'];
 
+    // No tasks block → no ECS services → none of the shared container infra either.
     expect($appSteps)->not->toContain(Steps\Sync\App\SyncEcsServiceStep::class)
+        ->and($appSteps)->not->toContain(Steps\Sync\App\SyncEcsClusterStep::class)
+        ->and($appSteps)->not->toContain(Steps\Sync\App\SyncEcrRepositoryStep::class)
         ->and($appSteps)->toContain(Steps\Sync\App\Solo\SyncHostedZoneStep::class);
+});
+
+it('provisions the shared container infra without any web resources for a scheduler-only worker app', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => false, 'queue' => false, 'scheduler' => true],
+    ]);
+
+    $appSteps = (new SyncCommand())->scopes()['app'];
+
+    // The shared plumbing every ECS service needs…
+    expect($appSteps)
+        ->toContain(Steps\Sync\App\SyncEcrRepositoryStep::class)
+        ->toContain(Steps\Sync\App\SyncEcsClusterStep::class)
+        ->toContain(Steps\Sync\App\SyncEcsTaskRoleStep::class)
+        ->toContain(Steps\Sync\App\SyncTaskSecurityGroupStep::class)
+        ->toContain(Steps\Sync\App\SyncRdsSecurityGroupStep::class)
+        ->toContain(Steps\Sync\App\SyncTaskLogGroupStep::class)
+        // …the scheduler's own service…
+        ->toContain(Steps\Sync\App\SyncSchedulerTaskDefinitionStep::class)
+        ->toContain(Steps\Sync\App\SyncSchedulerServiceStep::class)
+        // …and the melt branches for everything this shape doesn't run: the queue
+        // service (never extracted here) and the SQS queue (no worker anywhere —
+        // jobs run inline, so nothing would ever consume it).
+        ->toContain(Steps\Destroy\App\TeardownQueueServiceStep::class)
+        ->toContain(Steps\Destroy\App\TeardownQueueStep::class)
+        // No web tier → none of the web ingress / service / scaling / CDN steps.
+        ->not->toContain(Steps\Sync\App\SyncTargetGroupStep::class)
+        ->not->toContain(Steps\Sync\App\SyncHttpsListenerStep::class)
+        ->not->toContain(Steps\Sync\App\SyncTaskDefinitionStep::class)
+        ->not->toContain(Steps\Sync\App\SyncEcsServiceStep::class)
+        ->not->toContain(Steps\Sync\App\SyncScalableTargetStep::class)
+        ->not->toContain(Steps\Sync\App\SyncWebBurstStep::class)
+        ->not->toContain(Steps\Sync\App\SyncCloudFrontAssetDistributionStep::class);
+});
+
+it('provisions the SQS queue and queue service for a web-less worker app with a standalone queue', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => false, 'queue' => ['autoscaling' => true]],
+    ]);
+
+    $appSteps = (new SyncCommand())->scopes()['app'];
+
+    // A real worker runs (queueHost = queue), so the SQS queue IS provisioned —
+    // unlike the scheduler-only shape above.
+    expect($appSteps)
+        ->toContain(Steps\Sync\App\Solo\SyncQueueStep::class)
+        ->toContain(Steps\Sync\App\SyncQueueTaskDefinitionStep::class)
+        ->toContain(Steps\Sync\App\SyncQueueServiceStep::class)
+        ->not->toContain(Steps\Destroy\App\TeardownQueueStep::class)
+        ->not->toContain(Steps\Sync\App\SyncEcsServiceStep::class)
+        ->not->toContain(Steps\Sync\App\SyncTargetGroupStep::class);
 });
 
 it('swaps the Solo steps for Landlord + Tenant steps on a multi-tenant app', function (): void {

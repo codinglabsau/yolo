@@ -62,7 +62,19 @@ environments:
         autoscaling: true
 ```
 
-It still declares `tasks.web`. That's the container the app runs — the queue worker and scheduler ride inside it by default ([where each role runs](/reference/manifest#where-each-role-runs)) — so "headless" isn't about dropping the web tier, it's about not exposing it. With no domain to route, YOLO skips the hosted zone, certificate, ALB attachment, and DNS; the container still deploys and still processes queued and scheduled work, it just has no public URL.
+This one still declares `tasks.web`: the queue worker and scheduler ride inside the web container by default ([where each role runs](/reference/manifest#where-each-role-runs)), so "headless" isn't about dropping the web tier — it's about not exposing it. With no domain to route, YOLO skips the hosted zone, certificate, ALB attachment, and DNS; the container still deploys and still processes queued and scheduled work, it just has no public URL.
+
+Headless is the **domain axis**. You can also drop the web tier itself — the **topology axis**: a [web-less worker app](/reference/manifest#where-each-role-runs) declares no `tasks.web` (or `web: false`) and runs a standalone `tasks.queue` and/or `tasks.scheduler` instead, so you're not paying for an idle web server in front of a pure worker:
+
+```yaml
+environments:
+  production:
+    # no domain → headless; no web task → a scheduler-only worker app
+    tasks:
+      web: false
+      queue: false
+      scheduler: true
+```
 
 Need an image that builds but runs no container at all? Omit the `tasks` block entirely — see [App modes](/reference/manifest#app-modes).
 

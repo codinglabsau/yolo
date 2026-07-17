@@ -91,8 +91,13 @@ class ConfigureEnvAndVersionStep implements Step
         // it (the stock Laravel `VITE_APP_NAME="${APP_NAME}"` idiom) so the same
         // prefix reaches Vite's import.meta.env — phpdotenv resolves the
         // reference both in the build step's parse and at container runtime.
-        $values['ASSET_URL'] = sprintf('https://%s/builds/%s', (new AssetDistribution())->domain(), $appVersion);
-        $values['VITE_ASSET_URL'] = '${ASSET_URL}';
+        // A web-less app serves no assets and provisions no distribution, so
+        // resolving its domain here would crash the build — skip both keys and
+        // let asset() fall back to relative URLs.
+        if (Manifest::hasWeb()) {
+            $values['ASSET_URL'] = sprintf('https://%s/builds/%s', (new AssetDistribution())->domain(), $appVersion);
+            $values['VITE_ASSET_URL'] = '${ASSET_URL}';
+        }
 
         // Platform invariants — values the YOLO image cannot run without — are
         // SET unconditionally, and a conflicting explicit value in the app's .env

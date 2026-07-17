@@ -17,7 +17,9 @@ use Codinglabs\Yolo\Enums\ServerGroup;
  * scheduler) as the container command, and the entrypoint dispatches on it:
  *
  *  - web       → supervisord (the web server + any bundled queue/scheduler/ssr),
- *                drained behind the ALB so a deploy doesn't 502. The default role.
+ *                drained behind the ALB so a deploy doesn't 502. The default role
+ *                when a web tier exists; a web-less app emits no web branch and
+ *                defaults to its least request-facing service instead.
  *  - queue     → the standalone queue worker. The generic supervise-and-forward
  *                is the whole drain: queue:work finishes its in-flight job on
  *                SIGTERM, and when the queue co-hosts the scheduler (no dedicated
@@ -63,23 +65,18 @@ class GenerateEntrypointScriptStep implements Step
 
         $body .= sprintf(<<<'SH'
 
-role="${1:-web}"
+role="${1:-%s}"
 
 set +e
 
 draining=0
 drain() {
     draining=1
-    case "$role" in
-        web)
-%s            ;;
-    esac
-    kill -TERM "$child" 2>/dev/null
+%s    kill -TERM "$child" 2>/dev/null
 }
 trap drain TERM
 
 case "$role" in
-    web)       cmd='supervisord -c /etc/supervisord.conf -n' ;;
 %s    *)         exec "$@" ;;   # one-off command (e.g. a deploy step) — ECS can override the command, not the entrypoint
 esac
 
@@ -98,7 +95,8 @@ fi
 exit "$status"
 
 SH,
-            $this->indent($this->webDrainBody(), 12),
+            $this->defaultRole(),
+            $this->indent($this->drainCase(), 4),
             $this->commandCases(),
         );
 
@@ -112,14 +110,49 @@ SH,
     }
 
     /**
-     * The cmd dispatch branches for the roles this app extracts into their own
-     * service. Web is the explicit first branch (supervisord), so it needs none
-     * here. A standalone queue that also hosts the scheduler runs supervisord
+     * The role the entrypoint assumes when the container runs with no command —
+     * web when the app has a web tier; otherwise the least request-facing service
+     * the app runs (the same tier a one-off deploy task templates on). Every ECS
+     * task definition passes its role explicitly, so this only decides what a bare
+     * `docker run` does.
+     */
+    protected function defaultRole(): string
+    {
+        return Manifest::hasWeb() ? ServerGroup::WEB->value : Manifest::deployGroup()->value;
+    }
+
+    /**
+     * The drain dispatch inside the SIGTERM trap. Only the web role holds the
+     * forward back (the ALB drain window — see webDrainBody), so a web-less app
+     * emits no case at all: the immediate SIGTERM forward is the whole drain for
+     * every role it runs.
+     */
+    protected function drainCase(): string
+    {
+        if (! Manifest::hasWeb()) {
+            return '';
+        }
+
+        return "case \"\$role\" in\n"
+            . "    web)\n"
+            . $this->indent($this->webDrainBody(), 8)
+            . "        ;;\n"
+            . "esac\n";
+    }
+
+    /**
+     * The cmd dispatch branches for the roles this app runs as services: web
+     * (supervisord) when a web tier exists, plus each role extracted into its own
+     * service. A standalone queue that also hosts the scheduler runs supervisord
      * (queue:work + supercronic); a queue-only service runs the worker directly.
      */
     protected function commandCases(): string
     {
         $cases = '';
+
+        if (Manifest::hasWeb()) {
+            $cases .= "    web)       cmd='supervisord -c /etc/supervisord.conf -n' ;;\n";
+        }
 
         if (Manifest::hasStandaloneQueue()) {
             $cmd = Manifest::schedulerHost() === ServerGroup::QUEUE

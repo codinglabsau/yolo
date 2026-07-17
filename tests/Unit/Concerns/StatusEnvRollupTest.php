@@ -13,9 +13,10 @@ use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Console\Output\OutputInterface;
 
 /**
- * The env-tier roll-up (`status:environment`) gathers each app's web service —
- * cluster/service names follow the yolo-{env}-{app} convention, so no per-app
- * manifest is needed — and renders a compact one-row-per-app table.
+ * The env-tier roll-up (`status:environment`) gathers each app's most
+ * request-facing service (web first, else the standalone queue, else the
+ * scheduler) — cluster/service names follow the yolo-{env}-{app} convention,
+ * so no per-app manifest is needed — and renders a compact one-row-per-app table.
  */
 function envRollupProbe(): object
 {
@@ -45,6 +46,7 @@ function envRollupProbe(): object
 it('rolls up an app from its web service and task definition', function (): void {
     $mock = new MockHandler();
     $mock->append(new Result(['services' => [[
+        'serviceName' => 'yolo-prod-shop-web',
         'status' => 'ACTIVE',
         'runningCount' => 2,
         'desiredCount' => 2,
@@ -77,6 +79,45 @@ it('rolls up an app from its web service and task definition', function (): void
         'rolloutState' => 'COMPLETED',
         'revision' => 'web:42',
         'version' => '20260605-1',
+    ]);
+});
+
+it('rolls up a web-less worker app from its queue service instead of reporting it missing', function (): void {
+    // One describeServices call probes web → queue → scheduler; only the queue
+    // exists here, so it becomes the headline row rather than a false negative.
+    $mock = new MockHandler();
+    $mock->append(new Result(['services' => [[
+        'serviceName' => 'yolo-prod-worker-queue',
+        'status' => 'ACTIVE',
+        'runningCount' => 1,
+        'desiredCount' => 1,
+        'pendingCount' => 0,
+        'launchType' => 'FARGATE',
+        'deployments' => [[
+            'status' => 'PRIMARY',
+            'rolloutState' => 'COMPLETED',
+            'taskDefinition' => 'arn:aws:ecs:ap-southeast-2:1234:task-definition/yolo-prod-worker-queue:7',
+        ]],
+    ]]]));
+    $mock->append(new Result(['taskDefinition' => [
+        'cpu' => '256',
+        'memory' => '512',
+        'containerDefinitions' => [['image' => '1234.dkr.ecr.ap-southeast-2.amazonaws.com/yolo-prod-worker:20260717-1']],
+    ]]));
+
+    Helpers::app()->instance('ecs', new EcsClient([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+
+    expect(envRollupProbe()->rollup('prod', 'worker'))->toMatchArray([
+        'app' => 'worker',
+        'exists' => true,
+        'running' => 1,
+        'revision' => 'queue:7',
+        'version' => '20260717-1',
     ]);
 });
 

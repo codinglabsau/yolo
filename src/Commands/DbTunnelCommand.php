@@ -23,9 +23,10 @@ use function Laravel\Prompts\note;
 use function Laravel\Prompts\error;
 
 /**
- * Opens a local port forward to the manifest-declared database through a
- * running web task — the laptop path to a database in the private subnet tier,
- * which has no public endpoint by design. The task is the SSM target
+ * Opens a local port forward to the manifest-declared database through one of
+ * the app's running tasks (web-first, else the standalone queue/scheduler) —
+ * the laptop path to a database in the private subnet tier, which has no
+ * public endpoint by design. The task is the SSM target
  * (`AWS-StartPortForwardingSessionToRemoteHost`), so the session rides the same
  * ECS Exec plumbing `yolo run` uses: `enableExecuteCommand` on the service and
  * the `ssmmessages` channels on the task role, both already provisioned.
@@ -40,7 +41,7 @@ class DbTunnelCommand extends Command implements ReadOnlyCommand
             ->setName('db:tunnel')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('port', null, InputOption::VALUE_REQUIRED, 'The local port to listen on', '13306')
-            ->setDescription('Port-forward the manifest-declared database to localhost through a running web task');
+            ->setDescription('Port-forward the manifest-declared database to localhost through a running task');
     }
 
     public function handle(): int
@@ -56,15 +57,16 @@ class DbTunnelCommand extends Command implements ReadOnlyCommand
         }
 
         $cluster = (new EcsCluster())->name();
-        $taskArn = Ecs::runningTasks($cluster, Helpers::keyedResourceName('web', exclusive: true))[0] ?? null;
 
-        if ($taskArn === null) {
-            error('No running web task to tunnel through — deploy the app first.');
+        if (($running = $this->runningTask($cluster)) === null) {
+            error('No running task to tunnel through — deploy the app first.');
 
             return self::FAILURE;
         }
 
-        if (($target = $this->sessionTarget($cluster, $taskArn)) === null) {
+        [$group, $taskArn] = $running;
+
+        if (($target = $this->sessionTarget($cluster, $taskArn, $group)) === null) {
             return self::FAILURE;
         }
 
@@ -128,21 +130,42 @@ class DbTunnelCommand extends Command implements ReadOnlyCommand
     }
 
     /**
+     * A running task to ride the tunnel through, probed across the app's service
+     * groups web-first (any of them shares the task security group's 3306 grant,
+     * so a web-less worker app tunnels through its queue/scheduler task instead).
+     * Null when no group has a running task.
+     *
+     * @return array{0: string, 1: string}|null [group, taskArn]
+     */
+    protected function runningTask(string $cluster): ?array
+    {
+        foreach (Manifest::serverGroups() as $group) {
+            $taskArn = Ecs::runningTasks($cluster, Helpers::keyedResourceName($group, exclusive: true))[0] ?? null;
+
+            if ($taskArn !== null) {
+                return [$group->value, $taskArn];
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * The SSM session target for a running task: `ecs:{cluster}_{taskId}_{runtimeId}`,
-     * where the runtime id is the web container's — SSM addresses the container
+     * where the runtime id is the group's container — SSM addresses the container
      * agent, not the task.
      */
-    protected function sessionTarget(string $cluster, string $taskArn): ?string
+    protected function sessionTarget(string $cluster, string $taskArn, string $group): ?string
     {
         $task = Aws::ecs()->describeTasks([
             'cluster' => $cluster,
             'tasks' => [$taskArn],
         ])['tasks'][0] ?? null;
 
-        $runtimeId = collect($task['containers'] ?? [])->firstWhere('name', 'web')['runtimeId'] ?? null;
+        $runtimeId = collect($task['containers'] ?? [])->firstWhere('name', $group)['runtimeId'] ?? null;
 
         if ($runtimeId === null) {
-            error('Could not resolve the web container\'s runtime id — is the task still starting?');
+            error(sprintf('Could not resolve the %s container\'s runtime id — is the task still starting?', $group));
 
             return null;
         }

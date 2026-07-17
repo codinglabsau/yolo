@@ -322,7 +322,7 @@ The budget block is **two-tier**: the same `budget` shape can also be declared i
 
 ## `tasks.web.*`
 
-Declaring `tasks.web` as a config object makes the app a Fargate web service; it **must declare** [`autoscaling`](#tasks-web-autoscaling) — there's no implicit default, and the bare `tasks.web: true` shorthand isn't accepted (a scalar tier has nowhere to state its scaling behaviour). `tasks.web: false` — or omitting `tasks` entirely — is a build-only / headless app with no web container.
+Declaring `tasks.web` as a config object makes the app a Fargate web service; it **must declare** [`autoscaling`](#tasks-web-autoscaling) — there's no implicit default, and the bare `tasks.web: true` shorthand isn't accepted (a scalar tier has nowhere to state its scaling behaviour). `tasks.web: false` (or just omitting `web`) drops the web tier entirely — a **web-less worker app** that runs only a standalone [`tasks.queue`](#tasks-queue) and/or [`tasks.scheduler`](#tasks-scheduler). A `tasks` block that yields no service at all (no web, and neither role extracted — the bundled queue/scheduler would have no container to ride) is rejected up front rather than silently provisioning nothing. Omitting `tasks` entirely is a build-only app with no containers.
 
 ### Where each role runs
 
@@ -343,8 +343,13 @@ In the placement table below, `queue: true` is shorthand for "queue extracted" �
 | `web` + `queue: true` + `scheduler: true` | web | queue | scheduler |
 | `web` + `queue: false` | web (no worker) | — | — |
 | `web` + `scheduler: false` | web + queue (no cron) | — | — |
+| `queue: true` (no `web`) | — | queue + scheduler | — |
+| `queue: true` + `scheduler: true` (no `web`) | — | queue | scheduler |
+| `scheduler: true` (no `web`) | — | — | scheduler |
 
 The scheduler rides the worker container (the `web` + `queue` row) rather than getting its own task — there's no point paying for a separate one-task service for cron when the queue is already a managed tier. Because cron then runs on the autoscaling queue, guard scheduled tasks with `->onOneServer()`, or add `tasks.scheduler` for a true singleton. A queue that hosts the scheduler can't scale to zero — cron would stop when it idled — so its floor stays at `1` (an explicit `tasks.queue.autoscaling.min: 0` there is rejected).
+
+The last three rows are **web-less worker apps**: a pure queue consumer, a scheduled-job runner, or both. They get the same shared plumbing a web app does (ECR, cluster, task role, security groups, database access, log group) with no ALB attachment, target group, CDN, or web autoscaling. A scheduler-only app runs no worker anywhere, so its queue behaves exactly like `queue: false` — jobs run inline (`QUEUE_CONNECTION=sync`, enforced at build) and no SQS queue is provisioned. Web-less apps are usually also [headless](/guide/domains#headless-apps) (no `domain`); acceptance-test a first deploy by watching the service actually consume its queue or fire its schedule — there's no health-checked URL to probe.
 
 **Disabling the queue (`queue: false`)** means no worker runs anywhere, so jobs can't be processed off-request: YOLO bakes `QUEUE_CONNECTION=sync` (jobs run inline at dispatch) and **fails the build** if your `.env` pins it to anything else, rather than ship an app that black-holes queued work. **Disabling the scheduler (`scheduler: false`)** stops `schedule:run` running anywhere — framework and package maintenance that rides cron (model pruning, `auth:clear-resets`, Telescope/Pulse pruning, …) silently stops, so `sync` surfaces a warning. Reach for these only when the app genuinely has no background work.
 
@@ -410,7 +415,7 @@ A plain web app bundles the scheduler in the web container, so scaling to N task
 
 ## `tasks.queue.*`
 
-`tasks.queue` is a **config object** that extracts the queue worker into its **own** ECS service (so it scales independently of web), or **`false`** to switch the worker off entirely (it runs nowhere, and YOLO enforces `QUEUE_CONNECTION=sync` — see [Where each role runs](#where-each-role-runs)); omitting the block leaves the worker bundled in the web container. Like web, a standalone queue **must declare `autoscaling`** — there's no bare `queue: true` shorthand, and an empty block (`queue:`) or empty object (`{}`) is rejected.
+`tasks.queue` is a **config object** that extracts the queue worker into its **own** ECS service (so it scales independently of web), or **`false`** to switch the worker off entirely (it runs nowhere, and YOLO enforces `QUEUE_CONNECTION=sync` — see [Where each role runs](#where-each-role-runs)); omitting the block leaves the worker bundled in the web container (on a [web-less app](#where-each-role-runs) there's no web container to bundle into, so an omitted queue is off there too). Like web, a standalone queue **must declare `autoscaling`** — there's no bare `queue: true` shorthand, and an empty block (`queue:`) or empty object (`{}`) is rejected.
 
 `autoscaling` is the same `true | false | {min, max, backlog-per-task}` knob as web: `true` takes the defaults (`min: 1`, `max: 5`), `false` pins a fixed single task (no scalable target, no backlog policy). Set **`autoscaling.min: 0`** to opt into **scale to zero**: zero tasks — and zero compute cost — when the queue is empty, at the cost of a ~30–60s Fargate cold start on the first message after idle (so it suits bursty, latency-tolerant work). The queue `min` may be `0` (unlike web); but when the queue also hosts the scheduler (a `tasks.queue` block with no [`tasks.scheduler`](#tasks-scheduler)) it can't scale to zero — cron would stop — so an explicit `tasks.queue.autoscaling.min: 0` is rejected there.
 
@@ -434,7 +439,7 @@ See [Scaling → the queue](/guide/scaling#the-queue-scale-to-zero).
 
 ## `tasks.scheduler.*`
 
-`tasks.scheduler` is **`true | false | {config}`**. `true` (or a config object) extracts the scheduler ([supercronic](https://github.com/aptible/supercronic) firing `schedule:run`) into its **own** ECS service, pinned at exactly one task — a genuine singleton, so `->onOneServer()` is no longer required. It deploys **stop-then-start** (`minimumHealthyPercent: 0` / `maximumPercent: 100`) so a rollout never briefly runs two crons; a missed cron minute is harmless, a double-run isn't. `false` switches cron off entirely — `schedule:run` runs nowhere, so framework/package maintenance that rides the scheduler silently stops (`sync` warns); use it only for an app with no scheduled work. Omitting the block leaves the scheduler riding the standalone queue if there is one, else the web container (see [Where each role runs](#where-each-role-runs)). An empty block (`scheduler:`) or empty object (`{}`) is rejected — write `true` for default sizing.
+`tasks.scheduler` is **`true | false | {config}`**. `true` (or a config object) extracts the scheduler ([supercronic](https://github.com/aptible/supercronic) firing `schedule:run`) into its **own** ECS service, pinned at exactly one task — a genuine singleton, so `->onOneServer()` is no longer required. It deploys **stop-then-start** (`minimumHealthyPercent: 0` / `maximumPercent: 100`) so a rollout never briefly runs two crons; a missed cron minute is harmless, a double-run isn't. `false` switches cron off entirely — `schedule:run` runs nowhere, so framework/package maintenance that rides the scheduler silently stops (`sync` warns); use it only for an app with no scheduled work. Omitting the block leaves the scheduler riding the standalone queue if there is one, else the web container (see [Where each role runs](#where-each-role-runs)); on a [web-less app](#where-each-role-runs) with no standalone queue there's nowhere to ride, so the block is required. An empty block (`scheduler:`) or empty object (`{}`) is rejected — write `true` for default sizing.
 
 The scheduler never scales (a per-minute cron can't tolerate a cold start), so it has no `min`/`max`.
 
@@ -474,6 +479,8 @@ Your manifest implies one of three modes:
 | **Solo** | `domain` set at the environment level | One app, one hosted zone + certificate, served on its domain. |
 | **Multi-tenant** | `tenants` set (no env-level `domain`) | Per-tenant domains and queues; certs attach per tenant via SNI. |
 | **Headless** | no `domain` or tenant domains | No ALB attachment or DNS. Still deploys and processes queues/scheduled work. |
+
+The mode is the **domain axis** — whether and how the app is exposed. The `tasks` block sets the orthogonal **topology axis**: a web service, a [web-less worker app](#where-each-role-runs) (a standalone queue and/or scheduler with no web container), or a build-only app (no `tasks` at all).
 
 ---
 
