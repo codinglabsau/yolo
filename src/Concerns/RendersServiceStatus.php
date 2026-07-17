@@ -146,10 +146,11 @@ trait RendersServiceStatus
 
     /**
      * A compact health row per app in an environment — the env-tier roll-up
-     * behind `status:environment`. Each app's web service is the headline (task
-     * counts, rollout, version); apps are discovered from live ECS clusters, and
-     * cluster/service names follow the `yolo-{env}-{app}` convention so no
-     * per-app manifest is needed.
+     * behind `status:environment`. Each app's most request-facing service is the
+     * headline (task counts, rollout, version) — web when it exists, else the
+     * standalone queue, else the scheduler (a web-less worker app); apps are
+     * discovered from live ECS clusters, and cluster/service names follow the
+     * `yolo-{env}-{app}` convention so no per-app manifest is needed.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -185,7 +186,13 @@ trait RendersServiceStatus
         ];
 
         try {
-            $service = Ecs::service($cluster, "{$cluster}-web");
+            // Probe web → queue → scheduler in one describeServices call: the most
+            // request-facing service that exists is the headline, so a web-less
+            // worker app rolls up its queue/scheduler instead of "does not exist".
+            $service = Ecs::firstService($cluster, array_map(
+                fn (ServerGroup $group): string => "{$cluster}-{$group->value}",
+                ServerGroup::cases(),
+            ));
         } catch (ResourceDoesNotExistException) {
             return $row;
         }

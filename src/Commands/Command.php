@@ -152,8 +152,31 @@ abstract class Command extends SymfonyCommand
             && $this->ensureCacheStoreValid()
             && $this->ensureSessionDriverValid()
             && $this->ensureServicesValid()
+            && $this->ensureTasksRunnable()
             && $this->ensureAutoscalingDeclared()
             && $this->ensureSchedulerHostNotScaleToZero();
+    }
+
+    /**
+     * A declared `tasks` block must yield at least one ECS service. A web-less
+     * app is valid only with a standalone queue and/or scheduler — with neither
+     * there is nowhere to run any work (the bundled queue/scheduler have no web
+     * container to ride), so the shape is refused rather than silently
+     * provisioning nothing. A manifest with no `tasks` key at all is untouched
+     * (a build-only app).
+     */
+    protected function ensureTasksRunnable(): bool
+    {
+        if (! Manifest::has('tasks') || Manifest::serverGroups() !== []) {
+            return true;
+        }
+
+        error(
+            "yolo.yml declares `tasks` but nothing would run — no web task, and no standalone queue or scheduler to run instead.\n"
+            . 'Declare `tasks.web`, or extract `tasks.queue` / `tasks.scheduler` into their own service (a web-less app needs at least one).'
+        );
+
+        return false;
     }
 
     /**

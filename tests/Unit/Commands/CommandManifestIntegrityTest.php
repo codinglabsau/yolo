@@ -100,6 +100,44 @@ it('bails on a key at the wrong level (cache.store under a misplaced parent)', f
     expect(test()->promptOutput->fetch())->toContain('cache.driver');
 });
 
+it('bails when a tasks block yields no runnable service', function (string $description, array $tasks): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => $tasks,
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    expect(test()->promptOutput->fetch())->toContain('nothing would run');
+})->with([
+    // The bundled queue/scheduler have no web container to ride, and nothing is
+    // extracted into its own service — nowhere to run any work.
+    ['web switched off, nothing extracted', ['web' => false]],
+    ['everything switched off', ['web' => false, 'queue' => false, 'scheduler' => false]],
+    ['only disabled roles declared', ['queue' => false, 'scheduler' => false]],
+]);
+
+it('accepts a web-less worker app with a standalone queue or scheduler', function (array $tasks): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => $tasks,
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+})->with([
+    'scheduler-only' => [['web' => false, 'queue' => false, 'scheduler' => true]],
+    'queue-only worker' => [['web' => false, 'queue' => ['autoscaling' => true]]],
+    'queue + scheduler worker' => [['web' => false, 'queue' => ['autoscaling' => true], 'scheduler' => true]],
+]);
+
+it('accepts a manifest with no tasks at all (a build-only app)', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+});
+
 it('accepts a supported session.driver', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
@@ -298,10 +336,12 @@ it('bails on the bare `tasks.queue: true` shorthand', function (): void {
     expect(test()->promptOutput->fetch())->toContain('tasks.queue');
 });
 
-it('accepts a headless app — a disabled web tier needs no autoscaling', function (): void {
+it('demands no autoscaling declaration of a disabled web tier', function (): void {
+    // `web: false` alone would be refused (nothing runnable — see the runnable-
+    // service cases above), so the disabled tier is exercised beside a scheduler.
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => false],
+        'tasks' => ['web' => false, 'scheduler' => true],
     ]);
 
     expect(invokeManifestIntegrity())->toBeTrue();

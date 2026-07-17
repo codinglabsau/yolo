@@ -172,23 +172,27 @@ class SyncAppCommand extends SyncSteppedCommand
                     : [
                         Steps\Sync\App\Solo\SyncHostedZoneStep::class,
                         Steps\Sync\App\Solo\SyncSslCertificateStep::class,
-                        // The SQS queue, always wired with a melt branch:
-                        // `tasks.queue: false` runs jobs inline
+                        // The SQS queue, always wired with a melt branch: with no
+                        // worker anywhere (tasks.queue: false, or a web-less app
+                        // with no standalone queue) jobs run inline
                         // (QUEUE_CONNECTION=sync), so the queue is never published to
                         // — tear it down instead of stranding an idle queue (mirrors
                         // the standalone-service melt below).
                         // (Multi-tenant queues stay unconditional — their per-tenant
                         // teardown is the unbuilt destroy:app gap.)
-                        ...Manifest::queueDisabled()
+                        ...Manifest::queueHost() instanceof ServerGroup
                             ? [
-                                Steps\Destroy\App\TeardownQueueStep::class,
+                                Steps\Sync\App\Solo\SyncQueueStep::class,
                             ]
                             : [
-                                Steps\Sync\App\Solo\SyncQueueStep::class,
+                                Steps\Destroy\App\TeardownQueueStep::class,
                             ],
                     ],
-                // Fargate + CDN (web tasks only)
-                ...Manifest::hasWeb()
+                // Fargate — shared by every service the app runs (web, standalone
+                // queue, standalone scheduler), so it's gated on "at least one ECS
+                // service exists", not on web. A manifest with a `tasks` block that
+                // yields no service is refused up front (ensureTasksRunnable).
+                ...Manifest::serverGroups() !== []
                     ? [
                         Steps\Sync\App\SyncEcrRepositoryStep::class,
                         Steps\Sync\App\SyncEcsClusterStep::class,
@@ -217,25 +221,7 @@ class SyncAppCommand extends SyncSteppedCommand
                         Steps\Sync\Environment\SyncCacheSecurityGroupStep::class,
                         Steps\Sync\Environment\SyncCacheClusterStep::class,
                         Steps\Sync\App\AuthoriseCacheIngressStep::class,
-                        Steps\Sync\App\SyncTargetGroupStep::class,
-                        Steps\Sync\App\SyncHttpsListenerStep::class,
-                        Steps\Sync\App\SyncForwardRuleStep::class,
-                        Steps\Sync\App\SyncRedirectRuleStep::class,
                         Steps\Sync\App\SyncTaskLogGroupStep::class,
-                        Steps\Sync\App\SyncTaskDefinitionStep::class,
-                        Steps\Sync\App\SyncEcsServiceStep::class,
-                        // Autoscaling (web only) — registered after the service it
-                        // scales. Wired whenever the web task exists, not just when
-                        // autoscaling is on, so removing the tasks.web.autoscaling
-                        // block tears the scalable target, policies and their alarms
-                        // back down. Both steps no-op when it was never enabled.
-                        Steps\Sync\App\SyncScalableTargetStep::class,
-                        Steps\Sync\App\SyncScalingPoliciesStep::class,
-                        // Burst scale-out: a high-res worker-saturation alarm + step policy
-                        // for ~10s spike detection — part of web autoscaling, not a setting.
-                        // Wired whenever the web task exists so a non-autoscaling web tier
-                        // prunes the policy + its self-authored alarm; no-ops when it doesn't apply.
-                        Steps\Sync\App\SyncWebBurstStep::class,
                         // Standalone queue service (own task-def + service +
                         // scale-to-zero autoscaling) — only when tasks.queue extracts
                         // it from the web container. When it no longer does — the block
@@ -277,6 +263,29 @@ class SyncAppCommand extends SyncSteppedCommand
                             : [
                                 Steps\Destroy\App\TeardownSchedulerServiceStep::class,
                             ],
+                    ]
+                    : [],
+                // Web ingress + the web service + CDN (web tasks only)
+                ...Manifest::hasWeb()
+                    ? [
+                        Steps\Sync\App\SyncTargetGroupStep::class,
+                        Steps\Sync\App\SyncHttpsListenerStep::class,
+                        Steps\Sync\App\SyncForwardRuleStep::class,
+                        Steps\Sync\App\SyncRedirectRuleStep::class,
+                        Steps\Sync\App\SyncTaskDefinitionStep::class,
+                        Steps\Sync\App\SyncEcsServiceStep::class,
+                        // Autoscaling (web only) — registered after the service it
+                        // scales. Wired whenever the web task exists, not just when
+                        // autoscaling is on, so removing the tasks.web.autoscaling
+                        // block tears the scalable target, policies and their alarms
+                        // back down. Both steps no-op when it was never enabled.
+                        Steps\Sync\App\SyncScalableTargetStep::class,
+                        Steps\Sync\App\SyncScalingPoliciesStep::class,
+                        // Burst scale-out: a high-res worker-saturation alarm + step policy
+                        // for ~10s spike detection — part of web autoscaling, not a setting.
+                        // Wired whenever the web task exists so a non-autoscaling web tier
+                        // prunes the policy + its self-authored alarm; no-ops when it doesn't apply.
+                        Steps\Sync\App\SyncWebBurstStep::class,
                         Steps\Sync\App\SyncCloudFrontAssetDistributionStep::class,
                     ]
                     : [],

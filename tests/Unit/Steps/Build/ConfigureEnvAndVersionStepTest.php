@@ -67,7 +67,12 @@ beforeEach(function (): void {
     ], $captured);
 });
 
-it('always points ASSET_URL at the CloudFront distribution, versioned per build', function (): void {
+it('points a web app\'s ASSET_URL at the CloudFront distribution, versioned per build', function (): void {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => true],
+    ]);
+
     (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
 
     $env = file_get_contents(Paths::build('.env.testing'));
@@ -80,6 +85,23 @@ it('always points ASSET_URL at the CloudFront distribution, versioned per build'
     expect($env)->toContain('VITE_ASSET_URL=${ASSET_URL}');
     expect(Dotenv::parse($env)['VITE_ASSET_URL'])
         ->toBe('https://d123abc.cloudfront.net/builds/26.21.5.0611');
+});
+
+it('skips ASSET_URL for a web-less app — no distribution exists to resolve', function (): void {
+    // A worker app provisions no CloudFront distribution; resolving its domain
+    // here would crash the build, so neither asset key is written.
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => false, 'queue' => false, 'scheduler' => true],
+    ]);
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('APP_VERSION=26.21.5.0611');
+    expect($env)->not->toContain('ASSET_URL');
+    expect($env)->not->toContain('VITE_ASSET_URL');
 });
 
 it('injects AWS_BUCKET from the manifest when the .env does not define it', function (): void {

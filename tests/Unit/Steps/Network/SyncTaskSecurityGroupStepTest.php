@@ -36,9 +36,31 @@ function taskSecurityGroupMocks(): array
 }
 
 beforeEach(function (): void {
+    // The ALB ingress rule is gated on a web task existing — declare one so the
+    // ingress-reconcile tests below exercise it; the web-less case opts out.
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => true],
     ]);
+});
+
+it('adds no load-balancer ingress rule for a web-less worker app', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => false, 'queue' => false, 'scheduler' => true],
+    ]);
+
+    $captured = [];
+
+    bindMockEc2Client(taskSecurityGroupMocks(), $captured);
+
+    (new SyncTaskSecurityGroupStep())([]);
+
+    // The group still syncs (workers need egress), but nothing sits behind the
+    // ALB — no rule read, no authorise.
+    expect(array_column($captured, 'name'))
+        ->not->toContain('DescribeSecurityGroupRules')
+        ->not->toContain('AuthorizeSecurityGroupIngress');
 });
 
 it('authorises the load-balancer ingress rule on the apply pass when the dry-run key is absent', function (): void {

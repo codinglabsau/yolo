@@ -600,10 +600,11 @@ class Manifest
 
     /**
      * Whether the app runs a web (Fargate) service — `tasks.web: true` or a config
-     * object. Absent ⇒ build-only/worker app; `tasks.web: false` ⇒ explicitly
-     * headless (no web service), same as absent. The single gate for the ALB / CDN /
-     * Route 53 / web-task provisioning (the value-aware replacement for
-     * `has('tasks.web')`).
+     * object. Absent or `tasks.web: false` ⇒ a web-less app: a worker running a
+     * standalone queue and/or scheduler (a `tasks` block with neither is refused —
+     * see Command::ensureTasksRunnable), or a build-only app with no `tasks` at
+     * all. The single gate for the ALB / CDN / Route 53 / web-task provisioning
+     * (the value-aware replacement for `has('tasks.web')`).
      */
     public static function hasWeb(): bool
     {
@@ -612,7 +613,7 @@ class Manifest
 
     /**
      * Whether the web service is switched off explicitly (`tasks.web: false`) — a
-     * headless app. Distinct from absent (also headless) only in being self-documenting.
+     * web-less app. Distinct from absent (also web-less) only in being self-documenting.
      */
     public static function webDisabled(): bool
     {

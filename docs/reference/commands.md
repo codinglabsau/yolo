@@ -38,7 +38,7 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | [`status:alarms <env>`](#yolo-status-alarms) | The app's CloudWatch alarms and their state |
 | [`status:budget <env>`](#yolo-status-budget) | Month-to-date spend against the app's declared budget |
 | [`run <env>`](#yolo-run) | Open a shell / run a command in a running container |
-| [`db:tunnel <env>`](#yolo-db-tunnel) | Port-forward the manifest-declared database to localhost through a running web task |
+| [`db:tunnel <env>`](#yolo-db-tunnel) | Port-forward the manifest-declared database to localhost through a running task |
 | [`db:cutover <env>`](#yolo-db-cutover) | Flip every running task onto a new database host in place, then verify the fleet |
 | [`db:status <env>`](#yolo-db-status) | Show every environment app's declared database, from the published claim files |
 | [`scale <env> [count]`](#yolo-scale) | Adjust the web service's task count out of band |
@@ -353,7 +353,7 @@ Arguments and options as [`status`](#yolo-status).
 
 ## `yolo status:environment`
 
-Roll up **every app's status** across an environment — a compact health row per app (its web service's task counts, rollout state and version), discovered from the live ECS clusters in the environment's `yolo-{env}-` namespace. The per-app detail (load, scaling, queues) is [`status`](#yolo-status) / [`status:app`](#yolo-status-app).
+Roll up **every app's status** across an environment — a compact health row per app (task counts, rollout state and version of its most request-facing service: web when it exists, else the standalone queue, else the scheduler), discovered from the live ECS clusters in the environment's `yolo-{env}-` namespace. The per-app detail (load, scaling, queues) is [`status`](#yolo-status) / [`status:app`](#yolo-status-app).
 
 ```bash
 yolo status:environment <environment> [--json]
@@ -475,7 +475,7 @@ yolo run production --command="php artisan queue:restart" --group=web,queue
 
 ## `yolo db:tunnel`
 
-Port-forward the manifest-declared database to localhost through a running web task — the laptop path to a database in the [private subnet tier](/guide/provisioning#the-network), which has no public endpoint by design. (See the [Databases](/guide/databases) guide for the full picture.)
+Port-forward the manifest-declared database to localhost through one of the app's running tasks — the laptop path to a database in the [private subnet tier](/guide/provisioning#the-network), which has no public endpoint by design. (See the [Databases](/guide/databases) guide for the full picture.)
 
 ```bash
 yolo db:tunnel <environment> [--port=<local-port>]
@@ -489,11 +489,11 @@ yolo db:tunnel <environment> [--port=<local-port>]
 |---|---|---|---|
 | `--port` | number | `13306` | The local port to listen on. |
 
-**Behaviour:** resolves the [`database:`](/reference/manifest#database) name to its endpoint with a describe — an Aurora cluster forwards to its cluster (writer) endpoint, so the tunnel follows failovers; an instance to its instance endpoint — picks a running web task, and opens an SSM port-forwarding session (`AWS-StartPortForwardingSessionToRemoteHost`) through that task to the database on `3306`. It prints the local port and streams the session until you Ctrl-C. Point your database client at `127.0.0.1:<port>` with the app's usual credentials.
+**Behaviour:** resolves the [`database:`](/reference/manifest#database) name to its endpoint with a describe — an Aurora cluster forwards to its cluster (writer) endpoint, so the tunnel follows failovers; an instance to its instance endpoint — picks a running task (web first, else the standalone queue/scheduler, so a [web-less worker app](/reference/manifest#where-each-role-runs) tunnels too), and opens an SSM port-forwarding session (`AWS-StartPortForwardingSessionToRemoteHost`) through that task to the database on `3306`. It prints the local port and streams the session until you Ctrl-C. Point your database client at `127.0.0.1:<port>` with the app's usual credentials.
 
 Read-only convenience — nothing is created or changed. The session rides the same task-side ECS Exec plumbing `yolo run` uses (`enable-execute-command` on the service, the `ssmmessages` channels on the task role), but the caller-side permission differs: `yolo run` needs `ecs:ExecuteCommand`, while `db:tunnel` needs `ssm:StartSession` on the task target and the `AWS-StartPortForwardingSessionToRemoteHost` document. Scope that grant tightly — a port-forwarding session's host and port are chosen by the client, so `ssm:StartSession` through a task can reach anything the task can, not just the database on 3306.
 
-**Requirements:** the AWS [Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) installed locally, a `database:` key in the manifest, and a running web task (the tunnel rides through it).
+**Requirements:** the AWS [Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) installed locally, a `database:` key in the manifest, and a running task (the tunnel rides through it).
 
 ```bash
 yolo db:tunnel production

@@ -348,6 +348,47 @@ it('writes no queue supervisord config when the standalone queue is a single pro
     expect(is_file(Paths::build('docker/supervisord.queue.conf')))->toBeFalse();
 });
 
+it('writes a placeholder web config for a web-less worker app — the Dockerfile still COPYs it', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => false, 'queue' => false, 'scheduler' => true],
+    ]);
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    // No container runs this config (the scheduler is a single exec'd process),
+    // but the scaffolded Dockerfile unconditionally COPYs the path — so it
+    // exists, and carries no runnable program.
+    $config = file_get_contents(Paths::build('docker/supervisord.conf'));
+    expect($config)->toContain('never used at runtime');
+    expect($config)->not->toContain('[program:');
+    expect($config)->not->toContain('[supervisord]');
+
+    // Scheduler-only → no queue container, but cron still needs its crontab.
+    expect(is_file(Paths::build('docker/supervisord.queue.conf')))->toBeFalse();
+    expect(file_get_contents(Paths::build('docker/crontab')))
+        ->toContain("* * * * * cd /app && php artisan schedule:run\n");
+});
+
+it('writes the queue supervisord config for a web-less app whose queue hosts the scheduler', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => false, 'queue' => ['autoscaling' => true]],
+    ]);
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    // The queue co-hosts the scheduler (queue:work + supercronic) exactly as it
+    // would beside a web tier; only the web config differs (placeholder).
+    $queue = file_get_contents(Paths::build('docker/supervisord.queue.conf'));
+    expect($queue)->toContain('[program:queue]');
+    expect($queue)->toContain('[program:scheduler]');
+    expect($queue)->not->toContain('[program:web]');
+
+    expect(file_get_contents(Paths::build('docker/supervisord.conf')))
+        ->not->toContain('[program:');
+});
+
 it('writes a crontab firing schedule:run each minute wherever the scheduler runs', function (): void {
     (new GenerateSupervisorConfigStep('testing'))();
 

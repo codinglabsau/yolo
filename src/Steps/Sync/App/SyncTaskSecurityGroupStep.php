@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Change;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Aws\Ec2;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\SecurityGroupRule;
@@ -23,7 +24,9 @@ class SyncTaskSecurityGroupStep implements Step
 
         $result = $this->syncResource($securityGroup, $options);
 
-        if ($securityGroup->exists()) {
+        // Only a web task sits behind the ALB — a web-less app's tasks (standalone
+        // queue/scheduler) accept no inbound traffic, so no ingress rule at all.
+        if (Manifest::hasWeb() && $securityGroup->exists()) {
             $this->ensureLoadBalancerIngressRule($securityGroup->arn(), (bool) Arr::get($options, 'dry-run'));
         }
 
