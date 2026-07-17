@@ -9,7 +9,6 @@ use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Enums\SecurityGroup;
 use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
-use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * Models the security group identity + tags only. Ingress-rule management
@@ -18,6 +17,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  */
 class EcsTaskSecurityGroup implements Deletable, Resource
 {
+    use ResolvesSecurityGroup;
     use ResolvesTags;
 
     public function name(): string
@@ -28,22 +28,6 @@ class EcsTaskSecurityGroup implements Deletable, Resource
     public function scope(): Scope
     {
         return Scope::App;
-    }
-
-    public function exists(): bool
-    {
-        try {
-            Ec2::securityGroup($this->name());
-
-            return true;
-        } catch (ResourceDoesNotExistException) {
-            return false;
-        }
-    }
-
-    public function arn(): string
-    {
-        return Ec2::securityGroup($this->name())['GroupId'];
     }
 
     public function create(): void

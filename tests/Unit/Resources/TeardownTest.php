@@ -335,6 +335,7 @@ it('resolves the task security group id then deletes it', function (): void {
 
     $captured = [];
     bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
         'DescribeSecurityGroups' => new Result(['SecurityGroups' => [['GroupName' => $group->name(), 'GroupId' => 'sg-abc']]]),
     ], $captured);
 
@@ -348,6 +349,7 @@ it('retries DeleteSecurityGroup while a detaching ENI still holds the group, the
     // stops → DependencyViolation. The delete retries past it until the ENI clears.
     $captured = [];
     bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
         'DeleteSecurityGroup' => [
             new Ec2Exception('has a dependent object', new Command('DeleteSecurityGroup'), ['code' => 'DependencyViolation']),
             new Ec2Exception('has a dependent object', new Command('DeleteSecurityGroup'), ['code' => 'DependencyViolation']),
@@ -363,6 +365,7 @@ it('retries DeleteSecurityGroup while a detaching ENI still holds the group, the
 it('treats an already-removed security group (InvalidGroup.NotFound) as done', function (): void {
     $captured = [];
     bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
         'DeleteSecurityGroup' => new Ec2Exception('not found', new Command('DeleteSecurityGroup'), ['code' => 'InvalidGroup.NotFound']),
     ], $captured);
 
@@ -375,6 +378,7 @@ it('treats an already-removed security group (InvalidGroup.NotFound) as done', f
 it('rethrows a non-dependency DeleteSecurityGroup error without retrying', function (): void {
     $captured = [];
     bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
         'DeleteSecurityGroup' => new Ec2Exception('denied', new Command('DeleteSecurityGroup'), ['code' => 'UnauthorizedOperation']),
     ], $captured);
 
@@ -576,6 +580,7 @@ it('resolves the load balancer security group id then deletes it', function (): 
 
     $captured = [];
     bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
         'DescribeSecurityGroups' => new Result(['SecurityGroups' => [['GroupName' => $group->name(), 'GroupId' => 'sg-lb']]]),
     ], $captured);
 
@@ -707,6 +712,7 @@ it('resolves the cache security group id then deletes it', function (): void {
 
     $captured = [];
     bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
         'DescribeSecurityGroups' => new Result(['SecurityGroups' => [['GroupName' => $group->name(), 'GroupId' => 'sg-cache']]]),
     ], $captured);
 
@@ -720,6 +726,7 @@ it('resolves the rds security group id then deletes it', function (): void {
 
     $captured = [];
     bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
         'DescribeSecurityGroups' => new Result(['SecurityGroups' => [['GroupName' => $group->name(), 'GroupId' => 'sg-rds']]]),
     ], $captured);
 
@@ -745,6 +752,7 @@ it('resolves each public subnet id then deletes it', function (int $index, strin
 
     $captured = [];
     bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
         'DescribeSubnets' => new Result(['Subnets' => [['SubnetId' => $subnetId]]]),
     ], $captured);
 
@@ -780,6 +788,7 @@ it('detaches the internet gateway from the vpc before deleting it', function ():
 it('resolves the route table id then deletes it', function (): void {
     $captured = [];
     bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
         'DescribeRouteTables' => new Result(['RouteTables' => [['RouteTableId' => 'rtb-1']]]),
     ], $captured);
 

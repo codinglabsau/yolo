@@ -116,6 +116,12 @@ it('reconciles BPA, versioning and the yolo:app tag onto an existing config buck
 
     bindMockS3Client([
         'HeadBucket' => new Result(),   // exists
+        // The yolo:scope marker is present (this IS our bucket), but the later
+        // yolo:app owner tag is missing — the additive sync backfills it.
+        'GetBucketTagging' => new Result(['TagSet' => [
+            ['Key' => 'Name', 'Value' => 'yolo-111111111111-testing-my-app-config'],
+            ['Key' => 'yolo:scope', 'Value' => 'app'],
+        ]]),
         'PutPublicAccessBlock' => new Result(),
         'PutBucketVersioning' => new Result(),
         'PutBucketTagging' => new Result(),
@@ -143,6 +149,10 @@ it('reports drift but does not mutate the config bucket during a dry-run', funct
 
     bindMockS3Client([
         'HeadBucket' => new Result(),   // exists
+        'GetBucketTagging' => new Result(['TagSet' => [
+            ['Key' => 'Name', 'Value' => 'yolo-111111111111-testing-my-app-config'],
+            ['Key' => 'yolo:scope', 'Value' => 'app'],
+        ]]),
     ], $captured);
 
     // The live config reads back empty here, so a dry-run sees drift (WOULD_SYNC)

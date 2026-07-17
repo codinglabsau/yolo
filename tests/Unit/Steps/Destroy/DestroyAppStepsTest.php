@@ -63,6 +63,7 @@ it('revokes only this app\'s 3306 rule from the shared RDS security group', func
 
     $captured = [];
     bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
         'DescribeSecurityGroups' => new Result(['SecurityGroups' => [
             ['GroupName' => $rdsName, 'GroupId' => 'sg-rds'],
             ['GroupName' => $taskName, 'GroupId' => 'sg-task'],

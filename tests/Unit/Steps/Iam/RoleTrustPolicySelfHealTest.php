@@ -23,7 +23,7 @@ dataset('serviceRoles', [
     'mediaconvert role' => [MediaConvertRole::class, SyncMediaConvertRoleStep::class, ['services' => ['mediaconvert']]],
 ]);
 
-function bindServiceRoleTrust(string $roleName, array $liveTrust, array &$captured): void
+function bindServiceRoleTrust(string $roleName, array $liveTrust, array &$captured, array $liveTags): void
 {
     bindRoutedIamClient([
         'ListRoles' => new Result(['Roles' => [[
@@ -32,6 +32,12 @@ function bindServiceRoleTrust(string $roleName, array $liveTrust, array &$captur
             // IAM returns the live trust URL-encoded on the role record.
             'AssumeRolePolicyDocument' => rawurlencode(json_encode($liveTrust)),
         ]]]),
+        // Live tags already match desired: the adoption guard sees an owned
+        // role and the only drift these tests exercise stays the trust.
+        'ListRoleTags' => new Result(['Tags' => collect($liveTags)
+            ->map(fn (string $value, string $key): array => ['Key' => $key, 'Value' => $value])
+            ->values()
+            ->all()]),
     ], $captured);
 }
 
@@ -52,7 +58,7 @@ it('records trust drift on the plan pass and rewrites it on apply', function (st
     // Plan (dry-run) pass: the drift is recorded so the step survives the prune,
     // but the trust is never rewritten.
     $captured = [];
-    bindServiceRoleTrust($resource->name(), $drifted, $captured);
+    bindServiceRoleTrust($resource->name(), $drifted, $captured, [...$resource->tags(), 'yolo:environment' => 'testing']);
 
     $planStep = new $stepClass();
     expect($planStep(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC);
@@ -61,7 +67,7 @@ it('records trust drift on the plan pass and rewrites it on apply', function (st
 
     // Apply pass: the trust is reconciled in place.
     $captured = [];
-    bindServiceRoleTrust($resource->name(), $drifted, $captured);
+    bindServiceRoleTrust($resource->name(), $drifted, $captured, [...$resource->tags(), 'yolo:environment' => 'testing']);
 
     (new $stepClass())([]);
     expect(array_column($captured, 'name'))->toContain('UpdateAssumeRolePolicy');
@@ -73,7 +79,7 @@ it('records no trust change and never rewrites when the trust already matches', 
     $resource = new $resourceClass();
 
     $captured = [];
-    bindServiceRoleTrust($resource->name(), $resource->assumeRolePolicyDocument(), $captured);
+    bindServiceRoleTrust($resource->name(), $resource->assumeRolePolicyDocument(), $captured, [...$resource->tags(), 'yolo:environment' => 'testing']);
 
     $step = new $stepClass();
     $step([]);

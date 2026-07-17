@@ -222,9 +222,17 @@ it('authorises the API port from the ALB SG and both the API and peering ports n
 
     $ec2Captured = [];
     bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
         'DescribeSecurityGroups' => new Result(['SecurityGroups' => [
             ['GroupName' => 'yolo-testing-typesense-security-group', 'GroupId' => 'sg-typesense'],
             ['GroupName' => 'yolo-testing-load-balancer-security-group', 'GroupId' => 'sg-alb'],
+        ]]),
+        // Live tags match desired, so the existing group reads as owned
+        // (adoption guard) and clean — the step's work here is the rules.
+        'DescribeTags' => new Result(['Tags' => [
+            ['Key' => 'Name', 'Value' => 'yolo-testing-typesense-security-group'],
+            ['Key' => 'yolo:scope', 'Value' => 'env'],
+            ['Key' => 'yolo:environment', 'Value' => 'testing'],
         ]]),
         'DescribeSecurityGroupRules' => new Result(['SecurityGroupRules' => []]),
     ], $ec2Captured);
@@ -250,6 +258,7 @@ it('records all three baseline rules as pending on a greenfield plan', function 
 
     $ec2Captured = [];
     bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
         // The typesense SG itself is absent — its own create is still pending — so
         // all three of its baseline rules are pending too.
         'DescribeSecurityGroups' => new Result(['SecurityGroups' => [

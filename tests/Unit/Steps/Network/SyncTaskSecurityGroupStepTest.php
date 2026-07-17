@@ -4,10 +4,20 @@ use Aws\Result;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Steps\Sync\App\SyncTaskSecurityGroupStep;
 
+function describeTaskAndLoadBalancerGroups(): Result
+{
+    return new Result([
+        'SecurityGroups' => [
+            ['GroupName' => 'yolo-testing-my-app-ecs-task-security-group', 'GroupId' => 'sg-task456', 'VpcId' => 'vpc-1'],
+            ['GroupName' => 'yolo-testing-load-balancer-security-group', 'GroupId' => 'sg-lb789', 'VpcId' => 'vpc-1'],
+        ],
+    ]);
+}
+
 /**
  * The base mock map for an existing YOLO-owned task SG: the VPC the lookup is
- * scoped to, the task + load balancer groups, and live tags already matching
- * desired (so the sync is clean and the adoption guard sees an owned group).
+ * scoped to, both groups, and live tags already matching desired (so the sync
+ * is clean and the adoption guard sees an owned group).
  *
  * @return array<string, Result>
  */
@@ -15,12 +25,7 @@ function taskSecurityGroupMocks(): array
 {
     return [
         'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
-        'DescribeSecurityGroups' => new Result([
-            'SecurityGroups' => [
-                ['GroupName' => 'yolo-testing-my-app-ecs-task-security-group', 'GroupId' => 'sg-task456', 'VpcId' => 'vpc-1'],
-                ['GroupName' => 'yolo-testing-load-balancer-security-group', 'GroupId' => 'sg-lb789', 'VpcId' => 'vpc-1'],
-            ],
-        ]),
+        'DescribeSecurityGroups' => describeTaskAndLoadBalancerGroups(),
         'DescribeTags' => new Result(['Tags' => [
             ['Key' => 'Name', 'Value' => 'yolo-testing-my-app-ecs-task-security-group'],
             ['Key' => 'yolo:scope', 'Value' => 'app'],

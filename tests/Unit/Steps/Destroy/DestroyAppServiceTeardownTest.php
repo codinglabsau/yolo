@@ -30,6 +30,7 @@ it('revokes only this app\'s 8108 rule from the env Typesense security group', f
 
     $captured = [];
     bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
         'DescribeSecurityGroups' => new Result(['SecurityGroups' => [
             ['GroupName' => $typesenseName, 'GroupId' => 'sg-typesense'],
             ['GroupName' => $taskName, 'GroupId' => 'sg-task'],
