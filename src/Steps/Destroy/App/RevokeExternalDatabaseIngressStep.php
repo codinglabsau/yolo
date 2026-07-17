@@ -34,12 +34,12 @@ class RevokeExternalDatabaseIngressStep implements ExecutesWebStep
             return StepResult::SKIPPED;
         }
 
-        if ($target === null || $target['cluster']) {
+        if ($target === null) {
             return StepResult::SKIPPED;
         }
 
         try {
-            $instance = Rds::instance($target['identifier']);
+            $record = $target['cluster'] ? Rds::cluster($target['identifier']) : Rds::instance($target['identifier']);
         } catch (RdsException) {
             return StepResult::SKIPPED;
         }
@@ -47,7 +47,7 @@ class RevokeExternalDatabaseIngressStep implements ExecutesWebStep
         $dryRun = (bool) Arr::get($options, 'dry-run');
         $revoked = false;
 
-        foreach (collect($instance['VpcSecurityGroups'] ?? [])->pluck('VpcSecurityGroupId')->filter() as $securityGroupId) {
+        foreach (collect($record['VpcSecurityGroups'] ?? [])->pluck('VpcSecurityGroupId')->filter() as $securityGroupId) {
             $revoked = $this->revokeTaskIngressRule($securityGroupId, 3306, $dryRun) || $revoked;
         }
 

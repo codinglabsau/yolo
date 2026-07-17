@@ -156,15 +156,61 @@ it('skips when no database is declared', function (): void {
     expect((new SyncExternalDatabaseIngressStep())([]))->toBe(StepResult::SKIPPED);
 });
 
-it('skips an Aurora cluster — its ingress is wired by hand for now', function (): void {
+it('authorises 3306 on an external Aurora cluster\'s security group — the VPC read off a member instance', function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'app-cluster']);
 
-    $captured = [];
+    $rdsCaptured = [];
     bindMockRdsClient([
-        'DescribeDBClusters' => new Result(['DBClusters' => [['DBClusterIdentifier' => 'app-cluster']]]),
+        'DescribeDBClusters' => new Result(['DBClusters' => [[
+            'DBClusterIdentifier' => 'app-cluster',
+            'VpcSecurityGroups' => [['VpcSecurityGroupId' => 'sg-cluster-external']],
+        ]]]),
+        'DescribeDBInstances' => new Result(['DBInstances' => [[
+            'DBInstanceIdentifier' => 'app-cluster-writer',
+            'DBSubnetGroup' => ['DBSubnetGroupName' => 'external-group', 'VpcId' => 'vpc-external'],
+        ]]]),
+    ], $rdsCaptured);
+
+    $captured = [];
+    bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-env']]]),
+        'DescribeVpcPeeringConnections' => activePeeringResult(),
+        'DescribeSecurityGroups' => new Result(['SecurityGroups' => [
+            ['GroupName' => 'yolo-testing-my-app-ecs-task-security-group', 'GroupId' => 'sg-task'],
+        ]]),
+        'DescribeSecurityGroupRules' => new Result(['SecurityGroupRules' => []]),
+        'AuthorizeSecurityGroupIngress' => new Result(),
     ], $captured);
 
-    expect((new SyncExternalDatabaseIngressStep())([]))->toBe(StepResult::SKIPPED);
+    expect((new SyncExternalDatabaseIngressStep())([]))->toBe(StepResult::SYNCED);
+
+    $authorise = collect($captured)->firstWhere('name', 'AuthorizeSecurityGroupIngress');
+    expect($authorise['args']['GroupId'])->toBe('sg-cluster-external')
+        ->and($authorise['args']['IpPermissions'][0]['FromPort'])->toBe(3306);
+});
+
+it('warns and skips a memberless external cluster — no member, no VPC fact, no rule', function (): void {
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'app-cluster']);
+
+    $rdsCaptured = [];
+    bindMockRdsClient([
+        'DescribeDBClusters' => new Result(['DBClusters' => [[
+            'DBClusterIdentifier' => 'app-cluster',
+            'VpcSecurityGroups' => [['VpcSecurityGroupId' => 'sg-cluster-external']],
+        ]]]),
+        'DescribeDBInstances' => new Result(['DBInstances' => []]),
+    ], $rdsCaptured);
+
+    $captured = [];
+    bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-env']]]),
+    ], $captured);
+
+    $step = new SyncExternalDatabaseIngressStep();
+
+    expect($step([]))->toBe(StepResult::SKIPPED)
+        ->and($step->recordedWarnings()[0])->toContain('unknown VPC')
+        ->and(collect($captured)->pluck('name'))->not->toContain('AuthorizeSecurityGroupIngress');
 });
 
 it('skips when the declared database matches nothing — the dashboard step owns failing loudly on that', function (): void {

@@ -8,6 +8,7 @@ use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Aws\Rds;
 use Codinglabs\Yolo\EnvManifest;
+use Illuminate\Support\Collection;
 use Aws\Rds\Exception\RdsException;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -20,11 +21,14 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 /**
  * Authorises this app's tasks to reach an EXTERNALLY-hosted database — the
  * peered-migration posture. The manifest `database:` is the only declaration;
- * everything else is discovered live: the instance's VPC (in the env VPC the
+ * everything else is discovered live: the database's VPC (in the env VPC the
  * managed path's SyncRdsSecurityGroupStep owns the rule instead), and its
  * attached security group, which gets the same additive 3306-from-task-SG rule
  * (a same-region peered SG can reference the task SG directly). Discovery
- * can't go stale the way a declared group id would.
+ * can't go stale the way a declared group id would. An Aurora cluster gets the
+ * rule on the cluster's security group; its VPC is a per-member fact (the
+ * cluster record carries only the subnet group's name), read off a member
+ * instance.
  *
  * Exactly one attached security group is required to write — two or more is an
  * ambiguous target, surfaced as a warning to wire by hand (the audit's
@@ -49,25 +53,27 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
             return StepResult::SKIPPED;
         }
 
-        if ($target === null || $target['cluster']) {
-            // Nothing declared, or an Aurora cluster (wire ingress by hand for
-            // now) — nothing to reconcile.
+        if ($target === null) {
             return StepResult::SKIPPED;
         }
 
         try {
-            $instance = Rds::instance($target['identifier']);
+            $discovered = $this->discover($target);
         } catch (RdsException) {
             // Unreadable (not found, or denied under this tier) — the audit's
             // posture probe owns reporting that; sync just moves on.
             return StepResult::SKIPPED;
         }
 
-        if ($instance === null || $this->inEnvironmentVpc($instance)) {
+        if ($discovered === null) {
             return StepResult::SKIPPED;
         }
 
-        $databaseVpcId = $instance['DBSubnetGroup']['VpcId'] ?? null;
+        [$databaseVpcId, $securityGroupIds] = $discovered;
+
+        if ($this->inEnvironmentVpc($databaseVpcId)) {
+            return StepResult::SKIPPED;
+        }
 
         // A cross-VPC security-group reference is only valid over an ACTIVE
         // peering, so an external database whose VPC is neither peered nor
@@ -84,11 +90,6 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
 
             return StepResult::SKIPPED;
         }
-
-        $securityGroupIds = collect($instance['VpcSecurityGroups'] ?? [])
-            ->pluck('VpcSecurityGroupId')
-            ->filter()
-            ->values();
 
         if ($securityGroupIds->count() !== 1) {
             $this->recordWarning(sprintf(
@@ -110,16 +111,44 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
     }
 
     /**
-     * Whether the instance already sits in the environment's VPC — then it's
+     * The database's VPC and attached security groups, read off the live record
+     * for whichever kind the manifest name classified as. Null when the record
+     * has gone missing between classification and here.
+     *
+     * @param  array{identifier: string, cluster: bool}  $target
+     * @return array{0: string|null, 1: Collection<int, string>}|null
+     */
+    protected function discover(array $target): ?array
+    {
+        $record = $target['cluster'] ? Rds::cluster($target['identifier']) : Rds::instance($target['identifier']);
+
+        if ($record === null) {
+            return null;
+        }
+
+        // A cluster record's DBSubnetGroup is just the group's NAME — the VPC
+        // is a per-member fact, so read it off a member instance.
+        $vpcId = $target['cluster']
+            ? (Rds::clusterInstances($target['identifier'])[0]['DBSubnetGroup']['VpcId'] ?? null)
+            : ($record['DBSubnetGroup']['VpcId'] ?? null);
+
+        return [
+            $vpcId,
+            collect($record['VpcSecurityGroups'] ?? [])->pluck('VpcSecurityGroupId')->filter()->values(),
+        ];
+    }
+
+    /**
+     * Whether the database already sits in the environment's VPC — then it's
      * the managed posture and the shared RDS security group's rule (written by
      * SyncRdsSecurityGroupStep) is the path, not this step. A greenfield plan
      * pass (no env VPC yet) can't have an in-VPC database, so absence reads as
      * external-or-unknown and the VPC comparison simply won't match.
      */
-    protected function inEnvironmentVpc(array $instance): bool
+    protected function inEnvironmentVpc(?string $databaseVpcId): bool
     {
         try {
-            return ($instance['DBSubnetGroup']['VpcId'] ?? null) === (new Vpc())->arn();
+            return $databaseVpcId === (new Vpc())->arn();
         } catch (ResourceDoesNotExistException) {
             return false;
         }
