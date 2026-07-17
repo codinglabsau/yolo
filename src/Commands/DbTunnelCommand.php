@@ -97,7 +97,7 @@ class DbTunnelCommand extends Command implements ReadOnlyCommand
 
             return null;
         } catch (RdsException $exception) {
-            error(sprintf('Could not resolve "%s": %s.', (string) Manifest::database(), $exception->getAwsErrorCode() ?? 'unknown error'));
+            error(sprintf('Could not classify "%s": %s.', (string) Manifest::database(), $exception->getAwsErrorCode() ?? 'unknown error'));
 
             return null;
         }

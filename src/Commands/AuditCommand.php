@@ -153,7 +153,11 @@ class AuditCommand extends AbstractAuditCommand
 
     protected function renderRds(RdsInspection $rds, ?RdsNetworkPosture $posture): void
     {
-        note(sprintf('Database: %s "%s"', ucfirst($rds->kind()), $rds->identifier));
+        // An unreadable snapshot may not know its kind — "Database: Database"
+        // reads doubled, so drop the kind and let the identifier speak.
+        note($rds->readable
+            ? sprintf('Database: %s "%s"', ucfirst($rds->kind()), $rds->identifier)
+            : sprintf('Database: "%s"', $rds->identifier));
 
         if (! $rds->readable) {
             // The recorded warning carries the why; nothing to tabulate.

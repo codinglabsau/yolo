@@ -274,7 +274,7 @@ class DbCutoverCommand extends Command implements AdminCommand
         }
 
         note(sprintf('All clear — every container is on %s with a single server identity.', $target));
-        warning(sprintf('The flip is TRANSIENT: update `database:` in yolo.yml, `yolo env:push %1$s` the new DB_HOST, and `yolo deploy %1$s` promptly — any replaced task boots the old host until the image carries the change.', Helpers::environment()));
+        warning(sprintf('The flip is TRANSIENT: set `database:` in yolo.yml to the new database\'s bare identifier (not the endpoint), `yolo env:push %1$s` the new DB_HOST, and `yolo deploy %1$s` promptly — any replaced task boots the old host until the image carries the change.', Helpers::environment()));
 
         return self::SUCCESS;
     }

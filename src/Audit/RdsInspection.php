@@ -44,7 +44,7 @@ final readonly class RdsInspection
         public bool $readable,
         public ?string $reason,
         public string $identifier,
-        public bool $cluster,
+        public ?bool $cluster,
         public ?bool $deletionProtection,
         public ?string $engine,
         public ?string $engineVersion,
@@ -76,9 +76,9 @@ final readonly class RdsInspection
         try {
             $target = Rds::target();
         } catch (RdsException $exception) {
-            return self::unreadable($database, false, self::reason($exception));
+            return self::unreadable($database, null, self::reason($exception));
         } catch (ResourceDoesNotExistException) {
-            return self::unreadable($database, false, 'no matching database in this account/region');
+            return self::unreadable($database, null, 'no matching database in this account/region');
         }
 
         return $target['cluster']
@@ -98,13 +98,13 @@ final readonly class RdsInspection
 
     public function kind(): string
     {
-        // An unreadable snapshot may predate classification — the kind is
-        // unknown, so don't render a guess.
-        if (! $this->readable) {
-            return 'database';
-        }
-
-        return $this->cluster ? 'Aurora cluster' : 'instance';
+        return match ($this->cluster) {
+            // A snapshot unreadable at classification never learned its kind —
+            // don't render a guess.
+            null => 'database',
+            true => 'Aurora cluster',
+            false => 'instance',
+        };
     }
 
     /**
@@ -259,7 +259,7 @@ final readonly class RdsInspection
         return $members;
     }
 
-    protected static function unreadable(string $identifier, bool $cluster, string $reason): self
+    protected static function unreadable(string $identifier, ?bool $cluster, string $reason): self
     {
         return new self(
             readable: false,

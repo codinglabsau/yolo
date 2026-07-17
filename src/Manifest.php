@@ -993,6 +993,16 @@ class Manifest
             return null;
         }
 
+        // RDS identifiers can't contain dots, so a dotted value is an endpoint
+        // hostname — reject it with a pointed message rather than letting RDS
+        // bounce the describe with an opaque InvalidParameterValue.
+        if (str_contains($database, '.')) {
+            throw new IntegrityCheckException(sprintf(
+                'The manifest `database:` key takes the bare database name (its DBInstanceIdentifier or DBClusterIdentifier), not an endpoint hostname — got "%s".',
+                $database,
+            ));
+        }
+
         return $database;
     }
 

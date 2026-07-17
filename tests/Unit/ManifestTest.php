@@ -615,4 +615,11 @@ describe('database', function (): void {
         writeManifest(['database' => '']);
         expect(Manifest::database())->toBeNull();
     });
+
+    it('rejects an endpoint hostname with a pointed message — identifiers cannot contain dots', function (): void {
+        writeManifest(['database' => 'my-db.cabc123.ap-southeast-2.rds.amazonaws.com']);
+
+        expect(fn (): ?string => Manifest::database())
+            ->toThrow(IntegrityCheckException::class, 'not an endpoint hostname');
+    });
 });
