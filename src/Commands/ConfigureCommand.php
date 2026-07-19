@@ -446,7 +446,7 @@ class ConfigureCommand extends Command implements RunsWithoutAws
         }
 
         if ($deviceRegistered === null) {
-            warning('MFA posture unknown — iam:ListMFADevices was denied for this user. Grant it on self (a standard force-MFA policy carves it out). Every YOLO tier requires MFA, so commands will refuse if sessions mint without it.');
+            warning('MFA posture unknown — iam:ListMFADevices was denied for this user. Every YOLO grant group allows it on self, so add the user to a tier group (yolo permissions) — or the account admin grants it directly. Every YOLO tier requires MFA, so commands will refuse if sessions mint without it.');
 
             return true;
         }

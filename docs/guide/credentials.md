@@ -4,7 +4,7 @@ YOLO authenticates to AWS as **you** — a named profile per environment on each
 
 ## Who can do what
 
-Access is granted by **grant-group membership**, never by attaching policies to a user (see [conventions](/reference/commands#conventions)). Each group allows `sts:AssumeRole` on exactly one scoped tier role:
+Access is granted by **grant-group membership**, never by attaching policies to a user (see [conventions](/reference/commands#conventions)). Each group allows `sts:AssumeRole` on exactly one scoped tier role, plus a self-service slice scoped to the member's own user: enrolling an MFA device (allowed without MFA — a new user must be able to bootstrap), and creating/rotating their own access keys (**MFA required** — a leaked bare key can't cut itself a replacement or remove the device):
 
 | Tier | Group | Grants |
 |---|---|---|
@@ -21,9 +21,9 @@ Access is granted by **grant-group membership**, never by attaching policies to 
 
 YOLO never creates or owns users — an account admin does this once per person, in the console or CLI:
 
-- Create the user with **no console password** (programmatic access only) and create one **access key**.
-- Register an **MFA device** on the user — not optional: every YOLO tier's trust policy denies AssumeRole without MFA, and `yolo configure` refuses to finish without a device.
-- Grant `iam:ListMFADevices` on self (a standard force-MFA policy carves this out) so tooling can discover the device without storing its ARN.
+- Create the user with **no console password** (programmatic access only) and create one **access key** — the bootstrap credential. That's it: no policies to attach, no MFA device to register.
+
+Everything else is self-service via the grant groups: the developer enrols their **own MFA device** (allowed pre-MFA — the bootstrap path) and from then on manages their **own access keys**, MFA-gated. An MFA device is not optional — every YOLO tier's trust policy denies AssumeRole without MFA, and `yolo configure` refuses to finish without a device.
 
 ### 2. Grant tiers
 

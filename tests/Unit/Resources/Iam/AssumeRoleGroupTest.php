@@ -23,16 +23,48 @@ it('names each grant group and scopes it correctly', function (AssumeRoleGroup $
     'env admins' => [fn (): AssumeRoleGroup => new AdminsGroup(), Scope::Env, 'yolo-testing-admins'],
 ]);
 
-it('grants nothing but sts:AssumeRole on exactly its tier role, built purely from the manifest', function (AssumeRoleGroup $group, string $roleArn): void {
+it('grants sts:AssumeRole on exactly its tier role plus the self-service credential slice, built purely from the manifest', function (AssumeRoleGroup $group, string $roleArn): void {
     $document = $group->document();
+    $self = [
+        'arn:aws:iam::111111111111:user/${aws:username}',
+        'arn:aws:iam::111111111111:mfa/${aws:username}',
+    ];
 
     expect($document['Version'])->toBe('2012-10-17');
-    expect($document['Statement'])->toHaveCount(1);
+    expect($document['Statement'])->toHaveCount(3);
 
-    $statement = $document['Statement'][0];
-    expect($statement['Effect'])->toBe('Allow');
-    expect($statement['Action'])->toBe('sts:AssumeRole');
-    expect($statement['Resource'])->toBe($roleArn);
+    $assumeRole = $document['Statement'][0];
+    expect($assumeRole['Effect'])->toBe('Allow');
+    expect($assumeRole['Action'])->toBe('sts:AssumeRole');
+    expect($assumeRole['Resource'])->toBe($roleArn);
+
+    // The MFA bootstrap path — ungated so a new user can enrol their first
+    // device, scoped to the member's own user/mfa ARNs so nothing broader leaks.
+    $bootstrap = $document['Statement'][1];
+    expect($bootstrap['Effect'])->toBe('Allow');
+    expect($bootstrap['Action'])->toBe([
+        'iam:ListMFADevices',
+        'iam:CreateVirtualMFADevice',
+        'iam:EnableMFADevice',
+        'iam:ResyncMFADevice',
+    ]);
+    expect($bootstrap['Resource'])->toBe($self);
+    expect($bootstrap)->not->toHaveKey('Condition');
+
+    // Credential self-management — MFA-gated, so a leaked bare key can't rotate
+    // itself a fresh key or strip the device.
+    $credentials = $document['Statement'][2];
+    expect($credentials['Effect'])->toBe('Allow');
+    expect($credentials['Action'])->toBe([
+        'iam:CreateAccessKey',
+        'iam:ListAccessKeys',
+        'iam:UpdateAccessKey',
+        'iam:DeleteAccessKey',
+        'iam:DeactivateMFADevice',
+        'iam:DeleteVirtualMFADevice',
+    ]);
+    expect($credentials['Resource'])->toBe($self);
+    expect($credentials['Condition'])->toBe(['Bool' => ['aws:MultiFactorAuthPresent' => 'true']]);
 })->with([
     'env observers -> observer role' => [fn (): AssumeRoleGroup => new ObserversGroup(), 'arn:aws:iam::111111111111:role/yolo-testing-observer-role'],
     'app observers -> per-app observer role' => [fn (): AssumeRoleGroup => new AppObserversGroup(), 'arn:aws:iam::111111111111:role/yolo-testing-my-app-observer-role'],
