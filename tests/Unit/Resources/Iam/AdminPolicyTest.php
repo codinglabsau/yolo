@@ -40,6 +40,9 @@ it('grants the write surface for the services YOLO provisions', function (): voi
         'cloudfront:Create*',
         'route53:ChangeResourceRecordSets',
         'wafv2:Create*',
+        // db:cutover's container execs ride ECS Exec, which no management
+        // wildcard covers.
+        'ecs:ExecuteCommand',
     );
 });
 

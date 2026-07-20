@@ -224,7 +224,9 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
             ],
             [
                 // Roll the new revision onto this app's services and run the one-off
-                // deploy task (migrations) on its cluster.
+                // deploy task (migrations) on its cluster. ExecuteCommand backs the
+                // `yolo run` ECS Exec session — the same app-plane execution the
+                // deploy hooks already grant via RunTask, scoped to the same tasks.
                 'Effect' => 'Allow',
                 'Resource' => [
                     sprintf('arn:aws:ecs:%s:%s:cluster/%s', $region, $accountId, $cluster),
@@ -238,6 +240,7 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
                     'ecs:UpdateService',
                     'ecs:RunTask',
                     'ecs:DescribeTasks',
+                    'ecs:ExecuteCommand',
                 ],
             ],
             [

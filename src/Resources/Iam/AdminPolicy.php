@@ -200,6 +200,10 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                         'ecs:Create*', 'ecs:Update*', 'ecs:Delete*',
                         'ecs:Register*', 'ecs:Deregister*',
                         'ecs:Put*', 'ecs:Tag*', 'ecs:Untag*',
+                        // Container execs (`db:cutover` rides the same ECS Exec
+                        // session `yolo run` uses) — Execute* fits none of the
+                        // management wildcards above.
+                        'ecs:ExecuteCommand',
                         'ecr:Create*', 'ecr:Delete*', 'ecr:Put*',
                         'ecr:Set*', 'ecr:Tag*', 'ecr:Untag*',
                         // Image push — sync builds + pushes the env Typesense image

@@ -79,6 +79,17 @@ it('scopes UpdateService and RunTask to this app\'s cluster resources', function
     expect($statement['Action'])->toContain('ecs:RunTask', 'ecs:DescribeServices');
 });
 
+it('grants ecs:ExecuteCommand on the same scoped cluster resources so yolo run can open an ECS Exec session', function (): void {
+    $statement = statementFor((new DeployerPolicy())->document(), 'ecs:ExecuteCommand');
+
+    // Same app-plane execution the deploy hooks already grant via RunTask —
+    // scoped to this app's cluster and tasks, never account-wide.
+    expect($statement['Resource'])->toContain(
+        'arn:aws:ecs:ap-southeast-2:111111111111:cluster/yolo-testing-my-app',
+        'arn:aws:ecs:ap-southeast-2:111111111111:task/yolo-testing-my-app/*',
+    );
+});
+
 it('widens UpdateService scope to the standalone queue and scheduler services when extracted', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
