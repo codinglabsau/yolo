@@ -96,16 +96,24 @@ function withBreakGlass(Command $command): Command
     return $command;
 }
 
-/** A tiered command must refuse (and bind nothing) when its role can't be assumed. */
-function expectRefusesWithoutRole(Command $command, string $roleName): void
+/**
+ * A tiered command must refuse (and bind nothing) when its role can't be
+ * assumed — a missing role and a broken trust/lost grant are the same surface
+ * now that the ARN is built from the manifest rather than resolved live (a
+ * tier member's base identity can't read IAM, so there is no pre-assume probe).
+ */
+function expectRefusesWhenAssumeFails(Command $command, string $roleName): void
 {
-    bindMockIamClient([]);
-
     $captured = [];
-    bindAssumeRoleStsClient($captured, assumeRoleResult());
+    bindAssumeRoleStsClient($captured, new RuntimeException('access denied assuming role'));
 
     expect(mint($command))->toBe(Command::FAILURE);
-    expect($captured)->toBeEmpty();
+
+    // Exactly one AssumeRole attempt, on the deterministically-built ARN — and
+    // no IAM client was ever bound, so any IAM read would have failed the test.
+    expect($captured)->toHaveCount(1)
+        ->and($captured[0]['name'])->toBe('AssumeRole')
+        ->and($captured[0]['args']['RoleArn'])->toBe(sprintf('arn:aws:iam::111111111111:role/%s', $roleName));
     expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
     expect(test()->promptOutput->fetch())
         ->toContain($roleName)
@@ -206,8 +214,6 @@ it('mints Admin credentials — MFA-gated — for deploy --admin', function (): 
     putenv('YOLO_TESTING_MFA_SERIAL=arn:aws:iam::111111111111:mfa/operator');
     Prompt::fake(['123456', Key::ENTER]);
 
-    bindMockIamClient(['yolo-testing-admin-role' => 'arn:aws:iam::111111111111:role/yolo-testing-admin-role']);
-
     $captured = [];
     bindAssumeRoleStsClient($captured, assumeRoleResult());
 
@@ -267,24 +273,38 @@ it('is a no-op for an un-tiered command — never assumes a role, never override
     expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
 });
 
-it('fails closed: an app read refuses when the per-app observer role is not provisioned', function (): void {
-    expectRefusesWithoutRole(new StatusCommand(), 'yolo-testing-my-app-observer-role');
+it('fails closed: an app read refuses when the per-app observer role cannot be assumed', function (): void {
+    expectRefusesWhenAssumeFails(new StatusCommand(), 'yolo-testing-my-app-observer-role');
 });
 
-it('fails closed: an env read refuses when the env observer role is not provisioned', function (): void {
-    expectRefusesWithoutRole(new StatusEnvironmentCommand(), 'yolo-testing-observer-role');
+it('fails closed: an env read refuses when the env observer role cannot be assumed', function (): void {
+    expectRefusesWhenAssumeFails(new StatusEnvironmentCommand(), 'yolo-testing-observer-role');
 });
 
-it('fails closed: a deploy refuses when the deployer role is not provisioned', function (): void {
-    expectRefusesWithoutRole(new DeployCommand(), 'yolo-testing-my-app-deployer');
+it('fails closed: a deploy refuses when the deployer role cannot be assumed', function (): void {
+    expectRefusesWhenAssumeFails(new DeployCommand(), 'yolo-testing-my-app-deployer');
 });
 
-it('fails closed: a sync refuses when the admin role is not provisioned', function (): void {
-    expectRefusesWithoutRole(new SyncEnvironmentCommand(), 'yolo-testing-admin-role');
+it('fails closed: a sync refuses when the admin role cannot be assumed — after the MFA prompt', function (): void {
+    // Admin resolves its MFA serial and prompts for a code BEFORE the assume, so
+    // with a deterministic ARN a missing/unassumable admin role now surfaces
+    // after the prompt — the acceptable cost of never reading IAM pre-assume.
+    putenv('YOLO_TESTING_MFA_SERIAL=arn:aws:iam::111111111111:mfa/operator');
+    Prompt::fake(['123456', Key::ENTER]);
+
+    $captured = [];
+    bindAssumeRoleStsClient($captured, new RuntimeException('access denied assuming role'));
+
+    expect(mint(new SyncEnvironmentCommand()))->toBe(Command::FAILURE);
+    expect($captured)->toHaveCount(1)
+        ->and($captured[0]['args']['RoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-admin-role');
+    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
+
+    putenv('YOLO_TESTING_MFA_SERIAL');
+    unset($_ENV['YOLO_TESTING_MFA_SERIAL'], $_SERVER['YOLO_TESTING_MFA_SERIAL']);
 });
 
 it('mints the per-app Observer credentials for an app read once the role is provisioned', function (): void {
-    bindMockIamClient(['yolo-testing-my-app-observer-role' => 'arn:aws:iam::111111111111:role/yolo-testing-my-app-observer-role']);
 
     $captured = [];
     bindAssumeRoleStsClient($captured, assumeRoleResult());
@@ -314,7 +334,6 @@ it('mints the per-app Observer credentials for an app read once the role is prov
 });
 
 it('mints the env Observer credentials for an env-wide read (status:environment / audit)', function (): void {
-    bindMockIamClient(['yolo-testing-observer-role' => 'arn:aws:iam::111111111111:role/yolo-testing-observer-role']);
 
     $captured = [];
     bindAssumeRoleStsClient($captured, assumeRoleResult());
@@ -331,7 +350,6 @@ it('mints the env Observer credentials for an env-wide read (status:environment 
 });
 
 it('mints the Deployer credentials for a deploy once the app deployer role is provisioned', function (): void {
-    bindMockIamClient(['yolo-testing-my-app-deployer' => 'arn:aws:iam::111111111111:role/yolo-testing-my-app-deployer']);
 
     $captured = [];
     bindAssumeRoleStsClient($captured, assumeRoleResult());
@@ -351,8 +369,6 @@ it('mints the Admin credentials for a sync — MFA-gated — once the env admin 
     // An explicit MFA serial avoids the ListMFADevices auto-discovery path.
     putenv('YOLO_TESTING_MFA_SERIAL=arn:aws:iam::111111111111:mfa/operator');
     Prompt::fake(['123456', Key::ENTER]);
-
-    bindMockIamClient(['yolo-testing-admin-role' => 'arn:aws:iam::111111111111:role/yolo-testing-admin-role']);
 
     $captured = [];
     bindAssumeRoleStsClient($captured, assumeRoleResult());
@@ -377,8 +393,6 @@ it('fails closed: admin refuses when no MFA device can be resolved', function ()
     putenv('YOLO_TESTING_MFA_SERIAL');
     unset($_ENV['YOLO_TESTING_MFA_SERIAL'], $_SERVER['YOLO_TESTING_MFA_SERIAL']);
 
-    bindMockIamClient(['yolo-testing-admin-role' => 'arn:aws:iam::111111111111:role/yolo-testing-admin-role']);
-
     // The caller is an assumed-role, not an IAM user — so there's no device to
     // auto-discover and no explicit serial set: admin must refuse, not run uncapped.
     $mock = new MockHandler();
@@ -393,7 +407,6 @@ it('fails closed: admin refuses when no MFA device can be resolved', function ()
 });
 
 it('fails closed: refuses when the role exists but cannot be assumed (broken trust / lost grant)', function (): void {
-    bindMockIamClient(['yolo-testing-my-app-observer-role' => 'arn:aws:iam::111111111111:role/yolo-testing-my-app-observer-role']);
 
     $captured = [];
     bindAssumeRoleStsClient($captured, new RuntimeException('access denied assuming role'));
@@ -409,7 +422,6 @@ it('fails closed: refuses when the role exists but cannot be assumed (broken tru
 
 it('break-glass: --dangerously-skip-permissions skips the cap and runs on the full identity', function (): void {
     // The admin role exists, but break-glass means it is never assumed.
-    bindMockIamClient(['yolo-testing-admin-role' => 'arn:aws:iam::111111111111:role/yolo-testing-admin-role']);
 
     $captured = [];
     bindAssumeRoleStsClient($captured, assumeRoleResult());
@@ -433,7 +445,6 @@ it('inherits a parent run\'s cap when nested — never re-mints or escalates to 
     // climb deployer → admin (MFA-gated, and unresolvable from inside a role session)
     // and turn the read-only drift check into an auth refusal. With it, the nested
     // run proceeds on the parent's credentials — the parent tier is the ceiling.
-    bindMockIamClient(['yolo-testing-admin-role' => 'arn:aws:iam::111111111111:role/yolo-testing-admin-role']);
 
     $captured = [];
     bindAssumeRoleStsClient($captured, assumeRoleResult());
@@ -477,8 +488,6 @@ it('still mints in CI when the caller is not yet the tier role (e.g. static-key 
     // to assume, so the self-assume skip must NOT fire: yolo mints as usual.
     putenv('CI=true');
     $_ENV['CI'] = $_SERVER['CI'] = 'true';
-
-    bindMockIamClient(['yolo-testing-my-app-deployer' => 'arn:aws:iam::111111111111:role/yolo-testing-my-app-deployer']);
 
     $captured = [];
     $mock = new MockHandler();

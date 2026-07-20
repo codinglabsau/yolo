@@ -598,9 +598,13 @@ abstract class Command extends SymfonyCommand
         }
 
         try {
-            // Resolve the ARN first — a missing role fails closed here, before any
-            // MFA prompt, so "role not provisioned" never asks for a code.
-            $roleArn = $role->arn();
+            // Build the ARN deterministically (account id from the manifest, no
+            // IAM path on YOLO roles) — never resolve it live. A tier member's
+            // base identity holds nothing but the group grants, so any IAM read
+            // here (a GetRole, a ListRoles) is an AccessDenied that blocks the
+            // assume it was trying to help. A missing role surfaces from
+            // AssumeRole itself instead.
+            $roleArn = sprintf('arn:aws:iam::%s:role/%s', Aws::accountId(), $role->name());
             $sessionName = sprintf('yolo-%s', $tier->value);
 
             if ($tier === Iam::ADMIN_ROLE) {
