@@ -23,14 +23,19 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * `yolo permissions` or the console).
  *
  * The self-service slice is the standard force-MFA shape, split on one line:
- * what a member may do WITHOUT MFA is exactly the bootstrap path (list, create,
- * enable, resync their own device — a brand-new user must be able to enrol, and
- * the credential helper auto-discovers the serial via `iam:ListMFADevices` at
- * mint time, see {@see Aws::callerMfaSerial()}); everything else — creating and
- * rotating their own access keys, deactivating or deleting the device — demands
- * `aws:MultiFactorAuthPresent`. A stolen bare key can therefore mint nothing
- * (every tier's trust denies AssumeRole without MFA), can't cut itself a
- * replacement key, and can't strip the MFA device that's containing it.
+ * what a member may do WITHOUT MFA is exactly the bootstrap path (enrol their
+ * own device, plus the reads the console needs to render that flow — a
+ * brand-new user signs in with just a password and must be able to reach MFA
+ * enrolment, and the credential helper auto-discovers the serial via
+ * `iam:ListMFADevices` at mint time, see {@see Aws::callerMfaSerial()});
+ * everything else — creating and rotating their own access keys, changing the
+ * password, deactivating or deleting the device — demands
+ * `aws:MultiFactorAuthPresent`. A stolen bare key or pre-MFA console session
+ * can therefore mint nothing (every tier's trust denies AssumeRole without
+ * MFA), can't cut itself a replacement key, and can't strip the MFA device
+ * that's containing it. The developer's first access key is self-issued AFTER
+ * enrolment: sign in with the password, enrol, re-sign-in with a TOTP, then
+ * create the key under the MFA gate — the key never exists before the device.
  *
  * The inline document is pure and deterministic (the role ARN and the member's
  * user/mfa ARNs are built from account/env/app + the `${aws:username}` policy
@@ -203,10 +208,13 @@ abstract class AssumeRoleGroup implements Deletable, Resource, SynchronisesConfi
                 ],
                 // The MFA bootstrap path — deliberately NOT MFA-gated, or a new
                 // user could never enrol their first device (and the credential
-                // helper couldn't discover the serial to mint with).
+                // helper couldn't discover the serial to mint with). GetUser is
+                // here because the console's security-credentials page reads it.
                 [
                     'Effect' => 'Allow',
                     'Action' => [
+                        'iam:GetUser',
+                        'iam:GetMFADevice',
                         'iam:ListMFADevices',
                         'iam:CreateVirtualMFADevice',
                         'iam:EnableMFADevice',
@@ -214,8 +222,19 @@ abstract class AssumeRoleGroup implements Deletable, Resource, SynchronisesConfi
                     ],
                     'Resource' => $self,
                 ],
+                // Account-level reads the console's MFA and password screens
+                // need to render — neither supports resource-level scoping.
+                [
+                    'Effect' => 'Allow',
+                    'Action' => [
+                        'iam:ListVirtualMFADevices',
+                        'iam:GetAccountPasswordPolicy',
+                    ],
+                    'Resource' => '*',
+                ],
                 // Credential self-management — MFA required, so a leaked bare
-                // key can't rotate itself a fresh key or remove the device.
+                // key (or a pre-MFA console session) can't cut a fresh key,
+                // change the password, or remove the device.
                 [
                     'Effect' => 'Allow',
                     'Action' => [
@@ -223,6 +242,7 @@ abstract class AssumeRoleGroup implements Deletable, Resource, SynchronisesConfi
                         'iam:ListAccessKeys',
                         'iam:UpdateAccessKey',
                         'iam:DeleteAccessKey',
+                        'iam:ChangePassword',
                         'iam:DeactivateMFADevice',
                         'iam:DeleteVirtualMFADevice',
                     ],

@@ -4,7 +4,7 @@ YOLO authenticates to AWS as **you** — a named profile per environment on each
 
 ## Who can do what
 
-Access is granted by **grant-group membership**, never by attaching policies to a user (see [conventions](/reference/commands#conventions)). Each group allows `sts:AssumeRole` on exactly one scoped tier role, plus a self-service slice scoped to the member's own user: enrolling an MFA device (allowed without MFA — a new user must be able to bootstrap), and creating/rotating their own access keys (**MFA required** — a leaked bare key can't cut itself a replacement or remove the device):
+Access is granted by **grant-group membership**, never by attaching policies to a user (see [conventions](/reference/commands#conventions)). Each group allows `sts:AssumeRole` on exactly one scoped tier role, plus a self-service slice scoped to the member's own user: enrolling an MFA device (allowed without MFA — a new user must be able to bootstrap), and managing their own access keys and password (**MFA required** — a leaked credential can't cut itself a replacement or remove the device):
 
 | Tier | Group | Grants |
 |---|---|---|
@@ -21,9 +21,16 @@ Access is granted by **grant-group membership**, never by attaching policies to 
 
 YOLO never creates or owns users — an account admin does this once per person, in the console or CLI:
 
-- Create the user with **no console password** (programmatic access only) and create one **access key** — the bootstrap credential. That's it: no policies to attach, no MFA device to register.
+- Create the user with a **console password** and **no access key**. Untick *"user must create a new password at next sign-in"* — the password change is MFA-gated, so a forced pre-MFA reset would be denied; the developer changes it themselves once enrolled. That's it: no policies to attach, no MFA device to register, no key to hand over.
 
-Everything else is self-service via the grant groups: the developer enrols their **own MFA device** (allowed pre-MFA — the bootstrap path) and from then on manages their **own access keys**, MFA-gated. An MFA device is not optional — every YOLO tier's trust policy denies AssumeRole without MFA, and `yolo configure` refuses to finish without a device.
+Everything else is self-service via the grant groups, in an order that keeps MFA structural — the access key can't exist before the device does:
+
+1. Sign in to the console with the password.
+2. Enrol an **MFA device** (allowed pre-MFA — the bootstrap path). Name the device exactly your **IAM username**: the grant is scoped to `mfa/${aws:username}`, so any other name is denied.
+3. Sign out and back in with a TOTP — the session now carries MFA.
+4. Create your own **access key** (and change the password) — both MFA-gated.
+
+An MFA device is not optional — every YOLO tier's trust policy denies AssumeRole without MFA, and `yolo configure` refuses to finish without a device. From here on the developer rotates their own keys the same way: any MFA-carrying session may create, deactivate, and delete their keys.
 
 ### 2. Grant tiers
 

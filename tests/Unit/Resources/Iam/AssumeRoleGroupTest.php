@@ -31,7 +31,7 @@ it('grants sts:AssumeRole on exactly its tier role plus the self-service credent
     ];
 
     expect($document['Version'])->toBe('2012-10-17');
-    expect($document['Statement'])->toHaveCount(3);
+    expect($document['Statement'])->toHaveCount(4);
 
     $assumeRole = $document['Statement'][0];
     expect($assumeRole['Effect'])->toBe('Allow');
@@ -43,6 +43,8 @@ it('grants sts:AssumeRole on exactly its tier role plus the self-service credent
     $bootstrap = $document['Statement'][1];
     expect($bootstrap['Effect'])->toBe('Allow');
     expect($bootstrap['Action'])->toBe([
+        'iam:GetUser',
+        'iam:GetMFADevice',
         'iam:ListMFADevices',
         'iam:CreateVirtualMFADevice',
         'iam:EnableMFADevice',
@@ -51,15 +53,28 @@ it('grants sts:AssumeRole on exactly its tier role plus the self-service credent
     expect($bootstrap['Resource'])->toBe($self);
     expect($bootstrap)->not->toHaveKey('Condition');
 
-    // Credential self-management — MFA-gated, so a leaked bare key can't rotate
-    // itself a fresh key or strip the device.
-    $credentials = $document['Statement'][2];
+    // Account-level console reads — ungated, needed to render the MFA and
+    // password screens; neither action supports resource-level scoping.
+    $consoleReads = $document['Statement'][2];
+    expect($consoleReads['Effect'])->toBe('Allow');
+    expect($consoleReads['Action'])->toBe([
+        'iam:ListVirtualMFADevices',
+        'iam:GetAccountPasswordPolicy',
+    ]);
+    expect($consoleReads['Resource'])->toBe('*');
+    expect($consoleReads)->not->toHaveKey('Condition');
+
+    // Credential self-management — MFA-gated, so a leaked bare key or pre-MFA
+    // console session can't cut a fresh key, change the password, or strip the
+    // device.
+    $credentials = $document['Statement'][3];
     expect($credentials['Effect'])->toBe('Allow');
     expect($credentials['Action'])->toBe([
         'iam:CreateAccessKey',
         'iam:ListAccessKeys',
         'iam:UpdateAccessKey',
         'iam:DeleteAccessKey',
+        'iam:ChangePassword',
         'iam:DeactivateMFADevice',
         'iam:DeleteVirtualMFADevice',
     ]);
