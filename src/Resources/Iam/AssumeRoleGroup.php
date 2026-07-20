@@ -185,6 +185,24 @@ abstract class AssumeRoleGroup implements Deletable, Resource, SynchronisesConfi
     }
 
     /**
+     * The role ARN(s) this group's members may assume — the tier role by
+     * default. A group whose tier subsumes narrower tiers widens this (the env
+     * observers group adds every per-app observer role, so an env-wide reader
+     * can run app-scoped commands that mint the narrower role). Must stay
+     * deterministic — built from account/env only, never the current app.
+     *
+     * @return string|array<int, string>
+     */
+    protected function assumableRoleArns(): string|array
+    {
+        return sprintf(
+            'arn:aws:iam::%s:role/%s',
+            Aws::accountId(),
+            $this->role()->name(),
+        );
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function document(): array
@@ -207,11 +225,7 @@ abstract class AssumeRoleGroup implements Deletable, Resource, SynchronisesConfi
                 [
                     'Effect' => 'Allow',
                     'Action' => 'sts:AssumeRole',
-                    'Resource' => sprintf(
-                        'arn:aws:iam::%s:role/%s',
-                        Aws::accountId(),
-                        $this->role()->name(),
-                    ),
+                    'Resource' => $this->assumableRoleArns(),
                 ],
                 // The MFA bootstrap path — deliberately NOT MFA-gated, or a new
                 // user could never enrol their first device (and the credential

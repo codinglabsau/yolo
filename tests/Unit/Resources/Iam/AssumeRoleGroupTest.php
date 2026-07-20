@@ -23,7 +23,7 @@ it('names each grant group and scopes it correctly', function (AssumeRoleGroup $
     'env admins' => [fn (): AssumeRoleGroup => new AdminsGroup(), Scope::Env, 'yolo-testing-admins'],
 ]);
 
-it('grants sts:AssumeRole on exactly its tier role plus the self-service credential slice, built purely from the manifest', function (AssumeRoleGroup $group, string $roleArn): void {
+it('grants sts:AssumeRole on exactly its tier role plus the self-service credential slice, built purely from the manifest', function (AssumeRoleGroup $group, string|array $roleArn): void {
     $document = $group->document();
     $self = [
         'arn:aws:iam::111111111111:user/${aws:username}',
@@ -81,10 +81,23 @@ it('grants sts:AssumeRole on exactly its tier role plus the self-service credent
     expect($credentials['Resource'])->toBe($self);
     expect($credentials['Condition'])->toBe(['Bool' => ['aws:MultiFactorAuthPresent' => 'true']]);
 })->with([
-    'env observers -> observer role' => [fn (): AssumeRoleGroup => new ObserversGroup(), 'arn:aws:iam::111111111111:role/yolo-testing-observer-role'],
+    // Env-wide read subsumes per-app read: the env observers grant carries the
+    // env role plus a wildcard over every per-app observer role, so app-scoped
+    // commands (which mint the narrower role) work for an env observer.
+    'env observers -> observer role + all app observer roles' => [fn (): AssumeRoleGroup => new ObserversGroup(), [
+        'arn:aws:iam::111111111111:role/yolo-testing-observer-role',
+        'arn:aws:iam::111111111111:role/yolo-testing-*-observer-role',
+    ]],
     'app observers -> per-app observer role' => [fn (): AssumeRoleGroup => new AppObserversGroup(), 'arn:aws:iam::111111111111:role/yolo-testing-my-app-observer-role'],
     'app deployers -> deployer role' => [fn (): AssumeRoleGroup => new DeployersGroup(), 'arn:aws:iam::111111111111:role/yolo-testing-my-app-deployer'],
-    'env admins -> admin role' => [fn (): AssumeRoleGroup => new AdminsGroup(), 'arn:aws:iam::111111111111:role/yolo-testing-admin-role'],
+    // Admin subsumes every tier: commands mint the least-privileged role for
+    // their job, so the admin grant must cover the whole role hierarchy.
+    'env admins -> every tier role' => [fn (): AssumeRoleGroup => new AdminsGroup(), [
+        'arn:aws:iam::111111111111:role/yolo-testing-admin-role',
+        'arn:aws:iam::111111111111:role/yolo-testing-observer-role',
+        'arn:aws:iam::111111111111:role/yolo-testing-*-observer-role',
+        'arn:aws:iam::111111111111:role/yolo-testing-*-deployer',
+    ]],
 ]);
 
 it('is untaggable — synchroniseTags is a no-op (ownership lives in the name)', function (): void {

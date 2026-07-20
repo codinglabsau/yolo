@@ -13,6 +13,8 @@ Access is granted by **grant-group membership**, never by attaching policies to 
 | Deployer — one app | `yolo-{env}-{app}-deployers` | build and deploy one app |
 | Admin — environment | `yolo-{env}-admins` | `sync` / `scale` / manage access (**fresh MFA code per run**) |
 
+Broader tiers **subsume narrower ones in the grant itself**: commands always mint the least-privileged role for their job (reads mint observer roles, deploys the per-app deployer) regardless of who runs them — so the env observers grant includes every per-app observer role, and the admins grant includes the whole hierarchy. An admin or env observer runs app-scoped commands (`status`, `db:tunnel`) without per-app membership; only the admin-role assume itself prompts for a fresh MFA code.
+
 **Every tier requires MFA to assume** — the trust condition is on all four roles, AWS-enforced, so a bare static key can't hold even read-only access. Sessions minted by the `yolo-credentials-1password` helper carry the MFA context automatically; only the admin tier adds a per-run prompt. Most developers want **environment observer + deployer on the apps they ship**. Keep the admins group small.
 
 ## Onboard a developer
