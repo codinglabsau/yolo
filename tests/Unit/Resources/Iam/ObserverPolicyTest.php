@@ -83,13 +83,36 @@ it('reads log content env-wide (on *) — the per-app fence lives in AppObserver
 it('grants no write actions — read-only by construction', function (): void {
     $writeVerbs = ['Create', 'Update', 'Delete', 'Put', 'Modify', 'Attach', 'Detach', 'Register', 'Deregister', 'Set', 'Tag', 'Untag', 'Run', 'Stop', 'Start'];
 
-    foreach (observerActions() as $action) {
+    // The one deliberate exception: the db:tunnel session transport. These are
+    // IAM "writes" that mutate nothing in the account — they open/close a
+    // port-forwarding data channel, pinned to the port-forward document so an
+    // observer can never open a shell. See ObserverPolicy::sessionStatements().
+    $sessionTransport = ['ssm:StartSession', 'ssm:TerminateSession', 'ssm:ResumeSession'];
+
+    foreach (array_diff(observerActions(), $sessionTransport) as $action) {
         [, $verb] = explode(':', (string) $action, 2);
 
         foreach ($writeVerbs as $write) {
             expect(str_starts_with($verb, $write))->toBeFalse("observer grants a write action: {$action}");
         }
     }
+});
+
+it('pins the session grant to the port-forwarding document and the env task set — a tunnel, never a shell', function (): void {
+    $statement = collect((new ObserverPolicy())->document()['Statement'])
+        ->first(fn (array $s): bool => in_array('ssm:StartSession', (array) $s['Action'], true));
+
+    expect($statement['Action'])->toBe(['ssm:StartSession']);
+    expect($statement['Resource'])->toBe([
+        'arn:aws:ecs:ap-southeast-2:111111111111:task/yolo-testing-*',
+        'arn:aws:ssm:ap-southeast-2::document/AWS-StartPortForwardingSessionToRemoteHost',
+    ]);
+
+    $lifecycle = collect((new ObserverPolicy())->document()['Statement'])
+        ->first(fn (array $s): bool => in_array('ssm:TerminateSession', (array) $s['Action'], true));
+
+    expect($lifecycle['Action'])->toBe(['ssm:TerminateSession', 'ssm:ResumeSession']);
+    expect($lifecycle['Resource'])->toBe('arn:aws:ssm:ap-southeast-2:111111111111:session/*');
 });
 
 it('scopes IAM document reads to YOLO-managed identities, never the whole account', function (): void {

@@ -74,8 +74,25 @@ class DbTunnelCommand extends Command implements ReadOnlyCommand
 
         note(sprintf('Tunnel: 127.0.0.1:%s → %s:3306 (via %s) — Ctrl-C to close.', $localPort, $host, Str::afterLast($taskArn, '/')));
 
+        // The session must run on the minted tier credentials, not the base
+        // profile: --profile would resolve the operator's FULL identity, both
+        // escaping the tier cap and failing for least-privileged members (whose
+        // base identity holds nothing but the group grants — the observer role
+        // is where ssm:StartSession lives). Env credentials outrank every other
+        // source in the CLI's chain, so exporting the minted session is enough;
+        // --profile remains only for uncapped runs (break-glass), where there
+        // are no tier credentials to export.
+        $minted = Helpers::app()->bound('yoloAssumedCredentials')
+            ? Helpers::app('yoloAssumedCredentials')
+            : null;
+
         $process = new Process(
-            static::startSessionArgs($target, $host, $localPort, Manifest::get('region'), Helpers::keyedEnv('AWS_PROFILE')),
+            static::startSessionArgs($target, $host, $localPort, Manifest::get('region'), $minted ? null : Helpers::keyedEnv('AWS_PROFILE')),
+            env: $minted ? [
+                'AWS_ACCESS_KEY_ID' => $minted->getAccessKeyId(),
+                'AWS_SECRET_ACCESS_KEY' => $minted->getSecretKey(),
+                'AWS_SESSION_TOKEN' => $minted->getSecurityToken(),
+            ] : null,
             timeout: null,
         );
 
