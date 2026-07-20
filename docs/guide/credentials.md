@@ -17,22 +17,15 @@ Access is granted by **grant-group membership**, never by attaching policies to 
 
 ## Onboard a developer
 
-### 1. Create the IAM user
+Onboarding is split cleanly in two: the **admin** creates the user and grants tiers (a few minutes, once), then the **developer** does everything else self-service — enrolling MFA, creating their own access key, and configuring their machine. The order matters: group membership carries the self-service permissions, so the admin's half must be complete before the developer's half can start.
+
+### Admin: create the IAM user
 
 YOLO never creates or owns users — an account admin does this once per person, in the console or CLI:
 
 - Create the user with a **console password** and **no access key**. Untick *"user must create a new password at next sign-in"* — the password change is MFA-gated, so a forced pre-MFA reset would be denied; the developer changes it themselves once enrolled. That's it: no policies to attach, no MFA device to register, no key to hand over.
 
-Everything else is self-service via the grant groups, in an order that keeps MFA structural — the access key can't exist before the device does:
-
-1. Sign in to the console with the password.
-2. Enrol an **MFA device** (allowed pre-MFA — the bootstrap path). Name the device exactly your **IAM username**: the grant is scoped to `mfa/${aws:username}`, so any other name is denied.
-3. Sign out and back in with a TOTP — the session now carries MFA.
-4. Create your own **access key** (and change the password) — both MFA-gated.
-
-An MFA device is not optional — every YOLO tier's trust policy denies AssumeRole without MFA, and `yolo configure` refuses to finish without a device. From here on the developer rotates their own keys the same way: any MFA-carrying session may create, deactivate, and delete their keys.
-
-### 2. Grant tiers
+### Admin: grant tiers
 
 From the app's directory, a member of `yolo-{env}-admins` runs:
 
@@ -42,19 +35,42 @@ yolo permissions production
 
 Pick the user, tick the tiers, confirm. Membership is the entire access lever — the same command revokes by unticking. See [`yolo permissions`](/reference/commands#yolo-permissions).
 
-### 3. Store the keys in 1Password
+This step is not just about tier access: the grant groups also carry the developer's **self-service permissions** (enrol MFA, manage own keys). A user in no group can't even add a device — so hand over the console password only after this step.
 
-The developer stores the access key in a 1Password item (their private **Employee** vault in a 1Password Business account) with these fields:
+### Developer: enrol MFA and create your access key
+
+Self-service in the console, in an order that keeps MFA structural — the access key can't exist before the device does:
+
+1. Sign in to the console with the password from your admin.
+2. Enrol an **MFA device** — choose **Authenticator app** (TOTP), not a passkey (allowed pre-MFA — the bootstrap path). Name it anything you like (names are account-unique, so make it yours). Scan the QR into 1Password — the same seed later provides the TOTP field the credential helper forwards.
+3. **Sign out and back in**, entering a one-time code at the prompt. Enrolling doesn't upgrade your current session — only a fresh MFA sign-in carries the MFA context. If you aren't prompted for a code, the device didn't attach; go back to step 2.
+4. Create your own **access key** (and change your password) — both MFA-gated, so they only work from the re-signed-in session.
+
+An MFA device is not optional — every YOLO tier's trust policy denies AssumeRole without MFA, and `yolo configure` refuses to finish without a device. From here on you rotate your own keys the same way: any MFA-carrying session may create, deactivate, and delete them.
+
+::: warning Passkeys don't work for the CLI — a TOTP device is mandatory
+AWS only accepts **TOTP codes** for API/CLI MFA (`sts:GetSessionToken` takes a `--token-code`; a passkey can't produce one — WebAuthn has no OTP). A user with only a passkey signs in to the console fine but can never mint an MFA session, so no YOLO tier is assumable and the admin per-run prompt has nothing to enter. Enrol the **authenticator-app (TOTP) device first** — it's the one YOLO depends on. A passkey may be added *alongside* it for console sign-in, but note the credential helper picks the **first listed device**, so if minting starts failing after adding one, the passkey's serial is likely being paired with a TOTP code.
+:::
+
+### Developer: store the keys in 1Password
+
+Store the access key in a 1Password item (your private **Employee** vault in a 1Password Business account) with these fields:
 
 - `aws_access_key_id`
 - `aws_secret_access_key`
-- a **one-time-password** (TOTP) field seeded from the IAM MFA device
+- a **one-time-password** (TOTP) field — the QR scanned during MFA enrolment. It must be the *same seed* as the IAM device, or the helper forwards codes AWS rejects.
 
 The long-lived key lives only in 1Password — it never sits in `~/.aws/credentials`.
 
-### 4. Configure the machine
+### Developer: configure the machine
 
-From any app directory, the developer runs:
+Prerequisites — `yolo configure` verifies the whole chain live, so everything above must exist first:
+
+- [ ] IAM user created, **in its grant group(s)**
+- [ ] MFA device enrolled (TOTP, not a passkey)
+- [ ] Access key created and stored in 1Password **with the TOTP field**
+
+From any app directory, run:
 
 ```bash
 yolo configure production
@@ -100,4 +116,8 @@ For `op` to authenticate through the desktop app (Touch ID instead of a separate
 
 ::: warning Not a secret store
 The cache under `~/.aws/yolo-cache` holds working session credentials until they expire. It's `0700`/owner-only, but treat a lost laptop as a rotation event regardless — the exposure window is at most the 4-hour session, not the long-lived key.
+:::
+
+::: warning A pre-MFA session lingers in the cache
+If the profile ever minted a session **before** the MFA device existed (or before the TOTP field was added), that plain session is cached for up to 4 hours — and AWS refuses **all IAM API calls** from a session minted without MFA, regardless of policy. The symptom is an `iam:ListMFADevices` / `iam:ListAccessKeys` denial that no permission change fixes. Delete the profile's file under `~/.aws/yolo-cache` and re-run; the fresh mint picks up the device.
 :::

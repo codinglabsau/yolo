@@ -27,7 +27,7 @@ it('grants sts:AssumeRole on exactly its tier role plus the self-service credent
     $document = $group->document();
     $self = [
         'arn:aws:iam::111111111111:user/${aws:username}',
-        'arn:aws:iam::111111111111:mfa/${aws:username}',
+        'arn:aws:iam::111111111111:mfa/*',
     ];
 
     expect($document['Version'])->toBe('2012-10-17');

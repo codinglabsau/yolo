@@ -15,7 +15,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 /**
  * The grant layer: a YOLO-managed IAM group whose single inline policy allows
  * `sts:AssumeRole` on exactly one scoped tier role, plus the self-service slice
- * every member needs to run their own credential hygiene — all of it scoped to
+ * every member needs to run their own credential hygiene — scoped to
  * `${aws:username}`, so a member only ever touches their own user. Membership IS
  * the access lever — add a user to the group to grant the tier, remove to
  * revoke. YOLO provisions and reconciles the group + its policy; it never
@@ -189,9 +189,16 @@ abstract class AssumeRoleGroup implements Deletable, Resource, SynchronisesConfi
      */
     public function document(): array
     {
+        // Every self-service IAM action here authorises on the member's own
+        // user ARN except CreateVirtualMFADevice/DeleteVirtualMFADevice, which
+        // evaluate against the device ARN — and a virtual device has no owner
+        // until it's enabled, so scoping its name (mfa/${aws:username}) only
+        // buys a console paper cut, not security: the boundary that matters is
+        // Deactivate, which is user-scoped and MFA-gated. Devices may be named
+        // freely; delete only ever works on deactivated device objects.
         $self = [
             sprintf('arn:aws:iam::%s:user/${aws:username}', Aws::accountId()),
-            sprintf('arn:aws:iam::%s:mfa/${aws:username}', Aws::accountId()),
+            sprintf('arn:aws:iam::%s:mfa/*', Aws::accountId()),
         ];
 
         return [
