@@ -108,8 +108,12 @@ class RunCommand extends Command implements DeployerCommand
 
     protected function exec(string $cluster, string $task, string $command, string $container, bool $interactive): int
     {
+        // The exec session runs on the minted tier credentials, never the base
+        // profile — ecs:ExecuteCommand lives on the deployer role, not the
+        // operator's own identity. See Command::subprocessEnv().
         $process = new Process(
-            static::executeCommandArgs($cluster, $task, $command, $container, Manifest::get('region'), Helpers::keyedEnv('AWS_PROFILE')),
+            static::executeCommandArgs($cluster, $task, $command, $container, Manifest::get('region'), $this->subprocessProfile()),
+            env: $this->subprocessEnv(),
             timeout: null,
         );
 

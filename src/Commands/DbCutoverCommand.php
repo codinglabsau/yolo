@@ -368,7 +368,8 @@ class DbCutoverCommand extends Command implements AdminCommand
     protected function exec(string $cluster, string $taskArn, string $container, string $shell): ?string
     {
         $process = new Process(
-            RunCommand::executeCommandArgs($cluster, $taskArn, static::containerCommand($shell), $container, Manifest::get('region'), Helpers::keyedEnv('AWS_PROFILE')),
+            RunCommand::executeCommandArgs($cluster, $taskArn, static::containerCommand($shell), $container, Manifest::get('region'), $this->subprocessProfile()),
+            env: $this->subprocessEnv(),
             timeout: 300,
         );
 

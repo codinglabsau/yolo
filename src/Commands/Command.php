@@ -671,6 +671,46 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
+     * The env block handing the minted tier credentials to a subprocess (the
+     * aws CLI, session-manager-plugin). A subprocess must run on the tier, not
+     * the base profile: --profile resolves the operator's FULL identity, both
+     * escaping the tier cap and failing for least-privileged members, whose
+     * base identity holds nothing but the group grants (the tier role is where
+     * the session permission lives). Env credentials outrank every other
+     * source in the CLI's chain, so exporting the minted session is enough.
+     * Null when no tier was minted — see {@see subprocessProfile()}.
+     *
+     * @return array<string, string>|null
+     */
+    protected function subprocessEnv(): ?array
+    {
+        if (! Helpers::app()->bound('yoloAssumedCredentials')) {
+            return null;
+        }
+
+        $minted = Helpers::app('yoloAssumedCredentials');
+
+        return [
+            'AWS_ACCESS_KEY_ID' => $minted->getAccessKeyId(),
+            'AWS_SECRET_ACCESS_KEY' => $minted->getSecretKey(),
+            'AWS_SESSION_TOKEN' => $minted->getSecurityToken(),
+        ];
+    }
+
+    /**
+     * The --profile for a subprocess: only uncapped runs (break-glass, or the
+     * CI/OIDC path where the process already IS the tier role) carry one —
+     * whenever tier credentials were minted, {@see subprocessEnv()} exports
+     * them and the profile must stay out of the invocation entirely.
+     */
+    protected function subprocessProfile(): ?string
+    {
+        return Helpers::app()->bound('yoloAssumedCredentials')
+            ? null
+            : Helpers::keyedEnv('AWS_PROFILE');
+    }
+
+    /**
      * Whether the AWS caller is already running as exactly this tier's role — the
      * CI/OIDC path, where the workflow assumes the role before yolo runs. An STS
      * assumed-role ARN is `arn:aws:sts::<account>:assumed-role/<role-name>/<session>`;
