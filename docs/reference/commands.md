@@ -687,7 +687,7 @@ These four options are shared by every `sync` command below. See [Provisioning](
 
 ## `yolo sync:account`
 
-Sync the account-global resources (shared across every environment) — the GitHub OIDC identity provider.
+Sync the account-global resources (shared across every environment) — the service-linked roles for ECS, Application Auto Scaling and ElastiCache (AWS-owned account singletons those services require before their first resource can exist; created if missing, never reconciled or torn down), and the GitHub OIDC identity provider.
 
 ```bash
 yolo sync:account <environment> [--check] [--force] [--no-progress] [--tenant=<id>]

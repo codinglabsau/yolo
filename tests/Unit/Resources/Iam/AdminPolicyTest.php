@@ -2,6 +2,7 @@
 
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Iam\AdminPolicy;
+use Codinglabs\Yolo\Steps\Sync\Account\SyncServiceLinkedRolesStep;
 
 beforeEach(function (): void {
     writeManifest([
@@ -178,11 +179,10 @@ it('limits service-linked-role creation to the three services that need it', fun
         ->first(fn (array $statement): bool => in_array('iam:CreateServiceLinkedRole', (array) $statement['Action'], true));
 
     expect($slr)->not->toBeNull();
-    expect($slr['Condition']['StringEquals']['iam:AWSServiceName'])->toBe([
-        'ecs.amazonaws.com',
-        'application-autoscaling.amazonaws.com',
-        'elasticache.amazonaws.com',
-    ]);
+    // Pinned to the exact set SyncServiceLinkedRolesStep provisions — the grant
+    // exists to serve that step, so the two lists must never drift apart.
+    expect($slr['Condition']['StringEquals']['iam:AWSServiceName'])
+        ->toBe(SyncServiceLinkedRolesStep::SERVICES);
 });
 
 it('grants S3 object write to the env manifest + app claim keys, never the env-shared .env', function (): void {

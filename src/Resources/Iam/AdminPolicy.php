@@ -443,7 +443,11 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                 [
                     // Service-linked roles AWS requires the first time ECS / App Auto
                     // Scaling / ElastiCache are used in an account — creatable only
-                    // for those specific services, never an arbitrary SLR.
+                    // for those specific services, never an arbitrary SLR. App Auto
+                    // Scaling mints one SLR per service namespace, so it's the
+                    // ECS-suffixed service name (the generic
+                    // application-autoscaling.amazonaws.com is not a valid SLR
+                    // service and would never match a real create).
                     'Effect' => 'Allow',
                     'Resource' => sprintf('arn:aws:iam::%s:role/aws-service-role/*', $accountId),
                     'Action' => ['iam:CreateServiceLinkedRole'],
@@ -451,7 +455,7 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                         'StringEquals' => [
                             'iam:AWSServiceName' => [
                                 'ecs.amazonaws.com',
-                                'application-autoscaling.amazonaws.com',
+                                'ecs.application-autoscaling.amazonaws.com',
                                 'elasticache.amazonaws.com',
                             ],
                         ],
