@@ -33,7 +33,7 @@ environments:
     # --- App storage & shared infra names ---
     # bucket: my-app-bucket                          # app S3 bucket, injected as AWS_BUCKET
 
-    # --- Cache & session (web apps default to these; uncomment only to override) ---
+    # --- Cache & session (any app with tasks defaults to the cache, web apps to sessions too; uncomment only to override) ---
     # cache:
     #   store: redis             # default; file/database/array to opt out of the shared Valkey
     # session:
@@ -263,11 +263,11 @@ Where the database should live, the managed/external/exposed postures, and how t
 
 ## `cache.*`
 
-Declares the app's cache store. **Web apps (`tasks.web`) default to `redis`** — the per-task filesystem is broken across multiple Fargate tasks, so a working shared cache is the right default. `redis` provisions a shared **ElastiCache for Valkey** cache for the environment (one cluster shared by every app, isolated by a per-app key prefix). Set `cache.store` to `file`, `database`, or `array` to opt out (app-managed, nothing provisioned). Non-web apps get no default.
+Declares the app's cache store. **Every app that runs tasks defaults to `redis`** — web or web-less. The per-task filesystem is broken across multiple Fargate tasks, and worker apps lean on a shared cache just as hard (atomic locks, rate limiters, `onOneServer`), so a working shared cache is the right default for anything that runs. `redis` provisions a shared **ElastiCache for Valkey** cache for the environment (one cluster shared by every app, isolated by a per-app key prefix). Set `cache.store` to `file`, `database`, or `array` to opt out (app-managed, nothing provisioned). Build-only apps (no `tasks`) run no containers, so they get no default.
 
 ```yaml
 cache:
-  store: redis   # the web-app default; set file/database/array to opt out
+  store: redis   # the default for any app with tasks; set file/database/array to opt out
 ```
 
 `redis` provisions, with hardcoded sensible defaults (no tuning knobs until a real need lands):
@@ -292,7 +292,7 @@ session:
 
 | `session.driver` | YOLO provisions | Also injects | Notes |
 |---|---|---|---|
-| `redis` (default) | Nothing new (reuses the Valkey cache) | `SESSION_DRIVER` only | **Requires `cache.store: redis`** (the web-app default) — there's no redis store without it, and YOLO hard-fails if you opt the cache out without re-pinning the session driver. Sessions sit on Laravel's stock `default` connection (**DB 0**), the cache on the `cache` connection (**DB 1**) — same Valkey instance, separate keyspace, so a `cache:clear` never touches sessions. YOLO injects `SESSION_DRIVER=redis` only and leaves `SESSION_CONNECTION` unset; the split is inherited from your stock `config/database.php`, not enforced by YOLO, and relies on cluster-mode-disabled Valkey. A single node has no session HA — a node loss logs users out. See [Sessions and cache share the node, not the keyspace](/guide/provisioning#sessions-and-cache-share-the-node-not-the-keyspace) for the mechanism and caveats. |
+| `redis` (default) | Nothing new (reuses the Valkey cache) | `SESSION_DRIVER` only | **Requires `cache.store: redis`** (the default) — there's no redis store without it, and YOLO hard-fails if you opt the cache out without re-pinning the session driver. Sessions sit on Laravel's stock `default` connection (**DB 0**), the cache on the `cache` connection (**DB 1**) — same Valkey instance, separate keyspace, so a `cache:clear` never touches sessions. YOLO injects `SESSION_DRIVER=redis` only and leaves `SESSION_CONNECTION` unset; the split is inherited from your stock `config/database.php`, not enforced by YOLO, and relies on cluster-mode-disabled Valkey. A single node has no session HA — a node loss logs users out. See [Sessions and cache share the node, not the keyspace](/guide/provisioning#sessions-and-cache-share-the-node-not-the-keyspace) for the mechanism and caveats. |
 | `database` / `cookie` / `file` | Nothing | `SESSION_DRIVER` only | App-managed (pin-only). `cookie` is capped at ~4&nbsp;KB per browser cookie — risky once flashed validation errors are stored. |
 
 On a web app, omitting `session` gives you the `redis` default; set a driver to override it. On a non-web app, `SESSION_DRIVER` is left to your `.env`.

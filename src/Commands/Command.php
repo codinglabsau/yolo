@@ -286,7 +286,7 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * `cache.store` (web apps default to `redis`). `redis` provisions the shared
+     * `cache.store` (apps with tasks default to `redis`). `redis` provisions the shared
      * Valkey cluster; `file`/`database`/`array` opt out and are app-managed. Any
      * other store should be configured in the app's `.env`, not here.
      */
@@ -332,7 +332,7 @@ abstract class Command extends SymfonyCommand
         // that opts the cache out (cache.store: file) without re-pinning the
         // session driver is caught, not silently shipped pointing at no cluster.
         if (Manifest::sessionDriver() === 'redis' && Manifest::cacheStore() !== 'redis') {
-            error('yolo.yml `session.driver: redis` needs the Valkey cache (`cache.store: redis`, the web-app default) — don\'t opt the cache out.');
+            error('yolo.yml `session.driver: redis` needs the Valkey cache (`cache.store: redis`, the default) — don\'t opt the cache out.');
 
             return false;
         }

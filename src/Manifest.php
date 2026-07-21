@@ -575,15 +575,16 @@ class Manifest
     }
 
     /**
-     * The effective cache store. Web apps default to the shared Valkey cluster
-     * (`redis`) — the ephemeral per-task filesystem is broken across multiple
-     * Fargate tasks, so a working shared cache is the right default. Set
-     * `cache.store` to opt out (`file` / `database` / `array`). Non-web apps get
-     * no default.
+     * The effective cache store. Any app that runs tasks defaults to the shared
+     * Valkey cluster (`redis`) — the ephemeral per-task filesystem is broken
+     * across multiple Fargate tasks, and web-less workers lean on a shared cache
+     * just as hard (atomic locks, rate limiters, `onOneServer`). Set
+     * `cache.store` to opt out (`file` / `database` / `array`). Build-only apps
+     * (no `tasks`) run no containers, so they get no default.
      */
     public static function cacheStore(): ?string
     {
-        return static::get('cache.store', static::hasWeb() ? 'redis' : null);
+        return static::get('cache.store', static::serverGroups() !== [] ? 'redis' : null);
     }
 
     /**

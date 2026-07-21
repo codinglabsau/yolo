@@ -114,7 +114,17 @@ describe('cache + session defaults', function (): void {
         expect(Manifest::sessionDriver())->toBe('redis');
     });
 
-    it('has no cache or session default for a non-web app', function (): void {
+    it('defaults a web-less worker app to the shared redis cache but no session driver', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => false, 'queue' => ['autoscaling' => true]],
+        ]);
+
+        expect(Manifest::cacheStore())->toBe('redis');
+        expect(Manifest::sessionDriver())->toBeNull();
+    });
+
+    it('has no cache or session default for a build-only app', function (): void {
         writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 
         expect(Manifest::cacheStore())->toBeNull();

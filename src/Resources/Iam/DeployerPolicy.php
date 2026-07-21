@@ -337,7 +337,7 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
         }
 
         // When the app uses the shared Valkey cache (`cache.store: redis`, the
-        // web-app default), the build bakes REDIS_HOST by reading the cluster's
+        // default for any app with tasks), the build bakes REDIS_HOST by reading the cluster's
         // primary endpoint (ConfigureEnvAndVersionStep -> CacheCluster::endpoint()).
         // DescribeReplicationGroups has no resource-level scoping, so it's granted
         // on "*". Apps that opt out (file/database/array) never read the cluster

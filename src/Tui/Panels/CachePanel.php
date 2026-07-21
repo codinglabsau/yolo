@@ -19,7 +19,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 /**
  * The environment's shared Valkey cache — engine CPU, memory usage, connections
  * and evictions over the last hour, plus its live status and endpoint. The cache
- * is env-shared and optional (web apps default to it), so the tab shows an empty
+ * is env-shared and optional (apps with tasks default to it), so the tab shows an empty
  * state when the environment has none. Read-only.
  */
 class CachePanel implements Panel

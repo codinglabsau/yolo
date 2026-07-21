@@ -148,7 +148,7 @@ class ConfigureEnvAndVersionStep implements Step
             $defaults['FILESYSTEM_DISK'] = 's3';
         }
 
-        // Cache store: web apps default to the shared Valkey (Manifest::cacheStore).
+        // Cache store: apps with tasks default to the shared Valkey (Manifest::cacheStore).
         // Pin CACHE_STORE; when it's redis, point the driver at the YOLO-provisioned
         // cluster (read live — synced before deploy) and isolate this app on the
         // shared node with a per-app key prefix.
