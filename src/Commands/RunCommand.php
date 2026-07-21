@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Aws\Ecs;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Symfony\Component\Process\Process;
+use Symfony\Component\Process\InputStream;
 use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
 use Codinglabs\Yolo\Contracts\DeployerCommand;
 use Symfony\Component\Process\ExecutableFinder;
@@ -119,6 +120,13 @@ class RunCommand extends Command implements DeployerCommand
 
         if ($interactive && Process::isTtySupported()) {
             $process->setTty(true);
+        } else {
+            // The exec API is interactive-only, so the plugin always runs a
+            // stdin pump; a closed stdin surfaces as a spurious "Cannot perform
+            // start session: EOF" after the one-off's output. An open, never-
+            // written input stream keeps the pump quiet — the plugin exits on
+            // its own once the remote command ends.
+            $process->setInput(new InputStream());
         }
 
         return $process->run(fn ($type, string|iterable $buffer) => $this->output->write($buffer));

@@ -11,6 +11,7 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Aws\Rds\Exception\RdsException;
 use Symfony\Component\Process\Process;
+use Symfony\Component\Process\InputStream;
 use Codinglabs\Yolo\Contracts\AdminCommand;
 use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
 use Symfony\Component\Process\ExecutableFinder;
@@ -372,6 +373,11 @@ class DbCutoverCommand extends Command implements AdminCommand
             env: $this->subprocessEnv(),
             timeout: 300,
         );
+
+        // Open stdin keeps the plugin's pump from a spurious EOF failure —
+        // see RunCommand::exec(); a non-zero plugin exit here would read as a
+        // failed session and null the output.
+        $process->setInput(new InputStream());
 
         return $process->run() === 0
             ? static::cleanOutput($process->getOutput())
