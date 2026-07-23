@@ -123,7 +123,8 @@ class Helpers
      * queues by. With no `queues:` block the scope has a single un-suffixed queue at
      * its existing name (solo `yolo-{env}-{app}`, tenant `yolo-{env}-{app}-{id}`), so
      * apps that never declared tiers are unchanged; a `queues: [high, default]` block
-     * fans each scope out to `…-{scope}-high` / `…-{scope}-default`.
+     * fans each scope out to `…-{scope}-high` plus the naked `…-{scope}` (the `default`
+     * tier is Laravel's default queue, so the base name stays put).
      *
      * Provisioning (SyncQueueStep) and the worker's --queue chain (queueChain) both
      * read this, so the queues created and the queues drained can never drift.
@@ -158,20 +159,23 @@ class Helpers
     }
 
     /**
-     * The default queue a producer's un-routed jobs land on for a scope — the last
-     * tier in priority order (the base queue that sits below `high`), or the single
-     * queue when no tiers are declared. This is what a solo app pins as SQS_QUEUE.
+     * The default queue a producer's un-routed jobs land on for a scope — the `default`
+     * tier, i.e. the naked scope name (a solo app's `yolo-{env}-{app}`, a tenant's
+     * `yolo-{env}-{app}-{id}`), or the single queue when no tiers are declared. This is
+     * what a solo app pins as SQS_QUEUE, and it never changes when tiers are added.
      */
     public static function defaultQueueName(?string $scope = null): string
     {
-        $names = static::queueNames($scope);
-
-        return end($names);
+        return static::queueName($scope, 'default');
     }
 
     protected static function queueName(?string $scope, ?string $tier = null): string
     {
-        $suffix = implode('-', array_filter([$scope, $tier]));
+        // The `default` tier is Laravel's default queue — it maps to the naked scope
+        // name, so declaring a `queues:` block never renames the base queue an app
+        // already dispatches to; only the higher-priority lanes carry a `-{tier}`
+        // suffix (`…-{scope}-high`).
+        $suffix = implode('-', array_filter([$scope, $tier === 'default' ? null : $tier]));
 
         return static::keyedResourceName($suffix !== '' ? $suffix : null);
     }

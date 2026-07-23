@@ -179,20 +179,22 @@ describe('queue names', function (): void {
         expect(Helpers::queueChain('acme'))->toBe('yolo-testing-my-app-acme');
     });
 
-    it('fans each scope out over declared tiers in priority order', function (): void {
+    it('suffixes the higher tiers but leaves the default tier as the naked scope name', function (): void {
         writeManifest(['queues' => ['high', 'default']]);
 
+        // `default` is Laravel's default queue — the naked scope name, so declaring
+        // tiers only adds the `-high` lane; the base queue name is unchanged.
         expect(Helpers::queueNames())->toBe([
             'yolo-testing-my-app-high',
-            'yolo-testing-my-app-default',
+            'yolo-testing-my-app',
         ]);
         expect(Helpers::queueNames('landlord'))->toBe([
             'yolo-testing-my-app-landlord-high',
-            'yolo-testing-my-app-landlord-default',
+            'yolo-testing-my-app-landlord',
         ]);
         expect(Helpers::queueNames('acme'))->toBe([
             'yolo-testing-my-app-acme-high',
-            'yolo-testing-my-app-acme-default',
+            'yolo-testing-my-app-acme',
         ]);
     });
 
@@ -200,12 +202,13 @@ describe('queue names', function (): void {
         writeManifest(['queues' => ['high', 'default']]);
 
         expect(Helpers::queueChain('acme'))
-            ->toBe('yolo-testing-my-app-acme-high,yolo-testing-my-app-acme-default');
+            ->toBe('yolo-testing-my-app-acme-high,yolo-testing-my-app-acme');
     });
 
-    it('resolves the default queue to the base (last) tier a producer lands un-routed jobs on', function (): void {
+    it('resolves the default queue to the naked scope name a producer lands un-routed jobs on', function (): void {
         writeManifest(['queues' => ['high', 'default']]);
 
-        expect(Helpers::defaultQueueName())->toBe('yolo-testing-my-app-default');
+        expect(Helpers::defaultQueueName())->toBe('yolo-testing-my-app');
+        expect(Helpers::defaultQueueName('acme'))->toBe('yolo-testing-my-app-acme');
     });
 });

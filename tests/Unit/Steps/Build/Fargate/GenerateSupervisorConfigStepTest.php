@@ -489,9 +489,10 @@ it('chains each per-tenant program over the declared priority tiers', function (
     $config = generatedSupervisorConfig();
 
     // The comma list drains high before default — strict priority is now the
-    // intra-tenant feature, one program still isolating each tenant.
-    expect($config)->toContain('--queue=yolo-testing-my-app-landlord-high,yolo-testing-my-app-landlord-default');
-    expect($config)->toContain('--queue=yolo-testing-my-app-acme-high,yolo-testing-my-app-acme-default');
+    // intra-tenant feature, one program still isolating each tenant. The `default`
+    // tier is the naked scope queue, so the chain ends on the base tenant queue.
+    expect($config)->toContain('--queue=yolo-testing-my-app-landlord-high,yolo-testing-my-app-landlord');
+    expect($config)->toContain('--queue=yolo-testing-my-app-acme-high,yolo-testing-my-app-acme');
 });
 
 it('chains a solo worker over the declared tiers, keeping the single queue program', function (): void {
@@ -504,7 +505,7 @@ it('chains a solo worker over the declared tiers, keeping the single queue progr
     $config = generatedSupervisorConfig();
 
     expect($config)->toContain('[program:queue]');
-    expect($config)->toContain('--queue=yolo-testing-my-app-high,yolo-testing-my-app-default');
+    expect($config)->toContain('--queue=yolo-testing-my-app-high,yolo-testing-my-app');
 });
 
 it('runs a multi-tenant standalone queue under supervisord even without a co-hosted scheduler', function (): void {
