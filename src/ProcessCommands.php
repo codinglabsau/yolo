@@ -61,9 +61,19 @@ class ProcessCommands
         return $command;
     }
 
-    public static function queue(): string
+    /**
+     * The queue worker. A solo app runs the bare command against the pinned
+     * SQS_QUEUE; a multi-tenant app (and any app declaring a `queues:` block) passes
+     * an explicit `--queue=` value so one program drains one scope's queues — the
+     * per-tenant/per-tier fan-out GenerateSupervisorConfigStep builds. A comma list
+     * drains strict-priority (high before default), which is the intra-scope
+     * priority feature; fairness across scopes comes from a separate program each.
+     */
+    public static function queue(?string $queue = null): string
     {
-        return 'php artisan queue:work --tries=3 --max-time=3600';
+        $command = 'php artisan queue:work --tries=3 --max-time=3600';
+
+        return $queue === null ? $command : "{$command} --queue={$queue}";
     }
 
     /**

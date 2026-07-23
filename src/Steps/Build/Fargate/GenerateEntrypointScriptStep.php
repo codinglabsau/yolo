@@ -155,7 +155,11 @@ SH,
         }
 
         if (Manifest::hasStandaloneQueue()) {
-            $cmd = Manifest::schedulerHost() === ServerGroup::QUEUE
+            // supervisord when the queue task runs more than one process: co-hosting
+            // the scheduler (queue:work + supercronic), or multi-tenant (one worker
+            // program per tenant + landlord). A solo queue-only task is a single
+            // exec'd worker — the supervise-and-forward wrapper is its whole drain.
+            $cmd = Manifest::schedulerHost() === ServerGroup::QUEUE || Manifest::isMultitenanted()
                 ? 'supervisord -c /app/docker/supervisord.queue.conf -n'
                 : ProcessCommands::queue();
 

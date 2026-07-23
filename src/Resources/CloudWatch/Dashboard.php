@@ -248,20 +248,21 @@ class Dashboard implements Deletable
 
     /**
      * The app's SQS queue names, matching the queue steps: one for a solo app, or
-     * the landlord queue plus one per tenant for a multi-tenant app.
+     * the landlord queue plus one per tenant for a multi-tenant app — each fanned
+     * across every declared `queues:` tier so the dashboard graphs every queue the
+     * app actually provisions, not just its base queue.
      *
      * @return array<int, string>
      */
     protected static function queueNames(): array
     {
         if (Manifest::isMultitenanted()) {
-            return [
-                Helpers::keyedResourceName('landlord'),
-                ...collect(Manifest::tenants())->keys()->map(fn (string $id): string => Helpers::keyedResourceName($id))->all(),
-            ];
+            return collect(['landlord', ...array_keys(Manifest::tenants())])
+                ->flatMap(fn (string $scope): array => Helpers::queueNames($scope))
+                ->all();
         }
 
-        return [Helpers::keyedResourceName()];
+        return Helpers::queueNames();
     }
 
     /**

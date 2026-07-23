@@ -117,6 +117,66 @@ class Helpers
     }
 
     /**
+     * Every SQS queue name for a scope, one per declared tier in priority order.
+     * Scope is null for a solo app, `'landlord'` or a tenant id for a multi-tenant
+     * one — the same discriminator the sync/dashboard/status paths already key
+     * queues by. With no `queues:` block the scope has a single un-suffixed queue at
+     * its existing name (solo `yolo-{env}-{app}`, tenant `yolo-{env}-{app}-{id}`), so
+     * apps that never declared tiers are unchanged; a `queues: {high:, default:}`
+     * block fans each scope out to `…-{scope}-high` / `…-{scope}-default`.
+     *
+     * Provisioning (SyncQueueStep) and the worker's --queue chain (queueChain) both
+     * read this, so the queues created and the queues drained can never drift.
+     *
+     * @return array<int, string>
+     */
+    public static function queueNames(?string $scope = null): array
+    {
+        $tiers = Manifest::queueTiers();
+
+        if ($tiers === []) {
+            return [static::queueName($scope)];
+        }
+
+        return array_map(fn (string $tier): string => static::queueName($scope, $tier), $tiers);
+    }
+
+    /**
+     * The worker's `--queue` value for a scope: every tier for that scope in
+     * priority order, comma-joined so `queue:work` drains them strict-priority (the
+     * comma list's one-queue-at-a-time semantics, high before default). A solo app
+     * with no declared tiers returns null — the bare worker, matching the
+     * pre-`queues:` behaviour (no `--queue` flag, drains the pinned SQS_QUEUE).
+     */
+    public static function queueChain(?string $scope = null): ?string
+    {
+        if ($scope === null && Manifest::queueTiers() === []) {
+            return null;
+        }
+
+        return implode(',', static::queueNames($scope));
+    }
+
+    /**
+     * The default queue a producer's un-routed jobs land on for a scope — the last
+     * tier in priority order (the base queue that sits below `high`), or the single
+     * queue when no tiers are declared. This is what a solo app pins as SQS_QUEUE.
+     */
+    public static function defaultQueueName(?string $scope = null): string
+    {
+        $names = static::queueNames($scope);
+
+        return end($names);
+    }
+
+    protected static function queueName(?string $scope, ?string $tier = null): string
+    {
+        $suffix = implode('-', array_filter([$scope, $tier]));
+
+        return static::keyedResourceName($suffix !== '' ? $suffix : null);
+    }
+
+    /**
      * S3 bucket names live in a single global namespace shared by every AWS
      * account, so unlike other resource names they carry the account id as a
      * discriminator — without it, whichever account creates yolo-{env}-… first

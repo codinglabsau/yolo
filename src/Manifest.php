@@ -50,6 +50,7 @@ class Manifest
         'account-id', 'region',
         'domain', 'branch', 'tag', 'repository',
         'tenants.*',
+        'queues.*',
         'bucket',
         'services',
         'database',
@@ -1065,5 +1066,43 @@ class Manifest
         }
 
         return $tenants;
+    }
+
+    /**
+     * The declared SQS queue tiers, in priority order — the keys of the `queues:`
+     * block. Declaration order IS the strict-priority order the worker drains them
+     * in (a leading `high` tier is polled to empty before the next), so the map is
+     * read ordered, not sorted. An absent `queues:` block returns `[]`: the app
+     * keeps its single implicit queue at the pre-`queues:` name (Helpers::queueNames),
+     * so existing apps are never forced to migrate.
+     *
+     * Tier values are reserved for future per-queue configuration and ignored today
+     * — sensible defaults (14-day retention, the AWS-default visibility timeout) are
+     * hardcoded on the Queue resource rather than exposed as knobs no consumer needs.
+     *
+     * @return array<int, string>
+     */
+    public static function queueTiers(): array
+    {
+        $queues = static::get('queues');
+
+        if (! is_array($queues)) {
+            return [];
+        }
+
+        // The tier NAME is load-bearing — it becomes the queue's resource suffix and
+        // the worker's `--queue` value. A YAML list (`queues: [high, default]`) has
+        // no names, only indices, so array_keys would silently yield `0`/`1` and
+        // provision `…-0` / `…-1`. Priority order is already the map's declaration
+        // order, so a list is always a mistake — fail loudly rather than ship it.
+        if ($queues !== [] && array_is_list($queues)) {
+            throw new IntegrityCheckException(
+                'The manifest `queues:` block must be a map of tier name → config '
+                . '(e.g. `queues:\\n  high:\\n  default:`), not a list — the tier name becomes the '
+                . 'queue resource suffix and the worker `--queue` value.',
+            );
+        }
+
+        return array_keys($queues);
     }
 }

@@ -161,3 +161,51 @@ describe('payloadHasDifferences', function (): void {
         ))->toBeTrue();
     });
 });
+
+describe('queue names', function (): void {
+    it('is a single un-suffixed queue per scope with no queues: block', function (): void {
+        writeManifest([]);
+
+        // solo — one queue at the pre-queues: name, and no --queue chain (the bare worker)
+        expect(Helpers::queueNames())->toBe(['yolo-testing-my-app']);
+        expect(Helpers::queueChain())->toBeNull();
+        expect(Helpers::defaultQueueName())->toBe('yolo-testing-my-app');
+
+        // multi-tenant scopes keep their existing per-scope names, and a per-scope
+        // worker draining exactly that one queue
+        expect(Helpers::queueNames('landlord'))->toBe(['yolo-testing-my-app-landlord']);
+        expect(Helpers::queueChain('landlord'))->toBe('yolo-testing-my-app-landlord');
+        expect(Helpers::queueNames('acme'))->toBe(['yolo-testing-my-app-acme']);
+        expect(Helpers::queueChain('acme'))->toBe('yolo-testing-my-app-acme');
+    });
+
+    it('fans each scope out over declared tiers in priority order', function (): void {
+        writeManifest(['queues' => ['high' => null, 'default' => null]]);
+
+        expect(Helpers::queueNames())->toBe([
+            'yolo-testing-my-app-high',
+            'yolo-testing-my-app-default',
+        ]);
+        expect(Helpers::queueNames('landlord'))->toBe([
+            'yolo-testing-my-app-landlord-high',
+            'yolo-testing-my-app-landlord-default',
+        ]);
+        expect(Helpers::queueNames('acme'))->toBe([
+            'yolo-testing-my-app-acme-high',
+            'yolo-testing-my-app-acme-default',
+        ]);
+    });
+
+    it('chains the tiers comma-separated so queue:work drains them strict-priority', function (): void {
+        writeManifest(['queues' => ['high' => null, 'default' => null]]);
+
+        expect(Helpers::queueChain('acme'))
+            ->toBe('yolo-testing-my-app-acme-high,yolo-testing-my-app-acme-default');
+    });
+
+    it('resolves the default queue to the base (last) tier a producer lands un-routed jobs on', function (): void {
+        writeManifest(['queues' => ['high' => null, 'default' => null]]);
+
+        expect(Helpers::defaultQueueName())->toBe('yolo-testing-my-app-default');
+    });
+});

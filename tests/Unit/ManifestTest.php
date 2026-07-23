@@ -103,6 +103,32 @@ describe('multitenancy', function (): void {
     });
 });
 
+describe('queue tiers', function (): void {
+    it('declares no tiers without a queues: block', function (): void {
+        writeManifest([]);
+
+        expect(Manifest::queueTiers())->toBe([]);
+    });
+
+    it('reads the declared tiers in manifest (priority) order', function (): void {
+        writeManifest(['queues' => ['high' => null, 'default' => null]]);
+
+        expect(Manifest::queueTiers())->toBe(['high', 'default']);
+    });
+
+    it('accepts the queues: block through the manifest validator', function (): void {
+        writeManifest(['queues' => ['high' => null, 'default' => null]]);
+
+        expect(Manifest::unknownKeys())->toBe([]);
+    });
+
+    it('rejects a queues: list — the tier name is load-bearing, indices would provision …-0/…-1', function (): void {
+        writeManifest(['queues' => ['high', 'default']]);
+
+        expect(fn () => Manifest::queueTiers())->toThrow(IntegrityCheckException::class);
+    });
+});
+
 describe('cache + session defaults', function (): void {
     it('defaults web apps to the shared redis cache and redis sessions', function (): void {
         writeManifest([

@@ -135,7 +135,10 @@ class ConfigureEnvAndVersionStep implements Step
             $defaults['SQS_PREFIX'] = sprintf('https://sqs.%s.amazonaws.com/%s', Manifest::get('region'), Aws::accountId());
 
             if (! Manifest::isMultitenanted()) {
-                $defaults['SQS_QUEUE'] = Helpers::keyedResourceName();
+                // The default queue a producer's un-routed jobs land on — the app's
+                // single queue, or the base tier when a `queues:` block declares
+                // priority tiers (jobs explicitly ->onQueue() the higher tiers).
+                $defaults['SQS_QUEUE'] = Helpers::defaultQueueName();
             }
         } else {
             $this->ensureSyncQueueConnection($envPath);
