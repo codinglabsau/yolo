@@ -483,7 +483,7 @@ it('chains each per-tenant program over the declared priority tiers', function (
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['autoscaling' => false]],
         'tenants' => ['acme' => []],
-        'queues' => ['high' => null, 'default' => null],
+        'queues' => ['high', 'default'],
     ]);
 
     $config = generatedSupervisorConfig();
@@ -498,7 +498,7 @@ it('chains a solo worker over the declared tiers, keeping the single queue progr
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['autoscaling' => false]],
-        'queues' => ['high' => null, 'default' => null],
+        'queues' => ['high', 'default'],
     ]);
 
     $config = generatedSupervisorConfig();

@@ -1069,16 +1069,17 @@ class Manifest
     }
 
     /**
-     * The declared SQS queue tiers, in priority order — the keys of the `queues:`
-     * block. Declaration order IS the strict-priority order the worker drains them
-     * in (a leading `high` tier is polled to empty before the next), so the map is
-     * read ordered, not sorted. An absent `queues:` block returns `[]`: the app
-     * keeps its single implicit queue at the pre-`queues:` name (Helpers::queueNames),
-     * so existing apps are never forced to migrate.
+     * The declared SQS queue tiers, in priority order — a list of tier names under
+     * the `queues:` block. List order IS the strict-priority order the worker drains
+     * them in (a leading `high` tier is polled to empty before the next). An absent
+     * block returns `[]`: the app keeps its single implicit queue at the pre-`queues:`
+     * name (Helpers::queueNames), so existing apps are never forced to migrate.
      *
-     * Tier values are reserved for future per-queue configuration and ignored today
-     * — sensible defaults (14-day retention, the AWS-default visibility timeout) are
-     * hardcoded on the Queue resource rather than exposed as knobs no consumer needs.
+     * Tiers are names only. Per-queue configuration (visibility timeout, retention,
+     * alarms) isn't a knob any consumer needs yet — sensible defaults are hardcoded on
+     * the Queue resource — so a map form (`queues: {high: …}`) is rejected rather than
+     * half-supported. When real per-tier config lands it introduces the map form
+     * alongside this list, not in place of it, so the list stays valid.
      *
      * @return array<int, string>
      */
@@ -1086,23 +1087,18 @@ class Manifest
     {
         $queues = static::get('queues');
 
-        if (! is_array($queues)) {
+        if (! is_array($queues) || $queues === []) {
             return [];
         }
 
-        // The tier NAME is load-bearing — it becomes the queue's resource suffix and
-        // the worker's `--queue` value. A YAML list (`queues: [high, default]`) has
-        // no names, only indices, so array_keys would silently yield `0`/`1` and
-        // provision `…-0` / `…-1`. Priority order is already the map's declaration
-        // order, so a list is always a mistake — fail loudly rather than ship it.
-        if ($queues !== [] && array_is_list($queues)) {
+        if (! array_is_list($queues)) {
             throw new IntegrityCheckException(
-                'The manifest `queues:` block must be a map of tier name → config '
-                . '(e.g. `queues:\\n  high:\\n  default:`), not a list — the tier name becomes the '
-                . 'queue resource suffix and the worker `--queue` value.',
+                'The manifest `queues:` block must be a list of tier names in priority '
+                . "order (e.g. `queues:\n  - high\n  - default`). Per-queue configuration "
+                . 'is not supported yet, so the map form is rejected.',
             );
         }
 
-        return array_keys($queues);
+        return array_map(static fn ($tier): string => (string) $tier, $queues);
     }
 }

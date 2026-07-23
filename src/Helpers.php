@@ -122,8 +122,8 @@ class Helpers
      * one — the same discriminator the sync/dashboard/status paths already key
      * queues by. With no `queues:` block the scope has a single un-suffixed queue at
      * its existing name (solo `yolo-{env}-{app}`, tenant `yolo-{env}-{app}-{id}`), so
-     * apps that never declared tiers are unchanged; a `queues: {high:, default:}`
-     * block fans each scope out to `…-{scope}-high` / `…-{scope}-default`.
+     * apps that never declared tiers are unchanged; a `queues: [high, default]` block
+     * fans each scope out to `…-{scope}-high` / `…-{scope}-default`.
      *
      * Provisioning (SyncQueueStep) and the worker's --queue chain (queueChain) both
      * read this, so the queues created and the queues drained can never drift.

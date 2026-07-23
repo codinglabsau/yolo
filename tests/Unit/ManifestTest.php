@@ -110,20 +110,20 @@ describe('queue tiers', function (): void {
         expect(Manifest::queueTiers())->toBe([]);
     });
 
-    it('reads the declared tiers in manifest (priority) order', function (): void {
-        writeManifest(['queues' => ['high' => null, 'default' => null]]);
+    it('reads the declared tiers as a list in priority order', function (): void {
+        writeManifest(['queues' => ['high', 'default']]);
 
         expect(Manifest::queueTiers())->toBe(['high', 'default']);
     });
 
-    it('accepts the queues: block through the manifest validator', function (): void {
-        writeManifest(['queues' => ['high' => null, 'default' => null]]);
+    it('accepts the queues: list through the manifest validator', function (): void {
+        writeManifest(['queues' => ['high', 'default']]);
 
         expect(Manifest::unknownKeys())->toBe([]);
     });
 
-    it('rejects a queues: list — the tier name is load-bearing, indices would provision …-0/…-1', function (): void {
-        writeManifest(['queues' => ['high', 'default']]);
+    it('rejects a queues: map — per-queue config is not supported yet', function (): void {
+        writeManifest(['queues' => ['high' => null, 'default' => null]]);
 
         expect(fn (): array => Manifest::queueTiers())->toThrow(IntegrityCheckException::class);
     });
