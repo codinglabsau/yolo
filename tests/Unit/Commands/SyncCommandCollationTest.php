@@ -161,7 +161,22 @@ it('provisions the SQS queue and queue service for a web-less worker app with a 
         ->not->toContain(Steps\Sync\App\SyncTargetGroupStep::class);
 });
 
-it('swaps the Solo steps for Landlord + Tenant steps on a multi-tenant app', function (): void {
+it('swaps the Solo steps for Landlord + Tenant queue steps on a dedicated multi-tenant app', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tenants' => ['alpha' => []],
+        'queue-isolation' => 'dedicated',
+    ]);
+
+    $appSteps = (new SyncCommand())->scopes()['app'];
+
+    expect($appSteps)->toContain(Steps\Sync\App\Landlord\SyncQueueStep::class)
+        ->and($appSteps)->toContain(Steps\Sync\App\Tenant\SyncQueueStep::class)
+        ->and($appSteps)->not->toContain(Steps\Sync\App\Shared\SyncQueueStep::class)
+        ->and($appSteps)->not->toContain(Steps\Sync\App\Solo\SyncHostedZoneStep::class);
+});
+
+it('provisions one shared queue set on a shared multi-tenant app — the default', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tenants' => ['alpha' => []],
@@ -169,8 +184,11 @@ it('swaps the Solo steps for Landlord + Tenant steps on a multi-tenant app', fun
 
     $appSteps = (new SyncCommand())->scopes()['app'];
 
-    expect($appSteps)->toContain(Steps\Sync\App\Landlord\SyncQueueStep::class)
-        ->and($appSteps)->toContain(Steps\Sync\App\Tenant\SyncQueueStep::class)
+    // Shared is the default, so a plain multi-tenant app gets the single shared queue
+    // step, not the per-tenant landlord + tenant fan-out — and still no solo DNS.
+    expect($appSteps)->toContain(Steps\Sync\App\Shared\SyncQueueStep::class)
+        ->and($appSteps)->not->toContain(Steps\Sync\App\Landlord\SyncQueueStep::class)
+        ->and($appSteps)->not->toContain(Steps\Sync\App\Tenant\SyncQueueStep::class)
         ->and($appSteps)->not->toContain(Steps\Sync\App\Solo\SyncHostedZoneStep::class);
 });
 

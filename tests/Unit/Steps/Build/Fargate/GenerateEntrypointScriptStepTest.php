@@ -184,6 +184,23 @@ it('defaults the role to queue for a web-less worker app whose queue hosts the s
     expect($script)->not->toContain('scheduler) cmd=');
 });
 
+it('runs a multi-tenant standalone queue under supervisord even when the scheduler is its own service', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        // A solo app with this shape runs a single exec'd worker; a dedicated
+        // multi-tenant app needs supervisord to run one queue:work program per tenant,
+        // so it routes there.
+        'tasks' => ['web' => true, 'queue' => true, 'scheduler' => true],
+        'tenants' => ['acme' => []],
+        'queue-isolation' => 'dedicated',
+    ]);
+
+    $script = generatedEntrypointScript();
+
+    expect($script)->toContain("queue)     cmd='supervisord -c /app/docker/supervisord.queue.conf -n'");
+    expect($script)->not->toContain("queue)     cmd='php artisan queue:work");
+});
+
 it('forwards SIGTERM to the child and waits for a clean shutdown', function (): void {
     $script = generatedEntrypointScript();
 

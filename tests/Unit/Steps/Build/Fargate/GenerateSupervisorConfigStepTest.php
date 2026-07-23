@@ -456,6 +456,101 @@ it('does not run the ssr renderer by default', function (): void {
     expect(generatedSupervisorConfig())->not->toContain('[program:ssr]');
 });
 
+it('fans the bundled queue worker into one program per scope for a dedicated multi-tenant app', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => false]],
+        'tenants' => ['acme' => [], 'globex' => []],
+        'queue-isolation' => 'dedicated',
+    ]);
+
+    $config = generatedSupervisorConfig();
+
+    // One worker program per scope — landlord plus each tenant — so a whale tenant's
+    // backlog can't starve the others; there is no single bare `queue` program.
+    expect($config)->toContain('[program:queue_landlord]');
+    expect($config)->toContain('[program:queue_acme]');
+    expect($config)->toContain('[program:queue_globex]');
+    expect($config)->not->toContain('[program:queue]');
+
+    // Each program drains only its own scope's queue.
+    expect($config)->toContain('--queue=yolo-testing-my-app-landlord');
+    expect($config)->toContain('--queue=yolo-testing-my-app-acme');
+    expect($config)->toContain('--queue=yolo-testing-my-app-globex');
+});
+
+it('chains each per-tenant program over the declared priority tiers', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => false]],
+        'tenants' => ['acme' => []],
+        'queue-isolation' => 'dedicated',
+        'queues' => ['high', 'default'],
+    ]);
+
+    $config = generatedSupervisorConfig();
+
+    // The comma list drains high before default — strict priority is now the
+    // intra-tenant feature, one program still isolating each tenant. The `default`
+    // tier is the naked scope queue, so the chain ends on the base tenant queue.
+    expect($config)->toContain('--queue=yolo-testing-my-app-landlord-high,yolo-testing-my-app-landlord');
+    expect($config)->toContain('--queue=yolo-testing-my-app-acme-high,yolo-testing-my-app-acme');
+});
+
+it('chains a solo worker over the declared tiers, keeping the single queue program', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => false]],
+        'queues' => ['high', 'default'],
+    ]);
+
+    $config = generatedSupervisorConfig();
+
+    expect($config)->toContain('[program:queue]');
+    expect($config)->toContain('--queue=yolo-testing-my-app-high,yolo-testing-my-app');
+});
+
+it('runs one shared queue program for a shared multi-tenant app, not one per tenant', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => false]],
+        'tenants' => ['acme' => [], 'globex' => []],
+        'queue-isolation' => 'shared',
+        'queues' => ['high', 'default'],
+    ]);
+
+    $config = generatedSupervisorConfig();
+
+    // Shared collapses to the solo queue shape — a single program draining the app's
+    // own queue set (tenant rides the job payload), no per-tenant fan-out.
+    expect($config)->toContain('[program:queue]');
+    expect($config)->not->toContain('[program:queue_landlord]');
+    expect($config)->not->toContain('[program:queue_acme]');
+    expect($config)->toContain('--queue=yolo-testing-my-app-high,yolo-testing-my-app');
+});
+
+it('runs a multi-tenant standalone queue under supervisord even without a co-hosted scheduler', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        // queue and scheduler both extracted into their own services: a solo app's
+        // queue task would be a single exec'd worker, but a dedicated multi-tenant app
+        // needs supervisord to run one program per tenant.
+        'tasks' => ['web' => true, 'queue' => true, 'scheduler' => true],
+        'tenants' => ['acme' => []],
+        'queue-isolation' => 'dedicated',
+    ]);
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    $queue = file_get_contents(Paths::build('docker/supervisord.queue.conf'));
+    expect($queue)->toContain('[program:queue_landlord]');
+    expect($queue)->toContain('[program:queue_acme]');
+    // The scheduler is its own service, so it isn't in the queue container.
+    expect($queue)->not->toContain('[program:scheduler]');
+    // Standalone queue: no web server to protect, so the workers run un-niced.
+    expect($queue)->not->toContain('nice');
+});
+
 it('never bundles a saturation program — burst metrics ride the request, not a supervised loop', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',

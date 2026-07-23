@@ -4,18 +4,16 @@ declare(strict_types=1);
 
 namespace Codinglabs\Yolo\Steps\Sync\App\Tenant;
 
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Steps\TenantStep;
-use Codinglabs\Yolo\Resources\Sqs\Queue;
-use Codinglabs\Yolo\Concerns\SynchronisesResource;
+use Codinglabs\Yolo\Concerns\ProvisionsScopedQueues;
 
 class SyncQueueStep extends TenantStep
 {
-    use SynchronisesResource;
+    use ProvisionsScopedQueues;
 
     public function __invoke(array $options): StepResult
     {
-        return $this->syncResource(new Queue(Helpers::keyedResourceName($this->tenantId())), $options);
+        return $this->syncScopedQueues($this->tenantId(), $options);
     }
 }

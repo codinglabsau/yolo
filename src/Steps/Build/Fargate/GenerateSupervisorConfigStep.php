@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Steps\Build\Fargate;
 
 use RuntimeException;
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\ProcessCommands;
@@ -83,10 +84,13 @@ class GenerateSupervisorConfigStep implements Step
             $this->writeCaddyfile();
         }
 
-        // A standalone queue only needs supervisord when it co-hosts the scheduler
-        // (queue:work + supercronic = two processes). A queue-only service runs a single
-        // exec'd process — no config — so the entrypoint dispatches it directly.
-        if (Manifest::schedulerHost() === ServerGroup::QUEUE) {
+        // A standalone queue needs supervisord when it runs more than one process:
+        // when it co-hosts the scheduler (queue:work + supercronic), OR when it fans
+        // queues out per tenant (one queue:work program per tenant + landlord — a
+        // single exec'd process can't fan out). A solo or shared-queue service runs a
+        // single exec'd worker (no config), dispatched directly by the entrypoint.
+        if (Manifest::schedulerHost() === ServerGroup::QUEUE
+            || (Manifest::hasStandaloneQueue() && Manifest::fansQueuesPerTenant())) {
             $this->writeConfig('docker/supervisord.queue.conf', ServerGroup::QUEUE);
         }
 
@@ -146,14 +150,73 @@ class GenerateSupervisorConfigStep implements Step
         //              it back if it crashes, and Inertia renders client-side while it's down
         //  - scheduler supercronic firing an ephemeral schedule:run each minute (not a
         //              schedule:work daemon — the trigger halts cleanly on shutdown)
-        //  - queue     queue:work, with a longer stop wait so an in-flight job can finish
+        //  - queue     queue:work, with a longer stop wait so an in-flight job can finish.
+        //              A multi-tenant app fans this into one program per scope
+        //              (landlord + each tenant), each draining that scope's queues —
+        //              see queuePrograms(); everything else is a single 'queue' block.
         foreach (['web', 'ssr', 'scheduler', 'queue'] as $program) {
-            if (isset($graces[$program])) {
-                $blocks[] = $this->program($program, $this->command($program, $colocatesWebServer), stopwaitsecs: $graces[$program]);
+            if (! isset($graces[$program])) {
+                continue;
             }
+
+            if ($program === 'queue') {
+                foreach ($this->queuePrograms() as $name => $chain) {
+                    $blocks[] = $this->program($name, $this->queueCommand($chain, $colocatesWebServer), stopwaitsecs: $graces['queue']);
+                }
+
+                continue;
+            }
+
+            $blocks[] = $this->program($program, $this->command($program, $colocatesWebServer), stopwaitsecs: $graces[$program]);
         }
 
         return implode("\n\n", $blocks) . "\n";
+    }
+
+    /**
+     * The queue-worker program(s) for this container, as `[program name => --queue
+     * chain]`. A solo app runs one `queue` program (bare, or a tier chain when it
+     * declares `queues:`); a multi-tenant app runs one program per scope —
+     * `queue_landlord` plus `queue_<tenant>` — each draining only that scope's
+     * queues, so a whale tenant's backlog can't starve the others (the fairness the
+     * naive `--queue=t1,t2,…` comma list would lose to strict priority). Each
+     * program's chain comes from Helpers::queueChain, the same source the SQS queues
+     * are provisioned from, so the worker never polls a queue that wasn't created.
+     *
+     * @return array<string, string|null>
+     */
+    protected function queuePrograms(): array
+    {
+        // Solo and shared-queue apps run a single program draining the app's own queue
+        // set (a bare worker, or a tier chain); only a dedicated multi-tenant app fans
+        // into one program per scope.
+        if (! Manifest::fansQueuesPerTenant()) {
+            return ['queue' => Helpers::queueChain()];
+        }
+
+        $programs = ['queue_landlord' => Helpers::queueChain('landlord')];
+
+        foreach (array_keys(Manifest::tenants()) as $tenantId) {
+            $programs["queue_{$tenantId}"] = Helpers::queueChain($tenantId);
+        }
+
+        return $programs;
+    }
+
+    /**
+     * A queue program's command line: `queue:work` (with the scope's `--queue`
+     * chain) niced into the background tier when it shares the web container. Every
+     * per-scope program niced the same — they're all the queue tier — so the lookup
+     * is keyed on 'queue', not the fanned-out program name.
+     */
+    protected function queueCommand(?string $chain, bool $colocatesWebServer): string
+    {
+        $command = ProcessCommands::queue($chain);
+        $nice = $this->niceLevel('queue', $colocatesWebServer);
+
+        return $nice === null
+            ? $command
+            : sprintf('nice -n %d %s', $nice, $command);
     }
 
     /**

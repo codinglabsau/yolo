@@ -403,20 +403,31 @@ trait RendersServiceStatus
 
     /**
      * The app's queue names, keyed by a short label: `queue` for a solo app, or
-     * `landlord` plus each tenant id for a multi-tenant one.
+     * `landlord` plus each tenant id for a multi-tenant one. When a `queues:` block
+     * declares priority tiers each scope's label carries the tier suffix
+     * (`landlord-high`, `landlord-default`, …) so the status table lists every queue.
      *
      * @return array<string, string>
      */
     protected static function queueNames(): array
     {
-        if (! Manifest::isMultitenanted()) {
-            return ['queue' => Helpers::keyedResourceName()];
+        if (Manifest::fansQueuesPerTenant()) {
+            $scopes = ['landlord' => 'landlord'];
+
+            foreach (array_keys(Manifest::tenants()) as $tenantId) {
+                $scopes[$tenantId] = $tenantId;
+            }
+        } else {
+            $scopes = ['queue' => null];
         }
 
-        $names = ['landlord' => Helpers::keyedResourceName('landlord')];
+        $tiers = Manifest::queueTiers();
+        $names = [];
 
-        foreach (array_keys(Manifest::tenants()) as $tenantId) {
-            $names[$tenantId] = Helpers::keyedResourceName($tenantId);
+        foreach ($scopes as $label => $scope) {
+            foreach (Helpers::queueNames($scope) as $index => $name) {
+                $names[$tiers === [] ? $label : "{$label}-{$tiers[$index]}"] = $name;
+            }
         }
 
         return $names;

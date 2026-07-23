@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServerGroup;
+use Codinglabs\Yolo\Enums\QueueIsolation;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 describe('has and get', function (): void {
@@ -100,6 +101,67 @@ describe('multitenancy', function (): void {
         $tenants = Manifest::tenants();
 
         expect($tenants['au']['apex'])->toBe('au.example.com');
+    });
+});
+
+describe('queue tiers', function (): void {
+    it('declares no tiers without a queues: block', function (): void {
+        writeManifest([]);
+
+        expect(Manifest::queueTiers())->toBe([]);
+    });
+
+    it('reads the declared tiers as a list in priority order', function (): void {
+        writeManifest(['queues' => ['high', 'default']]);
+
+        expect(Manifest::queueTiers())->toBe(['high', 'default']);
+    });
+
+    it('accepts the queues: list through the manifest validator', function (): void {
+        writeManifest(['queues' => ['high', 'default']]);
+
+        expect(Manifest::unknownKeys())->toBe([]);
+    });
+
+    it('rejects a queues: map — per-queue config is not supported yet', function (): void {
+        writeManifest(['queues' => ['high' => null, 'default' => null]]);
+
+        expect(fn (): array => Manifest::queueTiers())->toThrow(IntegrityCheckException::class);
+    });
+});
+
+describe('queue isolation', function (): void {
+    it('defaults a multi-tenant app to shared queues', function (): void {
+        writeManifest(['tenants' => ['acme' => [], 'globex' => []]]);
+
+        expect(Manifest::queueIsolation())->toBe(QueueIsolation::Shared);
+        // shared collapses to the solo queue shape — the layer does not fan per tenant
+        expect(Manifest::fansQueuesPerTenant())->toBeFalse();
+    });
+
+    it('fans queues per tenant when isolation is dedicated', function (): void {
+        writeManifest([
+            'tenants' => ['acme' => [], 'globex' => []],
+            'queue-isolation' => 'dedicated',
+        ]);
+
+        expect(Manifest::queueIsolation())->toBe(QueueIsolation::Dedicated);
+        expect(Manifest::fansQueuesPerTenant())->toBeTrue();
+    });
+
+    it('never fans queues per tenant for a solo app', function (): void {
+        writeManifest([]);
+
+        expect(Manifest::fansQueuesPerTenant())->toBeFalse();
+    });
+
+    it('hard-fails on an unknown isolation value', function (): void {
+        writeManifest([
+            'tenants' => ['acme' => []],
+            'queue-isolation' => 'sometimes',
+        ]);
+
+        expect(fn (): QueueIsolation => Manifest::queueIsolation())->toThrow(IntegrityCheckException::class);
     });
 });
 

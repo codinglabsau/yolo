@@ -125,17 +125,22 @@ class ConfigureEnvAndVersionStep implements Step
         // tasks.queue, or a headless worker — point the connection at the SQS queue
         // YOLO provisions (it owns the name + URL so the app can't target the wrong
         // one; the task role carries access), so producers (web requests, scheduled
-        // jobs) and the worker share one queue. Solo pins SQS_QUEUE; multitenancy
-        // resolves the per-tenant queue at runtime, so it isn't pinned. With no worker
-        // anywhere (tasks.queue: false, or a worker-less app) jobs would pile into a
-        // queue nothing drains, so force `sync` (run inline at dispatch) — and ENFORCE
-        // it: a non-sync override would silently break, so hard-fail rather than ship.
+        // jobs) and the worker share one queue. Solo and shared-queue apps pin
+        // SQS_QUEUE; a dedicated multi-tenant app resolves the per-tenant queue at
+        // runtime, so it isn't pinned. With no worker anywhere (tasks.queue: false, or
+        // a worker-less app) jobs would pile into a queue nothing drains, so force
+        // `sync` (run inline at dispatch) — and ENFORCE it: a non-sync override would
+        // silently break, so hard-fail rather than ship.
         if (Manifest::queueHost() instanceof ServerGroup) {
             $defaults['QUEUE_CONNECTION'] = 'sqs';
             $defaults['SQS_PREFIX'] = sprintf('https://sqs.%s.amazonaws.com/%s', Manifest::get('region'), Aws::accountId());
 
-            if (! Manifest::isMultitenanted()) {
-                $defaults['SQS_QUEUE'] = Helpers::keyedResourceName();
+            if (! Manifest::fansQueuesPerTenant()) {
+                // The default queue a producer's un-routed jobs land on — the app's
+                // (or a shared multi-tenant app's) base queue, or the higher tier a job
+                // explicitly ->onQueue()s. A dedicated multi-tenant app derives the
+                // per-tenant queue at runtime instead, so nothing is pinned there.
+                $defaults['SQS_QUEUE'] = Helpers::defaultQueueName();
             }
         } else {
             $this->ensureSyncQueueConnection($envPath);

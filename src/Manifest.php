@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Aws\Route53;
 use Symfony\Component\Yaml\Yaml;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServerGroup;
+use Codinglabs\Yolo\Enums\QueueIsolation;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 class Manifest
@@ -50,6 +51,8 @@ class Manifest
         'account-id', 'region',
         'domain', 'branch', 'tag', 'repository',
         'tenants.*',
+        'queues.*',
+        'queue-isolation',
         'bucket',
         'services',
         'database',
@@ -1012,6 +1015,35 @@ class Manifest
         return ! empty(static::get('tenants'));
     }
 
+    /**
+     * How a multi-tenant app's queues fan out — `shared` (one queue set for all
+     * tenants, the default) or `dedicated` (a queue set and worker program per tenant).
+     * Solo apps have a single scope, so the knob is meaningless for them
+     * (ensureQueueIsolationValid rejects it there). An unknown value hard-fails rather
+     * than silently falling back.
+     */
+    public static function queueIsolation(): QueueIsolation
+    {
+        $value = static::get('queue-isolation', QueueIsolation::Shared->value);
+
+        return QueueIsolation::tryFrom($value) ?? throw new IntegrityCheckException(sprintf(
+            'Unknown queue-isolation "%s" — expected "shared" or "dedicated".',
+            $value,
+        ));
+    }
+
+    /**
+     * Whether the queue layer fans out per tenant — one SQS queue set and one worker
+     * program per tenant. True only for a multi-tenant app that opts into the
+     * `dedicated` strategy; by default a multi-tenant app is `shared` — one queue set
+     * at the app name, the tenant carried in the job payload — so every per-tenant
+     * queue branch keys off this rather than isMultitenanted() alone.
+     */
+    public static function fansQueuesPerTenant(): bool
+    {
+        return static::isMultitenanted() && static::queueIsolation() === QueueIsolation::Dedicated;
+    }
+
     public static function isHeadless(): bool
     {
         if (static::has('domain')) {
@@ -1065,5 +1097,39 @@ class Manifest
         }
 
         return $tenants;
+    }
+
+    /**
+     * The declared SQS queue tiers, in priority order — a list of tier names under
+     * the `queues:` block. List order IS the strict-priority order the worker drains
+     * them in (a leading `high` tier is polled to empty before the next). An absent
+     * block returns `[]`: the app runs a single queue at its own name
+     * (Helpers::queueNames).
+     *
+     * Tiers are names only. Per-queue configuration (visibility timeout, retention,
+     * alarms) isn't a knob any consumer needs yet — sensible defaults are hardcoded on
+     * the Queue resource — so a map form (`queues: {high: …}`) is rejected rather than
+     * half-supported. When real per-tier config lands it introduces the map form
+     * alongside this list, not in place of it, so the list stays valid.
+     *
+     * @return array<int, string>
+     */
+    public static function queueTiers(): array
+    {
+        $queues = static::get('queues');
+
+        if (! is_array($queues) || $queues === []) {
+            return [];
+        }
+
+        if (! array_is_list($queues)) {
+            throw new IntegrityCheckException(
+                'The manifest `queues:` block must be a list of tier names in priority '
+                . "order (e.g. `queues:\n  - high\n  - default`). Per-queue configuration "
+                . 'is not supported yet, so the map form is rejected.',
+            );
+        }
+
+        return array_map(static fn ($tier): string => (string) $tier, $queues);
     }
 }
