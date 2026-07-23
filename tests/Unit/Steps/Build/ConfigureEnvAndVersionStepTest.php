@@ -270,7 +270,7 @@ it('hard-fails when QUEUE_CONNECTION is non-sync but no worker runs', function (
         ->toThrow(IntegrityCheckException::class);
 });
 
-it('does not pin SQS_QUEUE for a multitenant app (worker resolves it per tenant)', function (): void {
+it('does not pin SQS_QUEUE for a dedicated multitenant app (worker resolves it per tenant)', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => true],
@@ -290,6 +290,32 @@ it('does not pin SQS_QUEUE for a multitenant app (worker resolves it per tenant)
 
     expect($env)->toContain('QUEUE_CONNECTION=sqs');
     expect($env)->not->toContain('SQS_QUEUE=');
+});
+
+it('pins SQS_QUEUE to the shared queue for a shared multitenant app', function (): void {
+    // Shared collapses to the solo queue shape: one queue at the app name that every
+    // tenant's jobs land on (the tenant rides the payload), so the base queue is pinned
+    // exactly like a solo app — the per-tenant runtime resolution is what shared drops.
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => true],
+        'tenants' => ['acme' => ['domain' => 'acme.test']],
+        'queue-isolation' => 'shared',
+    ]);
+
+    if (! is_dir(Paths::build())) {
+        mkdir(Paths::build(), 0755, true);
+    }
+    if (file_exists(Paths::build('.env.testing'))) {
+        unlink(Paths::build('.env.testing'));
+    }
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('QUEUE_CONNECTION=sqs');
+    expect($env)->toContain('SQS_QUEUE=yolo-testing-my-app');
 });
 
 it('respects an AWS_BUCKET already set in the .env', function (): void {

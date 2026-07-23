@@ -464,3 +464,36 @@ it('rejects the reserved app name `services` — it collides with the env servic
 
     expect(test()->promptOutput->fetch())->toContain('reserved');
 });
+
+it('bails when queue-isolation is set on a solo app', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'queue-isolation' => 'shared',
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    expect(test()->promptOutput->fetch())->toContain('queue-isolation');
+});
+
+it('bails on an unknown queue-isolation value', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tenants' => ['acme' => []],
+        'queue-isolation' => 'sometimes',
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    expect(test()->promptOutput->fetch())->toContain('queue-isolation');
+});
+
+it('passes for a shared multi-tenant app', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tenants' => ['acme' => []],
+        'queue-isolation' => 'shared',
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+});

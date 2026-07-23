@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Aws\Route53;
 use Symfony\Component\Yaml\Yaml;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServerGroup;
+use Codinglabs\Yolo\Enums\QueueIsolation;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 class Manifest
@@ -51,6 +52,7 @@ class Manifest
         'domain', 'branch', 'tag', 'repository',
         'tenants.*',
         'queues.*',
+        'queue-isolation',
         'bucket',
         'services',
         'database',
@@ -1011,6 +1013,34 @@ class Manifest
     public static function isMultitenanted(): bool
     {
         return ! empty(static::get('tenants'));
+    }
+
+    /**
+     * How a multi-tenant app's queues fan out — `dedicated` (per-tenant, the default)
+     * or `shared` (one queue set for all tenants). Solo apps have a single scope, so
+     * the knob is meaningless for them (ensureQueueIsolationValid rejects it there).
+     * An unknown value hard-fails rather than silently falling back.
+     */
+    public static function queueIsolation(): QueueIsolation
+    {
+        $value = static::get('queue-isolation', QueueIsolation::Dedicated->value);
+
+        return QueueIsolation::tryFrom($value) ?? throw new IntegrityCheckException(sprintf(
+            'Unknown queue-isolation "%s" — expected "dedicated" or "shared".',
+            $value,
+        ));
+    }
+
+    /**
+     * Whether the queue layer fans out per tenant — one SQS queue set and one worker
+     * program per tenant. True only for a multi-tenant app on the `dedicated` strategy;
+     * a `shared` multi-tenant app collapses to the solo queue shape (one queue set, the
+     * tenant carried in the job payload), so every per-tenant queue branch keys off
+     * this rather than isMultitenanted() alone.
+     */
+    public static function fansQueuesPerTenant(): bool
+    {
+        return static::isMultitenanted() && static::queueIsolation() === QueueIsolation::Dedicated;
     }
 
     public static function isHeadless(): bool

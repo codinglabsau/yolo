@@ -411,7 +411,7 @@ trait RendersServiceStatus
      */
     protected static function queueNames(): array
     {
-        if (Manifest::isMultitenanted()) {
+        if (Manifest::fansQueuesPerTenant()) {
             $scopes = ['landlord' => 'landlord'];
 
             foreach (array_keys(Manifest::tenants()) as $tenantId) {

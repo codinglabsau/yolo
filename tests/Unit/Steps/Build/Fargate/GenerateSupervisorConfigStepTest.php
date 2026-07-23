@@ -508,6 +508,25 @@ it('chains a solo worker over the declared tiers, keeping the single queue progr
     expect($config)->toContain('--queue=yolo-testing-my-app-high,yolo-testing-my-app');
 });
 
+it('runs one shared queue program for a shared multi-tenant app, not one per tenant', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => false]],
+        'tenants' => ['acme' => [], 'globex' => []],
+        'queue-isolation' => 'shared',
+        'queues' => ['high', 'default'],
+    ]);
+
+    $config = generatedSupervisorConfig();
+
+    // Shared collapses to the solo queue shape — a single program draining the app's
+    // own queue set (tenant rides the job payload), no per-tenant fan-out.
+    expect($config)->toContain('[program:queue]');
+    expect($config)->not->toContain('[program:queue_landlord]');
+    expect($config)->not->toContain('[program:queue_acme]');
+    expect($config)->toContain('--queue=yolo-testing-my-app-high,yolo-testing-my-app');
+});
+
 it('runs a multi-tenant standalone queue under supervisord even without a co-hosted scheduler', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',

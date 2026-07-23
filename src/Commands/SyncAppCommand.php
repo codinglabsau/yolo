@@ -163,12 +163,19 @@ class SyncAppCommand extends SyncSteppedCommand
                 // cert/DNS + queues — runs before Fargate so the SSL certificate
                 // exists before the HTTPS listener that needs it. Solo gets an
                 // env-level apex zone + cert; multi-tenant has none (certs attach
-                // per tenant via SNI), so it fans out landlord + per-tenant queues.
+                // per tenant via SNI). A `dedicated` multi-tenant app fans queues out
+                // landlord + per-tenant; a `shared` one provisions a single queue set
+                // at the app name (the solo shape), matching the fansQueuesPerTenant()
+                // gate its worker programs key off.
                 ...Manifest::isMultitenanted()
-                    ? [
-                        Steps\Sync\App\Landlord\SyncQueueStep::class,
-                        Steps\Sync\App\Tenant\SyncQueueStep::class,
-                    ]
+                    ? (Manifest::fansQueuesPerTenant()
+                        ? [
+                            Steps\Sync\App\Landlord\SyncQueueStep::class,
+                            Steps\Sync\App\Tenant\SyncQueueStep::class,
+                        ]
+                        : [
+                            Steps\Sync\App\Shared\SyncQueueStep::class,
+                        ])
                     : [
                         Steps\Sync\App\Solo\SyncHostedZoneStep::class,
                         Steps\Sync\App\Solo\SyncSslCertificateStep::class,

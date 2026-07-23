@@ -85,12 +85,12 @@ class GenerateSupervisorConfigStep implements Step
         }
 
         // A standalone queue needs supervisord when it runs more than one process:
-        // when it co-hosts the scheduler (queue:work + supercronic), OR when it's
-        // multi-tenant (one queue:work program per tenant + landlord — a single
-        // exec'd process can't fan out). A solo queue-only service stays a single
-        // exec'd process (no config), dispatched directly by the entrypoint.
+        // when it co-hosts the scheduler (queue:work + supercronic), OR when it fans
+        // queues out per tenant (one queue:work program per tenant + landlord — a
+        // single exec'd process can't fan out). A solo or shared-queue service runs a
+        // single exec'd worker (no config), dispatched directly by the entrypoint.
         if (Manifest::schedulerHost() === ServerGroup::QUEUE
-            || (Manifest::hasStandaloneQueue() && Manifest::isMultitenanted())) {
+            || (Manifest::hasStandaloneQueue() && Manifest::fansQueuesPerTenant())) {
             $this->writeConfig('docker/supervisord.queue.conf', ServerGroup::QUEUE);
         }
 
@@ -187,7 +187,10 @@ class GenerateSupervisorConfigStep implements Step
      */
     protected function queuePrograms(): array
     {
-        if (! Manifest::isMultitenanted()) {
+        // Solo and shared-queue apps run a single program draining the app's own queue
+        // set (a bare worker, or a tier chain); only a dedicated multi-tenant app fans
+        // into one program per scope.
+        if (! Manifest::fansQueuesPerTenant()) {
             return ['queue' => Helpers::queueChain()];
         }
 

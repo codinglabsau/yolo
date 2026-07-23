@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServerGroup;
+use Codinglabs\Yolo\Enums\QueueIsolation;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 describe('has and get', function (): void {
@@ -126,6 +127,41 @@ describe('queue tiers', function (): void {
         writeManifest(['queues' => ['high' => null, 'default' => null]]);
 
         expect(fn (): array => Manifest::queueTiers())->toThrow(IntegrityCheckException::class);
+    });
+});
+
+describe('queue isolation', function (): void {
+    it('defaults a multi-tenant app to dedicated per-tenant queues', function (): void {
+        writeManifest(['tenants' => ['acme' => [], 'globex' => []]]);
+
+        expect(Manifest::queueIsolation())->toBe(QueueIsolation::Dedicated);
+        expect(Manifest::fansQueuesPerTenant())->toBeTrue();
+    });
+
+    it('shares queues across tenants when isolation is shared', function (): void {
+        writeManifest([
+            'tenants' => ['acme' => [], 'globex' => []],
+            'queue-isolation' => 'shared',
+        ]);
+
+        expect(Manifest::queueIsolation())->toBe(QueueIsolation::Shared);
+        // shared collapses to the solo queue shape — the layer does not fan per tenant
+        expect(Manifest::fansQueuesPerTenant())->toBeFalse();
+    });
+
+    it('never fans queues per tenant for a solo app', function (): void {
+        writeManifest([]);
+
+        expect(Manifest::fansQueuesPerTenant())->toBeFalse();
+    });
+
+    it('hard-fails on an unknown isolation value', function (): void {
+        writeManifest([
+            'tenants' => ['acme' => []],
+            'queue-isolation' => 'sometimes',
+        ]);
+
+        expect(fn (): QueueIsolation => Manifest::queueIsolation())->toThrow(IntegrityCheckException::class);
     });
 });
 

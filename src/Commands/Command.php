@@ -26,6 +26,7 @@ use Codinglabs\Yolo\Resources\Iam\AppObserverRole;
 use Symfony\Component\Console\Input\InputInterface;
 use Codinglabs\Yolo\Contracts\RunsOnBaseCredentials;
 use Symfony\Component\Console\Output\OutputInterface;
+use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Codinglabs\Yolo\Concerns\ChecksIfCommandsShouldBeRunning;
 use Symfony\Component\Console\Command\Command as SymfonyCommand;
 
@@ -155,7 +156,37 @@ abstract class Command extends SymfonyCommand
             && $this->ensureTasksRunnable()
             && $this->ensureWebReachable()
             && $this->ensureAutoscalingDeclared()
-            && $this->ensureSchedulerHostNotScaleToZero();
+            && $this->ensureSchedulerHostNotScaleToZero()
+            && $this->ensureQueueIsolationValid();
+    }
+
+    /**
+     * `queue-isolation` (`dedicated` | `shared`) only means something for a
+     * multi-tenant app — it decides whether the queue layer fans out per tenant. On a
+     * solo app there's a single scope and nothing to isolate, so the key is refused
+     * rather than silently ignored. Manifest::queueIsolation() validates the value.
+     */
+    protected function ensureQueueIsolationValid(): bool
+    {
+        if (! Manifest::has('queue-isolation')) {
+            return true;
+        }
+
+        if (! Manifest::isMultitenanted()) {
+            error('yolo.yml declares `queue-isolation` but no `tenants` — the strategy only applies to a multi-tenant app. Remove it, or declare tenants.');
+
+            return false;
+        }
+
+        try {
+            Manifest::queueIsolation();
+        } catch (IntegrityCheckException $e) {
+            error($e->getMessage());
+
+            return false;
+        }
+
+        return true;
     }
 
     /**

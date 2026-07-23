@@ -256,7 +256,7 @@ class Dashboard implements Deletable
      */
     protected static function queueNames(): array
     {
-        if (Manifest::isMultitenanted()) {
+        if (Manifest::fansQueuesPerTenant()) {
             return collect(['landlord', ...array_keys(Manifest::tenants())])
                 ->flatMap(fn (string $scope): array => Helpers::queueNames($scope))
                 ->all();
