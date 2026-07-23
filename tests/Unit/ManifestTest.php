@@ -125,7 +125,7 @@ describe('queue tiers', function (): void {
     it('rejects a queues: list — the tier name is load-bearing, indices would provision …-0/…-1', function (): void {
         writeManifest(['queues' => ['high', 'default']]);
 
-        expect(fn () => Manifest::queueTiers())->toThrow(IntegrityCheckException::class);
+        expect(fn (): array => Manifest::queueTiers())->toThrow(IntegrityCheckException::class);
     });
 });
 
