@@ -131,22 +131,22 @@ describe('queue tiers', function (): void {
 });
 
 describe('queue isolation', function (): void {
-    it('defaults a multi-tenant app to dedicated per-tenant queues', function (): void {
+    it('defaults a multi-tenant app to shared queues', function (): void {
         writeManifest(['tenants' => ['acme' => [], 'globex' => []]]);
-
-        expect(Manifest::queueIsolation())->toBe(QueueIsolation::Dedicated);
-        expect(Manifest::fansQueuesPerTenant())->toBeTrue();
-    });
-
-    it('shares queues across tenants when isolation is shared', function (): void {
-        writeManifest([
-            'tenants' => ['acme' => [], 'globex' => []],
-            'queue-isolation' => 'shared',
-        ]);
 
         expect(Manifest::queueIsolation())->toBe(QueueIsolation::Shared);
         // shared collapses to the solo queue shape — the layer does not fan per tenant
         expect(Manifest::fansQueuesPerTenant())->toBeFalse();
+    });
+
+    it('fans queues per tenant when isolation is dedicated', function (): void {
+        writeManifest([
+            'tenants' => ['acme' => [], 'globex' => []],
+            'queue-isolation' => 'dedicated',
+        ]);
+
+        expect(Manifest::queueIsolation())->toBe(QueueIsolation::Dedicated);
+        expect(Manifest::fansQueuesPerTenant())->toBeTrue();
     });
 
     it('never fans queues per tenant for a solo app', function (): void {

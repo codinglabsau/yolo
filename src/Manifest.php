@@ -1016,27 +1016,28 @@ class Manifest
     }
 
     /**
-     * How a multi-tenant app's queues fan out — `dedicated` (per-tenant, the default)
-     * or `shared` (one queue set for all tenants). Solo apps have a single scope, so
-     * the knob is meaningless for them (ensureQueueIsolationValid rejects it there).
-     * An unknown value hard-fails rather than silently falling back.
+     * How a multi-tenant app's queues fan out — `shared` (one queue set for all
+     * tenants, the default) or `dedicated` (a queue set and worker program per tenant).
+     * Solo apps have a single scope, so the knob is meaningless for them
+     * (ensureQueueIsolationValid rejects it there). An unknown value hard-fails rather
+     * than silently falling back.
      */
     public static function queueIsolation(): QueueIsolation
     {
-        $value = static::get('queue-isolation', QueueIsolation::Dedicated->value);
+        $value = static::get('queue-isolation', QueueIsolation::Shared->value);
 
         return QueueIsolation::tryFrom($value) ?? throw new IntegrityCheckException(sprintf(
-            'Unknown queue-isolation "%s" — expected "dedicated" or "shared".',
+            'Unknown queue-isolation "%s" — expected "shared" or "dedicated".',
             $value,
         ));
     }
 
     /**
      * Whether the queue layer fans out per tenant — one SQS queue set and one worker
-     * program per tenant. True only for a multi-tenant app on the `dedicated` strategy;
-     * a `shared` multi-tenant app collapses to the solo queue shape (one queue set, the
-     * tenant carried in the job payload), so every per-tenant queue branch keys off
-     * this rather than isMultitenanted() alone.
+     * program per tenant. True only for a multi-tenant app that opts into the
+     * `dedicated` strategy; by default a multi-tenant app is `shared` — one queue set
+     * at the app name, the tenant carried in the job payload — so every per-tenant
+     * queue branch keys off this rather than isMultitenanted() alone.
      */
     public static function fansQueuesPerTenant(): bool
     {
@@ -1102,8 +1103,8 @@ class Manifest
      * The declared SQS queue tiers, in priority order — a list of tier names under
      * the `queues:` block. List order IS the strict-priority order the worker drains
      * them in (a leading `high` tier is polled to empty before the next). An absent
-     * block returns `[]`: the app keeps its single implicit queue at the pre-`queues:`
-     * name (Helpers::queueNames), so existing apps are never forced to migrate.
+     * block returns `[]`: the app runs a single queue at its own name
+     * (Helpers::queueNames).
      *
      * Tiers are names only. Per-queue configuration (visibility timeout, retention,
      * alarms) isn't a knob any consumer needs yet — sensible defaults are hardcoded on

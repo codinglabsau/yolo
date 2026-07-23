@@ -275,6 +275,7 @@ it('does not pin SQS_QUEUE for a dedicated multitenant app (worker resolves it p
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => true],
         'tenants' => ['acme' => ['domain' => 'acme.test']],
+        'queue-isolation' => 'dedicated',
     ]);
 
     if (! is_dir(Paths::build())) {

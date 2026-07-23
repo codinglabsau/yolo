@@ -456,11 +456,12 @@ it('does not run the ssr renderer by default', function (): void {
     expect(generatedSupervisorConfig())->not->toContain('[program:ssr]');
 });
 
-it('fans the bundled queue worker into one program per scope for a multi-tenant app', function (): void {
+it('fans the bundled queue worker into one program per scope for a dedicated multi-tenant app', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['autoscaling' => false]],
         'tenants' => ['acme' => [], 'globex' => []],
+        'queue-isolation' => 'dedicated',
     ]);
 
     $config = generatedSupervisorConfig();
@@ -483,6 +484,7 @@ it('chains each per-tenant program over the declared priority tiers', function (
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['autoscaling' => false]],
         'tenants' => ['acme' => []],
+        'queue-isolation' => 'dedicated',
         'queues' => ['high', 'default'],
     ]);
 
@@ -531,10 +533,11 @@ it('runs a multi-tenant standalone queue under supervisord even without a co-hos
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         // queue and scheduler both extracted into their own services: a solo app's
-        // queue task would be a single exec'd worker, but multi-tenancy needs
-        // supervisord to run one program per tenant.
+        // queue task would be a single exec'd worker, but a dedicated multi-tenant app
+        // needs supervisord to run one program per tenant.
         'tasks' => ['web' => true, 'queue' => true, 'scheduler' => true],
         'tenants' => ['acme' => []],
+        'queue-isolation' => 'dedicated',
     ]);
 
     (new GenerateSupervisorConfigStep('testing'))();

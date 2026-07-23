@@ -120,11 +120,10 @@ class Helpers
      * Every SQS queue name for a scope, one per declared tier in priority order.
      * Scope is null for a solo app, `'landlord'` or a tenant id for a multi-tenant
      * one — the same discriminator the sync/dashboard/status paths already key
-     * queues by. With no `queues:` block the scope has a single un-suffixed queue at
-     * its existing name (solo `yolo-{env}-{app}`, tenant `yolo-{env}-{app}-{id}`), so
-     * apps that never declared tiers are unchanged; a `queues: [high, default]` block
-     * fans each scope out to `…-{scope}-high` plus the naked `…-{scope}` (the `default`
-     * tier is Laravel's default queue, so the base name stays put).
+     * queues by. With no `queues:` block the scope has a single un-suffixed queue
+     * (solo `yolo-{env}-{app}`, tenant `yolo-{env}-{app}-{id}`); a `queues: [high,
+     * default]` block fans each scope out to `…-{scope}-high` plus the naked `…-{scope}`
+     * (the `default` tier is Laravel's default queue, so it takes the base scope name).
      *
      * Provisioning (SyncQueueStep) and the worker's --queue chain (queueChain) both
      * read this, so the queues created and the queues drained can never drift.
@@ -172,9 +171,8 @@ class Helpers
     protected static function queueName(?string $scope, ?string $tier = null): string
     {
         // The `default` tier is Laravel's default queue — it maps to the naked scope
-        // name, so declaring a `queues:` block never renames the base queue an app
-        // already dispatches to; only the higher-priority lanes carry a `-{tier}`
-        // suffix (`…-{scope}-high`).
+        // name (the queue an app dispatches un-routed jobs to); only the
+        // higher-priority lanes carry a `-{tier}` suffix (`…-{scope}-high`).
         $suffix = implode('-', array_filter([$scope, $tier === 'default' ? null : $tier]));
 
         return static::keyedResourceName($suffix !== '' ? $suffix : null);

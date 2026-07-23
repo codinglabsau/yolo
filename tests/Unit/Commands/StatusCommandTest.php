@@ -233,7 +233,12 @@ it('lists the solo queue, or landlord + tenants when multi-tenant', function ():
     writeManifest([]);
     expect($probe->names())->toBe(['queue' => 'yolo-testing-my-app']);
 
+    // A shared multi-tenant app (the default) shows the one shared queue.
     writeManifest(['tenants' => ['acme' => [], 'globex' => []]]);
+    expect($probe->names())->toBe(['queue' => 'yolo-testing-my-app']);
+
+    // A dedicated one shows the landlord queue plus one per tenant.
+    writeManifest(['tenants' => ['acme' => [], 'globex' => []], 'queue-isolation' => 'dedicated']);
     expect($probe->names())->toBe([
         'landlord' => 'yolo-testing-my-app-landlord',
         'acme' => 'yolo-testing-my-app-acme',
