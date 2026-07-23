@@ -10,6 +10,7 @@ use Codinglabs\Yolo\Services\Typesense;
 use Codinglabs\Yolo\Resources\Ecs\ServicesCluster;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncTypesenseNodesStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\BuildTypesenseImageStep;
+use Codinglabs\Yolo\Steps\Sync\Environment\SyncSearchRecordSetStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncServicesClusterStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncSearchCertificateStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncSearchTargetGroupStep;
@@ -141,18 +142,22 @@ it('tears the cluster down once the offer is removed from the env manifest', fun
     expect(array_column($ecsCaptured, 'name'))->not->toContain('DeleteCluster');
 });
 
-it('wires the search ingress (target group, cert, listener rule) before the load-balanced nodes', function (): void {
+it('wires the search ingress (target group, cert, listener rule, DNS) before the load-balanced nodes', function (): void {
     // A node is a load-balanced ECS service: ECS CreateService rejects a target
     // group that isn't yet associated with the ALB, and the association only
     // exists once the listener rule forwards to it. So the target group, the cert
     // (which also bootstraps the shared :443 listener) and the rule must all
     // precede the nodes — this exact ordering shipped a CreateService crash once.
+    // The Route 53 alias must precede them too: the nodes step's roll gate
+    // probes the public search host, so the host has to resolve before any
+    // node is rolled.
     $steps = (new Typesense())->environmentSteps();
     $index = fn (string $step): int => (int) array_search($step, $steps, true);
 
     expect($index(SyncSearchTargetGroupStep::class))->toBeLessThan($index(SyncSearchCertificateStep::class));
     expect($index(SyncSearchCertificateStep::class))->toBeLessThan($index(SyncSearchListenerRuleStep::class));
-    expect($index(SyncSearchListenerRuleStep::class))->toBeLessThan($index(SyncTypesenseNodesStep::class));
+    expect($index(SyncSearchListenerRuleStep::class))->toBeLessThan($index(SyncSearchRecordSetStep::class));
+    expect($index(SyncSearchRecordSetStep::class))->toBeLessThan($index(SyncTypesenseNodesStep::class));
 });
 
 it('defers the missing nodes until the search target group is attached to a load balancer', function (): void {
