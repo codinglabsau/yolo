@@ -49,7 +49,7 @@ class Manifest
      */
     protected const ALLOWED_ENVIRONMENT_KEYS = [
         'account-id', 'region',
-        'domain', 'branch', 'tag', 'repository',
+        'domain', 'wildcard-subdomains', 'branch', 'tag', 'repository',
         'tenants.*',
         'queues.*',
         'queue-isolation',
@@ -946,6 +946,53 @@ class Manifest
         }
 
         return static::deriveApex((string) static::get('domain'));
+    }
+
+    /**
+     * Whether every subdomain of the app's own `domain` is served by the app —
+     * one wildcard listener-rule host and one `*.{domain}` alias record instead
+     * of a resource per subdomain, so a multi-tenant app can bring a tenant live
+     * on a database insert with no infrastructure run.
+     *
+     * Opt-in, because a wildcard is only ever safe beneath the app's OWN domain.
+     * Several apps commonly hang off one shared apex (`app-a.example.com`,
+     * `app-b.example.com`); a wildcard at the apex would have whichever app won
+     * the ALB rule priority swallow its siblings' traffic. Scoped to `domain` it
+     * can only ever match hosts below this app.
+     */
+    public static function servesWildcardSubdomains(): bool
+    {
+        return (bool) static::get('wildcard-subdomains', false);
+    }
+
+    /**
+     * The wildcard host the app serves, or null when it serves only its canonical
+     * host. One label deep — ACM wildcards and ALB host-header wildcards both
+     * match a single label, so `*.{domain}` covers `{tenant}.{domain}` and
+     * nothing deeper.
+     */
+    public static function wildcardHost(): ?string
+    {
+        return static::servesWildcardSubdomains()
+            ? '*.' . static::get('domain')
+            : null;
+    }
+
+    /**
+     * The domain the app's ACM certificate is issued for; the certificate covers
+     * that name plus its single-label wildcard.
+     *
+     * Normally the apex, so one certificate serves the app and any sibling app on
+     * the same zone. A wildcard-subdomain app needs the wildcard one level
+     * deeper: with `domain: app.example.com`, the apex certificate's
+     * `*.example.com` matches `app.example.com` but NOT `tenant.app.example.com`,
+     * so the certificate is issued for the domain itself instead.
+     */
+    public static function certificateDomain(): string
+    {
+        return static::servesWildcardSubdomains()
+            ? (string) static::get('domain')
+            : static::apex();
     }
 
     /**

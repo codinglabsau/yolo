@@ -124,7 +124,9 @@ class HostedZone implements Adoptable, Resource, Undeletable
             ->filter($this->isManagedRecord(...))
             ->map(fn (array $record): array => [
                 'Type' => (string) $record['Type'],
-                'Name' => rtrim((string) $record['Name'], '.'),
+                // `\052` decoded back to `*` so the teardown plan names the wildcard
+                // record the way the operator wrote it.
+                'Name' => rtrim(str_replace('\\052', '*', (string) $record['Name']), '.'),
             ])
             ->values()
             ->all();
@@ -146,8 +148,9 @@ class HostedZone implements Adoptable, Resource, Undeletable
     }
 
     /**
-     * The hostnames YOLO writes A-alias records for — the canonical host and,
-     * when it's one half of the apex/www pair, its sibling. Mirrors
+     * The hostnames YOLO writes A-alias records for — the canonical host, its
+     * apex/www sibling when it has one, and the wildcard when the app serves its
+     * own subdomains. Shares {@see ResolvesCanonicalHost::aliasedHosts()} with
      * {@see SyncsRecordSets::generateChanges()} so teardown withdraws exactly what
      * sync created and nothing else.
      *
@@ -155,11 +158,7 @@ class HostedZone implements Adoptable, Resource, Undeletable
      */
     protected function managedHosts(): array
     {
-        $domain = Manifest::get('domain', $this->apex);
-
-        return $this->hasWwwSibling($this->apex, $domain)
-            ? [$domain, $this->wwwSibling($this->apex, $domain)]
-            : [$domain];
+        return $this->aliasedHosts($this->apex, Manifest::get('domain', $this->apex));
     }
 
     /**
@@ -170,11 +169,23 @@ class HostedZone implements Adoptable, Resource, Undeletable
     protected function isManagedRecord(array $record): bool
     {
         $managed = collect($this->managedHosts())
-            ->map(fn (string $host): string => rtrim($host, '.') . '.')
+            ->map($this->normaliseRecordName(...))
             ->all();
 
         return in_array($record['Type'], ['A', 'AAAA'], true)
-            && in_array(rtrim((string) $record['Name'], '.') . '.', $managed, true);
+            && in_array($this->normaliseRecordName((string) $record['Name']), $managed, true);
+    }
+
+    /**
+     * A record name in one comparable form: fully qualified, lower-cased, and with
+     * Route 53's octal escaping decoded. Route 53 stores a wildcard label as
+     * `\052` and returns it that way on read, so a `*.example.com` record YOLO
+     * wrote comes back as `\052.example.com.` — compared raw it matches nothing
+     * and teardown would leave the wildcard record behind.
+     */
+    protected function normaliseRecordName(string $name): string
+    {
+        return strtolower(rtrim(str_replace('\\052', '*', $name), '.')) . '.';
     }
 
     public function synchroniseTags(bool $apply): array

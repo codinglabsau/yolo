@@ -40,6 +40,23 @@ domain: app.example.com
 
 YOLO finds the `example.com` hosted zone by walking up the labels from `app.example.com`, and writes the `app.example.com` record into it — no `apex` key to set. A bare subdomain like this is served on its own — it's not one half of the apex/`www` pair, so no redirect is set up.
 
+## Serving every subdomain
+
+To serve the app from `domain` **and** every subdomain beneath it — the usual shape for a multi-tenant app that gives each tenant a subdomain — add `wildcard-subdomains`:
+
+```yaml
+domain: app.example.com
+wildcard-subdomains: true
+```
+
+`app.example.com` is served as the canonical host, and `acme.app.example.com` (or any other single label) reaches the same service, which resolves the tenant from the request host. YOLO adds `*.app.example.com` to the app's listener rule and writes one `*.app.example.com` alias record, so a new subdomain needs no infrastructure change.
+
+This also changes where the certificate is issued. Normally YOLO requests one for the apex (`example.com` + `*.example.com`), but a wildcard matches a single label, so `*.example.com` covers `app.example.com` and not `acme.app.example.com`. With `wildcard-subdomains` the certificate is issued for the domain instead (`app.example.com` + `*.app.example.com`). Both the DNS validation record and the wildcard alias go into the existing `example.com` zone — no second hosted zone, no NS delegation.
+
+The wildcard is deliberately scoped to the app's own `domain` rather than the apex. Several apps often share one zone, and a wildcard at the apex would let whichever app won the load balancer's rule ordering swallow its siblings' traffic.
+
+Two limits worth knowing: wildcards are **one label deep** on both the certificate and the listener rule (`a.b.app.example.com` is not served), and `wildcard-subdomains` is mutually exclusive with [`tenants`](/guide/multi-tenancy) — they're different tenancy models.
+
 ## One app across two environments
 
 Every other resource YOLO creates is env-scoped (`yolo-{env}-{app}-…`), so two environments of the same app — say a `staging` trial on `app-staging.example.com` alongside `production` on `example.com` — never collide. The one exception is the **hosted zone**: a real domain has a single zone, so both environments write into it.

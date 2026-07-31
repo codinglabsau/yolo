@@ -1,10 +1,41 @@
 # Multi-Tenancy
 
-YOLO supports multi-tenant applications where each tenant is served on its own domain and gets its own isolated queue. One container image and one ECS service serve every tenant; the per-tenant resources are the routing and the queues.
+YOLO supports two shapes of multi-tenancy. One container image and one ECS service serve every tenant either way — what differs is how a tenant is routed to, and therefore what it costs to onboard one.
 
-## Configuration
+| | [Wildcard subdomains](#wildcard-subdomains) | [Tenant domains](#tenant-domains) |
+| --- | --- | --- |
+| Tenant is reached at | `{tenant}.{domain}` | any domain, one per tenant |
+| Declared with | `wildcard-subdomains: true` | a `tenants` block |
+| Per-tenant AWS resources | none | hosted zone, certificate, DNS records, optionally queues |
+| Onboarding a tenant | a row in your database | a manifest edit and a `yolo sync` |
 
-Declare tenants under the environment, keyed by a unique tenant id:
+They are mutually exclusive. Reach for the wildcard unless a tenant needs to be served on a domain of their own.
+
+## Wildcard subdomains
+
+Set [`wildcard-subdomains`](/reference/manifest#wildcard-subdomains) and every subdomain of the app's `domain` is served by the app:
+
+```yaml
+environments:
+  production:
+    account-id: '123456789012'
+    region: ap-southeast-2
+    domain: app.example.com
+    wildcard-subdomains: true
+    tasks:
+      web:
+        autoscaling: true
+```
+
+`app.example.com` serves the landlord; `acme.app.example.com` and every other subdomain reach the same service, which resolves the tenant from the request host. YOLO provisions one certificate covering `app.example.com` + `*.app.example.com`, one wildcard listener rule, and one `*.app.example.com` alias record — so a new tenant needs no infrastructure change at all.
+
+The wildcard is scoped to the app's own `domain`, never the apex: several apps commonly share one zone (`app.example.com`, `admin.example.com`), and a wildcard at the apex would have one app swallow the others' traffic.
+
+Queues are not fanned out in this mode — one queue set serves every tenant, with the tenant carried in the job payload. See [`queue-isolation`](/reference/manifest#queue-isolation) if a tenant needs its own.
+
+## Tenant domains
+
+Where each tenant is served on a domain of their own and gets its own isolated queue. Declare tenants under the environment, keyed by a unique tenant id:
 
 ```yaml
 environments:
@@ -42,11 +73,12 @@ deploy:
 
 `yolo sync` (or `sync:app`) fans the per-tenant steps out across every tenant:
 
-- A **landlord** SQS queue and depth alarm for shared/central work.
-- A **per-tenant** SQS queue and depth alarm for each tenant.
+- Queues, when [`queue-isolation`](/reference/manifest#queue-isolation) is `dedicated` — a **landlord** SQS queue and depth alarm for shared/central work, plus a **per-tenant** queue and alarm for each tenant. On the default `shared` strategy one queue set serves every tenant instead.
 - Per-tenant DNS records, pointed at the shared load balancer, are UPSERTed during `yolo deploy`.
 
-Certificates attach per tenant via SNI on the environment's shared HTTPS listener, so adding a tenant doesn't disturb the others.
+::: warning Tenant HTTPS is not provisioned yet
+The per-tenant hosted zone, certificate and SNI attachment are implemented but not yet wired into `sync:app`'s plan, and the HTTPS listener rule is only created for an environment-level `domain`. So a `tenants` app currently gets its queues and DNS records but nothing that terminates TLS or routes its hosts to the service. Use [wildcard subdomains](#wildcard-subdomains) until that lands.
+:::
 
 ## Single-tenant operations
 

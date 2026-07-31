@@ -25,7 +25,7 @@ class SyncHttpsListenerStep implements ExecutesWebStep
         }
 
         try {
-            $certificate = Acm::certificate(Manifest::apex());
+            $certificate = Acm::certificate(Manifest::certificateDomain());
         } catch (ResourceDoesNotExistException) {
             return StepResult::SKIPPED;
         }

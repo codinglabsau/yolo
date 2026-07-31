@@ -157,7 +157,36 @@ abstract class Command extends SymfonyCommand
             && $this->ensureWebReachable()
             && $this->ensureAutoscalingDeclared()
             && $this->ensureSchedulerHostNotScaleToZero()
-            && $this->ensureQueueIsolationValid();
+            && $this->ensureQueueIsolationValid()
+            && $this->ensureWildcardSubdomainsValid();
+    }
+
+    /**
+     * `wildcard-subdomains` serves every subdomain of the app's own `domain` from
+     * the one service, so it needs a `domain` to be a wildcard *of*. It is also
+     * mutually exclusive with `tenants`: that block gives each tenant its own
+     * hosted zone, certificate and records, which is the opposite trade — declare
+     * one model or the other, never both.
+     */
+    protected function ensureWildcardSubdomainsValid(): bool
+    {
+        if (! Manifest::servesWildcardSubdomains()) {
+            return true;
+        }
+
+        if (Manifest::isMultitenanted()) {
+            error('yolo.yml declares both `wildcard-subdomains` and `tenants` — they are two different tenancy models. Serve tenants as subdomains of one `domain`, or give each their own domain under `tenants`.');
+
+            return false;
+        }
+
+        if (! Manifest::has('domain')) {
+            error('yolo.yml declares `wildcard-subdomains` but no `domain` — there is nothing to serve subdomains of. Declare `domain`, or drop the key.');
+
+            return false;
+        }
+
+        return true;
     }
 
     /**

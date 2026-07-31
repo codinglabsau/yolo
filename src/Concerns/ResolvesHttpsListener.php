@@ -49,7 +49,7 @@ trait ResolvesHttpsListener
     protected function httpsListenerWillBeCreatedThisSync(): bool
     {
         try {
-            return Acm::certificate(Manifest::apex())['Status'] === 'ISSUED';
+            return Acm::certificate(Manifest::certificateDomain())['Status'] === 'ISSUED';
         } catch (ResourceDoesNotExistException) {
             return false;
         }

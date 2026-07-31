@@ -32,7 +32,9 @@ use Aws\EventBridge\EventBridgeClient;
 use Codinglabs\Yolo\Services\Lifecycle;
 use Codinglabs\Yolo\Services\Typesense;
 use Codinglabs\Yolo\Resources\WafV2\WebAcl;
+use Codinglabs\Yolo\Concerns\SyncsRecordSets;
 use Symfony\Component\Console\Input\ArrayInput;
+use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
 use Aws\ApplicationAutoScaling\ApplicationAutoScalingClient;
 use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
 use Aws\ResourceGroupsTaggingAPI\ResourceGroupsTaggingAPIClient;
@@ -1085,4 +1087,67 @@ function bindHostedZones(array $zoneNames = []): void
         'credentials' => false,
         'handler' => $mock,
     ]));
+}
+
+function recordSetSyncer(): object
+{
+    return new class()
+    {
+        use SyncsRecordSets;
+    };
+}
+
+/**
+ * Bind a mock Route 53 client: ListHostedZones returns the supplied zones,
+ * ListResourceRecordSets the supplied records, and every other command
+ * (ChangeResourceRecordSets) an empty Result. All calls are captured so the
+ * change batch can be asserted.
+ *
+ * @param  array<int, array<string, mixed>>  $hostedZones
+ * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+ * @param  array<int, array<string, mixed>>  $recordSets
+ */
+function bindMockRoute53Client(array $hostedZones, array &$captured, array $recordSets = []): void
+{
+    $mock = new class($hostedZones, $captured, $recordSets) extends MockHandler
+    {
+        /**
+         * @param  array<int, array<string, mixed>>  $hostedZones
+         * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+         * @param  array<int, array<string, mixed>>  $recordSets
+         */
+        public function __construct(protected array $hostedZones, protected array &$captured, protected array $recordSets) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            $this->captured[] = ['name' => $cmd->getName(), 'args' => $cmd->toArray()];
+
+            return Create::promiseFor(match ($cmd->getName()) {
+                'ListHostedZones' => new Result(['HostedZones' => $this->hostedZones]),
+                'ListResourceRecordSets' => new Result(['ResourceRecordSets' => $this->recordSets]),
+                default => new Result(),
+            });
+        }
+    };
+
+    Helpers::app()->instance('route53', new Route53Client([
+        'region' => 'us-east-1',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+}
+
+/**
+ * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+ */
+function bindAlbLookup(array &$captured): void
+{
+    bindRoutedElbV2Client([
+        'DescribeLoadBalancers' => new Result(['LoadBalancers' => [[
+            'LoadBalancerName' => (new LoadBalancer())->name(),
+            'DNSName' => 'alb-1.ap-southeast-2.elb.amazonaws.com',
+            'CanonicalHostedZoneId' => 'ZALB123',
+        ]]]),
+    ], $captured);
 }

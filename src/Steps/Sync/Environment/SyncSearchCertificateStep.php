@@ -50,7 +50,9 @@ class SyncSearchCertificateStep implements Step
         Typesense::requireSearchHost();
 
         $dryRun = (bool) Arr::get($options, 'dry-run');
-        $certificate = new SslCertificate((string) EnvManifest::get('domain'));
+        // The environment domain names its own hosted zone, so the certificate and
+        // its validation record share one zone.
+        $certificate = new SslCertificate($domain = (string) EnvManifest::get('domain'), $domain);
         $summary = $certificate->find();
 
         if ($summary === null) {

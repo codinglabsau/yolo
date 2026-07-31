@@ -24,7 +24,13 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  */
 class SslCertificate
 {
-    public function __construct(protected string $domain) {}
+    /**
+     * @param  string  $domain  the name the certificate is issued for (it also covers `*.{domain}`)
+     * @param  string  $zone  the hosted zone the DNS validation record is written into — the
+     *                        domain's apex, which is NOT the domain itself when the certificate
+     *                        is issued for a subdomain (a wildcard-subdomain app)
+     */
+    public function __construct(protected string $domain, protected string $zone) {}
 
     /**
      * The certificate summary (DomainName, Status, CertificateArn), or null when
@@ -51,10 +57,14 @@ class SslCertificate
     }
 
     /**
-     * Publish the DNS validation record into the domain's hosted zone, then block
-     * until ACM reports the certificate ISSUED. The apex and wildcard share one
+     * Publish the DNS validation record into the zone, then block until ACM
+     * reports the certificate ISSUED. The domain and its wildcard share one
      * validation record, so the wildcard option is filtered out to avoid a
      * redundant UPSERT.
+     *
+     * The record goes into the *apex* zone, not a zone named after the
+     * certificate's domain: a certificate issued for a subdomain resolves through
+     * its parent zone, and no zone of its own need exist.
      */
     public function validate(string $certificateArn): void
     {
@@ -89,7 +99,7 @@ class SslCertificate
                     ->all(),
                 'Comment' => 'Created by yolo CLI',
             ],
-            'HostedZoneId' => (new HostedZone($this->domain))->arn(),
+            'HostedZoneId' => (new HostedZone($this->zone))->arn(),
         ]);
 
         while (Acm::certificate($this->domain)['Status'] !== 'ISSUED') {

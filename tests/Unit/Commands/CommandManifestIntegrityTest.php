@@ -497,3 +497,38 @@ it('passes for a shared multi-tenant app', function (): void {
 
     expect(invokeManifestIntegrity())->toBeTrue();
 });
+
+it('bails when wildcard-subdomains is set with no domain to be a wildcard of', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'wildcard-subdomains' => true,
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    expect(test()->promptOutput->fetch())->toContain('wildcard-subdomains');
+});
+
+it('bails when wildcard-subdomains and tenants are both declared', function (): void {
+    // Two different tenancy models — one host with a wildcard, versus a zone and
+    // certificate per tenant. Declaring both says nothing coherent.
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tenants' => ['acme' => ['domain' => 'acme.example.com']],
+        'wildcard-subdomains' => true,
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    expect(test()->promptOutput->fetch())->toContain('wildcard-subdomains');
+});
+
+it('passes for a wildcard-subdomain app', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'app.example.com',
+        'wildcard-subdomains' => true,
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+});

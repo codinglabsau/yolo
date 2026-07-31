@@ -159,6 +159,21 @@ The canonical public domain the app is served on (e.g. `app.example.com`). When 
 
 The apex (registrable root, naming the Route 53 hosted zone) is **derived automatically** — there is no `apex` key. YOLO walks the domain's label-suffixes longest-first and uses the longest one that already has a hosted zone in the account (so `app.example.com` resolves to the `example.com` zone). When no ancestor zone exists yet, the domain itself is the apex (sync then creates the zone), with any leading `www.` stripped. See [Domains](/guide/domains).
 
+### `wildcard-subdomains`
+
+`true` to serve **every subdomain of `domain`** from the same service — one wildcard listener rule and one `*.{domain}` alias record instead of a resource per subdomain. A multi-tenant app that gives each tenant a subdomain then brings a tenant live on a database insert, with no infrastructure run. Defaults to `false`.
+
+```yaml
+domain: app.example.com
+wildcard-subdomains: true   # tenant-a.app.example.com, tenant-b.app.example.com, …
+```
+
+Requires `domain`, and is mutually exclusive with [`tenants`](#tenants) — the two are different tenancy models (one host with a wildcard, versus a hosted zone and certificate per tenant).
+
+It also moves where the certificate is issued: normally YOLO requests one for the **apex** (covering `{apex}` + `*.{apex}`), but wildcards match a single label, so `*.example.com` would not cover `tenant.app.example.com`. With `wildcard-subdomains` the certificate is issued for `domain` instead (`app.example.com` + `*.app.example.com`). Its DNS validation record and the wildcard alias record are both written into the existing apex zone, so no extra hosted zone or NS delegation is needed.
+
+Wildcards are one label deep on both sides — `tenant.app.example.com` is served, `a.b.app.example.com` is not.
+
 ### `tenants`
 
 A map of tenant id → `{ domain }` that puts the app in [multi-tenant mode](/guide/multi-tenancy); each tenant's apex is derived from its domain the same way. When set, `domain` must **not** be set at the environment level.
@@ -170,6 +185,17 @@ tenants:
   globex:
     domain: globex-with-yolo.com
 ```
+
+### `queue-isolation`
+
+How a multi-tenant app's tenants map onto SQS queues and worker programs — `shared` (default) or `dedicated`. Only valid alongside [`tenants`](#tenants); on a solo app there is one scope and nothing to isolate, so the key is refused rather than silently ignored.
+
+| Value | Queues | Workers | Trade |
+| --- | --- | --- | --- |
+| `shared` (default) | one queue set at the app name, the same shape a solo app has; the tenant rides the job payload | one worker per tier drains every tenant | Scales to any tenant count. A whale tenant's backlog delays the others. |
+| `dedicated` | one queue set per tenant (`…-{tenant}[-tier]`), plus a landlord set | supervisord runs one `queue:work` per tenant | Fair — no tenant can starve another. N tenants means N queues and N worker programs per tier, so it scales to dozens, not hundreds. |
+
+A `shared` app pins `SQS_QUEUE` at build; a `dedicated` one resolves the per-tenant queue at runtime, so nothing is pinned.
 
 ### `branch` / `tag` / `repository`
 
