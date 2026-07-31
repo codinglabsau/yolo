@@ -523,6 +523,21 @@ it('bails when wildcard-subdomains and tenants are both declared', function (): 
     expect(test()->promptOutput->fetch())->toContain('wildcard-subdomains');
 });
 
+it('bails on wildcard-subdomains with a www-canonical domain', function (): void {
+    // The wildcard would land at *.www.{apex}, and moving the certificate onto the
+    // www host leaves the apex it redirects from with no certificate covering it —
+    // a TLS failure before the 301 could fire.
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'www.example.com',
+        'wildcard-subdomains' => true,
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    expect(test()->promptOutput->fetch())->toContain('www-canonical');
+});
+
 it('passes for a wildcard-subdomain app', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',

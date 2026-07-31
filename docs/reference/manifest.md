@@ -168,7 +168,7 @@ domain: app.example.com
 wildcard-subdomains: true   # tenant-a.app.example.com, tenant-b.app.example.com, …
 ```
 
-Requires `domain`, and is mutually exclusive with [`tenants`](#tenants) — the two are different tenancy models (one host with a wildcard, versus a hosted zone and certificate per tenant).
+Requires `domain`, and is mutually exclusive with [`tenants`](#tenants) — the two are different tenancy models (one host with a wildcard, versus a hosted zone and certificate per tenant). A `www`-canonical `domain` is also refused: the wildcard would land at `*.www.{apex}` and the certificate would stop covering the apex the [redirect](/guide/domains#apex-and-www) fires from.
 
 It also moves where the certificate is issued: normally YOLO requests one for the **apex** (covering `{apex}` + `*.{apex}`), but wildcards match a single label, so `*.example.com` would not cover `tenant.app.example.com`. With `wildcard-subdomains` the certificate is issued for `domain` instead (`app.example.com` + `*.app.example.com`). Its DNS validation record and the wildcard alias record are both written into the existing apex zone, so no extra hosted zone or NS delegation is needed.
 

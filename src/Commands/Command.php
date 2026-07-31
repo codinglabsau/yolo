@@ -186,6 +186,23 @@ abstract class Command extends SymfonyCommand
             return false;
         }
 
+        // A www-canonical domain would put the wildcard a level too deep
+        // (`*.www.{apex}`, which nobody wants) and, worse, move the certificate
+        // off the apex — leaving the apex/www redirect's own host with no valid
+        // certificate, so it would fail the TLS handshake before it could ever
+        // 301. Refuse the combination rather than silently serve that.
+        $domain = (string) Manifest::get('domain');
+
+        if (str_starts_with($domain, 'www.')) {
+            error(sprintf(
+                'yolo.yml declares `wildcard-subdomains` with a www-canonical `domain` (%s) — the wildcard would land at *.%s and the certificate would no longer cover the apex it redirects from. Serve the app from the apex or a bare subdomain instead.',
+                $domain,
+                $domain,
+            ));
+
+            return false;
+        }
+
         return true;
     }
 

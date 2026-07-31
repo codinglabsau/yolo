@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Resources\Route53\HostedZone;
+use Codinglabs\Yolo\Resources\ElbV2\ForwardListenerRule;
+use Codinglabs\Yolo\Resources\ElbV2\RedirectListenerRule;
 
 /**
  * `wildcard-subdomains` serves every single-label subdomain of the app's own
@@ -55,6 +57,43 @@ describe('manifest', function (): void {
 
         expect(Manifest::certificateDomain())->toBe('app.example.com')
             ->and(Manifest::apex())->toBe('example.com');
+    });
+});
+
+describe('the apex/www redirect', function (): void {
+    it('keeps the www sibling covered by the certificate when the domain is the apex', function (): void {
+        // The wildcard moves the certificate from the apex to the domain, but for
+        // an apex-canonical app those are the same name — so `*.example.com` still
+        // covers the `www` host the redirect rule answers on.
+        writeWildcardManifest(['domain' => 'example.com']);
+
+        expect(Manifest::certificateDomain())->toBe('example.com')
+            ->and(Manifest::wildcardHost())->toBe('*.example.com');
+    });
+
+    it('overlaps the redirect host, which the priority bands resolve', function (): void {
+        writeWildcardManifest(['domain' => 'example.com']);
+
+        $forward = (new ForwardListenerRule('arn:listener'))->hosts();
+        $redirect = (new RedirectListenerRule('arn:listener'))->hosts();
+
+        // `*.example.com` matches `www.example.com` too, so both rules match the
+        // sibling and only the priority ordering decides which wins. The redirect
+        // band sits below every forward rule so the 301 keeps firing.
+        expect($forward)->toBe(['example.com', '*.example.com'])
+            ->and($redirect)->toBe(['www.example.com'])
+            ->and(ForwardListenerRule::nextAvailablePriority('yolo-testing-my-app', [], 10000, 49999))
+            ->toBeGreaterThan(ForwardListenerRule::nextAvailablePriority('yolo-testing-my-app-redirect', [], 1000, 9999));
+    });
+
+    it('has no redirect to overlap for a bare subdomain', function (): void {
+        // The common multi-tenant shape: no apex/www pair, so no redirect rule
+        // exists and the wildcard has nothing to contend with.
+        writeWildcardManifest();
+
+        expect((new ForwardListenerRule('arn:listener'))->hosts())
+            ->toBe(['app.example.com', '*.app.example.com'])
+            ->and(recordSetSyncer()->hasWwwSibling('example.com', 'app.example.com'))->toBeFalse();
     });
 });
 
