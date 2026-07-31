@@ -97,7 +97,7 @@ region = ap-southeast-2
 
 ## Short-lived sessions with `yolo-credentials-1password`
 
-The helper ([`bin/yolo-credentials-1password`](https://github.com/codinglabsau/yolo/blob/main/bin/yolo-credentials-1password)) reads the long-lived key from 1Password at mint time, calls `sts:GetSessionToken` — forwarding MFA automatically when the user has a device registered — and caches the short-lived session (4 hours, under `~/.aws/yolo-cache` with owner-only permissions) so the CLI doesn't re-prompt, and never reuses a TOTP, on every call. Long-lived keys never touch disk; only the expiring session does.
+The helper ([`bin/yolo-credentials-1password`](https://github.com/codinglabsau/yolo/blob/main/bin/yolo-credentials-1password)) reads the long-lived key from 1Password at mint time, calls `sts:GetSessionToken` — forwarding MFA automatically when the user has a device registered — and caches the short-lived session (4 hours, under `~/.aws/codinglabs-cache` with owner-only permissions) so the CLI doesn't re-prompt, and never reuses a TOTP, on every call. Long-lived keys never touch disk; only the expiring session does.
 
 Its `credential_process` arguments: the 1Password item name, plus an optional second argument naming the vault (default `Employee`). Dependencies (`op`, the AWS CLI, `jq`) on macOS:
 
@@ -117,9 +117,9 @@ For `op` to authenticate through the desktop app (Touch ID instead of a separate
 :::
 
 ::: warning Not a secret store
-The cache under `~/.aws/yolo-cache` holds working session credentials until they expire. It's `0700`/owner-only, but treat a lost laptop as a rotation event regardless — the exposure window is at most the 4-hour session, not the long-lived key.
+The cache under `~/.aws/codinglabs-cache` holds working session credentials until they expire. It's `0700`/owner-only, but treat a lost laptop as a rotation event regardless — the exposure window is at most the 4-hour session, not the long-lived key.
 :::
 
 ::: warning A pre-MFA session lingers in the cache
-If the profile ever minted a session **before** the MFA device existed (or before the TOTP field was added), that plain session is cached for up to 4 hours — and AWS refuses **all IAM API calls** from a session minted without MFA, regardless of policy. The symptom is an `iam:ListMFADevices` / `iam:ListAccessKeys` denial that no permission change fixes. Delete the profile's file under `~/.aws/yolo-cache` and re-run; the fresh mint picks up the device.
+If the profile ever minted a session **before** the MFA device existed (or before the TOTP field was added), that plain session is cached for up to 4 hours — and AWS refuses **all IAM API calls** from a session minted without MFA, regardless of policy. The symptom is an `iam:ListMFADevices` / `iam:ListAccessKeys` denial that no permission change fixes. Delete the profile's file under `~/.aws/codinglabs-cache` and re-run; the fresh mint picks up the device.
 :::
