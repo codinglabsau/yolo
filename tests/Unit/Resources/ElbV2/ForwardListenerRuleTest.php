@@ -59,35 +59,35 @@ describe('hosts', function (): void {
 
 describe('priority', function (): void {
     it('allocates a deterministic priority inside the ALB rule range', function (): void {
-        $priority = ForwardListenerRule::nextAvailablePriority('my-app', []);
+        $priority = ForwardListenerRule::nextAvailablePriority('my-app', [], 1000, 49999);
 
         expect($priority)->toBeGreaterThanOrEqual(1000)
             ->toBeLessThanOrEqual(49999)
-            ->and(ForwardListenerRule::nextAvailablePriority('my-app', []))->toBe($priority);
+            ->and(ForwardListenerRule::nextAvailablePriority('my-app', [], 1000, 49999))->toBe($priority);
     });
 
     it('skips a priority already taken by another rule', function (): void {
-        $base = ForwardListenerRule::nextAvailablePriority('my-app', []);
+        $base = ForwardListenerRule::nextAvailablePriority('my-app', [], 1000, 49999);
 
-        expect(ForwardListenerRule::nextAvailablePriority('my-app', [$base]))
+        expect(ForwardListenerRule::nextAvailablePriority('my-app', [$base], 1000, 49999))
             ->not->toBe($base)
             ->toBeGreaterThanOrEqual(1000)
             ->toBeLessThanOrEqual(49999);
     });
 
     it('wraps from the ceiling back to the floor on collision', function (): void {
-        $priority = ForwardListenerRule::nextAvailablePriority('app-that-hashes-high', range(49000, 49999));
+        $priority = ForwardListenerRule::nextAvailablePriority('app-that-hashes-high', range(49000, 49999), 1000, 49999);
 
         expect($priority)->toBeLessThan(49000)->toBeGreaterThanOrEqual(1000);
     });
 
     it('throws when the priority space is fully exhausted', function (): void {
-        ForwardListenerRule::nextAvailablePriority('my-app', range(1000, 49999));
+        ForwardListenerRule::nextAvailablePriority('my-app', range(1000, 49999), 1000, 49999);
     })->throws(IntegrityCheckException::class, 'priority space (1000-49999) exhausted');
 
     it('never returns a priority below the 1000 floor', function (): void {
         foreach (range(0, 50) as $i) {
-            expect(ForwardListenerRule::nextAvailablePriority("app-$i", []))->toBeGreaterThanOrEqual(1000);
+            expect(ForwardListenerRule::nextAvailablePriority("app-$i", [], 1000, 49999))->toBeGreaterThanOrEqual(1000);
         }
     });
 

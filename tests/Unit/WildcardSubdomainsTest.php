@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use Aws\Result;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\Resources\Acm\SslCertificate;
 use Codinglabs\Yolo\Resources\Route53\HostedZone;
 use Codinglabs\Yolo\Resources\ElbV2\ForwardListenerRule;
 use Codinglabs\Yolo\Resources\ElbV2\RedirectListenerRule;
@@ -57,6 +59,68 @@ describe('manifest', function (): void {
 
         expect(Manifest::certificateDomain())->toBe('app.example.com')
             ->and(Manifest::apex())->toBe('example.com');
+    });
+});
+
+describe('certificate', function (): void {
+    it('validates a subdomain certificate through the apex zone', function (): void {
+        // The crux of wildcard mode: the certificate is issued for the domain
+        // (`app.example.com` + `*.app.example.com`) but no hosted zone of that name
+        // exists — it has to validate through the apex zone. Addressing the zone by
+        // the certificate's own domain, as the pre-wildcard code did, throws
+        // not-found on the first sync of any wildcard app.
+        $captured = [];
+        bindMockRoute53Client([['Name' => 'example.com.', 'Id' => '/hostedzone/ZONE1']], $captured);
+
+        bindRoutedAcmClient([
+            'DescribeCertificate' => new Result(['Certificate' => [
+                'DomainValidationOptions' => [
+                    [
+                        'ValidationMethod' => 'DNS',
+                        'ValidationDomain' => 'app.example.com',
+                        'ResourceRecord' => ['Name' => '_x.app.example.com', 'Type' => 'CNAME', 'Value' => '_y.acm-validations.aws'],
+                    ],
+                    // apex and wildcard share one validation record — the wildcard
+                    // option is filtered out to avoid a redundant UPSERT
+                    [
+                        'ValidationMethod' => 'DNS',
+                        'ValidationDomain' => '*.app.example.com',
+                        'ResourceRecord' => ['Name' => '_x.app.example.com', 'Type' => 'CNAME', 'Value' => '_y.acm-validations.aws'],
+                    ],
+                ],
+            ]]),
+            'ListCertificates' => new Result(['CertificateSummaryList' => [[
+                'DomainName' => 'app.example.com',
+                'CertificateArn' => 'arn:aws:acm:ap-southeast-2:111111111111:certificate/abcd-1234',
+                'Status' => 'ISSUED',
+            ]]]),
+        ]);
+
+        writeWildcardManifest();
+
+        (new SslCertificate(Manifest::certificateDomain(), Manifest::apex()))->validate('arn:aws:acm:ap-southeast-2:111111111111:certificate/abcd-1234');
+
+        $change = collect($captured)->firstWhere('name', 'ChangeResourceRecordSets');
+        $changes = $change['args']['ChangeBatch']['Changes'];
+
+        expect($change['args']['HostedZoneId'])->toBe('ZONE1')
+            ->and($changes)->toHaveCount(1)
+            ->and($changes[0]['ResourceRecordSet']['Name'])->toBe('_x.app.example.com')
+            ->and($changes[0]['ResourceRecordSet']['Type'])->toBe('CNAME');
+    });
+
+    it('requests the domain and its wildcard', function (): void {
+        $captured = [];
+        bindRoutedAcmClient(['RequestCertificate' => new Result(['CertificateArn' => 'arn:aws:acm:ap-southeast-2:111111111111:certificate/abcd-1234'])], $captured);
+
+        writeWildcardManifest();
+
+        (new SslCertificate(Manifest::certificateDomain(), Manifest::apex()))->request();
+
+        $args = collect($captured)->firstWhere('name', 'RequestCertificate')['args'];
+
+        expect($args['DomainName'])->toBe('app.example.com')
+            ->and($args['SubjectAlternativeNames'])->toBe(['*.app.example.com']);
     });
 });
 

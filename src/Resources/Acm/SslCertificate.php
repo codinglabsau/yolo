@@ -68,18 +68,22 @@ class SslCertificate
      */
     public function validate(string $certificateArn): void
     {
-        do {
+        while (true) {
             $certificate = Aws::acm()->describeCertificate([
                 'CertificateArn' => $certificateArn,
             ])['Certificate'];
 
+            if (
+                array_key_exists('DomainValidationOptions', $certificate) &&
+                collect($certificate['DomainValidationOptions'])
+                    ->every(fn (array $option): bool => array_key_exists('ResourceRecord', $option))
+            ) {
+                break;
+            }
+
             // The result is incomplete on the first request — give AWS a moment.
             sleep(2);
-        } while (
-            ! array_key_exists('DomainValidationOptions', $certificate) ||
-            ! collect($certificate['DomainValidationOptions'])
-                ->every(fn (array $option): bool => array_key_exists('ResourceRecord', $option))
-        );
+        }
 
         Aws::route53()->changeResourceRecordSets([
             'ChangeBatch' => [

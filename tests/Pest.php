@@ -1151,3 +1151,38 @@ function bindAlbLookup(array &$captured): void
         ]]]),
     ], $captured);
 }
+
+/**
+ * Bind a mock ACM client with command-routed responses, capturing every call.
+ * The existing bindIssuedAcmCertificate answers every command with a
+ * certificate list, which DescribeCertificate can't use — this routes by
+ * command name so a certificate's request/validate path can be exercised.
+ *
+ * @param  array<string, Result|Throwable>  $byCommand
+ * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+ */
+function bindRoutedAcmClient(array $byCommand, array &$captured = []): void
+{
+    $mock = new class($byCommand, $captured) extends MockHandler
+    {
+        public function __construct(protected array $byCommand, protected array &$captured) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            $this->captured[] = ['name' => $cmd->getName(), 'args' => $cmd->toArray()];
+
+            $entry = $this->byCommand[$cmd->getName()] ?? new Result();
+
+            return $entry instanceof Throwable
+                ? Create::rejectionFor($entry)
+                : Create::promiseFor($entry);
+        }
+    };
+
+    Helpers::app()->instance('acm', new AcmClient([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+}

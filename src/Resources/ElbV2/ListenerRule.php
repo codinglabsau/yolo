@@ -220,7 +220,15 @@ abstract class ListenerRule implements Deletable, Resource, SynchronisesConfigur
         return static::nextAvailablePriority($this->name(), $usedPriorities, $floor, $ceiling);
     }
 
-    public static function nextAvailablePriority(string $name, array $usedPriorities, int $floor = 1000, int $ceiling = 49999): int
+    /**
+     * A stable per-name priority inside a band, skipping any already taken. The
+     * band is explicit rather than defaulted: a caller that fell back to the full
+     * 1000-49999 range could land a forward rule on top of a redirect and undo
+     * the ordering {@see PRIORITY_BANDS} exists to guarantee.
+     *
+     * @param  array<int, int>  $usedPriorities
+     */
+    public static function nextAvailablePriority(string $name, array $usedPriorities, int $floor, int $ceiling): int
     {
         $range = $ceiling - $floor + 1;
 
