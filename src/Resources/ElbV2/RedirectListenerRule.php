@@ -29,6 +29,18 @@ class RedirectListenerRule extends ListenerRule
         return [$this->wwwSibling(Manifest::apex(), $this->canonicalHost())];
     }
 
+    /**
+     * The redirect outranks every forward rule. On a wildcard-subdomain app the
+     * forward rule's `*.{apex}` also matches the `www` sibling, so without a fixed
+     * ordering the sibling would be served instead of 301-redirected whenever the
+     * forward rule happened to hash lower.
+     */
+    #[\Override]
+    protected function band(): string
+    {
+        return 'redirect';
+    }
+
     protected function action(): array
     {
         return [

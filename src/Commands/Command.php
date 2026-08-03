@@ -157,7 +157,53 @@ abstract class Command extends SymfonyCommand
             && $this->ensureWebReachable()
             && $this->ensureAutoscalingDeclared()
             && $this->ensureSchedulerHostNotScaleToZero()
-            && $this->ensureQueueIsolationValid();
+            && $this->ensureQueueIsolationValid()
+            && $this->ensureWildcardSubdomainsValid();
+    }
+
+    /**
+     * `wildcard-subdomains` serves every subdomain of the app's own `domain` from
+     * the one service, so it needs a `domain` to be a wildcard *of*. It is also
+     * mutually exclusive with `tenants`: that block gives each tenant its own
+     * hosted zone, certificate and records, which is the opposite trade — declare
+     * one model or the other, never both.
+     */
+    protected function ensureWildcardSubdomainsValid(): bool
+    {
+        if (! Manifest::servesWildcardSubdomains()) {
+            return true;
+        }
+
+        if (Manifest::isMultitenanted()) {
+            error('yolo.yml declares both `wildcard-subdomains` and `tenants` — they are two different tenancy models. Serve tenants as subdomains of one `domain`, or give each their own domain under `tenants`.');
+
+            return false;
+        }
+
+        if (! Manifest::has('domain')) {
+            error('yolo.yml declares `wildcard-subdomains` but no `domain` — there is nothing to serve subdomains of. Declare `domain`, or drop the key.');
+
+            return false;
+        }
+
+        // A www-canonical domain would put the wildcard a level too deep
+        // (`*.www.{apex}`, which nobody wants) and, worse, move the certificate
+        // off the apex — leaving the apex/www redirect's own host with no valid
+        // certificate, so it would fail the TLS handshake before it could ever
+        // 301. Refuse the combination rather than silently serve that.
+        $domain = (string) Manifest::get('domain');
+
+        if (str_starts_with($domain, 'www.')) {
+            error(sprintf(
+                'yolo.yml declares `wildcard-subdomains` with a www-canonical `domain` (%s) — the wildcard would land at *.%s and the certificate would no longer cover the apex it redirects from. Serve the app from the apex or a bare subdomain instead.',
+                $domain,
+                $domain,
+            ));
+
+            return false;
+        }
+
+        return true;
     }
 
     /**

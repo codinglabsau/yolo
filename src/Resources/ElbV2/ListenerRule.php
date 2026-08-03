@@ -31,6 +31,22 @@ abstract class ListenerRule implements Deletable, Resource, SynchronisesConfigur
 {
     use ResolvesTags;
 
+    /**
+     * Priority bands, by rule kind. ALB evaluates rules lowest-priority-number
+     * first, so a rule matching an exact host must sit below any rule that can
+     * match it by wildcard: a wildcard-subdomain app's `*.{apex}` forward rule
+     * also matches `www.{apex}`, and whichever rule drew the lower number would
+     * win. Banding makes that ordering deterministic instead of a hash race —
+     * the apex/www redirect always outranks any forward rule.
+     *
+     * Within a band the number is still a stable hash of the rule name, so two
+     * apps never collide and a rule keeps its priority across syncs.
+     */
+    protected const PRIORITY_BANDS = [
+        'redirect' => [1000, 9999],
+        'forward' => [10000, 49999],
+    ];
+
     protected ?array $cachedRule = null;
 
     public function __construct(protected string $httpsListenerArn) {}
@@ -183,6 +199,15 @@ abstract class ListenerRule implements Deletable, Resource, SynchronisesConfigur
         return $this->cachedRule = ElbV2::ruleByName($this->httpsListenerArn, $this->name());
     }
 
+    /**
+     * Which {@see PRIORITY_BANDS} entry this rule takes. Forward is the default;
+     * the redirect rule overrides it.
+     */
+    protected function band(): string
+    {
+        return 'forward';
+    }
+
     protected function priority(): int
     {
         $usedPriorities = collect(ElbV2::rules($this->httpsListenerArn))
@@ -190,20 +215,28 @@ abstract class ListenerRule implements Deletable, Resource, SynchronisesConfigur
             ->map(fn (array $rule): int => (int) $rule['Priority'])
             ->all();
 
-        return static::nextAvailablePriority($this->name(), $usedPriorities);
+        [$floor, $ceiling] = static::PRIORITY_BANDS[$this->band()];
+
+        return static::nextAvailablePriority($this->name(), $usedPriorities, $floor, $ceiling);
     }
 
-    public static function nextAvailablePriority(string $name, array $usedPriorities): int
+    /**
+     * A stable per-name priority inside a band, skipping any already taken. The
+     * band is explicit rather than defaulted: a caller that fell back to the full
+     * 1000-49999 range could land a forward rule on top of a redirect and undo
+     * the ordering {@see PRIORITY_BANDS} exists to guarantee.
+     *
+     * @param  array<int, int>  $usedPriorities
+     */
+    public static function nextAvailablePriority(string $name, array $usedPriorities, int $floor, int $ceiling): int
     {
-        $floor = 1000;
-        $ceiling = 49999;
         $range = $ceiling - $floor + 1;
 
         $base = (abs(crc32($name)) % $range) + $floor;
 
         for ($attempts = 0; in_array($base, $usedPriorities, true); $attempts++) {
             if ($attempts >= $range) {
-                throw new IntegrityCheckException('ALB listener rule priority space (1000-49999) exhausted');
+                throw new IntegrityCheckException(sprintf('ALB listener rule priority space (%d-%d) exhausted', $floor, $ceiling));
             }
 
             $base = $base >= $ceiling ? $floor : $base + 1;

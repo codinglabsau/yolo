@@ -11,7 +11,7 @@ class SyncSslCertificateStep extends TenantStep
 {
     public function __invoke(array $options): StepResult
     {
-        $certificate = new SslCertificate($this->config['apex']);
+        $certificate = new SslCertificate($this->config['apex'], $this->config['apex']);
         $summary = $certificate->find();
 
         if ($summary === null) {

@@ -18,8 +18,8 @@ namespace Codinglabs\Yolo\Enums;
  *   tenant's backlog can't starve the others. Fair, but N tenants means N worker
  *   programs and N queues per tier — it scales to dozens, not hundreds.
  *
- * Orthogonal to LPX-587's per-tenant `dedicated: true`, which is a third axis — one
- * tenant getting its own independently-scaled ECS service.
+ * Orthogonal to a per-tenant `dedicated: true`, which is a third axis — one tenant
+ * getting its own independently-scaled ECS service.
  */
 enum QueueIsolation: string
 {

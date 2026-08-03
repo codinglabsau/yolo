@@ -43,39 +43,64 @@ describe('hosts', function (): void {
 
         expect(forwardRule()->hosts())->toBe(['app.example.com']);
     });
+
+    it('adds the single-label wildcard when the app serves its own subdomains', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'domain' => 'app.example.com',
+            'wildcard-subdomains' => true,
+        ]);
+
+        // Scoped to the app's own domain, never the apex — a wildcard at the apex
+        // would match a sibling app's host on the same shared listener.
+        expect(forwardRule()->hosts())->toBe(['app.example.com', '*.app.example.com']);
+    });
 });
 
 describe('priority', function (): void {
     it('allocates a deterministic priority inside the ALB rule range', function (): void {
-        $priority = ForwardListenerRule::nextAvailablePriority('my-app', []);
+        $priority = ForwardListenerRule::nextAvailablePriority('my-app', [], 1000, 49999);
 
         expect($priority)->toBeGreaterThanOrEqual(1000)
             ->toBeLessThanOrEqual(49999)
-            ->and(ForwardListenerRule::nextAvailablePriority('my-app', []))->toBe($priority);
+            ->and(ForwardListenerRule::nextAvailablePriority('my-app', [], 1000, 49999))->toBe($priority);
     });
 
     it('skips a priority already taken by another rule', function (): void {
-        $base = ForwardListenerRule::nextAvailablePriority('my-app', []);
+        $base = ForwardListenerRule::nextAvailablePriority('my-app', [], 1000, 49999);
 
-        expect(ForwardListenerRule::nextAvailablePriority('my-app', [$base]))
+        expect(ForwardListenerRule::nextAvailablePriority('my-app', [$base], 1000, 49999))
             ->not->toBe($base)
             ->toBeGreaterThanOrEqual(1000)
             ->toBeLessThanOrEqual(49999);
     });
 
     it('wraps from the ceiling back to the floor on collision', function (): void {
-        $priority = ForwardListenerRule::nextAvailablePriority('app-that-hashes-high', range(49000, 49999));
+        $priority = ForwardListenerRule::nextAvailablePriority('app-that-hashes-high', range(49000, 49999), 1000, 49999);
 
         expect($priority)->toBeLessThan(49000)->toBeGreaterThanOrEqual(1000);
     });
 
     it('throws when the priority space is fully exhausted', function (): void {
-        ForwardListenerRule::nextAvailablePriority('my-app', range(1000, 49999));
+        ForwardListenerRule::nextAvailablePriority('my-app', range(1000, 49999), 1000, 49999);
     })->throws(IntegrityCheckException::class, 'priority space (1000-49999) exhausted');
 
     it('never returns a priority below the 1000 floor', function (): void {
         foreach (range(0, 50) as $i) {
-            expect(ForwardListenerRule::nextAvailablePriority("app-$i", []))->toBeGreaterThanOrEqual(1000);
+            expect(ForwardListenerRule::nextAvailablePriority("app-$i", [], 1000, 49999))->toBeGreaterThanOrEqual(1000);
+        }
+    });
+
+    it('keeps every forward rule below the redirect band, whatever the name hashes to', function (): void {
+        // ALB matches lowest priority number first. A wildcard-subdomain app's
+        // `*.{apex}` forward rule also matches `www.{apex}`, so the apex/www
+        // redirect has to outrank every forward rule deterministically rather
+        // than by whichever name happened to hash lower.
+        foreach (range(0, 50) as $i) {
+            expect(ForwardListenerRule::nextAvailablePriority("app-$i", [], 10000, 49999))
+                ->toBeGreaterThanOrEqual(10000)
+                ->and(ForwardListenerRule::nextAvailablePriority("app-$i-redirect", [], 1000, 9999))
+                ->toBeLessThan(10000);
         }
     });
 });
