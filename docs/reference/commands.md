@@ -463,6 +463,8 @@ yolo run <environment> [--command="<cmd>"] [--group=<groups>]
 
 Each group is its own ECS service when extracted, and `run` execs into the container named after the group. A bundled queue/scheduler runs inside the web container, so a `--group=queue` lookup that finds no standalone queue service simply falls through to the next group.
 
+A `--command` string is base64-encoded before it reaches ECS Exec and decoded once, right before it runs — quote it for your own shell as normal and it arrives on the container byte-for-byte, so a namespaced one-liner (`--command="php artisan tinker --execute='\App\Foo::bar()'"`) survives intact instead of losing its backslashes somewhere between here and the container.
+
 **Requirements:** the AWS [Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) installed locally. ECS Exec is on by default (`enable-execute-command` defaults to `true`); it must not have been disabled (`enable-execute-command: false`) on the target group in the manifest.
 
 ```bash
