@@ -113,7 +113,14 @@ class RunCommand extends Command implements DeployerCommand
         // profile — ecs:ExecuteCommand lives on the deployer role, not the
         // operator's own identity. See Command::subprocessEnv().
         $process = new Process(
-            static::executeCommandArgs($cluster, $task, $command, $container, Manifest::get('region'), $this->subprocessProfile()),
+            static::executeCommandArgs(
+                $cluster,
+                $task,
+                $interactive ? $command : static::encodeCommand($command),
+                $container,
+                Manifest::get('region'),
+                $this->subprocessProfile(),
+            ),
             env: $this->subprocessEnv(),
             timeout: null,
         );
@@ -130,6 +137,24 @@ class RunCommand extends Command implements DeployerCommand
         }
 
         return $process->run(fn ($type, string|iterable $buffer) => $this->output->write($buffer));
+    }
+
+    /**
+     * A one-off `--command` string crosses at least one more real shell parse
+     * after this process's own — ECS Exec runs it on the container side via its
+     * own `sh -c`, and POSIX shell rules apply there exactly as they would to
+     * anything else typed at a prompt: an unquoted backslash is itself consumed
+     * ("\App\Foo" -> "AppFoo"), which is how a namespaced PHP one-liner
+     * (`--execute=\App\Foo::bar()`) turns into a "Class not found" once it lands.
+     * Base64-encoding the command sidesteps that hop entirely — the payload is
+     * pure `[A-Za-z0-9+/=]`, which no shell reinterprets, and it's decoded back
+     * to the exact original bytes only once, right before it actually runs.
+     * Never applied to the interactive `/bin/sh` shell — its stdin has to stay
+     * wired to the operator's terminal, not a decode pipeline.
+     */
+    public static function encodeCommand(string $command): string
+    {
+        return sprintf('echo %s | base64 -d | sh', base64_encode($command));
     }
 
     /**
