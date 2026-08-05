@@ -11,18 +11,18 @@ trait SyncsRecordSets
 {
     use ResolvesCanonicalHost;
 
-    public function syncRecordSet(string $apex, string $domain): void
+    public function syncRecordSet(string $apex, string $domain, ?string $wildcardHost = null): void
     {
         Aws::route53()->changeResourceRecordSets([
             'ChangeBatch' => [
-                'Changes' => $this->generateChanges($apex, $domain),
+                'Changes' => $this->generateChanges($apex, $domain, $wildcardHost),
                 'Comment' => 'Created by yolo CLI',
             ],
             'HostedZoneId' => Route53::hostedZone($apex)['Id'],
         ]);
     }
 
-    protected function generateChanges(string $apex, string $domain): array
+    protected function generateChanges(string $apex, string $domain, ?string $wildcardHost = null): array
     {
         $ALB = ElbV2::loadBalancer((new LoadBalancer())->name());
 
@@ -31,7 +31,7 @@ trait SyncsRecordSets
         // sibling to the canonical host. A bare subdomain has no sibling. A
         // wildcard-subdomain app adds `*.{domain}`, so every subdomain resolves
         // without a record per tenant.
-        $hosts = $this->aliasedHosts($apex, $domain);
+        $hosts = $this->aliasedHosts($apex, $domain, $wildcardHost);
 
         return array_map(fn (string $host): array => [
             'Action' => 'UPSERT',

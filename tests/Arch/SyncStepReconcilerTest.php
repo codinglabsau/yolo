@@ -4,6 +4,7 @@ use Codinglabs\Yolo\Steps\Sync\Account\SyncGithubOidcProviderStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncIvsEventBridgeTargetStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncInternetGatewayAttachmentStep;
 use Codinglabs\Yolo\Steps\Sync\App\Solo\SyncSslCertificateStep as SoloSslCertificateStep;
+use Codinglabs\Yolo\Steps\Sync\App\Tenant\SyncSslCertificateStep as TenantSslCertificateStep;
 
 /**
  * Every sync step that mutates AWS must be able to record drift into the plan: a
@@ -24,6 +25,7 @@ it('every sync step can record drift into the plan, or is an explicit exemption'
     $exempt = [
         SyncGithubOidcProviderStep::class,        // account-level singleton: exists ⇒ done
         SoloSslCertificateStep::class,            // ACM cert lifecycle (request/validate by state)
+        TenantSslCertificateStep::class,          // same, per tenant
         SyncIvsEventBridgeTargetStep::class,      // compares the live target ARN before putTargets
         SyncInternetGatewayAttachmentStep::class, // checks the attachment state before attaching
     ];

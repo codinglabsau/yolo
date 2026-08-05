@@ -158,7 +158,7 @@ class HostedZone implements Adoptable, Resource, Undeletable
      */
     protected function managedHosts(): array
     {
-        return $this->aliasedHosts($this->apex, Manifest::get('domain', $this->apex));
+        return $this->aliasedHosts($this->apex, Manifest::domain() ?? $this->apex);
     }
 
     /**

@@ -156,8 +156,17 @@ class InitCommand extends Command
         );
 
         if (confirm('Is the app multi-tenant?', default: false)) {
-            Manifest::put('tenants', [
-                'tenant-id' => ['domain' => 'tenant-domain.tld'],
+            // The landlord's own host, wildcarded, is the cheapest tenancy to start
+            // on: tenants are served beneath it with no per-tenant infrastructure.
+            // A tenant graduates to its own domain later by gaining a `domain` key.
+            Manifest::put('multitenancy', [
+                'landlord' => [
+                    'domain' => text('What is the landlord domain?', placeholder: 'eg. app.example.com'),
+                    'wildcard-subdomains' => true,
+                ],
+                'tenants' => [
+                    'tenant-id' => null,
+                ],
             ]);
 
             Manifest::put('deploy', [
@@ -261,8 +270,8 @@ class InitCommand extends Command
             'APP_KEY' => 'base64:' . base64_encode(random_bytes(32)),
             'APP_DEBUG' => 'false',
         ])->when(
-            Manifest::has('domain'),
-            fn ($overrides) => $overrides->put('APP_URL', 'https://' . Manifest::get('domain'))
+            Manifest::hasDomain(),
+            fn ($overrides) => $overrides->put('APP_URL', 'https://' . Manifest::domain())
         );
 
         if (! file_exists(Paths::base('.env.example'))) {

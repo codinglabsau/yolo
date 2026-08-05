@@ -20,10 +20,16 @@ environments:
     domain: example.com    # public domain — required for a web app; omit for a worker app
     #                      # the apex is derived automatically from the matching Route 53 zone
     #
-    # Multi-tenant instead of a single domain (mutually exclusive with domain):
-    # tenants:
-    #   acme:   { domain: acme.example.com }
-    #   globex: { domain: globex.example.com }
+    # Multi-tenant: everything tenant-related nests under one key, and the app's
+    # own host moves to the landlord (a root `domain` is refused alongside it).
+    # multitenancy:
+    #   landlord:
+    #     domain: app.example.com
+    #     wildcard-subdomains: true    # tenants served at {tenant}.app.example.com
+    #   queue-isolation: dedicated     # default shared — a queue set per tenant
+    #   tenants:
+    #     acme:                        # bare — served under the landlord's wildcard
+    #     globex: { domain: globex.io }  # its own zone, certificate and rules
 
     # --- CI deployer OIDC trust (see /guide/ci-cd) ---
     # branch: main               # default: main — branch this env deploys from
@@ -155,7 +161,7 @@ These live directly under an environment and determine how the app is reached. S
 
 ### `domain`
 
-The canonical public domain the app is served on (e.g. `app.example.com`). When it's one half of the apex/`www` pair (the apex itself, or `www.{apex}`), YOLO serves it and 301-redirects the other half to it. **Required for a web app** — a `tasks.web` block with no domain (or, multi-tenant, no tenant domains) is refused, since no listener rule would ever route to it. Omit it for a [worker app](/guide/domains#headless-apps); declaring one there is allowed (the zone + certificate stay provisioned, unattached).
+The canonical public domain the app is served on (e.g. `app.example.com`). Under [`multitenancy`](#multitenancy) it moves to [`multitenancy.landlord.domain`](#multitenancy-landlord) and is **refused** at the root: there it would be ambiguous, meaning both "where the landlord is served" and "what subdomain tenants hang off", readings that separate the moment one tenant takes a domain of its own. When it's one half of the apex/`www` pair (the apex itself, or `www.{apex}`), YOLO serves it and 301-redirects the other half to it. **Required for a web app** — a `tasks.web` block with no domain (or, multi-tenant, no tenant domains) is refused, since no listener rule would ever route to it. Omit it for a [worker app](/guide/domains#headless-apps); declaring one there is allowed (the zone + certificate stay provisioned, unattached).
 
 The apex (registrable root, naming the Route 53 hosted zone) is **derived automatically** — there is no `apex` key. YOLO walks the domain's label-suffixes longest-first and uses the longest one that already has a hosted zone in the account (so `app.example.com` resolves to the `example.com` zone). When no ancestor zone exists yet, the domain itself is the apex (sync then creates the zone), with any leading `www.` stripped. See [Domains](/guide/domains).
 
@@ -168,27 +174,63 @@ domain: app.example.com
 wildcard-subdomains: true   # tenant-a.app.example.com, tenant-b.app.example.com, …
 ```
 
-Requires `domain`, and is mutually exclusive with [`tenants`](#tenants) — the two are different tenancy models (one host with a wildcard, versus a hosted zone and certificate per tenant). A `www`-canonical `domain` is also refused: the wildcard would land at `*.www.{apex}` and the certificate would stop covering the apex the [redirect](/guide/domains#apex-and-www) fires from.
+Requires `domain`. Under [`multitenancy`](#multitenancy) it moves inside the block, onto the party whose domain it wildcards ([`multitenancy.landlord.wildcard-subdomains`](#multitenancy-landlord) or per tenant) — declared at the root alongside a `multitenancy` block it is refused. A `www`-canonical `domain` is also refused: the wildcard would land at `*.www.{apex}` and the certificate would stop covering the apex the [redirect](/guide/domains#apex-and-www) fires from.
 
 It also moves where the certificate is issued: normally YOLO requests one for the **apex** (covering `{apex}` + `*.{apex}`), but wildcards match a single label, so `*.example.com` would not cover `tenant.app.example.com`. With `wildcard-subdomains` the certificate is issued for `domain` instead (`app.example.com` + `*.app.example.com`). Its DNS validation record and the wildcard alias record are both written into the existing apex zone, so no extra hosted zone or NS delegation is needed.
 
 Wildcards are one label deep on both sides — `tenant.app.example.com` is served, `a.b.app.example.com` is not.
 
-### `tenants`
+### `multitenancy`
 
-A map of tenant id → `{ domain }` that puts the app in [multi-tenant mode](/guide/multi-tenancy); each tenant's apex is derived from its domain the same way. When set, `domain` must **not** be set at the environment level.
+Everything multi-tenant, in one block. Its presence is what puts the app in [multi-tenant mode](/guide/multi-tenancy).
+
+```yaml
+multitenancy:
+  landlord:
+    domain: app.example.com
+    wildcard-subdomains: true
+  queue-isolation: dedicated
+  tenants:
+    acme:                      # served at acme.app.example.com
+    globex:
+      domain: globex.io        # served on its own domain
+      wildcard-subdomains: true
+```
+
+Every key is validated explicitly — there is no free-form subtree, so a misremembered or hand-written key (`apex`, say, which is always derived) fails the manifest check rather than being silently accepted and ignored.
+
+Four keys moved here and are refused where they used to sit, each naming its new path:
+
+| Was | Now |
+| --- | --- |
+| `domain` | `multitenancy.landlord.domain` |
+| `wildcard-subdomains` | `multitenancy.landlord.wildcard-subdomains`, or per tenant |
+| `tenants` | `multitenancy.tenants` |
+| `queue-isolation` | `multitenancy.queue-isolation` |
+
+#### `multitenancy.landlord`
+
+The landlord's own hosting, using the same shape a tenant does: a `domain`, optionally `wildcard-subdomains`. Wildcarding the landlord is what serves tenants beneath it, so a tenant needs no domain of its own.
+
+Optional — omit it for a multi-tenant app with no landlord host, where every tenant brings its own domain. The `:443` listener then takes its default certificate from the first tenant by sorted id.
+
+#### `multitenancy.tenants`
+
+A map of tenant id → party config. The id identifies that tenant's resources throughout YOLO.
 
 ```yaml
 tenants:
-  acme:
-    domain: acme.example.com
+  acme:                       # bare: served under the landlord's wildcard
   globex:
-    domain: globex-with-yolo.com
+    domain: globex.io         # its own zone, certificate, SNI attachment and rules
+    wildcard-subdomains: true # …and *.globex.io
 ```
 
-### `queue-isolation`
+A tenant's `apex` is derived from its `domain` exactly as the app's is — never declared. A tenant whose domain the landlord's certificate already covers provisions no DNS/TLS resources of its own; see [Mixing the two](/guide/multi-tenancy#mixing-the-two).
 
-How a multi-tenant app's tenants map onto SQS queues and worker programs — `shared` (default) or `dedicated`. Only valid alongside [`tenants`](#tenants); on a solo app there is one scope and nothing to isolate, so the key is refused rather than silently ignored.
+#### `multitenancy.queue-isolation`
+
+How tenants map onto SQS queues and worker programs — `shared` (default) or `dedicated`. Only valid alongside `multitenancy.tenants`; on a solo app there is one scope and nothing to isolate, so the key is refused rather than silently ignored.
 
 | Value | Queues | Workers | Trade |
 | --- | --- | --- | --- |
@@ -503,7 +545,7 @@ Your manifest implies one of three modes:
 | Mode | Condition | Behaviour |
 |---|---|---|
 | **Solo** | `domain` set at the environment level | One app, one hosted zone + certificate, served on its domain. |
-| **Multi-tenant** | `tenants` set (no env-level `domain`) | Per-tenant domains and queues. [Tenant TLS isn't built yet](/guide/multi-tenancy#tenant-domains) — use `wildcard-subdomains` for a tenanted app that has to serve traffic. |
+| **Multi-tenant** | a [`multitenancy`](#multitenancy) block | A landlord on its own host plus per-tenant resources: queues, and for a tenant on its own domain a hosted zone, certificate, SNI attachment and listener rules. |
 | **Headless** | no `domain` or tenant domains | A [worker app](#where-each-role-runs) — no web task (web requires a domain), no ALB attachment or DNS. Still deploys and processes queued/scheduled work. |
 
 The mode is the **domain axis** — whether and how the app is exposed. The `tasks` block sets the orthogonal **topology axis**: a web service, a [web-less worker app](#where-each-role-runs) (a standalone queue and/or scheduler with no web container), or a build-only app (no `tasks` at all).

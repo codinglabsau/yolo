@@ -25,7 +25,7 @@ function skipReasonFor(object $step): ?string
 }
 
 it('skips solo-only steps in a multi-tenant app', function (): void {
-    writeManifest(['tenants' => ['alpha' => []]]);
+    writeManifest(['multitenancy' => ['tenants' => ['alpha' => []]]]);
 
     expect(skipReasonFor(new class() implements ExecutesSoloStep
     {

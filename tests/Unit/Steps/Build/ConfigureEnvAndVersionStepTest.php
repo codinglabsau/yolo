@@ -274,8 +274,7 @@ it('does not pin SQS_QUEUE for a dedicated multitenant app (worker resolves it p
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => true],
-        'tenants' => ['acme' => ['domain' => 'acme.test']],
-        'queue-isolation' => 'dedicated',
+        'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => ['acme' => ['domain' => 'acme.test']]],
     ]);
 
     if (! is_dir(Paths::build())) {
@@ -300,8 +299,7 @@ it('pins SQS_QUEUE to the shared queue for a shared multitenant app', function (
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => true],
-        'tenants' => ['acme' => ['domain' => 'acme.test']],
-        'queue-isolation' => 'shared',
+        'multitenancy' => ['queue-isolation' => 'shared', 'tenants' => ['acme' => ['domain' => 'acme.test']]],
     ]);
 
     if (! is_dir(Paths::build())) {

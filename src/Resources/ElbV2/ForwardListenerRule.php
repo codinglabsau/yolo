@@ -23,7 +23,7 @@ class ForwardListenerRule extends ListenerRule
     public function hosts(): array
     {
         return array_values(array_filter([
-            Manifest::get('domain') ?? Manifest::apex(),
+            Manifest::domain() ?? Manifest::apex(),
             Manifest::wildcardHost(),
         ]));
     }

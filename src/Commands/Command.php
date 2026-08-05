@@ -147,6 +147,7 @@ abstract class Command extends SymfonyCommand
     {
         return $this->ensureNameDeclared()
             && $this->ensureNameNotReserved()
+            && $this->ensureMultitenancyKeysNested()
             && $this->ensureNoUnknownManifestKeys()
             && $this->ensureManifestKeyDeclared('region')
             && $this->ensureManifestKeyDeclared('account-id')
@@ -162,11 +163,62 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
+     * Multi-tenancy lives in one nested block. Every key that used to sit at the
+     * top of the environment block is refused there with the exact path it moved
+     * to — an unrecognised-key error would be technically correct and useless.
+     *
+     * `domain` is the pointed one: alongside a `multitenancy` block it is genuinely
+     * ambiguous, meaning both "where the landlord is served" and "what subdomain
+     * tenants hang off" — readings that separate the moment one tenant takes a
+     * custom domain. The landlord's own block says it once.
+     *
+     * Runs before the unknown-key sweep so these get the specific message.
+     */
+    protected function ensureMultitenancyKeysNested(): bool
+    {
+        foreach (['tenants' => 'multitenancy.tenants', 'queue-isolation' => 'multitenancy.queue-isolation'] as $old => $new) {
+            if (Manifest::has($old)) {
+                error(sprintf('yolo.yml declares `%s` at the top of the environment block — it now lives inside the multitenancy block as `%s`.', $old, $new));
+
+                return false;
+            }
+        }
+
+        if (! Manifest::has('multitenancy')) {
+            return true;
+        }
+
+        if (Manifest::has('domain')) {
+            error(
+                "yolo.yml declares both `domain` and `multitenancy` — under multi-tenancy a top-level `domain` is ambiguous (the landlord's own host, or the domain tenant subdomains hang off?).\n"
+                . 'Move it to `multitenancy.landlord.domain`.'
+            );
+
+            return false;
+        }
+
+        if (Manifest::has('wildcard-subdomains')) {
+            error(
+                "yolo.yml declares both `wildcard-subdomains` and `multitenancy` — the flag belongs to the party whose domain it wildcards.\n"
+                . 'Move it to `multitenancy.landlord.wildcard-subdomains`, or onto the tenant as `multitenancy.tenants.<id>.wildcard-subdomains`.'
+            );
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * `wildcard-subdomains` serves every subdomain of the app's own `domain` from
-     * the one service, so it needs a `domain` to be a wildcard *of*. It is also
-     * mutually exclusive with `tenants`: that block gives each tenant its own
-     * hosted zone, certificate and records, which is the opposite trade — declare
-     * one model or the other, never both.
+     * the one service, so it needs a `domain` to be a wildcard *of*.
+     *
+     * It deliberately composes with `tenants` rather than excluding it: the two
+     * answer different questions — how the app is routed to, versus what each
+     * tenant gets of its own. A tenant whose domain sits under the wildcard is
+     * already served by the app's certificate and rule and provisions no DNS/TLS
+     * resources ({@see Manifest::servesDomain()}); a tenant on its own domain
+     * still gets a zone, certificate, SNI attachment and rule.
      */
     protected function ensureWildcardSubdomainsValid(): bool
     {
@@ -174,13 +226,7 @@ abstract class Command extends SymfonyCommand
             return true;
         }
 
-        if (Manifest::isMultitenanted()) {
-            error('yolo.yml declares both `wildcard-subdomains` and `tenants` — they are two different tenancy models. Serve tenants as subdomains of one `domain`, or give each their own domain under `tenants`.');
-
-            return false;
-        }
-
-        if (! Manifest::has('domain')) {
+        if (! Manifest::hasDomain()) {
             error('yolo.yml declares `wildcard-subdomains` but no `domain` — there is nothing to serve subdomains of. Declare `domain`, or drop the key.');
 
             return false;
@@ -191,7 +237,7 @@ abstract class Command extends SymfonyCommand
         // off the apex — leaving the apex/www redirect's own host with no valid
         // certificate, so it would fail the TLS handshake before it could ever
         // 301. Refuse the combination rather than silently serve that.
-        $domain = (string) Manifest::get('domain');
+        $domain = (string) Manifest::domain();
 
         if (str_starts_with($domain, 'www.')) {
             error(sprintf(
@@ -214,12 +260,12 @@ abstract class Command extends SymfonyCommand
      */
     protected function ensureQueueIsolationValid(): bool
     {
-        if (! Manifest::has('queue-isolation')) {
+        if (! Manifest::has('multitenancy.queue-isolation')) {
             return true;
         }
 
         if (! Manifest::isMultitenanted()) {
-            error('yolo.yml declares `queue-isolation` but no `tenants` — the strategy only applies to a multi-tenant app. Remove it, or declare tenants.');
+            error('yolo.yml declares `multitenancy.queue-isolation` but no `multitenancy.tenants` — the strategy only applies to a multi-tenant app. Remove it, or declare tenants.');
 
             return false;
         }

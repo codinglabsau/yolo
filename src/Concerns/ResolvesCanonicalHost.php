@@ -27,12 +27,14 @@ trait ResolvesCanonicalHost
      *
      * @return array<int, string>
      */
-    public function aliasedHosts(string $apex, string $domain): array
+    public function aliasedHosts(string $apex, string $domain, ?string $wildcardHost = null): array
     {
         return array_values(array_filter([
             $domain,
             $this->hasWwwSibling($apex, $domain) ? $this->wwwSibling($apex, $domain) : null,
-            Manifest::wildcardHost(),
+            // Explicit for a tenant, whose wildcard is its own — defaulting to the
+            // app's would write a `*.{app domain}` record into the tenant's zone.
+            $wildcardHost ?? Manifest::wildcardHost(),
         ]));
     }
 

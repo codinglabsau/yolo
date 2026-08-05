@@ -39,6 +39,25 @@ trait ResolvesHttpsListener
     }
 
     /**
+     * Whether a certificate is already in the listener's SNI certificate list.
+     *
+     * The list read (DescribeListenerCertificates) is the only honest source: an
+     * app's cert hangs off the shared listener as an SNI cert, not as its single
+     * default cert, so inspecting the default reads every non-creator app's cert
+     * as missing on every sync.
+     */
+    protected function listenerHasCertificate(string $listenerArn, string $certificateArn): bool
+    {
+        try {
+            ElbV2::listenerCertificate($listenerArn, $certificateArn);
+
+            return true;
+        } catch (ResourceDoesNotExistException) {
+            return false;
+        }
+    }
+
+    /**
      * Whether the `:443` listener will exist by the time the apply pass reaches
      * the rule steps. It's created by SyncHttpsListenerStep gated on this app's
      * cert being ISSUED, so that exact condition is the discriminator: an issued
@@ -48,8 +67,19 @@ trait ResolvesHttpsListener
      */
     protected function httpsListenerWillBeCreatedThisSync(): bool
     {
+        return $this->certificateIsIssued(Manifest::certificateDomain());
+    }
+
+    /**
+     * Whether a domain's certificate exists and is issued. An unissued or absent
+     * certificate is the discriminator the rule steps gate on: the listener is
+     * only created once a certificate is available to be its default, so no
+     * certificate means no listener this run either.
+     */
+    protected function certificateIsIssued(string $domain): bool
+    {
         try {
-            return Acm::certificate(Manifest::certificateDomain())['Status'] === 'ISSUED';
+            return Acm::certificate($domain)['Status'] === 'ISSUED';
         } catch (ResourceDoesNotExistException) {
             return false;
         }

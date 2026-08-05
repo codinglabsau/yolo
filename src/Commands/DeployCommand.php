@@ -118,8 +118,8 @@ class DeployCommand extends SteppedCommand implements DeployerCommand
         // Raw tenant config, not Manifest::tenants() — that derives each apex via
         // the Route 53 suffix walk, and printing URLs needs no AWS reads.
         $domains = Manifest::isMultitenanted()
-            ? collect(Manifest::get('tenants'))->pluck('domain')->filter()->values()->all()
-            : array_filter([Manifest::get('domain')]);
+            ? Manifest::tenantDomains()
+            : array_filter([Manifest::domain()]);
 
         if ($domains === []) {
             return [];

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Codinglabs\Yolo\Resources\ElbV2;
 
 use Codinglabs\Yolo\Change;
@@ -68,6 +70,6 @@ class RedirectListenerRule extends ListenerRule
 
     protected function canonicalHost(): string
     {
-        return Manifest::get('domain') ?? Manifest::apex();
+        return Manifest::domain() ?? Manifest::apex();
     }
 }

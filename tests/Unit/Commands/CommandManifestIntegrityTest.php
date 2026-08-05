@@ -144,7 +144,7 @@ it('refuses a web task with no public host — web requires a domain', function 
     // server nobody can reach. Workers (no web task) are the headless shape.
     'solo, no domain' => [['tasks' => ['web' => ['autoscaling' => true]]]],
     'multi-tenant, no tenant domains' => [[
-        'tenants' => ['alpha' => [], 'beta' => []],
+        'multitenancy' => ['tenants' => ['alpha' => [], 'beta' => []]],
         'tasks' => ['web' => ['autoscaling' => true]],
     ]],
 ]);
@@ -160,7 +160,7 @@ it('accepts a web task when a public host exists', function (array $manifest): v
     'solo with a domain' => [['domain' => 'example.com', 'tasks' => ['web' => ['autoscaling' => true]]]],
     // One routed tenant is enough — a domain-less sibling may be mid-onboarding.
     'multi-tenant with one tenant domain' => [[
-        'tenants' => ['alpha' => ['domain' => 'alpha.example.com'], 'beta' => []],
+        'multitenancy' => ['tenants' => ['alpha' => ['domain' => 'alpha.example.com'], 'beta' => []]],
         'tasks' => ['web' => ['autoscaling' => true]],
     ]],
 ]);
@@ -468,7 +468,7 @@ it('rejects the reserved app name `services` — it collides with the env servic
 it('bails when queue-isolation is set on a solo app', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'queue-isolation' => 'shared',
+        'multitenancy' => ['queue-isolation' => 'dedicated'],
     ]);
 
     expect(invokeManifestIntegrity())->toBeFalse();
@@ -476,11 +476,60 @@ it('bails when queue-isolation is set on a solo app', function (): void {
     expect(test()->promptOutput->fetch())->toContain('queue-isolation');
 });
 
+describe('the multitenancy block', function (): void {
+    // Every key that moved is refused where it used to live, naming the exact path
+    // it moved to — an "unknown key" error would be correct and useless.
+    it('names the new path for a relocated root key', function (string $manifest, string $expected): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            ...json_decode($manifest, true),
+        ]);
+
+        expect(invokeManifestIntegrity())->toBeFalse();
+        expect(test()->promptOutput->fetch())->toContain($expected);
+    })->with([
+        'tenants' => ['{"tenants":{"acme":[]}}', 'multitenancy.tenants'],
+        'queue-isolation' => ['{"queue-isolation":"dedicated"}', 'multitenancy.queue-isolation'],
+        'domain' => [
+            '{"domain":"example.com","multitenancy":{"tenants":{"acme":null}}}',
+            'multitenancy.landlord.domain',
+        ],
+        'wildcard-subdomains' => [
+            '{"wildcard-subdomains":true,"multitenancy":{"tenants":{"acme":null}}}',
+            'multitenancy.landlord.wildcard-subdomains',
+        ],
+    ]);
+
+    it('refuses a key the party shape does not name', function (): void {
+        // `apex` is always derived from `domain`. Accepting it silently — which the
+        // old free-form `tenants.*` subtree did — meant a hand-written value was
+        // taken and then overwritten.
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'multitenancy' => ['tenants' => ['acme' => ['domain' => 'acme.test', 'apex' => 'acme.test']]],
+        ]);
+
+        expect(invokeManifestIntegrity())->toBeFalse();
+        expect(test()->promptOutput->fetch())->toContain('multitenancy.tenants.acme.apex');
+    });
+
+    it('accepts a tenant declared bare, with no config of its own', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'multitenancy' => [
+                'landlord' => ['domain' => 'app.example.com', 'wildcard-subdomains' => true],
+                'tenants' => ['acme' => null, 'globex' => null],
+            ],
+        ]);
+
+        expect(invokeManifestIntegrity())->toBeTrue();
+    });
+});
+
 it('bails on an unknown queue-isolation value', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tenants' => ['acme' => []],
-        'queue-isolation' => 'sometimes',
+        'multitenancy' => ['queue-isolation' => 'sometimes', 'tenants' => ['acme' => []]],
     ]);
 
     expect(invokeManifestIntegrity())->toBeFalse();
@@ -491,8 +540,7 @@ it('bails on an unknown queue-isolation value', function (): void {
 it('passes for a shared multi-tenant app', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tenants' => ['acme' => []],
-        'queue-isolation' => 'shared',
+        'multitenancy' => ['queue-isolation' => 'shared', 'tenants' => ['acme' => []]],
     ]);
 
     expect(invokeManifestIntegrity())->toBeTrue();
@@ -514,7 +562,7 @@ it('bails when wildcard-subdomains and tenants are both declared', function (): 
     // certificate per tenant. Declaring both says nothing coherent.
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tenants' => ['acme' => ['domain' => 'acme.example.com']],
+        'multitenancy' => ['tenants' => ['acme' => ['domain' => 'acme.example.com']]],
         'wildcard-subdomains' => true,
     ]);
 

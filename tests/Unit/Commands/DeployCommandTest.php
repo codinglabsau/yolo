@@ -20,11 +20,11 @@ it('ends the deploy summary with the solo app URL', function (): void {
 it('lists every tenant URL for a multi-tenant app', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tenants' => [
+        'multitenancy' => ['tenants' => [
             'alpha' => ['domain' => 'alpha.example.com'],
             'worker' => [],
             'beta' => ['domain' => 'beta.example.com'],
-        ],
+        ]],
     ]);
 
     $lines = deployAppUrlLines();

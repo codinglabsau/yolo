@@ -74,7 +74,7 @@ it('constructs every declared step with just the environment string', function (
         });
 })->with([
     'solo web app' => [['domain' => 'example.com', 'tasks' => ['web' => true]]],
-    'multi-tenant app' => [['tenants' => ['alpha' => []]]],
+    'multi-tenant app' => [['multitenancy' => ['tenants' => ['alpha' => []]]]],
 ]);
 
 it('orchestrates the three scopes in order — account → environment → app', function (): void {
@@ -102,11 +102,31 @@ it('omits the Fargate + CDN steps from a solo app with no tasks at all', functio
     $appSteps = (new SyncCommand())->scopes()['app'];
 
     // No tasks block → no ECS services → none of the shared container infra either.
+    // And with no `domain` there is no zone or certificate to sync: the pair is
+    // collated off the domain, not off being solo, so a tenanted app that declares
+    // its landlord's domain gets exactly the same two steps.
     expect($appSteps)->not->toContain(Steps\Sync\App\SyncEcsServiceStep::class)
         ->and($appSteps)->not->toContain(Steps\Sync\App\SyncEcsClusterStep::class)
         ->and($appSteps)->not->toContain(Steps\Sync\App\SyncEcrRepositoryStep::class)
-        ->and($appSteps)->toContain(Steps\Sync\App\Solo\SyncHostedZoneStep::class);
+        ->and($appSteps)->not->toContain(Steps\Sync\App\Solo\SyncHostedZoneStep::class);
 });
+
+it('collates the app zone + certificate off the domain, solo or tenanted', function (array $manifest): void {
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', ...$manifest]);
+
+    $appSteps = (new SyncCommand())->scopes()['app'];
+
+    expect($appSteps)->toContain(Steps\Sync\App\Solo\SyncHostedZoneStep::class)
+        ->and($appSteps)->toContain(Steps\Sync\App\Solo\SyncSslCertificateStep::class);
+})->with([
+    'solo' => [['domain' => 'example.com']],
+    'tenanted, landlord on its own domain' => [[
+        'multitenancy' => [
+            'landlord' => ['domain' => 'app.example.com', 'wildcard-subdomains' => true],
+            'tenants' => ['acme' => null],
+        ],
+    ]],
+]);
 
 it('provisions the shared container infra without any web resources for a scheduler-only worker app', function (): void {
     writeManifest([
@@ -164,8 +184,7 @@ it('provisions the SQS queue and queue service for a web-less worker app with a 
 it('swaps the Solo steps for Landlord + Tenant queue steps on a dedicated multi-tenant app', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tenants' => ['alpha' => []],
-        'queue-isolation' => 'dedicated',
+        'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => ['alpha' => []]],
     ]);
 
     $appSteps = (new SyncCommand())->scopes()['app'];
@@ -179,7 +198,7 @@ it('swaps the Solo steps for Landlord + Tenant queue steps on a dedicated multi-
 it('provisions one shared queue set on a shared multi-tenant app — the default', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tenants' => ['alpha' => []],
+        'multitenancy' => ['tenants' => ['alpha' => []]],
     ]);
 
     $appSteps = (new SyncCommand())->scopes()['app'];
@@ -335,7 +354,7 @@ it('plans the web ingress steps when the app has a domain', function (): void {
 it('fans a per-tenant step out across every tenant by default', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tenants' => ['alpha' => [], 'beta' => []],
+        'multitenancy' => ['tenants' => ['alpha' => [], 'beta' => []]],
     ]);
 
     [$plan] = collate(['app' => [CollationFakeTenantStep::class]], new SyncAppCommand());
@@ -346,7 +365,7 @@ it('fans a per-tenant step out across every tenant by default', function (): voi
 it('narrows the per-tenant fan-out to a single tenant with --tenant', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tenants' => ['alpha' => [], 'beta' => []],
+        'multitenancy' => ['tenants' => ['alpha' => [], 'beta' => []]],
     ]);
 
     [$plan] = collate(['app' => [CollationFakeTenantStep::class]], new SyncAppCommand(), ['--tenant' => 'alpha']);
@@ -358,7 +377,7 @@ it('narrows the per-tenant fan-out to a single tenant with --tenant', function (
 it('errors on an unknown --tenant id', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tenants' => ['alpha' => []],
+        'multitenancy' => ['tenants' => ['alpha' => []]],
     ]);
 
     collate(['app' => [CollationFakeTenantStep::class]], new SyncAppCommand(), ['--tenant' => 'ghost']);
