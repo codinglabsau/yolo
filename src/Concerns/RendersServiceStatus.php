@@ -1008,7 +1008,7 @@ trait RendersServiceStatus
      */
     protected function loadLines(array $statuses): array
     {
-        $live = array_values(array_filter($statuses, fn (array $status) => $status['exists']));
+        $live = array_values(array_filter($statuses, fn (array $status): bool => (bool) $status['exists']));
 
         if ($live === []) {
             return [];

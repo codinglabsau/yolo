@@ -503,7 +503,7 @@ Your manifest implies one of three modes:
 | Mode | Condition | Behaviour |
 |---|---|---|
 | **Solo** | `domain` set at the environment level | One app, one hosted zone + certificate, served on its domain. |
-| **Multi-tenant** | `tenants` set (no env-level `domain`) | Per-tenant domains and queues; certs attach per tenant via SNI. |
+| **Multi-tenant** | `tenants` set (no env-level `domain`) | Per-tenant domains and queues. [Tenant TLS isn't built yet](/guide/multi-tenancy#tenant-domains) — use `wildcard-subdomains` for a tenanted app that has to serve traffic. |
 | **Headless** | no `domain` or tenant domains | A [worker app](#where-each-role-runs) — no web task (web requires a domain), no ALB attachment or DNS. Still deploys and processes queued/scheduled work. |
 
 The mode is the **domain axis** — whether and how the app is exposed. The `tasks` block sets the orthogonal **topology axis**: a web service, a [web-less worker app](#where-each-role-runs) (a standalone queue and/or scheduler with no web container), or a build-only app (no `tasks` at all).

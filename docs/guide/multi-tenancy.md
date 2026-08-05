@@ -6,7 +6,7 @@ YOLO supports two shapes of multi-tenancy. One container image and one ECS servi
 | --- | --- | --- |
 | Tenant is reached at | `{tenant}.{domain}` | any domain, one per tenant |
 | Declared with | `wildcard-subdomains: true` | a `tenants` block |
-| Per-tenant AWS resources | none | hosted zone, certificate, DNS records, optionally queues |
+| Per-tenant AWS resources | none | DNS records, optionally queues |
 | Onboarding a tenant | a row in your database | a manifest edit and a `yolo sync` |
 
 They are mutually exclusive. Reach for the wildcard unless a tenant needs to be served on a domain of their own.
@@ -76,8 +76,8 @@ deploy:
 - Queues, when [`queue-isolation`](/reference/manifest#queue-isolation) is `dedicated` — a **landlord** SQS queue and depth alarm for shared/central work, plus a **per-tenant** queue and alarm for each tenant. On the default `shared` strategy one queue set serves every tenant instead.
 - Per-tenant DNS records, pointed at the shared load balancer, are UPSERTed during `yolo deploy`.
 
-::: warning Tenant HTTPS is not provisioned yet
-The per-tenant hosted zone, certificate and SNI attachment are implemented but not yet wired into `sync:app`'s plan, and the HTTPS listener rule is only created for an environment-level `domain`. So a `tenants` app currently gets its queues and DNS records but nothing that terminates TLS or routes its hosts to the service. Use [wildcard subdomains](#wildcard-subdomains) until that lands.
+::: warning Tenant HTTPS is not built yet
+Nothing provisions a per-tenant hosted zone or certificate, and the HTTPS listener rule is only created for an environment-level `domain`. So a `tenants` app gets its queues and DNS records but nothing that terminates TLS or routes its hosts to the service. Use [wildcard subdomains](#wildcard-subdomains) — that shape is complete.
 :::
 
 ## Single-tenant operations
