@@ -39,6 +39,17 @@ class Manifest
     protected static array $apexCache = [];
 
     /**
+     * The account's hosted-zone names, memoised for the run. Every apex derivation
+     * walks the same list, so without this a multi-tenant app pays one
+     * ListHostedZones per distinct tenant domain — enough to trip Route 53's rate
+     * limit on a large tenant set, for an answer that can't differ between calls.
+     * Reset alongside {@see $apexCache}, which memoises what this feeds.
+     *
+     * @var array<int, string>|null
+     */
+    protected static ?array $hostedZoneNamesCache = null;
+
+    /**
      * The complete set of valid environment-block keys as dot-paths — the single
      * source of truth for the manifest's shape. There is no `aws.*` namespace:
      * every key sits at the top of the environment block. A trailing `.*` allows
@@ -112,6 +123,7 @@ class Manifest
     {
         static::$hydrated = null;
         static::$apexCache = [];
+        static::$hostedZoneNamesCache = null;
     }
 
     public static function environments(): array
@@ -1120,7 +1132,7 @@ class Manifest
 
     protected static function resolveApex(string $domain): string
     {
-        $zones = Route53::hostedZoneNames();
+        $zones = static::$hostedZoneNamesCache ??= Route53::hostedZoneNames();
         $labels = explode('.', $domain);
 
         for ($i = 0, $count = count($labels); $i < $count - 1; $i++) {
