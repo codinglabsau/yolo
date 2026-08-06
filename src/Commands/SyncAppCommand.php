@@ -60,7 +60,7 @@ class SyncAppCommand extends SyncSteppedCommand
      */
     public function hostedZoneOwnershipWarning(): ?string
     {
-        if (Manifest::isMultitenanted() || Manifest::isHeadless()) {
+        if (! Manifest::hasDomain()) {
             return null;
         }
 
@@ -161,13 +161,36 @@ class SyncAppCommand extends SyncSteppedCommand
                 Steps\Sync\App\SyncDeployersGroupStep::class,
                 Steps\Sync\App\SyncAppObserversGroupStep::class,
                 // cert/DNS + queues — runs before Fargate so the SSL certificate
-                // exists before the HTTPS listener that needs it. Solo gets an
-                // env-level apex zone + cert; multi-tenant has none (certs attach
-                // per tenant via SNI). A `dedicated` multi-tenant app fans queues out
-                // landlord + per-tenant; a `shared` one provisions a single queue set
-                // at the app name (the solo shape), matching the fansQueuesPerTenant()
-                // gate its worker programs key off.
-                ...Manifest::isMultitenanted()
+                // exists before the HTTPS listener that needs it.
+                //
+                // The app's own zone + cert are provisioned whenever it declares a
+                // `domain`, tenanted or not: `tenants` is an orthogonal axis, so a
+                // tenanted app on its own domain (serving tenants as subdomains via
+                // `wildcard-subdomains`) gets the same app-level pair a solo app does.
+                ...Manifest::hasDomain()
+                    ? [
+                        Steps\Sync\App\Solo\SyncHostedZoneStep::class,
+                        Steps\Sync\App\Solo\SyncSslCertificateStep::class,
+                    ]
+                    : [],
+                // Per-tenant zone + cert, for tenants the app's own certificate
+                // doesn't already cover — i.e. genuine custom domains. A tenant
+                // sitting under the app's wildcard self-skips every one of these
+                // (Manifest::servesDomain), so declaring tenants for their queues
+                // costs no DNS/TLS resources.
+                ...Manifest::hasTenants()
+                    ? [
+                        Steps\Sync\App\Tenant\SyncHostedZoneStep::class,
+                        Steps\Sync\App\Tenant\SyncSslCertificateStep::class,
+                    ]
+                    : [],
+                // A `dedicated` multi-tenant app fans queues out landlord +
+                // per-tenant; a `shared` one provisions a single queue set at the app
+                // name (the solo shape), matching the fansQueuesPerTenant() gate its
+                // worker programs key off. Gated on tenants, not the mode — with none
+                // declared there is one scope, so the solo branch (melt included) is
+                // the correct shape.
+                ...Manifest::hasTenants()
                     ? (Manifest::fansQueuesPerTenant()
                         ? [
                             Steps\Sync\App\Landlord\SyncQueueStep::class,
@@ -177,8 +200,6 @@ class SyncAppCommand extends SyncSteppedCommand
                             Steps\Sync\App\Shared\SyncQueueStep::class,
                         ])
                     : [
-                        Steps\Sync\App\Solo\SyncHostedZoneStep::class,
-                        Steps\Sync\App\Solo\SyncSslCertificateStep::class,
                         // The SQS queue, always wired with a melt branch: with no
                         // worker anywhere (tasks.queue: false, or a web-less app
                         // with no standalone queue) jobs run inline
@@ -279,6 +300,17 @@ class SyncAppCommand extends SyncSteppedCommand
                         Steps\Sync\App\SyncHttpsListenerStep::class,
                         Steps\Sync\App\SyncForwardRuleStep::class,
                         Steps\Sync\App\SyncRedirectRuleStep::class,
+                        // Per-tenant ingress, after the listener they attach to and
+                        // the target group they forward at. Each self-skips for a
+                        // tenant the app's own certificate already covers, so this
+                        // only does work for genuine custom domains.
+                        ...Manifest::hasTenants()
+                            ? [
+                                Steps\Sync\App\Tenant\AttachSslCertificateToLoadBalancerListenerStep::class,
+                                Steps\Sync\App\Tenant\SyncForwardRuleStep::class,
+                                Steps\Sync\App\Tenant\SyncRedirectRuleStep::class,
+                            ]
+                            : [],
                         Steps\Sync\App\SyncTaskDefinitionStep::class,
                         Steps\Sync\App\SyncEcsServiceStep::class,
                         // Autoscaling (web only) — registered after the service it

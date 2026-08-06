@@ -31,12 +31,15 @@ trait ChecksIfCommandsShouldBeRunning
             return 'admin-owned reconciler — verified by `yolo sync`, not the deploy gate';
         }
 
-        if ($instance instanceof ExecutesSoloStep && Manifest::isMultitenanted()) {
-            return 'solo-only step in a multi-tenant app';
+        // Keyed on tenants being declared, not on the mode: a landlord-only
+        // `multitenancy` block has one scope, so it wants the single-scope (solo)
+        // shape these contracts discriminate — nothing fans out over zero tenants.
+        if ($instance instanceof ExecutesSoloStep && Manifest::hasTenants()) {
+            return 'single-scope step in an app with tenants';
         }
 
-        if ($instance instanceof ExecutesMultitenancyStep && ! Manifest::isMultitenanted()) {
-            return 'multi-tenancy step in a solo app';
+        if ($instance instanceof ExecutesMultitenancyStep && ! Manifest::hasTenants()) {
+            return 'per-tenant step in an app with no tenants';
         }
 
         if ($instance instanceof ExecutesWebStep && Manifest::isHeadless()) {

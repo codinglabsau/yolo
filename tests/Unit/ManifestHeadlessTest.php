@@ -25,10 +25,10 @@ describe('isHeadless', function (): void {
     it('is true when every tenant lacks a domain', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tenants' => [
+            'multitenancy' => ['tenants' => [
                 'worker-a' => [],
                 'worker-b' => [],
-            ],
+            ]],
         ]);
 
         expect(Manifest::isHeadless())->toBeTrue();
@@ -37,10 +37,10 @@ describe('isHeadless', function (): void {
     it('is false when at least one tenant declares a domain', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tenants' => [
+            'multitenancy' => ['tenants' => [
                 'worker-a' => [],
                 'site-b' => ['domain' => 'b.example.com'],
-            ],
+            ]],
         ]);
 
         expect(Manifest::isHeadless())->toBeFalse();
@@ -52,9 +52,9 @@ describe('tenants() normalisation', function (): void {
     it('does not TypeError on a headless tenant entry', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tenants' => [
+            'multitenancy' => ['tenants' => [
                 'worker-a' => [],
-            ],
+            ]],
         ]);
 
         $tenants = Manifest::tenants();
@@ -65,9 +65,9 @@ describe('tenants() normalisation', function (): void {
     it('still resolves apex from domain when only domain is set', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'tenants' => [
+            'multitenancy' => ['tenants' => [
                 'site-a' => ['domain' => 'a.example.com'],
-            ],
+            ]],
         ]);
 
         bindHostedZones();

@@ -16,6 +16,7 @@ use Codinglabs\Yolo\Commands\SyncAppCommand;
 use Codinglabs\Yolo\Concerns\SyncsRecordSets;
 use Codinglabs\Yolo\Concerns\ResolvesCanonicalHost;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
+use Codinglabs\Yolo\Steps\Deploy\SyncMultitenancyRecordSetStep;
 
 /**
  * Route 53 hosted zone for a domain (the solo app's apex, or a tenant's apex).
@@ -37,7 +38,32 @@ class HostedZone implements Adoptable, Resource, Undeletable
     use ResolvesCanonicalHost;
     use ResolvesTags;
 
-    public function __construct(protected string $apex) {}
+    /**
+     * A zone is identified by its apex alone — every caller that only needs its
+     * identity (existence, ARN, tags) passes that and nothing else.
+     *
+     * The record-management methods additionally need to know *whose* records
+     * they manage, since a tenant zone holds that tenant's hosts and wildcard,
+     * not the app's. Left null they default to the app's own hosts
+     * ({@see managedHosts()}); {@see forTenant()} names a tenant's instead.
+     */
+    public function __construct(
+        protected string $apex,
+        protected ?string $domain = null,
+        protected ?string $wildcardHost = null,
+    ) {}
+
+    /**
+     * The zone holding one tenant's records, keyed to that tenant's own hosts so a
+     * withdrawal takes exactly what {@see SyncMultitenancyRecordSetStep}
+     * wrote — never the app's, and never a sibling tenant's.
+     *
+     * @param  array<string, mixed>  $config  a {@see Manifest::tenants()} entry
+     */
+    public static function forTenant(array $config): self
+    {
+        return new self((string) $config['apex'], (string) $config['domain'], $config['wildcard-host'] ?? null);
+    }
 
     public function name(): string
     {
@@ -158,7 +184,13 @@ class HostedZone implements Adoptable, Resource, Undeletable
      */
     protected function managedHosts(): array
     {
-        return $this->aliasedHosts($this->apex, Manifest::get('domain', $this->apex));
+        // A zone constructed without a domain manages the app's own records; one
+        // built by forTenant() manages that tenant's. Resolved here rather than
+        // defaulted inside aliasedHosts(), so a tenant's zone can never inherit the
+        // app's wildcard (which would write `*.{app domain}` into the tenant's zone).
+        return $this->domain === null
+            ? $this->aliasedHosts($this->apex, Manifest::domain() ?? $this->apex, Manifest::wildcardHost())
+            : $this->aliasedHosts($this->apex, $this->domain, $this->wildcardHost);
     }
 
     /**

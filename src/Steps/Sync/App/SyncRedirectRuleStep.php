@@ -20,12 +20,12 @@ class SyncRedirectRuleStep implements ExecutesWebStep
 
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::has('domain')) {
+        if (! Manifest::hasDomain()) {
             return StepResult::SKIPPED;
         }
 
         $apex = Manifest::apex();
-        $hasWwwSibling = $this->hasWwwSibling($apex, Manifest::get('domain', $apex));
+        $hasWwwSibling = $this->hasWwwSibling($apex, Manifest::domain() ?? $apex);
 
         $listener = $this->httpsListener();
 

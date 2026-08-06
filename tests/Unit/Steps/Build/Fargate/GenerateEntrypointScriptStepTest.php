@@ -191,8 +191,7 @@ it('runs a multi-tenant standalone queue under supervisord even when the schedul
         // multi-tenant app needs supervisord to run one queue:work program per tenant,
         // so it routes there.
         'tasks' => ['web' => true, 'queue' => true, 'scheduler' => true],
-        'tenants' => ['acme' => []],
-        'queue-isolation' => 'dedicated',
+        'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => ['acme' => []]],
     ]);
 
     $script = generatedEntrypointScript();

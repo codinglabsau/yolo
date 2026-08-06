@@ -55,7 +55,7 @@ This also changes where the certificate is issued. Normally YOLO requests one fo
 
 The wildcard is deliberately scoped to the app's own `domain` rather than the apex. Several apps often share one zone, and a wildcard at the apex would let whichever app won the load balancer's rule ordering swallow its siblings' traffic.
 
-Two limits worth knowing: wildcards are **one label deep** on both the certificate and the listener rule (`a.b.app.example.com` is not served), and `wildcard-subdomains` is mutually exclusive with [`tenants`](/guide/multi-tenancy) — they're different tenancy models.
+Two limits worth knowing: wildcards are **one label deep** on both the certificate and the listener rule (`a.b.app.example.com` is not served), and under [`multitenancy`](/guide/multi-tenancy) the flag moves inside the block, onto the landlord or tenant whose domain it wildcards.
 
 ### With the apex/`www` redirect
 

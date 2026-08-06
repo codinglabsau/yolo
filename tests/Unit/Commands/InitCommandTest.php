@@ -27,6 +27,51 @@ it('never ignores what the image is built from', function (): void {
     expect(dockerignorePatterns())->not->toContain('.env', 'vendor', 'public/build', 'docker', '.yolo-entrypoint.sh');
 });
 
+function scaffoldedDeploySteps(): array
+{
+    return (new ReflectionMethod(InitCommand::class, 'multitenantDeploySteps'))->invoke(new InitCommand());
+}
+
+function removeMigrationDirs(): void
+{
+    foreach (['database/migrations/landlord', 'database/migrations/tenant', 'database/migrations', 'database'] as $dir) {
+        if (is_dir($path = Paths::base($dir))) {
+            rmdir($path);
+        }
+    }
+}
+
+describe('multi-tenant deploy hooks', function (): void {
+    // Which migrate calls a tenanted app needs depends on where its tenants live,
+    // and only the migration layout says. Scaffolding the database-per-tenant form
+    // unconditionally handed a `tenant_id` app a deploy hook that fails on contact.
+    it('scaffolds one migrate hook when the migrations are flat', function (): void {
+        expect(scaffoldedDeploySteps())->toBe(['php artisan migrate --force']);
+    });
+
+    it('scaffolds landlord and per-tenant hooks from a split migrations layout', function (): void {
+        mkdir(Paths::base('database/migrations/landlord'), recursive: true);
+        mkdir(Paths::base('database/migrations/tenant'), recursive: true);
+
+        expect(scaffoldedDeploySteps())->toBe([
+            'php artisan migrate --path=database/migrations/landlord --force',
+            'php artisan tenants:artisan "migrate --path=database/migrations/tenant --database=tenant --force"',
+        ]);
+    })->after(function (): void {
+        removeMigrationDirs();
+    });
+
+    it('treats a half-split layout as flat', function (): void {
+        // A `landlord/` dir alone doesn't establish a tenant connection to migrate
+        // over, so the split form would fail on its second hook.
+        mkdir(Paths::base('database/migrations/landlord'), recursive: true);
+
+        expect(scaffoldedDeploySteps())->toBe(['php artisan migrate --force']);
+    })->after(function (): void {
+        removeMigrationDirs();
+    });
+});
+
 it('scaffolds web autoscaling on by default', function (): void {
     // Drive the literal stub (placeholders filled) through the real Manifest
     // reader — proves the scaffold parses to autoscaling-on, not just a string match.

@@ -13,7 +13,7 @@ it('upserts both the apex and www alias records for an apex domain', function ()
     $r53 = [];
     bindMockRoute53Client([['Name' => 'example.com.', 'Id' => '/hostedzone/ZONE1']], $r53);
 
-    recordSetSyncer()->syncRecordSet('example.com', 'example.com');
+    recordSetSyncer()->syncRecordSet('example.com', 'example.com', null);
 
     $change = collect($r53)->firstWhere('name', 'ChangeResourceRecordSets');
     $changes = $change['args']['ChangeBatch']['Changes'];
@@ -36,7 +36,7 @@ it('upserts both records for a www-canonical domain (www served, apex redirects)
     $r53 = [];
     bindMockRoute53Client([['Name' => 'example.com.', 'Id' => '/hostedzone/ZONE1']], $r53);
 
-    recordSetSyncer()->syncRecordSet('example.com', 'www.example.com');
+    recordSetSyncer()->syncRecordSet('example.com', 'www.example.com', null);
 
     $changes = collect($r53)->firstWhere('name', 'ChangeResourceRecordSets')['args']['ChangeBatch']['Changes'];
 
@@ -54,7 +54,7 @@ it('upserts a single alias record for a subdomain', function (): void {
     $r53 = [];
     bindMockRoute53Client([['Name' => 'example.com.', 'Id' => '/hostedzone/ZONE1']], $r53);
 
-    recordSetSyncer()->syncRecordSet('example.com', 'app.example.com');
+    recordSetSyncer()->syncRecordSet('example.com', 'app.example.com', null);
 
     $changes = collect($r53)->firstWhere('name', 'ChangeResourceRecordSets')['args']['ChangeBatch']['Changes'];
 

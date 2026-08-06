@@ -460,8 +460,7 @@ it('fans the bundled queue worker into one program per scope for a dedicated mul
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['autoscaling' => false]],
-        'tenants' => ['acme' => [], 'globex' => []],
-        'queue-isolation' => 'dedicated',
+        'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => ['acme' => [], 'globex' => []]],
     ]);
 
     $config = generatedSupervisorConfig();
@@ -483,8 +482,7 @@ it('chains each per-tenant program over the declared priority tiers', function (
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['autoscaling' => false]],
-        'tenants' => ['acme' => []],
-        'queue-isolation' => 'dedicated',
+        'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => ['acme' => []]],
         'queues' => ['high', 'default'],
     ]);
 
@@ -514,8 +512,7 @@ it('runs one shared queue program for a shared multi-tenant app, not one per ten
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['autoscaling' => false]],
-        'tenants' => ['acme' => [], 'globex' => []],
-        'queue-isolation' => 'shared',
+        'multitenancy' => ['queue-isolation' => 'shared', 'tenants' => ['acme' => [], 'globex' => []]],
         'queues' => ['high', 'default'],
     ]);
 
@@ -536,8 +533,7 @@ it('runs a multi-tenant standalone queue under supervisord even without a co-hos
         // queue task would be a single exec'd worker, but a dedicated multi-tenant app
         // needs supervisord to run one program per tenant.
         'tasks' => ['web' => true, 'queue' => true, 'scheduler' => true],
-        'tenants' => ['acme' => []],
-        'queue-isolation' => 'dedicated',
+        'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => ['acme' => []]],
     ]);
 
     (new GenerateSupervisorConfigStep('testing'))();

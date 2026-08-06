@@ -39,6 +39,17 @@ class Manifest
     protected static array $apexCache = [];
 
     /**
+     * The account's hosted-zone names, memoised for the run. Every apex derivation
+     * walks the same list, so without this a multi-tenant app pays one
+     * ListHostedZones per distinct tenant domain — enough to trip Route 53's rate
+     * limit on a large tenant set, for an answer that can't differ between calls.
+     * Reset alongside {@see $apexCache}, which memoises what this feeds.
+     *
+     * @var array<int, string>|null
+     */
+    protected static ?array $hostedZoneNamesCache = null;
+
+    /**
      * The complete set of valid environment-block keys as dot-paths — the single
      * source of truth for the manifest's shape. There is no `aws.*` namespace:
      * every key sits at the top of the environment block. A trailing `.*` allows
@@ -50,9 +61,17 @@ class Manifest
     protected const ALLOWED_ENVIRONMENT_KEYS = [
         'account-id', 'region',
         'domain', 'wildcard-subdomains', 'branch', 'tag', 'repository',
-        'tenants.*',
+        // Multi-tenancy. Every key is listed explicitly (no free-form subtree) so a
+        // stray or misremembered key hard-fails instead of being silently accepted
+        // and ignored — `apex` is the one that used to slip through, and it is
+        // always derived from `domain`, never declared. The landlord and each
+        // tenant are declared the same way: a domain, optionally wildcarded.
+        'multitenancy.landlord.domain',
+        'multitenancy.landlord.wildcard-subdomains',
+        'multitenancy.queue-isolation',
+        'multitenancy.tenants.*.domain',
+        'multitenancy.tenants.*.wildcard-subdomains',
         'queues.*',
-        'queue-isolation',
         'bucket',
         'services',
         'database',
@@ -104,6 +123,7 @@ class Manifest
     {
         static::$hydrated = null;
         static::$apexCache = [];
+        static::$hostedZoneNamesCache = null;
     }
 
     public static function environments(): array
@@ -191,9 +211,41 @@ class Manifest
             if (str_ends_with($allowed, '.*') && str_starts_with($path . '.', substr($allowed, 0, -1))) {
                 return true;
             }
+
+            if (str_contains($allowed, '.*.') && static::matchesWildcardSegment($allowed, $path)) {
+                return true;
+            }
         }
 
         return false;
+    }
+
+    /**
+     * Match a dot-path against a pattern holding a mid-path `*`, which stands for
+     * exactly one segment: `multitenancy.tenants.*.domain` covers any tenant id,
+     * while still rejecting a key the pattern doesn't name — a hand-written
+     * `apex` fails rather than being silently accepted and then overwritten.
+     *
+     * A path that stops short of the full pattern matches too, because a tenant
+     * declared bare (`acme:` with no config) flattens to
+     * `multitenancy.tenants.acme` — a legitimate leaf, not an unknown key.
+     */
+    protected static function matchesWildcardSegment(string $allowed, string $path): bool
+    {
+        $pattern = explode('.', $allowed);
+        $segments = explode('.', $path);
+
+        if (count($segments) > count($pattern)) {
+            return false;
+        }
+
+        foreach ($segments as $index => $segment) {
+            if ($pattern[$index] !== '*' && $pattern[$index] !== $segment) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public static function name(): string
@@ -939,13 +991,80 @@ class Manifest
         };
     }
 
+    /**
+     * The host this app is served on, or null when it has none.
+     *
+     * The single source for "the app's domain", because it lives in two places by
+     * design: a solo app declares `domain` at the root of the environment block,
+     * while a multi-tenant app declares its landlord's host inside the
+     * `multitenancy` block. Under multi-tenancy a root `domain` would be ambiguous
+     * — it would mean both "where the landlord is served" and "what subdomain
+     * tenants hang off", and those separate the moment one tenant takes a custom
+     * domain — so validation refuses it there.
+     */
+    public static function domain(): ?string
+    {
+        $domain = static::isMultitenanted()
+            ? static::get('multitenancy.landlord.domain')
+            : static::get('domain');
+
+        return $domain === null ? null : (string) $domain;
+    }
+
+    public static function hasDomain(): bool
+    {
+        return static::domain() !== null;
+    }
+
+    /**
+     * The app's own apex. A tenanted app has one whenever its landlord declares a
+     * domain — tenants are an orthogonal axis, not a reason the app can't be served
+     * on a host of its own. Only an app with no domain at all (headless, or a
+     * tenanted app whose tenants each bring their own domain) has no app apex;
+     * there the apex is per tenant, {@see tenants()}.
+     */
     public static function apex(): string
     {
-        if (static::isMultitenanted()) {
-            return throw new IntegrityCheckException('Cannot determine apex domain for multitenanted environments.');
+        $domain = static::domain();
+
+        if ($domain === null) {
+            return throw new IntegrityCheckException('Cannot determine apex domain: no `domain` is declared, so this app has no apex of its own.');
         }
 
-        return static::deriveApex((string) static::get('domain'));
+        return static::deriveApex($domain);
+    }
+
+    /**
+     * Whether the app's own certificate and listener rule already serve this host.
+     * True when it *is* the app's domain, or when the app serves every subdomain
+     * of that domain and this sits exactly one label below it.
+     *
+     * This is what lets `tenants` compose with `wildcard-subdomains` instead of
+     * excluding it: a tenant served on a subdomain of the app's domain needs no
+     * hosted zone, certificate, SNI attachment or listener rule of its own — the
+     * app's wildcard already covers it — while a tenant on a genuine custom domain
+     * gets all four. Each per-tenant DNS/TLS step gates on this, so one manifest
+     * shape covers both without a mode switch.
+     */
+    public static function servesDomain(string $domain): bool
+    {
+        $appDomain = static::domain();
+
+        if ($appDomain === null) {
+            return false;
+        }
+
+        if ($domain === $appDomain) {
+            return true;
+        }
+
+        if (! static::servesWildcardSubdomains() || ! str_ends_with($domain, ".$appDomain")) {
+            return false;
+        }
+
+        // One label only — ACM and ALB host wildcards both match a single label,
+        // so `*.{domain}` covers `tenant.{domain}` but never `a.b.{domain}`.
+        return ! str_contains(substr($domain, 0, -strlen($appDomain) - 1), '.');
     }
 
     /**
@@ -962,7 +1081,10 @@ class Manifest
      */
     public static function servesWildcardSubdomains(): bool
     {
-        return (bool) static::get('wildcard-subdomains', false);
+        return (bool) static::get(
+            static::isMultitenanted() ? 'multitenancy.landlord.wildcard-subdomains' : 'wildcard-subdomains',
+            false,
+        );
     }
 
     /**
@@ -974,7 +1096,7 @@ class Manifest
     public static function wildcardHost(): ?string
     {
         return static::servesWildcardSubdomains()
-            ? '*.' . static::get('domain')
+            ? '*.' . static::domain()
             : null;
     }
 
@@ -991,7 +1113,7 @@ class Manifest
     public static function certificateDomain(): string
     {
         return static::servesWildcardSubdomains()
-            ? (string) static::get('domain')
+            ? (string) static::domain()
             : static::apex();
     }
 
@@ -1010,7 +1132,7 @@ class Manifest
 
     protected static function resolveApex(string $domain): string
     {
-        $zones = Route53::hostedZoneNames();
+        $zones = static::$hostedZoneNamesCache ??= Route53::hostedZoneNames();
         $labels = explode('.', $domain);
 
         for ($i = 0, $count = count($labels); $i < $count - 1; $i++) {
@@ -1057,9 +1179,31 @@ class Manifest
         return $database;
     }
 
+    /**
+     * Whether the app runs in multi-tenant mode — i.e. declares a `multitenancy`
+     * block. This is the **mode** predicate, and it deliberately does not depend on
+     * tenants being declared: the block's landlord is where a multi-tenant app's
+     * own host lives, so gating this on `multitenancy.tenants` would leave a
+     * landlord-only manifest with no reader for its domain and silently deploy it
+     * as a headless worker (validation forbids a root `domain` alongside the block,
+     * so there is nowhere else for the host to come from).
+     *
+     * The orthogonal question — are there tenants to fan out over — is
+     * {@see hasTenants()}. Every per-tenant fan-out gate keys off that one.
+     */
     public static function isMultitenanted(): bool
     {
-        return ! empty(static::get('tenants'));
+        return static::has('multitenancy');
+    }
+
+    /**
+     * Whether any tenant is declared. The fan-out predicate: per-tenant queues,
+     * DNS/TLS resources and teardown all key off this, never {@see isMultitenanted()},
+     * so a landlord-only app provisions exactly what the solo shape does.
+     */
+    public static function hasTenants(): bool
+    {
+        return ! empty(static::get('multitenancy.tenants'));
     }
 
     /**
@@ -1071,7 +1215,7 @@ class Manifest
      */
     public static function queueIsolation(): QueueIsolation
     {
-        $value = static::get('queue-isolation', QueueIsolation::Shared->value);
+        $value = static::get('multitenancy.queue-isolation', QueueIsolation::Shared->value);
 
         return QueueIsolation::tryFrom($value) ?? throw new IntegrityCheckException(sprintf(
             'Unknown queue-isolation "%s" — expected "shared" or "dedicated".',
@@ -1081,25 +1225,31 @@ class Manifest
 
     /**
      * Whether the queue layer fans out per tenant — one SQS queue set and one worker
-     * program per tenant. True only for a multi-tenant app that opts into the
-     * `dedicated` strategy; by default a multi-tenant app is `shared` — one queue set
-     * at the app name, the tenant carried in the job payload — so every per-tenant
-     * queue branch keys off this rather than isMultitenanted() alone.
+     * program per tenant. True only for an app with declared tenants that opts into
+     * the `dedicated` strategy; by default a multi-tenant app is `shared` — one queue
+     * set at the app name, the tenant carried in the job payload — so every
+     * per-tenant queue branch keys off this rather than isMultitenanted() alone.
+     *
+     * Gated on {@see hasTenants()}, not the mode: `dedicated` with no tenants would
+     * otherwise fan out to a lone `queue_landlord` program, renaming a landlord-only
+     * app's queues for no isolation benefit.
      */
     public static function fansQueuesPerTenant(): bool
     {
-        return static::isMultitenanted() && static::queueIsolation() === QueueIsolation::Dedicated;
+        return static::hasTenants() && static::queueIsolation() === QueueIsolation::Dedicated;
     }
 
     public static function isHeadless(): bool
     {
-        if (static::has('domain')) {
+        if (static::hasDomain()) {
             return false;
         }
 
-        // Read raw — tenants() normaliser TypeErrors on a headless tenant.
-        return collect(static::get('tenants', []))
-            ->every(fn (array $config): bool => ! isset($config['domain']));
+        // Read raw rather than through tenants(): that normaliser derives each
+        // tenant's apex, which probes Route 53 — an AWS round-trip this predicate
+        // (used during manifest validation) must not need.
+        return collect(static::get('multitenancy.tenants') ?? [])
+            ->every(fn (?array $config): bool => ! isset($config['domain']));
     }
 
     /**
@@ -1124,23 +1274,55 @@ class Manifest
     }
 
     /**
+     * Every declared tenant domain, read raw. Deliberately not via {@see tenants()}:
+     * that normaliser derives each apex through the Route 53 suffix walk, so a
+     * caller that only wants the declared hosts (printing URLs, a validation
+     * predicate) would pay an AWS round-trip per tenant for nothing.
+     *
+     * @return array<int, string>
+     */
+    public static function tenantDomains(): array
+    {
+        return collect(static::get('multitenancy.tenants') ?? [])
+            ->map(fn (?array $config): ?string => $config['domain'] ?? null)
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    /**
      * @return array<string, array<string, mixed>>
      */
     public static function tenants(): array
     {
-        /** @var array<string, array<string, mixed>> $configured */
-        $configured = static::get('tenants') ?? [];
+        /** @var array<string, array<string, mixed>|null> $configured */
+        $configured = static::get('multitenancy.tenants') ?? [];
 
         $tenants = [];
 
         foreach ($configured as $tenantId => $config) {
+            // A tenant declared bare (`acme:` with no config) parses as null — it
+            // takes every default, including being served under the landlord's
+            // wildcard, so normalise it to an empty config rather than TypeError
+            // on every reader.
+            $config ??= [];
+
             // Per-tenant apex is derived from the tenant's domain the same way the
-            // solo apex is (deriveApex) — a headless tenant (no domain) keeps none.
+            // app's own apex is (deriveApex) — a tenant with no domain keeps none.
             if (isset($config['domain'])) {
                 $config['apex'] = static::deriveApex($config['domain']);
+
+                // A tenant wildcards its own domain exactly as the app does: the
+                // certificate moves off the apex onto the domain itself (an apex
+                // cert's `*.{apex}` doesn't reach `x.{sub}.{apex}`), and the extra
+                // host rides its forward rule and alias records.
+                $wildcarded = (bool) ($config['wildcard-subdomains'] ?? false);
+
+                $config['certificate-domain'] = $wildcarded ? $config['domain'] : $config['apex'];
+                $config['wildcard-host'] = $wildcarded ? '*.' . $config['domain'] : null;
             }
 
-            $tenants[$tenantId] = $config;
+            $tenants[(string) $tenantId] = $config;
         }
 
         return $tenants;

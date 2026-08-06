@@ -40,6 +40,12 @@ class DetachSslCertificateStep implements ExecutesWebStep
 
     public function __invoke(array $options): StepResult
     {
+        // No domain of its own means no app-level certificate; a tenanted app's
+        // per-tenant certificates are detached by the per-tenant teardown.
+        if (! Manifest::hasDomain()) {
+            return StepResult::SKIPPED;
+        }
+
         $certificate = new SslCertificate(Manifest::certificateDomain(), Manifest::apex());
         $summary = $certificate->find();
 

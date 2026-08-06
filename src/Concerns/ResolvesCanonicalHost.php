@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Codinglabs\Yolo\Concerns;
 
-use Codinglabs\Yolo\Manifest;
-
 /**
  * The canonical host is whatever `domain` resolves to — the single host an app
  * is served on. When that host is one half of the apex/`www` pair (it is exactly
@@ -21,18 +19,24 @@ trait ResolvesCanonicalHost
 {
     /**
      * Every host YOLO writes an A-alias for — the canonical host, its `www`
-     * sibling when it has one, and the wildcard when the app serves its own
+     * sibling when it has one, and the wildcard when that domain serves its own
      * subdomains. Shared by the record sync and by teardown, so a withdrawal
      * removes exactly what sync wrote and nothing else.
      *
+     * `$wildcardHost` is required, and null means "this domain has no wildcard".
+     * It used to default to `Manifest::wildcardHost()`, which silently wrote the
+     * *app's* wildcard into a non-wildcarded tenant's own hosted zone — a
+     * wildcard only ever covers its own domain, so the caller has to say which
+     * one it is resolving.
+     *
      * @return array<int, string>
      */
-    public function aliasedHosts(string $apex, string $domain): array
+    public function aliasedHosts(string $apex, string $domain, ?string $wildcardHost): array
     {
         return array_values(array_filter([
             $domain,
             $this->hasWwwSibling($apex, $domain) ? $this->wwwSibling($apex, $domain) : null,
-            Manifest::wildcardHost(),
+            $wildcardHost,
         ]));
     }
 

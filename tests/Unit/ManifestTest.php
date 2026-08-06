@@ -67,9 +67,9 @@ describe('multitenancy', function (): void {
 
     it('is multitenanted with tenants config', function (): void {
         writeManifest([
-            'tenants' => [
+            'multitenancy' => ['tenants' => [
                 'au' => ['domain' => 'au.example.com'],
-            ],
+            ]],
         ]);
 
         expect(Manifest::isMultitenanted())->toBeTrue();
@@ -77,9 +77,9 @@ describe('multitenancy', function (): void {
 
     it('derives each tenant apex from its domain', function (): void {
         writeManifest([
-            'tenants' => [
+            'multitenancy' => ['tenants' => [
                 'au' => ['domain' => 'au.example.com'],
-            ],
+            ]],
         ]);
 
         bindHostedZones();
@@ -91,9 +91,9 @@ describe('multitenancy', function (): void {
 
     it('derives a tenant apex from the longest matching hosted zone', function (): void {
         writeManifest([
-            'tenants' => [
+            'multitenancy' => ['tenants' => [
                 'au' => ['domain' => 'shop.au.example.com'],
-            ],
+            ]],
         ]);
 
         bindHostedZones(['au.example.com']);
@@ -132,7 +132,7 @@ describe('queue tiers', function (): void {
 
 describe('queue isolation', function (): void {
     it('defaults a multi-tenant app to shared queues', function (): void {
-        writeManifest(['tenants' => ['acme' => [], 'globex' => []]]);
+        writeManifest(['multitenancy' => ['tenants' => ['acme' => [], 'globex' => []]]]);
 
         expect(Manifest::queueIsolation())->toBe(QueueIsolation::Shared);
         // shared collapses to the solo queue shape — the layer does not fan per tenant
@@ -141,8 +141,7 @@ describe('queue isolation', function (): void {
 
     it('fans queues per tenant when isolation is dedicated', function (): void {
         writeManifest([
-            'tenants' => ['acme' => [], 'globex' => []],
-            'queue-isolation' => 'dedicated',
+            'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => ['acme' => [], 'globex' => []]],
         ]);
 
         expect(Manifest::queueIsolation())->toBe(QueueIsolation::Dedicated);
@@ -157,8 +156,7 @@ describe('queue isolation', function (): void {
 
     it('hard-fails on an unknown isolation value', function (): void {
         writeManifest([
-            'tenants' => ['acme' => []],
-            'queue-isolation' => 'sometimes',
+            'multitenancy' => ['queue-isolation' => 'sometimes', 'tenants' => ['acme' => []]],
         ]);
 
         expect(fn (): QueueIsolation => Manifest::queueIsolation())->toThrow(IntegrityCheckException::class);
@@ -408,9 +406,9 @@ describe('apex', function (): void {
 
     it('throws for multitenanted environments', function (): void {
         writeManifest([
-            'tenants' => [
+            'multitenancy' => ['tenants' => [
                 'au' => ['domain' => 'au.example.com'],
-            ],
+            ]],
         ]);
 
         expect(fn (): string => Manifest::apex())
