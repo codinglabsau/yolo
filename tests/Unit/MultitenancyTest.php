@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\StepResult;
+use Codinglabs\Yolo\Concerns\ResolvesCanonicalHost;
 use Codinglabs\Yolo\Steps\Sync\App\Tenant\SyncHostedZoneStep;
 use Codinglabs\Yolo\Steps\Sync\App\Tenant\SyncForwardRuleStep;
 use Codinglabs\Yolo\Steps\Sync\App\Tenant\SyncSslCertificateStep;
+use Codinglabs\Yolo\Steps\Destroy\App\Tenant\WithdrawDnsRecordsStep;
 use Codinglabs\Yolo\Steps\Destroy\App\Tenant\TeardownForwardRuleStep;
 
 beforeEach(fn () => bindHostedZones());
@@ -34,6 +36,45 @@ describe('the app host', function (): void {
 
         expect(Manifest::domain())->toBeNull()
             ->and(Manifest::hasDomain())->toBeFalse();
+    });
+});
+
+// Mode (a `multitenancy` block exists) and fan-out (tenants are declared) are two
+// questions. Conflating them left a landlord-only manifest with no reader for its
+// domain, so it validated clean and deployed as a headless worker — no zone, no
+// certificate, no listener rule, no DNS.
+describe('a landlord-only block', function (): void {
+    beforeEach(function (): void {
+        bindHostedZones(['example.com']);
+
+        writeManifest(['multitenancy' => [
+            'landlord' => ['domain' => 'app.example.com', 'wildcard-subdomains' => true],
+        ]]);
+    });
+
+    it('is multi-tenant mode with nothing to fan out over', function (): void {
+        expect(Manifest::isMultitenanted())->toBeTrue()
+            ->and(Manifest::hasTenants())->toBeFalse()
+            ->and(Manifest::tenants())->toBe([]);
+    });
+
+    it('resolves its host exactly as the solo shape does', function (): void {
+        expect(Manifest::domain())->toBe('app.example.com')
+            ->and(Manifest::hasDomain())->toBeTrue()
+            ->and(Manifest::isHeadless())->toBeFalse()
+            ->and(Manifest::apex())->toBe('example.com');
+    });
+
+    it('honours the landlord wildcard', function (): void {
+        expect(Manifest::servesWildcardSubdomains())->toBeTrue()
+            ->and(Manifest::wildcardHost())->toBe('*.app.example.com')
+            // The wildcard moves the certificate off the apex onto the domain —
+            // `*.example.com` would not reach `tenant.app.example.com`.
+            ->and(Manifest::certificateDomain())->toBe('app.example.com');
+    });
+
+    it('keeps the single-scope queue shape', function (): void {
+        expect(Manifest::fansQueuesPerTenant())->toBeFalse();
     });
 });
 
@@ -126,6 +167,7 @@ describe('per-tenant DNS/TLS steps', function (): void {
         SyncSslCertificateStep::class,
         SyncForwardRuleStep::class,
         TeardownForwardRuleStep::class,
+        WithdrawDnsRecordsStep::class,
     ]);
 
     it('skips a tenant with no domain of its own', function (string $step): void {
@@ -142,5 +184,43 @@ describe('per-tenant DNS/TLS steps', function (): void {
         SyncSslCertificateStep::class,
         SyncForwardRuleStep::class,
         TeardownForwardRuleStep::class,
+        WithdrawDnsRecordsStep::class,
     ]);
+});
+
+describe('tenant DNS records', function (): void {
+    // A party only ever wildcards its own domain. Resolving the wildcard from the
+    // manifest rather than from the party being written put the *landlord's*
+    // `*.{domain}` record into a non-wildcarded tenant's own hosted zone.
+    it('never writes the landlord wildcard into a tenant zone', function (): void {
+        bindHostedZones(['example.com', 'acme.com.au']);
+        writeManifest(['multitenancy' => [
+            'landlord' => ['domain' => 'app.example.com', 'wildcard-subdomains' => true],
+            'tenants' => ['acme' => ['domain' => 'acme.com.au']],
+        ]]);
+
+        $acme = Manifest::tenants()['acme'];
+
+        expect((new class()
+        {
+            use ResolvesCanonicalHost;
+        })->aliasedHosts($acme['apex'], $acme['domain'], $acme['wildcard-host']))
+            ->toBe(['acme.com.au', 'www.acme.com.au']);
+    });
+
+    it('writes a tenant its own wildcard when it declares one', function (): void {
+        bindHostedZones(['example.com', 'acme.com.au']);
+        writeManifest(['multitenancy' => [
+            'landlord' => ['domain' => 'app.example.com', 'wildcard-subdomains' => true],
+            'tenants' => ['acme' => ['domain' => 'portal.acme.com.au', 'wildcard-subdomains' => true]],
+        ]]);
+
+        $acme = Manifest::tenants()['acme'];
+
+        expect((new class()
+        {
+            use ResolvesCanonicalHost;
+        })->aliasedHosts($acme['apex'], $acme['domain'], $acme['wildcard-host']))
+            ->toBe(['portal.acme.com.au', '*.portal.acme.com.au']);
+    });
 });

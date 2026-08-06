@@ -108,8 +108,9 @@ class DeployCommand extends SteppedCommand implements DeployerCommand
 
     /**
      * The freshly deployed app's public URL(s) — the "go visit it" link the
-     * summary ends on. Solo apps have the one manifest domain; multi-tenant
-     * apps list every tenant's. Headless apps (no domain) get no line.
+     * summary ends on. The app's own domain (a solo app's, or a multi-tenant app's
+     * landlord) plus every tenant served on a domain of its own. Headless apps (no
+     * domain anywhere) get no line.
      *
      * @return array<int, string>
      */
@@ -117,9 +118,10 @@ class DeployCommand extends SteppedCommand implements DeployerCommand
     {
         // Raw tenant config, not Manifest::tenants() — that derives each apex via
         // the Route 53 suffix walk, and printing URLs needs no AWS reads.
-        $domains = Manifest::isMultitenanted()
-            ? Manifest::tenantDomains()
-            : array_filter([Manifest::domain()]);
+        $domains = array_values(array_unique([
+            ...array_filter([Manifest::domain()]),
+            ...Manifest::tenantDomains(),
+        ]));
 
         if ($domains === []) {
             return [];

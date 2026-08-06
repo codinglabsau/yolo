@@ -45,10 +45,30 @@ $soloWeb = ['domain' => 'example.com', 'tasks' => ['web' => true]];
 it('refuses a partial teardown rather than orphaning resources', function (array $config, string $needle): void {
     expect(destroyReason($config))->toContain($needle);
 })->with([
-    'multi-tenant' => [['domain' => 'example.com', 'tasks' => ['web' => true], 'multitenancy' => ['tenants' => ['t1' => ['domain' => 't1.example.com']]]], 'multi-tenant'],
     'headless' => [['tasks' => ['web' => true]], 'headless'],
     'no web task' => [['domain' => 'example.com'], 'web task'],
 ]);
+
+// Every per-tenant resource now has a teardown step, so the blanket refusal is
+// gone. What survives teardown is what YOLO never owned — the tenant's hosted zone
+// and ACM certificate.
+it('allows a multi-tenant app', function (): void {
+    expect(destroyReason([
+        'tasks' => ['web' => true],
+        'multitenancy' => [
+            'landlord' => ['domain' => 'app.example.com'],
+            'queue-isolation' => 'dedicated',
+            'tenants' => ['t1' => ['domain' => 't1.example.com']],
+        ],
+    ]))->toBeNull();
+});
+
+it('allows a landlord-only app', function (): void {
+    expect(destroyReason([
+        'tasks' => ['web' => true],
+        'multitenancy' => ['landlord' => ['domain' => 'app.example.com']],
+    ]))->toBeNull();
+});
 
 it('allows a standard solo web app', function () use ($soloWeb): void {
     expect(destroyReason($soloWeb))->toBeNull();
@@ -123,10 +143,10 @@ it('reframes the runner wording as an irreversible destroy', function (): void {
 });
 
 it('handle() refuses an unsupported app with FAILURE before any teardown runs', function (): void {
-    // Multi-tenant is refused. No AWS client is bound, so if the guard failed to
+    // A headless app is refused. No AWS client is bound, so if the guard failed to
     // short-circuit, reaching runScopes would error — a clean FAILURE proves the
     // reason -> FAILURE -> no-apply wiring, not just the reason string.
-    writeManifest(['domain' => 'example.com', 'tasks' => ['web' => true], 'multitenancy' => ['tenants' => ['t1' => ['domain' => 't1.example.com']]]]);
+    writeManifest(['tasks' => ['web' => true]]);
 
     $command = new DestroyAppCommand();
     $input = new ArrayInput(['environment' => 'testing'], $command->getDefinition());

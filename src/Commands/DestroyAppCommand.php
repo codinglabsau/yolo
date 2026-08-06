@@ -21,9 +21,15 @@ use function Laravel\Prompts\error;
  *
  * App-scoped only. Env-shared resources the app attaches to are never deleted —
  * the RDS / cache security groups keep their group (only this app's ingress rule
- * is revoked) and the shared :443 listener keeps standing (only this app's rule
- * + SNI cert are removed). RDS, the BYO app data bucket, and env/account-scoped
+ * is revoked) and the shared :443 listener keeps standing (only this app's rules
+ * + SNI certs are removed). RDS, the BYO app data bucket, and env/account-scoped
  * infrastructure are out of scope by design.
+ *
+ * Multi-tenant apps tear down fully: each tenant's listener rules, SNI
+ * attachment, queues and DNS records go alongside the app's own. What survives is
+ * what YOLO never owned — a tenant's hosted zone and ACM certificate are that
+ * tenant's domain-level infrastructure, so teardown withdraws YOLO's *use* of
+ * them and leaves the domain intact.
  *
  * Configurations whose teardown isn't fully modelled yet are refused outright
  * rather than torn down partially (which would orphan resources) — see
@@ -69,7 +75,6 @@ class DestroyAppCommand extends SyncSteppedCommand implements PlansSequentially
     public function unsupportedReason(): ?string
     {
         return match (true) {
-            Manifest::isMultitenanted() => 'destroy:app does not yet support multi-tenant apps — their per-tenant queues and SNI certificates would be left behind.',
             Manifest::isHeadless() => 'destroy:app does not yet support headless apps (no domain / ALB).',
             ! Manifest::hasWeb() => 'destroy:app only supports apps with a web task today.',
             ($unmodelled = static::servicesWithoutTeardown()) !== [] => sprintf(
@@ -147,6 +152,11 @@ class DestroyAppCommand extends SyncSteppedCommand implements PlansSequentially
                 // Listener rules before the target group their action references.
                 Steps\Destroy\App\TeardownForwardRuleStep::class,
                 Steps\Destroy\App\TeardownRedirectRuleStep::class,
+                // Per-tenant rules alongside the app's own — each self-skips for a
+                // tenant the app's certificate already covers (which never had a
+                // rule of its own), so only genuine custom domains do work here.
+                Steps\Destroy\App\Tenant\TeardownForwardRuleStep::class,
+                Steps\Destroy\App\Tenant\TeardownRedirectRuleStep::class,
                 Steps\Destroy\App\TeardownTargetGroupStep::class,
                 Steps\Destroy\App\TeardownTaskLogGroupStep::class,
                 // Per-app service resources (e.g. the Typesense node-SG ingress this
@@ -162,8 +172,15 @@ class DestroyAppCommand extends SyncSteppedCommand implements PlansSequentially
                 Steps\Destroy\App\TeardownEcsTaskRoleStep::class,
                 Steps\Destroy\App\TeardownEcsTaskPolicyStep::class,
                 Steps\Destroy\App\DetachSslCertificateStep::class,
+                Steps\Destroy\App\Tenant\DetachSslCertificateStep::class,
+                // Queues: the single-scope set (solo, landlord-only, or `shared`),
+                // plus the landlord + per-tenant sets a `dedicated` app fans out to.
+                // Each branch self-skips on the shape it isn't, so all three compose.
                 Steps\Destroy\App\TeardownQueueStep::class,
+                Steps\Destroy\App\Landlord\TeardownQueueStep::class,
+                Steps\Destroy\App\Tenant\TeardownQueueStep::class,
                 Steps\Destroy\App\WithdrawAppDnsRecordsStep::class,
+                Steps\Destroy\App\Tenant\WithdrawDnsRecordsStep::class,
                 Steps\Destroy\App\TeardownDeployersGroupStep::class,
                 Steps\Destroy\App\TeardownAppObserversGroupStep::class,
                 Steps\Destroy\App\TeardownDeployerRoleStep::class,

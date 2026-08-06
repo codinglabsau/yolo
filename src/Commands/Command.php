@@ -253,10 +253,11 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * `queue-isolation` (`dedicated` | `shared`) only means something for a
-     * multi-tenant app — it decides whether the queue layer fans out per tenant. On a
-     * solo app there's a single scope and nothing to isolate, so the key is refused
-     * rather than silently ignored. Manifest::queueIsolation() validates the value.
+     * `queue-isolation` (`dedicated` | `shared`) only means something once tenants
+     * are declared — it decides whether the queue layer fans out per tenant. With a
+     * single scope (a solo app, or a landlord-only `multitenancy` block) there is
+     * nothing to isolate, so the key is refused rather than silently ignored.
+     * Manifest::queueIsolation() validates the value.
      */
     protected function ensureQueueIsolationValid(): bool
     {
@@ -264,7 +265,7 @@ abstract class Command extends SymfonyCommand
             return true;
         }
 
-        if (! Manifest::isMultitenanted()) {
+        if (! Manifest::hasTenants()) {
             error('yolo.yml declares `multitenancy.queue-isolation` but no `multitenancy.tenants` — the strategy only applies to a multi-tenant app. Remove it, or declare tenants.');
 
             return false;

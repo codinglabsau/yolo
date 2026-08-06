@@ -11,7 +11,7 @@ trait SyncsRecordSets
 {
     use ResolvesCanonicalHost;
 
-    public function syncRecordSet(string $apex, string $domain, ?string $wildcardHost = null): void
+    public function syncRecordSet(string $apex, string $domain, ?string $wildcardHost): void
     {
         Aws::route53()->changeResourceRecordSets([
             'ChangeBatch' => [
@@ -22,7 +22,7 @@ trait SyncsRecordSets
         ]);
     }
 
-    protected function generateChanges(string $apex, string $domain, ?string $wildcardHost = null): array
+    protected function generateChanges(string $apex, string $domain, ?string $wildcardHost): array
     {
         $ALB = ElbV2::loadBalancer((new LoadBalancer())->name());
 

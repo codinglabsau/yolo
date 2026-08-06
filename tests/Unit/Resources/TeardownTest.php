@@ -6,6 +6,7 @@ use Aws\Result;
 use Aws\Command;
 use Aws\MockHandler;
 use Aws\Rds\RdsClient;
+use Aws\Sqs\SqsClient;
 use Aws\CommandInterface;
 use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Aws\Ecs;
@@ -15,6 +16,7 @@ use GuzzleHttp\Promise\Create;
 use Aws\Exception\AwsException;
 use Aws\Ec2\Exception\Ec2Exception;
 use Aws\CloudFront\CloudFrontClient;
+use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Resources\Ec2\Vpc;
 use Codinglabs\Yolo\Resources\Sqs\Queue;
@@ -51,6 +53,7 @@ use Codinglabs\Yolo\Resources\Ec2\InternetGateway;
 use Codinglabs\Yolo\Resources\Ecs\ServicesCluster;
 use Codinglabs\Yolo\Resources\ElbV2\HttpsListener;
 use Codinglabs\Yolo\Resources\Iam\AppObserverRole;
+use Codinglabs\Yolo\Concerns\TearsDownScopedQueues;
 use Codinglabs\Yolo\Resources\CloudWatch\Dashboard;
 use Codinglabs\Yolo\Resources\Ec2\RdsSecurityGroup;
 use Codinglabs\Yolo\Resources\Iam\EcsExecutionRole;
@@ -64,6 +67,8 @@ use Codinglabs\Yolo\Resources\CloudFront\AssetDistribution;
 use Codinglabs\Yolo\Resources\ElastiCache\CacheSubnetGroup;
 use Codinglabs\Yolo\Resources\Ec2\LoadBalancerSecurityGroup;
 use Codinglabs\Yolo\Resources\ElastiCache\CacheParameterGroup;
+use Codinglabs\Yolo\Steps\Destroy\App\TeardownQueueStep as AppTeardownQueueStep;
+use Codinglabs\Yolo\Steps\Destroy\App\Tenant\TeardownQueueStep as TenantTeardownQueueStep;
 
 beforeEach(function (): void {
     writeManifest([
@@ -806,4 +811,95 @@ it('resolves the vpc id then deletes it', function (): void {
     (new Vpc())->delete();
 
     expect(collect($captured)->firstWhere('name', 'DeleteVpc')['args']['VpcId'])->toBe('vpc-1');
+});
+
+describe('scoped queue teardown', function (): void {
+    // Sync provisions one queue per declared tier; naming only the base queue left
+    // every `…-high` tier queue standing in the account after destroy:app.
+    it('tears down every declared tier, not just the base queue', function (): void {
+        $captured = [];
+        bindTeardownRoutedClient('sqs', SqsClient::class, [
+            'ListQueues' => new Result(['QueueUrls' => [
+                'https://sqs/yolo-testing-my-app-high',
+                'https://sqs/yolo-testing-my-app',
+            ]]),
+        ], $captured);
+
+        writeManifest(['domain' => 'example.com', 'queues' => ['high', 'default']]);
+
+        $step = new class()
+        {
+            use TearsDownScopedQueues;
+
+            public function run(array $options): StepResult
+            {
+                return $this->tearDownScopedQueues(null, $options);
+            }
+        };
+
+        expect($step->run([]))->toBe(StepResult::DELETED)
+            ->and(collect($captured)->where('name', 'DeleteQueue')->pluck('args.QueueUrl')->all())
+            ->toBe(['https://sqs/yolo-testing-my-app-high', 'https://sqs/yolo-testing-my-app']);
+    });
+
+    it('tears down a tenant scope by id', function (): void {
+        $captured = [];
+        bindTeardownRoutedClient('sqs', SqsClient::class, [
+            'ListQueues' => new Result(['QueueUrls' => ['https://sqs/yolo-testing-my-app-acme']]),
+        ], $captured);
+
+        writeManifest(['multitenancy' => [
+            'landlord' => ['domain' => 'app.example.com'],
+            'queue-isolation' => 'dedicated',
+            'tenants' => ['acme' => null],
+        ]]);
+
+        $step = (new TenantTeardownQueueStep())->setTenantId('acme')->setConfig([]);
+
+        expect($step([]))->toBe(StepResult::DELETED)
+            ->and(collect($captured)->where('name', 'DeleteQueue')->pluck('args.QueueUrl')->all())
+            ->toBe(['https://sqs/yolo-testing-my-app-acme']);
+    });
+
+    // A `shared` app has tenants but one queue set, at the app's own name. Its
+    // teardown must not be contracted solo-only, or nothing tears that set down.
+    it('tears down the app-name set for a shared multi-tenant app', function (): void {
+        $captured = [];
+        bindTeardownRoutedClient('sqs', SqsClient::class, [
+            'ListQueues' => new Result(['QueueUrls' => ['https://sqs/yolo-testing-my-app']]),
+        ], $captured);
+
+        writeManifest(['multitenancy' => [
+            'landlord' => ['domain' => 'app.example.com'],
+            'tenants' => ['acme' => null],
+        ]]);
+
+        expect((new AppTeardownQueueStep())([]))->toBe(StepResult::DELETED)
+            ->and(collect($captured)->where('name', 'DeleteQueue')->pluck('args.QueueUrl')->all())
+            ->toBe(['https://sqs/yolo-testing-my-app']);
+    });
+
+    // …and on `dedicated` the landlord + per-tenant sets replace it, so the
+    // app-name step must stand down or it would report a queue that never existed.
+    it('skips the app-name set when queues fan out per tenant', function (): void {
+        writeManifest(['multitenancy' => [
+            'landlord' => ['domain' => 'app.example.com'],
+            'queue-isolation' => 'dedicated',
+            'tenants' => ['acme' => null],
+        ]]);
+
+        expect((new AppTeardownQueueStep())([]))->toBe(StepResult::SKIPPED);
+    });
+
+    // A `shared` app has no per-tenant queues, so the per-tenant step must not
+    // report tearing one down.
+    it('skips the tenant scope on the shared strategy', function (): void {
+        writeManifest(['multitenancy' => [
+            'landlord' => ['domain' => 'app.example.com'],
+            'tenants' => ['acme' => null],
+        ]]);
+
+        expect((new TenantTeardownQueueStep())->setTenantId('acme')->setConfig([])([]))
+            ->toBe(StepResult::SKIPPED);
+    });
 });

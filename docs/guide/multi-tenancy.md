@@ -115,6 +115,25 @@ deploy:
 - **Hosted zone, certificate, SNI attachment and listener rules**, for each tenant on a domain the landlord's certificate doesn't already cover.
 - **DNS records** for every tenant domain, pointed at the shared load balancer, UPSERTed during `yolo deploy`.
 
+### Declaring no tenants at all
+
+`multitenancy.tenants` is optional. A block with just a landlord is the shape of an app that resolves every tenant from its own database:
+
+```yaml
+    multitenancy:
+      landlord:
+        domain: app.example.com
+        wildcard-subdomains: true
+```
+
+That provisions exactly what the solo shape does — one certificate covering `app.example.com` + `*.app.example.com`, one wildcard listener rule, one alias record, one queue set — because there is nothing to fan out over. Tenants come and go as database rows, with no infrastructure run and nothing in the manifest to keep in step.
+
+## Tearing down
+
+`destroy:app` reverses all of it. Each tenant's listener rules, SNI attachment, queues and DNS records are removed alongside the app's own, each step self-gating exactly as its sync counterpart did — so a tenant under the landlord's wildcard, which never had resources of its own, reports nothing.
+
+Two things deliberately survive, both per tenant: the **hosted zone** and the **ACM certificate**. They are the tenant's domain-level infrastructure, not YOLO's — teardown withdraws only the records YOLO wrote and detaches the certificate from the listener. That is the same asymmetry as [absorbing a domain](#absorbing-a-domain-that-already-exists), read backwards: YOLO adopts a domain without taking it over, and releases it without taking it down.
+
 ## Single-tenant operations
 
 Use `--tenant=<id>` to narrow the per-tenant steps to one tenant — useful when onboarding a new tenant or running a single-tenant cutover without touching the rest:

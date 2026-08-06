@@ -1179,7 +1179,29 @@ class Manifest
         return $database;
     }
 
+    /**
+     * Whether the app runs in multi-tenant mode — i.e. declares a `multitenancy`
+     * block. This is the **mode** predicate, and it deliberately does not depend on
+     * tenants being declared: the block's landlord is where a multi-tenant app's
+     * own host lives, so gating this on `multitenancy.tenants` would leave a
+     * landlord-only manifest with no reader for its domain and silently deploy it
+     * as a headless worker (validation forbids a root `domain` alongside the block,
+     * so there is nowhere else for the host to come from).
+     *
+     * The orthogonal question — are there tenants to fan out over — is
+     * {@see hasTenants()}. Every per-tenant fan-out gate keys off that one.
+     */
     public static function isMultitenanted(): bool
+    {
+        return static::has('multitenancy');
+    }
+
+    /**
+     * Whether any tenant is declared. The fan-out predicate: per-tenant queues,
+     * DNS/TLS resources and teardown all key off this, never {@see isMultitenanted()},
+     * so a landlord-only app provisions exactly what the solo shape does.
+     */
+    public static function hasTenants(): bool
     {
         return ! empty(static::get('multitenancy.tenants'));
     }
@@ -1203,14 +1225,18 @@ class Manifest
 
     /**
      * Whether the queue layer fans out per tenant — one SQS queue set and one worker
-     * program per tenant. True only for a multi-tenant app that opts into the
-     * `dedicated` strategy; by default a multi-tenant app is `shared` — one queue set
-     * at the app name, the tenant carried in the job payload — so every per-tenant
-     * queue branch keys off this rather than isMultitenanted() alone.
+     * program per tenant. True only for an app with declared tenants that opts into
+     * the `dedicated` strategy; by default a multi-tenant app is `shared` — one queue
+     * set at the app name, the tenant carried in the job payload — so every
+     * per-tenant queue branch keys off this rather than isMultitenanted() alone.
+     *
+     * Gated on {@see hasTenants()}, not the mode: `dedicated` with no tenants would
+     * otherwise fan out to a lone `queue_landlord` program, renaming a landlord-only
+     * app's queues for no isolation benefit.
      */
     public static function fansQueuesPerTenant(): bool
     {
-        return static::isMultitenanted() && static::queueIsolation() === QueueIsolation::Dedicated;
+        return static::hasTenants() && static::queueIsolation() === QueueIsolation::Dedicated;
     }
 
     public static function isHeadless(): bool

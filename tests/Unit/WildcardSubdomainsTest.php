@@ -171,7 +171,7 @@ describe('dns records', function (): void {
 
         writeWildcardManifest();
 
-        recordSetSyncer()->syncRecordSet('example.com', 'app.example.com');
+        recordSetSyncer()->syncRecordSet('example.com', 'app.example.com', Manifest::wildcardHost());
 
         $change = collect($r53)->firstWhere('name', 'ChangeResourceRecordSets');
 
@@ -190,7 +190,7 @@ describe('dns records', function (): void {
 
         writeWildcardManifest(['domain' => 'example.com']);
 
-        recordSetSyncer()->syncRecordSet('example.com', 'example.com');
+        recordSetSyncer()->syncRecordSet('example.com', 'example.com', Manifest::wildcardHost());
 
         expect(collect(collect($r53)->firstWhere('name', 'ChangeResourceRecordSets')['args']['ChangeBatch']['Changes'])
             ->pluck('ResourceRecordSet.Name')->all())

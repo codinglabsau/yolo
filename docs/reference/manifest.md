@@ -218,6 +218,8 @@ Optional — omit it for a multi-tenant app with no landlord host, where every t
 
 A map of tenant id → party config. The id identifies that tenant's resources throughout YOLO.
 
+Also optional. A block with a landlord and no tenants is the shape of an app that resolves its tenants entirely from its own database — YOLO serves the landlord (and its wildcard, if declared) and provisions exactly what the solo shape does, because there is nothing to fan out over. Declaring tenants is what buys them AWS resources of their own; a tenant served under the landlord's wildcard still gets none unless [`queue-isolation`](#multitenancy-queue-isolation) is `dedicated`.
+
 ```yaml
 tenants:
   acme:                       # bare: served under the landlord's wildcard
@@ -230,7 +232,7 @@ A tenant's `apex` is derived from its `domain` exactly as the app's is — never
 
 #### `multitenancy.queue-isolation`
 
-How tenants map onto SQS queues and worker programs — `shared` (default) or `dedicated`. Only valid alongside `multitenancy.tenants`; on a solo app there is one scope and nothing to isolate, so the key is refused rather than silently ignored.
+How tenants map onto SQS queues and worker programs — `shared` (default) or `dedicated`. Only valid alongside `multitenancy.tenants`; with a single scope (a solo app, or a landlord-only block) there is nothing to isolate, so the key is refused rather than silently ignored.
 
 | Value | Queues | Workers | Trade |
 | --- | --- | --- | --- |
@@ -545,7 +547,7 @@ Your manifest implies one of three modes:
 | Mode | Condition | Behaviour |
 |---|---|---|
 | **Solo** | `domain` set at the environment level | One app, one hosted zone + certificate, served on its domain. |
-| **Multi-tenant** | a [`multitenancy`](#multitenancy) block | A landlord on its own host plus per-tenant resources: queues, and for a tenant on its own domain a hosted zone, certificate, SNI attachment and listener rules. |
+| **Multi-tenant** | a [`multitenancy`](#multitenancy) block | A landlord on its own host plus per-tenant resources: queues, and for a tenant on its own domain a hosted zone, certificate, SNI attachment and listener rules. With no tenants declared it provisions exactly what the solo shape does. |
 | **Headless** | no `domain` or tenant domains | A [worker app](#where-each-role-runs) — no web task (web requires a domain), no ALB attachment or DNS. Still deploys and processes queued/scheduled work. |
 
 The mode is the **domain axis** — whether and how the app is exposed. The `tasks` block sets the orthogonal **topology axis**: a web service, a [web-less worker app](#where-each-role-runs) (a standalone queue and/or scheduler with no web container), or a build-only app (no `tasks` at all).

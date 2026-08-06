@@ -178,7 +178,7 @@ class SyncAppCommand extends SyncSteppedCommand
                 // sitting under the app's wildcard self-skips every one of these
                 // (Manifest::servesDomain), so declaring tenants for their queues
                 // costs no DNS/TLS resources.
-                ...Manifest::isMultitenanted()
+                ...Manifest::hasTenants()
                     ? [
                         Steps\Sync\App\Tenant\SyncHostedZoneStep::class,
                         Steps\Sync\App\Tenant\SyncSslCertificateStep::class,
@@ -187,8 +187,10 @@ class SyncAppCommand extends SyncSteppedCommand
                 // A `dedicated` multi-tenant app fans queues out landlord +
                 // per-tenant; a `shared` one provisions a single queue set at the app
                 // name (the solo shape), matching the fansQueuesPerTenant() gate its
-                // worker programs key off.
-                ...Manifest::isMultitenanted()
+                // worker programs key off. Gated on tenants, not the mode — with none
+                // declared there is one scope, so the solo branch (melt included) is
+                // the correct shape.
+                ...Manifest::hasTenants()
                     ? (Manifest::fansQueuesPerTenant()
                         ? [
                             Steps\Sync\App\Landlord\SyncQueueStep::class,
@@ -302,7 +304,7 @@ class SyncAppCommand extends SyncSteppedCommand
                         // the target group they forward at. Each self-skips for a
                         // tenant the app's own certificate already covers, so this
                         // only does work for genuine custom domains.
-                        ...Manifest::isMultitenanted()
+                        ...Manifest::hasTenants()
                             ? [
                                 Steps\Sync\App\Tenant\AttachSslCertificateToLoadBalancerListenerStep::class,
                                 Steps\Sync\App\Tenant\SyncForwardRuleStep::class,
