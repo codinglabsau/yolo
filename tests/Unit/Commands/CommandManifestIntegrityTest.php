@@ -500,7 +500,7 @@ describe('the multitenancy block', function (): void {
         ],
     ]);
 
-    it('refuses a key the party shape does not name', function (): void {
+    it('refuses a key the multitenancy block does not name', function (): void {
         // `apex` is always derived from `domain`. Accepting it silently — which the
         // old free-form `tenants.*` subtree did — meant a hand-written value was
         // taken and then overwritten.

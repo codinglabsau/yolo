@@ -189,8 +189,8 @@ describe('per-tenant DNS/TLS steps', function (): void {
 });
 
 describe('tenant DNS records', function (): void {
-    // A party only ever wildcards its own domain. Resolving the wildcard from the
-    // manifest rather than from the party being written put the *landlord's*
+    // A wildcard only ever covers its own domain. Resolving it from the manifest
+    // rather than from the tenant whose zone is being written put the *landlord's*
     // `*.{domain}` record into a non-wildcarded tenant's own hosted zone.
     it('never writes the landlord wildcard into a tenant zone', function (): void {
         bindHostedZones(['example.com', 'acme.com.au']);

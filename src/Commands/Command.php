@@ -199,7 +199,7 @@ abstract class Command extends SymfonyCommand
 
         if (Manifest::has('wildcard-subdomains')) {
             error(
-                "yolo.yml declares both `wildcard-subdomains` and `multitenancy` — the flag belongs to the party whose domain it wildcards.\n"
+                "yolo.yml declares both `wildcard-subdomains` and `multitenancy` — the flag belongs to the landlord or tenant whose domain it wildcards.\n"
                 . 'Move it to `multitenancy.landlord.wildcard-subdomains`, or onto the tenant as `multitenancy.tenants.<id>.wildcard-subdomains`.'
             );
 

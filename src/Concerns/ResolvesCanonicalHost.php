@@ -19,15 +19,15 @@ trait ResolvesCanonicalHost
 {
     /**
      * Every host YOLO writes an A-alias for — the canonical host, its `www`
-     * sibling when it has one, and the wildcard when that party serves its own
+     * sibling when it has one, and the wildcard when that domain serves its own
      * subdomains. Shared by the record sync and by teardown, so a withdrawal
      * removes exactly what sync wrote and nothing else.
      *
-     * `$wildcardHost` is required, and null means "this party has no wildcard".
+     * `$wildcardHost` is required, and null means "this domain has no wildcard".
      * It used to default to `Manifest::wildcardHost()`, which silently wrote the
-     * *app's* wildcard into a non-wildcarded tenant's own hosted zone — a party
-     * only ever wildcards its own domain, so the caller that knows which party
-     * this is has to say.
+     * *app's* wildcard into a non-wildcarded tenant's own hosted zone — a
+     * wildcard only ever covers its own domain, so the caller has to say which
+     * one it is resolving.
      *
      * @return array<int, string>
      */

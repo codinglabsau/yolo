@@ -11,12 +11,12 @@ Everything multi-tenant lives in one `multitenancy` block. One container image a
 
 **They compose.** The two are per-tenant choices, not app-wide modes: a tenant with no `domain` of its own is served under the landlord's wildcard, and one with a `domain` gets the full set. Mixing them in one app is the normal migration path — a tenant graduates to its own domain by gaining one line.
 
-## The party shape
+## How a landlord and a tenant are declared
 
 The landlord and each tenant are declared the same way, so one rule covers both:
 
 ```yaml
-domain: …                  # the host this party is served on
+domain: …                  # the host it is served on
 wildcard-subdomains: true  # …and every subdomain of it, one label deep
 ```
 
@@ -97,15 +97,26 @@ The two shapes are per-tenant, so one app can run both — which is how a tenant
 
 Each per-tenant DNS/TLS step asks one question — *does the app's own certificate already cover this host?* — and skips itself when the answer is yes. Nothing else in the plan changes.
 
-## Landlord migrations
+## Migrations
 
-Answer "yes" to the multi-tenant prompt in `yolo init` and it scaffolds the block along with landlord/tenant migration hooks:
+Answer "yes" to the multi-tenant prompt in `yolo init` and it scaffolds the `deploy` hooks to match your migration layout, since what a tenanted app has to migrate depends on where its tenants live.
+
+A **single database** scoping rows by a `tenant_id` column has one flat `database/migrations` and one call, exactly like a solo app:
+
+```yaml
+deploy:
+  - php artisan migrate --force
+```
+
+A **database per tenant** splits its migrations, and both sets have to run — the second over every tenant connection. `init` scaffolds this form when it finds `database/migrations/landlord` **and** `database/migrations/tenant`:
 
 ```yaml
 deploy:
   - php artisan migrate --path=database/migrations/landlord --force
   - php artisan tenants:artisan "migrate --path=database/migrations/tenant --database=tenant --force"
 ```
+
+`init` says which it assumed. Neither is enforced afterwards — `deploy` is yours to edit, and an app that adopts a split layout later just changes the hooks.
 
 ## What gets provisioned
 

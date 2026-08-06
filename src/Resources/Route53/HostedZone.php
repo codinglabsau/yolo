@@ -44,7 +44,7 @@ class HostedZone implements Adoptable, Resource, Undeletable
      *
      * The record-management methods additionally need to know *whose* records
      * they manage, since a tenant zone holds that tenant's hosts and wildcard,
-     * not the app's. Left null they default to the app's own party
+     * not the app's. Left null they default to the app's own hosts
      * ({@see managedHosts()}); {@see forTenant()} names a tenant's instead.
      */
     public function __construct(
@@ -184,7 +184,7 @@ class HostedZone implements Adoptable, Resource, Undeletable
      */
     protected function managedHosts(): array
     {
-        // A zone constructed without a party manages the app's own records; one
+        // A zone constructed without a domain manages the app's own records; one
         // built by forTenant() manages that tenant's. Resolved here rather than
         // defaulted inside aliasedHosts(), so a tenant's zone can never inherit the
         // app's wildcard (which would write `*.{app domain}` into the tenant's zone).

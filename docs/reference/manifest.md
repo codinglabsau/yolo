@@ -174,7 +174,7 @@ domain: app.example.com
 wildcard-subdomains: true   # tenant-a.app.example.com, tenant-b.app.example.com, …
 ```
 
-Requires `domain`. Under [`multitenancy`](#multitenancy) it moves inside the block, onto the party whose domain it wildcards ([`multitenancy.landlord.wildcard-subdomains`](#multitenancy-landlord) or per tenant) — declared at the root alongside a `multitenancy` block it is refused. A `www`-canonical `domain` is also refused: the wildcard would land at `*.www.{apex}` and the certificate would stop covering the apex the [redirect](/guide/domains#apex-and-www) fires from.
+Requires `domain`. Under [`multitenancy`](#multitenancy) it moves inside the block, onto the landlord or tenant whose domain it wildcards ([`multitenancy.landlord.wildcard-subdomains`](#multitenancy-landlord) or per tenant) — declared at the root alongside a `multitenancy` block it is refused. A `www`-canonical `domain` is also refused: the wildcard would land at `*.www.{apex}` and the certificate would stop covering the apex the [redirect](/guide/domains#apex-and-www) fires from.
 
 It also moves where the certificate is issued: normally YOLO requests one for the **apex** (covering `{apex}` + `*.{apex}`), but wildcards match a single label, so `*.example.com` would not cover `tenant.app.example.com`. With `wildcard-subdomains` the certificate is issued for `domain` instead (`app.example.com` + `*.app.example.com`). Its DNS validation record and the wildcard alias record are both written into the existing apex zone, so no extra hosted zone or NS delegation is needed.
 
@@ -216,7 +216,7 @@ Optional — omit it for a multi-tenant app with no landlord host, where every t
 
 #### `multitenancy.tenants`
 
-A map of tenant id → party config. The id identifies that tenant's resources throughout YOLO.
+A map of tenant id → that tenant's config. The id identifies that tenant's resources throughout YOLO.
 
 Also optional. A block with a landlord and no tenants is the shape of an app that resolves its tenants entirely from its own database — YOLO serves the landlord (and its wildcard, if declared) and provisions exactly what the solo shape does, because there is nothing to fan out over. Declaring tenants is what buys them AWS resources of their own; a tenant served under the landlord's wildcard still gets none unless [`queue-isolation`](#multitenancy-queue-isolation) is `dedicated`.
 

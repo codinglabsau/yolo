@@ -65,7 +65,7 @@ class Manifest
         // stray or misremembered key hard-fails instead of being silently accepted
         // and ignored — `apex` is the one that used to slip through, and it is
         // always derived from `domain`, never declared. The landlord and each
-        // tenant share one party shape: a domain, optionally wildcarded.
+        // tenant are declared the same way: a domain, optionally wildcarded.
         'multitenancy.landlord.domain',
         'multitenancy.landlord.wildcard-subdomains',
         'multitenancy.queue-isolation',

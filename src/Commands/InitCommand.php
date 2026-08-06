@@ -169,10 +169,7 @@ class InitCommand extends Command
                 ],
             ]);
 
-            Manifest::put('deploy', [
-                'php artisan migrate --path=database/migrations/landlord --force',
-                'php artisan tenants:artisan "migrate --path=database/migrations/tenant --database=tenant --force"',
-            ]);
+            Manifest::put('deploy', $this->multitenantDeploySteps());
         } else {
             Manifest::put('domain', text('What is the domain?', placeholder: 'eg. example.com'));
 
@@ -185,6 +182,39 @@ class InitCommand extends Command
         if ($s3Bucket !== '' && $s3Bucket !== '0') {
             Manifest::put('bucket', $s3Bucket);
         }
+    }
+
+    /**
+     * How an app stores its tenants decides what `deploy` has to run, and the
+     * migration layout gives it away. A database-per-tenant app keeps its
+     * migrations split (`landlord/` holds the tenant registry, `tenant/` the
+     * per-tenant schema) and has to run both — the second over every tenant
+     * connection. A single-database app scoping rows by a `tenant_id` column
+     * has one flat set and one `migrate`, exactly like a solo app.
+     *
+     * Scaffolding the split form unconditionally left the flat majority with a
+     * deploy hook that fails on the first run: no such path, no such command.
+     * Assume the layout on disk, and say which was assumed.
+     *
+     * @return array<int, string>
+     */
+    protected function multitenantDeploySteps(): array
+    {
+        if (! is_dir(Paths::base('database/migrations/landlord'))
+            || ! is_dir(Paths::base('database/migrations/tenant'))) {
+            note('Scaffolded a single `migrate` deploy hook — no `database/migrations/landlord` and `tenant` directories, so this reads as a single-database app. If tenants live in databases of their own, split the hook in `yolo.yml`.');
+
+            return [
+                'php artisan migrate --force',
+            ];
+        }
+
+        note('Scaffolded landlord and per-tenant `migrate` deploy hooks from the split `database/migrations` layout.');
+
+        return [
+            'php artisan migrate --path=database/migrations/landlord --force',
+            'php artisan tenants:artisan "migrate --path=database/migrations/tenant --database=tenant --force"',
+        ];
     }
 
     protected function initialiseDockerfile(): void
