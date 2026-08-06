@@ -1,15 +1,18 @@
 # Multi-Tenancy
 
-Everything multi-tenant lives in one `multitenancy` block. One container image and one ECS service serve every tenant; what differs per tenant is how it's routed to, and therefore what it costs to onboard one.
+Everything multi-tenant lives in one `multitenancy` block. One container image and one ECS service serve every tenant. What differs is **how a request identifies its tenant** — and that decides what YOLO provisions and what onboarding a tenant costs.
 
-| | [Under the landlord's wildcard](#tenants-under-the-landlord-s-domain) | [On its own domain](#tenants-on-their-own-domains) |
-| --- | --- | --- |
-| Tenant is reached at | `{tenant}.{landlord domain}` | any domain |
-| Declared with | a bare tenant id | that tenant's `domain` |
-| Per-tenant AWS resources | none | hosted zone, certificate, SNI attachment, listener rules, DNS records |
-| Onboarding a tenant | a row in your database | a manifest edit and a `yolo sync` |
+| | [In the route](#tenant-in-the-route) | [In the subdomain](#tenant-in-the-subdomain) | [Its own domain](#tenant-on-its-own-domain) |
+| --- | --- | --- | --- |
+| Tenant is reached at | `app.example.com/acme` | `acme.app.example.com` | `acme.com.au` |
+| Needs `wildcard-subdomains` | no | yes | no |
+| Declared in the manifest | not at all | not at all | that tenant's `domain` |
+| Per-tenant AWS resources | none | none | hosted zone, certificate, SNI attachment, listener rules, DNS records |
+| Onboarding a tenant | a row in your database | a row in your database | a manifest edit and a `yolo sync` |
 
-**They compose.** The two are per-tenant choices, not app-wide modes: a tenant with no `domain` of its own is served under the landlord's wildcard, and one with a `domain` gets the full set. Mixing them in one app is the normal migration path — a tenant graduates to its own domain by gaining one line.
+The first two cost YOLO nothing per tenant — the app resolves the tenant from the request itself, so tenants come and go as database rows with no infrastructure run. Only a custom domain needs YOLO to know a tenant exists.
+
+**The third composes with either of the first two**, which is how a tenant migrates onto its own domain: it is a per-tenant choice, not an app-wide mode.
 
 ## How a landlord and a tenant are declared
 
@@ -22,9 +25,9 @@ wildcard-subdomains: true  # …and every subdomain of it, one label deep
 
 `apex` is never declared — YOLO derives it from `domain` by walking the domain's labels against the hosted zones in the account, so a certificate lands on the right zone with nothing to configure.
 
-## Tenants under the landlord's domain
+## Tenant in the route
 
-Wildcard the landlord and every tenant is reached beneath it, with no infrastructure of its own:
+The app serves one host and reads the tenant off the URL — `app.example.com/acme`, or a header, or the session. Nothing about that is visible to AWS, so the manifest is a landlord and nothing else:
 
 ```yaml
 environments:
@@ -37,39 +40,49 @@ environments:
     multitenancy:
       landlord:
         domain: app.example.com
-        wildcard-subdomains: true
-      queue-isolation: dedicated
-      tenants:
-        acme:
-        globex:
 ```
 
-`app.example.com` serves the landlord; `acme.app.example.com` and every other subdomain reach the same service, which resolves the tenant from the request host. YOLO provisions **one** certificate covering `app.example.com` + `*.app.example.com`, one wildcard listener rule, and one `*.app.example.com` alias record — so bringing a tenant live needs no infrastructure run.
+No `wildcard-subdomains`, no `tenants`. YOLO provisions exactly what a single-tenant app gets — one hosted zone, one certificate, one forward rule, one queue set — because there is nothing to fan out over. Tenants are database rows; onboarding one touches neither the manifest nor AWS.
 
-Declaring the tenants anyway is what gets them their own AWS resources: with `queue-isolation: dedicated` each gets its own SQS queue, depth alarm and worker program. Drop the `tenants` block entirely and the app still works as a wildcard-served app that resolves tenants from its own database — YOLO just knows nothing about them.
+This is the shape most `tenant_id`-column apps want, and the cheapest place to start.
 
-The wildcard is scoped to the landlord's own `domain`, never the apex: several apps commonly share one zone (`app.example.com`, `admin.example.com`), and a wildcard at the apex would have one app swallow the others' traffic. It is one label deep, so `acme.app.example.com` is served and `a.b.app.example.com` is not.
+## Tenant in the subdomain
 
-## Tenants on their own domains
-
-Give a tenant a `domain` and it gets the full set:
+Wildcard the landlord and every tenant is reached beneath it:
 
 ```yaml
     multitenancy:
       landlord:
-        domain: admin.example.com
-      queue-isolation: dedicated
+        domain: app.example.com
+        wildcard-subdomains: true
+```
+
+`app.example.com` serves the landlord; `acme.app.example.com` and every other subdomain reach the same service, which resolves the tenant from the request host. YOLO provisions **one** certificate covering `app.example.com` + `*.app.example.com`, one wildcard listener rule, and one `*.app.example.com` alias record — so, as with the route shape, bringing a tenant live needs no infrastructure run and no manifest edit.
+
+The wildcard is scoped to the landlord's own `domain`, never the apex: several apps commonly share one zone (`app.example.com`, `admin.example.com`), and a wildcard at the apex would have one app swallow the others' traffic. It is one label deep, so `acme.app.example.com` is served and `a.b.app.example.com` is not.
+
+## Tenant on its own domain
+
+A tenant reached at a domain of its own is the one case YOLO has to know about, because only then does it have resources to provision. Declare the tenant and give it a `domain`:
+
+```yaml
+    multitenancy:
+      landlord:
+        domain: app.example.com
+        wildcard-subdomains: true
       tenants:
         acme:
-          domain: acme.com.au
+          domain: acme.com.au        # its own zone, certificate and rules
         globex:
           domain: globex.io
-          wildcard-subdomains: true
+          wildcard-subdomains: true  # …and *.globex.io as well
 ```
 
 Each such tenant gets its own hosted zone, its own DNS-validated certificate, an SNI attachment onto the shared `:443` listener, a forward rule routing its host to the app's target group, and — when its domain is one half of the apex/`www` pair — a redirect rule 301ing the sibling. `globex` additionally serves `*.globex.io`, its certificate moving off the apex onto `globex.io` so the wildcard reaches a level deeper.
 
 Rule identity is the rule's `Name` tag, keyed by tenant id, so changing one tenant's domain rewrites that tenant's rule in place and never touches a sibling's.
+
+A tenant declared without a `domain` is served the way the landlord is (under its wildcard, or off the route) and gets no DNS or TLS resources — [declaring it anyway](#declaring-tenants-without-a-domain) buys it queues of its own and nothing else.
 
 ### Absorbing a domain that already exists
 
@@ -80,9 +93,9 @@ A tenant domain usually pre-dates YOLO — the zone, and often a certificate, ar
 
 Because every step diffs before it writes, a sync over already-correct infrastructure reports **Already in sync** instead of proposing work.
 
-## Mixing the two
+## Graduating a tenant onto its own domain
 
-The two shapes are per-tenant, so one app can run both — which is how a tenant migrates onto its own domain:
+A custom domain is a per-tenant choice, so one app runs it alongside either of the other two shapes — which is how a tenant migrates:
 
 ```yaml
     multitenancy:
@@ -126,18 +139,11 @@ deploy:
 - **Hosted zone, certificate, SNI attachment and listener rules**, for each tenant on a domain the landlord's certificate doesn't already cover.
 - **DNS records** for every tenant domain, pointed at the shared load balancer, UPSERTed during `yolo deploy`.
 
-### Declaring no tenants at all
+### Declaring tenants without a domain
 
-`multitenancy.tenants` is optional. A block with just a landlord is the shape of an app that resolves every tenant from its own database:
+`multitenancy.tenants` is optional, and the [route](#tenant-in-the-route) and [subdomain](#tenant-in-the-subdomain) shapes leave it out entirely — YOLO has nothing to provision per tenant, so a list it can only fall out of step with buys nothing.
 
-```yaml
-    multitenancy:
-      landlord:
-        domain: app.example.com
-        wildcard-subdomains: true
-```
-
-That provisions exactly what the solo shape does — one certificate covering `app.example.com` + `*.app.example.com`, one wildcard listener rule, one alias record, one queue set — because there is nothing to fan out over. Tenants come and go as database rows, with no infrastructure run and nothing in the manifest to keep in step.
+The one reason to declare a tenant anyway is [`queue-isolation`](/reference/manifest#multitenancy-queue-isolation): on `dedicated`, each declared tenant gets its own SQS queue, depth alarm and worker program. Everything else about it stays exactly as it was.
 
 ## Tearing down
 

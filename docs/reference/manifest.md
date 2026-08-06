@@ -228,7 +228,7 @@ tenants:
     wildcard-subdomains: true # …and *.globex.io
 ```
 
-A tenant's `apex` is derived from its `domain` exactly as the app's is — never declared. A tenant whose domain the landlord's certificate already covers provisions no DNS/TLS resources of its own; see [Mixing the two](/guide/multi-tenancy#mixing-the-two).
+A tenant's `apex` is derived from its `domain` exactly as the app's is — never declared. A tenant whose domain the landlord's certificate already covers provisions no DNS/TLS resources of its own; see [Graduating a tenant onto its own domain](/guide/multi-tenancy#graduating-a-tenant-onto-its-own-domain).
 
 #### `multitenancy.queue-isolation`
 
