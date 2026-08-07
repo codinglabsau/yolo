@@ -17,6 +17,71 @@ class S3
     }
 
     /**
+     * Whether THIS account owns the bucket — the only question S3 answers
+     * unambiguously. HeadBucket can't: because the bucket namespace is global, a
+     * 403 means both "another account owns this name" and "yours, but the calling
+     * tier may not read it", and adopting the former looks like a clean sync that
+     * then fails every runtime write. ListBuckets returns only our own buckets, so
+     * absence from it is a definitive no. `s3:ListAllMyBuckets` is granted to the
+     * read tier, so every command can ask.
+     */
+    public static function accountOwnsBucket(string $name): bool
+    {
+        return in_array($name, static::ownedBucketNames(), true);
+    }
+
+    /**
+     * Every bucket name in this account.
+     *
+     * @return array<int, string>
+     */
+    public static function ownedBucketNames(): array
+    {
+        return collect(Aws::s3()->listBuckets()['Buckets'] ?? [])
+            ->pluck('Name')
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Whether the name is taken anywhere in S3's global namespace. Used only to
+     * tell "free" from "owned by someone else" once {@see accountOwnsBucket} has
+     * established it isn't ours, so the operator gets the real reason. Exists and
+     * unreadable (403) and exists in another region (PermanentRedirect) both count
+     * as taken; only a 404 is free. An unexpected failure reads as taken — it makes
+     * the wording of an error we are already emitting more cautious, never less.
+     */
+    public static function bucketTaken(string $name): bool
+    {
+        try {
+            return Aws::s3()->doesBucketExistV2($name, accept403: true);
+        } catch (S3Exception $e) {
+            return ! static::isNotFound($e);
+        }
+    }
+
+    /**
+     * Whether S3 would accept the name at CreateBucket time, checked up front so a
+     * typo fails manifest validation instead of surfacing as a mid-apply
+     * InvalidBucketName. Covers the general-purpose bucket rules: 3-63 characters
+     * of lowercase alphanumerics, dots and hyphens, starting and ending
+     * alphanumeric, no adjacent dots, and not shaped like an IP address.
+     */
+    public static function isValidBucketName(string $name): bool
+    {
+        if (strlen($name) < 3 || strlen($name) > 63) {
+            return false;
+        }
+
+        if (str_contains($name, '..') || preg_match('/^(\d{1,3}\.){3}\d{1,3}$/', $name) === 1) {
+            return false;
+        }
+
+        return preg_match('/^[a-z0-9][a-z0-9.-]*[a-z0-9]$/', $name) === 1;
+    }
+
+    /**
      * Delete a bucket — the single chokepoint every YOLO bucket teardown routes
      * through, guarded so the bring-your-own application data bucket (AWS_BUCKET)
      * can NEVER be deleted: it holds user data and is not YOLO's to remove. A name

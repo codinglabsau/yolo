@@ -38,6 +38,14 @@ class SyncAppCommand extends SyncSteppedCommand
             return self::FAILURE;
         }
 
+        // A bring-your-own app data bucket must already exist on this account —
+        // refused here, before the plan, because YOLO can't create a bucket outside
+        // its own namespace and adopting one owned by another account would sync
+        // clean and then fail every runtime write.
+        if (! $this->ensureAppBucketAdoptable()) {
+            return self::FAILURE;
+        }
+
         return parent::handle();
     }
 

@@ -267,6 +267,18 @@ class Manifest
         return Arr::get(static::current()['environments'][Helpers::environment()], $key);
     }
 
+    /**
+     * Whether YOLO owns the application data bucket. `bucket: true` puts it in
+     * YOLO's keyed namespace (see {@see Paths::s3AppBucket}), so YOLO creates it,
+     * hardens it and keeps it reconciled like every other bucket it provisions. A
+     * bucket *name* means the opposite: a bring-your-own bucket YOLO adopts, never
+     * creates and never writes a byte of configuration to.
+     */
+    public static function managesAppBucket(): bool
+    {
+        return static::get('bucket') === true;
+    }
+
     public static function put(string $key, mixed $value): false|int
     {
         // Scalar writes are applied surgically — the value is rewritten in place

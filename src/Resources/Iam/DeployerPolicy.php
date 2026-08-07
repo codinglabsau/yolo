@@ -327,6 +327,19 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
                 'Resource' => sprintf('%s/%s', (new EnvConfigBucket())->arn(), Paths::s3EnvAppEnvKey()),
                 'Action' => ['s3:GetObject'],
             ],
+            [
+                // Bucket-name discovery for the pre-deploy `sync --check` gate, which
+                // verifies that a bring-your-own app data bucket still exists on this
+                // account before a deploy points AWS_BUCKET at it. Ownership can only
+                // be established by listing the account's own buckets — a probe of the
+                // bucket itself answers 403 for both "someone else owns this name" and
+                // "yours, unreadable by this tier". A collection operation, so it takes
+                // no resource-level scoping; it returns bucket names only, never any
+                // object or bucket configuration.
+                'Effect' => 'Allow',
+                'Resource' => '*',
+                'Action' => ['s3:ListAllMyBuckets'],
+            ],
         ];
 
         // The apex/www DNS cutover only runs for apps with a public domain. Scope

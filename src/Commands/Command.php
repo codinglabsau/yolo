@@ -3,6 +3,8 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Aws\S3;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
@@ -152,6 +154,7 @@ abstract class Command extends SymfonyCommand
             && $this->ensureManifestKeyDeclared('region')
             && $this->ensureManifestKeyDeclared('account-id')
             && $this->ensureCacheStoreValid()
+            && $this->ensureAppBucketValid()
             && $this->ensureSessionDriverValid()
             && $this->ensureServicesValid()
             && $this->ensureTasksRunnable()
@@ -431,6 +434,70 @@ abstract class Command extends SymfonyCommand
         }
 
         return true;
+    }
+
+    /**
+     * `bucket` says who owns the app data bucket: `true` for one YOLO provisions in
+     * its own namespace, or the name of an existing bucket to adopt. `false` is
+     * refused rather than read as "no bucket" — omitting the key already says that,
+     * and a silently-ignored `false` would ship an app with no AWS_BUCKET. A name S3
+     * would reject is caught here too, so a typo fails validation instead of
+     * surfacing as an InvalidBucketName mid-apply.
+     */
+    protected function ensureAppBucketValid(): bool
+    {
+        if (! Manifest::has('bucket') || Manifest::managesAppBucket()) {
+            return true;
+        }
+
+        $bucket = Manifest::get('bucket');
+
+        if (! is_string($bucket) || ! S3::isValidBucketName($bucket)) {
+            error(
+                'yolo.yml `bucket` must be `true` — YOLO provisions and owns the bucket — or the name of an existing bucket to adopt '
+                    . "(3-63 characters: lowercase letters, numbers, dots and hyphens, starting and ending alphanumeric).\nOmit the key entirely for no app data bucket."
+            );
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * A bring-your-own app data bucket must already exist on this account. YOLO
+     * never creates one: the name sits outside the `yolo-*` namespace the admin tier
+     * is fenced to, so CreateBucket — and the Block Public Access and CORS writes
+     * that follow it — would AccessDenied mid-apply.
+     *
+     * Ownership comes from ListBuckets rather than a HeadBucket probe. The bucket
+     * namespace is global, so a bucket owned by someone else answers HeadBucket with
+     * a 403 indistinguishable from "yours, but this tier may not read it"; adopting
+     * one of those looks like a clean sync and then fails every runtime write.
+     */
+    protected function ensureAppBucketAdoptable(): bool
+    {
+        if (! Manifest::has('bucket') || Manifest::managesAppBucket()) {
+            return true;
+        }
+
+        $bucket = Paths::s3AppBucket();
+
+        if (S3::accountOwnsBucket($bucket)) {
+            return true;
+        }
+
+        error(sprintf(
+            "The app data bucket \"%s\" doesn't exist on this account%s.\n"
+                . "YOLO adopts a bucket named in yolo.yml but never creates one — the name is outside the yolo-* namespace this tier may write.\n"
+                . 'Either set `bucket: true` and let YOLO provision and own it as "%s", or create "%s" yourself and re-run.',
+            $bucket,
+            S3::bucketTaken($bucket) ? ' — the name is taken in another AWS account' : '',
+            Helpers::keyedBucketName('data'),
+            $bucket,
+        ));
+
+        return false;
     }
 
     /**

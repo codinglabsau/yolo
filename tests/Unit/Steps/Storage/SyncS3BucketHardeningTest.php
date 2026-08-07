@@ -167,7 +167,7 @@ it('reports drift but does not mutate the config bucket during a dry-run', funct
 
 it('blocks public access on a newly created app bucket', function (): void {
     writeManifest([
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => true,
     ]);
 
     $captured = [];
@@ -185,7 +185,7 @@ it('blocks public access on a newly created app bucket', function (): void {
 
 it('does not flip public access on an existing app bucket', function (): void {
     writeManifest([
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => true,
     ]);
 
     $captured = [];
@@ -200,7 +200,7 @@ it('does not flip public access on an existing app bucket', function (): void {
 
 it('applies the browser-upload CORS to a newly created app bucket', function (): void {
     writeManifest([
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => true,
     ]);
 
     $captured = [];
@@ -219,9 +219,9 @@ it('applies the browser-upload CORS to a newly created app bucket', function ():
         ->toContain('PutBucketCors');
 });
 
-it('leaves an existing app bucket completely untouched — create-only, never reconciled', function (): void {
+it('leaves an existing YOLO-named app bucket completely untouched — create-only, never reconciled', function (): void {
     writeManifest([
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => true,
     ]);
 
     $captured = [];
@@ -233,7 +233,7 @@ it('leaves an existing app bucket completely untouched — create-only, never re
     expect((new SyncS3BucketStep())([]))->toBe(StepResult::SYNCED);
 
     // Reference-only after create: no attribute is read or written on an existing
-    // bucket — not CORS, not tags, not BPA — so the tier needs no S3 perm on it.
+    // bucket — not CORS, not tags, not BPA. YOLO hands the bucket over at birth.
     expect(array_column($captured, 'name'))
         ->not->toContain('GetBucketCors')
         ->not->toContain('PutBucketCors')
@@ -242,12 +242,13 @@ it('leaves an existing app bucket completely untouched — create-only, never re
         ->not->toContain('PutPublicAccessBlock');
 });
 
-it('treats a 403 on the existence check as an unowned bucket and leaves it alone', function (): void {
-    // The capped admin tier has no S3 perms on a custom-named (non yolo-*) bucket,
-    // so HeadBucket comes back 403 — which means "exists, not ours". The step must
-    // skip it cleanly, never hard-fail the sync (this is the real codinglabsio case).
+it('never touches a bring-your-own bucket — not even an existence probe', function (): void {
+    // An adopted bucket is verified to exist on this account before the plan
+    // (Command::ensureAppBucketAdoptable), so the step has nothing to do. It must not
+    // even HeadBucket: the name is outside yolo-*, so the capped tier may hold no S3
+    // permission on it at all and any call could 403 and abort the sync.
     writeManifest([
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'codinglabsio',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
     ]);
 
     $captured = [];
@@ -256,11 +257,21 @@ it('treats a 403 on the existence check as an unowned bucket and leaves it alone
         'HeadBucket' => s3Forbidden(),
     ], $captured);
 
-    expect((new SyncS3BucketStep())([]))->toBe(StepResult::SYNCED);
-    expect(array_column($captured, 'name'))
-        ->not->toContain('CreateBucket')
-        ->not->toContain('PutBucketCors')
-        ->not->toContain('PutPublicAccessBlock');
+    expect((new SyncS3BucketStep())([]))->toBe(StepResult::SKIPPED);
+    expect($captured)->toBe([]);
+});
+
+it('skips entirely when no app bucket is declared', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+    ]);
+
+    $captured = [];
+
+    bindMockS3Client([], $captured);
+
+    expect((new SyncS3BucketStep())([]))->toBe(StepResult::SKIPPED);
+    expect($captured)->toBe([]);
 });
 
 it('never puts a bucket policy on the config bucket (log-delivery belongs to S3LogsBucket)', function (): void {

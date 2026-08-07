@@ -37,7 +37,8 @@ environments:
     # repository: org/repo       # default: inferred from your git origin
 
     # --- App storage & shared infra names ---
-    # bucket: my-app-bucket                          # app S3 bucket, injected as AWS_BUCKET
+    # bucket: true                                   # app S3 bucket (AWS_BUCKET) — YOLO names and creates it
+    #                                                # (a bucket name instead adopts one that already exists)
 
     # --- Cache & session (any app with tasks defaults to the cache, web apps to sessions too; uncomment only to override) ---
     # cache:
@@ -265,7 +266,26 @@ These live directly under an environment and provision or configure the app's AW
 
 ### `bucket`
 
-Name of an app S3 bucket for application storage. Injected into the container as `AWS_BUCKET`, and this app's [ECS task role](#task-role-policies) is automatically granted read+write on it (object get/put/delete + ACL get/set + multipart, plus bucket listing) — so the container reaches its bucket through the role. The grant is scoped to this one bucket. YOLO creates the bucket (Block Public Access on) when it doesn't already exist. On every sync it reconciles the bucket's CORS — a permissive ruleset (origins `*`, methods `GET`/`PUT`/`HEAD`) that lets the browser PUT directly to the bucket via a presigned URL — together with its `yolo:*` tags, surfacing any change in the plan and `--check`. The presigned URL (auth + same-origin), not CORS, is the access gate. Block Public Access is applied at create only and is never reconciled onto an existing bucket, so an adopted bucket (e.g. one carried over from another platform) keeps serving any public objects unchanged.
+An S3 bucket for application storage, injected into the container as `AWS_BUCKET`. This app's [ECS task role](#task-role-policies) is automatically granted read+write on it (object get/put/delete + ACL get/set + multipart, plus bucket listing), scoped to this one bucket — so the container reaches its bucket through the role, with no credentials to manage.
+
+The value says **who owns the bucket**, and that is the whole difference:
+
+| Value | Behaviour |
+| --- | --- |
+| `true` | **YOLO-provisioned.** The bucket is named `yolo-{account-id}-{environment}-{app}-data`, so it is globally unique by construction and two environments can never end up sharing one. `sync:app` creates it, with Block Public Access on and a permissive CORS ruleset (origins `*`, methods `GET`/`PUT`/`HEAD`) that lets the browser PUT directly to it via a presigned URL — the signed URL, not CORS, is the access gate. |
+| a bucket name | **Bring your own.** The bucket must already exist **on this account**; YOLO adopts it and never creates one. A name YOLO didn't choose sits outside the `yolo-*` namespace the admin tier may write, so creating or configuring it isn't something YOLO can do — see the failure modes below. |
+| omitted | No app data bucket, and no `AWS_BUCKET`. (`false` is refused rather than read as this — omitting the key already says it.) |
+
+**Create-only in both modes.** Whatever YOLO sets, it sets once at create and then never touches the bucket again: no CORS reconcile, no Block Public Access reconcile, no tags. It holds user data, an app may legitimately serve public objects or own its own CORS rules, and a bucket handed over at birth isn't one YOLO should keep claiming — so it also carries no `yolo:*` tags and never appears in [`yolo audit`](/reference/commands#yolo-audit).
+
+**Never deleted.** [`destroy:app`](/reference/commands#yolo-destroy-app) tears down everything else and leaves this bucket standing, in both modes. Three independent things guarantee that: it isn't a deletable resource, `S3::deleteBucket` refuses it by name, and the admin tier's destructive S3 grants are scoped to the regeneratable bucket suffixes (`-config`, `-assets`, `-logs`) rather than all of `yolo-*` — so a YOLO-provisioned data bucket sits inside the create grant and outside the delete one.
+
+**A bring-your-own bucket is verified before the plan runs.** Two cases fail the sync up front, with `bucket: true` offered as the fix:
+
+- **It doesn't exist.** YOLO won't create it, so the sync would otherwise fail mid-apply on `AccessDenied`.
+- **It exists in another AWS account.** S3's bucket namespace is global, so a name someone else has taken answers a probe with a 403 that is indistinguishable from "yours, but this tier may not read it". Adopting one of those would sync perfectly cleanly, grant the task role an ARN in a foreign account, and then fail every runtime write — so ownership is resolved from this account's own bucket listing, and a name that isn't in it is refused by name.
+
+A bucket name S3 would reject (wrong case, too short, doubled dots, IP-shaped) also fails validation here rather than surfacing as an `InvalidBucketName` part-way through an apply.
 
 ### `alb`
 

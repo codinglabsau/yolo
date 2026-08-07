@@ -595,3 +595,41 @@ it('passes for a wildcard-subdomain app', function (): void {
 
     expect(invokeManifestIntegrity())->toBeTrue();
 });
+
+it('accepts `bucket: true` — the YOLO-owned app data bucket', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => true,
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+});
+
+it('accepts a bucket name to adopt', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+});
+
+it('refuses `bucket: false` rather than reading it as no bucket', function (): void {
+    // Omitting the key already says "no bucket". Reading `false` as that too would
+    // silently ship an app with no AWS_BUCKET when the intent was clearly to have one.
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => false,
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    expect(test()->promptOutput->fetch())->toContain('bucket');
+});
+
+it('refuses a bucket name S3 would reject, rather than failing mid-apply', function (): void {
+    foreach (['My-App-Bucket', 'ab', 'bucket..name', '10.0.0.1', 'trailing-'] as $invalid) {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => $invalid,
+        ]);
+
+        expect(invokeManifestIntegrity())->toBeFalse();
+    }
+});

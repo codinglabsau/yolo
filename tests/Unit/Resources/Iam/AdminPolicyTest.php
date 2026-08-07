@@ -1,5 +1,6 @@
 <?php
 
+use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Iam\AdminPolicy;
 use Codinglabs\Yolo\Steps\Sync\Account\SyncServiceLinkedRolesStep;
@@ -227,28 +228,77 @@ it('grants get+put on YOLO env-tier secret channels: the env-shared .env and eac
     ]);
 });
 
-it('grants delete-only on the yolo-* object namespace for teardown, never a new read', function (): void {
+it('grants object deletes only on the regeneratable buckets, and never a new read', function (): void {
     // destroy empties the per-app asset + config buckets (arbitrary builds/* keys, so
     // it can't be key-scoped) and removes the env-config claim/env files. Delete-only,
     // so the tier can clear a bucket without gaining any new read — the per-app
-    // developer `.env` stays unreadable by admin.
+    // developer `.env` stays unreadable by admin. Scoped by bucket-type suffix rather
+    // than all of yolo-*, so no grant here can reach a single user object in the app
+    // data bucket.
     $objectDelete = collect((new AdminPolicy())->document()['Statement'])
         ->first(fn (array $statement): bool => (array) $statement['Action'] === ['s3:DeleteObject', 's3:DeleteObjectVersion']);
 
     expect($objectDelete)->not->toBeNull();
-    expect($objectDelete['Resource'])->toBe('arn:aws:s3:::yolo-*/*');
+    expect($objectDelete['Resource'])->toBe([
+        'arn:aws:s3:::yolo-*-config/*',
+        'arn:aws:s3:::yolo-*-assets/*',
+        'arn:aws:s3:::yolo-*-logs/*',
+    ]);
     expect($objectDelete['Action'])->not->toContain('s3:GetObject');
 });
 
-it('grants the bucket empty+delete teardown, fenced to yolo-* (never the data bucket)', function (): void {
+it('grants the bucket empty+delete teardown only on regeneratable buckets, never the data bucket', function (): void {
     // Emptying a versioned config bucket needs ListBucketVersions (ListBucket comes
-    // from the observer read tier); DeleteBucket removes the regeneratable yolo-*
-    // buckets. The app data bucket isn't yolo-named — and S3::deleteBucket hard-blocks
-    // it by name — so this can never reach user data.
+    // from the observer read tier); DeleteBucket removes the regeneratable buckets.
+    // The app data bucket CAN be yolo-named (`bucket: true`), so a namespace-wide
+    // grant would silently take user data in — hence suffix-scoping, which keeps the
+    // IAM boundary and S3::deleteBucket's name guard in agreement.
     $bucketLifecycle = collect((new AdminPolicy())->document()['Statement'])
         ->first(fn (array $statement): bool => in_array('s3:DeleteBucket', (array) $statement['Action'], true));
 
     expect($bucketLifecycle)->not->toBeNull();
-    expect($bucketLifecycle['Resource'])->toBe('arn:aws:s3:::yolo-*');
+    expect($bucketLifecycle['Resource'])->toBe([
+        'arn:aws:s3:::yolo-*-config',
+        'arn:aws:s3:::yolo-*-assets',
+        'arn:aws:s3:::yolo-*-logs',
+    ]);
     expect($bucketLifecycle['Action'])->toContain('s3:ListBucketVersions', 's3:DeleteBucket');
+});
+
+it('never lets a destructive S3 grant match a YOLO-named app data bucket', function (): void {
+    // The whole point of suffix-scoping: `bucket: true` names the data bucket
+    // yolo-{account}-{env}-{app}-data, which a bare yolo-* delete grant would match.
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => true,
+    ]);
+
+    $dataBucket = Paths::s3AppBucket();
+
+    $destructive = collect((new AdminPolicy())->document()['Statement'])
+        ->filter(fn (array $statement): bool => collect((array) $statement['Action'])
+            ->contains(fn (string $action): bool => in_array($action, ['s3:DeleteBucket', 's3:DeleteObject', 's3:DeleteObjectVersion'], true)))
+        ->flatMap(fn (array $statement): array => (array) $statement['Resource']);
+
+    expect($destructive)->not->toBeEmpty();
+
+    foreach ($destructive as $pattern) {
+        expect(fnmatch($pattern, 'arn:aws:s3:::' . $dataBucket))->toBeFalse();
+        expect(fnmatch($pattern, 'arn:aws:s3:::' . $dataBucket . '/uploads/private.pdf'))->toBeFalse();
+    }
+});
+
+it('still lets the create+harden grant reach a YOLO-named app data bucket', function (): void {
+    // The mirror of the test above: creation and the Block Public Access / CORS writes
+    // must reach it, which is the entire reason `bucket: true` derives a yolo-* name.
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => true,
+    ]);
+
+    $create = collect((new AdminPolicy())->document()['Statement'])
+        ->first(fn (array $statement): bool => in_array('s3:CreateBucket', (array) $statement['Action'], true));
+
+    expect($create)->not->toBeNull();
+    expect(fnmatch((string) $create['Resource'], 'arn:aws:s3:::' . Paths::s3AppBucket()))->toBeTrue();
+    expect($create['Action'])->toContain('s3:PutBucket*');
+    expect($create['Action'])->not->toContain('s3:DeleteBucket');
 });

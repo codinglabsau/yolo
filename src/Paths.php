@@ -2,6 +2,8 @@
 
 namespace Codinglabs\Yolo;
 
+use Codinglabs\Yolo\Resources\S3\S3Bucket;
+
 class Paths
 {
     public static function base($path = null): string
@@ -39,9 +41,19 @@ class Paths
         return static::build(Helpers::versionName());
     }
 
+    /**
+     * The application data bucket (AWS_BUCKET). `bucket: true` derives a name in
+     * YOLO's own keyed namespace — account, environment and app — so it is
+     * globally unique by construction and two environments can never collide on
+     * one bucket. Any other value is a bucket name taken verbatim: a
+     * bring-your-own bucket YOLO adopts and never creates (see
+     * {@see S3Bucket}).
+     */
     public static function s3AppBucket(): string
     {
-        return Manifest::get('bucket');
+        return Manifest::managesAppBucket()
+            ? Helpers::keyedBucketName('data')
+            : Manifest::get('bucket');
     }
 
     public static function s3ConfigBucket(): string
