@@ -558,3 +558,107 @@ it('drops to base credentials before a RunsOnBaseCredentials step on apply, but 
     $invokeStep->invoke($command, $step, null, 'step', time(), ['dry-run' => true]);
     expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeTrue();
 });
+
+/**
+ * Bind an STS client whose successive AssumeRole calls resolve to (or throw) the
+ * given responses in order — the retry path, where a spent code is refused and
+ * the next one mints.
+ *
+ * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+ * @param  array<int, Result|Throwable>  $responses
+ */
+function bindAssumeRoleSequenceStsClient(array &$captured, array $responses): void
+{
+    $mock = new MockHandler();
+
+    foreach ($responses as $response) {
+        $mock->append(function ($command, $request) use (&$captured, $response): Result|Throwable {
+            $captured[] = ['name' => $command->getName(), 'args' => $command->toArray()];
+
+            return $response;
+        });
+    }
+
+    Helpers::app()->instance('sts', new StsClient([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+}
+
+/** STS's refusal of the TOTP itself — a plain AccessDenied, distinguishable only by message. */
+function rejectedMfaCodeException(): RuntimeException
+{
+    return new RuntimeException('MultiFactorAuthentication failed with invalid MFA one time pass code. ');
+}
+
+it('re-prompts for a fresh MFA code when AWS rejects the first one, rather than losing the run', function (): void {
+    // A TOTP mints exactly one session, so the code from the previous command — or
+    // the one still on screen after a successful run — is refused. That's an
+    // operator-fixable slip measured in seconds; aborting costs the whole command.
+    putenv('YOLO_TESTING_MFA_SERIAL=arn:aws:iam::111111111111:mfa/operator');
+    Prompt::fake(['123456', Key::ENTER, '654321', Key::ENTER]);
+
+    $captured = [];
+    bindAssumeRoleSequenceStsClient($captured, [rejectedMfaCodeException(), assumeRoleResult()]);
+
+    expect(mint(new SyncEnvironmentCommand()))->toBeNull();
+    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeTrue();
+    expect($captured)->toHaveCount(2)
+        ->and($captured[0]['args']['TokenCode'])->toBe('123456')
+        ->and($captured[1]['args']['TokenCode'])->toBe('654321');
+
+    putenv('YOLO_TESTING_MFA_SERIAL');
+    unset($_ENV['YOLO_TESTING_MFA_SERIAL'], $_SERVER['YOLO_TESTING_MFA_SERIAL']);
+});
+
+it('gives up after a bounded number of rejected codes', function (): void {
+    // Bounded so a genuinely stuck operator isn't prompted forever, and the refusal
+    // says what actually went wrong instead of sending them to check role existence.
+    putenv('YOLO_TESTING_MFA_SERIAL=arn:aws:iam::111111111111:mfa/operator');
+    Prompt::fake(['111111', Key::ENTER, '222222', Key::ENTER, '333333', Key::ENTER]);
+
+    $captured = [];
+    bindAssumeRoleSequenceStsClient($captured, array_fill(0, 3, rejectedMfaCodeException()));
+
+    expect(mint(new SyncEnvironmentCommand()))->toBe(Command::FAILURE);
+    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
+    expect($captured)->toHaveCount(3);
+
+    putenv('YOLO_TESTING_MFA_SERIAL');
+    unset($_ENV['YOLO_TESTING_MFA_SERIAL'], $_SERVER['YOLO_TESTING_MFA_SERIAL']);
+});
+
+it('never retries a failure another MFA code cannot fix', function (): void {
+    // A missing role or a trust policy that won't have the caller is not a code
+    // problem — prompting again would just waste the operator's codes.
+    putenv('YOLO_TESTING_MFA_SERIAL=arn:aws:iam::111111111111:mfa/operator');
+    Prompt::fake(['123456', Key::ENTER]);
+
+    $captured = [];
+    bindAssumeRoleSequenceStsClient($captured, [
+        new RuntimeException('access denied assuming role'),
+        assumeRoleResult(),
+    ]);
+
+    expect(mint(new SyncEnvironmentCommand()))->toBe(Command::FAILURE);
+    expect($captured)->toHaveCount(1);
+
+    putenv('YOLO_TESTING_MFA_SERIAL');
+    unset($_ENV['YOLO_TESTING_MFA_SERIAL'], $_SERVER['YOLO_TESTING_MFA_SERIAL']);
+});
+
+it('treats only a refused code as retryable', function (string $message, bool $retryable): void {
+    // STS reports a refused TOTP as a plain AccessDenied, so the message is the only
+    // discriminator — and it must not swallow the sibling MFA failure (a serial that
+    // isn't the caller's device), which no further code fixes.
+    $isRejected = new ReflectionMethod(Command::class, 'isRejectedMfaCode');
+
+    expect($isRejected->invoke(null, new RuntimeException($message)))->toBe($retryable);
+})->with([
+    'a refused code' => ['MultiFactorAuthentication failed with invalid MFA one time pass code. ', true],
+    'a wrong device serial' => ['MultiFactorAuthentication failed, must specify a valid MFA serial number for user', false],
+    'a trust policy refusal' => ['User is not authorized to perform: sts:AssumeRole', false],
+    'a missing role' => ['access denied assuming role', false],
+]);

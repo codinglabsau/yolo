@@ -42,6 +42,13 @@ abstract class Command extends SymfonyCommand
     use HasAfterCallbacks;
     use RegistersAws;
 
+    /**
+     * How many MFA codes an admin-tier assume will take before giving up. Enough
+     * for a spent code plus the next one to come around, without leaving a
+     * mistyped serial or a trust-policy refusal prompting in a loop.
+     */
+    protected const MFA_ATTEMPTS = 3;
+
     public InputInterface $input;
 
     public OutputInterface $output;
@@ -809,7 +816,7 @@ abstract class Command extends SymfonyCommand
                     return self::FAILURE;
                 }
 
-                $credentials = Aws::assumeRole($roleArn, $sessionName, $mfaSerial, $this->promptMfaCode());
+                $credentials = $this->assumeAdminRole($roleArn, $sessionName, $mfaSerial);
             } else {
                 $credentials = Aws::assumeRole($roleArn, $sessionName);
             }
@@ -826,18 +833,78 @@ abstract class Command extends SymfonyCommand
 
             return null;
         } catch (\Throwable $e) {
-            error(sprintf(
-                "Refusing to run '%s' on your full AWS identity: could not assume %s (%s).\n"
-                . 'Every YOLO tier requires MFA — sessions minted without it are denied, so if this is an AccessDenied check your credentials carry MFA (`yolo configure %s` sets that up and verifies it). '
-                . 'Bootstrap a fresh environment once with --dangerously-skip-permissions; otherwise check the role exists and that your identity may assume it.',
-                $this->getName(),
-                $role->name(),
-                $e->getMessage(),
-                Helpers::environment(),
-            ));
+            // A rejected TOTP is an operator-fixable slip, not a broken tier — say so
+            // plainly instead of sending them off to check role existence and MFA
+            // enrolment, neither of which is the problem.
+            error(static::isRejectedMfaCode($e)
+                ? sprintf(
+                    "Refusing to run '%s': AWS rejected the MFA code.\n"
+                    . 'Each code mints one session only — a code already spent (on an earlier run, or entered twice) is denied for the rest of its window, even while your authenticator still shows it. Wait for the next code and run the command again.',
+                    $this->getName(),
+                )
+                : sprintf(
+                    "Refusing to run '%s' on your full AWS identity: could not assume %s (%s).\n"
+                    . 'Every YOLO tier requires MFA — sessions minted without it are denied, so if this is an AccessDenied check your credentials carry MFA (`yolo configure %s` sets that up and verifies it). '
+                    . 'Bootstrap a fresh environment once with --dangerously-skip-permissions; otherwise check the role exists and that your identity may assume it.',
+                    $this->getName(),
+                    $role->name(),
+                    $e->getMessage(),
+                    Helpers::environment(),
+                ));
 
             return self::FAILURE;
         }
+    }
+
+    /**
+     * Assume the admin role, re-prompting on a rejected MFA code rather than
+     * losing the run.
+     *
+     * A TOTP mints exactly one session: re-entering the code from the previous
+     * command — or the one still on screen after a successful run — is denied by
+     * STS, and that is by far the likeliest way this fails. Re-prompting costs the
+     * operator the seconds until their authenticator rolls over; aborting costs
+     * them the whole command, which for a sync is a full plan pass.
+     *
+     * Only a rejected code retries. Anything else (a missing role, a trust policy
+     * that won't have them) is not fixed by another code, so it surfaces
+     * immediately.
+     *
+     * @return array<string, mixed>
+     */
+    protected function assumeAdminRole(string $roleArn, string $sessionName, string $mfaSerial): array
+    {
+        $rejected = [];
+
+        while (true) {
+            $code = $this->promptMfaCode($rejected);
+
+            try {
+                return Aws::assumeRole($roleArn, $sessionName, $mfaSerial, $code);
+            } catch (\Throwable $e) {
+                if (count($rejected) + 1 >= self::MFA_ATTEMPTS || ! static::isRejectedMfaCode($e)) {
+                    throw $e;
+                }
+
+                $rejected[] = $code;
+
+                warning('AWS rejected that code. Each code mints a single session — wait for your authenticator to roll to the next one.');
+            }
+        }
+    }
+
+    /**
+     * Whether a failed assume was AWS refusing the TOTP itself — the retryable
+     * case. Matched on the message because STS reports it as a plain AccessDenied,
+     * indistinguishable by error code from a trust-policy refusal. The narrower
+     * "one time pass code" phrasing keeps the sibling MFA failure (a serial number
+     * that isn't the caller's device) out: another code never fixes that, and a
+     * reworded message simply falls back to surfacing the error as before.
+     */
+    protected static function isRejectedMfaCode(\Throwable $e): bool
+    {
+        return str_contains($e->getMessage(), 'MultiFactorAuthentication failed')
+            && str_contains($e->getMessage(), 'one time pass code');
     }
 
     /**
@@ -936,17 +1003,32 @@ abstract class Command extends SymfonyCommand
     /**
      * Prompt for the fresh 6-digit TOTP that gates an admin-tier assume — the
      * human factor an agent running as the operator can't generate.
+     *
+     * Codes AWS has already rejected this run are refused here rather than sent
+     * back to STS: the code is still displayed on the authenticator for the rest
+     * of its window, so re-entering it is the natural thing to do and guarantees
+     * a second rejection.
+     *
+     * @param  array<int, string>  $rejected  codes AWS has refused this run
      */
-    protected function promptMfaCode(): string
+    protected function promptMfaCode(array $rejected = []): string
     {
         return text(
             label: 'MFA code (admin tier)',
             placeholder: '123456',
             required: true,
-            validate: fn (string $value): ?string => preg_match('/^\d{6}$/', $value) === 1
-                ? null
-                : 'Enter the 6-digit code from your MFA device.',
-            hint: 'Admin requires MFA — it proves a human, not an agent, is escalating.',
+            validate: function (string $value) use ($rejected): ?string {
+                if (preg_match('/^\d{6}$/', $value) !== 1) {
+                    return 'Enter the 6-digit code from your MFA device.';
+                }
+
+                return in_array($value, $rejected, true)
+                    ? 'AWS already rejected that code — a code mints one session only. Wait for the next one.'
+                    : null;
+            },
+            hint: $rejected === []
+                ? 'Admin requires MFA — it proves a human, not an agent, is escalating.'
+                : 'Each code mints one session only — wait for your authenticator to roll over.',
         );
     }
 

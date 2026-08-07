@@ -17,6 +17,8 @@ Broader tiers **subsume narrower ones in the grant itself**: commands always min
 
 **Every tier requires MFA to assume** — the trust condition is on all four roles, AWS-enforced, so a bare static key can't hold even read-only access. Sessions minted by the `yolo-credentials-1password` helper carry the MFA context automatically; only the admin tier adds a per-run prompt. Most developers want **environment observer + deployer on the apps they ship**. Keep the admins group small.
 
+Each code mints exactly one session, so back-to-back admin commands need a **different code each time** — reusing the one still on screen is refused by AWS for the rest of its window. The prompt handles that itself: a refused code is re-prompted (a few attempts) rather than failing the command, and a code AWS has already rejected is caught at the prompt instead of being sent back.
+
 ## Onboard a developer
 
 Onboarding is split cleanly in two: the **admin** creates the user and grants tiers (a few minutes, once), then the **developer** does everything else self-service — enrolling MFA, creating their own access key, and configuring their machine. The order matters: group membership carries the self-service permissions, so the admin's half must be complete before the developer's half can start.
