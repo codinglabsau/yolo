@@ -133,7 +133,15 @@ class DbTunnelCommand extends Command implements ReadOnlyCommand
             return null;
         }
 
-        return [$endpoint, Rds::portFromRecord($record, $target['cluster'])];
+        $port = Rds::portFromRecord($record, $target['cluster']);
+
+        if ($port === null) {
+            error(sprintf('Could not resolve the port for "%s" — the database reports no port yet.', $target['identifier']));
+
+            return null;
+        }
+
+        return [$endpoint, $port];
     }
 
     /**

@@ -12,7 +12,7 @@ beforeEach(function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'app-db']);
 });
 
-function bindExternalInstance(array $securityGroupIds, string $vpcId = 'vpc-external', ?int $port = null): void
+function bindExternalInstance(array $securityGroupIds, string $vpcId = 'vpc-external', ?int $port = 3306): void
 {
     $captured = [];
     bindMockRdsClient([
@@ -188,6 +188,7 @@ it('authorises 3306 on an external Aurora cluster\'s security group — the VPC 
     bindMockRdsClient([
         'DescribeDBClusters' => new Result(['DBClusters' => [[
             'DBClusterIdentifier' => 'app-cluster',
+            'Port' => 3306,
             'VpcSecurityGroups' => [['VpcSecurityGroupId' => 'sg-cluster-external']],
         ]]]),
         'DescribeDBInstances' => new Result(['DBInstances' => [[

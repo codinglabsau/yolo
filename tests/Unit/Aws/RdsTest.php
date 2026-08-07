@@ -143,15 +143,17 @@ describe('port', function (): void {
         expect(Rds::port())->toBe(3307);
     });
 
-    it('defaults without touching RDS when the manifest declares no database', function (): void {
+    it('is null without touching RDS when the manifest declares no database', function (): void {
         $rds = [];
         bindMockRdsClient([], $rds);
 
-        expect(Rds::port())->toBe(Rds::DEFAULT_PORT)
+        // No port to authorise — the caller writes no ingress rule at all, which
+        // is what lets a greenfield app provision the group before the database.
+        expect(Rds::port())->toBeNull()
             ->and($rds)->toBeEmpty();
     });
 
-    it('defaults when the declared database resolves to nothing — a plan pass must not throw', function (): void {
+    it('throws when the declared database resolves to nothing — a manifest error, not a guessed port', function (): void {
         writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'typo-db']);
 
         $rds = [];
@@ -160,10 +162,11 @@ describe('port', function (): void {
             'DescribeDBInstances' => new RdsException('not found', new AwsCommand('DescribeDBInstances'), ['code' => 'DBInstanceNotFound']),
         ], $rds);
 
-        expect(Rds::port())->toBe(Rds::DEFAULT_PORT);
+        expect(fn (): ?int => Rds::port())
+            ->toThrow(ResourceDoesNotExistException::class, 'Create the database first');
     });
 
-    it('defaults when the describe is denied — an unreadable port is never a hard failure', function (): void {
+    it('is null when the describe is denied — a permissions gap must not read as a manifest error', function (): void {
         writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'my-db']);
 
         $rds = [];
@@ -171,10 +174,10 @@ describe('port', function (): void {
             'DescribeDBClusters' => new RdsException('denied', new AwsCommand('DescribeDBClusters'), ['code' => 'AccessDenied']),
         ], $rds);
 
-        expect(Rds::port())->toBe(Rds::DEFAULT_PORT);
+        expect(Rds::port())->toBeNull();
     });
 
-    it('defaults when the instance reports no endpoint yet', function (): void {
+    it('is null when the instance reports no port yet — mid-creation, so nothing to authorise', function (): void {
         writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'my-db']);
 
         $rds = [];
@@ -183,7 +186,7 @@ describe('port', function (): void {
             'DescribeDBInstances' => new Result(['DBInstances' => [['DBInstanceIdentifier' => 'my-db']]]),
         ], $rds);
 
-        expect(Rds::port())->toBe(Rds::DEFAULT_PORT);
+        expect(Rds::port())->toBeNull();
     });
 
     it('memoises the port alongside the classification', function (): void {

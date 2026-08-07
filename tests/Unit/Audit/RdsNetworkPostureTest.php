@@ -19,6 +19,9 @@ function bindInstanceWorld(array $instance): void
         'DescribeDBInstances' => new Result(['DBInstances' => [[
             'DBInstanceIdentifier' => 'app-db',
             'DeletionProtection' => true,
+            // The reachability check tests the port the record reports, so the
+            // fixture is a MySQL database unless a test says otherwise.
+            'Endpoint' => ['Address' => 'app-db.abc.rds.amazonaws.com', 'Port' => 3306],
             ...$instance,
         ]]]),
     ], $captured);

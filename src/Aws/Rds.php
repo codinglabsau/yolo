@@ -9,17 +9,10 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class Rds
 {
-    /**
-     * The port assumed when the declared database's own port can't be read —
-     * MySQL's default, and the only engine YOLO could reach before the port
-     * became a derived fact.
-     */
-    public const int DEFAULT_PORT = 3306;
-
     /** @var array<string, array{identifier: string, cluster: bool}> */
     protected static array $targets = [];
 
-    /** @var array<string, int> */
+    /** @var array<string, int|null> */
     protected static array $ports = [];
 
     /**
@@ -57,24 +50,34 @@ class Rds
      * needs no configuration: the database itself is the source of truth, which
      * can't go stale the way a manifest key or an engine→port table could.
      *
-     * Falls back to {@see self::DEFAULT_PORT} whenever the answer can't be read
-     * — no database declared, a declared name that resolves to nothing, or a
-     * tier denied the describe. That degrade is deliberate: the ingress rule
-     * this feeds is purely additive, so a fallback rule is harmless noise the
-     * next sync corrects once the record reads.
+     * Null means "no port to authorise", and there are three ways to get it: no
+     * `database:` is declared (the app doesn't use one, or the database hasn't
+     * been created yet — the caller writes no ingress rule); the describe failed
+     * for a reason that isn't the database's absence (a fenced read tier, a
+     * throttle), which must never masquerade as a manifest error so it degrades
+     * rather than throwing — a permissions hiccup can't be allowed to fail a
+     * deploy gate; or the record carries no port yet (an instance still being
+     * created). No caller ever substitutes a default: a port YOLO guessed would
+     * put a rule on a shared, long-lived group that sync can never revoke.
+     *
+     * A DECLARED database that resolves to nothing throws
+     * ({@see self::target()}) — that's a manifest error, not a state to tolerate.
+     * Guessing a port and writing a speculative rule for it would let a mistyped
+     * identifier, or a manifest edited ahead of the database, look like a clean
+     * sync.
      *
      * Memoised per identifier alongside the classification it rides on.
      */
-    public static function port(): int
+    public static function port(): ?int
     {
         try {
             $target = static::target();
-        } catch (RdsException|ResourceDoesNotExistException) {
-            return self::DEFAULT_PORT;
+        } catch (RdsException) {
+            return null;
         }
 
         if ($target === null) {
-            return self::DEFAULT_PORT;
+            return null;
         }
 
         return static::$ports[$target['identifier']] ??= static::resolvePort($target);
@@ -84,17 +87,17 @@ class Rds
      * The port carried by a live instance or cluster record the caller already
      * holds — no second describe. A cluster reports its port at the top level;
      * an instance hangs it off the endpoint, which is absent while the instance
-     * is still being created.
+     * is still being created — hence null, never an assumed default.
      *
      * @param  array<string, mixed>  $record
      */
-    public static function portFromRecord(array $record, bool $cluster): int
+    public static function portFromRecord(array $record, bool $cluster): ?int
     {
         $port = $cluster
             ? ($record['Port'] ?? null)
             : ($record['Endpoint']['Port'] ?? null);
 
-        return is_numeric($port) ? (int) $port : self::DEFAULT_PORT;
+        return is_numeric($port) ? (int) $port : null;
     }
 
     /** Drop memoised classifications and ports (test reset). */
@@ -107,17 +110,17 @@ class Rds
     /**
      * @param  array{identifier: string, cluster: bool}  $target
      */
-    protected static function resolvePort(array $target): int
+    protected static function resolvePort(array $target): ?int
     {
         try {
             $record = $target['cluster']
                 ? static::cluster($target['identifier'])
                 : static::instance($target['identifier']);
         } catch (RdsException) {
-            return self::DEFAULT_PORT;
+            return null;
         }
 
-        return $record === null ? self::DEFAULT_PORT : static::portFromRecord($record, $target['cluster']);
+        return $record === null ? null : static::portFromRecord($record, $target['cluster']);
     }
 
     /**
@@ -146,7 +149,8 @@ class Rds
         }
 
         throw new ResourceDoesNotExistException(
-            "The manifest `database:` declares \"$identifier\" but no RDS cluster or instance with that identifier exists in this account/region."
+            "The manifest `database:` declares \"$identifier\" but no RDS cluster or instance with that identifier exists in this account/region. "
+            . 'Create the database first (into the `yolo-{env}-private-subnet-group` subnet group and `yolo-{env}-rds-security-group` security group `sync` provisions), then declare it — or drop the key until you have.'
         );
     }
 

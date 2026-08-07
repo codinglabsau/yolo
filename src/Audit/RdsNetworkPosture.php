@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo\Audit;
 
 use Codinglabs\Yolo\Aws\Ec2;
-use Codinglabs\Yolo\Aws\Rds;
 use Aws\Ec2\Exception\Ec2Exception;
 use Codinglabs\Yolo\Resources\Ec2\Vpc;
 use Codinglabs\Yolo\Resources\Rds\RdsSubnet;
@@ -69,7 +68,7 @@ final readonly class RdsNetworkPosture
             classification: self::classify($inspection),
             vpcId: $inspection->vpcId,
             publiclyAccessible: $inspection->publiclyAccessible,
-            taskIngress: self::taskIngress($inspection->securityGroupIds, $inspection->port ?? Rds::DEFAULT_PORT),
+            taskIngress: self::taskIngress($inspection->securityGroupIds, $inspection->port),
         );
     }
 
@@ -108,9 +107,12 @@ final readonly class RdsNetworkPosture
      *
      * @param  array<int, string>  $securityGroupIds
      */
-    protected static function taskIngress(array $securityGroupIds, int $port): ?bool
+    protected static function taskIngress(array $securityGroupIds, ?int $port): ?bool
     {
-        if ($securityGroupIds === []) {
+        // No port means the database's own record didn't report one (it's still
+        // being created) — there is no rule to look for, so the answer is
+        // unknown, never "none found".
+        if ($securityGroupIds === [] || $port === null) {
             return null;
         }
 

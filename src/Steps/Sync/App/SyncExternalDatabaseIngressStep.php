@@ -71,6 +71,10 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
 
         [$databaseVpcId, $securityGroupIds, $port] = $discovered;
 
+        $rule = $port === null
+            ? 'task-SG ingress rule'
+            : sprintf('%d/tcp-from-task-SG rule', $port);
+
         if ($this->inEnvironmentVpc($databaseVpcId)) {
             return StepResult::SKIPPED;
         }
@@ -83,10 +87,10 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
         // reference is valid (and the plan pass reports the pending rule).
         if ($databaseVpcId === null || ! $this->reachable($databaseVpcId)) {
             $this->recordWarning(sprintf(
-                'The database "%s" is externally hosted (%s) with no peering to its VPC — the %d/tcp-from-task-SG rule was not written. Declare the VPC in the env manifest `peering` list to bridge it.',
+                'The database "%s" is externally hosted (%s) with no peering to its VPC — the %s was not written. Declare the VPC in the env manifest `peering` list to bridge it.',
                 $target['identifier'],
                 $databaseVpcId ?? 'unknown VPC',
-                $port,
+                $rule,
             ));
 
             return StepResult::SKIPPED;
@@ -94,12 +98,19 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
 
         if ($securityGroupIds->count() !== 1) {
             $this->recordWarning(sprintf(
-                'The external database "%s" carries %d attached security groups — ambiguous, so the %d/tcp-from-task-SG rule was not written. Add it to the right group by hand (`yolo audit` verifies it).',
+                'The external database "%s" carries %d attached security groups — ambiguous, so the %s was not written. Add it to the right group by hand (`yolo audit` verifies it).',
                 $target['identifier'],
                 $securityGroupIds->count(),
-                $port,
+                $rule,
             ));
 
+            return StepResult::SKIPPED;
+        }
+
+        // No port on the record (an instance still being created) — there is
+        // nothing to authorise yet, and guessing one would leave a rule on a
+        // foreign group that YOLO can never revoke. The next sync writes it.
+        if ($port === null) {
             return StepResult::SKIPPED;
         }
 
@@ -118,7 +129,7 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
      * record has gone missing between classification and here.
      *
      * @param  array{identifier: string, cluster: bool}  $target
-     * @return array{0: string|null, 1: Collection<int, string>, 2: int}|null
+     * @return array{0: string|null, 1: Collection<int, string>, 2: int|null}|null
      */
     protected function discover(array $target): ?array
     {

@@ -20,19 +20,21 @@ Independent of the classification, audit also warns when **no attached security 
 
 Compute in the public tier, database in the [private subnet tier](/guide/provisioning#the-network): no public IP, no internet route, reachable only via the database-port ingress rule `sync:app` writes from each app's task SG.
 
-The database is created **into** the network shell YOLO provisions, so on a brand-new app the shell comes first. Neither the subnet group nor the security group depends on `database:`, so nothing is circular — but it does mean two syncs, because the port is a property of a database that doesn't exist yet:
+The database is created **into** the network shell YOLO provisions, so on a brand-new app the shell comes first. Nothing is circular — neither the subnet group nor the security group depends on `database:`, and a security group with no rules attaches to a database perfectly well (rules filter traffic; they are not a precondition for creating anything). It does take two syncs, because the port is a property of a database that doesn't exist yet:
 
-1. **`yolo sync:app <env>`** — provisions the DB subnet group and the RDS security group (among everything else). A first sync with no readable database authorises the default `3306`; that rule is additive and harmless.
+1. **`yolo sync:app <env>`, with no `database:` key yet** — provisions the DB subnet group and the RDS security group (among everything else). No ingress rule is written: there is no port to authorise, and YOLO never guesses one.
 2. **Launch the database** (console or CLI — YOLO won't do it for you):
    - **DB subnet group:** `yolo-{env}-private-subnet-group` (provisioned by `sync:environment`).
-   - **VPC security group:** `yolo-{env}-rds-security-group` (the task-SG ingress is reconciled onto it by `sync:app`).
+   - **VPC security group:** `yolo-{env}-rds-security-group` (provisioned by step 1 — select it here; it is empty at this point, which is fine).
    - **Public access: No.** The private subnets have no internet route anyway — public accessibility would only create a dangling public endpoint that audit flags as EXPOSED.
    - **Deletion protection: On.** Audit treats it off as an error, not a warning.
 3. **Set `database:` in the manifest and `yolo sync:app <env>` again** — the ingress rule for the database's real port lands on this pass, and the dashboard, status tab and audit pick the database up from here.
 
-Declaring `database:` before the database exists is safe — it resolves to nothing, the dashboard omits its section, and the next sync draws it — so you can set the key in step 1 and just sync twice.
+If the security group isn't in the console's list, step 1 hasn't run for this app yet. Run it, refresh the page, and the group appears — so the database form is filled once, with nothing to go back and change.
 
-The first pass's fallback rule stays behind (the ingress reconcile is purely additive, so sync never revokes anything). It authorises a port nothing listens on, which is noise rather than exposure; delete it by hand if you want the group tidy. `destroy:app` reclaims every port referencing the app's task security group, so a leftover rule never blocks a teardown.
+**Declaring `database:` before the database exists fails the sync**, deliberately: a key naming something that isn't there is either a typo or step 3 run early, and both are worth stopping for. Nothing is written speculatively in the meantime, so there is no leftover rule on a port nothing listens on, and no cleanup to remember. `yolo sync:app <env> --check` is the non-mutating way to see the pending rule before applying it.
+
+Note the pending rule counts as drift, and this step runs in the pre-deploy gate — so after step 3's manifest edit, sync before you deploy.
 
 Day-to-day access from a laptop is [`yolo db:tunnel`](#reaching-a-private-database).
 
