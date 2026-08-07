@@ -95,6 +95,113 @@ describe('target', function (): void {
     });
 });
 
+describe('port', function (): void {
+    it('reads a plain instance\'s port off its endpoint', function (): void {
+        writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'my-db']);
+
+        $rds = [];
+        bindMockRdsClient([
+            'DescribeDBClusters' => new Result(['DBClusters' => []]),
+            'DescribeDBInstances' => new Result(['DBInstances' => [[
+                'DBInstanceIdentifier' => 'my-db',
+                'Engine' => 'postgres',
+                'Endpoint' => ['Address' => 'my-db.abc.rds.amazonaws.com', 'Port' => 5432],
+            ]]]),
+        ], $rds);
+
+        expect(Rds::port())->toBe(5432);
+    });
+
+    it('reads a cluster\'s port off the cluster record, where RDS carries it', function (): void {
+        writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'my-cluster']);
+
+        $rds = [];
+        bindMockRdsClient([
+            'DescribeDBClusters' => new Result(['DBClusters' => [[
+                'DBClusterIdentifier' => 'my-cluster',
+                'Engine' => 'aurora-postgresql',
+                'Port' => 5432,
+            ]]]),
+        ], $rds);
+
+        expect(Rds::port())->toBe(5432);
+    });
+
+    it('honours a non-default port — the record is the source of truth, not the engine', function (): void {
+        writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'my-db']);
+
+        $rds = [];
+        bindMockRdsClient([
+            'DescribeDBClusters' => new Result(['DBClusters' => []]),
+            'DescribeDBInstances' => new Result(['DBInstances' => [[
+                'DBInstanceIdentifier' => 'my-db',
+                'Engine' => 'mysql',
+                'Endpoint' => ['Address' => 'my-db.abc.rds.amazonaws.com', 'Port' => 3307],
+            ]]]),
+        ], $rds);
+
+        expect(Rds::port())->toBe(3307);
+    });
+
+    it('defaults without touching RDS when the manifest declares no database', function (): void {
+        $rds = [];
+        bindMockRdsClient([], $rds);
+
+        expect(Rds::port())->toBe(Rds::DEFAULT_PORT)
+            ->and($rds)->toBeEmpty();
+    });
+
+    it('defaults when the declared database resolves to nothing — a plan pass must not throw', function (): void {
+        writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'typo-db']);
+
+        $rds = [];
+        bindMockRdsClient([
+            'DescribeDBClusters' => new RdsException('not found', new AwsCommand('DescribeDBClusters'), ['code' => 'DBClusterNotFoundFault']),
+            'DescribeDBInstances' => new RdsException('not found', new AwsCommand('DescribeDBInstances'), ['code' => 'DBInstanceNotFound']),
+        ], $rds);
+
+        expect(Rds::port())->toBe(Rds::DEFAULT_PORT);
+    });
+
+    it('defaults when the describe is denied — an unreadable port is never a hard failure', function (): void {
+        writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'my-db']);
+
+        $rds = [];
+        bindMockRdsClient([
+            'DescribeDBClusters' => new RdsException('denied', new AwsCommand('DescribeDBClusters'), ['code' => 'AccessDenied']),
+        ], $rds);
+
+        expect(Rds::port())->toBe(Rds::DEFAULT_PORT);
+    });
+
+    it('defaults when the instance reports no endpoint yet', function (): void {
+        writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'my-db']);
+
+        $rds = [];
+        bindMockRdsClient([
+            'DescribeDBClusters' => new Result(['DBClusters' => []]),
+            'DescribeDBInstances' => new Result(['DBInstances' => [['DBInstanceIdentifier' => 'my-db']]]),
+        ], $rds);
+
+        expect(Rds::port())->toBe(Rds::DEFAULT_PORT);
+    });
+
+    it('memoises the port alongside the classification', function (): void {
+        writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'my-cluster']);
+
+        $rds = [];
+        bindMockRdsClient([
+            'DescribeDBClusters' => new Result(['DBClusters' => [['DBClusterIdentifier' => 'my-cluster', 'Port' => 5432]]]),
+        ], $rds);
+
+        Rds::port();
+        Rds::port();
+
+        // One describe to classify, one to read the port — never four.
+        expect(collect($rds)->where('name', 'DescribeDBClusters'))->toHaveCount(2);
+    });
+});
+
 it('returns only the databases whose subnet group sits in the given VPC', function (): void {
     $rds = [];
     bindMockRdsClient([

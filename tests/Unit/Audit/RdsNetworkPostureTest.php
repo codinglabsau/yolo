@@ -126,6 +126,32 @@ it('reports no task ingress when no attached security group allows 3306 from the
     expect(RdsNetworkPosture::evaluate(RdsInspection::inspect())->taskIngress)->toBeFalse();
 });
 
+it('checks reachability against the database\'s own port, not a MySQL assumption', function (int $rulePort, bool $reachable): void {
+    bindInstanceWorld([
+        'Engine' => 'postgres',
+        'Endpoint' => ['Address' => 'app-db.abc.rds.amazonaws.com', 'Port' => 5432],
+        'DBSubnetGroup' => ['DBSubnetGroupName' => 'yolo-testing-private-subnet-group', 'VpcId' => 'vpc-env'],
+        'VpcSecurityGroups' => [['VpcSecurityGroupId' => 'sg-rds']],
+        'PubliclyAccessible' => false,
+    ]);
+    bindManagedNetworkWorld([
+        'DescribeSecurityGroupRules' => new Result(['SecurityGroupRules' => [[
+            'IsEgress' => false,
+            'IpProtocol' => 'tcp',
+            'FromPort' => $rulePort,
+            'ToPort' => $rulePort,
+            'ReferencedGroupInfo' => ['GroupId' => 'sg-task'],
+        ]]]),
+    ]);
+
+    expect(RdsNetworkPosture::evaluate(RdsInspection::inspect())->taskIngress)->toBe($reachable);
+})->with([
+    // A correctly-built Postgres database must not be flagged as unreachable...
+    'the rule matches the database port' => [5432, true],
+    // ...and a MySQL-port rule genuinely doesn't reach it.
+    'the rule is on 3306 only' => [3306, false],
+]);
+
 it('returns null for an unreadable inspection — nothing to classify', function (): void {
     $captured = [];
     bindMockRdsClient([

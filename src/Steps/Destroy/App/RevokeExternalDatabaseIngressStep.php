@@ -13,12 +13,14 @@ use Codinglabs\Yolo\Concerns\RevokesTaskIngress;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Revokes this app's "3306 from the task SG" rule from an externally-hosted
- * database's security group (the peered posture) — the mirror of
- * SyncExternalDatabaseIngressStep. Without it, the foreign rule still
- * references the task SG and AWS refuses to delete the group. Every attached
- * SG is swept (the rule is matched by content, so only YOLO's own rule is
- * ever revoked); an unreadable database just skips — nothing referenced.
+ * Revokes this app's database ingress rules from an externally-hosted database's
+ * security group (the peered posture) — the mirror of
+ * SyncExternalDatabaseIngressStep. Without it, the foreign rule still references
+ * the task SG and AWS refuses to delete the group. Every attached SG is swept,
+ * and on each one every port referencing this app's task SG (the port is a
+ * derived fact, so a stale one must not wedge the teardown); a rule is matched
+ * by content, so a sibling app's is never touched. An unreadable database just
+ * skips — nothing referenced.
  */
 class RevokeExternalDatabaseIngressStep implements ExecutesWebStep
 {
@@ -44,11 +46,15 @@ class RevokeExternalDatabaseIngressStep implements ExecutesWebStep
             return StepResult::SKIPPED;
         }
 
+        if ($record === null) {
+            return StepResult::SKIPPED;
+        }
+
         $dryRun = (bool) Arr::get($options, 'dry-run');
         $revoked = false;
 
         foreach (collect($record['VpcSecurityGroups'] ?? [])->pluck('VpcSecurityGroupId')->filter() as $securityGroupId) {
-            $revoked = $this->revokeTaskIngressRule($securityGroupId, 3306, $dryRun) || $revoked;
+            $revoked = $this->revokeAllTaskIngressRules($securityGroupId, $dryRun) || $revoked;
         }
 
         if (! $revoked) {

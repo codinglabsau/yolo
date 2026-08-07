@@ -39,6 +39,36 @@ beforeEach(function (): void {
     ]);
 });
 
+it('authorises the port the database actually serves, not a MySQL assumption', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'app-db',
+    ]);
+
+    $rds = [];
+    bindMockRdsClient([
+        'DescribeDBClusters' => new Result(['DBClusters' => []]),
+        'DescribeDBInstances' => new Result(['DBInstances' => [[
+            'DBInstanceIdentifier' => 'app-db',
+            'Engine' => 'postgres',
+            'Endpoint' => ['Address' => 'app-db.abc.rds.amazonaws.com', 'Port' => 5432],
+        ]]]),
+    ], $rds);
+
+    $captured = [];
+    bindMockEc2Client([
+        ...rdsSecurityGroupMocks(),
+        'DescribeSecurityGroupRules' => new Result(['SecurityGroupRules' => []]),
+        'AuthorizeSecurityGroupIngress' => new Result(),
+    ], $captured);
+
+    (new SyncRdsSecurityGroupStep())([]);
+
+    $permission = collect($captured)->firstWhere('name', 'AuthorizeSecurityGroupIngress')['args']['IpPermissions'][0];
+
+    expect($permission['FromPort'])->toBe(5432)
+        ->and($permission['ToPort'])->toBe(5432);
+});
+
 it('creates the RDS security group and adds the task-SG ingress rule when absent', function (): void {
     $captured = [];
 

@@ -11,6 +11,7 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\WafV2;
 use Codinglabs\Yolo\Enums\Service;
+use Aws\Rds\Exception\RdsException;
 use Codinglabs\Yolo\Aws\CloudFront;
 use Codinglabs\Yolo\Aws\CloudWatch;
 use Codinglabs\Yolo\Enums\ServerGroup;
@@ -210,7 +211,13 @@ class Dashboard implements Deletable
             // `tasks.queue: false` runs jobs inline (QUEUE_CONNECTION=sync) and YOLO
             // melts the SQS queue, so there's nothing to chart — omit the section.
             'queueDisabled' => Manifest::queueDisabled(),
-            'rds' => Rds::target(),
+            // A declared database that resolves to nothing is the ordinary
+            // greenfield order, not an error: the database is created INTO the
+            // network shell and security group sync:app provisions, so it can't
+            // exist on the first sync. Omit the panel and let the next sync draw
+            // it — a mistyped identifier still surfaces, in `yolo status`'s
+            // database panel and in audit's unreadable-database warning.
+            'rds' => static::tryResolveDatabase(),
             'buckets' => static::bucketNames(),
             'taskLogGroup' => $web ? (new TaskLogGroup())->name() : null,
             // Each service definition contributes its own context entries —
@@ -242,6 +249,22 @@ class Dashboard implements Deletable
         try {
             return $resolve();
         } catch (ResourceDoesNotExistException) {
+            return null;
+        }
+    }
+
+    /**
+     * The declared database, or null when it can't be resolved — it doesn't
+     * exist yet, or this tier can't read RDS. The array-shaped sibling of
+     * {@see self::tryResolve()}.
+     *
+     * @return array{identifier: string, cluster: bool}|null
+     */
+    protected static function tryResolveDatabase(): ?array
+    {
+        try {
+            return Rds::target();
+        } catch (ResourceDoesNotExistException|RdsException) {
             return null;
         }
     }

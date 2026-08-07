@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo\Audit;
 
 use Codinglabs\Yolo\Aws\Ec2;
+use Codinglabs\Yolo\Aws\Rds;
 use Aws\Ec2\Exception\Ec2Exception;
 use Codinglabs\Yolo\Resources\Ec2\Vpc;
 use Codinglabs\Yolo\Resources\Rds\RdsSubnet;
@@ -29,10 +30,10 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  *    transitional peered pattern lands here.
  *
  * Separately from the classification, the task-security-group reachability
- * check warns when no attached security group carries a 3306 ingress from the
- * app's task SG — the one rule that lets Fargate tasks reach the database (a
- * peered SG can reference it too, so the check applies to external databases
- * as well).
+ * check warns when no attached security group carries an ingress rule for the
+ * database's own port from the app's task SG — the one rule that lets Fargate
+ * tasks reach the database (a peered SG can reference it too, so the check
+ * applies to external databases as well).
  *
  * Every cross-service read degrades to null (unknown) when it's denied or the
  * resource doesn't exist — the audit may run under a tier that can't see EC2,
@@ -68,7 +69,7 @@ final readonly class RdsNetworkPosture
             classification: self::classify($inspection),
             vpcId: $inspection->vpcId,
             publiclyAccessible: $inspection->publiclyAccessible,
-            taskIngress: self::taskIngress($inspection->securityGroupIds),
+            taskIngress: self::taskIngress($inspection->securityGroupIds, $inspection->port ?? Rds::DEFAULT_PORT),
         );
     }
 
@@ -100,14 +101,14 @@ final readonly class RdsNetworkPosture
     }
 
     /**
-     * Whether any attached security group carries the 3306-from-task-SG ingress
+     * Whether any attached security group carries the port-from-task-SG ingress
      * rule ({@see AuthorisesTaskIngress} writes it on
      * the managed path). Null when it can't be determined — the task SG doesn't
      * exist yet, or the rule describes are denied under this tier.
      *
      * @param  array<int, string>  $securityGroupIds
      */
-    protected static function taskIngress(array $securityGroupIds): ?bool
+    protected static function taskIngress(array $securityGroupIds, int $port): ?bool
     {
         if ($securityGroupIds === []) {
             return null;
@@ -117,15 +118,16 @@ final readonly class RdsNetworkPosture
             $taskSecurityGroupId = (new EcsTaskSecurityGroup())->arn();
 
             foreach ($securityGroupIds as $securityGroupId) {
-                // YOLO's own rule is exactly tcp/3306, but a hand-written rule on
-                // a peered database may be all-traffic (-1) or a tcp range — any
-                // of those reaches 3306, so none of them should warn.
+                // YOLO's own rule is exactly tcp on the database's port, but a
+                // hand-written rule on a peered database may be all-traffic (-1)
+                // or a tcp range — any of those reaches the port, so none of them
+                // should warn.
                 if (collect(Ec2::securityGroupRules($securityGroupId))->contains(
                     fn (array $rule): bool => ! ($rule['IsEgress'] ?? false)
                         && (($rule['IpProtocol'] ?? null) === '-1'
                             || (($rule['IpProtocol'] ?? null) === 'tcp'
-                                && ($rule['FromPort'] ?? PHP_INT_MAX) <= 3306
-                                && ($rule['ToPort'] ?? PHP_INT_MIN) >= 3306))
+                                && ($rule['FromPort'] ?? PHP_INT_MAX) <= $port
+                                && ($rule['ToPort'] ?? PHP_INT_MIN) >= $port))
                         && ($rule['ReferencedGroupInfo']['GroupId'] ?? null) === $taskSecurityGroupId
                 )) {
                     return true;

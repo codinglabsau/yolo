@@ -80,6 +80,32 @@ it('revokes only this app\'s 3306 rule from the shared RDS security group', func
         ->and($revoke['args']['SecurityGroupRuleIds'])->toBe(['sgr-1']);
 });
 
+it('reclaims every port referencing this app\'s task SG, so a stale rule cannot wedge the teardown', function (): void {
+    $captured = [];
+    bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
+        'DescribeSecurityGroups' => new Result(['SecurityGroups' => [
+            ['GroupName' => (new RdsSecurityGroup())->name(), 'GroupId' => 'sg-rds'],
+            ['GroupName' => (new EcsTaskSecurityGroup())->name(), 'GroupId' => 'sg-task'],
+        ]]),
+        'DescribeSecurityGroupRules' => new Result(['SecurityGroupRules' => [
+            // The database's real port, plus a rule left behind by a sync that ran
+            // before the database existed (the port is derived, so it fell back).
+            // Both point at this app's task SG, so both are this app's to reclaim —
+            // and AWS won't delete that SG while either survives.
+            ['SecurityGroupRuleId' => 'sgr-fallback', 'IsEgress' => false, 'IpProtocol' => 'tcp', 'FromPort' => 3306, 'ReferencedGroupInfo' => ['GroupId' => 'sg-task']],
+            ['SecurityGroupRuleId' => 'sgr-live', 'IsEgress' => false, 'IpProtocol' => 'tcp', 'FromPort' => 5432, 'ReferencedGroupInfo' => ['GroupId' => 'sg-task']],
+            // A sibling app on the shared group is never touched.
+            ['SecurityGroupRuleId' => 'sgr-sibling', 'IsEgress' => false, 'IpProtocol' => 'tcp', 'FromPort' => 5432, 'ReferencedGroupInfo' => ['GroupId' => 'sg-other-app']],
+        ]]),
+    ], $captured);
+
+    expect((new RevokeRdsIngressStep())(['dry-run' => false]))->toBe(StepResult::DELETED);
+
+    expect(collect($captured)->firstWhere('name', 'RevokeSecurityGroupIngress')['args']['SecurityGroupRuleIds'])
+        ->toBe(['sgr-fallback', 'sgr-live']);
+});
+
 it('deregisters every active task-definition revision in the app\'s families', function (): void {
     $captured = [];
     bindRoutedEcsClient([

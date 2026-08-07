@@ -9,8 +9,18 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class Rds
 {
+    /**
+     * The port assumed when the declared database's own port can't be read —
+     * MySQL's default, and the only engine YOLO could reach before the port
+     * became a derived fact.
+     */
+    public const int DEFAULT_PORT = 3306;
+
     /** @var array<string, array{identifier: string, cluster: bool}> */
     protected static array $targets = [];
+
+    /** @var array<string, int> */
+    protected static array $ports = [];
 
     /**
      * The RDS target the manifest `database:` key declares — the bare human name
@@ -40,10 +50,74 @@ class Rds
         return static::$targets[$database] ??= static::classify($database);
     }
 
-    /** Drop memoised classifications (test reset). */
+    /**
+     * The port the declared database actually listens on — MySQL's 3306,
+     * Postgres's 5432, or whatever non-default port it was created with. Every
+     * ingress rule, revoke and tunnel derives from this, so a Postgres app
+     * needs no configuration: the database itself is the source of truth, which
+     * can't go stale the way a manifest key or an engine→port table could.
+     *
+     * Falls back to {@see self::DEFAULT_PORT} whenever the answer can't be read
+     * — no database declared, a declared name that resolves to nothing, or a
+     * tier denied the describe. That degrade is deliberate: the ingress rule
+     * this feeds is purely additive, so a fallback rule is harmless noise the
+     * next sync corrects once the record reads.
+     *
+     * Memoised per identifier alongside the classification it rides on.
+     */
+    public static function port(): int
+    {
+        try {
+            $target = static::target();
+        } catch (RdsException|ResourceDoesNotExistException) {
+            return self::DEFAULT_PORT;
+        }
+
+        if ($target === null) {
+            return self::DEFAULT_PORT;
+        }
+
+        return static::$ports[$target['identifier']] ??= static::resolvePort($target);
+    }
+
+    /**
+     * The port carried by a live instance or cluster record the caller already
+     * holds — no second describe. A cluster reports its port at the top level;
+     * an instance hangs it off the endpoint, which is absent while the instance
+     * is still being created.
+     *
+     * @param  array<string, mixed>  $record
+     */
+    public static function portFromRecord(array $record, bool $cluster): int
+    {
+        $port = $cluster
+            ? ($record['Port'] ?? null)
+            : ($record['Endpoint']['Port'] ?? null);
+
+        return is_numeric($port) ? (int) $port : self::DEFAULT_PORT;
+    }
+
+    /** Drop memoised classifications and ports (test reset). */
     public static function flushTargets(): void
     {
         static::$targets = [];
+        static::$ports = [];
+    }
+
+    /**
+     * @param  array{identifier: string, cluster: bool}  $target
+     */
+    protected static function resolvePort(array $target): int
+    {
+        try {
+            $record = $target['cluster']
+                ? static::cluster($target['identifier'])
+                : static::instance($target['identifier']);
+        } catch (RdsException) {
+            return self::DEFAULT_PORT;
+        }
+
+        return $record === null ? self::DEFAULT_PORT : static::portFromRecord($record, $target['cluster']);
     }
 
     /**

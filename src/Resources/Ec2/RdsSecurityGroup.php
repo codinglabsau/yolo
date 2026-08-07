@@ -12,7 +12,7 @@ use Codinglabs\Yolo\Resources\ResolvesTags;
 
 /**
  * Shared security group attached to RDS. Models identity + tags only; the
- * 3306-from-task-SG ingress rule is reconciled additively by
+ * database-port-from-task-SG ingress rule is reconciled additively by
  * SyncRdsSecurityGroupStep.
  */
 class RdsSecurityGroup implements Deletable, Resource
@@ -49,7 +49,7 @@ class RdsSecurityGroup implements Deletable, Resource
 
     /**
      * Delete the RDS security group (env teardown, only once no database remains
-     * in the group and the 3306-from-task-SG ingress rule went with the task
+     * in the group and the database-port-from-task-SG ingress rule went with the task
      * security group). A detaching ENI can still hold the group briefly, so the
      * delete is retried past that transient DependencyViolation until it clears
      * (and a concurrent removal is tolerated). See Ec2::deleteSecurityGroupWhenDetached.

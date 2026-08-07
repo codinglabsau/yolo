@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo\Commands;
 
 use Laravel\Prompts\Prompt;
+use Codinglabs\Yolo\Aws\Rds;
 use Codinglabs\Yolo\DeployCheck;
 use Codinglabs\Yolo\Audit\RdsInspection;
 use Codinglabs\Yolo\Audit\RdsNetworkPosture;
@@ -117,8 +118,9 @@ class AuditCommand extends AbstractAuditCommand
 
             if ($posture->taskIngress === false) {
                 $this->recordWarning(sprintf(
-                    'No attached security group on "%s" allows 3306 from the app\'s task security group — Fargate tasks may not be able to reach the database.',
+                    'No attached security group on "%s" allows %d from the app\'s task security group — Fargate tasks may not be able to reach the database.',
                     $rds->identifier,
+                    $rds->port ?? Rds::DEFAULT_PORT,
                 ));
             }
         }
@@ -213,7 +215,7 @@ class AuditCommand extends AbstractAuditCommand
             $posture->vpcId === null ? null : ['VPC', $posture->vpcId],
             $rds->subnetGroupName === null ? null : ['Subnet group', $rds->subnetGroupName],
             $rds->securityGroupIds === [] ? null : ['Security groups', implode(', ', $rds->securityGroupIds)],
-            ['Task ingress 3306', match ($posture->taskIngress) {
+            [sprintf('Task ingress %d', $rds->port ?? Rds::DEFAULT_PORT), match ($posture->taskIngress) {
                 true => '<fg=green>yes</>',
                 false => '<fg=yellow>none found</>',
                 null => 'unknown',

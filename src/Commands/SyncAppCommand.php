@@ -234,7 +234,7 @@ class SyncAppCommand extends SyncSteppedCommand
                         Steps\Sync\App\SyncTaskSecurityGroupStep::class,
                         Steps\Sync\App\SyncRdsSecurityGroupStep::class,
                         // An externally-hosted (peered) database gets the same
-                        // additive 3306-from-task-SG rule on its own discovered
+                        // additive database-port-from-task-SG rule on its own discovered
                         // security group; skipped by the deploy gate (its tier
                         // may not hold the RDS / foreign-SG reads).
                         Steps\Sync\App\SyncExternalDatabaseIngressStep::class,

@@ -494,6 +494,33 @@ it('creates the dashboard when it does not exist (apply) and reports WOULD_CREAT
     expect(collect($captured)->pluck('name'))->toContain('PutDashboard');
 });
 
+it('omits the database section when the declared database does not exist yet — the greenfield order', function (): void {
+    writeManifest(['region' => 'ap-southeast-2', 'account-id' => '111111111111', 'database' => 'not-created-yet']);
+
+    $captured = [];
+    bindMockRdsClient([
+        'DescribeDBClusters' => new Result(['DBClusters' => []]),
+        'DescribeDBInstances' => new Result(['DBInstances' => []]),
+    ], $captured);
+
+    // The database is created INTO the network shell sync:app provisions, so it
+    // cannot exist on the first sync — resolving it must not throw and take the
+    // whole sync down with it.
+    expect((new Dashboard())->resolveContext()['rds'])->toBeNull();
+});
+
+it('charts the database once it exists', function (): void {
+    writeManifest(['region' => 'ap-southeast-2', 'account-id' => '111111111111', 'database' => 'app-db']);
+
+    $captured = [];
+    bindMockRdsClient([
+        'DescribeDBClusters' => new Result(['DBClusters' => []]),
+        'DescribeDBInstances' => new Result(['DBInstances' => [['DBInstanceIdentifier' => 'app-db']]]),
+    ], $captured);
+
+    expect((new Dashboard())->resolveContext()['rds'])->toBe(['identifier' => 'app-db', 'cluster' => false]);
+});
+
 it('makes no write when the live body already matches', function (): void {
     bindDashboardEnv("APP_ENV=production\n");
 

@@ -5,13 +5,17 @@ namespace Codinglabs\Yolo\Concerns;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Change;
 use Codinglabs\Yolo\Aws\Ec2;
+use Codinglabs\Yolo\Aws\Rds;
 use Codinglabs\Yolo\Resources\Ec2\EcsTaskSecurityGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * Additively ensures a "<port> from the Fargate task SG" ingress rule exists on a
- * shared security group (RDS 3306, Valkey cache 6379, …). The rule is identified
- * by its content — AWS rejects duplicate permissions, so no marker tag is needed.
+ * shared security group (the database's own port, Valkey cache 6379, …). The
+ * caller owns deriving the port — for a database that means reading it off the
+ * live record ({@see Rds::port()}), never assuming an engine. The rule is
+ * identified by its content — AWS rejects duplicate permissions, so no marker
+ * tag is needed.
  * Never revokes (any out-of-band rule is left untouched), records the change it
  * makes, and writes nothing under --dry-run. Returns whether the rule was missing
  * (a change is pending/applied). A group YOLO doesn't own (an external

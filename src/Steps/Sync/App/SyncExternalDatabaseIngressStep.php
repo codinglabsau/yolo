@@ -22,13 +22,13 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * Authorises this app's tasks to reach an EXTERNALLY-hosted database — the
  * peered-migration posture. The manifest `database:` is the only declaration;
  * everything else is discovered live: the database's VPC (in the env VPC the
- * managed path's SyncRdsSecurityGroupStep owns the rule instead), and its
- * attached security group, which gets the same additive 3306-from-task-SG rule
- * (a same-region peered SG can reference the task SG directly). Discovery
- * can't go stale the way a declared group id would. An Aurora cluster gets the
- * rule on the cluster's security group; its VPC is a per-member fact (the
- * cluster record carries only the subnet group's name), read off a member
- * instance.
+ * managed path's SyncRdsSecurityGroupStep owns the rule instead), its port, and
+ * its attached security group, which gets the same additive
+ * port-from-task-SG rule the managed path writes (a same-region peered SG can
+ * reference the task SG directly). Discovery can't go stale the way a declared
+ * group id would. An Aurora cluster gets the rule on the cluster's security
+ * group; its VPC is a per-member fact (the cluster record carries only the
+ * subnet group's name), read off a member instance.
  *
  * Exactly one attached security group is required to write — two or more is an
  * ambiguous target, surfaced as a warning to wire by hand (the audit's
@@ -69,7 +69,7 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
             return StepResult::SKIPPED;
         }
 
-        [$databaseVpcId, $securityGroupIds] = $discovered;
+        [$databaseVpcId, $securityGroupIds, $port] = $discovered;
 
         if ($this->inEnvironmentVpc($databaseVpcId)) {
             return StepResult::SKIPPED;
@@ -83,9 +83,10 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
         // reference is valid (and the plan pass reports the pending rule).
         if ($databaseVpcId === null || ! $this->reachable($databaseVpcId)) {
             $this->recordWarning(sprintf(
-                'The database "%s" is externally hosted (%s) with no peering to its VPC — the 3306-from-task-SG rule was not written. Declare the VPC in the env manifest `peering` list to bridge it.',
+                'The database "%s" is externally hosted (%s) with no peering to its VPC — the %d/tcp-from-task-SG rule was not written. Declare the VPC in the env manifest `peering` list to bridge it.',
                 $target['identifier'],
                 $databaseVpcId ?? 'unknown VPC',
+                $port,
             ));
 
             return StepResult::SKIPPED;
@@ -93,9 +94,10 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
 
         if ($securityGroupIds->count() !== 1) {
             $this->recordWarning(sprintf(
-                'The external database "%s" carries %d attached security groups — ambiguous, so the 3306-from-task-SG rule was not written. Add it to the right group by hand (`yolo audit` verifies it).',
+                'The external database "%s" carries %d attached security groups — ambiguous, so the %d/tcp-from-task-SG rule was not written. Add it to the right group by hand (`yolo audit` verifies it).',
                 $target['identifier'],
                 $securityGroupIds->count(),
+                $port,
             ));
 
             return StepResult::SKIPPED;
@@ -103,7 +105,7 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
 
         $dryRun = (bool) Arr::get($options, 'dry-run');
 
-        if ($this->reconcileTaskIngressRule($securityGroupIds->first(), 3306, 'Enable Fargate tasks to connect to the external database', $dryRun, foreign: true)) {
+        if ($this->reconcileTaskIngressRule($securityGroupIds->first(), $port, 'Enable Fargate tasks to connect to the external database', $dryRun, foreign: true)) {
             return $dryRun ? StepResult::WOULD_SYNC : StepResult::SYNCED;
         }
 
@@ -111,12 +113,12 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
     }
 
     /**
-     * The database's VPC and attached security groups, read off the live record
-     * for whichever kind the manifest name classified as. Null when the record
-     * has gone missing between classification and here.
+     * The database's VPC, attached security groups and port, read off the live
+     * record for whichever kind the manifest name classified as. Null when the
+     * record has gone missing between classification and here.
      *
      * @param  array{identifier: string, cluster: bool}  $target
-     * @return array{0: string|null, 1: Collection<int, string>}|null
+     * @return array{0: string|null, 1: Collection<int, string>, 2: int}|null
      */
     protected function discover(array $target): ?array
     {
@@ -135,6 +137,7 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
         return [
             $vpcId,
             collect($record['VpcSecurityGroups'] ?? [])->pluck('VpcSecurityGroupId')->filter()->values(),
+            Rds::portFromRecord($record, $target['cluster']),
         ];
     }
 
