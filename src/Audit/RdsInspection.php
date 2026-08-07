@@ -21,8 +21,11 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  *    (the audit exits non-zero on it), so a single fat-fingered console delete
  *    can't take the app's data with it.
  *  - **network posture** — which VPC and subnet group the database actually sits
- *    in, which security groups it carries and whether it's publicly accessible;
- *    classified by {@see RdsNetworkPosture}. Audit-only, never sync drift: an
+ *    in, which security groups it carries, which port it listens on and whether
+ *    it's publicly accessible; classified by {@see RdsNetworkPosture}. The port
+ *    comes off this record rather than a second describe, so the reachability
+ *    check tests the port the database actually serves (Postgres's 5432 as
+ *    readily as MySQL's 3306). Audit-only, never sync drift: an
  *    externally-hosted database must not block deploys (the deploy gate runs
  *    `sync --check`).
  *  - **topology basics** — engine, version, size and (for Aurora) the writer +
@@ -57,6 +60,7 @@ final readonly class RdsInspection
         public ?string $vpcId = null,
         public array $securityGroupIds = [],
         public ?bool $publiclyAccessible = null,
+        public ?int $port = null,
     ) {}
 
     /**
@@ -164,6 +168,7 @@ final readonly class RdsInspection
             vpcId: $instance['DBSubnetGroup']['VpcId'] ?? null,
             securityGroupIds: self::securityGroupIds($instance),
             publiclyAccessible: isset($instance['PubliclyAccessible']) ? (bool) $instance['PubliclyAccessible'] : null,
+            port: Rds::portFromRecord($instance, cluster: false),
         );
     }
 
@@ -219,6 +224,7 @@ final readonly class RdsInspection
             vpcId: $instances[0]['DBSubnetGroup']['VpcId'] ?? null,
             securityGroupIds: self::securityGroupIds($cluster),
             publiclyAccessible: $publiclyAccessible->isEmpty() ? null : $publiclyAccessible->contains(true),
+            port: Rds::portFromRecord($cluster, cluster: true),
         );
     }
 

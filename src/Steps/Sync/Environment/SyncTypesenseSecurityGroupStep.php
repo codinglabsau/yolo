@@ -28,7 +28,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * follower unable to hand a write (e.g. minting a key) to the leader, and the
  * cluster serves reads but silently fails writes. Rules are reconciled
  * additively, identified by content — consuming apps' task-SG 8108 ingress is
- * the app tier's to add, the RDS-3306 pattern.
+ * the app tier's to add, the RDS pattern.
  */
 class SyncTypesenseSecurityGroupStep implements LongRunning, Step
 {

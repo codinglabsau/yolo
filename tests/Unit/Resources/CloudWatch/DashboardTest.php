@@ -10,6 +10,7 @@ use GuzzleHttp\Promise\Create;
 use Aws\Exception\AwsException;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\CloudWatch\Dashboard;
+use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 use Codinglabs\Yolo\Steps\Sync\App\SyncCloudWatchDashboardStep;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
 
@@ -492,6 +493,33 @@ it('creates the dashboard when it does not exist (apply) and reports WOULD_CREAT
 
     expect((new SyncCloudWatchDashboardStep())(['dry-run' => false]))->toBe(StepResult::CREATED);
     expect(collect($captured)->pluck('name'))->toContain('PutDashboard');
+});
+
+it('fails the sync when the declared database does not exist — a manifest error, not an omitted panel', function (): void {
+    writeManifest(['region' => 'ap-southeast-2', 'account-id' => '111111111111', 'database' => 'not-created-yet']);
+
+    $captured = [];
+    bindMockRdsClient([
+        'DescribeDBClusters' => new Result(['DBClusters' => []]),
+        'DescribeDBInstances' => new Result(['DBInstances' => []]),
+    ], $captured);
+
+    // Declaring a database ahead of creating it must not read as a clean sync —
+    // the key is declared once the database exists, and the message says so.
+    expect(fn (): array => (new Dashboard())->resolveContext())
+        ->toThrow(ResourceDoesNotExistException::class, 'Create the database first');
+});
+
+it('charts the database once it exists', function (): void {
+    writeManifest(['region' => 'ap-southeast-2', 'account-id' => '111111111111', 'database' => 'app-db']);
+
+    $captured = [];
+    bindMockRdsClient([
+        'DescribeDBClusters' => new Result(['DBClusters' => []]),
+        'DescribeDBInstances' => new Result(['DBInstances' => [['DBInstanceIdentifier' => 'app-db']]]),
+    ], $captured);
+
+    expect((new Dashboard())->resolveContext()['rds'])->toBe(['identifier' => 'app-db', 'cluster' => false]);
 });
 
 it('makes no write when the live body already matches', function (): void {

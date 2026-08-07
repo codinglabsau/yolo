@@ -8,6 +8,7 @@ it('builds the port-forwarding session invocation with a profile', function (): 
     $args = DbTunnelCommand::startSessionArgs(
         target: 'ecs:yolo-production-codinglabs_abc123_runtime-1',
         host: 'app-db.abc123.ap-southeast-2.rds.amazonaws.com',
+        remotePort: 3306,
         localPort: '13306',
         region: 'ap-southeast-2',
         profile: 'codinglabs',
@@ -27,10 +28,24 @@ it('omits the profile flag when no profile is configured', function (): void {
     $args = DbTunnelCommand::startSessionArgs(
         target: 'ecs:cluster_task_runtime',
         host: 'app-db.abc123.ap-southeast-2.rds.amazonaws.com',
+        remotePort: 3306,
         localPort: '13306',
         region: 'ap-southeast-2',
         profile: null,
     );
 
     expect($args)->not->toContain('--profile');
+});
+
+it('forwards to the port the database serves, not a MySQL assumption', function (): void {
+    $args = DbTunnelCommand::startSessionArgs(
+        target: 'ecs:cluster_task_runtime',
+        host: 'app-db.abc123.ap-southeast-2.rds.amazonaws.com',
+        remotePort: 5432,
+        localPort: '13306',
+        region: 'ap-southeast-2',
+        profile: null,
+    );
+
+    expect($args)->toContain('{"host":["app-db.abc123.ap-southeast-2.rds.amazonaws.com"],"portNumber":["5432"],"localPortNumber":["13306"]}');
 });

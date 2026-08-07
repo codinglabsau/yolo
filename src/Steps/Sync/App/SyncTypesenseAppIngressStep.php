@@ -14,7 +14,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * This app's private path to the search cluster: an additive 8108-from-task-SG
- * ingress rule on the Typesense security group — the RDS-3306 pattern, so
+ * ingress rule on the Typesense security group — the RDS pattern, so
  * Scout indexing rides the VPC (Cloud Map node addresses) and never meets the
  * ALB, the WAF or its rate budget. Skips with instructions while the cluster's
  * SG doesn't exist yet (claim published → env sync provisions → this step

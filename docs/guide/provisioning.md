@@ -22,7 +22,7 @@ The bare `yolo sync` runs all three **in dependency order** — account, then en
 yolo sync production   # account → environment → app
 ```
 
-`sync:app` only *additively attaches* to shared infrastructure (its SNI certificate and listener rule on the environment's `:443` listener, its `3306` ingress rule on the shared RDS security group, its `6379` ingress rule on the shared cache security group). It never modifies the shared resource itself, so the environment tier stays the single writer.
+`sync:app` only *additively attaches* to shared infrastructure (its SNI certificate and listener rule on the environment's `:443` listener, its database-port ingress rule on the shared RDS security group, its `6379` ingress rule on the shared cache security group). It never modifies the shared resource itself, so the environment tier stays the single writer.
 
 The shared **Valkey cache** is env-scoped but bootstrapped from `sync:app` by exception (like the RDS security group), because its security group needs this app's task SG to authorise. The first app to sync creates the cluster (cache defaults on); later apps find it and just wire their env. **Sessions reuse the same cluster** (on a separate logical database), so there's no extra session infrastructure to provision.
 
@@ -37,7 +37,7 @@ Each environment's VPC carries two subnet tiers, one per availability zone acros
 - **Public** (`10.N.0-2.0/24`) — where compute lives. Fargate tasks and the ALB get public IPs so they reach the internet without a NAT gateway; ingress is still gated by security groups.
 - **Private** (`10.N.10-12.0/24`) — where the database lives. No public IPs and a route table carrying only the VPC-local route, so nothing in the tier is reachable from (or can reach) the internet.
 
-The **RDS DB subnet group** (`yolo-{env}-private-subnet-group`) spans only the private tier — a database launched into it has no public path by design, and the *only* way in is the `3306` ingress rule from each app's task security group (or your laptop, via [`yolo db:tunnel`](/reference/commands#yolo-db-tunnel)). YOLO never creates or manages the database itself; it provisions the network shell the database sits in.
+The **RDS DB subnet group** (`yolo-{env}-private-subnet-group`) spans only the private tier — a database launched into it has no public path by design, and the *only* way in is the database-port ingress rule from each app's task security group (or your laptop, via [`yolo db:tunnel`](/reference/commands#yolo-db-tunnel)). YOLO never creates or manages the database itself; it provisions the network shell the database sits in.
 
 **YOLO owns the network layer — there are no adoption escape hatches.** Every environment's VPC, subnets and routing are created and named by YOLO, so every environment looks exactly the same and every guarantee (the private tier's isolation, the audit's posture verdicts, teardown) holds by construction. Infrastructure that lives outside the YOLO network is reached by [VPC peering](/guide/databases), never by pointing YOLO at it.
 

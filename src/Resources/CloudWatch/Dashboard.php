@@ -210,6 +210,11 @@ class Dashboard implements Deletable
             // `tasks.queue: false` runs jobs inline (QUEUE_CONNECTION=sync) and YOLO
             // melts the SQS queue, so there's nothing to chart — omit the section.
             'queueDisabled' => Manifest::queueDisabled(),
+            // Deliberately NOT wrapped in tryResolve: a declared database that
+            // resolves to nothing is a manifest error, and failing the sync is
+            // how it surfaces. Omitting the panel instead would let a mistyped
+            // identifier — or a manifest declared ahead of the database — read as
+            // a clean sync. Declare the key only once the database exists.
             'rds' => Rds::target(),
             'buckets' => static::bucketNames(),
             'taskLogGroup' => $web ? (new TaskLogGroup())->name() : null,

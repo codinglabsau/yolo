@@ -52,9 +52,11 @@ class DbTunnelCommand extends Command implements ReadOnlyCommand
             return self::FAILURE;
         }
 
-        if (($host = $this->databaseHost()) === null) {
+        if (($database = $this->database()) === null) {
             return self::FAILURE;
         }
+
+        [$host, $remotePort] = $database;
 
         $cluster = (new EcsCluster())->name();
 
@@ -72,10 +74,10 @@ class DbTunnelCommand extends Command implements ReadOnlyCommand
 
         $localPort = (string) $this->option('port');
 
-        note(sprintf('Tunnel: 127.0.0.1:%s → %s:3306 (via %s) — Ctrl-C to close.', $localPort, $host, Str::afterLast($taskArn, '/')));
+        note(sprintf('Tunnel: 127.0.0.1:%s → %s:%d (via %s) — Ctrl-C to close.', $localPort, $host, $remotePort, Str::afterLast($taskArn, '/')));
 
         $process = new Process(
-            static::startSessionArgs($target, $host, $localPort, Manifest::get('region'), $this->subprocessProfile()),
+            static::startSessionArgs($target, $host, $remotePort, $localPort, Manifest::get('region'), $this->subprocessProfile()),
             env: $this->subprocessEnv(),
             timeout: null,
         );
@@ -84,12 +86,16 @@ class DbTunnelCommand extends Command implements ReadOnlyCommand
     }
 
     /**
-     * The database endpoint hostname to forward to, resolved with a describe
+     * The endpoint hostname and port to forward to, resolved with one describe
      * from the bare name the manifest `database:` key declares. A cluster
      * forwards to its cluster (writer) endpoint, so the tunnel follows
-     * failovers; an instance forwards to its instance endpoint.
+     * failovers; an instance forwards to its instance endpoint. The port comes
+     * off the same record, so the tunnel reaches a Postgres database (or one on
+     * a non-default port) without being told.
+     *
+     * @return array{0: string, 1: int}|null [host, port]
      */
-    protected function databaseHost(): ?string
+    protected function database(): ?array
     {
         try {
             $target = Rds::target();
@@ -117,24 +123,32 @@ class DbTunnelCommand extends Command implements ReadOnlyCommand
             return null;
         }
 
-        $endpoint = $target['cluster']
+        $endpoint = $record === null ? null : ($target['cluster']
             ? ($record['Endpoint'] ?? null)
-            : ($record['Endpoint']['Address'] ?? null);
+            : ($record['Endpoint']['Address'] ?? null));
 
-        if ($endpoint === null) {
+        if ($endpoint === null || $record === null) {
             error(sprintf('Could not resolve the endpoint for "%s" — the database reports no endpoint yet.', $target['identifier']));
 
             return null;
         }
 
-        return $endpoint;
+        $port = Rds::portFromRecord($record, $target['cluster']);
+
+        if ($port === null) {
+            error(sprintf('Could not resolve the port for "%s" — the database reports no port yet.', $target['identifier']));
+
+            return null;
+        }
+
+        return [$endpoint, $port];
     }
 
     /**
      * A running task to ride the tunnel through, probed across the app's service
-     * groups web-first (any of them shares the task security group's 3306 grant,
-     * so a web-less worker app tunnels through its queue/scheduler task instead).
-     * Null when no group has a running task.
+     * groups web-first (any of them shares the task security group's database
+     * grant, so a web-less worker app tunnels through its queue/scheduler task
+     * instead). Null when no group has a running task.
      *
      * @return array{0: string, 1: string}|null [group, taskArn]
      */
@@ -176,11 +190,11 @@ class DbTunnelCommand extends Command implements ReadOnlyCommand
 
     /**
      * The `aws ssm start-session` invocation: a port-forwarding session through
-     * the task to the database host on 3306.
+     * the task to the database host on the port the database serves.
      *
      * @return array<int, string>
      */
-    public static function startSessionArgs(string $target, string $host, string $localPort, string $region, ?string $profile): array
+    public static function startSessionArgs(string $target, string $host, int $remotePort, string $localPort, string $region, ?string $profile): array
     {
         $args = [
             'aws', 'ssm', 'start-session',
@@ -188,7 +202,7 @@ class DbTunnelCommand extends Command implements ReadOnlyCommand
             '--document-name', 'AWS-StartPortForwardingSessionToRemoteHost',
             '--parameters', (string) json_encode([
                 'host' => [$host],
-                'portNumber' => ['3306'],
+                'portNumber' => [(string) $remotePort],
                 'localPortNumber' => [$localPort],
             ]),
             '--region', $region,

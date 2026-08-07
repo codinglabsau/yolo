@@ -107,8 +107,8 @@ allowed to write it:
 | `sync:app <env>` | `App` | one app | Storage, app IAM (deployer + per-app ECS task role + `task-role-policies`), Fargate (cluster/service/task def), CDN, mode-aware Queue/DNS |
 
 `sync` orchestrates **account → environment → app** in dependency order. `sync:app` only depends on and *additively
-attaches to* shared infra (its SNI cert + listener-rule on the env `:443` listener, its 3306 ingress on the env RDS
-SG) — never mutating the shared resource itself, so the shared tier keeps a single writer. Two env-scope resources
+attaches to* shared infra (its SNI cert + listener-rule on the env `:443` listener, its database-port ingress on the
+env RDS SG) — never mutating the shared resource itself, so the shared tier keeps a single writer. Two env-scope resources
 (the HTTPS `:443` listener and the RDS SG) are bootstrapped from `sync:app` by exception because their creation has
 a per-app trigger — the listener needs a first SNI cert, the SG needs a task SG to authorise — but both are tagged
 env-scope, created-if-missing, and never mutated by `sync:app`.

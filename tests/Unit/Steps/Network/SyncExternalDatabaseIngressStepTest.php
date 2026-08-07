@@ -12,15 +12,16 @@ beforeEach(function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'app-db']);
 });
 
-function bindExternalInstance(array $securityGroupIds, string $vpcId = 'vpc-external'): void
+function bindExternalInstance(array $securityGroupIds, string $vpcId = 'vpc-external', ?int $port = 3306): void
 {
     $captured = [];
     bindMockRdsClient([
-        'DescribeDBInstances' => new Result(['DBInstances' => [[
+        'DescribeDBInstances' => new Result(['DBInstances' => [array_filter([
             'DBInstanceIdentifier' => 'app-db',
             'DBSubnetGroup' => ['DBSubnetGroupName' => 'external-group', 'VpcId' => $vpcId],
             'VpcSecurityGroups' => array_map(fn (string $id): array => ['VpcSecurityGroupId' => $id], $securityGroupIds),
-        ]]]),
+            'Endpoint' => $port === null ? null : ['Address' => 'app-db.example.internal', 'Port' => $port],
+        ])]]),
     ], $captured);
 }
 
@@ -55,6 +56,27 @@ it('authorises 3306 from the task SG on the external database\'s discovered secu
     expect($authorise['args']['GroupId'])->toBe('sg-external')
         ->and($authorise['args']['IpPermissions'][0]['FromPort'])->toBe(3306)
         ->and($authorise['args']['IpPermissions'][0]['UserIdGroupPairs'][0]['GroupId'])->toBe('sg-task');
+});
+
+it('authorises the port the external database serves, read off the same record as its network', function (): void {
+    bindExternalInstance(['sg-external'], port: 5432);
+
+    $captured = [];
+    bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-env']]]),
+        'DescribeVpcPeeringConnections' => activePeeringResult(),
+        'DescribeSecurityGroups' => new Result(['SecurityGroups' => [
+            ['GroupName' => 'yolo-testing-my-app-ecs-task-security-group', 'GroupId' => 'sg-task'],
+        ]]),
+        'DescribeSecurityGroupRules' => new Result(['SecurityGroupRules' => []]),
+        'AuthorizeSecurityGroupIngress' => new Result(),
+    ], $captured);
+
+    expect((new SyncExternalDatabaseIngressStep())([]))->toBe(StepResult::SYNCED);
+
+    $authorise = collect($captured)->firstWhere('name', 'AuthorizeSecurityGroupIngress');
+    expect($authorise['args']['IpPermissions'][0]['FromPort'])->toBe(5432)
+        ->and($authorise['args']['IpPermissions'][0]['ToPort'])->toBe(5432);
 });
 
 it('reports pending on the plan pass without writing', function (): void {
@@ -93,7 +115,7 @@ it('leaves a database in the environment VPC to the managed path', function (): 
 });
 
 it('warns and skips when the external database carries more than one security group', function (): void {
-    bindExternalInstance(['sg-one', 'sg-two']);
+    bindExternalInstance(['sg-one', 'sg-two'], port: 5432);
 
     $captured = [];
     bindMockEc2Client([
@@ -106,6 +128,9 @@ it('warns and skips when the external database carries more than one security gr
     expect($step([]))->toBe(StepResult::SKIPPED)
         ->and($step->recordedWarnings())->toHaveCount(1)
         ->and($step->recordedWarnings()[0])->toContain('ambiguous')
+        // The warning names the rule the operator has to write by hand, so it
+        // must name the database's real port.
+        ->and($step->recordedWarnings()[0])->toContain('5432/tcp-from-task-SG')
         ->and(collect($captured)->pluck('name'))->not->toContain('AuthorizeSecurityGroupIngress');
 });
 
@@ -163,6 +188,7 @@ it('authorises 3306 on an external Aurora cluster\'s security group — the VPC 
     bindMockRdsClient([
         'DescribeDBClusters' => new Result(['DBClusters' => [[
             'DBClusterIdentifier' => 'app-cluster',
+            'Port' => 3306,
             'VpcSecurityGroups' => [['VpcSecurityGroupId' => 'sg-cluster-external']],
         ]]]),
         'DescribeDBInstances' => new Result(['DBInstances' => [[

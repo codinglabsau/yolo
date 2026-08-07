@@ -52,7 +52,7 @@ class EcsTaskSecurityGroup implements Deletable, Resource
 
     /**
      * Delete the task security group. Upstream teardown revokes the sibling-SG
-     * ingress rules that reference it (RDS 3306, cache 6379, Typesense 8108) and
+     * ingress rules that reference it (the database's port, cache 6379, Typesense 8108) and
      * stops the ECS tasks first — but a stopped Fargate task's ENI keeps holding
      * the group for a minute or two while it detaches, so the delete is retried
      * past that transient DependencyViolation until the ENIs clear (and a
