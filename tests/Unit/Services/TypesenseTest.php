@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Aws\Result;
 use Codinglabs\Yolo\Enums\Service;
+use Symfony\Component\Process\Process;
 use Codinglabs\Yolo\Services\Typesense;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
@@ -158,17 +159,47 @@ it('bakes a fail-closed peer-resolution entrypoint so Typesense never resolves D
     $script = Typesense::entrypointScript();
 
     // The wrapper owns resolution: it reads the baked hostname peer list and
-    // writes the nodes file Typesense watches — IPs only, and only on a round
-    // where every peer resolved, so a resolver wobble never reaches raft.
+    // writes the nodes file Typesense watches — IPs only, and (post-boot) only
+    // on a round where every peer resolved, so a resolver wobble never reaches
+    // raft. The refresh loop keys off resolve_peers' exit status, which is 0
+    // only on a full set.
     expect($script)->toStartWith('#!/usr/bin/env bash')
         ->toContain('PEERS_FILE=/etc/typesense/peers')
         ->toContain('NODES_FILE=/etc/typesense/nodes')
         ->toContain('getent ahostsv4')
-        ->toContain('return 1')
+        ->toContain('if nodes=$(resolve_peers); then')
         ->toContain('exec /opt/typesense-server "$@"');
 
     // The server config still points Typesense at the runtime-written file.
     expect(Typesense::serverConfig())->toContain('nodes = /etc/typesense/nodes');
+});
+
+it('boots on self plus one peer, bounded — never deadlocked on a dead sibling', function (): void {
+    $script = Typesense::entrypointScript();
+
+    // A dead sibling has no DNS record, so a boot gate requiring the FULL
+    // peer set can never open on a replacement node — no record, no boot; no
+    // boot, no record; the whole cluster stays down. Booting needs only
+    // enough to JOIN (this node itself + one peer), and past a bounded window
+    // it proceeds with whatever resolves: fail-open on boot is safe because
+    // the fail-closed refresh loop is what protects standing membership.
+    expect($script)
+        ->toContain('BOOT_TIMEOUT_SECONDS=120')
+        ->toContain('bootable')
+        ->toContain('self == 1 && others >= 1')
+        ->toContain('boot gate timed out');
+});
+
+it('generates a syntactically valid entrypoint script', function (): void {
+    $path = tempnam(sys_get_temp_dir(), 'yolo-entrypoint-');
+    file_put_contents($path, Typesense::entrypointScript());
+
+    $process = new Process(['bash', '-n', $path]);
+    $process->run();
+
+    unlink($path);
+
+    expect($process->getExitCode())->toBe(0, $process->getErrorOutput());
 });
 
 it('has no image tag while the version is undeclared', function (): void {

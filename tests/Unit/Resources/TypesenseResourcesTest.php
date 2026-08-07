@@ -148,7 +148,7 @@ it('a typesense alarm renders the full payload and upserts on drift', function (
     expect(collect($captured)->firstWhere('name', 'DeleteAlarms')['args']['AlarmNames'])->toBe(['yolo-testing-typesense-quorum-lost']);
 });
 
-it('the search target group creates on 8108 with /health checks and a short drain', function (): void {
+it('the search target group creates on 8108 with a liveness health check and a short drain', function (): void {
     $ec2Captured = [];
     bindMockEc2Client([
         'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-123']]]),
@@ -166,9 +166,16 @@ it('the search target group creates on 8108 with /health checks and a short drai
     $group = new SearchTargetGroup();
     $group->create();
 
+    // NOT /health: this check feeds ECS task replacement, and /health answers
+    // 503 on a degraded-but-recoverable node — checking it executes the node
+    // (and its ephemeral disk) for a state it would have recovered from. An
+    // unauthenticated admin route always answers 401 on a live process, and
+    // the matcher accepts any code an alive node can produce (ALB caps it at
+    // 499, so 5xx can never count as healthy anyway).
     $create = collect($captured)->firstWhere('name', 'CreateTargetGroup');
     expect($create['args']['Port'])->toBe(8108)
-        ->and($create['args']['HealthCheckPath'])->toBe('/health')
+        ->and($create['args']['HealthCheckPath'])->toBe('/keys')
+        ->and($create['args']['Matcher']['HttpCode'])->toBe('200-499')
         ->and($create['args']['TargetType'])->toBe('ip');
 
     $attributes = collect($captured)->firstWhere('name', 'ModifyTargetGroupAttributes');
@@ -176,6 +183,47 @@ it('the search target group creates on 8108 with /health checks and a short drai
 
     $group->delete();
     expect(array_column($captured, 'name'))->toContain('DeleteTargetGroup');
+});
+
+it('converges an existing target group onto the liveness health check', function (): void {
+    $captured = [];
+    bindRoutedElbV2Client([
+        // Provisioned before the liveness check existed — still on /health.
+        'DescribeTargetGroups' => new Result(['TargetGroups' => [[
+            'TargetGroupName' => 'yolo-testing-search',
+            'TargetGroupArn' => 'arn:tg',
+            'HealthCheckPath' => '/health',
+            'Matcher' => ['HttpCode' => '200'],
+        ]]]),
+    ], $captured);
+
+    $group = new SearchTargetGroup();
+
+    // Dry pass computes the drift without writing.
+    expect($group->synchroniseConfiguration(apply: false))->toHaveCount(2);
+    expect(array_column($captured, 'name'))->not->toContain('ModifyTargetGroup');
+
+    // Apply pushes the new check onto the live group.
+    expect($group->synchroniseConfiguration(apply: true))->toHaveCount(2);
+
+    $modify = collect($captured)->firstWhere('name', 'ModifyTargetGroup');
+    expect($modify['args']['HealthCheckPath'])->toBe('/keys')
+        ->and($modify['args']['Matcher']['HttpCode'])->toBe('200-499');
+});
+
+it('reports an in-shape target group health check as clean', function (): void {
+    $captured = [];
+    bindRoutedElbV2Client([
+        'DescribeTargetGroups' => new Result(['TargetGroups' => [[
+            'TargetGroupName' => 'yolo-testing-search',
+            'TargetGroupArn' => 'arn:tg',
+            'HealthCheckPath' => '/keys',
+            'Matcher' => ['HttpCode' => '200-499'],
+        ]]]),
+    ], $captured);
+
+    expect((new SearchTargetGroup())->synchroniseConfiguration(apply: true))->toBe([]);
+    expect(array_column($captured, 'name'))->not->toContain('ModifyTargetGroup');
 });
 
 it('the search listener rule forwards the search host to the search target group by stable Name identity', function (): void {
@@ -262,6 +310,22 @@ it('a node service is named, scoped and cluster-bound per node', function (): vo
     expect($service->name())->toBe('yolo-testing-typesense-2')
         ->and($service->scope()->value)->toBe('env')
         ->and($service->taskDefinitionFamily())->toBe('yolo-testing-typesense');
+});
+
+it('rolls a node with the current health-check grace period, not the one it was created under', function (): void {
+    $captured = [];
+    bindRoutedEcsClient([], $captured);
+
+    (new TypesenseService(1))->adoptLatestRevision();
+
+    // A replacement's API port stays closed through its whole entrypoint boot
+    // gate, so the liveness check needs the grace window to cover a worst-case
+    // gate — and an existing service (created when the window was tighter)
+    // must pick the current value up on its next roll.
+    $update = collect($captured)->firstWhere('name', 'UpdateService');
+    expect($update['args']['taskDefinition'])->toBe('yolo-testing-typesense')
+        ->and($update['args']['healthCheckGracePeriodSeconds'])->toBe(TypesenseService::HEALTH_CHECK_GRACE_SECONDS)
+        ->and(TypesenseService::HEALTH_CHECK_GRACE_SECONDS)->toBe(600);
 });
 
 it('the search record set resources resolve nothing on a greenfield zone', function (): void {

@@ -18,7 +18,10 @@ use Codinglabs\Yolo\DeployCheck;
  *   both the deployer and the Observer; and
  * - an app's per-app `.env` (env/.env.{app}, holding its minted Typesense keys) —
  *   fenced from the Observer (the deployer may read it, but minting needs the admin
- *   key it can't, so it can't reconcile this anyway).
+ *   key it can't, so it can't reconcile this anyway); and
+ * - the environment's version-of-record stamp — admin bookkeeping whose "drift"
+ *   is just a release bump, which must warn on sync plans rather than block
+ *   every deploy until an admin syncs.
  *
  * Running them under a fenced tier 403s, and that tier can't reconcile them regardless,
  * so the gate/audit skips them: `yolo sync <env>` (admin) is their drift check. The
