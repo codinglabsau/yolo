@@ -23,6 +23,12 @@ class SyncCommand extends SyncSteppedCommand
             return self::FAILURE;
         }
 
+        // Likewise the app tier's bring-your-own bucket gate — without it the full
+        // sync would reach a CreateBucket it has no permission for, mid-apply.
+        if (! $this->ensureAppBucketAdoptable()) {
+            return self::FAILURE;
+        }
+
         return parent::handle();
     }
 

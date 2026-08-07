@@ -19,7 +19,11 @@ environments:
 
     account-id: {AWS_ACCOUNT_ID}
     region: {AWS_REGION}
-    # bucket: my-app-bucket   # optional app S3 bucket, injected as AWS_BUCKET
+    # Optional app S3 bucket for application storage, injected as AWS_BUCKET. `true`
+    # has YOLO create and harden it as yolo-{account-id}-{environment}-{app}-data;
+    # give a bucket name instead to adopt one that already exists on this account
+    # (YOLO never creates a bucket it doesn't name, and never reconciles this one).
+    # bucket: true
 
     # Web apps default to a shared Valkey cache + Valkey-backed sessions (provisioned and
     # wired automatically). Uncomment only to override or opt out:

@@ -176,6 +176,26 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
         }
     }
 
+    /**
+     * The YOLO buckets teardown is allowed to remove, addressed by the type suffix
+     * every keyed bucket name ends in — the per-app and env config buckets, the app's
+     * asset bucket and the env logs bucket. All four are regeneratable from a
+     * subsequent sync.
+     *
+     * The app data bucket is deliberately absent: it holds user data, YOLO never
+     * deletes it, and in its YOLO-owned form it is `yolo-*`-named, so a namespace-wide
+     * delete grant would silently take it in.
+     *
+     * @return array<int, string>
+     */
+    protected static function regeneratableBucketArns(bool $objects = false): array
+    {
+        return array_map(
+            fn (string $suffix): string => sprintf('arn:aws:s3:::yolo-*-%s%s', $suffix, $objects ? '/*' : ''),
+            ['config', 'assets', 'logs'],
+        );
+    }
+
     public function document(): array
     {
         $accountId = Aws::accountId();
@@ -281,6 +301,13 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                     // YOLO's own env-tier minted keys (the env-shared + env-side
                     // `.env` channels in the env config bucket) — granted as scoped
                     // object actions below, never the per-app developer `.env`.
+                    //
+                    // Creation and hardening cover the whole yolo-* namespace because
+                    // that includes the app data bucket in its YOLO-owned form
+                    // (`bucket: true` → yolo-{account}-{env}-{app}-data), which needs
+                    // CreateBucket plus the Block Public Access / CORS / tagging
+                    // writes. Destructive verbs deliberately do NOT follow — see the
+                    // next statement.
                     'Effect' => 'Allow',
                     'Resource' => 'arn:aws:s3:::yolo-*',
                     'Action' => [
@@ -290,12 +317,23 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                         's3:PutLifecycleConfiguration',
                         's3:PutReplicationConfiguration',
                         's3:DeleteBucketPolicy',
-                        // Teardown empties then removes the regeneratable yolo-*
-                        // buckets — ListBucketVersions for the versioned config
-                        // bucket's version sweep (ListBucket comes from the observer
-                        // read tier), then DeleteBucket. DeleteBucket can never reach
-                        // the app data bucket: it isn't yolo-named, and S3::deleteBucket
-                        // hard-blocks it by name regardless.
+                    ],
+                ],
+                [
+                    // Teardown removes the REGENERATABLE buckets only, named by their
+                    // type suffix rather than the whole yolo-* namespace. The app data
+                    // bucket holds user data and YOLO never deletes it, so it must not
+                    // sit inside a delete grant merely for being YOLO-named — which
+                    // it now can be. Suffix-scoping keeps it inside the create fence
+                    // above and outside this one, so the IAM boundary and
+                    // S3::deleteBucket's name guard agree instead of the code being
+                    // the only thing standing between the tier and user data.
+                    //
+                    // ListBucketVersions is for the versioned config buckets' version
+                    // sweep (plain ListBucket comes from the observer read tier).
+                    'Effect' => 'Allow',
+                    'Resource' => static::regeneratableBucketArns(),
+                    'Action' => [
                         's3:ListBucketVersions',
                         's3:DeleteBucket',
                     ],
@@ -305,11 +343,12 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                     // buckets (asset keys are arbitrary builds/* paths, so this can't
                     // be key-scoped) and removing the env-config claim/env files
                     // (destroy:app) and env-shared channels (destroy:environment).
-                    // Delete-only on the yolo-* namespace — never GetObject — so the
-                    // tier can clear a bucket without ever reading the per-app
-                    // developer `.env` (or anything else) it isn't already granted.
+                    // Delete-only — never GetObject — so the tier can clear a bucket
+                    // without ever reading the per-app developer `.env` (or anything
+                    // else) it isn't already granted. Scoped to the same regeneratable
+                    // buckets, so no grant here can reach a single user object.
                     'Effect' => 'Allow',
-                    'Resource' => 'arn:aws:s3:::yolo-*/*',
+                    'Resource' => static::regeneratableBucketArns(objects: true),
                     'Action' => ['s3:DeleteObject', 's3:DeleteObjectVersion'],
                 ],
                 [

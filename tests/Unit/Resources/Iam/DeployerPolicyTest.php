@@ -255,3 +255,16 @@ it('includes Route 53 statements for a subdomain canary', function (): void {
 
     expect(statementFor($document, 'route53:ChangeResourceRecordSets'))->not->toBeNull();
 });
+
+it('grants bucket-name discovery for the pre-deploy adoption gate, and nothing more on it', function (): void {
+    // The deploy path runs `sync --check` as the deployer, which verifies a
+    // bring-your-own app data bucket still exists. Ownership needs ListBuckets (a
+    // probe of the bucket 403s identically whether it's foreign or just unreadable),
+    // so the deployer holds the collection op — names only, no bucket or object reads.
+    $listing = collect((new DeployerPolicy())->document()['Statement'])
+        ->first(fn (array $statement): bool => in_array('s3:ListAllMyBuckets', (array) $statement['Action'], true));
+
+    expect($listing)->not->toBeNull();
+    expect($listing['Resource'])->toBe('*');
+    expect($listing['Action'])->toBe(['s3:ListAllMyBuckets']);
+});
