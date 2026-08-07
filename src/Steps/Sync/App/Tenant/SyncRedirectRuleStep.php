@@ -39,7 +39,7 @@ class SyncRedirectRuleStep extends TenantStep
         $listener = $this->httpsListener();
 
         if ($listener === null) {
-            if ((bool) Arr::get($options, 'dry-run') && $this->certificateIsIssued($this->config['certificate-domain'])) {
+            if ((bool) Arr::get($options, 'dry-run') && $this->certificateWillBeIssued($this->config['certificate-domain'])) {
                 $this->recordChange(Change::make('redirect rule', null, 'created'));
 
                 return StepResult::WOULD_SYNC;

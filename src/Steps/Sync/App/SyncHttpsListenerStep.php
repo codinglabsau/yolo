@@ -24,6 +24,27 @@ class SyncHttpsListenerStep implements ExecutesWebStep
         $certificate = $this->defaultCertificate();
 
         if ($certificate === null) {
+            // Nothing issued yet. On the plan pass — which runs before anything is
+            // created — that's the normal greenfield state: this app's certificate is
+            // requested AND validated to ISSUED earlier in the same apply, so the
+            // listener is creatable by the time apply reaches here. Report it pending
+            // so the step survives; a bare SKIPPED is pruned from the apply pass (two-
+            // pass contract), leaving no listener, no forward rule hanging off it, and
+            // an unattached target group that ECS CreateService then rejects.
+            if ((bool) Arr::get($options, 'dry-run') && $this->certificateWillBeIssuedThisSync()) {
+                // The listener is env-scope: a sibling app may already have created it,
+                // in which case this app's certificate only needs attaching to it.
+                if ($this->httpsListener() !== null) {
+                    $this->recordChange(Change::make('listener certificate', 'absent', 'attached'));
+
+                    return StepResult::WOULD_SYNC;
+                }
+
+                $this->recordChange(Change::make('https listener', null, 'created'));
+
+                return StepResult::WOULD_CREATE;
+            }
+
             return StepResult::SKIPPED;
         }
 
@@ -82,6 +103,23 @@ class SyncHttpsListenerStep implements ExecutesWebStep
         }
 
         return null;
+    }
+
+    /**
+     * Whether any candidate certificate will be issued in time to be the
+     * listener's default — the plan-pass discriminator between "not issued YET"
+     * (the certificate steps run earlier in this same apply, so survive to apply)
+     * and "won't be issuable at all this run" (genuinely defer).
+     */
+    protected function certificateWillBeIssuedThisSync(): bool
+    {
+        foreach ($this->certificateDomains() as $domain) {
+            if ($this->certificateWillBeIssued($domain)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

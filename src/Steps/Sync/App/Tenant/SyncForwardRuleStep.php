@@ -35,9 +35,9 @@ class SyncForwardRuleStep extends TenantStep
             // the plan pass (which runs before anything is created) it isn't there
             // yet. Report the rule as pending so the step survives to apply — a bare
             // SKIPPED is pruned, leaving the tenant's host routed nowhere. With no
-            // issued certificate the listener won't be created this run either, so
+            // certificate reachable this run the listener won't exist either, so
             // genuinely defer.
-            if ((bool) Arr::get($options, 'dry-run') && $this->certificateIsIssued($this->config['certificate-domain'])) {
+            if ((bool) Arr::get($options, 'dry-run') && $this->certificateWillBeIssued($this->config['certificate-domain'])) {
                 $this->recordChange(Change::make('forward rule', null, 'created'));
 
                 return StepResult::WOULD_SYNC;
