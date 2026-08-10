@@ -10,8 +10,8 @@ Access is granted by **grant-group membership**, never by attaching policies to 
 |---|---|---|
 | Observer — environment | `yolo-{env}-observers` | read every app in the environment |
 | Observer — one app | `yolo-{env}-{app}-observers` | read one app (log content fenced to its log group) |
-| Deployer — one app | `yolo-{env}-{app}-deployers` | build and deploy one app |
-| Admin — environment | `yolo-{env}-admins` | `sync` / `scale` / manage access (**fresh MFA code per run**) |
+| Deployer — one app | `yolo-{env}-{app}-deployers` | build, deploy, roll back, and pull/push the env file of one app |
+| Admin — environment | `yolo-{env}-admins` | `sync` / `scale` / `services` / the environment's manifest and shared `.env` / manage access (**fresh MFA code per run**) |
 
 Broader tiers **subsume narrower ones in the grant itself**: commands always mint the least-privileged role for their job (reads mint observer roles, deploys the per-app deployer) regardless of who runs them — so the env observers grant includes every per-app observer role, and the admins grant includes the whole hierarchy. An admin or env observer runs app-scoped commands (`status`, `db:tunnel`) without per-app membership; only the admin-role assume itself prompts for a fresh MFA code.
 

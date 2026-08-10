@@ -7,13 +7,14 @@ namespace Codinglabs\Yolo\Commands;
 use Dotenv\Dotenv;
 use Codinglabs\Yolo\Aws\S3;
 use Aws\S3\Exception\S3Exception;
+use Codinglabs\Yolo\Contracts\AdminCommand;
 use Symfony\Component\Console\Input\InputArgument;
 use Codinglabs\Yolo\Concerns\ManagesEnvironmentFiles;
 
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\warning;
 
-class EnvironmentEnvPushCommand extends Command
+class EnvironmentEnvPushCommand extends Command implements AdminCommand
 {
     use ManagesEnvironmentFiles;
 

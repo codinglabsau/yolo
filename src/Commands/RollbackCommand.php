@@ -9,6 +9,7 @@ use Codinglabs\Yolo\Aws\Ecs;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
 use Codinglabs\Yolo\Resources\Ecs\EcsService;
+use Codinglabs\Yolo\Contracts\DeployerCommand;
 use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
 use Symfony\Component\Console\Input\InputOption;
 use Codinglabs\Yolo\Concerns\RendersServiceStatus;
@@ -44,7 +45,7 @@ use function Laravel\Prompts\warning;
  *   yolo rollback production                                        # interactive picker
  *   yolo rollback production --app-version=26.24.2.0945 --force     # non-interactive / CI
  */
-class RollbackCommand extends SteppedCommand
+class RollbackCommand extends SteppedCommand implements DeployerCommand
 {
     use RendersServiceStatus;
 

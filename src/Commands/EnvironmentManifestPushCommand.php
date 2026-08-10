@@ -10,6 +10,7 @@ use Codinglabs\Yolo\EnvManifest;
 use Aws\S3\Exception\S3Exception;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Services\Lifecycle;
+use Codinglabs\Yolo\Contracts\AdminCommand;
 use Symfony\Component\Console\Input\InputArgument;
 use Codinglabs\Yolo\Concerns\ManagesEnvironmentFiles;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
@@ -17,7 +18,7 @@ use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\warning;
 
-class EnvironmentManifestPushCommand extends Command
+class EnvironmentManifestPushCommand extends Command implements AdminCommand
 {
     use ManagesEnvironmentFiles;
 
