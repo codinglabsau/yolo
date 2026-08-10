@@ -6,7 +6,7 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 
 - **`<environment>`** — almost every command takes a required `environment` argument naming a key under `environments` in your `yolo.yml` (e.g. `production`, `staging`).
 - **AWS authentication** — outside CI, YOLO reads a named AWS profile from `YOLO_<ENVIRONMENT>_AWS_PROFILE` in your local `.env`. Before any AWS call it verifies (via STS) that the profile resolves to the `account-id` declared in the manifest. The `default` profile is rejected. In CI it falls back to the AWS SDK default credential chain (GitHub OIDC, SSO).
-- **Permission tiers** — you authenticate as yourself; YOLO then assumes a scoped role per command and runs capped to it, so it can never exceed what the command needs: read commands (`status`, `audit`) → an observer role, the deploy lifecycle (`deploy`, `build`, `run`) → the per-app deployer role, and provisioning (`sync`, `scale`) → the `yolo-*`-scoped admin role. The observer tier is **scope-aware**: a single-app read (`status`, `status:logs`) caps to a **per-app** observer role whose log-content reads are fenced to that app's log group, while an env-wide read (`status:environment`, every `audit`) caps to the env observer role. The guard is **fail-closed** — a command refuses if it can't assume its role rather than running on your full identity. See [provisioning](/guide/provisioning).
+- **Permission tiers** — you authenticate as yourself; YOLO then assumes a scoped role per command and runs capped to it, so it can never exceed what the command needs: read commands (`status`, `audit`) → an observer role, the app lifecycle (`deploy`, `build`, `run`, `rollback`, and the app's env-file pair `env:pull` / `env:push`) → the per-app deployer role, and provisioning plus environment-level management (`sync`, `scale`, `services`, and the `environment:*` file commands) → the `yolo-*`-scoped admin role. The observer tier is **scope-aware**: a single-app read (`status`, `status:logs`) caps to a **per-app** observer role whose log-content reads are fenced to that app's log group, while an env-wide read (`status:environment`, every `audit`) caps to the env observer role. The guard is **fail-closed** — a command refuses if it can't assume its role rather than running on your full identity. See [provisioning](/guide/provisioning).
 - **Every tier requires MFA** — each tier role's trust demands `aws:MultiFactorAuthPresent`, even read-only observer, so a bare static key can't assume anything: the tier cap limits what YOLO does, not what the key pair could do elsewhere, and the weakest credential on the team is still an MFA'd one. Sessions minted by [`yolo configure`](#yolo-configure)'s helper carry the MFA context automatically, so observer and deployer add **no prompts**. The **admin tier additionally demands a fresh 6-digit code** each run (`sync` / `scale` / `permissions` prompt for it), so escalating to admin is always an **explicit human act** an agent can't perform — AWS-enforced, not just a CLI prompt; a direct AssumeRole without MFA is denied. The CI path is unaffected: GitHub OIDC federation carries no MFA context and its trust statement doesn't ask for one. YOLO resolves your MFA device automatically (`iam:ListMFADevices`); set `YOLO_<ENVIRONMENT>_MFA_SERIAL` to the device ARN to skip discovery (or when it isn't permitted).
 - **Grant groups** — access is granted by **group membership**, not by editing identities. YOLO provisions convention-named IAM groups (`yolo-{env}-observers`, `yolo-{env}-{app}-observers`, `yolo-{env}-{app}-deployers`, `yolo-{env}-admins`), each allowing `sts:AssumeRole` on one tier role. Add a user to a group to grant the tier, remove to revoke — managed with [`permissions`](#yolo-permissions) (or the IAM console). YOLO never creates or owns the users themselves — see [Developer Credentials](/guide/credentials) for the full onboarding flow, including each developer's local credential setup.
 - **`--dangerously-skip-permissions`** — a global flag that bypasses the tier cap and runs on your full AWS identity (with a loud warning). It's the deliberate escape for **bootstrapping a fresh environment** (the first `yolo sync <env> --dangerously-skip-permissions` creates the tier roles) and for break-glass / diagnostics. Avoid it otherwise.
@@ -121,6 +121,8 @@ yolo env:pull <environment>
 
 Writes `.env.<environment>` to your project root, overwriting any local copy. (For the *environment's own* files — the env manifest and the env-shared `.env` — see the [`environment:*` commands](#yolo-environment-manifest-pull).)
 
+Runs under the per-app **deployer** tier — the same scoped role that pulls the file at build time — so reading an app's env file requires deploy access to that app.
+
 ---
 
 ## `yolo env:push`
@@ -139,6 +141,8 @@ yolo env:push <environment>
 
 Downloads the current remote file, shows a diff of changed keys, and asks for confirmation before uploading. If no remote file exists yet, it uploads without a diff. After a successful upload it offers to **delete the local file (default: yes)** — the bucket holds the truth, and an env file left on disk is both a staleness risk and secrets sitting around for anything on the machine to read.
 
+Runs under the per-app **deployer** tier, whose policy carries get + put on exactly this app's env-file object — so writing an app's secrets requires deploy access to that app, never a raw-identity S3 grant.
+
 ---
 
 ## `yolo environment:manifest:pull`
@@ -156,6 +160,8 @@ yolo environment:manifest:pull <environment>
 **Options:** none
 
 The manifest must already exist — the environment's first `sync` seeds it. The local copy keeps the bucket's name (`yolo-environment-production.yml` for production), so a pulled file can never be pushed at the wrong environment.
+
+All four `environment:*` file commands run under the **admin** tier (fresh MFA code per run, like `sync`) — the environment's declaration and its shared secrets are environment-blast-radius, so managing them is an admin act.
 
 ---
 
@@ -287,6 +293,8 @@ Rollback reuses the back half of [`deploy`](#yolo-deploy) — it registers a tas
 Targets are always selected by version, never by ECS task-definition revision number — the revision integer is AWS's per-family registration counter and says nothing about which version a revision runs, and `sync`-registered revisions pin the moving `:latest` tag (so they're never offered as a rollback target).
 
 Once the rollout settles, `rollback` prints the same recap as `deploy`.
+
+Runs under the per-app **deployer** tier, same as `deploy` — it's the deploy tail, so it carries the deploy cap.
 
 ---
 
@@ -653,6 +661,8 @@ yolo services production --json                                   # read state
 yolo services production --add=typesense --set version=30.2 --set nodes=3
 yolo services production --remove=typesense
 ```
+
+Runs under the **admin** tier (fresh MFA code per run) — offering or withdrawing a service rewrites the environment manifest, the same environment-blast-radius write as [`environment:manifest:push`](#yolo-environment-manifest-push).
 
 ---
 

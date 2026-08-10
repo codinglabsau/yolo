@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Contracts\AdminCommand;
 use Symfony\Component\Console\Input\InputArgument;
 use Codinglabs\Yolo\Concerns\ManagesEnvironmentFiles;
 
@@ -12,7 +13,7 @@ use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\error;
 
-class EnvironmentEnvPullCommand extends Command
+class EnvironmentEnvPullCommand extends Command implements AdminCommand
 {
     use ManagesEnvironmentFiles;
 

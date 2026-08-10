@@ -45,6 +45,11 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  *          rewrite a per-app config bucket's policy to grant itself `s3:GetObject`
  *          on the per-app developer `.env` it otherwise can't read (admin reads
  *          only YOLO's own minted env-tier secrets, not the developer `.env`).
+ *          For a human admin this lever buys little: the admins grant group
+ *          separately includes every per-app deployer role, whose policy carries
+ *          a scoped get+put on its own app's `.env` (`env:pull`/`env:push`) — the
+ *          sanctioned path. The lever matters for a principal holding the admin
+ *          ROLE alone, without the group's deployer-assume grants.
  *    Closing either fully needs a permissions boundary on every YOLO-created role
  *    (so nothing YOLO mints can exceed the boundary) — deliberately NOT built here.
  *    Whether the blast-radius cap above suffices or the boundary is warranted is a

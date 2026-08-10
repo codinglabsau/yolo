@@ -20,8 +20,12 @@ use Codinglabs\Yolo\Commands\ScaleCommand;
 use Codinglabs\Yolo\Commands\DeployCommand;
 use Codinglabs\Yolo\Commands\StatusCommand;
 use Codinglabs\Yolo\Contracts\AdminCommand;
+use Codinglabs\Yolo\Commands\EnvPullCommand;
+use Codinglabs\Yolo\Commands\EnvPushCommand;
 use Codinglabs\Yolo\Commands\SyncAppCommand;
 use Codinglabs\Yolo\Commands\AuditAppCommand;
+use Codinglabs\Yolo\Commands\RollbackCommand;
+use Codinglabs\Yolo\Commands\ServicesCommand;
 use Codinglabs\Yolo\Commands\StatusAppCommand;
 use Codinglabs\Yolo\Contracts\DeployerCommand;
 use Codinglabs\Yolo\Contracts\ReadOnlyCommand;
@@ -38,6 +42,10 @@ use Symfony\Component\Console\Input\InputDefinition;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Codinglabs\Yolo\Commands\AuditEnvironmentCommand;
 use Codinglabs\Yolo\Commands\StatusEnvironmentCommand;
+use Codinglabs\Yolo\Commands\EnvironmentEnvPullCommand;
+use Codinglabs\Yolo\Commands\EnvironmentEnvPushCommand;
+use Codinglabs\Yolo\Commands\EnvironmentManifestPullCommand;
+use Codinglabs\Yolo\Commands\EnvironmentManifestPushCommand;
 
 /**
  * Bind an STS client whose AssumeRole call records its args and then resolves to
@@ -193,6 +201,9 @@ it('runs the deploy lifecycle under the Deployer tier', function (Command $comma
     'deploy' => fn (): Command => new DeployCommand(),
     'build' => fn (): Command => new BuildCommand(),
     'run' => fn (): Command => new RunCommand(),
+    'rollback' => fn (): Command => new RollbackCommand(),
+    'env:pull' => fn (): Command => new EnvPullCommand(),
+    'env:push' => fn (): Command => new EnvPushCommand(),
 ]);
 
 it('caps deploy --admin up to the Admin tier, while a default deploy stays Deployer', function (): void {
@@ -245,6 +256,11 @@ it('runs the provisioning commands under the Admin tier', function (Command $com
     'sync:app' => fn (): Command => new SyncAppCommand(),
     'scale' => fn (): Command => new ScaleCommand(),
     'permissions' => fn (): Command => new PermissionsCommand(),
+    'services' => fn (): Command => new ServicesCommand(),
+    'environment:env:pull' => fn (): Command => new EnvironmentEnvPullCommand(),
+    'environment:env:push' => fn (): Command => new EnvironmentEnvPushCommand(),
+    'environment:manifest:pull' => fn (): Command => new EnvironmentManifestPullCommand(),
+    'environment:manifest:push' => fn (): Command => new EnvironmentManifestPushCommand(),
 ]);
 
 it('is a no-op for an un-tiered command — never assumes a role, never overrides credentials', function (): void {

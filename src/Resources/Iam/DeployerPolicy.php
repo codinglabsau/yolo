@@ -294,13 +294,16 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
                 ],
             ],
             [
-                // Pull the environment file (build) — read-only on exactly this app's
-                // env-file object. RetrieveEnvFileStep GetObjects one key; it never
-                // writes the config bucket (env:push is a separate, non-deploy
-                // command) and never lists it.
+                // The app's env file: read on the build pull (RetrieveEnvFileStep)
+                // and write for `env:push` — both run under this tier, scoped to
+                // exactly this app's env-file object, never a list or the bucket.
+                // Without the write here the only role-model path to author an
+                // app `.env` would be rewriting the bucket policy via the admin
+                // tier's s3:PutBucket* — a scoped object grant on the tier that
+                // owns the app's lifecycle beats an escalation lever.
                 'Effect' => 'Allow',
                 'Resource' => sprintf('%s/%s', $configBucketArn, Paths::s3AppEnvKey()),
-                'Action' => ['s3:GetObject'],
+                'Action' => ['s3:GetObject', 's3:PutObject'],
             ],
             [
                 // Publish this app's claim file into the env config bucket on

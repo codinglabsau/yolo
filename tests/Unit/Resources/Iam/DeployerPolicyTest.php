@@ -118,7 +118,7 @@ it('scopes PassRole to the per-app task role and shared execution role, passed o
     ]);
 });
 
-it('grants write-only asset push on builds/* and read-only env-file pull, least-privilege', function (): void {
+it('grants write-only asset push on builds/* and object-scoped env-file access, least-privilege', function (): void {
     $document = (new DeployerPolicy())->document();
 
     // Asset push (deploy): write-only on the per-deploy builds/ prefix — no read,
@@ -132,11 +132,12 @@ it('grants write-only asset push on builds/* and read-only env-file pull, least-
         's3:ListMultipartUploadParts',
     ]);
 
-    // Env-file pull (build): read-only on exactly this app's .env.{env} object.
+    // Env file (build pull + env:push): get and put on exactly this app's
+    // .env.{env} object — never a delete, never the bucket.
     $envFile = collect($document['Statement'])
         ->first(fn (array $statement): bool => $statement['Resource'] === 'arn:aws:s3:::yolo-111111111111-testing-my-app-config/.env.testing');
     expect($envFile)->not->toBeNull();
-    expect($envFile['Action'])->toBe(['s3:GetObject']);
+    expect($envFile['Action'])->toBe(['s3:GetObject', 's3:PutObject']);
 
     // No bucket-level S3 grant survives the tightening, and the asset/config
     // buckets are never reachable at the bucket root or whole-object level.

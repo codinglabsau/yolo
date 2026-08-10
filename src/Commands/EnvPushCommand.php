@@ -7,6 +7,7 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Aws\S3;
 use Aws\S3\Exception\S3Exception;
+use Codinglabs\Yolo\Contracts\DeployerCommand;
 use Symfony\Component\Console\Input\InputArgument;
 use Codinglabs\Yolo\Steps\Build\RetrieveEnvFileStep;
 use Codinglabs\Yolo\Concerns\ManagesEnvironmentFiles;
@@ -16,7 +17,7 @@ use function Laravel\Prompts\note;
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\warning;
 
-class EnvPushCommand extends Command
+class EnvPushCommand extends Command implements DeployerCommand
 {
     use ManagesEnvironmentFiles;
 
