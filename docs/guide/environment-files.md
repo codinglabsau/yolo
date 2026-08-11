@@ -43,6 +43,8 @@ This writes `.env.production` to your project root. Use it to review what's curr
 
 ## How it's used at deploy time
 
-You don't reference the env file in your `deploy` command — it's automatic. During `yolo build`, YOLO retrieves `.env.<environment>` from S3, stamps in the build's `APP_VERSION` (and `ASSET_URL`, mirrored into `VITE_ASSET_URL` so Vite sees the same prefix, when a CDN is configured), and bakes it into the image as `/app/.env`. Your `build` hooks (e.g. `npm run build`) run against that environment, and the running container uses it directly.
+You don't reference the env file in your `deploy` command — it's automatic. During `yolo build`, YOLO retrieves `.env.<environment>` from S3, stamps in the build's `APP_VERSION` (and `ASSET_URL`, mirrored into `VITE_ASSET_URL` so Vite sees the same prefix, when a CDN is configured), and bakes it into the image as `/app/.env`. The running container uses it directly.
+
+Your `build` hooks (e.g. `npm run build`) do **not** see that whole environment. The file is moved aside while they run, and each hook receives an allowlist of it instead — `APP_ENV`, `APP_URL`, `ASSET_URL` and every `VITE_*` key — so a hook can compile assets and bake the right origin into its output without being able to reach a live service (database, cache, queue) from the build host. To get another value to a hook, pass it through a `VITE_*` key.
 
 The bucket itself (`yolo-{account-id}-{env}-{app}-config`) is provisioned by [`yolo sync`](/guide/provisioning). Bucket names carry the AWS account id because S3 names are globally unique across every account — without it, the first account to claim a name owns it and every other account's sync fails.
