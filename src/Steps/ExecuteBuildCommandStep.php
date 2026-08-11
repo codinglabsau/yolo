@@ -35,6 +35,7 @@ class ExecuteBuildCommandStep implements ExecutesCommandStep, LongRunning, RunsO
                     ->filter(fn ($value, $key): bool => in_array($key, [
                         'APP_ENV', // for npm
                         'ASSET_URL', // for vite
+                        'APP_URL', // for artisan hooks that bake in URLs
                     ]) || Str::startsWith($key, 'VITE_'))
                     ->toArray(),
                 ...[
