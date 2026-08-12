@@ -149,7 +149,12 @@ class ConfigureEnvAndVersionStep implements Step
         }
 
         if (Manifest::has('bucket')) {
-            $defaults['AWS_BUCKET'] = Manifest::get('bucket');
+            // Paths::s3AppBucket(), not the raw manifest value: `bucket: true`
+            // means YOLO names and owns the bucket (Helpers::keyedBucketName),
+            // so the manifest value is the literal boolean `true` — writing it
+            // straight into AWS_BUCKET bakes the string "1" into the image,
+            // an invalid bucket name every S3 write then fails against.
+            $defaults['AWS_BUCKET'] = Paths::s3AppBucket();
             $defaults['FILESYSTEM_DISK'] = 's3';
         }
 
