@@ -3,6 +3,7 @@
 use Aws\Result;
 use Dotenv\Dotenv;
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Helpers;
 use GuzzleHttp\Psr7\Response;
 use Aws\Command as AwsCommand;
 use Aws\S3\Exception\S3Exception;
@@ -119,6 +120,26 @@ it('injects AWS_BUCKET from the manifest when the .env does not define it', func
     (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
 
     expect(file_get_contents(Paths::build('.env.testing')))->toContain('AWS_BUCKET=my-app-bucket');
+});
+
+it('injects the resolved keyed bucket name, not the literal manifest value, when the bucket is YOLO-managed', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => true,
+    ]);
+
+    if (! is_dir(Paths::build())) {
+        mkdir(Paths::build(), 0755, true);
+    }
+    if (file_exists(Paths::build('.env.testing'))) {
+        unlink(Paths::build('.env.testing'));
+    }
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('AWS_BUCKET=' . Helpers::keyedBucketName('data'));
+    expect($env)->not->toContain('AWS_BUCKET=1');
 });
 
 it('does not inject AWS_BUCKET when the manifest does not define one', function (): void {

@@ -149,7 +149,7 @@ class ConfigureEnvAndVersionStep implements Step
         }
 
         if (Manifest::has('bucket')) {
-            $defaults['AWS_BUCKET'] = Manifest::get('bucket');
+            $defaults['AWS_BUCKET'] = Paths::s3AppBucket();
             $defaults['FILESYSTEM_DISK'] = 's3';
         }
 
