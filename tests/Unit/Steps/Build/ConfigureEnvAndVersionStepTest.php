@@ -458,6 +458,17 @@ it('hard-fails when OCTANE_SERVER is set to a conflicting value', function (): v
         ->toThrow(IntegrityCheckException::class);
 });
 
+it('hard-fails when REDIS_PREFIX is set to a conflicting value', function (): void {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => true],
+    ]);
+    file_put_contents(Paths::build('.env.testing'), "REDIS_PREFIX=laravel_database_\n");
+
+    expect(fn (): mixed => (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']))
+        ->toThrow(IntegrityCheckException::class);
+});
+
 it('does not hard-fail when the app already sets the required platform value', function (): void {
     rebuildEnvFixture([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',

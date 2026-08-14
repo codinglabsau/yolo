@@ -163,7 +163,13 @@ class ConfigureEnvAndVersionStep implements Step
             if ($cacheStore === 'redis') {
                 $defaults['REDIS_HOST'] = (new CacheCluster())->endpoint();
                 $defaults['REDIS_PORT'] = (string) CacheCluster::PORT;
-                $defaults['REDIS_PREFIX'] = Helpers::keyedResourceName() . '_';
+
+                // ENFORCED, not defaulted: every app in the environment shares one
+                // unauthenticated Valkey node on the same logical databases, so this
+                // prefix is the only thing keeping one app's keys off another's. Two
+                // apps each pinning the stock `laravel_database_` would silently share
+                // a keyspace, so a conflicting override hard-fails the build.
+                $this->enforce($envPath, $values, 'REDIS_PREFIX', Helpers::keyedResourceName() . '_');
             }
         }
 

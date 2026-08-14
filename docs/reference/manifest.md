@@ -367,7 +367,7 @@ cache:
 - a security group allowing ingress on `6379` **only** from the Fargate task security group (the cache has no public endpoint);
 - a cache subnet group across the VPC subnets.
 
-With the `redis` store, the container env gets `CACHE_STORE=redis`, `REDIS_HOST` (the cluster's primary endpoint), `REDIS_PORT=6379`, and a per-app `REDIS_PREFIX` — each only if your `.env` doesn't already set it. Scaling is a manual vertical resize; there's no autoscaling. For availability, see the [Laravel `failover` cache store](/guide/provisioning#cache-high-availability) rather than adding a replica. For a backend YOLO doesn't model, set `CACHE_STORE` in your `.env` and `cache.store: file`.
+With the `redis` store, the container env gets `CACHE_STORE=redis`, `REDIS_HOST` (the cluster's primary endpoint) and `REDIS_PORT=6379` — each only if your `.env` doesn't already set it — plus a per-app `REDIS_PREFIX`, which is enforced: it's the only separation between apps sharing the environment's cache node, so a conflicting value in your `.env` fails the build. Scaling is a manual vertical resize; there's no autoscaling. For availability, see the [Laravel `failover` cache store](/guide/provisioning#cache-high-availability) rather than adding a replica. For a backend YOLO doesn't model, set `CACHE_STORE` in your `.env` and `cache.store: file`.
 
 ---
 
