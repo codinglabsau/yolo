@@ -17,6 +17,15 @@ namespace Codinglabs\Yolo;
 class ProcessCommands
 {
     /**
+     * The in-image path of the Caddyfile YOLO generates into the build context at
+     * docker/Caddyfile (GenerateSupervisorConfigStep) and runs the web server against.
+     * Both modes use it for a different reason — Octane for the metrics global option,
+     * classic mode for the thread bounds — and never both at once, so one path serves
+     * both. Absolute because supervisord's working directory is not contractual.
+     */
+    public const string CADDYFILE = '/app/docker/Caddyfile';
+
+    /**
      * The web process. By default Octane: `octane:start` is the server-agnostic
      * launcher — it boots whichever Octane server OCTANE_SERVER names. That var is
      * the app's to own (it pairs with the Dockerfile's base image; `yolo init`
@@ -31,11 +40,20 @@ class ProcessCommands
      * Octane-safe yet. That's the same frankenphp binary the base image already
      * ships, independent of laravel/octane, so it serves even when the app has no
      * Octane package; only the launch command differs.
+     *
+     * Classic mode runs `frankenphp run` against a generated Caddyfile rather than
+     * the simpler `frankenphp php-server`, because php-server exposes no way to
+     * configure the thread pool: it has no thread flag, and it does not read a
+     * Caddyfile — so the FRANKENPHP_CONFIG env var the base image's own Caddyfile
+     * threads into the `frankenphp` global option is inert on that path. Its pool is
+     * therefore fixed at 2 × the CPUs visible to the process, which on Fargate is the
+     * microVM's ~2 vCPUs regardless of task size. A Caddyfile is the only channel
+     * that can set the bounds at all; see {@see WebThreads}.
      */
     public static function web(): string
     {
         if (! Manifest::usesOctane()) {
-            return 'frankenphp php-server --listen 0.0.0.0:8000 --root public/';
+            return 'frankenphp run --config ' . self::CADDYFILE;
         }
 
         $command = 'php artisan octane:start --host=0.0.0.0 --port=8000';
@@ -49,7 +67,7 @@ class ProcessCommands
         // --caddyfile runs it.
         // Web autoscaling only; classic mode returned above and never reaches here.
         if (Manifest::usesMetricsCaddyfile()) {
-            $command .= ' --caddyfile=/app/docker/Caddyfile';
+            $command .= ' --caddyfile=' . self::CADDYFILE;
         }
 
         // Pin the worker pool to the task's real vCPU allocation rather than letting

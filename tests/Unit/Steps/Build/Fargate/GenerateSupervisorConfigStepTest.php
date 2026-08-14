@@ -109,7 +109,7 @@ it('pins --workers after --caddyfile on an autoscaling octane tier', function ()
         ->toContain('command=php artisan octane:start --host=0.0.0.0 --port=8000 --caddyfile=/app/docker/Caddyfile --workers=8');
 });
 
-it('passes no --workers in classic mode (frankenphp php-server takes none)', function (): void {
+it('passes no --workers in classic mode (the pool is set in the Caddyfile instead)', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['octane' => false, 'autoscaling' => false]],
@@ -129,8 +129,10 @@ it('runs frankenphp classic mode on the hardcoded 8000 port when tasks.web.octan
     $config = generatedSupervisorConfig();
 
     // Same web program slot, classic-mode command — no octane:start, no worker boot.
+    // The port lives in the generated Caddyfile rather than a --listen flag, because
+    // that Caddyfile is also the only place the thread bounds can be set.
     expect($config)->toContain('[program:web]');
-    expect($config)->toContain('command=frankenphp php-server --listen 0.0.0.0:8000 --root public/');
+    expect($config)->toContain('command=frankenphp run --config /app/docker/Caddyfile');
     expect($config)->not->toContain('octane:start');
 });
 
@@ -172,7 +174,7 @@ it('nices the bundled background programs in classic mode too', function (): voi
 
     $config = generatedSupervisorConfig();
 
-    expect($config)->toContain('command=frankenphp php-server');
+    expect($config)->toContain('command=frankenphp run --config');
     expect($config)->not->toContain('nice -n 19 frankenphp');
     expect($config)->toContain('command=nice -n 19 php artisan queue:work --tries=3 --max-time=3600');
     expect($config)->toContain('command=nice -n 10 supercronic /app/docker/crontab');
@@ -603,20 +605,64 @@ it('writes no Caddyfile and passes no --caddyfile when the web tier is not autos
     expect(is_file(Paths::build('docker/Caddyfile')))->toBeFalse();
 });
 
-it('writes no Caddyfile in classic mode even when autoscaling', function (): void {
+it('generates a classic-mode Caddyfile carrying both pinned thread bounds', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['octane' => false, 'autoscaling' => false]],
+    ]);
+
+    generatedSupervisorConfig();
+
+    // Default 0.5 vCPU web task → floor 8, ceiling 16. Both must be explicit: FrankenPHP
+    // would otherwise size num_threads off the microVM's visible CPUs, and `max_threads
+    // auto` sizes off host memory without reading the container's limit.
+    expect((string) file_get_contents(Paths::build('docker/Caddyfile')))
+        ->toContain('num_threads 8')
+        ->toContain('max_threads 16')
+        // No emitted directive may be `auto` (the header comment names it; that's prose).
+        ->not->toMatch('/^\s*max_threads\s+auto/m');
+});
+
+it('bakes the classic-mode thread bounds from the declared task size', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['octane' => false, 'cpu' => 2048, 'memory' => 4096, 'autoscaling' => false]],
+    ]);
+
+    generatedSupervisorConfig();
+
+    expect((string) file_get_contents(Paths::build('docker/Caddyfile')))
+        ->toContain('num_threads 32')
+        ->toContain('max_threads 64');
+});
+
+it('serves the classic-mode Caddyfile on the port the target group health-checks', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['octane' => false, 'autoscaling' => false]],
+    ]);
+
+    generatedSupervisorConfig();
+
+    expect((string) file_get_contents(Paths::build('docker/Caddyfile')))
+        ->toContain(':8000')
+        ->toContain('root /app/public')
+        ->toContain('php_server')
+        // The ALB terminates TLS; the container must never try to provision its own.
+        ->toContain('auto_https off');
+});
+
+it('runs the classic-mode Caddyfile through frankenphp run, never php-server', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['octane' => false, 'autoscaling' => true]],
     ]);
 
-    $config = generatedSupervisorConfig();
-
-    // Classic mode runs frankenphp php-server, not octane:start — no Caddyfile, no flag.
     // Autoscaling still bundles the emitter, but the web command stays at the default
     // priority like the emitter itself.
-    expect($config)->toContain('command=frankenphp php-server');
-    expect($config)->not->toContain('--caddyfile');
-    expect(is_file(Paths::build('docker/Caddyfile')))->toBeFalse();
+    expect(generatedSupervisorConfig())
+        ->toContain('command=frankenphp run --config /app/docker/Caddyfile')
+        ->not->toContain('php-server');
 });
 
 it('hard-fails the build when the Octane Caddyfile stub is missing for an autoscaling app', function (): void {
