@@ -6,7 +6,7 @@ namespace Codinglabs\Yolo\Resources\ApplicationAutoScaling;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Change;
-use Codinglabs\Yolo\WebWorkers;
+use Codinglabs\Yolo\WebConcurrency;
 use Codinglabs\Yolo\Aws\ApplicationAutoScaling;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -30,12 +30,17 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * dimensioned by this app's own target group, so the signal is per-app even though
  * the ALB is shared across the environment.
  *
- * The target is **derived from the pinned worker pool** ({@see WebWorkers}), not
- * hand-tuned from a load test: the task's worker count held at 70% utilisation,
- * leaving headroom for the within-minute peak and the cold start of the next task.
- * A 1 vCPU task → 16 workers → target ~11 concurrent. Sharing one count with the
- * runtime's `--workers` pin keeps the scale-out signal honest about the very pool it
- * scales — the policy can't aim at a capacity the task doesn't actually run.
+ * The target is **derived from the task's pinned concurrency ceiling**
+ * ({@see WebConcurrency}), not hand-tuned from a load test: that ceiling held at 70%
+ * utilisation, leaving headroom for the within-minute peak and the cold start of the
+ * next task. A 1 vCPU Octane task → 16 workers → target ~11 concurrent. Sharing one
+ * number with the runtime keeps the scale-out signal honest about the very capacity
+ * it scales — the policy can't aim at a capacity the task doesn't actually run.
+ *
+ * Which number that is depends on the serving model, which is why it resolves through
+ * {@see WebConcurrency} rather than reading the Octane pool directly: a classic-mode
+ * tier has no resident workers at all, and its ceiling is the thread autoscaler's
+ * maximum ({@see WebThreads}).
  *
  * Composes with the CPU {@see ScalingPolicy} (the safety net for a few heavy,
  * low-rate requests that saturate CPU without raising concurrency): Application
@@ -57,7 +62,7 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  */
 class WebConcurrencyPolicy implements TargetTrackingPolicy
 {
-    /** Hold concurrency at 70% of worker capacity, leaving headroom for the in-minute peak. */
+    /** Hold concurrency at 70% of the task's capacity, leaving headroom for the in-minute peak. */
     private const float TARGET_UTILISATION = 0.7;
 
     /**
@@ -72,13 +77,13 @@ class WebConcurrencyPolicy implements TargetTrackingPolicy
     ) {}
 
     /**
-     * The desired concurrency per task — the pinned worker pool ({@see WebWorkers})
-     * at 70% utilisation, floored to a whole request and never below 1 (a tiny task
-     * still gets a meaningful target).
+     * The desired concurrency per task — the tier's pinned concurrency ceiling
+     * ({@see WebConcurrency}) at 70% utilisation, floored to a whole request and never
+     * below 1 (a tiny task still gets a meaningful target).
      */
     public function targetValue(): float
     {
-        return max(1.0, floor(WebWorkers::count() * self::TARGET_UTILISATION));
+        return max(1.0, floor(WebConcurrency::ceiling() * self::TARGET_UTILISATION));
     }
 
     public function exists(): bool

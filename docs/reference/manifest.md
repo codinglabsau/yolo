@@ -445,7 +445,7 @@ The last three rows are **web-less worker apps**: a pure queue consumer, a sched
 
 | Key | Default | Description |
 |---|---|---|
-| `tasks.web.octane` | `true` | Run the web tier on Octane (FrankenPHP **worker mode**) via `octane:start`. Set `false` to run FrankenPHP in **classic mode** (`frankenphp php-server` — per-request boot, no resident app) for an app that isn't Octane-safe yet. Same image and port either way; only the launch command differs, and the build's [Octane preflight](/guide/building-and-deploying) is skipped (classic mode needs no `laravel/octane`). |
+| `tasks.web.octane` | `true` | Run the web tier on Octane (FrankenPHP **worker mode**) via `octane:start`. Set `false` to run FrankenPHP in **classic mode** — per-request boot, no resident app — for an app that isn't Octane-safe yet. Same image and port either way; only the launch command differs, and the build's [Octane preflight](/guide/building-and-deploying) is skipped (classic mode needs no `laravel/octane`). YOLO sizes the classic thread pool from this task's `cpu`/`memory` — see [what the ceiling is](/guide/scaling#what-the-ceiling-is-and-why-yolo-pins-it). |
 | `tasks.web.cpu` | `'512'` | Fargate CPU units. |
 | `tasks.web.memory` | `'1024'` | Fargate memory (MB). |
 | `tasks.web.platform` | `linux/amd64` | Docker build platform. |
