@@ -37,7 +37,9 @@ class CopyApplicationStep implements LongRunning
             '.git',
             '.github',
             '.phpunit.cache',
+            '.claude',
             '.idea',
+            '.vscode',
             '.yolo',
             'public/hot',
             'public/assets/next/*',
@@ -54,8 +56,10 @@ class CopyApplicationStep implements LongRunning
             // files
             '*.DS_Store',
             '.env.*',
+            '.mcp.json',
             '.php-cs-fixer.cache',
             '.phpunit.result.cache',
+            'CLAUDE.md',
             'public/assets/manifest.json',
         ];
 
