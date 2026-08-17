@@ -7,6 +7,7 @@ namespace Codinglabs\Yolo\Commands;
 use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\EnvManifest;
 use Codinglabs\Yolo\Enums\Service;
+use Codinglabs\Yolo\EnvironmentVersion;
 use Codinglabs\Yolo\Services\Lifecycle;
 
 /**
@@ -27,7 +28,10 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
     #[\Override]
     public function warnings(): array
     {
-        return static::idleServiceWarnings();
+        return [
+            ...EnvironmentVersion::skewWarnings(),
+            ...static::idleServiceWarnings(),
+        ];
     }
 
     /**
@@ -173,6 +177,9 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 Steps\Sync\Environment\SyncWafBlockIpSetStep::class,
                 Steps\Sync\Environment\SyncWafWebAclStep::class,
                 Steps\Sync\Environment\SyncWafAssociationStep::class,
+                // Last on purpose: the version-of-record stamp only lands after
+                // the rest of the tier has synced under the stamped release.
+                Steps\Sync\Environment\SyncEnvironmentVersionStep::class,
             ],
         ];
     }
