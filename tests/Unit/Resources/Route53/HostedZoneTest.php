@@ -128,3 +128,33 @@ it('gives no ownership warning for headless or multi-tenant apps (no single apex
     'headless' => [['tasks' => ['web' => true]]],
     'multi-tenant' => [['multitenancy' => ['tenants' => ['alpha' => []]]]],
 ]);
+
+describe('a multi-domain landlord', function (): void {
+    it('attributes the primary host only to the zone that is its own apex, never a foreign one', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'multitenancy' => ['landlord' => ['domain' => ['example.com', 'app.example.io']]],
+        ]);
+
+        $captured = [];
+        bindMockRoute53Client(
+            [
+                ['Name' => 'example.com.', 'Id' => '/hostedzone/ZONE-COM'],
+                ['Name' => 'example.io.', 'Id' => '/hostedzone/ZONE-IO'],
+            ],
+            $captured,
+            [
+                ['Type' => 'A', 'Name' => 'example.com.'],
+                ['Type' => 'A', 'Name' => 'app.example.io.'],
+            ],
+        );
+
+        // Both zone instances see the SAME live record list (the mock isn't
+        // zone-aware) — each must still only claim its own host, not the other
+        // zone's, or teardown from one zone would delete a record it never wrote.
+        expect(collect((new HostedZone('example.com'))->appRecords())->pluck('Name')->all())
+            ->toBe(['example.com'])
+            ->and(collect((new HostedZone('example.io'))->appRecords())->pluck('Name')->all())
+            ->toBe(['app.example.io']);
+    });
+});

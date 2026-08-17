@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Aws\Result;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
+use Codinglabs\Yolo\Resources\ElbV2\SearchListenerRule;
 use Codinglabs\Yolo\Resources\ElbV2\ForwardListenerRule;
 
 function forwardRule(): ForwardListenerRule
@@ -54,6 +55,41 @@ describe('hosts', function (): void {
         // Scoped to the app's own domain, never the apex — a wildcard at the apex
         // would match a sibling app's host on the same shared listener.
         expect(forwardRule()->hosts())->toBe(['app.example.com', '*.app.example.com']);
+    });
+
+    it('adds every additional landlord host as its own literal host-header value', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'multitenancy' => ['landlord' => ['domain' => ['app.example.com', 'app.example.io', 'brand.other.com']]],
+        ]);
+
+        expect(forwardRule()->hosts())->toBe(['app.example.com', 'app.example.io', 'brand.other.com']);
+    });
+
+    it('composes additional landlord hosts with the wildcard, still one rule', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'multitenancy' => ['landlord' => [
+                'domain' => ['app.example.com', 'brand.example.io'],
+                'wildcard-subdomains' => true,
+            ]],
+        ]);
+
+        expect(forwardRule()->hosts())->toBe(['app.example.com', '*.app.example.com', 'brand.example.io']);
+    });
+
+    it('keeps a stable Name distinct from the environment search rule, whatever the host list', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'multitenancy' => ['landlord' => ['domain' => ['app.example.com', 'search.example.com']]],
+        ]);
+
+        // The additional host rides the SAME rule (identity is the Name tag, not
+        // the hosts it matches) — it can never collide with a sibling rule's Name,
+        // e.g. the environment's own search.{domain} rule, which lives in a wholly
+        // separate (Env) scope and is keyed `yolo-{env}-search`.
+        expect(forwardRule()->name())->toBe('yolo-testing-my-app')
+            ->and(forwardRule()->name())->not->toBe((new SearchListenerRule('arn:listener'))->name());
     });
 });
 

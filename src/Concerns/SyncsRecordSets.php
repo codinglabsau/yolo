@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Concerns;
 
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\ElbV2;
 use Codinglabs\Yolo\Aws\Route53;
 use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
@@ -13,25 +14,42 @@ trait SyncsRecordSets
 
     public function syncRecordSet(string $apex, string $domain, ?string $wildcardHost): void
     {
+        $this->writeAliasRecords($apex, $this->aliasedHosts($apex, $domain, $wildcardHost));
+    }
+
+    /**
+     * UPSERTs a single A-alias record for one additional landlord host — no
+     * apex/`www` sibling and no wildcard inferred, since an additional host is
+     * served exactly as declared. Its own apex may differ from the app's primary
+     * domain (a landlord serving several brands), so the caller resolves it via
+     * {@see Manifest::deriveApex()} rather than this trait
+     * assuming it shares the primary's zone.
+     */
+    public function syncAdditionalHostRecordSet(string $apex, string $host): void
+    {
+        $this->writeAliasRecords($apex, [$host]);
+    }
+
+    /**
+     * @param  array<int, string>  $hosts
+     */
+    protected function writeAliasRecords(string $apex, array $hosts): void
+    {
         Aws::route53()->changeResourceRecordSets([
             'ChangeBatch' => [
-                'Changes' => $this->generateChanges($apex, $domain, $wildcardHost),
+                'Changes' => $this->generateChanges($hosts),
                 'Comment' => 'Created by yolo CLI',
             ],
             'HostedZoneId' => Route53::hostedZone($apex)['Id'],
         ]);
     }
 
-    protected function generateChanges(string $apex, string $domain, ?string $wildcardHost): array
+    /**
+     * @param  array<int, string>  $hosts
+     */
+    protected function generateChanges(array $hosts): array
     {
         $ALB = ElbV2::loadBalancer((new LoadBalancer())->name());
-
-        // The canonical host plus, when it's one half of the apex/www pair, its
-        // sibling — both resolve to the ALB so the redirect rule can 301 the
-        // sibling to the canonical host. A bare subdomain has no sibling. A
-        // wildcard-subdomain app adds `*.{domain}`, so every subdomain resolves
-        // without a record per tenant.
-        $hosts = $this->aliasedHosts($apex, $domain, $wildcardHost);
 
         return array_map(fn (string $host): array => [
             'Action' => 'UPSERT',

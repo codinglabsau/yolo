@@ -633,3 +633,80 @@ it('refuses a bucket name S3 would reject, rather than failing mid-apply', funct
         expect(invokeManifestIntegrity())->toBeFalse();
     }
 });
+
+it('accepts a landlord domain declared as a list of hosts', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'multitenancy' => ['landlord' => ['domain' => ['app.example.com', 'app.example.io']]],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+});
+
+it('refuses an empty landlord domain list', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'multitenancy' => ['landlord' => ['domain' => []]],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    expect(test()->promptOutput->fetch())->toContain('empty list');
+});
+
+it('refuses a blank host in a landlord domain list', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'multitenancy' => ['landlord' => ['domain' => ['app.example.com', '']]],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    expect(test()->promptOutput->fetch())->toContain('blank or non-string');
+});
+
+it('refuses a duplicate host in a landlord domain list', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'multitenancy' => ['landlord' => ['domain' => ['app.example.com', 'app.example.com']]],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    expect(test()->promptOutput->fetch())->toContain('duplicate host');
+});
+
+it('refuses more landlord domains than an ALB host-header rule can hold', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'multitenancy' => ['landlord' => ['domain' => [
+            'a.example.com', 'b.example.com', 'c.example.com', 'd.example.com', 'e.example.com', 'f.example.com',
+        ]]],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    expect(test()->promptOutput->fetch())->toContain('ALB allows at most 5');
+});
+
+it('counts the wildcard against the ALB host-header limit when wildcard-subdomains is on', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'multitenancy' => ['landlord' => ['domain' => [
+            'a.example.com', 'b.example.com', 'c.example.com', 'd.example.com', 'e.example.com',
+        ], 'wildcard-subdomains' => true]],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    expect(test()->promptOutput->fetch())->toContain('ALB allows at most 5');
+});
+
+it('leaves a solo domain untouched by the landlord domain-list validation', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'example.com',
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+});

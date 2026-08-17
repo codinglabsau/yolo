@@ -169,7 +169,8 @@ abstract class Command extends SymfonyCommand
             && $this->ensureAutoscalingDeclared()
             && $this->ensureSchedulerHostNotScaleToZero()
             && $this->ensureQueueIsolationValid()
-            && $this->ensureWildcardSubdomainsValid();
+            && $this->ensureWildcardSubdomainsValid()
+            && $this->ensureLandlordDomainsValid();
     }
 
     /**
@@ -254,6 +255,65 @@ abstract class Command extends SymfonyCommand
                 'yolo.yml declares `wildcard-subdomains` with a www-canonical `domain` (%s) — the wildcard would land at *.%s and the certificate would no longer cover the apex it redirects from. Serve the app from the apex or a bare subdomain instead.',
                 $domain,
                 $domain,
+            ));
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * `multitenancy.landlord.domain` accepts a bare string or a list — every
+     * declared host, once normalised by {@see Manifest::domains()}, must be a
+     * non-empty string with no duplicates, so a malformed value (an empty list, a
+     * blank entry, a repeated host) is refused here with a pointed message rather
+     * than surfacing later as a cryptic ACM/ALB/Route 53 failure or a silently
+     * dropped duplicate host-header value.
+     */
+    protected function ensureLandlordDomainsValid(): bool
+    {
+        if (! Manifest::isMultitenanted() || ! Manifest::has('multitenancy.landlord.domain')) {
+            return true;
+        }
+
+        $raw = Manifest::get('multitenancy.landlord.domain');
+        $hosts = is_array($raw) ? $raw : [$raw];
+
+        if ($hosts === []) {
+            error('yolo.yml declares `multitenancy.landlord.domain` as an empty list — declare at least one host, or drop the key.');
+
+            return false;
+        }
+
+        foreach ($hosts as $host) {
+            if (! is_string($host) || trim($host) === '') {
+                error(sprintf(
+                    'yolo.yml declares `multitenancy.landlord.domain` with a blank or non-string entry (%s) — every host must be a non-empty string.',
+                    json_encode($host),
+                ));
+
+                return false;
+            }
+        }
+
+        if (count($hosts) !== count(array_unique($hosts))) {
+            error('yolo.yml declares `multitenancy.landlord.domain` with a duplicate host — each entry must be unique.');
+
+            return false;
+        }
+
+        // Every declared host rides the same ALB forward rule as a host-header
+        // condition value, plus the wildcard when wildcard-subdomains is on — ALB
+        // caps a rule at 5 host-header values, so fail here with a pointed message
+        // rather than a bare AWS InvalidConfigurationRequest at sync time.
+        $hostHeaderValues = count($hosts) + (Manifest::servesWildcardSubdomains() ? 1 : 0);
+
+        if ($hostHeaderValues > 5) {
+            error(sprintf(
+                'yolo.yml declares %d landlord domain(s)%s — ALB allows at most 5 host-header values per rule. Reduce the list, or split the extra hosts onto their own app.',
+                count($hosts),
+                Manifest::servesWildcardSubdomains() ? ' plus wildcard-subdomains' : '',
             ));
 
             return false;

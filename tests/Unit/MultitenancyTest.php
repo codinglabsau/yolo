@@ -39,6 +39,60 @@ describe('the app host', function (): void {
     });
 });
 
+describe('a landlord domain list', function (): void {
+    it('normalises a bare string to a single-entry list', function (): void {
+        writeManifest(['multitenancy' => ['landlord' => ['domain' => 'app.example.com']]]);
+
+        expect(Manifest::domains())->toBe(['app.example.com'])
+            ->and(Manifest::domain())->toBe('app.example.com')
+            ->and(Manifest::additionalDomains())->toBe([]);
+    });
+
+    it('normalises an array, keeping declaration order', function (): void {
+        writeManifest(['multitenancy' => ['landlord' => ['domain' => ['app.example.com', 'app.example.io']]]]);
+
+        expect(Manifest::domains())->toBe(['app.example.com', 'app.example.io'])
+            ->and(Manifest::domain())->toBe('app.example.com')
+            ->and(Manifest::additionalDomains())->toBe(['app.example.io']);
+    });
+
+    it('dedupes a repeated host', function (): void {
+        writeManifest(['multitenancy' => ['landlord' => ['domain' => ['app.example.com', 'app.example.com']]]]);
+
+        expect(Manifest::domains())->toBe(['app.example.com']);
+    });
+
+    it('is empty when the app has no domain at all', function (): void {
+        writeManifest(['multitenancy' => ['tenants' => ['acme' => ['domain' => 'acme.test']]]]);
+
+        expect(Manifest::domains())->toBe([])
+            ->and(Manifest::additionalDomains())->toBe([]);
+    });
+
+    it('stays single-host for a solo app\'s root `domain`', function (): void {
+        writeManifest(['domain' => 'example.com']);
+
+        expect(Manifest::domains())->toBe(['example.com'])
+            ->and(Manifest::additionalDomains())->toBe([]);
+    });
+
+    it('lists every distinct apex across the primary and additional hosts', function (): void {
+        bindHostedZones(['example.com', 'example.io']);
+
+        writeManifest(['multitenancy' => ['landlord' => ['domain' => [
+            'app.example.com', 'app.example.io', 'brand.example.com',
+        ]]]]);
+
+        expect(Manifest::appApexes())->toEqualCanonicalizing(['example.com', 'example.io']);
+    });
+
+    it('has no apexes when the app has no domain', function (): void {
+        writeManifest(['multitenancy' => ['tenants' => ['acme' => ['domain' => 'acme.test']]]]);
+
+        expect(Manifest::appApexes())->toBe([]);
+    });
+});
+
 // Mode (a `multitenancy` block exists) and fan-out (tenants are declared) are two
 // questions. Conflating them left a landlord-only manifest with no reader for its
 // domain, so it validated clean and deployed as a headless worker — no zone, no

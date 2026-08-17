@@ -25,6 +25,16 @@ wildcard-subdomains: true  # …and every subdomain of it, one label deep
 
 `apex` is never declared — YOLO derives it from `domain` by walking the domain's labels against the hosted zones in the account, so a certificate lands on the right zone with nothing to configure.
 
+The landlord's `domain` also accepts a list, for a landlord serving several brand domains off the one app:
+
+```yaml
+    multitenancy:
+      landlord:
+        domain: [app.example.com, app.example.io]
+```
+
+The first entry stays canonical — `wildcard-subdomains`, the apex/`www` redirect and the certificate's own name all key off it. Every entry rides the same certificate as an additional SAN and gets its own forward-rule host-header value and Route 53 record in its own apex zone, with nothing inferred between them (no wildcard, no redirect, no shared zone assumed for the extra ones).
+
 ## Tenant in the route
 
 The app serves one host and reads the tenant off the URL — `app.example.com/acme`, or a header, or the session. Nothing about that is visible to AWS, so the manifest is a landlord and nothing else:

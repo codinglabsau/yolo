@@ -13,14 +13,16 @@ use Codinglabs\Yolo\Concerns\RecordsChanges;
 use Codinglabs\Yolo\Resources\Route53\HostedZone;
 
 /**
- * Withdraws this app's DNS records — and ONLY its records. The hosted zone itself
- * is never deleted: it's domain-level infrastructure (the registrar's NS delegation
- * points at it, and the domain's email / verification DNS and any sibling
- * environment's records all live in it), so it outlives any single app. Tearing the
- * app down removes the A/AAAA records YOLO inserted for it and leaves the zone — and
- * everything else in it — standing. Mirrors how `destroy:app` treats every other
- * shared resource: withdraw this app's slice, never delete the shared thing. See
- * {@see HostedZone::removeAppRecords()}.
+ * Withdraws this app's DNS records — and ONLY its records — across every zone it
+ * has one in: the primary domain's apex, plus each additional landlord host's own
+ * apex when it differs (a landlord serving several brand domains). The hosted
+ * zones themselves are never deleted: they're domain-level infrastructure (the
+ * registrar's NS delegation points at them, and the domain's email / verification
+ * DNS and any sibling environment's records all live there), so they outlive any
+ * single app. Tearing the app down removes the A/AAAA records YOLO inserted and
+ * leaves every zone — and everything else in it — standing. Mirrors how
+ * `destroy:app` treats every other shared resource: withdraw this app's slice,
+ * never delete the shared thing. See {@see HostedZone::removeAppRecords()}.
  */
 class WithdrawAppDnsRecordsStep implements Step
 {
@@ -34,32 +36,40 @@ class WithdrawAppDnsRecordsStep implements Step
             return StepResult::SKIPPED;
         }
 
-        $zone = new HostedZone(Manifest::apex());
+        $withdrawn = false;
 
-        if (! $zone->exists()) {
+        foreach (Manifest::appApexes() as $apex) {
+            $zone = new HostedZone($apex);
+
+            if (! $zone->exists()) {
+                continue;
+            }
+
+            $records = $zone->appRecords();
+
+            if ($records === []) {
+                continue;
+            }
+
+            // Name each record withdrawn — type + host (e.g. `A www.example.com`).
+            // Only this app's own A/AAAA alias records go; the shared, domain-level
+            // hosted zone and everything else in it (MX, NS, sibling envs) stays.
+            // The step is a withdrawal, never a zone delete — see {@see HostedZone}.
+            foreach ($records as $record) {
+                $this->recordChange(Change::make(sprintf('%s %s', $record['Type'], $record['Name']), 'present', null));
+            }
+
+            $withdrawn = true;
+
+            if (! Arr::get($options, 'dry-run')) {
+                $zone->removeAppRecords();
+            }
+        }
+
+        if (! $withdrawn) {
             return StepResult::SKIPPED;
         }
 
-        $records = $zone->appRecords();
-
-        if ($records === []) {
-            return StepResult::SKIPPED;
-        }
-
-        // Name each record withdrawn — type + host (e.g. `A www.example.com`). Only
-        // this app's own A/AAAA alias records go; the shared, domain-level hosted
-        // zone and everything else in it (MX, NS, sibling envs) stays. The step is
-        // a withdrawal, never a zone delete — see {@see HostedZone}.
-        foreach ($records as $record) {
-            $this->recordChange(Change::make(sprintf('%s %s', $record['Type'], $record['Name']), 'present', null));
-        }
-
-        if (Arr::get($options, 'dry-run')) {
-            return StepResult::WOULD_DELETE;
-        }
-
-        $zone->removeAppRecords();
-
-        return StepResult::DELETED;
+        return Arr::get($options, 'dry-run') ? StepResult::WOULD_DELETE : StepResult::DELETED;
     }
 }

@@ -11,11 +11,16 @@ use Codinglabs\Yolo\Concerns\SyncsRecordSets;
 use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 
 /**
- * UPSERTs the records for the app's *own* domain. Gated on having a domain rather
- * than on being solo: a tenanted app that declares a `domain` of its own (serving
- * its tenants as subdomains of it) needs these records exactly as a solo app does
- * — tenancy is an orthogonal axis. A tenant's own records are written by
+ * UPSERTs the records for the app's *own* domain(s). Gated on having a domain
+ * rather than on being solo: a tenanted app that declares a `domain` of its own
+ * (serving its tenants as subdomains of it) needs these records exactly as a solo
+ * app does — tenancy is an orthogonal axis. A tenant's own records are written by
  * {@see SyncMultitenancyRecordSetStep}.
+ *
+ * A landlord may declare more than one host ({@see Manifest::additionalDomains()});
+ * each gets its own plain alias record in its own apex zone — no apex/`www`
+ * sibling and no wildcard inferred for it, since only the primary/canonical host
+ * gets that treatment.
  */
 class SyncSoloRecordSetStep implements ExecutesWebStep
 {
@@ -33,6 +38,10 @@ class SyncSoloRecordSetStep implements ExecutesWebStep
                 domain: (string) Manifest::domain(),
                 wildcardHost: Manifest::wildcardHost(),
             );
+
+            foreach (Manifest::additionalDomains() as $host) {
+                $this->syncAdditionalHostRecordSet(Manifest::deriveApex($host), $host);
+            }
 
             return StepResult::SYNCED;
         }

@@ -176,7 +176,11 @@ class HostedZone implements Adoptable, Resource, Undeletable
     /**
      * The hostnames YOLO writes A-alias records for — the canonical host, its
      * apex/www sibling when it has one, and the wildcard when the app serves its
-     * own subdomains. Shares {@see ResolvesCanonicalHost::aliasedHosts()} with
+     * own subdomains — plus, for the app's own zone, any additional landlord host
+     * ({@see Manifest::additionalDomains()}) that resolves to THIS apex (a
+     * landlord may declare hosts across several zones; each zone only manages the
+     * ones that are actually its own). Shares
+     * {@see ResolvesCanonicalHost::aliasedHosts()} with
      * {@see SyncsRecordSets::generateChanges()} so teardown withdraws exactly what
      * sync created and nothing else.
      *
@@ -188,9 +192,23 @@ class HostedZone implements Adoptable, Resource, Undeletable
         // built by forTenant() manages that tenant's. Resolved here rather than
         // defaulted inside aliasedHosts(), so a tenant's zone can never inherit the
         // app's wildcard (which would write `*.{app domain}` into the tenant's zone).
-        return $this->domain === null
-            ? $this->aliasedHosts($this->apex, Manifest::domain() ?? $this->apex, Manifest::wildcardHost())
-            : $this->aliasedHosts($this->apex, $this->domain, $this->wildcardHost);
+        if ($this->domain !== null) {
+            return $this->aliasedHosts($this->apex, $this->domain, $this->wildcardHost);
+        }
+
+        // The primary domain's own apex/www/wildcard treatment belongs ONLY to the
+        // zone that IS its apex — a landlord spanning several zones must never
+        // attribute the primary host to a foreign zone just because this instance
+        // has no explicit $domain.
+        $primary = Manifest::hasDomain() && Manifest::apex() === $this->apex
+            ? $this->aliasedHosts($this->apex, (string) Manifest::domain(), Manifest::wildcardHost())
+            : [];
+
+        $additional = collect(Manifest::additionalDomains())
+            ->filter(fn (string $host): bool => Manifest::deriveApex($host) === $this->apex)
+            ->all();
+
+        return array_values(array_unique([...$primary, ...$additional]));
     }
 
     /**

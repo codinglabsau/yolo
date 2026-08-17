@@ -7,9 +7,12 @@ use Codinglabs\Yolo\Aws\Rds;
 use Codinglabs\Yolo\Aws\Route53;
 use Symfony\Component\Yaml\Yaml;
 use Codinglabs\Yolo\Enums\Service;
+use Codinglabs\Yolo\Commands\Command;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Enums\QueueIsolation;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
+use Codinglabs\Yolo\Steps\Sync\App\Solo\SyncHostedZoneStep;
+use Codinglabs\Yolo\Steps\Destroy\App\WithdrawAppDnsRecordsStep;
 
 class Manifest
 {
@@ -1004,7 +1007,11 @@ class Manifest
     }
 
     /**
-     * The host this app is served on, or null when it has none.
+     * The host this app is served on, or null when it has none — the primary/
+     * canonical entry of {@see domains()}. Every single-host consumer (apex
+     * derivation, the certificate's primary name, the app's own DNS record, the
+     * apex/`www` redirect) keys off this one; {@see additionalDomains()} names
+     * whatever else `domains()` holds.
      *
      * The single source for "the app's domain", because it lives in two places by
      * design: a solo app declares `domain` at the root of the environment block,
@@ -1016,16 +1023,77 @@ class Manifest
      */
     public static function domain(): ?string
     {
-        $domain = static::isMultitenanted()
+        return static::domains()[0] ?? null;
+    }
+
+    /**
+     * Every host this app's landlord is served on — normally one, but a
+     * multi-tenant landlord may declare a list (`multitenancy.landlord.domain:
+     * [app.example.com, app.example.io]`) to serve several brands off one
+     * certificate and target group. A solo app's root `domain` stays single-host
+     * (validation refuses an array there — see {@see ensureLandlordDomainsValid}
+     * on {@see Command}). Normalised once here so every
+     * caller reads a plain list regardless of whether yolo.yml wrote a string or
+     * an array; {@see domain()} returns the first entry, {@see additionalDomains()}
+     * the rest.
+     *
+     * @return array<int, string>
+     */
+    public static function domains(): array
+    {
+        $raw = static::isMultitenanted()
             ? static::get('multitenancy.landlord.domain')
             : static::get('domain');
 
-        return $domain === null ? null : (string) $domain;
+        if ($raw === null) {
+            return [];
+        }
+
+        return array_values(array_unique(array_map(
+            static fn (mixed $host): string => (string) $host,
+            is_array($raw) ? $raw : [$raw],
+        )));
+    }
+
+    /**
+     * Every landlord host beyond the primary/canonical one — the hosts that ride
+     * the landlord certificate as extra SANs, get their own host-header forward
+     * rule entry and their own Route 53 alias record, but never the apex/`www`
+     * redirect or wildcard-subdomain treatment {@see domain()} gets: each is
+     * served as the literal host declared, nothing inferred.
+     *
+     * @return array<int, string>
+     */
+    public static function additionalDomains(): array
+    {
+        return array_slice(static::domains(), 1);
     }
 
     public static function hasDomain(): bool
     {
         return static::domain() !== null;
+    }
+
+    /**
+     * Every distinct apex this app's own hosts resolve to — the primary domain's
+     * apex, plus each additional landlord host's own (a landlord may serve
+     * several brand domains, each behind its own zone). Empty when the app has no
+     * domain at all. The single source both {@see SyncHostedZoneStep}
+     * (provisions one) and {@see WithdrawAppDnsRecordsStep}
+     * (withdraws this app's records from one) fan out over.
+     *
+     * @return array<int, string>
+     */
+    public static function appApexes(): array
+    {
+        if (! static::hasDomain()) {
+            return [];
+        }
+
+        return array_values(array_unique([
+            static::apex(),
+            ...array_map(static::deriveApex(...), static::additionalDomains()),
+        ]));
     }
 
     /**

@@ -215,6 +215,18 @@ The landlord's own hosting, using the same shape a tenant does: a `domain`, opti
 
 Optional — omit it for a multi-tenant app with no landlord host, where every tenant brings its own domain. The `:443` listener then takes its default certificate from the first tenant by sorted id.
 
+`domain` also accepts a list, for a landlord serving several brand domains off one app:
+
+```yaml
+multitenancy:
+  landlord:
+    domain:
+      - app.example.com
+      - app.example.io
+```
+
+The first entry is canonical — it's what `wildcard-subdomains`, the apex/`www` redirect and the app's certificate name key off. Every entry (including the first) rides the same certificate as an additional SAN, gets its own host-header value on the app's forward rule, and its own Route 53 alias record in its own apex zone. Nothing is inferred between the extra entries — no wildcard, no apex/`www` redirect, no shared zone assumed — each is served exactly as declared. Limited to what ALB's host-header condition holds (5 values, including the wildcard when `wildcard-subdomains` is on).
+
 #### `multitenancy.tenants`
 
 A map of tenant id → that tenant's config. The id identifies that tenant's resources throughout YOLO.
