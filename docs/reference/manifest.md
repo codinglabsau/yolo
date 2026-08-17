@@ -2,132 +2,128 @@
 
 `yolo.yml` is the single source of truth for your application's infrastructure. Both `yolo sync` (infrastructure) and `yolo deploy` (code) read from it. This page documents every key.
 
-## A complete example
+## A minimal manifest
 
-Every key YOLO understands, in one annotated `yolo.yml`. **Required keys are uncommented; everything else is commented out showing its default**, so you can copy this and uncomment only what you need to change. `yolo init` scaffolds a minimal subset of this — a plain web app whose one container runs all three roles (web, queue worker, scheduler).
+The smallest useful web app — one container running all three roles (web, queue worker, scheduler), which is what `yolo init` scaffolds:
 
 ```yaml
-name: codinglabs                 # required — app name, prefixes every app-scoped resource
-# timezone: Australia/Brisbane   # default UTC — sets the year.week build-version prefix
+name: my-app
 
 environments:
   production:
-    # --- Required ---
-    account-id: '123456789012'   # required — verified against your AWS profile via STS
-    region: ap-southeast-2       # required
+    account-id: '123456789012'
+    region: ap-southeast-2
+    domain: example.com
 
-    # --- Routing (see /guide/domains) ---
-    domain: example.com    # public domain — required for a web app; omit for a worker app
-    #                      # the apex is derived automatically from the matching Route 53 zone
-    #
-    # Multi-tenant: everything tenant-related nests under one key, and the app's
-    # own host moves to the landlord (a root `domain` is refused alongside it).
-    # multitenancy:
-    #   landlord:
-    #     domain: app.example.com
-    #     wildcard-subdomains: true    # tenants served at {tenant}.app.example.com
-    #   queue-isolation: dedicated     # default shared — a queue set per tenant
-    #   tenants:
-    #     acme:                        # bare — served under the landlord's wildcard
-    #     globex: { domain: globex.io }  # its own zone, certificate and rules
-
-    # --- CI deployer OIDC trust (see /guide/ci-cd) ---
-    # branch: main               # default: main — branch this env deploys from
-    # tag: 'v*'                  # deploy on a tag pattern instead of a branch
-    # repository: org/repo       # default: inferred from your git origin
-
-    # --- App storage & shared infra names ---
-    # bucket: true                                   # app S3 bucket (AWS_BUCKET) — YOLO names and creates it
-    #                                                # (a bucket name instead adopts one that already exists)
-
-    # --- Cache & session (any app with tasks defaults to the cache, web apps to sessions too; uncomment only to override) ---
-    # cache:
-    #   store: redis             # default; file/database/array to opt out of the shared Valkey
-    # session:
-    #   driver: redis            # default (sessions live on the Valkey cluster); database/cookie/file to change the session backend
-
-    # --- YOLO-provisioned services this app consumes ---
-    # services:            # bare capability names only — service shape is hardcoded or lives in the environment manifest
-    #   - ivs
-    #   - mediaconvert
-    #   - rekognition
-
-    # --- Extra IAM for this app's task role (per-app; never reaches another app) ---
-    # task-role-policies:
-    #   - arn:aws:iam::123456789012:policy/my-app-extra-access
-    #   - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
-
-    # --- SQS queues ---
-    # queues:                      # priority tiers, drained strict-priority; omit for one queue
-    #   - high
-    #   - default                  # Laravel's default queue — keeps the naked queue name
-    # queue-visibility-timeout: 90 # seconds SQS hides a delivered message; keep above your longest job
-
-    # Every app runs three roles — web, the queue worker, and the scheduler. With
-    # just `web` below they share the one web container; uncommenting `queue` and/or
-    # `scheduler` further down extracts them into their own service (see the cascade
-    # table under tasks.web.*).
     tasks:
       web:
-        cpu: '512'               # default: '512' — Fargate CPU units
-        memory: '1024'           # default: '1024' — Fargate memory (MB)
-        # enable-execute-command: false  # default: true — ECS Exec shell access (gated by MFA on the admin tier)
-        # ssr: true                       # default: false — bundle Inertia SSR (needs Node in the Dockerfile)
-        # platform: linux/amd64           # default: linux/amd64
-        # shutdown-grace-period: 15       # default: 15 — web SIGTERM→SIGKILL window (also the ALB drain)
-        # log-retention: 30               # default: 30 — CloudWatch Logs retention (days)
-        #
-        # health-check:
-        #   path: /up                     # default: /up (Laravel's built-in health route)
-        #   interval: 10                  # default: 10 (seconds between checks)
-        #   timeout: 5                    # default: 5 — tolerant of a slow /up under load
-        #   healthy-threshold: 2          # default: 2
-        #   unhealthy-threshold: 5        # default: 5 — cushion for a slow-but-alive task
-        #   grace-period: 60              # default: 60 (ECS health-check grace period)
-        #
-        autoscaling: true              # REQUIRED for web — true (min 1, max 5) | false (fixed single task) | a block
-        # autoscaling:                    # …or tune it (web min must be ≥ 1)
-        #   min: 1                        # default: 1
-        #   max: 5                        # default: 5
-        #   cpu-utilization: 65           # default: 65 — the CPU safety-net policy
-        #   scale-out-cooldown: 60        # default: 60
-        #   scale-in-cooldown: 300        # default: 300
-        #   # request concurrency is the default signal (derived from task memory); burst
-        #   # (~10s spike detection) is unconditional for octane — neither has a knob
-
-      # Extract the queue into its own ECS service (scale independently of web). Like
-      # web, a standalone queue must be a config map that declares `autoscaling` — there's
-      # no bare `queue: true` shorthand. `false` switches the worker off entirely (jobs run
-      # inline, QUEUE_CONNECTION=sync) and tears the SQS queue down. Set
-      # autoscaling.min: 0 to scale to zero when idle — except when it also hosts the
-      # scheduler (no `scheduler` block below), where min 0 is rejected so cron isn't
-      # killed when it idles.
-      # queue:
-      #   autoscaling:                    # required — true | false | a { min, max } block
-      #     min: 0                        # 0 = scale to zero when idle (floor defaults to 1)
-      #     max: 5                        # default: 5
-      #     backlog-per-task: 100         # default: 100 — target messages per running task
-      #   cpu: '256'                      # default: '256'
-      #   memory: '512'                   # default: '512'
-      #   spot: false                     # default: false — true = Fargate Spot (~70% cheaper)
-      #   shutdown-grace-period: 60       # default: 60 — let an in-flight job finish on SIGTERM
-      #   enable-execute-command: false   # default: true
-
-      # Extract the scheduler into its own pinned-singleton service (always one
-      # task; deploys stop-then-start so a rollout never runs two crons), which
-      # drops the onOneServer() requirement. Without this block the scheduler rides
-      # the standalone queue if there is one, else the web container.
-      # scheduler:
-      #   cpu: '256'                      # default: '256'
-      #   memory: '512'                   # default: '512'
-      #   shutdown-grace-period: 115      # default: 115 — the in-flight schedule:run gets the whole stop window
-      #   enable-execute-command: false   # default: true
+        autoscaling: true
 
     build:
       - composer install --no-cache --no-interaction --optimize-autoloader --no-progress --classmap-authoritative --no-dev
       - npm ci
       - npm run build
-      - rm -rf package-lock.json node_modules database/seeders database/factories
+
+    deploy:
+      - php artisan migrate --force
+```
+
+## The full shape
+
+Every key YOLO understands, each value showing its default where one exists. This is a reference skeleton, not a valid manifest — some keys are mutually exclusive (a root `domain` is refused alongside `multitenancy`; `branch` and `tag` are alternatives) — so jump to a key's section below for its semantics before copying it.
+
+```yaml
+name: my-app
+timezone: UTC
+
+environments:
+  production:
+    account-id: '123456789012'
+    region: ap-southeast-2
+
+    domain: example.com
+    wildcard-subdomains: false
+
+    multitenancy:
+      landlord:
+        domain: app.example.com
+        wildcard-subdomains: true
+      queue-isolation: shared
+      tenants:
+        acme:
+        globex: { domain: globex.io }
+
+    branch: main
+    tag: 'v*'
+    repository: org/repo
+
+    bucket: true
+    database: my-database
+    services:
+      - ivs
+      - mediaconvert
+      - rekognition
+
+    cache:
+      store: redis
+    session:
+      driver: redis
+
+    queues:
+      - high
+      - default
+    queue-visibility-timeout: 90
+
+    task-role-policies:
+      - arn:aws:iam::123456789012:policy/my-app-extra-access
+
+    budget:
+      amount: 100
+      strategy: balanced
+
+    tasks:
+      web:
+        octane: true
+        cpu: '512'
+        memory: '1024'
+        platform: linux/amd64
+        enable-execute-command: true
+        shutdown-grace-period: 15
+        log-retention: 30
+        ssr: false
+        health-check:
+          path: /up
+          interval: 10
+          timeout: 5
+          healthy-threshold: 2
+          unhealthy-threshold: 5
+          grace-period: 60
+        autoscaling:
+          min: 1
+          max: 5
+          cpu-utilization: 65
+          scale-out-cooldown: 60
+          scale-in-cooldown: 300
+      queue:
+        autoscaling:
+          min: 1
+          max: 5
+          backlog-per-task: 100
+        cpu: '256'
+        memory: '512'
+        spot: false
+        shutdown-grace-period: 60
+        enable-execute-command: true
+      scheduler:
+        cpu: '256'
+        memory: '512'
+        shutdown-grace-period: 115
+        enable-execute-command: true
+
+    build:
+      - composer install --no-cache --no-interaction --optimize-autoloader --no-progress --classmap-authoritative --no-dev
+      - npm ci
+      - npm run build
 
     deploy:
       - php artisan migrate --force
@@ -136,7 +132,13 @@ environments:
       - php artisan optimize
 ```
 
-> Every commented key above has its own section below with the full semantics — this block is the map; the sections are the detail.
+| Area | Keys |
+|---|---|
+| App | [`name`](#name), [`timezone`](#timezone), [`environments`](#environments) |
+| Routing | [`domain`](#domain), [`wildcard-subdomains`](#wildcard-subdomains), [`multitenancy`](#multitenancy), [`branch` / `tag` / `repository`](#branch-tag-repository) |
+| Infrastructure | [`account-id`](#account-id), [`region`](#region), [`bucket`](#bucket), [`database`](#database), [`services`](#services), [`cache.store`](#cache), [`session.driver`](#session), [`queues`](#queues), [`queue-visibility-timeout`](#queue-visibility-timeout), [`task-role-policies`](#task-role-policies), [`budget`](#budget) |
+| Tasks | [`tasks.web`](#tasks-web), [`tasks.web.health-check`](#tasks-web-health-check), [`tasks.web.autoscaling`](#tasks-web-autoscaling), [`tasks.queue`](#tasks-queue), [`tasks.scheduler`](#tasks-scheduler) |
+| Hooks | [`build`](#build), [`deploy`](#deploy), [`deploy-all`](#deploy-all) |
 
 ::: warning Required keys
 Every command except `init` fails fast unless these three are present:
@@ -292,10 +294,6 @@ The value says **who owns the bucket**, and that is the whole difference:
 - **It exists in another AWS account.** S3's bucket namespace is global, so a name someone else has taken answers a probe with a 403 that is indistinguishable from "yours, but this tier may not read it". Adopting one of those would sync perfectly cleanly, grant the task role an ARN in a foreign account, and then fail every runtime write — so ownership is resolved from this account's own bucket listing, and a name that isn't in it is refused by name.
 
 A bucket name S3 would reject (wrong case, too short, doubled dots, IP-shaped) also fails validation here rather than surfacing as an `InvalidBucketName` part-way through an apply.
-
-### `alb`
-
-Name of the Application Load Balancer to use. Defaults to the per-environment shared `yolo-{env}` ALB.
 
 ### `services`
 
