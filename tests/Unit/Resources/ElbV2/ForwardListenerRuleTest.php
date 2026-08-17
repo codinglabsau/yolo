@@ -97,10 +97,23 @@ describe('priority', function (): void {
         // redirect has to outrank every forward rule deterministically rather
         // than by whichever name happened to hash lower.
         foreach (range(0, 50) as $i) {
-            expect(ForwardListenerRule::nextAvailablePriority("app-$i", [], 10000, 49999))
+            expect(ForwardListenerRule::nextAvailablePriority("app-$i", [], 10000, 29999))
                 ->toBeGreaterThanOrEqual(10000)
                 ->and(ForwardListenerRule::nextAvailablePriority("app-$i-redirect", [], 1000, 9999))
                 ->toBeLessThan(10000);
+        }
+    });
+
+    it('keeps every exact-host forward rule above any wildcard forward rule, whatever the names hash to', function (): void {
+        // A wildcard forward rule (`*.{domain}`) also matches every exact host
+        // beneath the domain — an env service's `search.{domain}`, a sibling
+        // app's host — so exact-host forwards must outrank wildcard-carrying
+        // forwards deterministically, not by hash race.
+        foreach (range(0, 50) as $i) {
+            expect(ForwardListenerRule::nextAvailablePriority("service-$i", [], 10000, 29999))
+                ->toBeLessThan(30000)
+                ->and(ForwardListenerRule::nextAvailablePriority("wildcard-app-$i", [], 30000, 49999))
+                ->toBeGreaterThanOrEqual(30000);
         }
     });
 });
@@ -119,13 +132,13 @@ describe('synchroniseConfiguration', function (): void {
             'DescribeRules' => new Result(['Rules' => [
                 [
                     'RuleArn' => 'arn:rule:mine',
-                    'Priority' => '1500',
+                    'Priority' => '15000',
                     'Conditions' => [['Field' => 'host-header', 'HostHeaderConfig' => ['Values' => ['example.com', 'www.example.com']]]],
                     'Actions' => [['Type' => 'forward', 'TargetGroupArn' => 'arn:tg:mine']],
                 ],
                 [
                     'RuleArn' => 'arn:rule:foreign',
-                    'Priority' => '1600',
+                    'Priority' => '16000',
                     'Conditions' => [['Field' => 'host-header', 'HostHeaderConfig' => ['Values' => ['custom.domain.com']]]],
                     'Actions' => [['Type' => 'forward', 'TargetGroupArn' => 'arn:tg:foreign']],
                 ],
@@ -151,6 +164,98 @@ describe('synchroniseConfiguration', function (): void {
             ->and(collect($captured)->pluck('name')->all())->not->toContain('DeleteRule');
     });
 
+    it('moves a wildcard rule stranded in the exact-forward band into the wildcard band', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'domain' => 'app.example.com',
+            'wildcard-subdomains' => true,
+        ]);
+
+        $captured = [];
+        bindRoutedElbV2Client([
+            // Hosts and action already match — the rule predates the forward/wildcard
+            // band split, so only its priority (15000) is wrong for its host-set.
+            'DescribeRules' => new Result(['Rules' => [[
+                'RuleArn' => 'arn:rule:mine',
+                'Priority' => '15000',
+                'Conditions' => [['Field' => 'host-header', 'HostHeaderConfig' => ['Values' => ['app.example.com', '*.app.example.com']]]],
+                'Actions' => [['Type' => 'forward', 'TargetGroupArn' => 'arn:tg:mine']],
+            ]]]),
+            'DescribeTags' => new Result(['TagDescriptions' => [
+                ['ResourceArn' => 'arn:rule:mine', 'Tags' => [['Key' => 'Name', 'Value' => 'yolo-testing-my-app']]],
+            ]]),
+            'DescribeTargetGroups' => new Result(['TargetGroups' => [['TargetGroupArn' => 'arn:tg:mine']]]),
+        ], $captured);
+
+        $changes = forwardRule()->synchroniseConfiguration(apply: true);
+
+        $setPriorities = collect($captured)->where('name', 'SetRulePriorities');
+
+        expect($changes)->toHaveCount(1)
+            ->and($changes[0]->attribute)->toBe('priority')
+            ->and($changes[0]->from)->toBe('15000')
+            ->and((int) $changes[0]->to)->toBeGreaterThanOrEqual(30000)->toBeLessThanOrEqual(49999)
+            ->and($setPriorities)->toHaveCount(1)
+            ->and($setPriorities->first()['args']['RulePriorities'][0]['RuleArn'])->toBe('arn:rule:mine')
+            // a priority-only drift never rewrites conditions/actions
+            ->and(collect($captured)->pluck('name')->all())->not->toContain('ModifyRule');
+    });
+
+    it('records the priority drift without writing on the plan pass', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'domain' => 'app.example.com',
+            'wildcard-subdomains' => true,
+        ]);
+
+        $captured = [];
+        bindRoutedElbV2Client([
+            'DescribeRules' => new Result(['Rules' => [[
+                'RuleArn' => 'arn:rule:mine',
+                'Priority' => '15000',
+                'Conditions' => [['Field' => 'host-header', 'HostHeaderConfig' => ['Values' => ['app.example.com', '*.app.example.com']]]],
+                'Actions' => [['Type' => 'forward', 'TargetGroupArn' => 'arn:tg:mine']],
+            ]]]),
+            'DescribeTags' => new Result(['TagDescriptions' => [
+                ['ResourceArn' => 'arn:rule:mine', 'Tags' => [['Key' => 'Name', 'Value' => 'yolo-testing-my-app']]],
+            ]]),
+            'DescribeTargetGroups' => new Result(['TargetGroups' => [['TargetGroupArn' => 'arn:tg:mine']]]),
+        ], $captured);
+
+        $changes = forwardRule()->synchroniseConfiguration(apply: false);
+
+        expect($changes)->toHaveCount(1)
+            ->and($changes[0]->attribute)->toBe('priority')
+            ->and(collect($captured)->pluck('name')->all())
+            ->not->toContain('SetRulePriorities')
+            ->not->toContain('ModifyRule');
+    });
+
+    it('leaves a rule alone when its priority already sits inside its band', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'domain' => 'app.example.com',
+            'wildcard-subdomains' => true,
+        ]);
+
+        $captured = [];
+        bindRoutedElbV2Client([
+            'DescribeRules' => new Result(['Rules' => [[
+                'RuleArn' => 'arn:rule:mine',
+                'Priority' => '35000',
+                'Conditions' => [['Field' => 'host-header', 'HostHeaderConfig' => ['Values' => ['app.example.com', '*.app.example.com']]]],
+                'Actions' => [['Type' => 'forward', 'TargetGroupArn' => 'arn:tg:mine']],
+            ]]]),
+            'DescribeTags' => new Result(['TagDescriptions' => [
+                ['ResourceArn' => 'arn:rule:mine', 'Tags' => [['Key' => 'Name', 'Value' => 'yolo-testing-my-app']]],
+            ]]),
+            'DescribeTargetGroups' => new Result(['TargetGroups' => [['TargetGroupArn' => 'arn:tg:mine']]]),
+        ], $captured);
+
+        expect(forwardRule()->synchroniseConfiguration(apply: true))->toBe([])
+            ->and(collect($captured)->pluck('name')->all())->not->toContain('SetRulePriorities');
+    });
+
     it('records no change and issues no ModifyRule when the rule already matches', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
@@ -161,7 +266,7 @@ describe('synchroniseConfiguration', function (): void {
         bindRoutedElbV2Client([
             'DescribeRules' => new Result(['Rules' => [[
                 'RuleArn' => 'arn:rule:mine',
-                'Priority' => '1500',
+                'Priority' => '15000',
                 'Conditions' => [['Field' => 'host-header', 'HostHeaderConfig' => ['Values' => ['example.com']]]],
                 'Actions' => [['Type' => 'forward', 'TargetGroupArn' => 'arn:tg:mine']],
             ]]]),

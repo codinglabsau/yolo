@@ -188,6 +188,8 @@ It also moves where the certificate is issued: normally YOLO requests one for th
 
 Wildcards are one label deep on both sides — `tenant.app.example.com` is served, `a.b.app.example.com` is not.
 
+The wildcard is purpose-agnostic: any extra host the app answers on (`api.{domain}`, a marketing subdomain) rides it with no manifest declaration — traffic reaches the same service and the app routes by `Host`. An exact host claimed by anything else on the shared listener (an environment service's `search.{domain}`, a sibling app) always outranks the wildcard — see [priority banding](/guide/domains#with-the-apex-www-redirect).
+
 ### `multitenancy`
 
 Everything multi-tenant, in one block. Its presence is what puts the app in [multi-tenant mode](/guide/multi-tenancy).
@@ -218,7 +220,7 @@ Four keys moved here and are refused where they used to sit, each naming its new
 
 #### `multitenancy.landlord`
 
-The landlord's own hosting, using the same shape a tenant does: a `domain`, optionally `wildcard-subdomains`. Wildcarding the landlord is what serves tenants beneath it, so a tenant needs no domain of its own.
+The landlord's own hosting, using the same shape a tenant does: a `domain`, optionally `wildcard-subdomains`. Wildcarding the landlord is what serves tenants beneath it, so a tenant needs no domain of its own. It also serves any extra landlord host (`api.{domain}`, `www.{domain}`) with no further declaration — the app routes by `Host` — which is why `domain` takes a single host, not a list.
 
 Optional — omit it for a multi-tenant app with no landlord host, where every tenant brings its own domain. The `:443` listener then takes its default certificate from the first tenant by sorted id.
 

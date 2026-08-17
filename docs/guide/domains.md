@@ -61,6 +61,8 @@ Two limits worth knowing: wildcards are **one label deep** on both the certifica
 
 When the canonical host is the apex, the wildcard (`*.example.com`) also matches the `www` sibling that the [redirect rule](#apex-and-www) answers on — so both rules match that host and only their priority decides which wins. YOLO bands rule priorities to make that deterministic: **a redirect rule always outranks every forward rule**, so `www` keeps 301-ing to the apex rather than being served by the wildcard. The certificate covers it either way (`example.com` + `*.example.com`).
 
+The same overlap exists with any exact host beneath the wildcard on the shared listener — an environment service's `search.{domain}`, or a sibling app's host. A second band resolves it the same way: **an exact-host forward rule always outranks a wildcard forward rule**, so the wildcard only ever catches hosts nothing else claims. Sync reconciles a rule into the band its host-set demands, so a rule created before its app went wildcard (or before the bands existed) moves on the next `sync:app`.
+
 On a bare subdomain there's no apex/`www` pair at all, so no redirect rule exists and nothing overlaps. That's the usual multi-tenant shape.
 
 A **`www`-canonical** domain (`domain: www.example.com`) is refused with `wildcard-subdomains`: the wildcard would land at `*.www.example.com`, which serves nobody, and moving the certificate onto the `www` host would leave the apex it redirects *from* uncovered — a TLS failure before the 301 could fire. Serve from the apex or a bare subdomain instead.
