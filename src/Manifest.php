@@ -72,6 +72,7 @@ class Manifest
         'multitenancy.tenants.*.domain',
         'multitenancy.tenants.*.wildcard-subdomains',
         'queues.*',
+        'queue-visibility-timeout',
         'bucket',
         'services',
         'database',
@@ -1347,11 +1348,13 @@ class Manifest
      * block returns `[]`: the app runs a single queue at its own name
      * (Helpers::queueNames).
      *
-     * Tiers are names only. Per-queue configuration (visibility timeout, retention,
-     * alarms) isn't a knob any consumer needs yet — sensible defaults are hardcoded on
-     * the Queue resource — so a map form (`queues: {high: …}`) is rejected rather than
-     * half-supported. When real per-tier config lands it introduces the map form
-     * alongside this list, not in place of it, so the list stays valid.
+     * Tiers are names only. Visibility timeout is deliberately app-wide
+     * ({@see queueVisibilityTimeout} — every tier drains through the one worker
+     * command with a single job timeout, so a per-tier value would have nothing to
+     * pair with), and no other per-tier knob has a consumer yet, so a map form
+     * (`queues: {high: …}`) is rejected rather than half-supported. When real
+     * per-tier config lands it introduces the map form alongside this list, not in
+     * place of it, so the list stays valid.
      *
      * @return array<int, string>
      */
@@ -1372,5 +1375,34 @@ class Manifest
         }
 
         return array_map(static fn ($tier): string => (string) $tier, $queues);
+    }
+
+    /**
+     * How long SQS hides a delivered message before re-delivering it, in seconds —
+     * the queue's VisibilityTimeout, applied to every queue the app provisions
+     * (all tiers, every tenant scope). One app-wide value rather than per-tier:
+     * visibility exists to outlast job runtime, and every tier drains through the
+     * same worker command with a single job timeout, so per-tier values would have
+     * nothing to pair with.
+     *
+     * The default clears the worker's default 60s job timeout with margin — a
+     * visibility below the job timeout re-delivers a message whose job is still
+     * running, so the job executes twice. Raise it in step with the app's
+     * longest-running job.
+     */
+    public static function queueVisibilityTimeout(): int
+    {
+        $seconds = Helpers::validatePositiveInt(
+            static::get('queue-visibility-timeout', 90),
+            'queue-visibility-timeout',
+        );
+
+        if ($seconds > 43200) {
+            throw new IntegrityCheckException(
+                'queue-visibility-timeout must be at most 43200 (12 hours, the SQS maximum)',
+            );
+        }
+
+        return $seconds;
     }
 }
