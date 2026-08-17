@@ -58,24 +58,23 @@ environments:
     repository: org/repo
 
     bucket: true
-    database: my-database
     services:
       - ivs
       - mediaconvert
       - rekognition
-
-    cache:
-      store: redis
-    session:
-      driver: redis
+    task-role-policies:
+      - arn:aws:iam::123456789012:policy/my-app-extra-access
 
     queues:
       - high
       - default
     queue-visibility-timeout: 90
 
-    task-role-policies:
-      - arn:aws:iam::123456789012:policy/my-app-extra-access
+    database: my-database
+    cache:
+      store: redis
+    session:
+      driver: redis
 
     budget:
       amount: 100
@@ -83,12 +82,18 @@ environments:
 
     tasks:
       web:
+        autoscaling:
+          min: 1
+          max: 5
+          cpu-utilization: 65
+          scale-out-cooldown: 60
+          scale-in-cooldown: 300
         octane: true
         cpu: '512'
         memory: '1024'
         platform: linux/amd64
-        enable-execute-command: true
         shutdown-grace-period: 15
+        enable-execute-command: true
         log-retention: 30
         ssr: false
         health-check:
@@ -98,12 +103,6 @@ environments:
           healthy-threshold: 2
           unhealthy-threshold: 5
           grace-period: 60
-        autoscaling:
-          min: 1
-          max: 5
-          cpu-utilization: 65
-          scale-out-cooldown: 60
-          scale-in-cooldown: 300
       queue:
         autoscaling:
           min: 1
@@ -136,8 +135,8 @@ environments:
 |---|---|
 | App | [`name`](#name), [`timezone`](#timezone), [`environments`](#environments) |
 | Routing | [`domain`](#domain), [`wildcard-subdomains`](#wildcard-subdomains), [`multitenancy`](#multitenancy), [`branch` / `tag` / `repository`](#branch-tag-repository) |
-| Infrastructure | [`account-id`](#account-id), [`region`](#region), [`bucket`](#bucket), [`database`](#database), [`services`](#services), [`cache.store`](#cache), [`session.driver`](#session), [`queues`](#queues), [`queue-visibility-timeout`](#queue-visibility-timeout), [`task-role-policies`](#task-role-policies), [`budget`](#budget) |
-| Tasks | [`tasks.web`](#tasks-web), [`tasks.web.health-check`](#tasks-web-health-check), [`tasks.web.autoscaling`](#tasks-web-autoscaling), [`tasks.queue`](#tasks-queue), [`tasks.scheduler`](#tasks-scheduler) |
+| Infrastructure | [`account-id`](#account-id), [`region`](#region), [`bucket`](#bucket), [`services`](#services), [`task-role-policies`](#task-role-policies), [`queues`](#queues), [`queue-visibility-timeout`](#queue-visibility-timeout), [`database`](#database), [`cache.store`](#cache), [`session.driver`](#session), [`budget`](#budget) |
+| Tasks | [`tasks.web`](#tasks-web), [`tasks.web.autoscaling`](#tasks-web-autoscaling), [`tasks.web.health-check`](#tasks-web-health-check), [`tasks.queue`](#tasks-queue), [`tasks.scheduler`](#tasks-scheduler) |
 | Hooks | [`build`](#build), [`deploy`](#deploy), [`deploy-all`](#deploy-all) |
 
 ::: warning Required keys
@@ -467,31 +466,18 @@ The last three rows are **web-less worker apps**: a pure queue consumer, a sched
 
 | Key | Default | Description |
 |---|---|---|
+| `tasks.web.autoscaling` | *(required)* | `true` for scaling on defaults, `false` for a fixed single task, or an object to tune — see [`tasks.web.autoscaling.*`](#tasks-web-autoscaling). |
 | `tasks.web.octane` | `true` | Run the web tier on Octane (FrankenPHP **worker mode**) via `octane:start`. Set `false` to run FrankenPHP in **classic mode** — per-request boot, no resident app — for an app that isn't Octane-safe yet. Same image and port either way; only the launch command differs, and the build's [Octane preflight](/guide/building-and-deploying) is skipped (classic mode needs no `laravel/octane`). YOLO sizes the classic thread pool from this task's `cpu`/`memory` — see [what the ceiling is](/guide/scaling#what-the-ceiling-is-and-why-yolo-pins-it). |
 | `tasks.web.cpu` | `'512'` | Fargate CPU units. |
 | `tasks.web.memory` | `'1024'` | Fargate memory (MB). |
 | `tasks.web.platform` | `linux/amd64` | Docker build platform. |
-| `tasks.web.enable-execute-command` | `true` | Enable ECS Exec so [`yolo run`](/reference/commands#yolo-run) can attach. Access is gated by MFA on the admin IAM tier; set `false` to disable it for this group. |
-| `tasks.web.ssr` | `false` | Run Inertia's SSR renderer (`inertia:start-ssr`, a Node process on `127.0.0.1:13714`) **bundled** in the web container, so PHP server-renders your Vue pages. `true`, or an object to override its `shutdown-grace-period`. SSR is always bundled — never its own service. Needs a Node runtime in your Dockerfile and an SSR bundle from `npm run build`; YOLO injects `INERTIA_SSR_ENABLED=true` unless your `.env` sets it. See [Inertia SSR](/guide/images#inertia-ssr). |
 | `tasks.web.shutdown-grace-period` | `15` | Seconds the web process gets on `SIGTERM` before `SIGKILL`. It's also the ALB drain window and the container `stopTimeout`. See [graceful shutdown](/guide/images#graceful-shutdown). |
+| `tasks.web.enable-execute-command` | `true` | Enable ECS Exec so [`yolo run`](/reference/commands#yolo-run) can attach. Access is gated by MFA on the admin IAM tier; set `false` to disable it for this group. |
 | `tasks.web.log-retention` | `30` | CloudWatch Logs retention (days). Must be a valid CloudWatch retention value. |
+| `tasks.web.ssr` | `false` | Run Inertia's SSR renderer (`inertia:start-ssr`, a Node process on `127.0.0.1:13714`) **bundled** in the web container, so PHP server-renders your Vue pages. `true`, or an object to override its `shutdown-grace-period`. SSR is always bundled — never its own service. Needs a Node runtime in your Dockerfile and an SSR bundle from `npm run build`; YOLO injects `INERTIA_SSR_ENABLED=true` unless your `.env` sets it. See [Inertia SSR](/guide/images#inertia-ssr). |
+| `tasks.web.health-check` | *(defaults)* | ALB health-check tuning — see [`tasks.web.health-check.*`](#tasks-web-health-check). |
 
 YOLO manages the ECS task and execution roles for you — the task role is per-app (extend it with [`task-role-policies`](#task-role-policies)); the execution role is shared per environment.
-
-### `tasks.web.health-check.*`
-
-ALB target-group health check. The path defaults to Laravel's built-in [`/up` health route](https://laravel.com/docs/deployment#the-health-route), which returns `200` only once the framework boots without exceptions (and `500` otherwise) — so a broken boot fails the check. Requests to it also dispatch Laravel's `Illuminate\Foundation\Events\DiagnosingHealth` event, so you can add a listener that checks your database or cache and throws to mark the app unhealthy.
-
-The other defaults are tuned to avoid false-positive failures on a Laravel/Octane app under load: when the FrankenPHP worker pool is saturated the `/up` probe answers slowly (4–5s) rather than failing, so the timeout sits at `5`s — a slow-but-alive task stays in service — with a roomier `5`-failure unhealthy threshold for cushion. A genuine deadlock (no response / 30s+) still trips within ~a minute. Capacity is [autoscaling](/guide/scaling)'s job, not the health check's. (An app on classic mode — [`tasks.web.octane: false`](#tasks-web) — boots per request rather than saturating a worker pool, so its latency shape differs, but the same generous defaults apply.) Override any field per app if you need to:
-
-| Key | Default | Description |
-|---|---|---|
-| `health-check.path` | `/up` | Path the ALB requests — defaults to Laravel's built-in `/up` health route. Keep it on a route that exercises PHP so a broken boot still fails the check. |
-| `health-check.interval` | `10` | Seconds between checks. |
-| `health-check.timeout` | `5` | Seconds before a check times out. Must stay below the interval. |
-| `health-check.healthy-threshold` | `2` | Consecutive successes to mark healthy. |
-| `health-check.unhealthy-threshold` | `5` | Consecutive failures to mark unhealthy. |
-| `health-check.grace-period` | `60` | Seconds after task start before health checks count (the ECS health-check grace period). |
 
 ### `tasks.web.autoscaling.*`
 
@@ -522,6 +508,21 @@ tasks:
 ::: warning Bundled scheduler
 A plain web app bundles the scheduler in the web container, so scaling to N tasks runs cron N times — every scheduled task would fire on each replica. Every scheduled task **must** use Laravel's `->onOneServer()`, or extract the scheduler into its own service ([`tasks.scheduler`](#tasks-scheduler)). The `sync` plan lists an advisory under its **Warnings** section whenever the scheduler is bundled into an autoscaling host (the web task, or a standalone queue — both must declare autoscaling). See [Scaling → the scheduler](/guide/scaling#the-scheduler).
 :::
+
+### `tasks.web.health-check.*`
+
+ALB target-group health check. The path defaults to Laravel's built-in [`/up` health route](https://laravel.com/docs/deployment#the-health-route), which returns `200` only once the framework boots without exceptions (and `500` otherwise) — so a broken boot fails the check. Requests to it also dispatch Laravel's `Illuminate\Foundation\Events\DiagnosingHealth` event, so you can add a listener that checks your database or cache and throws to mark the app unhealthy.
+
+The other defaults are tuned to avoid false-positive failures on a Laravel/Octane app under load: when the FrankenPHP worker pool is saturated the `/up` probe answers slowly (4–5s) rather than failing, so the timeout sits at `5`s — a slow-but-alive task stays in service — with a roomier `5`-failure unhealthy threshold for cushion. A genuine deadlock (no response / 30s+) still trips within ~a minute. Capacity is [autoscaling](/guide/scaling)'s job, not the health check's. (An app on classic mode — [`tasks.web.octane: false`](#tasks-web) — boots per request rather than saturating a worker pool, so its latency shape differs, but the same generous defaults apply.) Override any field per app if you need to:
+
+| Key | Default | Description |
+|---|---|---|
+| `health-check.path` | `/up` | Path the ALB requests — defaults to Laravel's built-in `/up` health route. Keep it on a route that exercises PHP so a broken boot still fails the check. |
+| `health-check.interval` | `10` | Seconds between checks. |
+| `health-check.timeout` | `5` | Seconds before a check times out. Must stay below the interval. |
+| `health-check.healthy-threshold` | `2` | Consecutive successes to mark healthy. |
+| `health-check.unhealthy-threshold` | `5` | Consecutive failures to mark unhealthy. |
+| `health-check.grace-period` | `60` | Seconds after task start before health checks count (the ECS health-check grace period). |
 
 ---
 
