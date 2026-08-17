@@ -130,6 +130,38 @@ describe('queue tiers', function (): void {
     });
 });
 
+describe('queue visibility timeout', function (): void {
+    it('defaults the visibility timeout past the worker\'s default job timeout', function (): void {
+        writeManifest([]);
+
+        expect(Manifest::queueVisibilityTimeout())->toBe(90);
+    });
+
+    it('reads a declared visibility timeout', function (): void {
+        writeManifest(['queue-visibility-timeout' => 900]);
+
+        expect(Manifest::queueVisibilityTimeout())->toBe(900);
+    });
+
+    it('accepts queue-visibility-timeout through the manifest validator', function (): void {
+        writeManifest(['queue-visibility-timeout' => 900]);
+
+        expect(Manifest::unknownKeys())->toBe([]);
+    });
+
+    it('hard-fails on a non-integer visibility timeout', function (): void {
+        writeManifest(['queue-visibility-timeout' => '5 minutes']);
+
+        expect(fn (): int => Manifest::queueVisibilityTimeout())->toThrow(IntegrityCheckException::class);
+    });
+
+    it('hard-fails on a visibility timeout outside the SQS bounds', function (int $seconds): void {
+        writeManifest(['queue-visibility-timeout' => $seconds]);
+
+        expect(fn (): int => Manifest::queueVisibilityTimeout())->toThrow(IntegrityCheckException::class);
+    })->with([0, 43201]);
+});
+
 describe('queue isolation', function (): void {
     it('defaults a multi-tenant app to shared queues', function (): void {
         writeManifest(['multitenancy' => ['tenants' => ['acme' => [], 'globex' => []]]]);

@@ -16,6 +16,9 @@ class Manifest
     /** Keys allowed at the manifest root, outside `environments`. */
     protected const ALLOWED_ROOT_KEYS = ['name', 'timezone', 'environments'];
 
+    /** {@see queueVisibilityTimeout} for why 90 and why app-wide. */
+    public const int DEFAULT_QUEUE_VISIBILITY_TIMEOUT = 90;
+
     /**
      * An in-memory manifest that stands in for yolo.yml when set. Default null —
      * every command reads the file from disk, unchanged. `destroy:environment`
@@ -72,6 +75,7 @@ class Manifest
         'multitenancy.tenants.*.domain',
         'multitenancy.tenants.*.wildcard-subdomains',
         'queues.*',
+        'queue-visibility-timeout',
         'bucket',
         'services',
         'database',
@@ -1347,11 +1351,13 @@ class Manifest
      * block returns `[]`: the app runs a single queue at its own name
      * (Helpers::queueNames).
      *
-     * Tiers are names only. Per-queue configuration (visibility timeout, retention,
-     * alarms) isn't a knob any consumer needs yet — sensible defaults are hardcoded on
-     * the Queue resource — so a map form (`queues: {high: …}`) is rejected rather than
-     * half-supported. When real per-tier config lands it introduces the map form
-     * alongside this list, not in place of it, so the list stays valid.
+     * Tiers are names only. Visibility timeout is deliberately app-wide
+     * ({@see queueVisibilityTimeout} — every tier drains through the one worker
+     * command with a single job timeout, so a per-tier value would have nothing to
+     * pair with), and no other per-tier knob has a consumer yet, so a map form
+     * (`queues: {high: …}`) is rejected rather than half-supported. When real
+     * per-tier config lands it introduces the map form alongside this list, not in
+     * place of it, so the list stays valid.
      *
      * @return array<int, string>
      */
@@ -1372,5 +1378,32 @@ class Manifest
         }
 
         return array_map(static fn ($tier): string => (string) $tier, $queues);
+    }
+
+    /**
+     * How long SQS hides a delivered message before re-delivering it, in seconds —
+     * the queue's VisibilityTimeout, applied to every queue the app provisions
+     * (all tiers, every tenant scope). One app-wide value rather than per-tier:
+     * visibility exists to outlast job runtime, and every tier drains through the
+     * same worker command with a single job timeout, so per-tier values would have
+     * nothing to pair with.
+     *
+     * The default clears the worker's default 60s job timeout with margin — a
+     * visibility below the job timeout re-delivers a message whose job is still
+     * running, so the job executes twice. Raise it in step with the app's
+     * longest-running job.
+     */
+    public static function queueVisibilityTimeout(): int
+    {
+        $value = static::get('queue-visibility-timeout', self::DEFAULT_QUEUE_VISIBILITY_TIMEOUT);
+
+        if (! is_int($value) || $value < 1 || $value > 43200) {
+            throw new IntegrityCheckException(sprintf(
+                'Invalid queue-visibility-timeout "%s" — expected a whole number of seconds between 1 and 43200 (12 hours, the SQS maximum).',
+                is_scalar($value) ? $value : gettype($value),
+            ));
+        }
+
+        return $value;
     }
 }

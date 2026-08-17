@@ -57,6 +57,12 @@ environments:
     #   - arn:aws:iam::123456789012:policy/my-app-extra-access
     #   - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
 
+    # --- SQS queues ---
+    # queues:                      # priority tiers, drained strict-priority; omit for one queue
+    #   - high
+    #   - default                  # Laravel's default queue — keeps the naked queue name
+    # queue-visibility-timeout: 90 # seconds SQS hides a delivered message; keep above your longest job
+
     # Every app runs three roles — web, the queue worker, and the scheduler. With
     # just `web` below they share the one web container; uncommenting `queue` and/or
     # `scheduler` further down extracts them into their own service (see the cascade
@@ -328,6 +334,24 @@ task-role-policies:
 ```
 
 The list is reconciled on every `yolo sync`: an ARN you add gets attached, and one you remove gets detached — the role's attachment set is YOLO's to own, so there's no left-behind grant. Each entry must be a customer- or AWS-managed IAM policy ARN; a malformed value fails the sync plan rather than silently dropping the grant. The YOLO baseline policy (ECS Exec channels, this app's SQS queues, SES send, and read+write on the [`bucket`](#bucket) when declared) is always attached and isn't listed here.
+
+### `queues`
+
+A list of queue **tier names in strict-priority order** — the worker drains the first tier to empty before glancing at the next (the comma-list semantics of Laravel's `--queue`). Declaring tiers provisions one SQS queue per tier per scope: `high` becomes `yolo-{env}-{app}-high` while the `default` tier keeps the naked scope name (it's Laravel's default queue, so un-routed jobs keep landing on it and adding tiers never renames it). On a multi-tenant app with [`queue-isolation: dedicated`](#multitenancy-queue-isolation), every tenant (and the landlord) gets the full tier set.
+
+```yaml
+queues:
+  - high
+  - default
+```
+
+Tiers are names only — the map form (`queues: {high: ...}`) is rejected. Omit the block entirely for a single queue at the app's name.
+
+### `queue-visibility-timeout`
+
+How long SQS hides a delivered message before re-delivering it, in seconds — the visibility timeout on every queue the app provisions (all tiers, every tenant scope). Default `90`; SQS caps it at `43200` (12 hours).
+
+Visibility must outlast your longest job: a message re-delivered while its job is still running executes the job twice, so keep this above the worker's job timeout (60s unless a job declares its own `$timeout`). Raise it in step with long-running jobs — and consider [`tasks.queue.shutdown-grace-period`](#tasks-queue) alongside it, so an in-flight long job also survives a deploy's drain window. The value is reconciled on every `yolo sync`, so a change reaches already-provisioned queues.
 
 ---
 
