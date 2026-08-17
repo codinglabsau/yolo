@@ -16,9 +16,6 @@ class Manifest
     /** Keys allowed at the manifest root, outside `environments`. */
     protected const ALLOWED_ROOT_KEYS = ['name', 'timezone', 'environments'];
 
-    /** {@see queueVisibilityTimeout} for why 90 and why app-wide. */
-    public const int DEFAULT_QUEUE_VISIBILITY_TIMEOUT = 90;
-
     /**
      * An in-memory manifest that stands in for yolo.yml when set. Default null —
      * every command reads the file from disk, unchanged. `destroy:environment`
@@ -1395,15 +1392,17 @@ class Manifest
      */
     public static function queueVisibilityTimeout(): int
     {
-        $value = static::get('queue-visibility-timeout', self::DEFAULT_QUEUE_VISIBILITY_TIMEOUT);
+        $seconds = Helpers::validatePositiveInt(
+            static::get('queue-visibility-timeout', 90),
+            'queue-visibility-timeout',
+        );
 
-        if (! is_int($value) || $value < 1 || $value > 43200) {
-            throw new IntegrityCheckException(sprintf(
-                'Invalid queue-visibility-timeout "%s" — expected a whole number of seconds between 1 and 43200 (12 hours, the SQS maximum).',
-                is_scalar($value) ? $value : gettype($value),
-            ));
+        if ($seconds > 43200) {
+            throw new IntegrityCheckException(
+                'queue-visibility-timeout must be at most 43200 (12 hours, the SQS maximum)',
+            );
         }
 
-        return $value;
+        return $seconds;
     }
 }
