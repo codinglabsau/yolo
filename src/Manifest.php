@@ -270,10 +270,11 @@ class Manifest
 
     /**
      * Whether YOLO owns the application data bucket. `bucket: true` puts it in
-     * YOLO's keyed namespace (see {@see Paths::s3AppBucket}), so YOLO creates it,
-     * hardens it and keeps it reconciled like every other bucket it provisions. A
-     * bucket *name* means the opposite: a bring-your-own bucket YOLO adopts, never
-     * creates and never writes a byte of configuration to.
+     * YOLO's keyed namespace (see {@see Paths::s3AppBucket}), so YOLO creates and
+     * hardens it at birth — then hands it over: like an adopted bucket, it is never
+     * reconciled afterwards (see {@see S3Bucket} — it holds user data). A bucket
+     * *name* is a bring-your-own bucket YOLO adopts, never creates and never
+     * writes a byte of configuration to.
      */
     public static function managesAppBucket(): bool
     {
