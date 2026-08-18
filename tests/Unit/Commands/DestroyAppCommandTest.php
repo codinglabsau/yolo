@@ -94,6 +94,10 @@ it('composes the MediaConvert role teardown when the app uses mediaconvert', fun
         ->toContain(Steps\Destroy\App\TeardownMediaConvertRoleStep::class);
 });
 
+it('composes the web alert alarm teardown for a web app', function () use ($soloWeb): void {
+    expect(destroyPlanClasses($soloWeb))->toContain(Steps\Destroy\App\TeardownWebAlertAlarmStep::class);
+});
+
 it('tears resources down in reverse dependency order', function () use ($soloWeb): void {
     $classes = destroyPlanClasses($soloWeb);
     $at = fn (string $class): int|false => array_search($class, $classes, true);

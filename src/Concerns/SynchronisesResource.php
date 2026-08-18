@@ -137,4 +137,27 @@ trait SynchronisesResource
 
         return StepResult::DELETED;
     }
+
+    /**
+     * Fold many per-resource results into one step result: the first pending
+     * or applied write wins, a clean SYNCED beats nothing-to-do, SKIPPED only
+     * when every resource skipped. For steps that sync a family of resources
+     * in one pass.
+     *
+     * @param  array<int, StepResult>  $results
+     */
+    protected function aggregateResults(array $results): StepResult
+    {
+        foreach ([
+            StepResult::WOULD_CREATE, StepResult::CREATED,
+            StepResult::WOULD_DELETE, StepResult::DELETED,
+            StepResult::WOULD_SYNC,
+        ] as $significant) {
+            if (in_array($significant, $results, true)) {
+                return $significant;
+            }
+        }
+
+        return in_array(StepResult::SYNCED, $results, true) ? StepResult::SYNCED : StepResult::SKIPPED;
+    }
 }

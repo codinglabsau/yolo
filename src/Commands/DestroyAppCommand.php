@@ -138,6 +138,7 @@ class DestroyAppCommand extends SyncSteppedCommand implements PlansSequentially
         return [
             'app' => array_values(array_filter([
                 Steps\Destroy\App\TeardownCloudWatchDashboardStep::class,
+                Steps\Destroy\App\TeardownWebAlertAlarmStep::class,
                 Steps\Destroy\App\TeardownCloudFrontAssetDistributionStep::class,
                 // Autoscaling before the service it scales: burst (policy + its
                 // standalone alarm), then the scalable target (cascades the rest).
