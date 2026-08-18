@@ -89,6 +89,7 @@ class InitCommand extends Command
         $this->gitIgnoreFilesAndDirectories();
         $this->initialiseManifest();
         $this->initialiseDockerfile();
+        $this->initialisePhpIni();
         $this->initialiseDockerignore();
         $this->initialiseEnv();
 
@@ -225,6 +226,25 @@ class InitCommand extends Command
         }
 
         copy(Paths::stubs('Dockerfile.stub'), Paths::base('Dockerfile'));
+    }
+
+    /**
+     * Publish-once: the app owns docker/php.ini from here (the Dockerfile COPYs
+     * it to $PHP_INI_DIR/conf.d/zz-app.ini), so an existing copy is the app's
+     * tuning and is never overwritten without asking.
+     */
+    protected function initialisePhpIni(): void
+    {
+        if (file_exists(Paths::base('docker/php.ini'))
+            && ! confirm('A docker/php.ini already exists. Overwrite it with the YOLO baseline?', default: false)) {
+            return;
+        }
+
+        if (! is_dir(Paths::base('docker'))) {
+            mkdir(Paths::base('docker'), recursive: true);
+        }
+
+        copy(Paths::stubs('php.ini.stub'), Paths::base('docker/php.ini'));
     }
 
     protected function initialiseDockerignore(): void
