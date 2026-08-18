@@ -74,6 +74,7 @@ class Manifest
         'queues.*',
         'queue-visibility-timeout',
         'bucket',
+        'mysqldump',
         'services',
         'database',
         'cache.store',
@@ -846,6 +847,19 @@ class Manifest
             static::hasWeb() => ServerGroup::WEB,
             default => null,
         };
+    }
+
+    /**
+     * Whether this app runs scheduled logical MySQL backups. Default ON — losing
+     * backups should take a deliberate `mysqldump: false`, never an omission —
+     * but backups ride the scheduler (the runtime provider schedules the dump
+     * command), so an app with cron switched off has no host to run them and the
+     * whole feature is moot there.
+     */
+    public static function backsUpMysql(): bool
+    {
+        return (bool) static::get('mysqldump', true)
+            && static::schedulerHost() instanceof ServerGroup;
     }
 
     /**

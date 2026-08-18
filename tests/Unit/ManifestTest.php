@@ -725,3 +725,31 @@ describe('database', function (): void {
             ->toThrow(IntegrityCheckException::class, 'not an endpoint hostname');
     });
 });
+
+describe('mysql backups', function (): void {
+    it('defaults backups ON for an app with a scheduler host', function (): void {
+        writeManifest(['tasks' => ['web' => true]]);
+
+        expect(Manifest::backsUpMysql())->toBeTrue();
+    });
+
+    it('honours the mysqldump opt-out', function (): void {
+        // Losing backups takes a deliberate `mysqldump: false` — e.g. an app
+        // with no MySQL database — never an omission.
+        writeManifest(['mysqldump' => false, 'tasks' => ['web' => true]]);
+
+        expect(Manifest::backsUpMysql())->toBeFalse();
+    });
+
+    it('turns backups off when cron runs nowhere to host the dump', function (): void {
+        writeManifest(['tasks' => ['web' => true, 'scheduler' => false]]);
+
+        expect(Manifest::backsUpMysql())->toBeFalse();
+    });
+
+    it('accepts the mysqldump key through the manifest validator', function (): void {
+        writeManifest(['mysqldump' => false]);
+
+        expect(Manifest::unknownKeys())->toBe([]);
+    });
+});

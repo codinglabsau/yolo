@@ -235,7 +235,7 @@ it('preserves the deployed image when re-registering for a genuine infra change'
         ->toBe('111111111111.dkr.ecr.ap-southeast-2.amazonaws.com/yolo-testing-my-app:26.21.2.1500');
 });
 
-it('sets no container environment for a non-autoscaling web app', function (): void {
+it('sets only the backup environment for a non-autoscaling web app', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['autoscaling' => false]],
@@ -246,7 +246,26 @@ it('sets no container environment for a non-autoscaling web app', function (): v
         'yolo-testing-ecs-execution-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role',
     ]);
 
-    // Burst is off, so the runtime provider has nothing to do — no env to set.
+    // Burst is off so no burst pair — but the web container hosts the scheduler,
+    // so it still carries the backup destination (backups default on).
+    expect(SyncTaskDefinitionStep::payload()['containerDefinitions'][0]['environment'])
+        ->toBe([
+            ['name' => 'YOLO_MYSQL_BACKUP_DESTINATION', 'value' => 'yolo-111111111111-testing-dumps/my-app'],
+        ]);
+});
+
+it('sets no container environment when burst and backups are both off', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'mysqldump' => false,
+        'tasks' => ['web' => ['autoscaling' => false]],
+    ]);
+
+    bindMockIamClient([
+        'yolo-testing-my-app-ecs-task-role' => 'arn:aws:iam::111111111111:role/yolo-testing-my-app-ecs-task-role',
+        'yolo-testing-ecs-execution-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role',
+    ]);
+
     expect(SyncTaskDefinitionStep::payload()['containerDefinitions'][0])
         ->not->toHaveKey('environment');
 });
@@ -255,11 +274,56 @@ it('sets the burst-metrics service name and vCPU allocation on the autoscaling w
     // The default web tier autoscales, so the runtime YoloServiceProvider needs the ECS
     // service name to dimension the metric by (its presence is also the gate, so burst
     // needs no separate enabled flag) and the task's vCPU allocation for the CPU fallback
-    // denominator. The beforeEach manifest sizes web at 1024 CPU units → 1 vCPU.
+    // denominator. The beforeEach manifest sizes web at 1024 CPU units → 1 vCPU. The web
+    // container also hosts the scheduler here, so the backup destination rides along.
     expect(SyncTaskDefinitionStep::payload()['containerDefinitions'][0]['environment'])
         ->toBe([
             ['name' => 'YOLO_BURST_SERVICE', 'value' => 'yolo-testing-my-app-web'],
             ['name' => 'YOLO_BURST_CPU', 'value' => '1'],
+            ['name' => 'YOLO_MYSQL_BACKUP_DESTINATION', 'value' => 'yolo-111111111111-testing-dumps/my-app'],
+        ]);
+});
+
+it('adds the tenant database list to the backup environment on a multi-tenant app', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'multitenancy' => [
+            'landlord' => ['domain' => 'app.example.com', 'wildcard-subdomains' => true],
+            'tenants' => ['acme' => null, 'globex' => null],
+        ],
+        'tasks' => ['web' => ['autoscaling' => false]],
+    ]);
+
+    bindMockIamClient([
+        'yolo-testing-my-app-ecs-task-role' => 'arn:aws:iam::111111111111:role/yolo-testing-my-app-ecs-task-role',
+        'yolo-testing-ecs-execution-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role',
+    ]);
+
+    expect(SyncTaskDefinitionStep::payload()['containerDefinitions'][0]['environment'])
+        ->toContain(['name' => 'YOLO_MYSQL_BACKUP_TENANTS', 'value' => 'acme,globex']);
+});
+
+it('moves the backup environment onto the standalone queue when it hosts the scheduler', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => [
+            'web' => ['autoscaling' => false],
+            'queue' => ['autoscaling' => ['min' => 1, 'max' => 2]],
+        ],
+    ]);
+
+    bindMockIamClient([
+        'yolo-testing-my-app-ecs-task-role' => 'arn:aws:iam::111111111111:role/yolo-testing-my-app-ecs-task-role',
+        'yolo-testing-ecs-execution-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role',
+    ]);
+
+    // The scheduler rides the standalone queue, so the destination goes there —
+    // the web container would carry a value nothing reads.
+    expect(SyncTaskDefinitionStep::payload()['containerDefinitions'][0])
+        ->not->toHaveKey('environment');
+    expect(SyncTaskDefinitionStep::payload(ServerGroup::QUEUE)['containerDefinitions'][0]['environment'])
+        ->toBe([
+            ['name' => 'YOLO_MYSQL_BACKUP_DESTINATION', 'value' => 'yolo-111111111111-testing-dumps/my-app'],
         ]);
 });
 

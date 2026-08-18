@@ -79,6 +79,7 @@ class YoloServiceProvider extends ServiceProvider
             $this->commands([
                 Runtime\Commands\ScoutHealCommand::class,
                 Runtime\Commands\ScoutReimportCommand::class,
+                Runtime\Commands\MysqlBackupCommand::class,
             ]);
 
             // Scheduled here so a wiped index rebuilds without any app
@@ -86,6 +87,16 @@ class YoloServiceProvider extends ServiceProvider
             $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
                 if (config('yolo.search.heal') && (array) config('scout.typesense.client-settings', []) !== []) {
                     $schedule->command('scout:heal')->everyFiveMinutes();
+                }
+
+                // Same pattern for the database dumps: the destination env var
+                // exists only on the scheduler host's task definition (and only
+                // when the manifest backs up MySQL), so its presence is the
+                // gate. Backgrounded so a long dump never holds up the rest of
+                // the minute's schedule; the command locks itself, so no
+                // onOneServer() is needed even when cron ticks on every web task.
+                if ((string) config('yolo.backup.destination') !== '') {
+                    $schedule->command('yolo:backup-databases')->dailyAt('09:00')->runInBackground();
                 }
             });
         }
