@@ -172,7 +172,7 @@ it('skips when another run holds the lock', function (): void {
 it('fails loudly when a destination is configured but no database is', function (): void {
     // Succeeding with nothing to dump would read as "backed up" forever — the
     // one silent state this command must never report.
-    config()->set('database.connections.mysql.database', null);
+    config()->set('database.connections.mysql.database');
 
     $command = fakeBackupCommand($this->app);
 
