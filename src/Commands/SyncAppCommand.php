@@ -337,6 +337,7 @@ class SyncAppCommand extends SyncSteppedCommand
                     ]
                     : [],
                 // observability — runs last so every resource it charts already exists
+                Steps\Sync\App\SyncWebAlertAlarmStep::class,
                 Steps\Sync\App\SyncCloudWatchDashboardStep::class,
             ],
         ];

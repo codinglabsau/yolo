@@ -174,6 +174,9 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 Steps\Sync\Environment\SyncWafLogGroupStep::class,
                 Steps\Sync\Environment\SyncWafWebAclStep::class,
                 Steps\Sync\Environment\SyncWafAssociationStep::class,
+                // The env alert alarms — after the SNS topic they fire to and
+                // the load balancer whose ARN suffix they dimension on.
+                Steps\Sync\Environment\SyncAlertAlarmsStep::class,
             ],
         ];
     }

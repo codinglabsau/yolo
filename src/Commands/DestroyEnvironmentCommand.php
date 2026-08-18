@@ -194,6 +194,8 @@ class DestroyEnvironmentCommand extends SyncSteppedCommand implements PlansSeque
             Steps\Destroy\Environment\TeardownCacheSecurityGroupStep::class,
             Steps\Destroy\Environment\TeardownCacheSubnetGroupStep::class,
             Steps\Destroy\Environment\TeardownCacheParameterGroupStep::class,
+            // The alert alarms before the topic they fire to.
+            Steps\Destroy\Environment\TeardownAlertAlarmsStep::class,
             Steps\Destroy\Environment\TeardownSnsAlarmTopicStep::class,
             // Storage last: the env logs bucket, then the env config bucket, whose
             // deletion is the final act of the env (Tier A) teardown. The IAM tier

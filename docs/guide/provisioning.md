@@ -92,6 +92,19 @@ Tune the rest in the AWS console; YOLO won't undo it.
 
 **Blocked and counted requests are logged to CloudWatch Logs** — the `aws-waf-logs-yolo-{env}` log group (the `aws-waf-logs-` prefix is mandated by WAFv2, so this is the one YOLO log group not named `yolo-{env}-…`), retained for 30 days. Each entry names the rule that matched, so you can answer *why* an IP was rejected and see what a Count-mode rule *would* have blocked — and the app's task role has read access to the stream, so an application can look up whether a given IP is tripping a rule. Allowed traffic is deliberately not logged here: the ALB's own access logs (in the env logs bucket) already record every request including WAF rejections, and duplicating the allow stream would multiply the logging cost for no extra signal. Logging is reconciled on every sync like the rest of the policy.
 
+## Alert alarms
+
+Every environment gets a family of **"a human should look"** alarms — named `…-alert-…` to keep them distinct from the autoscaling alarms, whose ALARM state is part of their control loop and means nothing by itself. Every alert fires to the env's `yolo-{env}-alarms` SNS topic (state changes in both directions), and none of them should be in ALARM under normal operation — if an alert is red, something is genuinely wrong:
+
+| Alert | Scope | Fires when |
+|---|---|---|
+| `alb-5xx` | Environment | The load balancer itself is generating 5xx — no healthy targets, a dead target group, a broken rule |
+| `valkey-memory` / `valkey-evictions` | Environment | The shared cache/session node is above 85% memory, or evicting keys — sessions being thrown away |
+| `database-cpu` / `-memory` / `-connections` / `-buffer-cache` | Environment (when the env manifest declares a [`database`](/reference/commands#yolo-sync-environment)) | The cluster writer is saturating: CPU ≥ 80% sustained, freeable memory under 10% of the instance, connections past 75% of the class ceiling, or the working set no longer fitting in memory. The absolute thresholds derive from the writer's instance class at sync time |
+| `web-5xx` | App | The app is serving 5xx to ≥ 5% of its own requests (rate, not count, with a traffic floor so one error on a trickle can't page) |
+
+Topic **subscriptions are yours** — YOLO creates the topic but never subscribes endpoints. Subscribe an email or chat webhook to start; promote to a pager integration once the signal has earned trust. Thresholds are hardcoded — these are "bad things are happening" bars, not tuning knobs.
+
 ## Plan, confirm, apply
 
 `sync` never surprises you. It runs as a three-step flow:
