@@ -13,6 +13,7 @@ use Codinglabs\Yolo\Aws\WafV2;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Aws\CloudFront;
 use Codinglabs\Yolo\Aws\CloudWatch;
+use Codinglabs\Yolo\Services\Alerts;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\WafV2\WebAcl;
@@ -21,6 +22,7 @@ use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Resources\S3\AssetBucket;
 use Codinglabs\Yolo\Resources\ElbV2\TargetGroup;
 use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
+use Codinglabs\Yolo\Resources\ElastiCache\CacheCluster;
 use Codinglabs\Yolo\Resources\CloudWatchLogs\TaskLogGroup;
 use Codinglabs\Yolo\Resources\CloudFront\AssetDistribution;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -69,7 +71,8 @@ class Dashboard implements Deletable
     // this floor means the service is degraded or fully out of rotation.
     protected const EXPECTED_HEALTHY_HOSTS = 1;
 
-    // 5xx SLO line (% of requests). A sustained breach is a user-facing outage.
+    // 5xx SLO line (% of requests) — the aspiration, drawn alongside the alert
+    // alarm's threshold (Alerts::WEB_5XX_RATE_PERCENT), which is what pages.
     protected const ERROR_RATE_SLO = 1;
 
     // Public: service definitions reference the palette when composing their
@@ -216,6 +219,15 @@ class Dashboard implements Deletable
             // identifier — or a manifest declared ahead of the database — read as
             // a clean sync. Declare the key only once the database exists.
             'rds' => Rds::target(),
+            // The writer's instance class feeds the capacity-derived alarm
+            // lines (connection ceiling, memory floor) — null while the writer
+            // isn't resolvable, which just omits the lines.
+            'databaseWriterClass' => ($target = Rds::target()) !== null && $target['cluster']
+                ? Alerts::writerClass($target['identifier'])
+                : null,
+            // The env-shared Valkey node, like the WAF: shown for any app
+            // behind it, omitted until the cluster exists.
+            'cacheNodeId' => (new CacheCluster())->exists() ? (new CacheCluster())->name() . '-001' : null,
             'buckets' => static::bucketNames(),
             'taskLogGroup' => $web ? (new TaskLogGroup())->name() : null,
             // Each service definition contributes its own context entries —
@@ -364,6 +376,13 @@ class Dashboard implements Deletable
             $widgets = [...$widgets, ...$section];
         }
 
+        // The env-shared Valkey node — like the WAF, shown for any app behind
+        // it and omitted until the cluster exists.
+        if ($context['cacheNodeId'] !== null) {
+            [$section, $y] = static::cacheSection($context, $y);
+            $widgets = [...$widgets, ...$section];
+        }
+
         [$section, $y] = static::storageSection($context, $y);
         $widgets = [...$widgets, ...$section];
 
@@ -443,7 +462,8 @@ class Dashboard implements Deletable
                     ['AWS/ApplicationELB', 'RequestCount', ...static::appAlbDimensions($targetGroup, $alb), ['id' => 'm2', 'visible' => false]],
                 ],
                 'annotations' => ['horizontal' => [
-                    ['color' => static::RED, 'label' => 'SLO', 'value' => static::ERROR_RATE_SLO, 'fill' => 'above'],
+                    ['color' => static::ORANGE, 'label' => 'SLO', 'value' => static::ERROR_RATE_SLO],
+                    ['color' => static::RED, 'label' => 'Alarm', 'value' => Alerts::WEB_5XX_RATE_PERCENT, 'fill' => 'above'],
                 ]],
             ]);
             $y += 6;
@@ -499,12 +519,15 @@ class Dashboard implements Deletable
                 ],
             ]);
 
+            // 5-minute period so the ELB 5xx alarm line is honest: the alarm
+            // evaluates a 5-minute Sum, and a per-minute chart would overstate
+            // the threshold fivefold.
             $widgets[] = static::metric(12, $y, 12, 6, [
                 'title' => 'HTTP errors',
                 'region' => $region,
                 'view' => 'timeSeries',
                 'stacked' => false,
-                'period' => 60,
+                'period' => 300,
                 'stat' => 'Sum',
                 'metrics' => [
                     ['AWS/ApplicationELB', 'HTTPCode_Target_4XX_Count', ...static::appAlbDimensions($targetGroup, $alb), ['label' => '4xx', 'color' => static::ORANGE]],
@@ -513,6 +536,9 @@ class Dashboard implements Deletable
                     // to a target group, so this one line stays env-wide (labelled as such).
                     ['AWS/ApplicationELB', 'HTTPCode_ELB_5XX_Count', 'LoadBalancer', $alb, ['label' => 'ELB 5xx (LB-wide)', 'color' => static::PURPLE]],
                 ],
+                'annotations' => ['horizontal' => [
+                    ['color' => static::RED, 'label' => 'ELB 5xx alarm', 'value' => Alerts::ALB_5XX_PER_FIVE_MINUTES, 'fill' => 'above'],
+                ]],
             ]);
             $y += 6;
         }
@@ -855,6 +881,15 @@ class Dashboard implements Deletable
         $widgets = [static::header($y, '# Database')];
         $y++;
 
+        // The alert alarms only exist for a cluster (they dimension on the
+        // WRITER role), so the alarm lines draw only there — and the capacity
+        // pair only when the writer's class is tabulated (not Serverless v2).
+        $capacityClass = $context['databaseWriterClass'] !== null
+            && $context['databaseWriterClass'] !== 'db.serverless'
+            && array_key_exists($context['databaseWriterClass'], Alerts::AURORA_CLASSES)
+                ? $context['databaseWriterClass']
+                : null;
+
         $widgets[] = static::metric(0, $y, 12, 6, [
             'title' => 'RDS CPU',
             'region' => $region,
@@ -866,6 +901,9 @@ class Dashboard implements Deletable
             'metrics' => $rds['cluster']
                 ? [$metric('CPUUtilization', ['label' => 'Writer', 'color' => static::BLUE]), $reader('CPUUtilization', ['label' => 'Readers', 'color' => static::PURPLE])]
                 : [$metric('CPUUtilization')],
+            ...$rds['cluster'] ? ['annotations' => ['horizontal' => [
+                ['color' => static::RED, 'label' => 'Alarm', 'value' => Alerts::DATABASE_CPU_PERCENT, 'fill' => 'above'],
+            ]]] : [],
         ]);
 
         $widgets[] = static::metric(12, $y, 12, 6, [
@@ -878,6 +916,9 @@ class Dashboard implements Deletable
             'metrics' => $rds['cluster']
                 ? [$metric('DatabaseConnections', ['label' => 'Writer', 'color' => static::BLUE]), $reader('DatabaseConnections', ['label' => 'Readers', 'color' => static::PURPLE])]
                 : [$metric('DatabaseConnections')],
+            ...$capacityClass !== null ? ['annotations' => ['horizontal' => [
+                ['color' => static::RED, 'label' => 'Alarm', 'value' => Alerts::databaseConnectionsCeiling($capacityClass), 'fill' => 'above'],
+            ]]] : [],
         ]);
         $y += 6;
 
@@ -889,6 +930,9 @@ class Dashboard implements Deletable
             'period' => 60,
             'stat' => 'Average',
             'metrics' => [$metric('FreeableMemory')],
+            ...$capacityClass !== null ? ['annotations' => ['horizontal' => [
+                ['color' => static::RED, 'label' => 'Alarm', 'value' => Alerts::databaseMemoryFloorBytes($capacityClass), 'fill' => 'below'],
+            ]]] : [],
         ]);
 
         // SelectThroughput/Insert/Update/Delete are Aurora-only metrics — a plain
@@ -964,6 +1008,77 @@ class Dashboard implements Deletable
                 ],
             ]);
         }
+        $y += 6;
+
+        // The buffer-cache hit ratio backs the database-buffer-cache alert —
+        // Aurora-only, like the alarm.
+        if ($rds['cluster']) {
+            $widgets[] = static::metric(0, $y, 12, 6, [
+                'title' => 'Aurora buffer cache hit ratio',
+                'region' => $region,
+                'view' => 'timeSeries',
+                'stacked' => false,
+                'period' => 60,
+                'stat' => 'Average',
+                'yAxis' => ['left' => ['min' => 0, 'max' => 100, 'showUnits' => false]],
+                'metrics' => [$metric('BufferCacheHitRatio', ['label' => 'Writer', 'color' => static::BLUE])],
+                'annotations' => ['horizontal' => [
+                    ['color' => static::RED, 'label' => 'Alarm', 'value' => Alerts::DATABASE_BUFFER_CACHE_PERCENT, 'fill' => 'below'],
+                ]],
+            ]);
+            $y += 6;
+        }
+
+        return [$widgets, $y];
+    }
+
+    /**
+     * The env-shared Valkey node: memory pressure and evictions, each with its
+     * alert alarm's threshold drawn on — evictions at the alarm's 5-minute
+     * period so the line means what the alarm means.
+     *
+     * @param  array<string, mixed>  $context
+     * @return array{0: array<int, array<string, mixed>>, 1: int}
+     */
+    protected static function cacheSection(array $context, int $y): array
+    {
+        $region = $context['region'];
+        $node = $context['cacheNodeId'];
+
+        $widgets = [static::header($y, '# Cache')];
+        $y++;
+
+        $widgets[] = static::metric(0, $y, 12, 6, [
+            'title' => 'Valkey memory',
+            'region' => $region,
+            'view' => 'timeSeries',
+            'stacked' => false,
+            'period' => 60,
+            'stat' => 'Average',
+            'yAxis' => ['left' => ['min' => 0, 'max' => 100, 'showUnits' => false]],
+            'metrics' => [
+                ['AWS/ElastiCache', 'DatabaseMemoryUsagePercentage', 'CacheClusterId', $node, ['label' => 'Memory %', 'color' => static::BLUE]],
+            ],
+            'annotations' => ['horizontal' => [
+                ['color' => static::RED, 'label' => 'Alarm', 'value' => Alerts::VALKEY_MEMORY_PERCENT, 'fill' => 'above'],
+            ]],
+        ]);
+
+        $widgets[] = static::metric(12, $y, 12, 6, [
+            'title' => 'Valkey evictions',
+            'region' => $region,
+            'view' => 'timeSeries',
+            'stacked' => false,
+            'period' => 300,
+            'stat' => 'Sum',
+            'yAxis' => ['left' => ['min' => 0]],
+            'metrics' => [
+                ['AWS/ElastiCache', 'Evictions', 'CacheClusterId', $node, ['label' => 'Evictions / 5 min', 'color' => static::ORANGE]],
+            ],
+            'annotations' => ['horizontal' => [
+                ['color' => static::RED, 'label' => 'Alarm', 'value' => Alerts::VALKEY_EVICTIONS_PER_FIVE_MINUTES, 'fill' => 'above'],
+            ]],
+        ]);
         $y += 6;
 
         return [$widgets, $y];

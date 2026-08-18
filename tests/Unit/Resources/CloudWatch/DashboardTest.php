@@ -8,6 +8,7 @@ use Aws\CommandInterface;
 use Codinglabs\Yolo\Helpers;
 use GuzzleHttp\Promise\Create;
 use Aws\Exception\AwsException;
+use Codinglabs\Yolo\Services\Alerts;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\CloudWatch\Dashboard;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
@@ -40,6 +41,8 @@ function dashboardContext(array $overrides = []): array
         'queueService' => null,
         'schedulerService' => null,
         'rds' => ['identifier' => 'my-cluster', 'cluster' => true],
+        'databaseWriterClass' => 'db.r6g.large',
+        'cacheNodeId' => 'yolo-testing-cache-001',
         'buckets' => ['yolo-111111111111-testing-my-app-config', 'yolo-111111111111-testing-my-app-assets'],
         'taskLogGroup' => '/yolo/testing-my-app',
         'ivsLogGroup' => null,
@@ -90,6 +93,11 @@ function bindDashboardEnv(string $body): void
 
 beforeEach(function (): void {
     writeManifest(['region' => 'ap-southeast-2', 'account-id' => '111111111111']);
+
+    // resolveContext probes the env cache cluster for the # Cache section —
+    // an empty ElastiCache world reads as "no cluster yet" (section omitted).
+    $elastiCache = [];
+    bindMockElastiCacheClient([], $elastiCache);
 });
 
 it('names the dashboard per app + environment', function (): void {
@@ -205,6 +213,49 @@ it('omits the target-health panel when the target group is not resolved yet', fu
     expect(findWidget($body, 'Target health'))->toBeNull();
     // The 5xx rate only needs the ALB, so it still renders and takes the left slot.
     expect(findWidget($body, '5xx error rate')['x'])->toBe(0);
+});
+
+it('draws every alert alarm threshold as a red line from the same values the alarms sync', function (): void {
+    $body = Dashboard::body(dashboardContext());
+
+    $line = function (?array $widget): array {
+        expect($widget)->not->toBeNull();
+
+        return collect($widget['properties']['annotations']['horizontal'])
+            ->firstWhere('color', Dashboard::RED);
+    };
+
+    expect($line(findWidget($body, '5xx error rate'))['value'])->toBe(Alerts::WEB_5XX_RATE_PERCENT);
+    expect($line(findWidget($body, 'HTTP errors'))['value'])->toBe(Alerts::ALB_5XX_PER_FIVE_MINUTES);
+    expect($line(findWidget($body, 'RDS CPU'))['value'])->toBe(Alerts::DATABASE_CPU_PERCENT);
+    expect($line(findWidget($body, 'RDS connections'))['value'])->toBe(Alerts::databaseConnectionsCeiling('db.r6g.large'));
+    expect($line(findWidget($body, 'RDS freeable memory'))['value'])->toBe(Alerts::databaseMemoryFloorBytes('db.r6g.large'));
+    expect($line(findWidget($body, 'Aurora buffer cache hit ratio'))['value'])->toBe(Alerts::DATABASE_BUFFER_CACHE_PERCENT);
+
+    // The HTTP errors panel runs at the alarm's own 5-minute period so the
+    // line means what the alarm means.
+    expect(findWidget($body, 'HTTP errors')['properties']['period'])->toBe(300);
+});
+
+it('renders the # Cache section with the valkey alarm lines, and omits it without a cache node', function (): void {
+    $body = Dashboard::body(dashboardContext());
+
+    expect(widgetTitles($body))->toContain('# Cache');
+    expect(findWidget($body, 'Valkey memory')['properties']['annotations']['horizontal'][0]['value'])->toBe(Alerts::VALKEY_MEMORY_PERCENT);
+
+    $evictions = findWidget($body, 'Valkey evictions');
+    expect($evictions['properties']['annotations']['horizontal'][0]['value'])->toBe(Alerts::VALKEY_EVICTIONS_PER_FIVE_MINUTES)
+        ->and($evictions['properties']['period'])->toBe(300);
+
+    expect(widgetTitles(Dashboard::body(dashboardContext(['cacheNodeId' => null]))))->not->toContain('# Cache');
+});
+
+it('omits the capacity-derived lines for a Serverless v2 writer but keeps the percentage lines', function (): void {
+    $body = Dashboard::body(dashboardContext(['databaseWriterClass' => 'db.serverless']));
+
+    expect(findWidget($body, 'RDS connections')['properties'])->not->toHaveKey('annotations');
+    expect(findWidget($body, 'RDS freeable memory')['properties'])->not->toHaveKey('annotations');
+    expect(findWidget($body, 'RDS CPU')['properties']['annotations']['horizontal'][0]['value'])->toBe(Alerts::DATABASE_CPU_PERCENT);
 });
 
 it('expresses the 5xx error rate as this app target 5xx over its own requests with a 1% SLO line', function (): void {
