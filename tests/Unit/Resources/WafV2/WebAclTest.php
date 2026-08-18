@@ -100,12 +100,28 @@ it('seeds the country block but never reconciles it — operator owns it after c
         'ListIPSets' => wafIpSetsResult(),
         'ListWebACLs' => wafWebAclsResult(),
         'GetWebACL' => liveWebAclResult($operatorTuned),
+        'GetLoggingConfiguration' => wafLoggingConfigurationResult(),
     ], $captured);
 
     // No drift: the country rule isn't YOLO-owned, so its re-scoping is invisible
     // to reconcile and never rewritten.
     expect((new WebAcl())->synchroniseConfiguration())->toBe([]);
     expect(array_column($captured, 'name'))->not->toContain('UpdateWebACL');
+});
+
+it('wires logging to the env aws-waf-logs group as part of create', function (): void {
+    $captured = [];
+    bindRoutedWafV2Client([
+        'ListIPSets' => wafIpSetsResult(),
+        'CreateWebACL' => new Result(['Summary' => ['ARN' => 'arn:aws:wafv2:ap-southeast-2:111:regional/webacl/yolo-testing-waf/acl-id']]),
+    ], $captured);
+
+    (new WebAcl())->create();
+
+    $put = collect($captured)->firstWhere('name', 'PutLoggingConfiguration');
+
+    expect($put['args']['LoggingConfiguration']['ResourceArn'])->toBe('arn:aws:wafv2:ap-southeast-2:111:regional/webacl/yolo-testing-waf/acl-id')
+        ->and($put['args']['LoggingConfiguration']['LogDestinationConfigs'])->toBe([WAF_LOG_GROUP_ARN]);
 });
 
 it('reports exists from the live web ACL list', function (): void {
@@ -123,10 +139,63 @@ it('reports no change when the live policy matches', function (): void {
         'ListIPSets' => wafIpSetsResult(),
         'ListWebACLs' => wafWebAclsResult(),
         'GetWebACL' => liveWebAclResult(desiredWafRules()),
+        'GetLoggingConfiguration' => wafLoggingConfigurationResult(),
     ], $captured);
 
     expect((new WebAcl())->synchroniseConfiguration())->toBe([]);
     expect(array_column($captured, 'name'))->not->toContain('UpdateWebACL');
+});
+
+it('enables logging into the env aws-waf-logs group when the ACL has none', function (): void {
+    // Policy in sync; GetLoggingConfiguration empty — WAFv2 models never-enabled
+    // logging as a nonexistent configuration.
+    $captured = [];
+    bindRoutedWafV2Client([
+        'ListIPSets' => wafIpSetsResult(),
+        'ListWebACLs' => wafWebAclsResult(),
+        'GetWebACL' => liveWebAclResult(desiredWafRules()),
+    ], $captured);
+
+    $changes = (new WebAcl())->synchroniseConfiguration();
+
+    expect(collect($changes)->pluck('attribute')->all())->toBe(['logging']);
+    expect(array_column($captured, 'name'))->not->toContain('UpdateWebACL');
+
+    $put = collect($captured)->firstWhere('name', 'PutLoggingConfiguration');
+
+    expect($put['args']['LoggingConfiguration']['ResourceArn'])->toBe('arn:aws:wafv2:ap-southeast-2:111:regional/webacl/yolo-testing-waf/acl-id')
+        ->and($put['args']['LoggingConfiguration']['LogDestinationConfigs'])->toBe([WAF_LOG_GROUP_ARN])
+        ->and($put['args']['LoggingConfiguration']['LoggingFilter'])->toBe((new WebAcl())->loggingFilter());
+});
+
+it('keeps blocked and counted requests only in the logging filter', function (): void {
+    $filter = (new WebAcl())->loggingFilter();
+
+    expect($filter['DefaultBehavior'])->toBe('DROP');
+
+    $kept = collect($filter['Filters'][0]['Conditions'])->pluck('ActionCondition.Action');
+
+    expect($filter['Filters'][0]['Behavior'])->toBe('KEEP')
+        ->and($kept->all())->toEqualCanonicalizing(['BLOCK', 'COUNT', 'EXCLUDED_AS_COUNT'])
+        ->and($kept)->not->toContain('ALLOW');
+});
+
+it('reconciles a logging filter that has drifted even when the destination matches', function (): void {
+    // Destination right, filter stripped (e.g. hand-edited to log everything).
+    $captured = [];
+    bindRoutedWafV2Client([
+        'ListIPSets' => wafIpSetsResult(),
+        'ListWebACLs' => wafWebAclsResult(),
+        'GetWebACL' => liveWebAclResult(desiredWafRules()),
+        'GetLoggingConfiguration' => new Result(['LoggingConfiguration' => [
+            'LogDestinationConfigs' => [WAF_LOG_GROUP_ARN],
+        ]]),
+    ], $captured);
+
+    $changes = (new WebAcl())->synchroniseConfiguration();
+
+    expect(collect($changes)->pluck('attribute')->all())->toBe(['logging']);
+    expect(array_column($captured, 'name'))->toContain('PutLoggingConfiguration');
 });
 
 it('detects a default-action drift and rewrites the ACL', function (): void {
@@ -173,7 +242,8 @@ it('computes the diff without writing under apply:false', function (): void {
     ], $captured);
 
     expect((new WebAcl())->synchroniseConfiguration(apply: false))->not->toBeEmpty();
-    expect(array_column($captured, 'name'))->not->toContain('UpdateWebACL');
+    expect(array_column($captured, 'name'))->not->toContain('UpdateWebACL')
+        ->not->toContain('PutLoggingConfiguration');
 });
 
 it('preserves a hand-added rule through a reconciling update', function (): void {

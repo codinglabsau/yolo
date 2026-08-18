@@ -13,7 +13,7 @@ it('describes the ECS task policy with the four ssmmessages exec permissions', f
     $document = (new EcsTaskPolicy())->document();
 
     expect($document['Version'])->toBe('2012-10-17');
-    expect($document['Statement'])->toHaveCount(3);
+    expect($document['Statement'])->toHaveCount(4);
     expect($document['Statement'][0])->toMatchArray([
         'Effect' => 'Allow',
         'Resource' => '*',
@@ -56,6 +56,25 @@ it('grants SES send scoped to this region\'s verified identities', function (): 
         'ses:SendRawEmail',
         'ses:SendEmail',
     ]);
+});
+
+it('grants read-only access to the env WAF request-log stream', function (): void {
+    $statement = collect((new EcsTaskPolicy())->document()['Statement'])
+        ->firstWhere('Resource', 'arn:aws:logs:ap-southeast-2:111111111111:log-group:aws-waf-logs-yolo-testing:*');
+
+    expect($statement)->not->toBeNull();
+    expect($statement['Effect'])->toBe('Allow');
+    expect($statement['Action'])->toEqualCanonicalizing([
+        'logs:GetLogEvents',
+        'logs:GetLogGroupFields',
+        'logs:GetLogRecord',
+        'logs:FilterLogEvents',
+    ]);
+
+    // Read-only — no writes, no unscopeable Insights results.
+    expect(collect((new EcsTaskPolicy())->document()['Statement'])->pluck('Action')->flatten())
+        ->not->toContain('logs:PutLogEvents')
+        ->not->toContain('logs:GetQueryResults');
 });
 
 it('grants namespace-scoped cloudwatch:PutMetricData when web autoscaling burst is on', function (): void {
@@ -107,8 +126,8 @@ it('grants read+write on the declared data bucket, scoped to that bucket only', 
 
     $statements = (new EcsTaskPolicy())->document()['Statement'];
 
-    // The three baseline statements (ssmmessages, SQS, SES) plus the two bucket ones.
-    expect($statements)->toHaveCount(5);
+    // The four baseline statements (ssmmessages, SQS, SES, WAF logs) plus the two bucket ones.
+    expect($statements)->toHaveCount(6);
 
     $object = collect($statements)->firstWhere('Resource', 'arn:aws:s3:::my-app-uploads/*');
     expect($object['Effect'])->toBe('Allow');
@@ -138,7 +157,7 @@ it('grants the task role IVS access when the app consumes the ivs service', func
 
     $statements = (new EcsTaskPolicy())->document()['Statement'];
 
-    expect($statements)->toHaveCount(4);
+    expect($statements)->toHaveCount(5);
 
     $ivs = collect($statements)->firstWhere('Action', ['ivs:*']);
     expect($ivs['Effect'])->toBe('Allow');
@@ -164,7 +183,7 @@ it('grants the task role MediaConvert job access and PassRole on the per-app rol
 
     $statements = (new EcsTaskPolicy())->document()['Statement'];
 
-    expect($statements)->toHaveCount(5);
+    expect($statements)->toHaveCount(6);
 
     $jobs = collect($statements)->firstWhere('Action', [
         'mediaconvert:CreateJob',
@@ -203,7 +222,7 @@ it('grants the task role Rekognition access when the app consumes the rekognitio
 
     $statements = (new EcsTaskPolicy())->document()['Statement'];
 
-    expect($statements)->toHaveCount(4);
+    expect($statements)->toHaveCount(5);
 
     $rekognition = collect($statements)->firstWhere('Action', ['rekognition:*']);
     expect($rekognition['Effect'])->toBe('Allow');

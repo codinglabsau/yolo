@@ -15,13 +15,15 @@ use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Resources\S3\S3Bucket;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
+use Codinglabs\Yolo\Resources\CloudWatchLogs\WafLogGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
 
 /**
  * YOLO-managed customer-managed IAM policy granting this app's ECS task role its
  * baseline runtime permissions: the four ssmmessages permissions ECS Exec needs,
- * SQS access scoped to this app's own queues, and SES send — plus read+write on
+ * SQS access scoped to this app's own queues, SES send, and read on the env WAF
+ * request-log group — plus read+write on
  * the application data bucket when the manifest declares one (`bucket`). App-scoped
  * so the grants are this app's alone and never reach another app's role — attached
  * to the app task role by AttachEcsTaskRolePoliciesStep.
@@ -191,6 +193,23 @@ class EcsTaskPolicy implements Deletable, Resource, SynchronisesConfiguration
                 'Action' => [
                     'ses:SendRawEmail',
                     'ses:SendEmail',
+                ],
+            ],
+            [
+                // Read on the env WAF's request logs (blocked/counted requests,
+                // rule-attributed) so the app can answer "is this IP tripping a
+                // rule" and feed ban decisions. Content-ARN (':*') form — the
+                // read actions address streams, not the group. Env-shared like
+                // the WAF itself, so the stream spans every app behind the ALB.
+                // Insights (GetQueryResults) deliberately omitted: results are
+                // unscopeable, and FilterLogEvents covers the lookup shape.
+                'Effect' => 'Allow',
+                'Resource' => (new WafLogGroup())->arn() . ':*',
+                'Action' => [
+                    'logs:GetLogEvents',
+                    'logs:GetLogGroupFields',
+                    'logs:GetLogRecord',
+                    'logs:FilterLogEvents',
                 ],
             ],
         ];

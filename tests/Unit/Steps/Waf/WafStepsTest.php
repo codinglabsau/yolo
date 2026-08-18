@@ -37,6 +37,7 @@ it('honours the reconciler contract for the web ACL', function (): void {
                 'ListWebACLs' => wafWebAclsResult(),
                 'GetWebACL' => liveWebAclResult($desired),
                 'ListTagsForResource' => wafWebAclTagsResult(),
+                'GetLoggingConfiguration' => wafLoggingConfigurationResult(),
             ], $captured);
         },
         bindDrifted: function (array &$captured) use ($desired): void {
