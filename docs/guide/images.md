@@ -6,7 +6,7 @@ You own a small `Dockerfile`; YOLO generates the moving parts (entrypoint, proce
 
 ## What `yolo init` scaffolds
 
-`yolo init` writes a `Dockerfile` and `.dockerignore` to your project root. The default Dockerfile is built on [FrankenPHP](https://frankenphp.dev/) and looks like this:
+`yolo init` writes a `Dockerfile`, `.dockerignore`, and a baseline `docker/php.ini` to your project root. The default Dockerfile is built on [FrankenPHP](https://frankenphp.dev/) and looks like this:
 
 ```dockerfile
 FROM dunglas/frankenphp:1-php8.4-alpine
@@ -22,6 +22,9 @@ COPY --chown=www-data:www-data . /app
 # Place the generated supervisor config at a default search path so both
 # `supervisord` and an interactive `supervisorctl` find it without -c.
 COPY docker/supervisord.conf /etc/supervisord.conf
+# The app's PHP configuration (published by `yolo init`, yours to tune). The zz-
+# prefix sorts it after the extension fragments, so its values win.
+COPY docker/php.ini $PHP_INI_DIR/conf.d/zz-app.ini
 RUN chmod +x /app/.yolo-entrypoint.sh
 
 USER www-data
@@ -37,6 +40,12 @@ CMD ["web"]
 ```
 
 Customise it freely — add PHP extensions, system packages, a different base image. Just keep the contract below intact.
+
+## PHP configuration
+
+The base image activates no `php.ini`, so without one PHP runs its compile defaults — 2M uploads, 8M POST bodies, opcache stat'ing an immutable filesystem on every request. Nothing else in the stack imposes a request-body limit, so those two ini values *are* the app's upload ceiling.
+
+`yolo init` publishes `docker/php.ini` — a baseline that sets **only deliberate departures from PHP's defaults** (request-body limits, immutable-image opcache settings), which the Dockerfile copies to `$PHP_INI_DIR/conf.d/zz-app.ini`. The file is **published once and then it's yours**: tune it freely, YOLO never rewrites it. When a release moves the baseline, the release notes say so and you apply what you want to your copy. To adopt the pattern in an existing app, copy `vendor/codinglabsau/yolo/stubs/php.ini.stub` to `docker/php.ini` and add the `COPY` line above to your Dockerfile — the [runtime check](#runtime-checks) tells you exactly this if you forget.
 
 ## What YOLO generates
 
@@ -69,15 +78,20 @@ For your image to work with YOLO, the Dockerfile must:
    CMD ["web"]
    ```
 4. **Expose port `8000`** — the web port is hardcoded to `8000` (no manifest key). The ALB health-checks this port at `/up` (Laravel's built-in [health route](https://laravel.com/docs/deployment#the-health-route)) — override the path or timing via [`tasks.web.health-check.*`](/reference/manifest#tasks-web-health-check).
-5. Have **`supervisor`** and **`supercronic`** installed (the default Dockerfile installs both via `apk add`). supervisord runs the container's process tree; [supercronic](https://github.com/aptible/supercronic) drives the scheduler's cron — the container runs as `www-data`, and busybox `crond` silently loads zero jobs for a non-root user, so it cannot stand in.
+5. **Copy the published PHP configuration** into the runtime's scan directory (the `zz-` prefix loads it after the extension fragments, so its values win):
+   ```dockerfile
+   COPY docker/php.ini $PHP_INI_DIR/conf.d/zz-app.ini
+   ```
+6. Have **`supervisor`** and **`supercronic`** installed (the default Dockerfile installs both via `apk add`). supervisord runs the container's process tree; [supercronic](https://github.com/aptible/supercronic) drives the scheduler's cron — the container runs as `www-data`, and busybox `crond` silently loads zero jobs for a non-root user, so it cannot stand in.
 
 ## Runtime checks
 
-`yolo build` runs three preflights so a deploy can't ship an image that won't run:
+`yolo build` runs four preflights so a deploy can't ship an image that won't run:
 
 - **Octane** — *before* the build, it reads `composer.lock` and fails if `laravel/octane` isn't in the production requirements, since the web role runs `octane:start`. Skipped when [`tasks.web.octane: false`](/reference/manifest#tasks-web): classic mode runs the `frankenphp` binary directly and needs no octane package.
 - **Scheduler (supercronic)** — it runs the freshly-built image and fails if `supercronic` isn't on the `PATH`. The scheduler runs in almost every app (the check is skipped only when cron is switched off with [`tasks.scheduler: false`](/reference/manifest#tasks-scheduler)), and the failure this prevents is **silent**: busybox `crond` — the obvious fallback already in the base image — ignores crontabs not owned by root without logging a word, so an image without supercronic deploys green, stays healthy, and simply never fires a scheduled job.
 - **SSR (Node)** — when [`tasks.web.ssr`](/reference/manifest#tasks-web) is on, it runs the freshly-built image and fails if `node` isn't on the `PATH`. Like the scheduler check, this matters because a missing SSR runtime is otherwise **silent** — Inertia falls back to client-side rendering and the web tier stays healthy on `/up`, so the deploy goes green with SSR quietly off.
+- **PHP configuration** — it runs the freshly-built image and fails if PHP loaded no app ini fragment (`zz-app.ini` — see [PHP configuration](#php-configuration)). An image with no ini runs PHP's compile defaults, and the failure that causes is **silent**: 2M uploads deploy green and only surface when a user's upload dies.
 
 The image probes run the image (rather than grepping the Dockerfile), so they see the resolved base image and multi-stage `COPY --from` layers too — no false negatives.
 

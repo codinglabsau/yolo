@@ -1,0 +1,26 @@
+; Published by `yolo init` — this file is the app's to own, tune it freely.
+; The Dockerfile COPYs it to $PHP_INI_DIR/conf.d/zz-app.ini: the zz- prefix
+; sorts it after the extension fragments install-php-extensions writes, so
+; these values win. YOLO never rewrites a published copy.
+;
+; Everything not set here inherits PHP's defaults — only deliberate departures
+; belong in this file.
+
+; Don't advertise the PHP version in response headers.
+expose_php = Off
+
+; PHP's bare defaults cap uploads at 2M and POST bodies at 8M, and nothing else
+; in the stack imposes a request-body limit (the load balancer and web server
+; pass bodies through) — so these two ARE the app's upload ceiling.
+upload_max_filesize = 500M
+post_max_size = 505M
+
+; The image is immutable and the deploy hooks run `php artisan optimize` before
+; the server starts, so opcache warms from the final files and never needs to
+; stat for changes. The corollary: anything writing PHP at runtime stays
+; invisible until the task restarts.
+opcache.validate_timestamps = 0
+
+; The stock 10000 ceiling sits below a mid-sized Laravel app + vendor file
+; count, and overflow silently stops caching new files rather than erroring.
+opcache.max_accelerated_files = 20000
