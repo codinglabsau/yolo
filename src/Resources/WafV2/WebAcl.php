@@ -14,6 +14,7 @@ use Codinglabs\Yolo\Services\Typesense;
 use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
+use Codinglabs\Yolo\Resources\CloudWatchLogs\WafLogGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
@@ -30,6 +31,9 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * IP-reputation updates roll in on their own — the noisy groups (CRS, SQLi) ship
  * in Count so a new AWS signature can't start blocking live traffic unannounced;
  * the low-false-positive groups block outright.
+ *
+ * It also owns request logging: every evaluated request streams into the env's
+ * WafLogGroup, wired on create and reconciled thereafter (see reconcileLogging).
  */
 class WebAcl implements Deletable, Resource, SynchronisesConfiguration
 {
@@ -100,7 +104,7 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
     {
         // Retry on eventual consistency: the rules reference the allow/block IP
         // sets created moments earlier, which WAFv2 may not yet have propagated.
-        WafV2::retryWhileUnavailable(fn () => Aws::wafV2()->createWebACL([
+        $result = WafV2::retryWhileUnavailable(fn () => Aws::wafV2()->createWebACL([
             'Name' => $this->name(),
             'Scope' => WafV2::SCOPE,
             'Description' => 'YOLO managed WAF for the environment load balancer',
@@ -109,6 +113,8 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
             'VisibilityConfig' => $this->visibilityConfig($this->name()),
             ...Aws::tags($this->tags()),
         ]));
+
+        $this->reconcileLogging($result['Summary']['ARN'], apply: true);
     }
 
     /**
@@ -204,21 +210,49 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
             $changes[] = Change::make('rules', 'drift', 'reconciled (allow/block, managed groups, rate limit)');
         }
 
-        if ($changes === [] || ! $apply) {
-            return $changes;
+        if ($changes !== [] && $apply) {
+            WafV2::retryWhileUnavailable(fn () => Aws::wafV2()->updateWebACL([
+                'Name' => $this->name(),
+                'Scope' => WafV2::SCOPE,
+                'Id' => $summary['Id'],
+                'LockToken' => $summary['LockToken'],
+                'DefaultAction' => $this->defaultAction(),
+                'Rules' => [...$this->preservedRules($liveRules), ...$this->desiredRules()],
+                'VisibilityConfig' => $this->visibilityConfig($this->name()),
+            ]));
         }
 
-        WafV2::retryWhileUnavailable(fn () => Aws::wafV2()->updateWebACL([
-            'Name' => $this->name(),
-            'Scope' => WafV2::SCOPE,
-            'Id' => $summary['Id'],
-            'LockToken' => $summary['LockToken'],
-            'DefaultAction' => $this->defaultAction(),
-            'Rules' => [...$this->preservedRules($liveRules), ...$this->desiredRules()],
-            'VisibilityConfig' => $this->visibilityConfig($this->name()),
-        ]));
+        return [...$changes, ...$this->reconcileLogging($summary['ARN'], $apply)];
+    }
 
-        return $changes;
+    /**
+     * Reconcile request logging into the env's `aws-waf-logs-` log group —
+     * present/absent on the destination only. No RedactedFields: everything is
+     * logged so the blocked-request stream is a complete data source. WAF writes
+     * the log-delivery resource policy onto the group itself on put, so enabling
+     * logging is this one call.
+     *
+     * @return array<int, Change>
+     */
+    protected function reconcileLogging(string $webAclArn, bool $apply): array
+    {
+        $desired = (new WafLogGroup())->arn();
+        $current = WafV2::loggingConfiguration($webAclArn)['LogDestinationConfigs'][0] ?? null;
+
+        if ($current === $desired) {
+            return [];
+        }
+
+        if ($apply) {
+            WafV2::retryWhileUnavailable(fn () => Aws::wafV2()->putLoggingConfiguration([
+                'LoggingConfiguration' => [
+                    'ResourceArn' => $webAclArn,
+                    'LogDestinationConfigs' => [$desired],
+                ],
+            ]));
+        }
+
+        return [Change::make('logging', $current, $desired)];
     }
 
     /**

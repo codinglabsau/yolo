@@ -177,7 +177,7 @@ class DestroyEnvironmentCommand extends SyncSteppedCommand implements PlansSeque
             ...static::environmentServiceTeardownSteps(),
             // WAF off the ALB before either goes (a web ACL can't be deleted while
             // associated), then the listeners + load balancer, then the
-            // now-unreferenced web ACL + its IP sets.
+            // now-unreferenced web ACL + its IP sets and request-log group.
             Steps\Destroy\Environment\DisassociateWafStep::class,
             Steps\Destroy\Environment\TeardownHttpsListenerStep::class,
             Steps\Destroy\Environment\TeardownHttpListenerStep::class,
@@ -185,6 +185,7 @@ class DestroyEnvironmentCommand extends SyncSteppedCommand implements PlansSeque
             Steps\Destroy\Environment\TeardownWebAclStep::class,
             Steps\Destroy\Environment\TeardownAllowIpSetStep::class,
             Steps\Destroy\Environment\TeardownBlockIpSetStep::class,
+            Steps\Destroy\Environment\TeardownWafLogGroupStep::class,
             // The LB security group, once the load balancer that used it is gone.
             Steps\Destroy\Environment\TeardownLoadBalancerSecurityGroupStep::class,
             // The shared Valkey cache: the replication group first — its delete

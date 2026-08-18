@@ -101,6 +101,28 @@ class WafV2
     }
 
     /**
+     * The web ACL's logging configuration, or null when logging has never been
+     * enabled — WAFv2 models "no logging" as a nonexistent item, not an empty
+     * configuration.
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function loggingConfiguration(string $webAclArn): ?array
+    {
+        try {
+            return Aws::wafV2()->getLoggingConfiguration([
+                'ResourceArn' => $webAclArn,
+            ])['LoggingConfiguration'];
+        } catch (AwsException $exception) {
+            if ($exception->getAwsErrorCode() === 'WAFNonexistentItemException') {
+                return null;
+            }
+
+            throw $exception;
+        }
+    }
+
+    /**
      * The IPSet summary {Name, Id, ARN, LockToken} for the given name.
      *
      * @return array<string, string>

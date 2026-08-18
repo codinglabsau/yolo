@@ -90,6 +90,8 @@ YOLO owns the **policy** — a baseline of AWS-managed protections, a per-IP rat
 
 Tune the rest in the AWS console; YOLO won't undo it.
 
+Every request the ACL evaluates is **logged to CloudWatch Logs** — the `aws-waf-logs-yolo-{env}` log group (the `aws-waf-logs-` prefix is mandated by WAFv2, so this is the one YOLO log group not named `yolo-{env}-…`), retained for 30 days. That's where you see what the WAF actually blocked or counted, and it's the data source automation reads to maintain the block IP set. Logging is reconciled on every sync like the rest of the policy.
+
 ## Plan, confirm, apply
 
 `sync` never surprises you. It runs as a three-step flow:
