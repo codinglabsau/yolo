@@ -764,12 +764,14 @@ const WAF_LOG_GROUP_ARN = 'arn:aws:logs:ap-southeast-2:111111111111:log-group:aw
 
 /**
  * A live GetLoggingConfiguration response already pointing at the env's
- * aws-waf-logs- destination — the in-sync shape for the logging reconcile.
+ * aws-waf-logs- destination with the block+count filter — the in-sync shape
+ * for the logging reconcile.
  */
 function wafLoggingConfigurationResult(): Result
 {
     return new Result(['LoggingConfiguration' => [
         'LogDestinationConfigs' => [WAF_LOG_GROUP_ARN],
+        'LoggingFilter' => (new WebAcl())->loggingFilter(),
     ]]);
 }
 

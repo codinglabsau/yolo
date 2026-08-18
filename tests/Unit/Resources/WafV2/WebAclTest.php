@@ -164,7 +164,38 @@ it('enables logging into the env aws-waf-logs group when the ACL has none', func
     $put = collect($captured)->firstWhere('name', 'PutLoggingConfiguration');
 
     expect($put['args']['LoggingConfiguration']['ResourceArn'])->toBe('arn:aws:wafv2:ap-southeast-2:111:regional/webacl/yolo-testing-waf/acl-id')
-        ->and($put['args']['LoggingConfiguration']['LogDestinationConfigs'])->toBe([WAF_LOG_GROUP_ARN]);
+        ->and($put['args']['LoggingConfiguration']['LogDestinationConfigs'])->toBe([WAF_LOG_GROUP_ARN])
+        ->and($put['args']['LoggingConfiguration']['LoggingFilter'])->toBe((new WebAcl())->loggingFilter());
+});
+
+it('keeps blocked and counted requests only in the logging filter', function (): void {
+    $filter = (new WebAcl())->loggingFilter();
+
+    expect($filter['DefaultBehavior'])->toBe('DROP');
+
+    $kept = collect($filter['Filters'][0]['Conditions'])->pluck('ActionCondition.Action');
+
+    expect($filter['Filters'][0]['Behavior'])->toBe('KEEP')
+        ->and($kept->all())->toEqualCanonicalizing(['BLOCK', 'COUNT', 'EXCLUDED_AS_COUNT'])
+        ->and($kept)->not->toContain('ALLOW');
+});
+
+it('reconciles a logging filter that has drifted even when the destination matches', function (): void {
+    // Destination right, filter stripped (e.g. hand-edited to log everything).
+    $captured = [];
+    bindRoutedWafV2Client([
+        'ListIPSets' => wafIpSetsResult(),
+        'ListWebACLs' => wafWebAclsResult(),
+        'GetWebACL' => liveWebAclResult(desiredWafRules()),
+        'GetLoggingConfiguration' => new Result(['LoggingConfiguration' => [
+            'LogDestinationConfigs' => [WAF_LOG_GROUP_ARN],
+        ]]),
+    ], $captured);
+
+    $changes = (new WebAcl())->synchroniseConfiguration();
+
+    expect(collect($changes)->pluck('attribute')->all())->toBe(['logging']);
+    expect(array_column($captured, 'name'))->toContain('PutLoggingConfiguration');
 });
 
 it('detects a default-action drift and rewrites the ACL', function (): void {

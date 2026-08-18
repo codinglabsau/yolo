@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Resources\WafV2;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Change;
+use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Aws\WafV2;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Enums\Service;
@@ -226,20 +227,23 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * Reconcile request logging into the env's `aws-waf-logs-` log group —
-     * present/absent on the destination only. No RedactedFields: everything is
-     * logged so the blocked-request stream is a complete data source. WAF writes
-     * the log-delivery resource policy onto the group itself on put, so enabling
-     * logging is this one call.
+     * Reconcile request logging into the env's `aws-waf-logs-` log group:
+     * destination and filter both diffed, one put repairs either. WAF writes
+     * the log-delivery resource policy onto the group itself on put, so
+     * enabling logging is this one call. No RedactedFields — the kept slice is
+     * the evidence stream, and redacting it would blunt exactly the forensics
+     * it exists for.
      *
      * @return array<int, Change>
      */
     protected function reconcileLogging(string $webAclArn, bool $apply): array
     {
-        $desired = (new WafLogGroup())->arn();
-        $current = WafV2::loggingConfiguration($webAclArn)['LogDestinationConfigs'][0] ?? null;
+        $desiredDestination = (new WafLogGroup())->arn();
+        $current = WafV2::loggingConfiguration($webAclArn);
+        $currentDestination = $current['LogDestinationConfigs'][0] ?? null;
 
-        if ($current === $desired) {
+        if ($currentDestination === $desiredDestination
+            && Helpers::documentsEqual($current['LoggingFilter'] ?? null, $this->loggingFilter())) {
             return [];
         }
 
@@ -247,12 +251,40 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
             WafV2::retryWhileUnavailable(fn () => Aws::wafV2()->putLoggingConfiguration([
                 'LoggingConfiguration' => [
                     'ResourceArn' => $webAclArn,
-                    'LogDestinationConfigs' => [$desired],
+                    'LogDestinationConfigs' => [$desiredDestination],
+                    'LoggingFilter' => $this->loggingFilter(),
                 ],
             ]));
         }
 
-        return [Change::make('logging', $current, $desired)];
+        return [Change::make('logging', $currentDestination, 'block+count → ' . $desiredDestination)];
+    }
+
+    /**
+     * Keep blocked and counted requests only. Allowed traffic would be the
+     * overwhelming bulk of the stream and is already recorded per-request by
+     * the ALB's own access logs (including WAF rejections); the block/count
+     * slice is the part only WAF can explain — which rule matched, and what a
+     * Count-mode rule *would* have blocked. COUNT and EXCLUDED_AS_COUNT are
+     * both kept: managed-group action overrides surface under either name
+     * depending on the override mechanism.
+     *
+     * @return array<string, mixed>
+     */
+    public function loggingFilter(): array
+    {
+        return [
+            'DefaultBehavior' => 'DROP',
+            'Filters' => [[
+                'Behavior' => 'KEEP',
+                'Requirement' => 'MEETS_ANY',
+                'Conditions' => [
+                    ['ActionCondition' => ['Action' => 'BLOCK']],
+                    ['ActionCondition' => ['Action' => 'COUNT']],
+                    ['ActionCondition' => ['Action' => 'EXCLUDED_AS_COUNT']],
+                ],
+            ]],
+        ];
     }
 
     /**
