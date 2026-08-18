@@ -240,3 +240,36 @@ it('grants no Rekognition access when the app does not consume the rekognition s
 
     expect($actions)->not->toContain('rekognition:*');
 });
+
+it('grants write-only access to this app\'s own dumps prefix when backups are on', function (): void {
+    // The web task hosts the scheduler, so backups default on. Write-only by
+    // design: the producer verifies locally before uploading, so the container
+    // never needs read — and can't exfiltrate its own dump history or any
+    // sibling app's.
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => true],
+    ]);
+
+    $statement = collect((new EcsTaskPolicy())->document()['Statement'])
+        ->firstWhere('Resource', 'arn:aws:s3:::yolo-111111111111-testing-dumps/my-app/*');
+
+    expect($statement)->not->toBeNull()
+        ->and($statement['Effect'])->toBe('Allow')
+        ->and($statement['Action'])->toEqualCanonicalizing([
+            's3:PutObject',
+            's3:AbortMultipartUpload',
+        ]);
+});
+
+it('grants no dumps access when the manifest opts out of backups', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'mysqldump' => false,
+        'tasks' => ['web' => true],
+    ]);
+
+    $resources = collect((new EcsTaskPolicy())->document()['Statement'])->pluck('Resource')->flatten();
+
+    expect($resources->filter(fn ($arn): bool => str_contains((string) $arn, '-dumps')))->toBeEmpty();
+});

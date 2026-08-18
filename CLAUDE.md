@@ -103,7 +103,7 @@ allowed to write it:
 | Command | `Scope` | Blast radius | Examples |
 | --- | --- | --- | --- |
 | `sync:account` | `Account` | the whole AWS account | service-linked roles (ECS / App Auto Scaling / ElastiCache), GitHub OIDC provider |
-| `sync:environment <env>` | `Env` | every app in the environment | VPC, subnets, IGW/routes, RDS SG, SNS topic, shared ECS execution role, env logs bucket (ALB access logs under `alb/`), ALB + `:80` and `:443` listeners, the env-backed services (IVS event-logging pipeline, Typesense search cluster) |
+| `sync:environment <env>` | `Env` | every app in the environment | VPC, subnets, IGW/routes, RDS SG, SNS topic, shared ECS execution role, env logs bucket (ALB access logs under `alb/`), env dumps bucket (the apps' database dumps), ALB + `:80` and `:443` listeners, the env-backed services (IVS event-logging pipeline, Typesense search cluster) |
 | `sync:app <env>` | `App` | one app | Storage, app IAM (deployer + per-app ECS task role + `task-role-policies`), Fargate (cluster/service/task def), CDN, mode-aware Queue/DNS |
 
 `sync` orchestrates **account → environment → app** in dependency order. `sync:app` only depends on and *additively

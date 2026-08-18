@@ -12,8 +12,10 @@ You own a small `Dockerfile`; YOLO generates the moving parts (entrypoint, proce
 FROM dunglas/frankenphp:1-php8.4-alpine
 
 # supercronic runs the scheduler's cron as a non-root user (busybox crond can't);
-# nodejs is the runtime for Inertia SSR (tasks.web.ssr) — drop it if you don't use SSR.
-RUN apk add --no-cache git supervisor supercronic nodejs \
+# nodejs is the runtime for Inertia SSR (tasks.web.ssr) — drop it if you don't use SSR;
+# mariadb-client + zstd drive the scheduled database dumps — drop them only with
+# `mysqldump: false` in yolo.yml.
+RUN apk add --no-cache git supervisor supercronic nodejs mariadb-client zstd \
     && install-php-extensions intl pcntl bcmath redis pdo_mysql opcache excimer
 
 WORKDIR /app
@@ -73,11 +75,12 @@ For your image to work with YOLO, the Dockerfile must:
 
 ## Runtime checks
 
-`yolo build` runs three preflights so a deploy can't ship an image that won't run:
+`yolo build` runs four preflights so a deploy can't ship an image that won't run:
 
 - **Octane** — *before* the build, it reads `composer.lock` and fails if `laravel/octane` isn't in the production requirements, since the web role runs `octane:start`. Skipped when [`tasks.web.octane: false`](/reference/manifest#tasks-web): classic mode runs the `frankenphp` binary directly and needs no octane package.
 - **Scheduler (supercronic)** — it runs the freshly-built image and fails if `supercronic` isn't on the `PATH`. The scheduler runs in almost every app (the check is skipped only when cron is switched off with [`tasks.scheduler: false`](/reference/manifest#tasks-scheduler)), and the failure this prevents is **silent**: busybox `crond` — the obvious fallback already in the base image — ignores crontabs not owned by root without logging a word, so an image without supercronic deploys green, stays healthy, and simply never fires a scheduled job.
 - **SSR (Node)** — when [`tasks.web.ssr`](/reference/manifest#tasks-web) is on, it runs the freshly-built image and fails if `node` isn't on the `PATH`. Like the scheduler check, this matters because a missing SSR runtime is otherwise **silent** — Inertia falls back to client-side rendering and the web tier stays healthy on `/up`, so the deploy goes green with SSR quietly off.
+- **Database backups (mysqldump + zstd)** — when the app [backs up MySQL](/reference/manifest#mysqldump) (the default), it runs the freshly-built image and fails if either binary is missing. The failure this prevents is silent in the worst way: the deploy goes green, the app serves, and the daily backup errors unnoticed in the scheduler's logs until the day a restore is needed.
 
 The image probes run the image (rather than grepping the Dockerfile), so they see the resolved base image and multi-stage `COPY --from` layers too — no false negatives.
 

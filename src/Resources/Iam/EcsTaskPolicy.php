@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Resources\Iam;
 
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
@@ -236,6 +237,23 @@ class EcsTaskPolicy implements Deletable, Resource, SynchronisesConfiguration
         // the per-app role means this can't reach another app's bucket.
         if (Manifest::has('bucket')) {
             $statements = [...$statements, ...$this->bucketStatements()];
+        }
+
+        // Scheduled database dumps upload to this app's own prefix of the env
+        // dumps bucket. Write-only by design — the producer verifies the
+        // archive locally before uploading, so the container never needs read,
+        // and a compromised task can't exfiltrate its own dump history (or any
+        // sibling app's). AbortMultipartUpload keeps a failed large upload
+        // from stranding parts the lifecycle would otherwise hold for 7 days.
+        if (Manifest::backsUpMysql()) {
+            $statements[] = [
+                'Effect' => 'Allow',
+                'Resource' => sprintf('arn:aws:s3:::%s/%s/*', Paths::s3DumpsBucket(), Manifest::name()),
+                'Action' => [
+                    's3:PutObject',
+                    's3:AbortMultipartUpload',
+                ],
+            ];
         }
 
         // Each consumed service yields the statements its consumption grants —

@@ -25,6 +25,11 @@ environments:
     # (YOLO never creates a bucket it doesn't name, and never reconciles this one).
     # bucket: true
 
+    # Scheduled logical MySQL backups default ON: a daily mysqldump of every
+    # database, verified at the producer, uploaded to the env dumps bucket.
+    # Set false only for an app with no MySQL database to back up.
+    # mysqldump: false
+
     # Web apps default to a shared Valkey cache + Valkey-backed sessions (provisioned and
     # wired automatically). Uncomment only to override or opt out:
     # cache:

@@ -71,6 +71,7 @@ environments:
     queue-visibility-timeout: 90
 
     database: my-database
+    mysqldump: false
     cache:
       store: redis
     session:
@@ -135,7 +136,7 @@ environments:
 |---|---|
 | App | [`name`](#name), [`timezone`](#timezone), [`environments`](#environments) |
 | Routing | [`domain`](#domain), [`wildcard-subdomains`](#wildcard-subdomains), [`multitenancy`](#multitenancy), [`branch` / `tag` / `repository`](#branch-tag-repository) |
-| Infrastructure | [`account-id`](#account-id), [`region`](#region), [`bucket`](#bucket), [`services`](#services), [`task-role-policies`](#task-role-policies), [`queues`](#queues), [`queue-visibility-timeout`](#queue-visibility-timeout), [`database`](#database), [`cache.store`](#cache), [`session.driver`](#session), [`budget`](#budget) |
+| Infrastructure | [`account-id`](#account-id), [`region`](#region), [`bucket`](#bucket), [`services`](#services), [`task-role-policies`](#task-role-policies), [`queues`](#queues), [`queue-visibility-timeout`](#queue-visibility-timeout), [`database`](#database), [`mysqldump`](#mysqldump), [`cache.store`](#cache), [`session.driver`](#session), [`budget`](#budget) |
 | Tasks | [`tasks.web`](#tasks-web), [`tasks.web.autoscaling`](#tasks-web-autoscaling), [`tasks.web.health-check`](#tasks-web-health-check), [`tasks.queue`](#tasks-queue), [`tasks.scheduler`](#tasks-scheduler) |
 | Hooks | [`build`](#build), [`deploy`](#deploy), [`deploy-all`](#deploy-all) |
 
@@ -371,6 +372,18 @@ YOLO looks the name up and detects which kind it is. An Aurora cluster is charte
 A name that matches no RDS cluster or instance in the account/region **fails the sync**: a declared database that doesn't exist is a manifest typo to surface loudly, not an empty dashboard panel to puzzle over.
 
 Where the database should live, the managed/external/exposed postures, and how to reach a private one are covered in the **[Databases](/guide/databases)** guide.
+
+---
+
+## `mysqldump`
+
+Scheduled logical MySQL backups — **default `true`**: losing backups should take a deliberate opt-out, never an omission. Each day the scheduler's host container dumps every database (`mysqldump | zstd`, tenant databases included on a multi-tenant app), **verifies the archive at the producer** (integrity via `zstd -t`, completeness via the dump's own `Dump completed` trailer — a bad dump fails the run rather than shipping), and uploads it to the env dumps bucket under this app's prefix (`{app}/{database}.sql.zst`). The bucket is versioned, so each overwrite's noncurrent versions are the history, kept 35 days; the current version never expires. The app's task role can **write only its own prefix and read none** — restores are an operator action, not an app capability.
+
+```yaml
+mysqldump: false   # only for an app with no MySQL database to back up
+```
+
+Backups ride the scheduler ([where each role runs](#where-each-role-runs)), so `tasks.scheduler: false` also turns them off. `yolo build` probes the built image for the `mysqldump` and `zstd` binaries when backups are on and refuses to ship without them (see [Runtime checks](/guide/images#runtime-checks)) — the scaffolded Dockerfile installs both. More in the **[Databases](/guide/databases)** guide.
 
 ---
 

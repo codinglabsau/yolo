@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Tests\TestbenchCase;
 use Illuminate\Contracts\Http\Kernel;
+use Illuminate\Console\Scheduling\Schedule;
 use Codinglabs\Yolo\Runtime\WorkerSaturationReporter;
 use Codinglabs\Yolo\Runtime\Http\TrackInFlightRequests;
 use Illuminate\Foundation\Http\Kernel as FoundationHttpKernel;
@@ -88,4 +89,26 @@ it('does not push the in-flight tracking middleware when no burst service is set
     assert($kernel instanceof FoundationHttpKernel);
 
     expect($kernel->hasMiddleware(TrackInFlightRequests::class))->toBeFalse();
+});
+
+it('schedules the database backup when a destination is injected', function (): void {
+    putenv('YOLO_MYSQL_BACKUP_DESTINATION=yolo-111111111111-testing-dumps/my-app');
+    $this->refreshApplication();
+
+    try {
+        $events = collect($this->app->make(Schedule::class)->events());
+
+        expect($events->contains(fn ($event): bool => str_contains((string) $event->command, 'yolo:backup-databases')))->toBeTrue();
+    } finally {
+        putenv('YOLO_MYSQL_BACKUP_DESTINATION');
+    }
+});
+
+it('schedules no backup when no destination is injected', function (): void {
+    putenv('YOLO_MYSQL_BACKUP_DESTINATION');
+    $this->refreshApplication();
+
+    $events = collect($this->app->make(Schedule::class)->events());
+
+    expect($events->contains(fn ($event): bool => str_contains((string) $event->command, 'yolo:backup-databases')))->toBeFalse();
 });
