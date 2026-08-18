@@ -50,6 +50,22 @@ class AlertAlarm implements Deletable, Resource, SynchronisesConfiguration
         protected array $metrics = [],
     ) {}
 
+    /**
+     * Name-only construction for the delete path — teardown addresses alarms
+     * purely by name, so the metric fields are irrelevant there.
+     */
+    public static function bare(string $suffix, Scope $alarmScope): self
+    {
+        return new self(
+            suffix: $suffix,
+            description: 'retired',
+            alarmScope: $alarmScope,
+            comparisonOperator: 'GreaterThanThreshold',
+            threshold: 0,
+            evaluationPeriods: 1,
+        );
+    }
+
     public function name(): string
     {
         return $this->keyedName('alert-' . $this->suffix);
@@ -115,6 +131,25 @@ class AlertAlarm implements Deletable, Resource, SynchronisesConfiguration
             }
         }
 
+        // The measurement itself is drift too: the dimensions carry ALB/target
+        // group ARN suffixes that change when those are recreated while the
+        // alarm's name survives — left unreconciled, the alarm points at a dead
+        // metric and notBreaching keeps it green forever. For metric-math
+        // alarms the whole semantics (expression, traffic floor) live here.
+        if ($this->metrics === []) {
+            foreach ([
+                'Dimensions' => $this->dimensions,
+                'Period' => $this->period,
+                'Statistic' => $this->statistic,
+            ] as $field => $desired) {
+                if (($live[$field] ?? null) != $desired) {
+                    $changes[] = Change::make($field, 'drift', 'reconciled');
+                }
+            }
+        } elseif ($this->metricsSignature($live['Metrics'] ?? []) != $this->metricsSignature($this->metrics)) {
+            $changes[] = Change::make('Metrics', 'drift', 'reconciled (metric math)');
+        }
+
         // Re-point the alarm after a topic rename: an alarm keeps firing to
         // whatever ARN it was created with, so AlarmActions is drift like any
         // other field. Resolving the desired ARN needs the topic to exist —
@@ -137,6 +172,31 @@ class AlertAlarm implements Deletable, Resource, SynchronisesConfiguration
         }
 
         return $changes;
+    }
+
+    /**
+     * A stable, echo-back-proof projection of a Metrics array, keyed by Id —
+     * only the authored fields are compared, so keys AWS adds on read can't
+     * fake drift and keep the sync --check gate deterministic.
+     *
+     * @param  array<int, array<string, mixed>>  $metrics
+     * @return array<string, array<string, mixed>>
+     */
+    protected function metricsSignature(array $metrics): array
+    {
+        $signatures = [];
+
+        foreach ($metrics as $entry) {
+            $signatures[$entry['Id'] ?? ''] = [
+                'expression' => $entry['Expression'] ?? null,
+                'returnData' => $entry['ReturnData'] ?? null,
+                'metric' => $entry['MetricStat']['Metric'] ?? null,
+                'period' => $entry['MetricStat']['Period'] ?? null,
+                'stat' => $entry['MetricStat']['Stat'] ?? null,
+            ];
+        }
+
+        return $signatures;
     }
 
     /**

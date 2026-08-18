@@ -99,11 +99,13 @@ Every environment gets a family of **"a human should look"** alarms — named `�
 | Alert | Scope | Fires when |
 |---|---|---|
 | `alb-5xx` | Environment | The load balancer itself is generating 5xx — no healthy targets, a dead target group, a broken rule |
-| `valkey-memory` / `valkey-evictions` | Environment | The shared cache/session node is above 85% memory, or evicting keys — sessions being thrown away |
-| `database-cpu` / `-memory` / `-connections` / `-buffer-cache` | Environment (when the env manifest declares a [`database`](/reference/commands#yolo-sync-environment)) | The cluster writer is saturating: CPU ≥ 80% sustained, freeable memory under 10% of the instance, connections past 75% of the class ceiling, or the working set no longer fitting in memory. The absolute thresholds derive from the writer's instance class at sync time |
+| `valkey-memory` / `valkey-evictions` | Environment | The shared cache/session node is above 85% memory, or evicting heavily and sustained (background LRU churn on a full node is by design and doesn't fire) |
+| `database-cpu` / `-memory` / `-connections` / `-buffer-cache` | Environment (when the manifest declares an Aurora cluster [`database`](/reference/manifest#database) — a plain RDS instance gets no database alerts) | The cluster writer is saturating: CPU ≥ 80% sustained, freeable memory under 5% of the instance, connections past 75% of the class ceiling, or the working set no longer fitting in memory. The absolute thresholds derive from the writer's instance class at sync time; a Serverless v2 writer keeps the percentage-based pair only |
 | `web-5xx` | App | The app is serving 5xx to ≥ 5% of its own requests (rate, not count, with a traffic floor so one error on a trickle can't page) |
 
 Topic **subscriptions are yours** — YOLO creates the topic but never subscribes endpoints. Subscribe an email or chat webhook to start; promote to a pager integration once the signal has earned trust. Thresholds are hardcoded — these are "bad things are happening" bars, not tuning knobs.
+
+Every alert's threshold is also **drawn as a red line on the matching CloudWatch dashboard chart** (the app dashboard gains `# Cache` and buffer-cache panels so every alarmed metric has one). The lines and the alarms read the same values from one source, and the dashboard is rebuilt on every sync — so what the chart shows as the alarm bar is always exactly what pages.
 
 ## Plan, confirm, apply
 

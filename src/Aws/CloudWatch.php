@@ -8,9 +8,15 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class CloudWatch
 {
+    /**
+     * Targeted by name — DescribeAlarms unfiltered returns one 50-record page,
+     * so a full-region scan false-negatives once an account holds more alarms
+     * than a page (exists() would report WOULD_CREATE forever and fail the
+     * deploy drift gate). AlarmNames makes it a single exact lookup.
+     */
     public static function alarm(string $name): array
     {
-        foreach (Aws::cloudWatch()->describeAlarms()['MetricAlarms'] ?? [] as $alarm) {
+        foreach (Aws::cloudWatch()->describeAlarms(['AlarmNames' => [$name]])['MetricAlarms'] ?? [] as $alarm) {
             if ($alarm['AlarmName'] === $name) {
                 return $alarm;
             }
@@ -23,13 +29,27 @@ class CloudWatch
      * Every alarm whose name starts with the given prefix, reduced to
      * {name, state, reason} — the app's alarms for `yolo status:alarms`. Empty
      * when the read fails or none match, so the caller degrades gracefully.
+     * Server-side prefix filter + pagination, for the same page-limit reason
+     * as alarm().
      *
      * @return array<int, array{name: string, state: ?string, reason: ?string}>
      */
     public static function alarmsWithPrefix(string $prefix): array
     {
+        $alarms = [];
+        $token = null;
+
         try {
-            $alarms = Aws::cloudWatch()->describeAlarms()['MetricAlarms'] ?? [];
+            do {
+                $page = Aws::cloudWatch()->describeAlarms(array_filter([
+                    'AlarmNamePrefix' => $prefix,
+                    'NextToken' => $token,
+                ]));
+
+                $alarms = [...$alarms, ...($page['MetricAlarms'] ?? [])];
+
+                $token = $page['NextToken'] ?? null;
+            } while ($token !== null);
         } catch (AwsException) {
             return [];
         }

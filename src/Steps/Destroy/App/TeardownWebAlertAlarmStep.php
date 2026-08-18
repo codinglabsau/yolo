@@ -17,13 +17,6 @@ class TeardownWebAlertAlarmStep extends TeardownStep implements ExecutesWebStep
 {
     protected function resource(): AlertAlarm
     {
-        return new AlertAlarm(
-            suffix: 'web-5xx',
-            description: 'retired',
-            alarmScope: Scope::App,
-            comparisonOperator: 'GreaterThanThreshold',
-            threshold: 0,
-            evaluationPeriods: 1,
-        );
+        return AlertAlarm::bare('web-5xx', Scope::App);
     }
 }

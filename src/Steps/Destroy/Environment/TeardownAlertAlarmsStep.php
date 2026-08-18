@@ -9,6 +9,7 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Resources\CloudWatch\AlertAlarm;
+use Codinglabs\Yolo\Steps\Sync\Environment\SyncAlertAlarmsStep;
 
 /**
  * Tears down the env alert alarms. Deletion is by name only, so the alarms
@@ -21,39 +22,14 @@ class TeardownAlertAlarmsStep implements Step
 {
     use SynchronisesResource;
 
-    private const array SUFFIXES = [
-        'alb-5xx',
-        'valkey-memory',
-        'valkey-evictions',
-        'database-cpu',
-        'database-memory',
-        'database-connections',
-        'database-buffer-cache',
-    ];
-
     public function __invoke(array $options): StepResult
     {
         $results = [];
 
-        foreach (self::SUFFIXES as $suffix) {
-            $results[] = $this->teardownResource(new AlertAlarm(
-                suffix: $suffix,
-                description: 'retired',
-                alarmScope: Scope::Env,
-                comparisonOperator: 'GreaterThanThreshold',
-                threshold: 0,
-                evaluationPeriods: 1,
-            ), $options);
+        foreach (SyncAlertAlarmsStep::SUFFIXES as $suffix) {
+            $results[] = $this->teardownResource(AlertAlarm::bare($suffix, Scope::Env), $options);
         }
 
-        foreach ([
-            StepResult::WOULD_DELETE, StepResult::DELETED,
-        ] as $significant) {
-            if (in_array($significant, $results, true)) {
-                return $significant;
-            }
-        }
-
-        return StepResult::SKIPPED;
+        return $this->aggregateResults($results);
     }
 }

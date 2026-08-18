@@ -221,6 +221,15 @@ it('tears the Valkey cache cluster down before the groups and SG it pins', funct
         ->toBeLessThan($at(Steps\Destroy\Environment\TeardownCacheSecurityGroupStep::class));
 });
 
+it('tears the alert alarms down before the SNS topic they fire to', function (): void {
+    $classes = destroyEnvPlanClasses();
+    $at = fn (string $class): int|false => array_search($class, $classes, true);
+
+    expect($at(Steps\Destroy\Environment\TeardownAlertAlarmsStep::class))
+        ->not->toBeFalse()
+        ->toBeLessThan($at(Steps\Destroy\Environment\TeardownSnsAlarmTopicStep::class));
+});
+
 it('reframes the runner wording as an irreversible destroy', function (): void {
     $command = new DestroyEnvironmentCommand();
 

@@ -4,6 +4,7 @@ namespace Codinglabs\Yolo\Steps\Sync\App;
 
 use Codinglabs\Yolo\Change;
 use Codinglabs\Yolo\Enums\Scope;
+use Codinglabs\Yolo\Services\Alerts;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Resources\ElbV2\TargetGroup;
@@ -44,14 +45,14 @@ class SyncWebAlertAlarmStep implements ExecutesWebStep
     /**
      * @param  array<int, array{Name: string, Value: string}>  $dimensions
      */
-    public function alarm(array $dimensions = []): AlertAlarm
+    protected function alarm(array $dimensions): AlertAlarm
     {
         return new AlertAlarm(
             suffix: 'web-5xx',
             description: 'This app is serving 5xx to at least 5% of its requests - users are seeing errors',
             alarmScope: Scope::App,
             comparisonOperator: 'GreaterThanOrEqualToThreshold',
-            threshold: 5,
+            threshold: Alerts::WEB_5XX_RATE_PERCENT,
             evaluationPeriods: 5,
             datapointsToAlarm: 3,
             metrics: [
