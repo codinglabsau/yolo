@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use Tests\SearchTestbenchCase;
+use Codinglabs\Yolo\Facades\Yolo;
+use Codinglabs\Yolo\Enums\Service;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
@@ -21,6 +23,10 @@ it('registers the search commands when the manifest claims typesense', function 
     expect(Artisan::all())
         ->toHaveKey('scout:reimport')
         ->toHaveKey('scout:heal');
+});
+
+it('answers the typesense claim through the facade', function (): void {
+    expect(Yolo::manifest()->hasService(Service::TYPESENSE))->toBeTrue();
 });
 
 it('schedules the heal itself when the app is wired for Typesense', function (): void {

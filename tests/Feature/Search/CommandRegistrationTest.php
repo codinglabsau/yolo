@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use Tests\TestbenchCase;
+use Codinglabs\Yolo\Facades\Yolo;
+use Codinglabs\Yolo\Enums\Service;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
@@ -22,6 +24,10 @@ it('does not register the search commands when the manifest claims no typesense'
     expect(Artisan::all())
         ->not->toHaveKey('scout:reimport')
         ->not->toHaveKey('scout:heal');
+});
+
+it('answers no typesense claim through the facade without a manifest', function (): void {
+    expect(Yolo::manifest()->hasService(Service::TYPESENSE))->toBeFalse();
 });
 
 it('does not schedule the heal when the manifest claims no typesense', function (): void {
