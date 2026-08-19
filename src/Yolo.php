@@ -58,6 +58,7 @@ class Yolo
         Commands\DbTunnelCommand::class,
         Commands\DbCutoverCommand::class,
         Commands\DbStatusCommand::class,
+        Commands\BackupMysqldumpCommand::class,
 
         // Scale
         Commands\ScaleCommand::class,

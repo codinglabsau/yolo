@@ -3,7 +3,6 @@
 namespace Codinglabs\Yolo\Steps\Sync\App;
 
 use Codinglabs\Yolo\Aws;
-use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Change;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Aws\Ecs;
@@ -199,29 +198,11 @@ class SyncTaskDefinitionStep implements Step
                             'awslogs-stream-prefix' => $group->value,
                         ],
                     ],
-                    ...static::containerEnvironment($group),
+                    ...static::burstEnvironment($group),
                 ],
             ],
             'tags' => Aws::ecsTags(['Name' => $family]),
         ];
-    }
-
-    /**
-     * The container's injected environment: the burst-metrics pair on the
-     * autoscaling web tier plus the backup destination on the scheduler's host.
-     * Merged here because a container definition carries a single `environment`
-     * key — two spreads would silently drop one set.
-     *
-     * @return array<string, array<int, array<string, string>>>
-     */
-    protected static function containerEnvironment(ServerGroup $group): array
-    {
-        $environment = [
-            ...static::burstEnvironment($group),
-            ...static::backupEnvironment($group),
-        ];
-
-        return $environment === [] ? [] : ['environment' => $environment];
     }
 
     /**
@@ -233,7 +214,7 @@ class SyncTaskDefinitionStep implements Step
      * PutMetricData grant, so they can't drift; everything else the reporter needs is a
      * WebBurstPolicy constant it reads directly.
      *
-     * @return array<int, array<string, string>>
+     * @return array<string, array<int, array<string, string>>>
      */
     protected static function burstEnvironment(ServerGroup $group): array
     {
@@ -244,45 +225,15 @@ class SyncTaskDefinitionStep implements Step
         $cpuUnits = (int) Manifest::get("{$group->manifestPrefix()}.cpu", $group->defaultCpu());
 
         return [
-            ['name' => 'YOLO_BURST_SERVICE', 'value' => (new EcsService($group))->name()],
-            // The task's vCPU allocation (Fargate CPU units ÷ 1024) — the denominator
-            // the CPU fallback divides usage by. Injected because the Fargate microVM
-            // exposes more vCPUs than a fractional task is throttled to, so the
-            // allocation can't be read back from cgroup/proc reliably.
-            ['name' => 'YOLO_BURST_CPU', 'value' => (string) ($cpuUnits / 1024)],
+            'environment' => [
+                ['name' => 'YOLO_BURST_SERVICE', 'value' => (new EcsService($group))->name()],
+                // The task's vCPU allocation (Fargate CPU units ÷ 1024) — the denominator
+                // the CPU fallback divides usage by. Injected because the Fargate microVM
+                // exposes more vCPUs than a fractional task is throttled to, so the
+                // allocation can't be read back from cgroup/proc reliably.
+                ['name' => 'YOLO_BURST_CPU', 'value' => (string) ($cpuUnits / 1024)],
+            ],
         ];
-    }
-
-    /**
-     * The backup destination for the scheduler's host container — the runtime
-     * {@see YoloServiceProvider} schedules the dump command
-     * whenever the destination is present, so like YOLO_BURST_SERVICE its
-     * presence IS the gate and no separate flag exists. Injected only where
-     * the scheduler runs: the dump rides `schedule:run`, so any other
-     * container would carry a value nothing reads. A multi-tenant app also
-     * gets the tenant database list (tenant ids are the database names, so
-     * the runtime needn't know the tenancy package).
-     *
-     * @return array<int, array<string, string>>
-     */
-    protected static function backupEnvironment(ServerGroup $group): array
-    {
-        if (Manifest::schedulerHost() !== $group || ! Manifest::backsUpMysql()) {
-            return [];
-        }
-
-        $environment = [
-            ['name' => 'YOLO_MYSQL_BACKUP_DESTINATION', 'value' => Paths::s3DumpsBucket() . '/' . Manifest::name()],
-        ];
-
-        if (Manifest::isMultitenanted()) {
-            $environment[] = [
-                'name' => 'YOLO_MYSQL_BACKUP_TENANTS',
-                'value' => implode(',', array_keys(Manifest::tenants())),
-            ];
-        }
-
-        return $environment;
     }
 
     protected static function taskRoleArn(): string

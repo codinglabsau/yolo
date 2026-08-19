@@ -1,6 +1,8 @@
 <?php
 
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Helpers;
+use Symfony\Component\Yaml\Yaml;
 use Codinglabs\Yolo\Steps\Build\Fargate\GenerateSupervisorConfigStep;
 
 beforeEach(function (): void {
@@ -721,4 +723,67 @@ STUB);
 
     expect(fn (): mixed => (new GenerateSupervisorConfigStep('testing'))())
         ->toThrow(RuntimeException::class, 'global options block');
+});
+
+it('adds the daily backup entry to the crontab with every argument baked from the manifest', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => true],
+    ]);
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    // No runtime config involved: destination, region (and tenants, below) all
+    // ride the invocation itself, baked at build time.
+    expect(file_get_contents(Paths::build('docker/crontab')))
+        ->toContain("CRON_TZ=UTC\n")
+        ->toContain('0 9 * * * cd /app && php artisan yolo:backup-databases --destination=yolo-111111111111-testing-dumps/my-app --region=ap-southeast-2');
+});
+
+it('bakes the tenant database list into the backup entry', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'multitenancy' => [
+            'landlord' => ['domain' => 'app.example.com', 'wildcard-subdomains' => true],
+            'tenants' => ['acme' => null, 'globex' => null],
+        ],
+        'tasks' => ['web' => true],
+    ]);
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    expect(file_get_contents(Paths::build('docker/crontab')))
+        ->toContain('--tenants=acme,globex');
+});
+
+it('pins the backup hour to the manifest timezone', function (): void {
+    file_put_contents(Paths::manifest(), Yaml::dump([
+        'name' => 'my-app',
+        'timezone' => 'Australia/Brisbane',
+        'environments' => ['testing' => [
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => true],
+        ]],
+    ], 10, 2));
+    Helpers::app()->instance('environment', 'testing');
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    expect(file_get_contents(Paths::build('docker/crontab')))
+        ->toContain("CRON_TZ=Australia/Brisbane\n");
+});
+
+it('writes no backup entry when the manifest opts out', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'mysqldump' => false,
+        'tasks' => ['web' => true],
+    ]);
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    // The scheduler line survives untouched; only the backup entry is gone.
+    expect(file_get_contents(Paths::build('docker/crontab')))
+        ->toContain("* * * * * cd /app && php artisan schedule:run\n")
+        ->not->toContain('yolo:backup-databases');
 });
