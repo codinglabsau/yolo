@@ -11,14 +11,12 @@ use Illuminate\Console\Scheduling\Schedule;
 
 uses(TestbenchCase::class);
 
-// Testbench's skeleton base path has no yolo.yml, so this boots the provider
-// the way it lands in an app that never claimed the typesense service.
+// Testbench's skeleton base path has no yolo.yml — the provider boots as it
+// would in an app that never claimed the typesense service.
 
 it('does not register the search commands when the manifest claims no typesense', function (): void {
-    // Scout's stock config ships a populated typesense block whatever engine
-    // the app runs, so config alone must not be enough to register — an app
-    // on another engine may carry its own `scout:reimport` (scout-extended's
-    // Algolia command) that YOLO's must never shadow.
+    // Typesense config alone must not register — stock scout.php ships it
+    // for every engine.
     config()->set('scout.typesense.client-settings', ['api_key' => 'key', 'nodes' => []]);
 
     expect(Artisan::all())

@@ -108,8 +108,6 @@ it('loads a missing manifest as empty', function (): void {
 });
 
 it('loads a malformed manifest as empty', function (): void {
-    // The CLI parses the same file loudly on every build/sync — the runtime
-    // read is a guest of the consuming app and must never break artisan.
     $path = readerManifest("environments:\n  production: [unclosed");
 
     expect(ManifestReader::load($path, 'production')->hasService(Service::TYPESENSE))->toBeFalse();

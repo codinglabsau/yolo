@@ -40,8 +40,7 @@ class YoloServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__ . '/../config/yolo.php', 'yolo');
 
-        // Bound ahead of the burst gate: manifest reads matter on every task
-        // role and in operator shells, not just the autoscaling web tier.
+        // Ahead of the burst gate — manifest reads matter on every task role.
         $this->app->singleton(ManifestReader::class, fn (): ManifestReader => ManifestReader::load($this->manifestPath(), $this->app->environment()));
 
         $this->app->singleton(Runtime\Yolo::class);
@@ -73,23 +72,17 @@ class YoloServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        // Gated on the manifest, not Scout config: the stock scout.php ships
-        // a populated typesense block whatever engine the app uses, and an
-        // app on another engine may carry its own command under the same
-        // name (scout-extended's Algolia `scout:reimport`) that ours must
-        // never shadow. Ahead of the burst gate on purpose: these run on
-        // queue/scheduler tasks and operator shells too.
+        // Manifest-gated, not Scout-config-gated: stock scout.php ships a
+        // typesense block for every engine, and another engine's own
+        // `scout:reimport` (scout-extended) must never be shadowed.
         if ($this->app->runningInConsole() && $this->app->make(ManifestReader::class)->hasService(Service::TYPESENSE)) {
             $this->commands([
                 Runtime\Commands\ScoutHealCommand::class,
                 Runtime\Commands\ScoutReimportCommand::class,
             ]);
 
-            // Set-and-forget: the provider schedules the heal itself, so a
-            // wiped index rebuilds without any app remembering a kernel line.
-            // Gated on the app actually being wired for Typesense (the same
-            // config the command reads) and on the `yolo.search.heal` opt-out.
-            // The command is self-locking, so no schedule decorations needed.
+            // Scheduled here so a wiped index rebuilds without any app
+            // remembering a kernel line; the command is self-locking.
             $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
                 if (config('yolo.search.heal') && (array) config('scout.typesense.client-settings', []) !== []) {
                     $schedule->command('scout:heal')->everyFiveMinutes();
@@ -139,9 +132,8 @@ class YoloServiceProvider extends ServiceProvider
     }
 
     /**
-     * The CLI resolves yolo.yml through its BASE_PATH constant, which
-     * doesn't exist inside the deployed app — Laravel's base path is the
-     * runtime-side answer. Overridable so tests can point at a fixture.
+     * The CLI's BASE_PATH constant doesn't exist in-app; overridable so
+     * tests can point at a fixture.
      */
     protected function manifestPath(): string
     {

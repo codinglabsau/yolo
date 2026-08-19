@@ -10,11 +10,9 @@ use Codinglabs\Yolo\Enums\Service;
 use Symfony\Component\Yaml\Exception\ParseException;
 
 /**
- * The read-only core of the manifest, shared by both surfaces: the CLI's
- * static {@see Manifest} delegates its reads here with the selected
- * environment, and the runtime binds an instance from the app's base path
- * with `app()->environment()`, reachable as `Yolo::manifest()`. Keys are
- * dot-paths within the instance's environment block.
+ * The read-only manifest core shared by the CLI's static {@see Manifest} and
+ * the runtime's `Yolo::manifest()`. Keys are dot-paths within the instance's
+ * environment block.
  */
 class ManifestReader
 {
@@ -24,9 +22,8 @@ class ManifestReader
     public function __construct(protected array $manifest, protected ?string $environment) {}
 
     /**
-     * A missing or malformed file loads as empty rather than throwing: the
-     * runtime read is a guest of the consuming app and must never break
-     * artisan — the CLI parses the same file loudly on every build/sync.
+     * Missing or malformed loads as empty: a guest of the consuming app must
+     * never break artisan — the CLI parses the same file loudly.
      */
     public static function load(string $path, ?string $environment): self
     {
@@ -63,8 +60,7 @@ class ManifestReader
 
     /**
      * A claim in any environment counts, regardless of the instance's own —
-     * an app either is or isn't a {service} app, and the runtime's
-     * environment (e.g. `local`) may not exist in the manifest at all.
+     * the runtime's environment (e.g. `local`) may not exist in the manifest.
      */
     public function hasService(Service $service): bool
     {

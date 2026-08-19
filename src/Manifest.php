@@ -1282,9 +1282,8 @@ class Manifest
     }
 
     /**
-     * The shared read core ({@see ManifestReader}) — this static class only
-     * supplies the CLI's context: BASE_PATH file resolution, hydration, the
-     * selected environment.
+     * The shared read core — this static class only supplies the CLI's
+     * context: BASE_PATH file resolution, hydration, the selected environment.
      */
     protected static function reader(): ManifestReader
     {
