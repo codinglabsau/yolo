@@ -66,28 +66,8 @@ class YoloServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        // The search self-heal/reimport commands register unconditionally —
-        // they're console-only and guard their own applicability (Scout +
-        // Typesense configured), so a non-search app just carries two inert
-        // commands. Ahead of the burst gate on purpose: the burst environment
-        // exists only on the web task-def, and these run on queue/scheduler
-        // tasks and operator shells.
         if ($this->app->runningInConsole()) {
-            $this->commands([
-                Runtime\Commands\ScoutHealCommand::class,
-                Runtime\Commands\ScoutReimportCommand::class,
-            ]);
-
-            // Set-and-forget: the provider schedules the heal itself, so a
-            // wiped index rebuilds without any app remembering a kernel line.
-            // Gated on the app actually being wired for Typesense (the same
-            // config the command reads) and on the `yolo.search.heal` opt-out.
-            // The command is self-locking, so no schedule decorations needed.
-            $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
-                if (config('yolo.search.heal') && (array) config('scout.typesense.client-settings', []) !== []) {
-                    $schedule->command('scout:heal')->everyFiveMinutes();
-                }
-            });
+            $this->bootSearchCommands();
         }
 
         if (! $this->burstEnabled()) {
@@ -129,6 +109,66 @@ class YoloServiceProvider extends ServiceProvider
                 taskId: $this->taskId(),
             ));
         }
+    }
+
+    /**
+     * Register YOLO's Typesense search commands and schedule the self-heal —
+     * but only when Typesense is the app's active Scout driver.
+     *
+     * The commands own the `scout:reimport` / `scout:heal` names, so registering
+     * them unconditionally would shadow whatever a non-Typesense app binds to
+     * those names (e.g. scout-extended's own `scout:reimport`). Gating on the
+     * live Scout driver (`config('scout.driver')`) means YOLO claims the names
+     * only when Typesense is the *active* search engine — not when it's merely
+     * provisioned but a different driver is live.
+     *
+     * Console-only, and ahead of the burst gate on purpose: the burst
+     * environment exists only on the web task-def, while these run on
+     * queue/scheduler tasks and operator shells. Config is fully loaded before
+     * any provider boots, so the Scout config read here is reliable.
+     */
+    private function bootSearchCommands(): void
+    {
+        if (! $this->typesenseIsScoutDriver()) {
+            return;
+        }
+
+        $this->commands([
+            Runtime\Commands\ScoutHealCommand::class,
+            Runtime\Commands\ScoutReimportCommand::class,
+        ]);
+
+        // Set-and-forget: the provider schedules the heal itself, so a wiped
+        // index rebuilds without any app remembering a kernel line. Resolved
+        // lazily (config can be finalised after boot), gated on the
+        // `yolo.search.heal` opt-out and the same active-driver check as
+        // registration. The command is self-locking, so no schedule decorations
+        // needed.
+        $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
+            if (config('yolo.search.heal') && $this->typesenseIsScoutDriver()) {
+                $schedule->command('scout:heal')->everyFiveMinutes();
+            }
+        });
+    }
+
+    /**
+     * Whether Typesense is this app's active Scout engine — the single signal
+     * that decides whether YOLO claims the scout:reimport / scout:heal names,
+     * shared by command registration and the schedule gate so the two can't
+     * drift.
+     *
+     * It reads the live `SCOUT_DRIVER` (`config('scout.driver')`), NOT the
+     * manifest or the mere presence of Typesense config. `services: [typesense]`
+     * only *defaults* `SCOUT_DRIVER` (a service's buildValues are appended to the
+     * app's `.env` and phpdotenv is first-wins), so an app can provision a
+     * Typesense cluster yet run Algolia as its driver — the driver is the only
+     * thing that says which engine is live, and it lives in config at runtime,
+     * never in the manifest. The commands still guard on `client-settings`
+     * before touching the cluster.
+     */
+    private function typesenseIsScoutDriver(): bool
+    {
+        return config('scout.driver') === 'typesense';
     }
 
     /**

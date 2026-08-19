@@ -28,8 +28,8 @@ it('stays out of the schedule when opted out', function (): void {
     expect(collect(scheduledCommands())->contains(fn (string $command): bool => str_contains($command, 'scout:heal')))->toBeFalse();
 });
 
-it('stays out of the schedule on an app without Typesense wiring', function (): void {
-    config()->set('scout.typesense.client-settings', []);
+it('stays out of the schedule when Typesense is not the Scout driver', function (): void {
+    config()->set('scout.driver', 'algolia');
 
     expect(collect(scheduledCommands())->contains(fn (string $command): bool => str_contains($command, 'scout:heal')))->toBeFalse();
 });
