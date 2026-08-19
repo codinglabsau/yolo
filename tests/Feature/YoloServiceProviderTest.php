@@ -5,8 +5,8 @@ declare(strict_types=1);
 use Tests\TestbenchCase;
 use Illuminate\Support\Collection;
 use Illuminate\Contracts\Http\Kernel;
+use Codinglabs\Yolo\YoloServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
-use Illuminate\Contracts\Foundation\Application;
 use Codinglabs\Yolo\Runtime\WorkerSaturationReporter;
 use Codinglabs\Yolo\Runtime\Http\TrackInFlightRequests;
 use Illuminate\Foundation\Http\Kernel as FoundationHttpKernel;
@@ -94,30 +94,31 @@ it('does not push the in-flight tracking middleware when no burst service is set
 });
 
 /**
- * The provider registers its scheduling hook via callAfterResolving(Schedule),
- * which fires on every resolution — so forgetting the shared instance and
- * re-resolving replays the hook against the config set here, independent of
- * env plumbing and of whether the boot already resolved a Schedule.
+ * The scheduling wiring is a public static hook (the provider's
+ * callAfterResolving(Schedule) delegates to it), so it's exercised directly
+ * against a bare Schedule — no container resolution order in play.
  */
-function resolveFreshSchedule(Application $app): Collection
+function runtimeScheduleEvents(): Collection
 {
-    $app->forgetInstance(Schedule::class);
+    $schedule = new Schedule();
 
-    return collect($app->make(Schedule::class)->events());
+    YoloServiceProvider::scheduleRuntimeJobs($schedule);
+
+    return collect($schedule->events());
 }
 
 it('schedules the database backup when a destination is configured', function (): void {
     config()->set('yolo.backup.destination', 'yolo-111111111111-testing-dumps/my-app');
 
-    expect(resolveFreshSchedule($this->app)->contains(
+    expect(runtimeScheduleEvents()->contains(
         fn ($event): bool => str_contains((string) $event->command, 'yolo:backup-databases')
     ))->toBeTrue();
 });
 
 it('schedules no backup when no destination is configured', function (): void {
-    config()->set('yolo.backup.destination', null);
+    config()->set('yolo.backup.destination');
 
-    expect(resolveFreshSchedule($this->app)->contains(
+    expect(runtimeScheduleEvents()->contains(
         fn ($event): bool => str_contains((string) $event->command, 'yolo:backup-databases')
     ))->toBeFalse();
 });
