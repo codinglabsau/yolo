@@ -256,16 +256,12 @@ class Manifest
 
     public static function has(string $key): bool
     {
-        return Arr::has(static::current()['environments'][Helpers::environment()], $key);
+        return static::reader()->has($key);
     }
 
     public static function get(string $key, $default = null): mixed
     {
-        if (! static::has($key)) {
-            return $default;
-        }
-
-        return Arr::get(static::current()['environments'][Helpers::environment()], $key);
+        return static::reader()->get($key, $default);
     }
 
     /**
@@ -1277,23 +1273,22 @@ class Manifest
      */
     public static function services(): array
     {
-        return static::reader()->services((string) Helpers::environment());
+        return static::reader()->services();
     }
 
     public static function usesService(Service $service): bool
     {
-        return static::reader()->hasService($service, (string) Helpers::environment());
+        return in_array($service->value, static::services(), true);
     }
 
     /**
-     * The shared read core over this manifest — see {@see ManifestReader}.
-     * The static class supplies the CLI's context (BASE_PATH file resolution,
-     * hydration, the selected environment); the reader owns the read logic,
-     * so the runtime's `Yolo::manifest()` and these statics can never drift.
+     * The shared read core ({@see ManifestReader}) — this static class only
+     * supplies the CLI's context: BASE_PATH file resolution, hydration, the
+     * selected environment.
      */
     protected static function reader(): ManifestReader
     {
-        return new ManifestReader(static::current());
+        return new ManifestReader(static::current(), Helpers::environment());
     }
 
     /**

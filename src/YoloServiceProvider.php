@@ -40,12 +40,9 @@ class YoloServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__ . '/../config/yolo.php', 'yolo');
 
-        // The runtime manifest — the app's own yolo.yml, read once through
-        // the same reader the CLI's Manifest statics delegate to. Bound
-        // ahead of the burst gate: it answers app-level questions (which
-        // services the app claims) on every task role and in operator
-        // shells, not just the autoscaling web tier.
-        $this->app->singleton(ManifestReader::class, fn (): ManifestReader => ManifestReader::load($this->manifestPath()));
+        // Bound ahead of the burst gate: manifest reads matter on every task
+        // role and in operator shells, not just the autoscaling web tier.
+        $this->app->singleton(ManifestReader::class, fn (): ManifestReader => ManifestReader::load($this->manifestPath(), $this->app->environment()));
 
         $this->app->singleton(Runtime\Yolo::class);
 
@@ -76,15 +73,12 @@ class YoloServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        // The search self-heal/reimport commands register only when the app's
-        // own manifest claims the typesense service — Scout's stock config
-        // ships a populated typesense block whatever engine the app actually
-        // uses, so config can't answer "is this a Typesense app", and an app
-        // on another engine may carry its own command under the same name
-        // (scout-extended's Algolia `scout:reimport`) that ours must never
-        // shadow. Ahead of the burst gate on purpose: the burst environment
-        // exists only on the web task-def, and these run on queue/scheduler
-        // tasks and operator shells.
+        // Gated on the manifest, not Scout config: the stock scout.php ships
+        // a populated typesense block whatever engine the app uses, and an
+        // app on another engine may carry its own command under the same
+        // name (scout-extended's Algolia `scout:reimport`) that ours must
+        // never shadow. Ahead of the burst gate on purpose: these run on
+        // queue/scheduler tasks and operator shells too.
         if ($this->app->runningInConsole() && $this->app->make(ManifestReader::class)->hasService(Service::TYPESENSE)) {
             $this->commands([
                 Runtime\Commands\ScoutHealCommand::class,
@@ -145,10 +139,8 @@ class YoloServiceProvider extends ServiceProvider
     }
 
     /**
-     * Where the app's manifest lives at runtime. The CLI resolves yolo.yml
-     * through its own BASE_PATH constant, which doesn't exist inside the
-     * deployed app — but the image COPYs the whole app root (and a local
-     * checkout has it at the repo root), so Laravel's base path is the
+     * The CLI resolves yolo.yml through its BASE_PATH constant, which
+     * doesn't exist inside the deployed app — Laravel's base path is the
      * runtime-side answer. Overridable so tests can point at a fixture.
      */
     protected function manifestPath(): string

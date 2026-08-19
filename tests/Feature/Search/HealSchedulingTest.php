@@ -29,6 +29,12 @@ it('answers the typesense claim through the facade', function (): void {
     expect(Yolo::manifest()->hasService(Service::TYPESENSE))->toBeTrue();
 });
 
+it('reads the running environment block through the facade', function (): void {
+    // Testbench runs as `testing`, the fixture manifest's declared environment.
+    expect(Yolo::manifest()->has('services'))->toBeTrue()
+        ->and(Yolo::manifest()->get('services'))->toBe(['typesense']);
+});
+
 it('schedules the heal itself when the app is wired for Typesense', function (): void {
     // Set-and-forget: composer update + release = self-healing on. No kernel
     // line to remember, so no app can forget it.

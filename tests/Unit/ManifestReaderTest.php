@@ -7,68 +7,36 @@ use Codinglabs\Yolo\ManifestReader;
 
 function readerManifest(string $yaml): string
 {
-    $path = tempnam(sys_get_temp_dir(), 'yolo-runtime-manifest-');
+    $path = tempnam(sys_get_temp_dir(), 'yolo-manifest-reader-');
 
     file_put_contents($path, $yaml);
 
     return $path;
 }
 
-it('has the service when any environment claims it', function (): void {
+it('reads within its environment block', function (): void {
     $path = readerManifest(<<<'YAML'
     name: my-app
     environments:
       staging:
-        services:
-          - ivs
+        bucket: true
+        tasks:
+          web:
+            cpu: 512
       production:
-        services:
-          - ivs
-          - typesense
+        bucket: my-bucket
     YAML);
 
-    expect(ManifestReader::load($path)->hasService(Service::TYPESENSE))->toBeTrue();
+    $reader = ManifestReader::load($path, 'staging');
 
-    unlink($path);
+    expect($reader->has('bucket'))->toBeTrue()
+        ->and($reader->get('bucket'))->toBeTrue()
+        ->and($reader->get('tasks.web.cpu'))->toBe(512)
+        ->and($reader->has('domain'))->toBeFalse()
+        ->and($reader->get('domain', 'fallback'))->toBe('fallback');
 });
 
-it('scopes the claim to one environment when given', function (): void {
-    $path = readerManifest(<<<'YAML'
-    name: my-app
-    environments:
-      staging:
-        services:
-          - ivs
-      production:
-        services:
-          - typesense
-    YAML);
-
-    $reader = ManifestReader::load($path);
-
-    expect($reader->hasService(Service::TYPESENSE, 'production'))->toBeTrue()
-        ->and($reader->hasService(Service::TYPESENSE, 'staging'))->toBeFalse()
-        ->and($reader->services('staging'))->toBe(['ivs'])
-        ->and($reader->services('missing'))->toBe([]);
-
-    unlink($path);
-});
-
-it('does not have a service no environment claims', function (): void {
-    $path = readerManifest(<<<'YAML'
-    name: my-app
-    environments:
-      production:
-        services:
-          - ivs
-    YAML);
-
-    expect(ManifestReader::load($path)->hasService(Service::TYPESENSE))->toBeFalse();
-
-    unlink($path);
-});
-
-it('has no services without a services list', function (): void {
+it('reads nothing for an environment the manifest does not declare', function (): void {
     $path = readerManifest(<<<'YAML'
     name: my-app
     environments:
@@ -76,23 +44,46 @@ it('has no services without a services list', function (): void {
         bucket: true
     YAML);
 
-    expect(ManifestReader::load($path)->hasService(Service::TYPESENSE))->toBeFalse();
+    $reader = ManifestReader::load($path, 'local');
 
-    unlink($path);
+    expect($reader->has('bucket'))->toBeFalse()
+        ->and($reader->get('bucket', 'fallback'))->toBe('fallback')
+        ->and($reader->services())->toBe([]);
 });
 
-it('loads a missing manifest as empty', function (): void {
-    expect(ManifestReader::load('/nowhere/yolo.yml')->hasService(Service::TYPESENSE))->toBeFalse();
+it('lists its environment services', function (): void {
+    $path = readerManifest(<<<'YAML'
+    name: my-app
+    environments:
+      staging:
+        services:
+          - ivs
+      production:
+        services:
+          - ivs
+          - typesense
+    YAML);
+
+    expect(ManifestReader::load($path, 'staging')->services())->toBe(['ivs'])
+        ->and(ManifestReader::load($path, 'production')->services())->toBe(['ivs', 'typesense']);
 });
 
-it('loads a malformed manifest as empty', function (): void {
-    // The CLI parses the same file loudly on every build/sync — the runtime
-    // read is a guest of the consuming app and must never break artisan.
-    $path = readerManifest("environments:\n  production: [unclosed");
+it('has the service when any environment claims it, regardless of its own', function (): void {
+    $path = readerManifest(<<<'YAML'
+    name: my-app
+    environments:
+      staging:
+        services:
+          - ivs
+      production:
+        services:
+          - typesense
+    YAML);
 
-    expect(ManifestReader::load($path)->hasService(Service::TYPESENSE))->toBeFalse();
+    $reader = ManifestReader::load($path, 'local');
 
-    unlink($path);
+    expect($reader->hasService(Service::TYPESENSE))->toBeTrue()
+        ->and($reader->hasService(Service::MEDIA_CONVERT))->toBeFalse();
 });
 
 it('ignores a services key that is not a list', function (): void {
@@ -103,7 +94,23 @@ it('ignores a services key that is not a list', function (): void {
         services: typesense
     YAML);
 
-    expect(ManifestReader::load($path)->hasService(Service::TYPESENSE))->toBeFalse();
+    $reader = ManifestReader::load($path, 'production');
 
-    unlink($path);
+    expect($reader->services())->toBe([])
+        ->and($reader->hasService(Service::TYPESENSE))->toBeFalse();
+});
+
+it('loads a missing manifest as empty', function (): void {
+    $reader = ManifestReader::load('/nowhere/yolo.yml', 'production');
+
+    expect($reader->hasService(Service::TYPESENSE))->toBeFalse()
+        ->and($reader->has('bucket'))->toBeFalse();
+});
+
+it('loads a malformed manifest as empty', function (): void {
+    // The CLI parses the same file loudly on every build/sync — the runtime
+    // read is a guest of the consuming app and must never break artisan.
+    $path = readerManifest("environments:\n  production: [unclosed");
+
+    expect(ManifestReader::load($path, 'production')->hasService(Service::TYPESENSE))->toBeFalse();
 });
