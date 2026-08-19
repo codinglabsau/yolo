@@ -41,6 +41,6 @@ it('probes the built image tag', function (): void {
 it('builds a docker probe that asks PHP itself which fragments loaded', function (): void {
     expect(CheckPhpIniRuntimeStep::command('repo:26.24.1.1200'))->toBe([
         'docker', 'run', '--rm', '--entrypoint', 'php', 'repo:26.24.1.1200',
-        '-r', 'exit(str_contains((string) php_ini_scanned_files(), "zz-app.ini") ? 0 : 1);',
+        '-r', 'exit(str_contains((string) php_ini_scanned_files(), "yolo.ini") ? 0 : 1);',
     ]);
 });

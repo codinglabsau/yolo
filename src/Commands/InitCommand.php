@@ -230,7 +230,7 @@ class InitCommand extends Command
 
     /**
      * Publish-once: the app owns docker/php.ini from here (the Dockerfile COPYs
-     * it to $PHP_INI_DIR/conf.d/zz-app.ini), so an existing copy is the app's
+     * it to $PHP_INI_DIR/conf.d/yolo.ini), so an existing copy is the app's
      * tuning and is never overwritten without asking.
      */
     protected function initialisePhpIni(): void
