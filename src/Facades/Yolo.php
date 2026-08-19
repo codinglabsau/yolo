@@ -7,7 +7,7 @@ namespace Codinglabs\Yolo\Facades;
 use Illuminate\Support\Facades\Facade;
 
 /**
- * @method static \Codinglabs\Yolo\Runtime\Manifest manifest()
+ * @method static \Codinglabs\Yolo\ManifestReader manifest()
  *
  * @see \Codinglabs\Yolo\Runtime\Yolo
  */

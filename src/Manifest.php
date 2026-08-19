@@ -1277,14 +1277,23 @@ class Manifest
      */
     public static function services(): array
     {
-        $services = static::get('services', []);
-
-        return is_array($services) && array_is_list($services) ? $services : [];
+        return static::reader()->services((string) Helpers::environment());
     }
 
     public static function usesService(Service $service): bool
     {
-        return in_array($service->value, static::services(), true);
+        return static::reader()->hasService($service, (string) Helpers::environment());
+    }
+
+    /**
+     * The shared read core over this manifest — see {@see ManifestReader}.
+     * The static class supplies the CLI's context (BASE_PATH file resolution,
+     * hydration, the selected environment); the reader owns the read logic,
+     * so the runtime's `Yolo::manifest()` and these statics can never drift.
+     */
+    protected static function reader(): ManifestReader
+    {
+        return new ManifestReader(static::current());
     }
 
     /**

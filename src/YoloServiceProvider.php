@@ -40,11 +40,12 @@ class YoloServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__ . '/../config/yolo.php', 'yolo');
 
-        // The runtime manifest — the app's own yolo.yml, read once. Bound
+        // The runtime manifest — the app's own yolo.yml, read once through
+        // the same reader the CLI's Manifest statics delegate to. Bound
         // ahead of the burst gate: it answers app-level questions (which
         // services the app claims) on every task role and in operator
         // shells, not just the autoscaling web tier.
-        $this->app->singleton(Runtime\Manifest::class, fn (): Runtime\Manifest => Runtime\Manifest::load($this->manifestPath()));
+        $this->app->singleton(ManifestReader::class, fn (): ManifestReader => ManifestReader::load($this->manifestPath()));
 
         $this->app->singleton(Runtime\Yolo::class);
 
@@ -84,7 +85,7 @@ class YoloServiceProvider extends ServiceProvider
         // shadow. Ahead of the burst gate on purpose: the burst environment
         // exists only on the web task-def, and these run on queue/scheduler
         // tasks and operator shells.
-        if ($this->app->runningInConsole() && $this->app->make(Runtime\Manifest::class)->hasService(Service::TYPESENSE)) {
+        if ($this->app->runningInConsole() && $this->app->make(ManifestReader::class)->hasService(Service::TYPESENSE)) {
             $this->commands([
                 Runtime\Commands\ScoutHealCommand::class,
                 Runtime\Commands\ScoutReimportCommand::class,
