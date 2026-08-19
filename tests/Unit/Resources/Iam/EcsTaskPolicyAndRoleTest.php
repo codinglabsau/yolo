@@ -241,13 +241,13 @@ it('grants no Rekognition access when the app does not consume the rekognition s
     expect($actions)->not->toContain('rekognition:*');
 });
 
-it('grants write-only access to this app\'s own dumps prefix when backups are on', function (): void {
-    // The web task hosts the scheduler, so backups default on. Write-only by
-    // design: the producer verifies locally before uploading, so the container
-    // never needs read — and can't exfiltrate its own dump history or any
-    // sibling app's.
+it('grants write-only access to this app\'s own dumps prefix when backups are opted in', function (): void {
+    // Write-only by design: the producer verifies locally before uploading, so
+    // the container never needs read — and can't exfiltrate its own dump
+    // history or any sibling app's.
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'mysqldump' => true,
         'tasks' => ['web' => true],
     ]);
 
@@ -262,10 +262,9 @@ it('grants write-only access to this app\'s own dumps prefix when backups are on
         ]);
 });
 
-it('grants no dumps access when the manifest opts out of backups', function (): void {
+it('grants no dumps access by default — backups are an opt-in', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'mysqldump' => false,
         'tasks' => ['web' => true],
     ]);
 

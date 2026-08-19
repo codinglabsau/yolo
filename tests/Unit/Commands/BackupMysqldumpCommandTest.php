@@ -29,15 +29,10 @@ it('runs at the deployer tier', function (): void {
     expect(new BackupMysqldumpCommand())->toBeInstanceOf(DeployerCommand::class);
 });
 
-it('refuses when the manifest does not back up MySQL', function (): void {
+it('refuses when the manifest has not opted into backups', function (): void {
     // The task role only carries the dumps-prefix grant when backups are on,
-    // so a run here could only fail at upload — refuse up front instead.
-    writeManifest([
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'mysqldump' => false,
-        'tasks' => ['web' => true],
-    ]);
-
+    // so a run here could only fail at upload — refuse up front instead. The
+    // beforeEach manifest is the default (no mysqldump key), which is off.
     Prompt::interactive(false);
     Prompt::setOutput($promptOutput = new BufferedOutput());
 

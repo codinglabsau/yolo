@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Steps\Build\Fargate\CheckMysqlBackupRuntimeStep;
 beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'mysqldump' => true,
         'tasks' => ['web' => true],
     ]);
 });
@@ -25,10 +26,9 @@ it('hard-fails when the built image is missing the backup tools', function (): v
         ->toThrow(RuntimeException::class, 'missing mysqldump and/or zstd');
 });
 
-it('skips the probe when the manifest opts out of backups', function (): void {
+it('skips the probe by default — backups are an opt-in', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'mysqldump' => false,
         'tasks' => ['web' => true],
     ]);
 
@@ -40,6 +40,7 @@ it('skips the probe when the manifest opts out of backups', function (): void {
 it('skips the probe when cron runs nowhere to host the dump', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'mysqldump' => true,
         'tasks' => ['web' => true, 'scheduler' => false],
     ]);
 
