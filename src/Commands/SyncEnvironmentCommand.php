@@ -163,6 +163,9 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 // `SyncLoadBalancerStep` enables access logs (AWS verifies the
                 // policy at attribute-write time).
                 Steps\Sync\Environment\SyncS3LogsBucketStep::class,
+                // env dumps bucket — the apps' logical database dumps, one
+                // write-only prefix per app task role
+                Steps\Sync\Environment\SyncS3DumpsBucketStep::class,
                 // load balancer + :80 listener
                 Steps\Sync\Environment\SyncLoadBalancerStep::class,
                 Steps\Sync\Environment\SyncHttpListenerStep::class,

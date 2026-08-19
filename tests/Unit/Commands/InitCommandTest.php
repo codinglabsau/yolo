@@ -114,6 +114,35 @@ it('scaffolds a .dockerignore when none exists', function (): void {
         ->and(file_get_contents($path))->toBe(file_get_contents(Paths::stubs('.dockerignore.stub')));
 })->after(fn (): bool => @unlink(Paths::base('.dockerignore')));
 
+it('publishes the php.ini baseline when none exists', function (): void {
+    $path = Paths::base('docker/php.ini');
+
+    (function (): void {
+        $this->initialisePhpIni();
+    })->call(new InitCommand());
+
+    expect(file_exists($path))->toBeTrue()
+        ->and(file_get_contents($path))->toBe(file_get_contents(Paths::stubs('php.ini.stub')));
+})->after(function (): void {
+    @unlink(Paths::base('docker/php.ini'));
+    @rmdir(Paths::base('docker'));
+});
+
+it('ships a php.ini stub that lifts the compile-default request-body limits', function (): void {
+    // The whole point of publishing: PHP's bare defaults cap uploads at 2M and
+    // POST bodies at 8M, and nothing else in the stack imposes a limit.
+    $stub = file_get_contents(Paths::stubs('php.ini.stub'));
+
+    expect($stub)->toContain('upload_max_filesize = 10M')
+        ->and($stub)->toContain('post_max_size = 12M')
+        ->and($stub)->toContain('opcache.validate_timestamps = 0');
+});
+
+it('ships a Dockerfile stub that loads the published php.ini after the extension fragments', function (): void {
+    expect(file_get_contents(Paths::stubs('Dockerfile.stub')))
+        ->toContain('COPY docker/php.ini $PHP_INI_DIR/conf.d/yolo.ini');
+});
+
 it('templates the environment block rather than hardcoding production', function (): void {
     $stub = file_get_contents(Paths::stubs('yolo.yml.stub'));
 
