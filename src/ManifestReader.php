@@ -21,14 +21,14 @@ class ManifestReader
     /**
      * @param  array<string, mixed>  $manifest
      */
-    public function __construct(protected array $manifest, protected ?string $environment = null) {}
+    public function __construct(protected array $manifest, protected ?string $environment) {}
 
     /**
      * A missing or malformed file loads as empty rather than throwing: the
      * runtime read is a guest of the consuming app and must never break
      * artisan — the CLI parses the same file loudly on every build/sync.
      */
-    public static function load(string $path, ?string $environment = null): self
+    public static function load(string $path, ?string $environment): self
     {
         if (! is_file($path)) {
             return new self([], $environment);
@@ -58,9 +58,7 @@ class ManifestReader
      */
     public function services(): array
     {
-        $services = $this->get('services', []);
-
-        return is_array($services) && array_is_list($services) ? $services : [];
+        return $this->serviceList($this->get('services', []));
     }
 
     /**
@@ -70,15 +68,23 @@ class ManifestReader
      */
     public function hasService(Service $service): bool
     {
-        foreach (array_keys((array) ($this->manifest['environments'] ?? [])) as $environment) {
-            $services = Arr::get($this->manifest, sprintf('environments.%s.services', $environment), []);
+        foreach ((array) ($this->manifest['environments'] ?? []) as $environment) {
+            $services = $this->serviceList(is_array($environment) ? $environment['services'] ?? [] : []);
 
-            if (is_array($services) && in_array($service->value, $services, true)) {
+            if (in_array($service->value, $services, true)) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function serviceList(mixed $services): array
+    {
+        return is_array($services) && array_is_list($services) ? $services : [];
     }
 
     protected function environmentKey(string $key): string
