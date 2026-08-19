@@ -9,6 +9,7 @@ use Symfony\Component\Yaml\Yaml;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Enums\QueueIsolation;
+use Symfony\Component\Yaml\Exception\ParseException;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 class Manifest
@@ -1285,6 +1286,40 @@ class Manifest
     public static function usesService(Service $service): bool
     {
         return in_array($service->value, static::services(), true);
+    }
+
+    /**
+     * Whether any environment block in the manifest file at $path claims the
+     * service. This is the runtime's form of {@see usesService()}: YOLO's
+     * service provider boots inside the deployed app (or a local checkout),
+     * where the CLI's BASE_PATH doesn't exist and no environment is selected —
+     * so it takes an explicit path and treats a claim in any environment as
+     * "this is a {service} app". Reads the file directly, never the hydrated
+     * stand-in. A missing or malformed file reads as no claim: the CLI parses
+     * the same file loudly on every build/sync, so this guest-of-the-app read
+     * must not be the thing that breaks artisan.
+     */
+    public static function fileClaimsService(string $path, Service $service): bool
+    {
+        if (! is_file($path)) {
+            return false;
+        }
+
+        try {
+            $manifest = Yaml::parse((string) file_get_contents($path));
+        } catch (ParseException) {
+            return false;
+        }
+
+        foreach ((array) (is_array($manifest) ? $manifest['environments'] ?? [] : []) as $environment) {
+            $services = is_array($environment) ? $environment['services'] ?? [] : [];
+
+            if (is_array($services) && in_array($service->value, $services, true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

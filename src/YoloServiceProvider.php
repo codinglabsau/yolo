@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo;
 
 use Inertia\Ssr\Gateway;
+use Codinglabs\Yolo\Enums\Service;
 use Aws\CloudWatch\CloudWatchClient;
 use Illuminate\Support\Facades\Cache;
 use Codinglabs\Yolo\Runtime\CgroupCpu;
@@ -66,13 +67,16 @@ class YoloServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        // The search self-heal/reimport commands register unconditionally —
-        // they're console-only and guard their own applicability (Scout +
-        // Typesense configured), so a non-search app just carries two inert
-        // commands. Ahead of the burst gate on purpose: the burst environment
+        // The search self-heal/reimport commands register only when the app's
+        // own manifest claims the typesense service — Scout's stock config
+        // ships a populated typesense block whatever engine the app actually
+        // uses, so config can't answer "is this a Typesense app", and an app
+        // on another engine may carry its own command under the same name
+        // (scout-extended's Algolia `scout:reimport`) that ours must never
+        // shadow. Ahead of the burst gate on purpose: the burst environment
         // exists only on the web task-def, and these run on queue/scheduler
         // tasks and operator shells.
-        if ($this->app->runningInConsole()) {
+        if ($this->app->runningInConsole() && Manifest::fileClaimsService($this->manifestPath(), Service::TYPESENSE)) {
             $this->commands([
                 Runtime\Commands\ScoutHealCommand::class,
                 Runtime\Commands\ScoutReimportCommand::class,
@@ -129,6 +133,18 @@ class YoloServiceProvider extends ServiceProvider
                 taskId: $this->taskId(),
             ));
         }
+    }
+
+    /**
+     * Where the app's manifest lives at runtime. The CLI resolves yolo.yml
+     * through its own BASE_PATH constant, which doesn't exist inside the
+     * deployed app — but the image COPYs the whole app root (and a local
+     * checkout has it at the repo root), so Laravel's base path is the
+     * runtime-side answer. Overridable so tests can point at a fixture.
+     */
+    protected function manifestPath(): string
+    {
+        return $this->app->basePath(Helpers::manifestName());
     }
 
     /**

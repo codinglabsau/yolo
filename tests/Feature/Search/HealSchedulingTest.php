@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Tests\SearchTestbenchCase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 
@@ -15,6 +16,12 @@ function scheduledCommands(): array
         app(Schedule::class)->events(),
     );
 }
+
+it('registers the search commands when the manifest claims typesense', function (): void {
+    expect(Artisan::all())
+        ->toHaveKey('scout:reimport')
+        ->toHaveKey('scout:heal');
+});
 
 it('schedules the heal itself when the app is wired for Typesense', function (): void {
     // Set-and-forget: composer update + release = self-healing on. No kernel
