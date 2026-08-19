@@ -9,8 +9,8 @@ FROM dunglas/frankenphp:1-php8.4-alpine
 
 # supercronic runs the scheduler's cron as a non-root user (busybox crond can't);
 # nodejs is the runtime for Inertia SSR (tasks.web.ssr) — drop it if you don't use SSR;
-# mariadb-client + zstd drive the scheduled database dumps — drop them only with
-# `mysqldump: false` in yolo.yml.
+# mariadb-client + zstd drive the scheduled database dumps (opt-in via `mysqldump:
+# true` in yolo.yml) — drop them if this app will never back up MySQL.
 RUN apk add --no-cache git supervisor supercronic nodejs mariadb-client zstd \
     && install-php-extensions intl pcntl bcmath redis pdo_mysql opcache excimer
 

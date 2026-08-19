@@ -850,15 +850,14 @@ class Manifest
     }
 
     /**
-     * Whether this app runs scheduled logical MySQL backups. Default ON — losing
-     * backups should take a deliberate `mysqldump: false`, never an omission —
-     * but backups ride the scheduler (the runtime provider schedules the dump
-     * command), so an app with cron switched off has no host to run them and the
-     * whole feature is moot there.
+     * Whether this app runs scheduled logical MySQL backups — opt-in via
+     * `mysqldump: true`. Backups ride the scheduler (the generated crontab
+     * carries the daily entry), so an app with cron switched off has no host
+     * to run them and the whole feature is moot there.
      */
     public static function backsUpMysql(): bool
     {
-        return (bool) static::get('mysqldump', true)
+        return (bool) static::get('mysqldump', false)
             && static::schedulerHost() instanceof ServerGroup;
     }
 

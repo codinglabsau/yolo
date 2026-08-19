@@ -585,7 +585,7 @@ yolo backup:mysqldump <environment>
 
 **Arguments:** `environment` · **Options:** none · Deployer-tier (the same `ecs:RunTask` surface as deploy hooks).
 
-Refused when the manifest doesn't back up MySQL ([`mysqldump: false`](/reference/manifest#mysqldump), or cron disabled) — the task role carries no dumps-bucket grant there, so the run could only fail at upload.
+Refused when the manifest hasn't opted into backups ([`mysqldump: true`](/reference/manifest#mysqldump) absent, or cron disabled) — the task role carries no dumps-bucket grant there, so the run could only fail at upload.
 
 ---
 
