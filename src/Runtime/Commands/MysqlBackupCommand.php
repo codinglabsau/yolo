@@ -12,11 +12,13 @@ use Illuminate\Support\Facades\Cache;
 use Symfony\Component\Process\Process;
 
 /**
- * Scheduled logical backups: `mysqldump` each database, compress with zstd,
- * verify the archive, and upload it to the env dumps bucket. Nothing to
- * schedule — YOLO's provider registers this daily itself whenever the task
- * environment carries a backup destination (`yolo.backup.destination`,
- * injected on the scheduler host's task definition).
+ * The in-container backup executor: `mysqldump` each database, compress with
+ * zstd, verify the archive, and upload it to the env dumps bucket. Nothing to
+ * schedule and no runtime config — the crontab YOLO generates for the
+ * scheduler host carries the daily entry with every argument baked from the
+ * manifest at build time (ProcessCommands::mysqlBackup), and
+ * `yolo backup:mysqldump` runs the same invocation on demand as a one-off
+ * task with its output streamed back.
  *
  * Verification happens at the producer, before upload, so a bad dump can
  * never ship — let alone replicate offsite looking healthy:
@@ -46,18 +48,23 @@ class MysqlBackupCommand extends Command
      * roomy enough that a large multi-database dump finishes well inside it. */
     protected const int LOCK_TTL_SECONDS = 6 * 3600;
 
-    protected $signature = 'yolo:backup-databases';
+    protected $signature = 'yolo:backup-databases
+        {--destination= : The bucket/prefix the dumps upload to (baked into the crontab from the manifest)}
+        {--region= : The dumps bucket region}
+        {--tenants= : Comma-separated tenant database names dumped alongside the default connection}';
 
     protected $description = 'Dump each database, verify the archive, and upload it to the env dumps bucket';
 
     public function handle(): int
     {
-        $destination = (string) config('yolo.backup.destination');
+        $destination = (string) $this->option('destination');
 
-        if ($destination === '') {
-            $this->info('No backup destination configured — nothing to do.');
+        if ($destination === '' || (string) $this->option('region') === '') {
+            // The generated crontab and `yolo backup:mysqldump` always pass
+            // both — a bare manual run is missing its target, not opting out.
+            $this->error('Both --destination and --region are required (copy them from docker/crontab).');
 
-            return self::SUCCESS;
+            return self::FAILURE;
         }
 
         $databases = $this->databases();
@@ -100,7 +107,7 @@ class MysqlBackupCommand extends Command
     }
 
     /**
-     * The default connection's database plus any injected tenant databases.
+     * The default connection's database plus any tenant databases passed in.
      * Tenant ids are the database names (the same contract the per-tenant
      * queue fan-out relies on), so the list needs no tenancy package.
      *
@@ -109,7 +116,7 @@ class MysqlBackupCommand extends Command
     protected function databases(): array
     {
         return collect([$this->connection()['database'] ?? null])
-            ->concat(explode(',', (string) config('yolo.backup.tenants')))
+            ->concat(explode(',', (string) $this->option('tenants')))
             ->map(fn ($database): string => trim((string) $database))
             ->filter()
             ->unique()
@@ -234,7 +241,7 @@ class MysqlBackupCommand extends Command
     {
         return new S3Client([
             'version' => 'latest',
-            'region' => (string) config('yolo.backup.region'),
+            'region' => (string) $this->option('region'),
         ]);
     }
 

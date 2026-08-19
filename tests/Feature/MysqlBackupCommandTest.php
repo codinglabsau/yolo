@@ -67,9 +67,12 @@ function fakeBackupCommand(Application $app, string $trailer = '-- Dump complete
     return $command;
 }
 
-function runBackupCommand(MysqlBackupCommand $command): int
+function runBackupCommand(MysqlBackupCommand $command, array $options = [
+    '--destination' => 'yolo-111111111111-testing-dumps/my-app',
+    '--region' => 'ap-southeast-2',
+]): int
 {
-    return $command->run(new ArrayInput([]), new BufferedOutput());
+    return $command->run(new ArrayInput($options), new BufferedOutput());
 }
 
 beforeEach(function (): void {
@@ -83,16 +86,14 @@ beforeEach(function (): void {
         'username' => 'app-user',
         'password' => 'secret',
     ]);
-    config()->set('yolo.backup.destination', 'yolo-111111111111-testing-dumps/my-app');
-    config()->set('yolo.backup.tenants');
 });
 
-it('does nothing without a configured destination', function (): void {
-    config()->set('yolo.backup.destination');
-
+it('refuses a run missing its destination or region', function (): void {
+    // The generated crontab and `yolo backup:mysqldump` always pass both — a
+    // bare manual run is missing its target, not opting out.
     $command = fakeBackupCommand($this->app);
 
-    expect(runBackupCommand($command))->toBe(0)
+    expect(runBackupCommand($command, []))->toBe(1)
         ->and($command->uploads)->toBe([]);
 });
 
@@ -104,11 +105,13 @@ it('dumps, verifies and uploads the default database to its app prefix', functio
 });
 
 it('dumps every tenant database alongside the default, deduped', function (): void {
-    config()->set('yolo.backup.tenants', 'acme,globex,app');
-
     $command = fakeBackupCommand($this->app);
 
-    expect(runBackupCommand($command))->toBe(0)
+    expect(runBackupCommand($command, [
+        '--destination' => 'yolo-111111111111-testing-dumps/my-app',
+        '--region' => 'ap-southeast-2',
+        '--tenants' => 'acme,globex,app',
+    ]))->toBe(0)
         ->and($command->uploads)->toBe([
             'yolo-111111111111-testing-dumps/my-app/app.sql.zst',
             'yolo-111111111111-testing-dumps/my-app/acme.sql.zst',
@@ -134,8 +137,6 @@ it('passes connection details as environment, never on the command line', functi
 });
 
 it('refuses to upload a dump whose trailer is missing, fails the run, and keeps going', function (): void {
-    config()->set('yolo.backup.tenants', 'acme');
-
     // Every archive verifies structurally but the dump never completed — the
     // trailer is the completeness proof, so nothing may ship.
     $command = fakeBackupCommand($this->app, trailer: 'INSERT INTO `orders` VALUES (…');
@@ -145,13 +146,15 @@ it('refuses to upload a dump whose trailer is missing, fails the run, and keeps 
 });
 
 it('reports the failed database but still backs up the rest', function (): void {
-    config()->set('yolo.backup.tenants', 'acme');
-
     $command = fakeBackupCommand($this->app, failFor: ['app']);
 
     // One broken database must not cost the others their backup — but the run
     // exits non-zero so the failure is loud in the scheduler's logs.
-    expect(runBackupCommand($command))->toBe(1)
+    expect(runBackupCommand($command, [
+        '--destination' => 'yolo-111111111111-testing-dumps/my-app',
+        '--region' => 'ap-southeast-2',
+        '--tenants' => 'acme',
+    ]))->toBe(1)
         ->and($command->uploads)->toBe(['yolo-111111111111-testing-dumps/my-app/acme.sql.zst']);
 });
 

@@ -383,7 +383,7 @@ Scheduled logical MySQL backups — **default `true`**: losing backups should ta
 mysqldump: false   # only for an app with no MySQL database to back up
 ```
 
-Backups ride the scheduler ([where each role runs](#where-each-role-runs)), so `tasks.scheduler: false` also turns them off. `yolo build` probes the built image for the `mysqldump` and `zstd` binaries when backups are on and refuses to ship without them (see [Runtime checks](/guide/images#runtime-checks)) — the scaffolded Dockerfile installs both. More in the **[Databases](/guide/databases)** guide.
+The schedule is a **generated crontab entry**, not anything the app registers: `yolo build` writes a daily 09:00 line (pinned to the manifest [`timezone`](#timezone) via `CRON_TZ`) into the crontab the scheduler host's supercronic runs, with every argument — destination, region, tenant list — baked in from the manifest, so Laravel's own scheduler is never involved. Backups therefore ride the scheduler host ([where each role runs](#where-each-role-runs)), and `tasks.scheduler: false` also turns them off. [`yolo backup:mysqldump <env>`](/reference/commands#yolo-backup-mysqldump) runs the identical invocation on demand as a one-off task with streamed output. `yolo build` also probes the built image for the `mysqldump` and `zstd` binaries when backups are on and refuses to ship without them (see [Runtime checks](/guide/images#runtime-checks)) — the scaffolded Dockerfile installs both. More in the **[Databases](/guide/databases)** guide.
 
 ---
 
