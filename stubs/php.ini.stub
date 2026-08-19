@@ -15,8 +15,8 @@ expose_php = Off
 ; pass bodies through) — so these two ARE the app's upload ceiling. Kept modest
 ; on purpose: large media should stream directly to S3 (signed uploads), not
 ; through PHP. Raise here only where an app still routes uploads through it.
-upload_max_filesize = 32M
-post_max_size = 40M
+upload_max_filesize = 10M
+post_max_size = 12M
 
 ; The image is immutable and the deploy hooks run `php artisan optimize` before
 ; the server starts, so opcache warms from the final files and never needs to

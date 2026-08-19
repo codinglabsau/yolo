@@ -133,8 +133,8 @@ it('ships a php.ini stub that lifts the compile-default request-body limits', fu
     // POST bodies at 8M, and nothing else in the stack imposes a limit.
     $stub = file_get_contents(Paths::stubs('php.ini.stub'));
 
-    expect($stub)->toContain('upload_max_filesize = 32M')
-        ->and($stub)->toContain('post_max_size = 40M')
+    expect($stub)->toContain('upload_max_filesize = 10M')
+        ->and($stub)->toContain('post_max_size = 12M')
         ->and($stub)->toContain('opcache.validate_timestamps = 0');
 });
 
