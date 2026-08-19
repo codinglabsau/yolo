@@ -3,8 +3,10 @@
 declare(strict_types=1);
 
 use Tests\TestbenchCase;
+use Illuminate\Support\Collection;
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\Foundation\Application;
 use Codinglabs\Yolo\Runtime\WorkerSaturationReporter;
 use Codinglabs\Yolo\Runtime\Http\TrackInFlightRequests;
 use Illuminate\Foundation\Http\Kernel as FoundationHttpKernel;
@@ -91,24 +93,31 @@ it('does not push the in-flight tracking middleware when no burst service is set
     expect($kernel->hasMiddleware(TrackInFlightRequests::class))->toBeFalse();
 });
 
-it('schedules the database backup when a destination is injected', function (): void {
-    putenv('YOLO_MYSQL_BACKUP_DESTINATION=yolo-111111111111-testing-dumps/my-app');
-    $this->refreshApplication();
+/**
+ * The provider registers its scheduling hook via callAfterResolving(Schedule),
+ * which fires on every resolution — so forgetting the shared instance and
+ * re-resolving replays the hook against the config set here, independent of
+ * env plumbing and of whether the boot already resolved a Schedule.
+ */
+function resolveFreshSchedule(Application $app): Collection
+{
+    $app->forgetInstance(Schedule::class);
 
-    try {
-        $events = collect($this->app->make(Schedule::class)->events());
+    return collect($app->make(Schedule::class)->events());
+}
 
-        expect($events->contains(fn ($event): bool => str_contains((string) $event->command, 'yolo:backup-databases')))->toBeTrue();
-    } finally {
-        putenv('YOLO_MYSQL_BACKUP_DESTINATION');
-    }
+it('schedules the database backup when a destination is configured', function (): void {
+    config()->set('yolo.backup.destination', 'yolo-111111111111-testing-dumps/my-app');
+
+    expect(resolveFreshSchedule($this->app)->contains(
+        fn ($event): bool => str_contains((string) $event->command, 'yolo:backup-databases')
+    ))->toBeTrue();
 });
 
-it('schedules no backup when no destination is injected', function (): void {
-    putenv('YOLO_MYSQL_BACKUP_DESTINATION');
-    $this->refreshApplication();
+it('schedules no backup when no destination is configured', function (): void {
+    config()->set('yolo.backup.destination', null);
 
-    $events = collect($this->app->make(Schedule::class)->events());
-
-    expect($events->contains(fn ($event): bool => str_contains((string) $event->command, 'yolo:backup-databases')))->toBeFalse();
+    expect(resolveFreshSchedule($this->app)->contains(
+        fn ($event): bool => str_contains((string) $event->command, 'yolo:backup-databases')
+    ))->toBeFalse();
 });

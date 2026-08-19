@@ -140,7 +140,7 @@ it('ships a php.ini stub that lifts the compile-default request-body limits', fu
 
 it('ships a Dockerfile stub that loads the published php.ini after the extension fragments', function (): void {
     expect(file_get_contents(Paths::stubs('Dockerfile.stub')))
-        ->toContain('COPY docker/php.ini $PHP_INI_DIR/conf.d/zz-app.ini');
+        ->toContain('COPY docker/php.ini $PHP_INI_DIR/conf.d/yolo.ini');
 });
 
 it('templates the environment block rather than hardcoding production', function (): void {

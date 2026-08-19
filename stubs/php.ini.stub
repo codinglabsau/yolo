@@ -1,7 +1,8 @@
 ; Published by `yolo init` — this file is the app's to own, tune it freely.
-; The Dockerfile COPYs it to $PHP_INI_DIR/conf.d/zz-app.ini: the zz- prefix
-; sorts it after the extension fragments install-php-extensions writes, so
-; these values win. YOLO never rewrites a published copy.
+; The Dockerfile COPYs it to $PHP_INI_DIR/conf.d/yolo.ini: conf.d loads
+; alphabetically, so it sorts after the extension fragments
+; install-php-extensions writes and these values win. YOLO never rewrites
+; a published copy.
 ;
 ; Everything not set here inherits PHP's defaults — only deliberate departures
 ; belong in this file.

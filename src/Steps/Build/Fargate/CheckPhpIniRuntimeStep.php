@@ -16,7 +16,7 @@ use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
  * filesystem on every request — and nothing else in the stack imposes a
  * request-body limit, so the misconfig ships green and only surfaces when a
  * user's upload dies. This probes the freshly-built image for the published ini
- * (docker/php.ini, COPY'd to $PHP_INI_DIR/conf.d/zz-app.ini by the scaffolded
+ * (docker/php.ini, COPY'd to $PHP_INI_DIR/conf.d/yolo.ini by the scaffolded
  * Dockerfile) and hard-fails the build — before the push — when PHP hasn't
  * loaded it. Probing php's own scanned-file list (matching the other runtime
  * checks' docker-run pattern) sees every way the fragment can land, whatever
@@ -41,7 +41,7 @@ class CheckPhpIniRuntimeStep implements Step
             'Build aborted: PHP in the built image loads no app php.ini, so it would run '
             . 'compile defaults (2M uploads, 8M POST bodies). Publish the baseline — copy '
             . 'vendor/codinglabsau/yolo/stubs/php.ini.stub to docker/php.ini — and COPY it '
-            . 'in your Dockerfile: `COPY docker/php.ini $PHP_INI_DIR/conf.d/zz-app.ini`.'
+            . 'in your Dockerfile: `COPY docker/php.ini $PHP_INI_DIR/conf.d/yolo.ini`.'
         );
     }
 
@@ -56,7 +56,7 @@ class CheckPhpIniRuntimeStep implements Step
     {
         return [
             'docker', 'run', '--rm', '--entrypoint', 'php', $image,
-            '-r', 'exit(str_contains((string) php_ini_scanned_files(), "zz-app.ini") ? 0 : 1);',
+            '-r', 'exit(str_contains((string) php_ini_scanned_files(), "yolo.ini") ? 0 : 1);',
         ];
     }
 
