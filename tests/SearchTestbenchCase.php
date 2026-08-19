@@ -7,15 +7,14 @@ namespace Tests;
 use Tests\Fixtures\Search\Product;
 use Illuminate\Foundation\Application;
 use Laravel\Scout\ScoutServiceProvider;
+use Tests\Fixtures\Search\ManifestedYoloServiceProvider;
 
 /**
- * Base case for the runtime search tests: Testbench with Scout alongside the
- * YOLO provider, wired the way a Typesense app arrives at runtime —
- * client-settings + model-settings present (what the search commands key
- * off), but the Scout DRIVER pinned to null so model saves and the replay
- * pass exercise Scout's machinery without an engine ever touching the
- * network. The commands talk to Typesense through Laravel's Http client,
- * so Http::fake() covers everything they send.
+ * Base case for the runtime search tests, wired the way a Typesense app
+ * arrives at runtime: a manifest claiming the service, client-settings +
+ * model-settings present, but the Scout driver pinned to null so nothing
+ * touches an engine — the commands talk Typesense over Laravel's Http
+ * client, so Http::fake() covers everything they send.
  */
 abstract class SearchTestbenchCase extends TestbenchCase
 {
@@ -26,7 +25,9 @@ abstract class SearchTestbenchCase extends TestbenchCase
     #[\Override]
     protected function getPackageProviders($app): array
     {
-        return [...parent::getPackageProviders($app), ScoutServiceProvider::class];
+        // Replaces the parent's list — registering both providers would boot
+        // the base provider twice over the fixture subclass.
+        return [ManifestedYoloServiceProvider::class, ScoutServiceProvider::class];
     }
 
     /**
