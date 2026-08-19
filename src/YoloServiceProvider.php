@@ -72,35 +72,71 @@ class YoloServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        // Manifest-gated, not Scout-config-gated: stock scout.php ships a
-        // typesense block for every engine, and another engine's own
-        // `scout:reimport` (scout-extended) must never be shadowed.
-        if ($this->app->runningInConsole() && $this->app->make(ManifestReader::class)->hasService(Service::TYPESENSE)) {
+        if ($this->app->runningInConsole()) {
+            // Manifest-gated, not Scout-config-gated: stock scout.php ships a
+            // typesense block for every engine, and another engine's own
+            // `scout:reimport` (scout-extended) must never be shadowed.
+            if ($this->app->make(ManifestReader::class)->hasService(Service::TYPESENSE)) {
+                $this->commands([
+                    Runtime\Commands\ScoutHealCommand::class,
+                    Runtime\Commands\ScoutReimportCommand::class,
+                ]);
+            }
+
+            // The backup command lives in YOLO's own `yolo:` namespace, so it
+            // shadows nothing and registers unconditionally — its schedule (not
+            // its registration) is what the destination gates.
             $this->commands([
-                Runtime\Commands\ScoutHealCommand::class,
-                Runtime\Commands\ScoutReimportCommand::class,
                 Runtime\Commands\MysqlBackupCommand::class,
             ]);
 
-            // Scheduled here so a wiped index rebuilds without any app
-            // remembering a kernel line; the command is self-locking.
+            // Set-and-forget: the provider schedules its runtime jobs itself,
+            // so nothing needs a kernel line in the app.
             $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
-                if (config('yolo.search.heal') && (array) config('scout.typesense.client-settings', []) !== []) {
-                    $schedule->command('scout:heal')->everyFiveMinutes();
-                }
-
-                // Same pattern for the database dumps: the destination env var
-                // exists only on the scheduler host's task definition (and only
-                // when the manifest backs up MySQL), so its presence is the
-                // gate. Backgrounded so a long dump never holds up the rest of
-                // the minute's schedule; the command locks itself, so no
-                // onOneServer() is needed even when cron ticks on every web task.
-                if ((string) config('yolo.backup.destination') !== '') {
-                    $schedule->command('yolo:backup-databases')->dailyAt('09:00')->runInBackground();
-                }
+                static::scheduleRuntimeJobs($schedule);
             });
         }
 
+        $this->bootBurstReporting();
+    }
+
+    /**
+     * The runtime jobs YOLO schedules on the deployed app's behalf. Public and
+     * static so the wiring is testable against a bare Schedule, independent of
+     * container resolution order.
+     *
+     * - `scout:heal` whenever the manifest claims the typesense service (the
+     *   same gate that registers the command — scheduling an unregistered
+     *   command would fail every schedule:run) and the app is wired for the
+     *   driver; `yolo.search.heal` is the opt-out. A wiped index rebuilds
+     *   without any app remembering a kernel line, and the command is
+     *   self-locking, so no schedule decorations are needed.
+     * - `yolo:backup-databases` whenever a backup destination is present. The
+     *   destination env var exists only on the scheduler host's task definition
+     *   (and only when the manifest backs up MySQL), so its presence is the
+     *   gate. Backgrounded so a long dump never holds up the rest of the
+     *   minute's schedule; the command locks itself, so no onOneServer() is
+     *   needed even when cron ticks on every web task.
+     */
+    public static function scheduleRuntimeJobs(Schedule $schedule): void
+    {
+        if (app(ManifestReader::class)->hasService(Service::TYPESENSE)
+            && config('yolo.search.heal')
+            && (array) config('scout.typesense.client-settings', []) !== []) {
+            $schedule->command('scout:heal')->everyFiveMinutes();
+        }
+
+        if ((string) config('yolo.backup.destination') !== '') {
+            $schedule->command('yolo:backup-databases')->dailyAt('09:00')->runInBackground();
+        }
+    }
+
+    /**
+     * The web tier's burst-reporting wiring — see the class docblock. Inert
+     * unless the burst environment is present (web task definition only).
+     */
+    protected function bootBurstReporting(): void
+    {
         if (! $this->burstEnabled()) {
             return;
         }
