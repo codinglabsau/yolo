@@ -248,7 +248,7 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
         }
 
         if ($apply) {
-            WafV2::retryWhileUnavailable(fn () => Aws::wafV2()->putLoggingConfiguration([
+            WafV2::retryWhileLoggingPermissionsPropagate(fn () => Aws::wafV2()->putLoggingConfiguration([
                 'LoggingConfiguration' => [
                     'ResourceArn' => $webAclArn,
                     'LogDestinationConfigs' => [$desiredDestination],
