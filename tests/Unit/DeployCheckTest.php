@@ -7,6 +7,7 @@ use Codinglabs\Yolo\Contracts\SkippedByDeployCheck;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncVpcStep;
 use Codinglabs\Yolo\Steps\Sync\App\SyncTypesenseKeyStep;
 use Codinglabs\Yolo\Concerns\ChecksIfCommandsShouldBeRunning;
+use Codinglabs\Yolo\Steps\Sync\Environment\SyncWafLogGroupStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\BuildTypesenseImageStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncTypesenseAdminKeyStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncTypesenseLogGroupStep;
@@ -29,6 +30,7 @@ it('marks the read-tier-fenced env-backed-service steps as skipped-by-deploy-che
     SyncTypesenseTaskDefinitionStep::class,
     SyncTypesenseLogGroupStep::class,
     SyncIvsCloudWatchLogGroupStep::class,
+    SyncWafLogGroupStep::class,
     // The app-scope key step reads the Observer-fenced per-app `.env`, so `audit`
     // (Observer tier) must skip it rather than 403 on the once-minted check.
     SyncTypesenseKeyStep::class,
