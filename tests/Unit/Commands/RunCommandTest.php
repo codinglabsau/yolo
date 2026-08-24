@@ -54,59 +54,94 @@ it('omits --profile when none is configured (e.g. running on AWS)', function ():
     expect($args)->toContain('--command', 'php artisan migrate --force');
 });
 
-it('encodes a one-off command as a base64 decode-and-run pipeline', function (): void {
+/**
+ * Simulate the SSM agent's handling of a one-off command: it does NOT run the
+ * string through a shell — it shellwords-splits it (quotes group, an unquoted
+ * backslash escapes the next byte) and execs the resulting argv directly.
+ *
+ * @return array<int, string>
+ */
+function agentArgv(string $command): array
+{
+    $argv = [];
+    $current = '';
+    $started = false;
+
+    for ($i = 0, $length = strlen($command); $i < $length; $i++) {
+        $char = $command[$i];
+
+        if ($char === "'") {
+            $started = true;
+            while (++$i < $length && $command[$i] !== "'") {
+                $current .= $command[$i];
+            }
+        } elseif ($char === '"') {
+            $started = true;
+            while (++$i < $length && $command[$i] !== '"') {
+                $current .= $command[$i] === '\\' ? $command[++$i] : $command[$i];
+            }
+        } elseif ($char === '\\') {
+            $started = true;
+            $current .= $command[++$i];
+        } elseif ($char === ' ' || $char === "\t") {
+            if ($started) {
+                $argv[] = $current;
+                $current = '';
+                $started = false;
+            }
+        } else {
+            $started = true;
+            $current .= $char;
+        }
+    }
+
+    if ($started) {
+        $argv[] = $current;
+    }
+
+    return $argv;
+}
+
+it('encodes a one-off command as an explicit sh -c over a base64 decode-and-run pipeline', function (): void {
     $command = "php artisan tinker --execute='\\App\\Models\\Foo::bar()'";
 
     $encoded = RunCommand::encodeCommand($command);
 
-    expect($encoded)->toBe('echo ' . base64_encode($command) . ' | base64 -d | sh');
-    expect($encoded)->toMatch('/^echo [A-Za-z0-9+\/=]+ \| base64 -d \| sh$/');
+    expect($encoded)->toBe(sprintf("sh -c 'echo %s | base64 -d | sh'", base64_encode($command)));
+    expect($encoded)->toMatch('/^sh -c \'echo [A-Za-z0-9+\/=]+ \| base64 -d \| sh\'$/');
 });
 
-it('survives a naive re-quoting hop that mangles a namespaced one-liner', function (): void {
+it('tokenises to a three-element sh -c argv under the agent parse', function (): void {
+    // The pipeline must arrive as ONE argument to `sh -c`. A bare pipeline
+    // (no sh -c wrapper) tokenises to `echo` plus literal arguments — under
+    // direct exec that prints the pipeline text and exits 0 without ever
+    // running the command: a silent no-op that reports success.
+    $argv = agentArgv(RunCommand::encodeCommand('php artisan migrate:fresh --seed --force'));
+
+    expect($argv)->toHaveCount(3);
+    expect(array_slice($argv, 0, 2))->toBe(['sh', '-c']);
+    expect($argv[2])->toMatch('/^echo [A-Za-z0-9+\/=]+ \| base64 -d \| sh$/');
+});
+
+it('survives the agent parse plus direct exec byte-for-byte', function (): void {
     // A namespaced PHP one-liner, properly single-quoted for the one shell
-    // that's meant to finally run it — the exact "Class not found" shape from
-    // the bug report reduces to this: printf stands in for `php artisan
-    // tinker --execute=...`, and `\App\Foo` stands in for the namespaced class.
+    // that's meant to finally run it — the "Class not found" shape reduces to
+    // this: printf stands in for `php artisan tinker --execute=...`, and
+    // `\App\Foo` stands in for the namespaced class. Raw, the agent's
+    // tokeniser strips its quoting and consumes the backslashes before any
+    // shell sees it; encoded, the payload is pure `[A-Za-z0-9+/=]`, so the
+    // parse has nothing to reinterpret and the original bytes reach the final
+    // decode intact.
     $command = "printf %s '\\App\\Foo'";
 
-    // Confirm that shape is correct for a single parse — this is what the
-    // documented workaround (attach interactively, paste the command
-    // directly) gets right: exactly one shell reads it, so the single quotes
-    // do their job.
-    $direct = new Process(['sh', '-c', $command]);
-    $direct->mustRun();
-    expect($direct->getOutput())->toBe('\App\Foo');
+    $process = new Process(agentArgv(RunCommand::encodeCommand($command)));
+    $process->mustRun();
 
-    // Simulate the extra hop between the terminal and the container: something
-    // in the chain (the AWS CLI, the SSM plugin, ECS's own exec wrapper — the
-    // exact culprit is opaque and undocumented) re-embeds the command inside
-    // another single-quoted shell string, the way a wrapper built by naive
-    // string concatenation would. `$command` already contains single quotes
-    // of its own, so they collide with the wrapper's — the shell closes the
-    // outer quote early, spilling `\App\Foo` into unquoted territory where a
-    // bare backslash is consumed rather than preserved.
-    $naivelyReEmbed = fn (string $text): string => "sh -c '{$text}'";
-
-    $mangled = new Process(['sh', '-c', $naivelyReEmbed($command)]);
-    $mangled->mustRun();
-    expect($mangled->getOutput())->toBe('AppFoo');
-
-    // The fix: wrap it first. The payload is pure `[A-Za-z0-9+/=]` — no single
-    // quotes, no backslashes — so the same naive re-embedding has nothing to
-    // collide with, and the original bytes reach the final decode intact.
-    $wrapped = RunCommand::encodeCommand($command);
-    expect($wrapped)->not->toContain("'");
-
-    $fixed = new Process(['sh', '-c', $naivelyReEmbed($wrapped)]);
-    $fixed->mustRun();
-    expect($fixed->getOutput())->toBe('\App\Foo');
+    expect($process->getOutput())->toBe('\App\Foo');
 });
 
 it('propagates the exit code of the decoded command through the pipeline', function (): void {
-    $wrapped = RunCommand::encodeCommand('exit 7');
-
-    $process = new Process(['sh', '-c', $wrapped]);
+    $process = new Process(agentArgv(RunCommand::encodeCommand('exit 7')));
     $process->run();
 
     expect($process->getExitCode())->toBe(7);
