@@ -77,6 +77,24 @@ it('grants the ECR login + layer-upload chain sync needs to push the Typesense i
     );
 });
 
+it('grants the vended log delivery chain wafv2:PutLoggingConfiguration provisions on the caller', function (): void {
+    // Streaming WAF traffic to a CloudWatch Logs log group rides vended log
+    // delivery: the Put call creates the delivery and writes the log-group
+    // resource policy on the CALLER's permissions, not the service's — so
+    // wafv2:Put* alone AccessDenieds the sync. The logs verbs are enumerated
+    // (no write wildcard to absorb a new one), which is how this gap shipped.
+    // The flow's reads (DescribeLogGroups, DescribeResourcePolicies,
+    // GetLogDelivery) come from the observer half's Describe*/Get*;
+    // ListLogDeliveries fits none of its read wildcards so it lives here.
+    expect(adminActions())->toContain(
+        'logs:CreateLogDelivery',
+        'logs:UpdateLogDelivery',
+        'logs:DeleteLogDelivery',
+        'logs:ListLogDeliveries',
+        'logs:PutResourcePolicy',
+    );
+});
+
 it('never grants a blanket wildcard or blanket IAM', function (): void {
     $actions = adminActions();
 
