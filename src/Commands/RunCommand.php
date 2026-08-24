@@ -140,21 +140,28 @@ class RunCommand extends Command implements DeployerCommand
     }
 
     /**
-     * A one-off `--command` string crosses at least one more real shell parse
-     * after this process's own — ECS Exec runs it on the container side via its
-     * own `sh -c`, and POSIX shell rules apply there exactly as they would to
-     * anything else typed at a prompt: an unquoted backslash is itself consumed
-     * ("\App\Foo" -> "AppFoo"), which is how a namespaced PHP one-liner
-     * (`--execute=\App\Foo::bar()`) turns into a "Class not found" once it lands.
-     * Base64-encoding the command sidesteps that hop entirely — the payload is
-     * pure `[A-Za-z0-9+/=]`, which no shell reinterprets, and it's decoded back
-     * to the exact original bytes only once, right before it actually runs.
+     * The SSM agent does NOT run a one-off `--command` through a shell. It
+     * shellwords-splits the string (quotes grouped, unquoted backslashes
+     * consumed — which is what used to mangle a namespaced one-liner's
+     * `\App\Foo` into `AppFoo`) and then execs argv directly. Two consequences
+     * drive this format:
+     *
+     *  1. Shell syntax in the string is inert — a bare `echo <b64> | base64 -d
+     *     | sh` runs `echo` with six literal arguments, prints them, and exits
+     *     0: a silent no-op. The command must therefore be handed to the agent
+     *     as an explicit `sh -c <script>` argv so a real shell exists to run it.
+     *  2. The operator's command can't ride inside that `sh -c` script raw —
+     *     its own quotes and backslashes would collide with the agent's
+     *     tokeniser. Base64-encoding it keeps the payload pure
+     *     `[A-Za-z0-9+/=]`, inert to both the tokeniser and the inner shell,
+     *     decoded back to the exact original bytes only where it finally runs.
+     *
      * Never applied to the interactive `/bin/sh` shell — its stdin has to stay
      * wired to the operator's terminal, not a decode pipeline.
      */
     public static function encodeCommand(string $command): string
     {
-        return sprintf('echo %s | base64 -d | sh', base64_encode($command));
+        return sprintf("sh -c 'echo %s | base64 -d | sh'", base64_encode($command));
     }
 
     /**
