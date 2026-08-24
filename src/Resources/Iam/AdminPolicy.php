@@ -287,6 +287,17 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                         'logs:CreateLogGroup', 'logs:DeleteLogGroup',
                         'logs:PutRetentionPolicy', 'logs:DeleteRetentionPolicy',
                         'logs:TagResource', 'logs:UntagResource',
+                        // Vended log delivery — wafv2:PutLoggingConfiguration provisions
+                        // the WAF->log-group delivery on the caller's behalf, so AWS
+                        // requires the caller (not the service) to hold the delivery
+                        // lifecycle plus the log-group resource-policy write. Delivery
+                        // APIs are unscopeable; the reads the flow also needs
+                        // (DescribeLogGroups, DescribeResourcePolicies, GetLogDelivery)
+                        // come from the observer half, but ListLogDeliveries fits none
+                        // of its read wildcards so it rides here with its family.
+                        'logs:CreateLogDelivery', 'logs:UpdateLogDelivery',
+                        'logs:DeleteLogDelivery', 'logs:ListLogDeliveries',
+                        'logs:PutResourcePolicy',
                         'events:PutRule', 'events:DeleteRule',
                         'events:PutTargets', 'events:RemoveTargets',
                         'events:TagResource', 'events:UntagResource',
