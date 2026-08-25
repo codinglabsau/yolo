@@ -438,7 +438,7 @@ class Dashboard implements Deletable
                         ['AWS/ApplicationELB', 'UnHealthyHostCount', 'TargetGroup', $targetGroup, 'LoadBalancer', $alb, ['label' => 'Unhealthy', 'stat' => 'Maximum', 'color' => static::RED]],
                     ],
                     'annotations' => ['horizontal' => [
-                        ['color' => static::RED, 'label' => 'Min healthy', 'value' => static::EXPECTED_HEALTHY_HOSTS, 'fill' => 'below'],
+                        ['color' => static::RED, 'label' => 'Min healthy', 'value' => static::EXPECTED_HEALTHY_HOSTS],
                     ]],
                 ]);
                 $errorRateX = 12;
@@ -463,7 +463,7 @@ class Dashboard implements Deletable
                 ],
                 'annotations' => ['horizontal' => [
                     ['color' => static::ORANGE, 'label' => 'SLO', 'value' => static::ERROR_RATE_SLO],
-                    ['color' => static::RED, 'label' => 'Alarm', 'value' => Alerts::WEB_5XX_RATE_PERCENT, 'fill' => 'above'],
+                    ['color' => static::RED, 'label' => 'Alarm', 'value' => Alerts::WEB_5XX_RATE_PERCENT],
                 ]],
             ]);
             $y += 6;
@@ -498,7 +498,7 @@ class Dashboard implements Deletable
                     ['AWS/ApplicationELB', 'TargetResponseTime', ...static::appAlbDimensions($targetGroup, $alb), ['label' => 'p99', 'stat' => 'p99', 'color' => static::RED]],
                 ],
                 'annotations' => ['horizontal' => [
-                    ['color' => static::RED, 'label' => 'SLO', 'value' => static::RESPONSE_TIME_SLO, 'fill' => 'above'],
+                    ['color' => static::RED, 'label' => 'SLO', 'value' => static::RESPONSE_TIME_SLO],
                     ['color' => static::GREEN, 'label' => 'Target', 'value' => static::RESPONSE_TIME_TARGET],
                 ]],
             ]);
@@ -537,7 +537,7 @@ class Dashboard implements Deletable
                     ['AWS/ApplicationELB', 'HTTPCode_ELB_5XX_Count', 'LoadBalancer', $alb, ['label' => 'ELB 5xx (LB-wide)', 'color' => static::PURPLE]],
                 ],
                 'annotations' => ['horizontal' => [
-                    ['color' => static::RED, 'label' => 'ELB 5xx alarm', 'value' => Alerts::ALB_5XX_PER_FIVE_MINUTES, 'fill' => 'above'],
+                    ['color' => static::RED, 'label' => 'ELB 5xx alarm', 'value' => Alerts::ALB_5XX_PER_FIVE_MINUTES],
                 ]],
             ]);
             $y += 6;
@@ -560,7 +560,7 @@ class Dashboard implements Deletable
                     [WebBurstPolicy::METRIC_NAMESPACE, WebBurstPolicy::METRIC_NAME, WebBurstPolicy::METRIC_DIMENSION, $service, ['label' => 'Busiest task', 'stat' => 'Maximum', 'color' => static::ORANGE]],
                 ],
                 'annotations' => ['horizontal' => [
-                    ['color' => static::ORANGE, 'label' => 'Burst', 'value' => WebBurstPolicy::ALARM_THRESHOLD, 'fill' => 'above'],
+                    ['color' => static::ORANGE, 'label' => 'Burst', 'value' => WebBurstPolicy::ALARM_THRESHOLD],
                     // The reporter only publishes at or above this floor, so the line
                     // explains the metric's absence below it (not a gap in coverage).
                     ['color' => static::BLUE, 'label' => 'Emit floor', 'value' => WebBurstPolicy::EMIT_FLOOR],
@@ -604,7 +604,7 @@ class Dashboard implements Deletable
                 ],
                 'annotations' => ['horizontal' => [
                     ...$cpuScaled ? [['color' => static::ORANGE, 'label' => 'Scale', 'value' => static::CPU_SCALE_THRESHOLD]] : [],
-                    ['color' => static::RED, 'label' => 'Critical', 'value' => static::CPU_CRITICAL_THRESHOLD, 'fill' => 'above'],
+                    ['color' => static::RED, 'label' => 'Critical', 'value' => static::CPU_CRITICAL_THRESHOLD],
                 ]],
             ]),
             static::metric(12, $y, 12, 6, [
@@ -902,7 +902,7 @@ class Dashboard implements Deletable
                 ? [$metric('CPUUtilization', ['label' => 'Writer', 'color' => static::BLUE]), $reader('CPUUtilization', ['label' => 'Readers', 'color' => static::PURPLE])]
                 : [$metric('CPUUtilization')],
             ...$rds['cluster'] ? ['annotations' => ['horizontal' => [
-                ['color' => static::RED, 'label' => 'Alarm', 'value' => Alerts::DATABASE_CPU_PERCENT, 'fill' => 'above'],
+                ['color' => static::RED, 'label' => 'Alarm', 'value' => Alerts::DATABASE_CPU_PERCENT],
             ]]] : [],
         ]);
 
@@ -917,7 +917,7 @@ class Dashboard implements Deletable
                 ? [$metric('DatabaseConnections', ['label' => 'Writer', 'color' => static::BLUE]), $reader('DatabaseConnections', ['label' => 'Readers', 'color' => static::PURPLE])]
                 : [$metric('DatabaseConnections')],
             ...$capacityClass !== null ? ['annotations' => ['horizontal' => [
-                ['color' => static::RED, 'label' => 'Alarm', 'value' => Alerts::databaseConnectionsCeiling($capacityClass), 'fill' => 'above'],
+                ['color' => static::RED, 'label' => 'Alarm', 'value' => Alerts::databaseConnectionsCeiling($capacityClass)],
             ]]] : [],
         ]);
         $y += 6;
@@ -931,7 +931,7 @@ class Dashboard implements Deletable
             'stat' => 'Average',
             'metrics' => [$metric('FreeableMemory')],
             ...$capacityClass !== null ? ['annotations' => ['horizontal' => [
-                ['color' => static::RED, 'label' => 'Alarm', 'value' => Alerts::databaseMemoryFloorBytes($capacityClass), 'fill' => 'below'],
+                ['color' => static::RED, 'label' => 'Alarm', 'value' => Alerts::databaseMemoryFloorBytes($capacityClass)],
             ]]] : [],
         ]);
 
@@ -1023,7 +1023,7 @@ class Dashboard implements Deletable
                 'yAxis' => ['left' => ['min' => 0, 'max' => 100, 'showUnits' => false]],
                 'metrics' => [$metric('BufferCacheHitRatio', ['label' => 'Writer', 'color' => static::BLUE])],
                 'annotations' => ['horizontal' => [
-                    ['color' => static::RED, 'label' => 'Alarm', 'value' => Alerts::DATABASE_BUFFER_CACHE_PERCENT, 'fill' => 'below'],
+                    ['color' => static::RED, 'label' => 'Alarm', 'value' => Alerts::DATABASE_BUFFER_CACHE_PERCENT],
                 ]],
             ]);
             $y += 6;
@@ -1060,7 +1060,7 @@ class Dashboard implements Deletable
                 ['AWS/ElastiCache', 'DatabaseMemoryUsagePercentage', 'CacheClusterId', $node, ['label' => 'Memory %', 'color' => static::BLUE]],
             ],
             'annotations' => ['horizontal' => [
-                ['color' => static::RED, 'label' => 'Alarm', 'value' => Alerts::VALKEY_MEMORY_PERCENT, 'fill' => 'above'],
+                ['color' => static::RED, 'label' => 'Alarm', 'value' => Alerts::VALKEY_MEMORY_PERCENT],
             ]],
         ]);
 
@@ -1076,7 +1076,7 @@ class Dashboard implements Deletable
                 ['AWS/ElastiCache', 'Evictions', 'CacheClusterId', $node, ['label' => 'Evictions / 5 min', 'color' => static::ORANGE]],
             ],
             'annotations' => ['horizontal' => [
-                ['color' => static::RED, 'label' => 'Alarm', 'value' => Alerts::VALKEY_EVICTIONS_PER_FIVE_MINUTES, 'fill' => 'above'],
+                ['color' => static::RED, 'label' => 'Alarm', 'value' => Alerts::VALKEY_EVICTIONS_PER_FIVE_MINUTES],
             ]],
         ]);
         $y += 6;

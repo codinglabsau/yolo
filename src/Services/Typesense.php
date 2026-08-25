@@ -674,7 +674,7 @@ class Typesense extends ServiceDefinition
                     ['AWS/ApplicationELB', 'UnHealthyHostCount', 'TargetGroup', $typesense['targetGroupSuffix'], 'LoadBalancer', $typesense['albSuffix'], ['label' => 'Unhealthy', 'stat' => 'Maximum', 'color' => Dashboard::RED]],
                 ],
                 'annotations' => ['horizontal' => [
-                    ['color' => Dashboard::RED, 'label' => 'Quorum floor', 'value' => static::quorumFloor(), 'fill' => 'below'],
+                    ['color' => Dashboard::RED, 'label' => 'Quorum floor', 'value' => static::quorumFloor()],
                 ]],
             ];
 
