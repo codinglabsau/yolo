@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 use Codinglabs\Yolo\Yolo;
 use Laravel\Prompts\Prompt;
+use Codinglabs\Yolo\Commands\DbBackupCommand;
 use Codinglabs\Yolo\Contracts\DeployerCommand;
 use Symfony\Component\Console\Input\ArrayInput;
-use Codinglabs\Yolo\Commands\DbBackupCommand;
 use Symfony\Component\Console\Output\BufferedOutput;
 
 beforeEach(function (): void {
