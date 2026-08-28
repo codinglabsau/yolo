@@ -16,8 +16,8 @@ use Symfony\Component\Process\Process;
  * zstd, verify the archive, and upload it to the env dumps bucket. Nothing to
  * schedule and no runtime config — the crontab YOLO generates for the
  * scheduler host carries the daily entry with every argument baked from the
- * manifest at build time (ProcessCommands::mysqlBackup), and
- * `yolo backup:mysqldump` runs the same invocation on demand as a one-off
+ * manifest at build time (ProcessCommands::databaseBackup), and
+ * `yolo backup:database` runs the same invocation on demand as a one-off
  * task with its output streamed back.
  *
  * Verification happens at the producer, before upload, so a bad dump can
@@ -42,7 +42,7 @@ use Symfony\Component\Process\Process;
  * combined-services app whose scheduler ticks on every web task still dumps
  * once, and a manual run can't race the scheduled one.
  */
-class MysqlBackupCommand extends Command
+class DatabaseBackupCommand extends Command
 {
     /** Bounds a wedged run: a second run may start once this lock expires,
      * roomy enough that a large multi-database dump finishes well inside it. */
@@ -60,7 +60,7 @@ class MysqlBackupCommand extends Command
         $destination = (string) $this->option('destination');
 
         if ($destination === '' || (string) $this->option('region') === '') {
-            // The generated crontab and `yolo backup:mysqldump` always pass
+            // The generated crontab and `yolo backup:database` always pass
             // both — a bare manual run is missing its target, not opting out.
             $this->error('Both --destination and --region are required (copy them from docker/crontab).');
 

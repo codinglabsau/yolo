@@ -18,10 +18,10 @@ use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
  * before the push — when either is missing. The failure it prevents is silent
  * in the worst way: the deploy goes green, the app serves, and the daily
  * backup errors unnoticed in the scheduler's logs until the day a restore is
- * needed. Skipped when the manifest opts out (`mysqldump: false` — e.g. a
- * non-MySQL app) or when cron runs nowhere to host the dump.
+ * needed. Skipped when the manifest opts out (`backups: false` — e.g. an
+ * app without a database to dump) or when cron runs nowhere to host the dump.
  */
-class CheckMysqlBackupRuntimeStep implements Step
+class CheckBackupRuntimeStep implements Step
 {
     public function __construct(
         protected string $environment,
@@ -30,7 +30,7 @@ class CheckMysqlBackupRuntimeStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::backsUpMysql()) {
+        if (! Manifest::backsUpDatabases()) {
             return StepResult::SKIPPED;
         }
 
@@ -43,8 +43,8 @@ class CheckMysqlBackupRuntimeStep implements Step
         throw new RuntimeException(
             'Build aborted: the built image is missing mysqldump and/or zstd, which the '
             . 'scheduled database backups run. Add them to your Dockerfile (e.g. `apk add '
-            . '--no-cache mariadb-client zstd`), or remove `mysqldump: true` from '
-            . 'yolo.yml if this app has no MySQL database to back up.'
+            . '--no-cache mariadb-client zstd`), or remove `backups: true` from '
+            . 'yolo.yml if this app has no database to back up.'
         );
     }
 

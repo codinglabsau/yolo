@@ -128,7 +128,7 @@ class ProcessCommands
 
     /**
      * The in-container backup executor invocation, shared by the generated
-     * crontab entry and `backup:mysqldump`'s one-off task override so the
+     * crontab entry and `backup:database`'s one-off task override so the
      * scheduled and on-demand paths can't drift. Everything the executor needs
      * is baked in as arguments from the manifest — no runtime config, nothing
      * for the app to know about. Tenant ids are the database names (the same
@@ -136,7 +136,7 @@ class ProcessCommands
      *
      * @return array<int, string>
      */
-    public static function mysqlBackup(): array
+    public static function databaseBackup(): array
     {
         $arguments = [
             '--destination=' . Paths::s3DumpsBucket() . '/' . Manifest::name(),

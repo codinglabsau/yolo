@@ -62,7 +62,7 @@ describe('mysql backup invocation', function (): void {
             'tasks' => ['web' => true],
         ]);
 
-        expect(ProcessCommands::mysqlBackup())->toBe([
+        expect(ProcessCommands::databaseBackup())->toBe([
             'php', 'artisan', 'yolo:backup-databases',
             '--destination=yolo-111111111111-testing-dumps/my-app',
             '--region=ap-southeast-2',
@@ -79,6 +79,6 @@ describe('mysql backup invocation', function (): void {
             'tasks' => ['web' => true],
         ]);
 
-        expect(ProcessCommands::mysqlBackup())->toContain('--tenants=acme,globex');
+        expect(ProcessCommands::databaseBackup())->toContain('--tenants=acme,globex');
     });
 });

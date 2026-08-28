@@ -71,7 +71,7 @@ environments:
     queue-visibility-timeout: 90
 
     database: my-database
-    mysqldump: false
+    backups: false
     cache:
       store: redis
     session:
@@ -136,7 +136,7 @@ environments:
 |---|---|
 | App | [`name`](#name), [`timezone`](#timezone), [`environments`](#environments) |
 | Routing | [`domain`](#domain), [`wildcard-subdomains`](#wildcard-subdomains), [`multitenancy`](#multitenancy), [`branch` / `tag` / `repository`](#branch-tag-repository) |
-| Infrastructure | [`account-id`](#account-id), [`region`](#region), [`bucket`](#bucket), [`services`](#services), [`task-role-policies`](#task-role-policies), [`queues`](#queues), [`queue-visibility-timeout`](#queue-visibility-timeout), [`database`](#database), [`mysqldump`](#mysqldump), [`cache.store`](#cache), [`session.driver`](#session), [`budget`](#budget) |
+| Infrastructure | [`account-id`](#account-id), [`region`](#region), [`bucket`](#bucket), [`services`](#services), [`task-role-policies`](#task-role-policies), [`queues`](#queues), [`queue-visibility-timeout`](#queue-visibility-timeout), [`database`](#database), [`backups`](#backups), [`cache.store`](#cache), [`session.driver`](#session), [`budget`](#budget) |
 | Tasks | [`tasks.web`](#tasks-web), [`tasks.web.autoscaling`](#tasks-web-autoscaling), [`tasks.web.health-check`](#tasks-web-health-check), [`tasks.queue`](#tasks-queue), [`tasks.scheduler`](#tasks-scheduler) |
 | Hooks | [`build`](#build), [`deploy`](#deploy), [`deploy-all`](#deploy-all) |
 
@@ -375,15 +375,15 @@ Where the database should live, the managed/external/exposed postures, and how t
 
 ---
 
-## `mysqldump`
+## `backups`
 
-Opt in to scheduled logical MySQL backups. Each day the scheduler's host container dumps every database (`mysqldump | zstd`, tenant databases included on a multi-tenant app), **verifies the archive at the producer** (integrity via `zstd -t`, completeness via the dump's own `Dump completed` trailer — a bad dump fails the run rather than shipping), and uploads it to the env dumps bucket under this app's prefix (`{app}/{database}.sql.zst`). The bucket is versioned, so each overwrite's noncurrent versions are the history, kept 35 days; the current version never expires. The app's task role can **write only its own prefix and read none** — restores are an operator action, not an app capability.
+Opt in to scheduled logical database backups. Each day the scheduler's host container dumps every database (`mysqldump | zstd`, tenant databases included on a multi-tenant app), **verifies the archive at the producer** (integrity via `zstd -t`, completeness via the dump's own `Dump completed` trailer — a bad dump fails the run rather than shipping), and uploads it to the env dumps bucket under this app's prefix (`{app}/{database}.sql.zst`). The bucket is versioned, so each overwrite's noncurrent versions are the history, kept 35 days; the current version never expires. The app's task role can **write only its own prefix and read none** — restores are an operator action, not an app capability.
 
 ```yaml
-mysqldump: true
+backups: true
 ```
 
-The schedule is a **generated crontab entry**, not anything the app registers: `yolo build` writes a daily 09:00 line (pinned to the manifest [`timezone`](#timezone) via `CRON_TZ`) into the crontab the scheduler host's supercronic runs, with every argument — destination, region, tenant list — baked in from the manifest, so Laravel's own scheduler is never involved. Backups therefore ride the scheduler host ([where each role runs](#where-each-role-runs)), and `tasks.scheduler: false` also turns them off. [`yolo backup:mysqldump <env>`](/reference/commands#yolo-backup-mysqldump) runs the identical invocation on demand as a one-off task with streamed output. `yolo build` also probes the built image for the `mysqldump` and `zstd` binaries when backups are on and refuses to ship without them (see [Runtime checks](/guide/images#runtime-checks)) — the scaffolded Dockerfile installs both. More in the **[Databases](/guide/databases)** guide.
+The schedule is a **generated crontab entry**, not anything the app registers: `yolo build` writes a daily 09:00 line (pinned to the manifest [`timezone`](#timezone) via `CRON_TZ`) into the crontab the scheduler host's supercronic runs, with every argument — destination, region, tenant list — baked in from the manifest, so Laravel's own scheduler is never involved. Backups therefore ride the scheduler host ([where each role runs](#where-each-role-runs)), and `tasks.scheduler: false` also turns them off. [`yolo backup:database <env>`](/reference/commands#yolo-backup-database) runs the identical invocation on demand as a one-off task with streamed output. `yolo build` also probes the built image for the `mysqldump` and `zstd` binaries when backups are on and refuses to ship without them (see [Runtime checks](/guide/images#runtime-checks)) — the scaffolded Dockerfile installs both. More in the **[Databases](/guide/databases)** guide.
 
 ---
 

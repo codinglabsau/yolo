@@ -728,7 +728,7 @@ STUB);
 it('adds the daily backup entry to the crontab with every argument baked from the manifest', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'mysqldump' => true,
+        'backups' => true,
         'tasks' => ['web' => true],
     ]);
 
@@ -744,7 +744,7 @@ it('adds the daily backup entry to the crontab with every argument baked from th
 it('bakes the tenant database list into the backup entry', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'mysqldump' => true,
+        'backups' => true,
         'multitenancy' => [
             'landlord' => ['domain' => 'app.example.com', 'wildcard-subdomains' => true],
             'tenants' => ['acme' => null, 'globex' => null],
@@ -764,7 +764,7 @@ it('pins the backup hour to the manifest timezone', function (): void {
         'timezone' => 'Australia/Brisbane',
         'environments' => ['testing' => [
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-            'mysqldump' => true,
+            'backups' => true,
             'tasks' => ['web' => true],
         ]],
     ], 10, 2));

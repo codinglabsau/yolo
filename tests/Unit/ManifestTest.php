@@ -727,27 +727,27 @@ describe('database', function (): void {
 });
 
 describe('mysql backups', function (): void {
-    it('defaults backups OFF — an opt-in via mysqldump: true', function (): void {
+    it('defaults backups OFF — an opt-in via backups: true', function (): void {
         writeManifest(['tasks' => ['web' => true]]);
 
-        expect(Manifest::backsUpMysql())->toBeFalse();
+        expect(Manifest::backsUpDatabases())->toBeFalse();
     });
 
     it('turns backups on when the manifest opts in', function (): void {
-        writeManifest(['mysqldump' => true, 'tasks' => ['web' => true]]);
+        writeManifest(['backups' => true, 'tasks' => ['web' => true]]);
 
-        expect(Manifest::backsUpMysql())->toBeTrue();
+        expect(Manifest::backsUpDatabases())->toBeTrue();
     });
 
     it('keeps backups off when cron runs nowhere to host the dump', function (): void {
         // Opted in, but no scheduler host exists to fire the crontab entry.
-        writeManifest(['mysqldump' => true, 'tasks' => ['web' => true, 'scheduler' => false]]);
+        writeManifest(['backups' => true, 'tasks' => ['web' => true, 'scheduler' => false]]);
 
-        expect(Manifest::backsUpMysql())->toBeFalse();
+        expect(Manifest::backsUpDatabases())->toBeFalse();
     });
 
-    it('accepts the mysqldump key through the manifest validator', function (): void {
-        writeManifest(['mysqldump' => true]);
+    it('accepts the backups key through the manifest validator', function (): void {
+        writeManifest(['backups' => true]);
 
         expect(Manifest::unknownKeys())->toBe([]);
     });

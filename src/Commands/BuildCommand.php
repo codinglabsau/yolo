@@ -33,7 +33,7 @@ class BuildCommand extends SteppedCommand implements DeployerCommand
         Steps\Build\Fargate\CheckSsrRuntimeStep::class,
         Steps\Build\Fargate\CheckMetricsRuntimeStep::class,
         Steps\Build\Fargate\CheckPhpIniRuntimeStep::class,
-        Steps\Build\Fargate\CheckMysqlBackupRuntimeStep::class,
+        Steps\Build\Fargate\CheckBackupRuntimeStep::class,
         Steps\Build\Fargate\PushDockerImageStep::class,
     ];
 

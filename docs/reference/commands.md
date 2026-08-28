@@ -41,7 +41,7 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | [`db:tunnel <env>`](#yolo-db-tunnel) | Port-forward the manifest-declared database to localhost through a running task |
 | [`db:cutover <env>`](#yolo-db-cutover) | Flip every running task onto a new database host in place, then verify the fleet |
 | [`db:status <env>`](#yolo-db-status) | Show every environment app's declared database, from the published claim files |
-| [`backup:mysqldump <env>`](#yolo-backup-mysqldump) | Run the scheduled database backup now, as a one-off task with streamed output |
+| [`backup:database <env>`](#yolo-backup-database) | Run the scheduled database backup now, as a one-off task with streamed output |
 | [`scale <env> [count]`](#yolo-scale) | Adjust the web service's task count out of band |
 | [`permissions <env>`](#yolo-permissions) | Grant or revoke a team member's access by editing their YOLO group membership |
 | [`services <env>`](#yolo-services) | View and manage the services an environment offers |
@@ -575,17 +575,17 @@ yolo db:status production --json
 
 ---
 
-## `yolo backup:mysqldump`
+## `yolo backup:database`
 
 Run the [scheduled database backup](/guide/databases#logical-backups) now. Launches the exact invocation the generated crontab fires — same executor, same baked arguments, so the scheduled and on-demand paths can't drift — as a **one-off Fargate task** (the dump must execute inside the VPC; only a task has network locality to the database), sized up like the deploy hooks so `zstd -T0` gets real CPU, then **streams the task's output to your terminal** until it stops and mirrors its exit code.
 
 ```bash
-yolo backup:mysqldump <environment>
+yolo backup:database <environment>
 ```
 
 **Arguments:** `environment` · **Options:** none · Deployer-tier (the same `ecs:RunTask` surface as deploy hooks).
 
-Refused when the manifest hasn't opted into backups ([`mysqldump: true`](/reference/manifest#mysqldump) absent, or cron disabled) — the task role carries no dumps-bucket grant there, so the run could only fail at upload.
+Refused when the manifest hasn't opted into backups ([`backups: true`](/reference/manifest#backups) absent, or cron disabled) — the task role carries no dumps-bucket grant there, so the run could only fail at upload.
 
 ---
 

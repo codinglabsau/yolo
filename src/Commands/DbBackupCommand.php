@@ -22,13 +22,13 @@ use function Laravel\Prompts\intro;
 
 /**
  * Run the database backup on demand: launch the same in-container executor the
- * generated crontab schedules (ProcessCommands::mysqlBackup — identical
+ * generated crontab schedules (ProcessCommands::databaseBackup — identical
  * invocation, so the two can't drift) as a one-off Fargate task, and stream
  * its output back until it stops. The dump must execute inside the VPC — only
  * a task has network locality to the database — so this command's job is
  * launching and watching, never dumping.
  */
-class BackupMysqldumpCommand extends Command implements DeployerCommand
+class DbBackupCommand extends Command implements DeployerCommand
 {
     /**
      * Task-level CPU/memory for the one-off backup task, overriding the deploy
@@ -48,15 +48,15 @@ class BackupMysqldumpCommand extends Command implements DeployerCommand
     protected function configure(): void
     {
         $this
-            ->setName('backup:mysqldump')
+            ->setName('backup:database')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->setDescription('Run the scheduled database backup now, as a one-off task with streamed output');
     }
 
     public function handle(): int
     {
-        if (! Manifest::backsUpMysql()) {
-            error('This app does not back up MySQL — `mysqldump` is off in the manifest (or cron runs nowhere to host it), so the task role has no grant to upload a dump.');
+        if (! Manifest::backsUpDatabases()) {
+            error('This app does not back up its databases — `backups` is off in the manifest (or cron runs nowhere to host it), so the task role has no grant to upload a dump.');
 
             return self::FAILURE;
         }
@@ -69,7 +69,7 @@ class BackupMysqldumpCommand extends Command implements DeployerCommand
         $cluster = (new EcsCluster())->name();
 
         intro('Launching the backup task');
-        note('Same invocation as the scheduled crontab entry: ' . implode(' ', ProcessCommands::mysqlBackup()));
+        note('Same invocation as the scheduled crontab entry: ' . implode(' ', ProcessCommands::databaseBackup()));
 
         $run = Aws::ecs()->runTask([
             'cluster' => $cluster,
@@ -83,7 +83,7 @@ class BackupMysqldumpCommand extends Command implements DeployerCommand
                 'containerOverrides' => [
                     [
                         'name' => $group->value,
-                        'command' => ProcessCommands::mysqlBackup(),
+                        'command' => ProcessCommands::databaseBackup(),
                     ],
                 ],
             ],

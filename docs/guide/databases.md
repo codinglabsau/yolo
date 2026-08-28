@@ -90,7 +90,7 @@ Either way, the migration ends the same: re-point `database:` in each app's mani
 
 ## Logical backups
 
-Opt an app into **daily logical backups** with [`mysqldump: true`](/reference/manifest#mysqldump). Snapshots protect the instance; logical dumps are the portable copy: restorable anywhere, offsite-replicable, and the only form that survives losing the RDS account itself.
+Opt an app into **daily logical backups** with [`backups: true`](/reference/manifest#backups). Snapshots protect the instance; logical dumps are the portable copy: restorable anywhere, offsite-replicable, and the only form that survives losing the RDS account itself.
 
 The dump runs inside the scheduler's host container — the only compute with network locality to the database — via a daily entry `yolo build` writes into the generated supercronic crontab (09:00 in the manifest timezone, every argument baked in from the manifest). Laravel's scheduler is never involved and there's nothing to register app-side:
 
@@ -103,7 +103,7 @@ The app's task role can **write only its own prefix, and read none** — a compr
 Run one now, with the output streamed to your terminal — the same invocation the crontab fires, launched as a dedicated one-off task (its own CPU, no contention with the serving containers):
 
 ```bash
-yolo backup:mysqldump production
+yolo backup:database production
 ```
 
 Restores are an operator action:

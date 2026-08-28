@@ -94,10 +94,10 @@ class YoloServiceProvider extends ServiceProvider
             // The backup executor lives in YOLO's own `yolo:` namespace, so it
             // shadows nothing and registers unconditionally. Nothing schedules
             // it here — the generated crontab carries the schedule (see
-            // GenerateSupervisorConfigStep), and `yolo backup:mysqldump` runs
+            // GenerateSupervisorConfigStep), and `yolo backup:database` runs
             // it on demand.
             $this->commands([
-                Runtime\Commands\MysqlBackupCommand::class,
+                Runtime\Commands\DatabaseBackupCommand::class,
             ]);
         }
 

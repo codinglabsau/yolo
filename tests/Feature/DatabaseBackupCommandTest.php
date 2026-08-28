@@ -8,20 +8,20 @@ use Symfony\Component\Process\Process;
 use Symfony\Component\Console\Input\ArrayInput;
 use Illuminate\Contracts\Foundation\Application;
 use Symfony\Component\Console\Output\BufferedOutput;
-use Codinglabs\Yolo\Runtime\Commands\MysqlBackupCommand;
+use Codinglabs\Yolo\Runtime\Commands\DatabaseBackupCommand;
 
 uses(TestbenchCase::class);
 
 /**
- * A MysqlBackupCommand whose shell and S3 boundaries are recorded instead of
+ * A DatabaseBackupCommand whose shell and S3 boundaries are recorded instead of
  * executed: dump processes "succeed" by touching the archive, verification
  * reads a canned trailer, uploads record their destination. Everything above
  * those boundaries — gating, locking, database assembly, verification logic,
  * failure aggregation — runs for real.
  */
-function fakeBackupCommand(Application $app, string $trailer = '-- Dump completed on 2026-01-01', array $failFor = []): MysqlBackupCommand
+function fakeBackupCommand(Application $app, string $trailer = '-- Dump completed on 2026-01-01', array $failFor = []): DatabaseBackupCommand
 {
-    $command = new class($trailer, $failFor) extends MysqlBackupCommand
+    $command = new class($trailer, $failFor) extends DatabaseBackupCommand
     {
         /** @var array<int, array{commandLine: string, env: array<string, string>}> */
         public array $processes = [];
@@ -67,7 +67,7 @@ function fakeBackupCommand(Application $app, string $trailer = '-- Dump complete
     return $command;
 }
 
-function runBackupCommand(MysqlBackupCommand $command, array $options = [
+function runBackupCommand(DatabaseBackupCommand $command, array $options = [
     '--destination' => 'yolo-111111111111-testing-dumps/my-app',
     '--region' => 'ap-southeast-2',
 ]): int
@@ -89,7 +89,7 @@ beforeEach(function (): void {
 });
 
 it('refuses a run missing its destination or region', function (): void {
-    // The generated crontab and `yolo backup:mysqldump` always pass both — a
+    // The generated crontab and `yolo backup:database` always pass both — a
     // bare manual run is missing its target, not opting out.
     $command = fakeBackupCommand($this->app);
 

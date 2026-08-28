@@ -245,7 +245,7 @@ class EcsTaskPolicy implements Deletable, Resource, SynchronisesConfiguration
         // and a compromised task can't exfiltrate its own dump history (or any
         // sibling app's). AbortMultipartUpload keeps a failed large upload
         // from stranding parts the lifecycle would otherwise hold for 7 days.
-        if (Manifest::backsUpMysql()) {
+        if (Manifest::backsUpDatabases()) {
             $statements[] = [
                 'Effect' => 'Allow',
                 'Resource' => sprintf('arn:aws:s3:::%s/%s/*', Paths::s3DumpsBucket(), Manifest::name()),

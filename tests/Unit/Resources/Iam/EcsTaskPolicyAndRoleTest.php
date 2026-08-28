@@ -247,7 +247,7 @@ it('grants write-only access to this app\'s own dumps prefix when backups are op
     // history or any sibling app's.
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'mysqldump' => true,
+        'backups' => true,
         'tasks' => ['web' => true],
     ]);
 

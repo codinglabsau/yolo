@@ -13,8 +13,8 @@ FROM dunglas/frankenphp:1-php8.4-alpine
 
 # supercronic runs the scheduler's cron as a non-root user (busybox crond can't);
 # nodejs is the runtime for Inertia SSR (tasks.web.ssr) — drop it if you don't use SSR;
-# mariadb-client + zstd drive the scheduled database dumps (opt-in via `mysqldump:
-# true` in yolo.yml) — drop them if this app will never back up MySQL.
+# mariadb-client + zstd drive the scheduled database dumps (opt-in via `backups:
+# true` in yolo.yml) — drop them if this app runs no database backups.
 RUN apk add --no-cache git supervisor supercronic nodejs mariadb-client zstd \
     && install-php-extensions intl pcntl bcmath redis pdo_mysql opcache excimer
 
@@ -94,7 +94,7 @@ For your image to work with YOLO, the Dockerfile must:
 - **Scheduler (supercronic)** — it runs the freshly-built image and fails if `supercronic` isn't on the `PATH`. The scheduler runs in almost every app (the check is skipped only when cron is switched off with [`tasks.scheduler: false`](/reference/manifest#tasks-scheduler)), and the failure this prevents is **silent**: busybox `crond` — the obvious fallback already in the base image — ignores crontabs not owned by root without logging a word, so an image without supercronic deploys green, stays healthy, and simply never fires a scheduled job.
 - **SSR (Node)** — when [`tasks.web.ssr`](/reference/manifest#tasks-web) is on, it runs the freshly-built image and fails if `node` isn't on the `PATH`. Like the scheduler check, this matters because a missing SSR runtime is otherwise **silent** — Inertia falls back to client-side rendering and the web tier stays healthy on `/up`, so the deploy goes green with SSR quietly off.
 - **PHP configuration** — it runs the freshly-built image and fails if PHP loaded no app ini fragment (`yolo.ini` — see [PHP configuration](#php-configuration)). An image with no ini runs PHP's compile defaults, and the failure that causes is **silent**: 2M uploads deploy green and only surface when a user's upload dies.
-- **Database backups (mysqldump + zstd)** — when the app [opts into MySQL backups](/reference/manifest#mysqldump), it runs the freshly-built image and fails if either binary is missing. The failure this prevents is silent in the worst way: the deploy goes green, the app serves, and the daily backup errors unnoticed in the scheduler's logs until the day a restore is needed.
+- **Database backups (mysqldump + zstd)** — when the app [opts into database backups](/reference/manifest#backups), it runs the freshly-built image and fails if either binary is missing. The failure this prevents is silent in the worst way: the deploy goes green, the app serves, and the daily backup errors unnoticed in the scheduler's logs until the day a restore is needed.
 
 The image probes run the image (rather than grepping the Dockerfile), so they see the resolved base image and multi-stage `COPY --from` layers too — no false negatives.
 

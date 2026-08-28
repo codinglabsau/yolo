@@ -361,10 +361,10 @@ class GenerateSupervisorConfigStep implements Step
         // timezone (the every-minute scheduler line above is unaffected), and
         // everything the executor needs is baked in as arguments — no runtime
         // config, nothing for the app to know about.
-        if (Manifest::backsUpMysql()) {
-            $crontab .= "\n# Daily logical database backups — opted in via the manifest `mysqldump` key.\n"
+        if (Manifest::backsUpDatabases()) {
+            $crontab .= "\n# Daily logical database backups — opted in via the manifest `backups` key.\n"
                 . 'CRON_TZ=' . Manifest::timezone() . "\n"
-                . '0 9 * * * cd /app && ' . implode(' ', ProcessCommands::mysqlBackup()) . "\n";
+                . '0 9 * * * cd /app && ' . implode(' ', ProcessCommands::databaseBackup()) . "\n";
         }
 
         $this->filesystem->ensureDirectoryExists(dirname($path));
