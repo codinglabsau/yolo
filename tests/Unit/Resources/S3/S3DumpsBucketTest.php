@@ -85,23 +85,25 @@ it('reconciles BPA + versioning + the retention lifecycle when none of them matc
         ->toContain('lifecycle');
 });
 
-it('expires only noncurrent dump versions — never the current backup', function (): void {
+it('expires dated dumps by lifecycle and sweeps versioning debris', function (): void {
     $recorder = bindRecordingDumpsS3Client();
 
     (new S3DumpsBucket())->synchroniseConfiguration();
 
     $put = collect($recorder->calls)->firstWhere('name', 'PutBucketLifecycleConfiguration');
 
-    $rule = $put['args']['LifecycleConfiguration']['Rules'][0];
+    [$expire, $sweep] = $put['args']['LifecycleConfiguration']['Rules'];
 
-    // Each run overwrites its key in place, so noncurrent versions are the
-    // history — bounded to 35 days. An Expiration on current versions would
-    // delete the latest backup after a quiet month; its absence is the point.
-    expect($rule['Filter'])->toBe(['Prefix' => ''])
-        ->and($rule['Status'])->toBe('Enabled')
-        ->and($rule['NoncurrentVersionExpiration'])->toBe(['NoncurrentDays' => 35])
-        ->and($rule['AbortIncompleteMultipartUpload'])->toBe(['DaysAfterInitiation' => 7])
-        ->and($rule)->not->toHaveKey('Expiration');
+    // Retention lives in lifecycle, visibly: dated dumps expire after 35
+    // days. Versioning stays on purely as tamper armour, so the second rule
+    // only cleans what expiry/overwrite leaves behind — noncurrent versions
+    // and delete markers.
+    expect($expire['Filter'])->toBe(['Prefix' => ''])
+        ->and($expire['Status'])->toBe('Enabled')
+        ->and($expire['Expiration'])->toBe(['Days' => 35])
+        ->and($expire['AbortIncompleteMultipartUpload'])->toBe(['DaysAfterInitiation' => 7])
+        ->and($sweep['Expiration'])->toBe(['ExpiredObjectDeleteMarker' => true])
+        ->and($sweep['NoncurrentVersionExpiration'])->toBe(['NoncurrentDays' => 14]);
 });
 
 it('refuses to apply the retention lifecycle to anything that is not a -dumps bucket', function (): void {

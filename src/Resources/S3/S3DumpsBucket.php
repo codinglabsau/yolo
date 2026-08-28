@@ -17,17 +17,20 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 
 /**
  * Env-scoped bucket holding the apps' logical database dumps, one prefix per
- * app (`{app}/{database}.sql.zst`, overwritten by each run). Dumps never share
+ * app on dated keys (`{app}/{database}/{Y-m-d}.sql.zst`). Dumps never share
  * a bucket with logs (external write principal, bucket-wide expiry) or config
  * (deploy-readable) — they're full database content with their own posture:
  * each app's task role can write only its own prefix and read none, so a
  * compromised container can't exfiltrate another app's data — or even its own
  * history.
  *
- * Versioning is the retention model: each run overwrites `{database}.sql.zst`
- * in place and the noncurrent versions are the history, swept by lifecycle
- * after 35 days. Current versions never expire — the latest dump is the
- * recovery artefact and must outlive any quiet period.
+ * Lifecycle is the retention model: dated dumps expire after 35 days, plainly
+ * visible in the bucket rules. Versioning stays on purely as tamper armour —
+ * the producer's write-only grant means it cannot destroy an existing object
+ * (an overwrite or delete only stacks a version/marker on top), so history
+ * survives a compromised task. The corollary of expiring current objects: a
+ * producer that silently stops leaves an emptying bucket, so the offsite
+ * freshness probe is load-bearing, not optional.
  *
  * Deliberately NOT Deletable: environment teardown removes what the platform
  * can recreate, and a database dump is the one artefact whose entire purpose
@@ -94,11 +97,12 @@ class S3DumpsBucket implements Resource, SynchronisesConfiguration
     }
 
     /**
-     * Sweep noncurrent dump versions after 35 days and abandoned multipart
-     * uploads after 7 — bounding the history each overwritten key accretes.
-     * No current-version expiry, ever: the latest dump must survive any quiet
-     * period (an expired "current" backup is the failure mode this bucket
-     * exists to prevent).
+     * Expire dated dumps after 35 days (retention lives here, visibly, not in
+     * versioning), abort abandoned multipart uploads after 7. The second rule
+     * is versioning hygiene: noncurrent versions only exist when something
+     * overwrote or deleted an object — tampering, a same-day rerun, or expiry
+     * itself — so they're swept after 14 days, and the delete markers expiry
+     * leaves behind are cleaned up.
      *
      * @return array<int, Change>
      */
@@ -116,11 +120,18 @@ class S3DumpsBucket implements Resource, SynchronisesConfiguration
 
         $desired = [
             [
-                'ID' => 'expire-noncurrent-dumps',
+                'ID' => 'expire-dumps',
                 'Status' => 'Enabled',
                 'Filter' => ['Prefix' => ''],
-                'NoncurrentVersionExpiration' => ['NoncurrentDays' => 35],
+                'Expiration' => ['Days' => 35],
                 'AbortIncompleteMultipartUpload' => ['DaysAfterInitiation' => 7],
+            ],
+            [
+                'ID' => 'sweep-noncurrent-dumps',
+                'Status' => 'Enabled',
+                'Filter' => ['Prefix' => ''],
+                'Expiration' => ['ExpiredObjectDeleteMarker' => true],
+                'NoncurrentVersionExpiration' => ['NoncurrentDays' => 14],
             ],
         ];
 
@@ -137,6 +148,6 @@ class S3DumpsBucket implements Resource, SynchronisesConfiguration
             ]);
         }
 
-        return [Change::make('lifecycle', $current === null ? null : 'present', 'expire noncurrent dumps after 35 days')];
+        return [Change::make('lifecycle', $current === null ? null : 'present', 'expire dumps after 35 days, sweep noncurrent after 14')];
     }
 }

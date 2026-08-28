@@ -377,7 +377,7 @@ Where the database should live, the managed/external/exposed postures, and how t
 
 ## `backups`
 
-Opt in to scheduled logical database backups. Each day the scheduler's host container dumps every database (`mysqldump | zstd`, tenant databases included on a multi-tenant app), **verifies the archive at the producer** (integrity via `zstd -t`, completeness via the dump's own `Dump completed` trailer — a bad dump fails the run rather than shipping), and uploads it to the env dumps bucket under this app's prefix (`{app}/{database}.sql.zst`). The bucket is versioned, so each overwrite's noncurrent versions are the history, kept 35 days; the current version never expires. The app's task role can **write only its own prefix and read none** — restores are an operator action, not an app capability.
+Opt in to scheduled logical database backups. Each day the scheduler's host container dumps every database (`mysqldump | zstd`, tenant databases included on a multi-tenant app), **verifies the archive at the producer** (integrity via `zstd -t`, completeness via the dump's own `Dump completed` trailer — a bad dump fails the run rather than shipping), and uploads it to the env dumps bucket on a dated key under this app's prefix (`{app}/{database}/{YYYY-MM-DD}.sql.zst`). Retention is plain lifecycle: dumps expire after 35 days. The bucket stays versioned purely as tamper protection — the producer's write-only grant cannot destroy an existing object. The app's task role can **write only its own prefix and read none** — restores are an operator action, not an app capability.
 
 ```yaml
 backups: true
