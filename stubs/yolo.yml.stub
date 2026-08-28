@@ -25,9 +25,12 @@ environments:
     # (YOLO never creates a bucket it doesn't name, and never reconciles this one).
     # bucket: true
 
-    # Opt in to scheduled logical database backups: a daily dump of every
-    # database, verified at the producer, uploaded to the env backups bucket.
+    # Opt in to scheduled logical database backups: a dump of every database,
+    # verified at the producer, uploaded to the env backups bucket. Daily at
+    # 05:00 (manifest timezone); set a cron `schedule` to override.
     # backups: true
+    # backups:
+    #   schedule: "0 */4 * * *"
 
     # Web apps default to a shared Valkey cache + Valkey-backed sessions (provisioned and
     # wired automatically). Uncomment only to override or opt out:

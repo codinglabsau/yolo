@@ -739,6 +739,28 @@ describe('mysql backups', function (): void {
         expect(Manifest::backsUpDatabases())->toBeTrue();
     });
 
+    it('treats a backups map as opted in and reads its cron schedule', function (): void {
+        writeManifest(['backups' => ['schedule' => '0 */4 * * *'], 'tasks' => ['web' => true]]);
+
+        expect(Manifest::backsUpDatabases())->toBeTrue()
+            ->and(Manifest::backupSchedule())->toBe('0 */4 * * *');
+    });
+
+    it('defaults the backup schedule to daily 05:00', function (): void {
+        writeManifest(['backups' => true, 'tasks' => ['web' => true]]);
+
+        expect(Manifest::backupSchedule())->toBe('0 5 * * *');
+    });
+
+    it('refuses a malformed backup schedule', function (): void {
+        // Shape gate only — five cron fields of cron charset; supercronic is
+        // the parser of record for the semantics.
+        writeManifest(['backups' => ['schedule' => 'every 4 hours'], 'tasks' => ['web' => true]]);
+
+        expect(fn (): string => Manifest::backupSchedule())
+            ->toThrow(IntegrityCheckException::class, '5-field cron expression');
+    });
+
     it('keeps backups off when cron runs nowhere to host the dump', function (): void {
         // Opted in, but no scheduler host exists to fire the crontab entry.
         writeManifest(['backups' => true, 'tasks' => ['web' => true, 'scheduler' => false]]);

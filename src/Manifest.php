@@ -75,6 +75,7 @@ class Manifest
         'queue-visibility-timeout',
         'bucket',
         'backups',
+        'backups.schedule',
         'services',
         'database',
         'cache.store',
@@ -851,14 +852,39 @@ class Manifest
 
     /**
      * Whether this app runs scheduled logical database backups — opt-in via
-     * `backups: true`. Backups ride the scheduler (the generated crontab
-     * carries the daily entry), so an app with cron switched off has no host
-     * to run them and the whole feature is moot there.
+     * `backups: true` (or a `backups:` map carrying overrides like `time`).
+     * Backups ride the scheduler (the generated crontab carries the daily
+     * entry), so an app with cron switched off has no host to run them and
+     * the whole feature is moot there.
      */
     public static function backsUpDatabases(): bool
     {
         return (bool) static::get('backups', false)
             && static::schedulerHost() instanceof ServerGroup;
+    }
+
+    /**
+     * The cron schedule the backup fires on (manifest timezone) —
+     * `backups.schedule`, a standard 5-field cron expression. Default is
+     * daily at 05:00: off-peak in the timezone the app declares, while the
+     * previous night's data is still fresh. The gate checks shape (five
+     * fields, cron charset), not cron semantics — supercronic is the parser
+     * of record.
+     */
+    public static function backupSchedule(): string
+    {
+        $schedule = static::get('backups.schedule', '0 5 * * *');
+
+        $fields = is_string($schedule) ? preg_split('/\s+/', trim($schedule)) : [];
+
+        if (count($fields) !== 5 || array_filter($fields, fn (string $field): bool => in_array(preg_match('#^[0-9*,/-]+$#', $field), [0, false], true)) !== []) {
+            throw new IntegrityCheckException(sprintf(
+                'backups.schedule must be a 5-field cron expression (e.g. "0 5 * * *" or "0 */4 * * *"), got "%s".',
+                is_scalar($schedule) ? $schedule : gettype($schedule),
+            ));
+        }
+
+        return implode(' ', $fields);
     }
 
     /**

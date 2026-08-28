@@ -725,7 +725,7 @@ STUB);
         ->toThrow(RuntimeException::class, 'global options block');
 });
 
-it('adds the daily backup entry to the crontab with every argument baked from the manifest', function (): void {
+it('adds the backup entry to the crontab with every argument baked from the manifest', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'backups' => true,
@@ -738,7 +738,20 @@ it('adds the daily backup entry to the crontab with every argument baked from th
     // ride the invocation itself, baked at build time.
     expect(file_get_contents(Paths::build('docker/crontab')))
         ->toContain("CRON_TZ=UTC\n")
-        ->toContain('0 9 * * * cd /app && php artisan yolo:backup-database --destination=yolo-111111111111-testing-backups/my-app --region=ap-southeast-2');
+        ->toContain('0 5 * * * cd /app && php artisan yolo:backup-database --destination=yolo-111111111111-testing-backups/my-app --region=ap-southeast-2');
+});
+
+it('writes the backup entry on the configured cron schedule', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'backups' => ['schedule' => '0 */4 * * *'],
+        'tasks' => ['web' => true],
+    ]);
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    expect(file_get_contents(Paths::build('docker/crontab')))
+        ->toContain('0 */4 * * * cd /app && php artisan yolo:backup-database');
 });
 
 it('bakes the tenant database list into the backup entry', function (): void {
@@ -758,7 +771,7 @@ it('bakes the tenant database list into the backup entry', function (): void {
         ->toContain('--tenants=acme,globex');
 });
 
-it('pins the backup hour to the manifest timezone', function (): void {
+it('pins the backup schedule to the manifest timezone', function (): void {
     file_put_contents(Paths::manifest(), Yaml::dump([
         'name' => 'my-app',
         'timezone' => 'Australia/Brisbane',

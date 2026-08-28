@@ -92,7 +92,7 @@ Either way, the migration ends the same: re-point `database:` in each app's mani
 
 Opt an app into **daily logical backups** with [`backups: true`](/reference/manifest#backups). Snapshots protect the instance; logical dumps are the portable copy: restorable anywhere, offsite-replicable, and the only form that survives losing the RDS account itself.
 
-The dump runs inside the scheduler's host container — the only compute with network locality to the database — via a daily entry `yolo build` writes into the generated supercronic crontab (09:00 in the manifest timezone, every argument baked in from the manifest). Laravel's scheduler is never involved and there's nothing to register app-side:
+The dump runs inside the scheduler's host container — the only compute with network locality to the database — via a cron entry `yolo build` writes into the generated supercronic crontab (daily at 05:00 in the manifest timezone by default — [`backups.schedule`](/reference/manifest#backups) takes any cron expression; every argument baked in from the manifest). Laravel's scheduler is never involved and there's nothing to register app-side:
 
 1. `mysqldump | zstd` per database — the default connection's database, plus each tenant database on a multi-tenant app. Only the compressed archive ever touches disk.
 2. **Verify at the producer.** `zstd -t` proves the archive is intact; the dump's own `Dump completed` trailer proves mysqldump finished. A dump that fails either check is *not uploaded* — the run fails loudly in the scheduler's logs rather than shipping a bad backup that replicates offsite looking healthy.

@@ -377,13 +377,16 @@ Where the database should live, the managed/external/exposed postures, and how t
 
 ## `backups`
 
-Opt in to scheduled logical database backups. Each day the scheduler's host container dumps every database (`mysqldump | zstd`, tenant databases included on a multi-tenant app), **verifies the archive at the producer** (integrity via `zstd -t`, completeness via the dump's own `Dump completed` trailer — a bad dump fails the run rather than shipping), and uploads it to the env backups bucket on a dated key under this app's prefix (`{app}/{database}/{YYYY-MM-DD}.sql.zst`). Retention is plain lifecycle: dumps expire after 35 days. The bucket stays versioned purely as tamper protection — the producer's write-only grant cannot destroy an existing object. The app's task role can **write only its own prefix and read none** — restores are an operator action, not an app capability.
+Opt in to scheduled logical database backups. On each run the scheduler's host container dumps every database (`mysqldump | zstd`, tenant databases included on a multi-tenant app), **verifies the archive at the producer** (integrity via `zstd -t`, completeness via the dump's own `Dump completed` trailer — a bad dump fails the run rather than shipping), and uploads it to the env backups bucket on a dated key under this app's prefix (`{app}/{database}/{YYYY-MM-DD}.sql.zst`). Retention is plain lifecycle: dumps expire after 35 days. A sub-daily schedule overwrites the day's key each run — latest wins, and the bucket's versioning keeps the earlier same-day copies for 14 days. The bucket stays versioned purely as tamper protection — the producer's write-only grant cannot destroy an existing object. The app's task role can **write only its own prefix and read none** — restores are an operator action, not an app capability.
 
 ```yaml
-backups: true
+backups: true          # daily at 05:00 (manifest timezone)
+
+backups:
+  schedule: "0 */4 * * *"   # or any standard 5-field cron expression
 ```
 
-The schedule is a **generated crontab entry**, not anything the app registers: `yolo build` writes a daily 09:00 line (pinned to the manifest [`timezone`](#timezone) via `CRON_TZ`) into the crontab the scheduler host's supercronic runs, with every argument — destination, region, tenant list — baked in from the manifest, so Laravel's own scheduler is never involved. Backups therefore ride the scheduler host ([where each role runs](#where-each-role-runs)), and `tasks.scheduler: false` also turns them off. [`yolo backup:database <env>`](/reference/commands#yolo-backup-database) runs the identical invocation on demand as a one-off task with streamed output. `yolo build` also probes the built image for the `mysqldump` and `zstd` binaries when backups are on and refuses to ship without them (see [Runtime checks](/guide/images#runtime-checks)) — the scaffolded Dockerfile installs both. More in the **[Databases](/guide/databases)** guide.
+The schedule is a **generated crontab entry**, not anything the app registers: `yolo build` writes the cron line — `backups.schedule`, default daily at 05:00, pinned to the manifest [`timezone`](#timezone) via `CRON_TZ` — into the crontab the scheduler host's supercronic runs, with every argument — destination, region, tenant list — baked in from the manifest, so Laravel's own scheduler is never involved. Backups therefore ride the scheduler host ([where each role runs](#where-each-role-runs)), and `tasks.scheduler: false` also turns them off. [`yolo backup:database <env>`](/reference/commands#yolo-backup-database) runs the identical invocation on demand as a one-off task with streamed output. `yolo build` also probes the built image for the `mysqldump` and `zstd` binaries when backups are on and refuses to ship without them (see [Runtime checks](/guide/images#runtime-checks)) — the scaffolded Dockerfile installs both. More in the **[Databases](/guide/databases)** guide.
 
 ---
 
