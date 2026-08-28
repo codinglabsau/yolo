@@ -20,8 +20,9 @@ COPY --chown=www-data:www-data . /app
 # Place the generated supervisor config at a default search path so both
 # `supervisord` and an interactive `supervisorctl` find it without -c.
 COPY docker/supervisord.conf /etc/supervisord.conf
-# The app's PHP configuration (published by `yolo init`, yours to tune). conf.d
-# loads alphabetically, so it sorts after the extension fragments and its values win.
+# PHP configuration — YOLO's baseline, generated into the build context unless the
+# app publishes its own docker/php.ini. conf.d loads alphabetically, so it sorts
+# after the extension fragments and its values win.
 COPY docker/php.ini $PHP_INI_DIR/conf.d/yolo.ini
 RUN chmod +x /app/.yolo-entrypoint.sh
 

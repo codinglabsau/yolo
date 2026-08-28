@@ -27,6 +27,7 @@ class BuildCommand extends SteppedCommand implements DeployerCommand
         Steps\Build\Fargate\CheckOctaneInstalledStep::class,
         Steps\Build\Fargate\GenerateEntrypointScriptStep::class,
         Steps\Build\Fargate\GenerateSupervisorConfigStep::class,
+        Steps\Build\Fargate\GeneratePhpIniStep::class,
         Steps\Build\Fargate\LoginToEcrStep::class,
         Steps\Build\Fargate\BuildDockerImageStep::class,
         Steps\Build\Fargate\CheckSchedulerRuntimeStep::class,

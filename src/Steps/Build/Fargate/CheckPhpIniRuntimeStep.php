@@ -15,12 +15,14 @@ use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
  * compile defaults — 2M uploads, 8M POST bodies, opcache stat'ing an immutable
  * filesystem on every request — and nothing else in the stack imposes a
  * request-body limit, so the misconfig ships green and only surfaces when a
- * user's upload dies. This probes the freshly-built image for the published ini
- * (docker/php.ini, COPY'd to $PHP_INI_DIR/conf.d/yolo.ini by the scaffolded
- * Dockerfile) and hard-fails the build — before the push — when PHP hasn't
- * loaded it. Probing php's own scanned-file list (matching the other runtime
- * checks' docker-run pattern) sees every way the fragment can land, whatever
- * $PHP_INI_DIR resolves to in the base image.
+ * user's upload dies. GeneratePhpIniStep supplies docker/php.ini in every build
+ * (YOLO's baseline, or the app's published copy), so the file always exists;
+ * what can still go wrong is the Dockerfile — a lost or altered COPY line means
+ * PHP never loads it. This probes the freshly-built image and hard-fails the
+ * build — before the push — when PHP hasn't loaded the fragment. Probing php's
+ * own scanned-file list (matching the other runtime checks' docker-run pattern)
+ * sees every way the fragment can land, whatever $PHP_INI_DIR resolves to in
+ * the base image.
  */
 class CheckPhpIniRuntimeStep implements Step
 {
@@ -39,9 +41,9 @@ class CheckPhpIniRuntimeStep implements Step
 
         throw new RuntimeException(
             'Build aborted: PHP in the built image loads no app php.ini, so it would run '
-            . 'compile defaults (2M uploads, 8M POST bodies). Publish the baseline — copy '
-            . 'vendor/codinglabsau/yolo/stubs/php.ini.stub to docker/php.ini — and COPY it '
-            . 'in your Dockerfile: `COPY docker/php.ini $PHP_INI_DIR/conf.d/yolo.ini`.'
+            . 'compile defaults (2M uploads, 8M POST bodies). The build supplies docker/php.ini '
+            . '(YOLO\'s baseline, or your published copy) — make sure your Dockerfile keeps the '
+            . 'line `COPY docker/php.ini $PHP_INI_DIR/conf.d/yolo.ini`.'
         );
     }
 

@@ -1,8 +1,9 @@
-; Published by `yolo init` — this file is the app's to own, tune it freely.
-; The Dockerfile COPYs it to $PHP_INI_DIR/conf.d/yolo.ini: conf.d loads
-; alphabetically, so it sorts after the extension fragments
-; install-php-extensions writes and these values win. YOLO never rewrites
-; a published copy.
+; YOLO's baseline PHP configuration. `yolo build` bakes this file into the
+; build context as docker/php.ini unless the app has published its own copy at
+; that path — publish one (start from this file) to take ownership; YOLO never
+; touches a published copy. The Dockerfile COPYs it to
+; $PHP_INI_DIR/conf.d/yolo.ini: conf.d loads alphabetically, so it sorts after
+; the extension fragments install-php-extensions writes and these values win.
 ;
 ; Everything not set here inherits PHP's defaults — only deliberate departures
 ; belong in this file.
