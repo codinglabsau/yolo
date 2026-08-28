@@ -43,7 +43,7 @@ class CheckMysqlBackupRuntimeStep implements Step
         throw new RuntimeException(
             'Build aborted: the built image is missing mysqldump and/or zstd, which the '
             . 'scheduled database backups run. Add them to your Dockerfile (e.g. `apk add '
-            . '--no-cache mariadb-client zstd`), or opt out with `mysqldump: false` in '
+            . '--no-cache mariadb-client zstd`), or remove `mysqldump: true` from '
             . 'yolo.yml if this app has no MySQL database to back up.'
         );
     }

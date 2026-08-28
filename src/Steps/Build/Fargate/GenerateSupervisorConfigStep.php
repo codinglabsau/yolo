@@ -362,7 +362,7 @@ class GenerateSupervisorConfigStep implements Step
         // everything the executor needs is baked in as arguments — no runtime
         // config, nothing for the app to know about.
         if (Manifest::backsUpMysql()) {
-            $crontab .= "\n# Daily logical database backups — the manifest `mysqldump` key (default on).\n"
+            $crontab .= "\n# Daily logical database backups — opted in via the manifest `mysqldump` key.\n"
                 . 'CRON_TZ=' . Manifest::timezone() . "\n"
                 . '0 9 * * * cd /app && ' . implode(' ', ProcessCommands::mysqlBackup()) . "\n";
         }
