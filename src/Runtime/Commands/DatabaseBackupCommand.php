@@ -48,7 +48,7 @@ class DatabaseBackupCommand extends Command
      * roomy enough that a large multi-database dump finishes well inside it. */
     protected const int LOCK_TTL_SECONDS = 6 * 3600;
 
-    protected $signature = 'yolo:backup-databases
+    protected $signature = 'yolo:backup-database
         {--destination= : The bucket/prefix the dumps upload to (baked into the crontab from the manifest)}
         {--region= : The dumps bucket region}
         {--tenants= : Comma-separated tenant database names dumped alongside the default connection}';
@@ -77,7 +77,7 @@ class DatabaseBackupCommand extends Command
             return self::FAILURE;
         }
 
-        $lock = Cache::lock('yolo:backup-databases', static::LOCK_TTL_SECONDS);
+        $lock = Cache::lock('yolo:backup-database', static::LOCK_TTL_SECONDS);
 
         if (! $lock->get()) {
             $this->info('A backup run already holds the lock — skipping.');

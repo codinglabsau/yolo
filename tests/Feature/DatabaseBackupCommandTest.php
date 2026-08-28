@@ -159,7 +159,7 @@ it('reports the failed database but still backs up the rest', function (): void 
 });
 
 it('skips when another run holds the lock', function (): void {
-    $held = Cache::lock('yolo:backup-databases', 60);
+    $held = Cache::lock('yolo:backup-database', 60);
     $held->get();
 
     try {

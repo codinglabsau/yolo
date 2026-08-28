@@ -147,6 +147,6 @@ class ProcessCommands
             $arguments[] = '--tenants=' . implode(',', array_keys(Manifest::tenants()));
         }
 
-        return ['php', 'artisan', 'yolo:backup-databases', ...$arguments];
+        return ['php', 'artisan', 'yolo:backup-database', ...$arguments];
     }
 }
