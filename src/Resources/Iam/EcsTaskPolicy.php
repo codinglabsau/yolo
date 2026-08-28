@@ -240,7 +240,7 @@ class EcsTaskPolicy implements Deletable, Resource, SynchronisesConfiguration
         }
 
         // Scheduled database dumps upload to this app's own prefix of the env
-        // dumps bucket. Write-only by design — the producer verifies the
+        // backups bucket. Write-only by design — the producer verifies the
         // archive locally before uploading, so the container never needs read,
         // and a compromised task can't exfiltrate its own dump history (or any
         // sibling app's). AbortMultipartUpload keeps a failed large upload
@@ -248,7 +248,7 @@ class EcsTaskPolicy implements Deletable, Resource, SynchronisesConfiguration
         if (Manifest::backsUpDatabases()) {
             $statements[] = [
                 'Effect' => 'Allow',
-                'Resource' => sprintf('arn:aws:s3:::%s/%s/*', Paths::s3DumpsBucket(), Manifest::name()),
+                'Resource' => sprintf('arn:aws:s3:::%s/%s/*', Paths::s3BackupsBucket(), Manifest::name()),
                 'Action' => [
                     's3:PutObject',
                     's3:AbortMultipartUpload',

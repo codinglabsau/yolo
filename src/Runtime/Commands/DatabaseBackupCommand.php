@@ -13,7 +13,7 @@ use Symfony\Component\Process\Process;
 
 /**
  * The in-container backup executor: `mysqldump` each database, compress with
- * zstd, verify the archive, and upload it to the env dumps bucket. Nothing to
+ * zstd, verify the archive, and upload it to the env backups bucket. Nothing to
  * schedule and no runtime config — the crontab YOLO generates for the
  * scheduler host carries the daily entry with every argument baked from the
  * manifest at build time (ProcessCommands::databaseBackup), and
@@ -52,10 +52,10 @@ class DatabaseBackupCommand extends Command
 
     protected $signature = 'yolo:backup-database
         {--destination= : The bucket/prefix the dumps upload to (baked into the crontab from the manifest)}
-        {--region= : The dumps bucket region}
+        {--region= : The backups bucket region}
         {--tenants= : Comma-separated tenant database names dumped alongside the default connection}';
 
-    protected $description = 'Dump each database, verify the archive, and upload it to the env dumps bucket';
+    protected $description = 'Dump each database, verify the archive, and upload it to the env backups bucket';
 
     public function handle(): int
     {

@@ -738,7 +738,7 @@ it('adds the daily backup entry to the crontab with every argument baked from th
     // ride the invocation itself, baked at build time.
     expect(file_get_contents(Paths::build('docker/crontab')))
         ->toContain("CRON_TZ=UTC\n")
-        ->toContain('0 9 * * * cd /app && php artisan yolo:backup-database --destination=yolo-111111111111-testing-dumps/my-app --region=ap-southeast-2');
+        ->toContain('0 9 * * * cd /app && php artisan yolo:backup-database --destination=yolo-111111111111-testing-backups/my-app --region=ap-southeast-2');
 });
 
 it('bakes the tenant database list into the backup entry', function (): void {

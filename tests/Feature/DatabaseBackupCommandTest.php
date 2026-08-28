@@ -69,7 +69,7 @@ function fakeBackupCommand(Application $app, string $trailer = '-- Dump complete
 }
 
 function runBackupCommand(DatabaseBackupCommand $command, array $options = [
-    '--destination' => 'yolo-111111111111-testing-dumps/my-app',
+    '--destination' => 'yolo-111111111111-testing-backups/my-app',
     '--region' => 'ap-southeast-2',
 ]): int
 {
@@ -107,21 +107,21 @@ it('dumps, verifies and uploads the default database to its app prefix', functio
     $command = fakeBackupCommand($this->app);
 
     expect(runBackupCommand($command))->toBe(0)
-        ->and($command->uploads)->toBe(['yolo-111111111111-testing-dumps/my-app/app/2026-08-28.sql.zst']);
+        ->and($command->uploads)->toBe(['yolo-111111111111-testing-backups/my-app/app/2026-08-28.sql.zst']);
 });
 
 it('dumps every tenant database alongside the default, deduped', function (): void {
     $command = fakeBackupCommand($this->app);
 
     expect(runBackupCommand($command, [
-        '--destination' => 'yolo-111111111111-testing-dumps/my-app',
+        '--destination' => 'yolo-111111111111-testing-backups/my-app',
         '--region' => 'ap-southeast-2',
         '--tenants' => 'acme,globex,app',
     ]))->toBe(0)
         ->and($command->uploads)->toBe([
-            'yolo-111111111111-testing-dumps/my-app/app/2026-08-28.sql.zst',
-            'yolo-111111111111-testing-dumps/my-app/acme/2026-08-28.sql.zst',
-            'yolo-111111111111-testing-dumps/my-app/globex/2026-08-28.sql.zst',
+            'yolo-111111111111-testing-backups/my-app/app/2026-08-28.sql.zst',
+            'yolo-111111111111-testing-backups/my-app/acme/2026-08-28.sql.zst',
+            'yolo-111111111111-testing-backups/my-app/globex/2026-08-28.sql.zst',
         ]);
 });
 
@@ -157,11 +157,11 @@ it('reports the failed database but still backs up the rest', function (): void 
     // One broken database must not cost the others their backup — but the run
     // exits non-zero so the failure is loud in the scheduler's logs.
     expect(runBackupCommand($command, [
-        '--destination' => 'yolo-111111111111-testing-dumps/my-app',
+        '--destination' => 'yolo-111111111111-testing-backups/my-app',
         '--region' => 'ap-southeast-2',
         '--tenants' => 'acme',
     ]))->toBe(1)
-        ->and($command->uploads)->toBe(['yolo-111111111111-testing-dumps/my-app/acme/2026-08-28.sql.zst']);
+        ->and($command->uploads)->toBe(['yolo-111111111111-testing-backups/my-app/acme/2026-08-28.sql.zst']);
 });
 
 it('skips when another run holds the lock', function (): void {

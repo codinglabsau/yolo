@@ -8,7 +8,7 @@ use Codinglabs\Yolo\Helpers;
 use GuzzleHttp\Promise\Create;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Deletable;
-use Codinglabs\Yolo\Resources\S3\S3DumpsBucket;
+use Codinglabs\Yolo\Resources\S3\S3BackupsBucket;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 /**
@@ -53,25 +53,25 @@ beforeEach(function (): void {
     ]);
 });
 
-it('is env-scoped and named yolo-{account-id}-{env}-dumps', function (): void {
-    $bucket = new S3DumpsBucket();
+it('is env-scoped and named yolo-{account-id}-{env}-backups', function (): void {
+    $bucket = new S3BackupsBucket();
 
-    expect($bucket->name())->toBe('yolo-111111111111-testing-dumps')
+    expect($bucket->name())->toBe('yolo-111111111111-testing-backups')
         ->and($bucket->scope())->toBe(Scope::Env)
         // env-scoped → yolo:scope=env, no yolo:app owner tag
-        ->and($bucket->tags())->toBe(['Name' => 'yolo-111111111111-testing-dumps', 'yolo:scope' => 'env']);
+        ->and($bucket->tags())->toBe(['Name' => 'yolo-111111111111-testing-backups', 'yolo:scope' => 'env']);
 });
 
 it('is deliberately not Deletable — dumps outlive environment teardown', function (): void {
     // A database dump is the one artefact whose purpose is to survive the loss
     // of everything else; teardown must never sweep it up.
-    expect(new S3DumpsBucket())->not->toBeInstanceOf(Deletable::class);
+    expect(new S3BackupsBucket())->not->toBeInstanceOf(Deletable::class);
 });
 
 it('reconciles BPA + versioning + the retention lifecycle when none of them match', function (): void {
     $recorder = bindRecordingDumpsS3Client();
 
-    $changes = (new S3DumpsBucket())->synchroniseConfiguration();
+    $changes = (new S3BackupsBucket())->synchroniseConfiguration();
 
     $writes = collect($recorder->calls)->pluck('name')->all();
 
@@ -88,7 +88,7 @@ it('reconciles BPA + versioning + the retention lifecycle when none of them matc
 it('expires dated dumps by lifecycle and sweeps versioning debris', function (): void {
     $recorder = bindRecordingDumpsS3Client();
 
-    (new S3DumpsBucket())->synchroniseConfiguration();
+    (new S3BackupsBucket())->synchroniseConfiguration();
 
     $put = collect($recorder->calls)->firstWhere('name', 'PutBucketLifecycleConfiguration');
 
@@ -106,12 +106,12 @@ it('expires dated dumps by lifecycle and sweeps versioning debris', function ():
         ->and($sweep['NoncurrentVersionExpiration'])->toBe(['NoncurrentDays' => 14]);
 });
 
-it('refuses to apply the retention lifecycle to anything that is not a -dumps bucket', function (): void {
+it('refuses to apply the retention lifecycle to anything that is not a -backups bucket', function (): void {
     // This schedules data for deletion — a naming refactor wiring it to any
     // other bucket must hard-fail the sync, never write, never silently skip.
     $recorder = bindRecordingDumpsS3Client();
 
-    $rogue = new class() extends S3DumpsBucket
+    $rogue = new class() extends S3BackupsBucket
     {
         public function name(): string
         {

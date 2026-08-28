@@ -26,7 +26,7 @@ environments:
     # bucket: true
 
     # Opt in to scheduled logical database backups: a daily dump of every
-    # database, verified at the producer, uploaded to the env dumps bucket.
+    # database, verified at the producer, uploaded to the env backups bucket.
     # backups: true
 
     # Web apps default to a shared Valkey cache + Valkey-backed sessions (provisioned and

@@ -96,7 +96,7 @@ The dump runs inside the scheduler's host container — the only compute with ne
 
 1. `mysqldump | zstd` per database — the default connection's database, plus each tenant database on a multi-tenant app. Only the compressed archive ever touches disk.
 2. **Verify at the producer.** `zstd -t` proves the archive is intact; the dump's own `Dump completed` trailer proves mysqldump finished. A dump that fails either check is *not uploaded* — the run fails loudly in the scheduler's logs rather than shipping a bad backup that replicates offsite looking healthy.
-3. Upload to the env dumps bucket on a dated key — `{app}/{database}/{YYYY-MM-DD}.sql.zst` — so the history is browsable and retention is plain lifecycle: dumps expire after 35 days. The bucket stays versioned purely as tamper protection — the producer's write-only grant cannot destroy an existing object.
+3. Upload to the env backups bucket on a dated key — `{app}/{database}/{YYYY-MM-DD}.sql.zst` — so the history is browsable and retention is plain lifecycle: dumps expire after 35 days. The bucket stays versioned purely as tamper protection — the producer's write-only grant cannot destroy an existing object.
 
 The app's task role can **write only its own prefix, and read none** — a compromised container can't pull dump history, its own or a sibling app's.
 
@@ -109,10 +109,10 @@ yolo backup:database production
 Restores are an operator action:
 
 ```bash
-aws s3 cp s3://yolo-{account-id}-{env}-dumps/{app}/{database}/{YYYY-MM-DD}.sql.zst - | zstd -dc | mysql
+aws s3 cp s3://yolo-{account-id}-{env}-backups/{app}/{database}/{YYYY-MM-DD}.sql.zst - | zstd -dc | mysql
 ```
 
-Two things YOLO deliberately leaves with you: **offsite replication** (point your replication target at the dumps bucket) and the **periodic restore rehearsal** — a dump you've never restored is a hope, not a backup.
+Two things YOLO deliberately leaves with you: **offsite replication** (point your replication target at the backups bucket) and the **periodic restore rehearsal** — a dump you've never restored is a hope, not a backup.
 
 ## What audit checks, at a glance
 

@@ -252,7 +252,7 @@ it('grants write-only access to this app\'s own dumps prefix when backups are op
     ]);
 
     $statement = collect((new EcsTaskPolicy())->document()['Statement'])
-        ->firstWhere('Resource', 'arn:aws:s3:::yolo-111111111111-testing-dumps/my-app/*');
+        ->firstWhere('Resource', 'arn:aws:s3:::yolo-111111111111-testing-backups/my-app/*');
 
     expect($statement)->not->toBeNull()
         ->and($statement['Effect'])->toBe('Allow')
@@ -270,5 +270,5 @@ it('grants no dumps access by default — backups are an opt-in', function (): v
 
     $resources = collect((new EcsTaskPolicy())->document()['Statement'])->pluck('Resource')->flatten();
 
-    expect($resources->filter(fn ($arn): bool => str_contains((string) $arn, '-dumps')))->toBeEmpty();
+    expect($resources->filter(fn ($arn): bool => str_contains((string) $arn, '-backups')))->toBeEmpty();
 });

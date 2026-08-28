@@ -64,7 +64,7 @@ describe('mysql backup invocation', function (): void {
 
         expect(ProcessCommands::databaseBackup())->toBe([
             'php', 'artisan', 'yolo:backup-database',
-            '--destination=yolo-111111111111-testing-dumps/my-app',
+            '--destination=yolo-111111111111-testing-backups/my-app',
             '--region=ap-southeast-2',
         ]);
     });

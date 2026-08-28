@@ -139,7 +139,7 @@ class ProcessCommands
     public static function databaseBackup(): array
     {
         $arguments = [
-            '--destination=' . Paths::s3DumpsBucket() . '/' . Manifest::name(),
+            '--destination=' . Paths::s3BackupsBucket() . '/' . Manifest::name(),
             '--region=' . Manifest::get('region'),
         ];
 

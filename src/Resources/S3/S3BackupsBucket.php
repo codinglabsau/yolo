@@ -35,17 +35,17 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
  * Deliberately NOT Deletable: environment teardown removes what the platform
  * can recreate, and a database dump is the one artefact whose entire purpose
  * is to survive the loss of everything else — same instinct as the never-
- * delete set (RDS, app data bucket). An abandoned dumps bucket costs cents
+ * delete set (RDS, app data bucket). An abandoned backups bucket costs cents
  * and is removed by hand when the data is provably no longer needed.
  */
-class S3DumpsBucket implements Resource, SynchronisesConfiguration
+class S3BackupsBucket implements Resource, SynchronisesConfiguration
 {
     use ReconcilesBucketHardening;
     use ResolvesTags;
 
     public function name(): string
     {
-        return Paths::s3DumpsBucket();
+        return Paths::s3BackupsBucket();
     }
 
     public function scope(): Scope
@@ -109,25 +109,25 @@ class S3DumpsBucket implements Resource, SynchronisesConfiguration
     protected function reconcileDumpRetentionLifecycle(bool $apply): array
     {
         // Paranoia gate, mirroring the logs bucket's: this schedules data for
-        // deletion, so it may only ever land on a *-dumps bucket — a refactor
+        // deletion, so it may only ever land on a *-backups bucket — a refactor
         // wiring it to any other bucket hard-fails the sync instead.
-        if (! str_ends_with($this->name(), '-dumps')) {
+        if (! str_ends_with($this->name(), '-backups')) {
             throw new IntegrityCheckException(sprintf(
-                'Refusing to apply the dump-retention lifecycle to "%s" — it only ever applies to a *-dumps bucket.',
+                'Refusing to apply the backup-retention lifecycle to "%s" — it only ever applies to a *-backups bucket.',
                 $this->name(),
             ));
         }
 
         $desired = [
             [
-                'ID' => 'expire-dumps',
+                'ID' => 'expire-backups',
                 'Status' => 'Enabled',
                 'Filter' => ['Prefix' => ''],
                 'Expiration' => ['Days' => 35],
                 'AbortIncompleteMultipartUpload' => ['DaysAfterInitiation' => 7],
             ],
             [
-                'ID' => 'sweep-noncurrent-dumps',
+                'ID' => 'sweep-noncurrent-backups',
                 'Status' => 'Enabled',
                 'Filter' => ['Prefix' => ''],
                 'Expiration' => ['ExpiredObjectDeleteMarker' => true],

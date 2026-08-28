@@ -86,9 +86,9 @@ class Paths
      * next to. Each app's task role can write only its own `{app}/` prefix,
      * and can't read any.
      */
-    public static function s3DumpsBucket(): string
+    public static function s3BackupsBucket(): string
     {
-        return Helpers::keyedBucketName('dumps', exclusive: false);
+        return Helpers::keyedBucketName('backups', exclusive: false);
     }
 
     /**
