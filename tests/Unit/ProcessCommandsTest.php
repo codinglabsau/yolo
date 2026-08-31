@@ -54,3 +54,31 @@ describe('queue', function (): void {
             ->toBe('php artisan queue:work --tries=3 --max-time=3600 --queue=yolo-testing-my-app-acme-high,yolo-testing-my-app-acme-default');
     });
 });
+
+describe('mysql backup invocation', function (): void {
+    it('bakes destination and region from the manifest', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => true],
+        ]);
+
+        expect(ProcessCommands::databaseBackup())->toBe([
+            'php', 'artisan', 'yolo:backup-database',
+            '--destination=yolo-111111111111-testing-backups/my-app',
+            '--region=ap-southeast-2',
+        ]);
+    });
+
+    it('adds the tenant database list on a multi-tenant app', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'multitenancy' => [
+                'landlord' => ['domain' => 'app.example.com', 'wildcard-subdomains' => true],
+                'tenants' => ['acme' => null, 'globex' => null],
+            ],
+            'tasks' => ['web' => true],
+        ]);
+
+        expect(ProcessCommands::databaseBackup())->toContain('--tenants=acme,globex');
+    });
+});

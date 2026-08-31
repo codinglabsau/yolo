@@ -88,6 +88,32 @@ Two things the command warns about but assumes you've done, because they're the 
 
 Either way, the migration ends the same: re-point `database:` in each app's manifest, remove the [`peering`](#external-declared-peering-transitional-or-permanent) entry if this was a cross-VPC move, and let the next sync tear the bridge down. Audit flips to *managed*.
 
+## Logical backups
+
+Opt an app into **daily logical backups** with [`backups: true`](/reference/manifest#backups). Snapshots protect the instance; logical dumps are the portable copy: restorable anywhere, offsite-replicable, and the only form that survives losing the RDS account itself.
+
+The dump runs inside the scheduler's host container — the only compute with network locality to the database — via a cron entry `yolo build` writes into the generated supercronic crontab (daily at 05:00 in the manifest timezone by default — [`backups.schedule`](/reference/manifest#backups) takes any cron expression; every argument baked in from the manifest). Laravel's scheduler is never involved and there's nothing to register app-side:
+
+1. `mysqldump | zstd` per database — the default connection's database, plus each tenant database on a multi-tenant app. Only the compressed archive ever touches disk.
+2. **Verify at the producer.** `zstd -t` proves the archive is intact; the dump's own `Dump completed` trailer proves mysqldump finished. A dump that fails either check is *not uploaded* — the run fails loudly in the scheduler's logs rather than shipping a bad backup that replicates offsite looking healthy.
+3. Upload to the env backups bucket on a timestamped key — `{app}/{database}/{YYYY-MM-DD-HHMM}.sql.zst` — so every run keeps its own object at any schedule cadence, the history is browsable, and retention is plain lifecycle: dumps expire after 35 days. The bucket stays versioned purely as tamper protection — the producer's write-only grant cannot destroy an existing object.
+
+The app's task role can **write only its own prefix, and read none** — a compromised container can't pull dump history, its own or a sibling app's.
+
+Run one now, with the output streamed to your terminal — the same invocation the crontab fires, launched as a dedicated one-off task (its own CPU, no contention with the serving containers):
+
+```bash
+yolo backup:database production
+```
+
+Restores are an operator action:
+
+```bash
+aws s3 cp s3://yolo-{account-id}-{env}-backups/{app}/{database}/{YYYY-MM-DD-HHMM}.sql.zst - | zstd -dc | mysql
+```
+
+Two things YOLO deliberately leaves with you: **offsite replication** (point your replication target at the backups bucket) and the **periodic restore rehearsal** — a dump you've never restored is a hope, not a backup.
+
 ## What audit checks, at a glance
 
 - **Deletion protection** — off is an **error** (audit exits non-zero); unreadable is a warning.

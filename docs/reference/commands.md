@@ -41,6 +41,7 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | [`db:tunnel <env>`](#yolo-db-tunnel) | Port-forward the manifest-declared database to localhost through a running task |
 | [`db:cutover <env>`](#yolo-db-cutover) | Flip every running task onto a new database host in place, then verify the fleet |
 | [`db:status <env>`](#yolo-db-status) | Show every environment app's declared database, from the published claim files |
+| [`backup:database <env>`](#yolo-backup-database) | Run the scheduled database backup now, as a one-off task with streamed output |
 | [`scale <env> [count]`](#yolo-scale) | Adjust the web service's task count out of band |
 | [`permissions <env>`](#yolo-permissions) | Grant or revoke a team member's access by editing their YOLO group membership |
 | [`services <env>`](#yolo-services) | View and manage the services an environment offers |
@@ -67,7 +68,7 @@ yolo init
 Interactive. Prompts for the app name, the environment to add (e.g. `production`), AWS account ID, region (a picker of the commercial AWS regions, defaulting to `AWS_DEFAULT_REGION` when set), and (unless multi-tenant) a domain and optional S3 bucket. It then:
 
 - Writes `yolo.yml` from the stub — the environment block keyed by the name you gave, with web [autoscaling](/guide/scaling) declared (`tasks.web.autoscaling: true`, bounds 1–5; it's a required key).
-- Writes a default `Dockerfile` and `.dockerignore` (asks before overwriting existing ones).
+- Writes a default `Dockerfile` and `.dockerignore` (asks before overwriting existing ones). No `php.ini` is scaffolded — every build bakes in [YOLO's baseline](/guide/images#php-configuration); publish your own `docker/php.ini` only to override it.
 - Offers to create a starter `.env.<environment>` (default yes): your `.env.example` corrected for the target environment — `APP_ENV`, `APP_DEBUG=false`, a freshly generated `APP_KEY`, and `APP_URL` when a domain was given. Every `AWS_*` key and every platform-owned key (`LOG_CHANNEL`, `QUEUE_CONNECTION`, cache/session/Redis wiring, …) is stripped — [the build injects those from the manifest](/guide/environment-files#how-it-s-used-at-deploy-time), so a copy here would only drift (and the stock `LOG_CHANNEL=stack` would fail the first build against the enforced `stderr`). It finishes by reminding you to review the file and [`env:push`](#yolo-env-push) it. An existing file is never touched.
 - Appends `.yolo`, `.env.<environment>` (plus `.env.staging`/`.env.production`), and the env-shared working copies (`.env.environment.*`, `yolo-environment-*.yml`) to `.gitignore`.
 - Offers to run [`configure`](#yolo-configure) at the end — the natural next step on a fresh app (it handles machine setup, including the Session Manager plugin). Decline if this machine already has the account's profile set up.
@@ -574,6 +575,20 @@ yolo db:status production --json
 
 ---
 
+## `yolo backup:database`
+
+Run the [scheduled database backup](/guide/databases#logical-backups) now. Launches the exact invocation the generated crontab fires — same executor, same baked arguments, so the scheduled and on-demand paths can't drift — as a **one-off Fargate task** (the dump must execute inside the VPC; only a task has network locality to the database), sized up like the deploy hooks so `zstd -T0` gets real CPU, then **streams the task's output to your terminal** until it stops and mirrors its exit code.
+
+```bash
+yolo backup:database <environment>
+```
+
+**Arguments:** `environment` · **Options:** none · Deployer-tier (the same `ecs:RunTask` surface as deploy hooks).
+
+Refused when the manifest hasn't opted into backups ([`backups: true`](/reference/manifest#backups) absent, or cron disabled) — the task role carries no dumps-bucket grant there, so the run could only fail at upload.
+
+---
+
 ## `yolo scale`
 
 Adjust a service's capacity out of band — no build, no task-definition revision. Mirrors [`env:push`](#yolo-env-push): reads live state, shows a current → new comparison, and asks before applying.
@@ -711,7 +726,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **account**.
 
 ## `yolo sync:environment`
 
-Sync the environment-shared (environment-tier) resources — VPC, the public and private subnet tiers with their route tables ([the network](/guide/provisioning#the-network)), the internet gateway, the private-only RDS DB subnet group, any [declared VPC peering](/guide/databases) (the env manifest `peering` list: connections created/accepted, routes both ways, DNS resolution last — the whole bridge torn down when an entry is removed), the load balancer security group, the env config bucket holding [the environment's declaration](/guide/provisioning#the-environment-declaration) (env manifest + env-shared `.env`, the manifest seeded once on first sync), the env-backed services governed by [the service lifecycle](/guide/services#the-service-lifecycle) (the IVS event-logging pipeline and the [Typesense search cluster](/guide/services#typesense-the-environment-s-search-cluster) — each provisioned while the env manifest declares it, planned as a `WOULD DELETE` teardown once the entry is removed, and flagged as idle if declared but unused), the ALB and its `:80` listener, the SNS alarm topic, the shared ECS execution IAM role, the env-shared `yolo-{env}-observer` read-only policy (the drift-check inspection surface every app's deployer role attaches — see [CI/CD](/guide/ci-cd#what-yolo-sync-provisions-for-ci)), the `yolo-{env}-observer-role` an operator or agent assumes for safe **read-only** inspection (it carries that policy — point a `*-readonly` profile at it), the env-wide [grant groups](#conventions) (`yolo-{env}-observers`, `yolo-{env}-admins`) whose membership grants the read / admin tier, and the [WAF web ACL](/guide/provisioning#web-application-firewall) (with its allow/block IP sets) fronting the ALB.
+Sync the environment-shared (environment-tier) resources — VPC, the public and private subnet tiers with their route tables ([the network](/guide/provisioning#the-network)), the internet gateway, the private-only RDS DB subnet group, any [declared VPC peering](/guide/databases) (the env manifest `peering` list: connections created/accepted, routes both ways, DNS resolution last — the whole bridge torn down when an entry is removed), the load balancer security group, the env config bucket holding [the environment's declaration](/guide/provisioning#the-environment-declaration) (env manifest + env-shared `.env`, the manifest seeded once on first sync), the env logs bucket (ALB access logs) and backups bucket (the apps' [database dumps](/guide/databases#logical-backups)), the env-backed services governed by [the service lifecycle](/guide/services#the-service-lifecycle) (the IVS event-logging pipeline and the [Typesense search cluster](/guide/services#typesense-the-environment-s-search-cluster) — each provisioned while the env manifest declares it, planned as a `WOULD DELETE` teardown once the entry is removed, and flagged as idle if declared but unused), the ALB and its `:80` listener, the SNS alarm topic, the shared ECS execution IAM role, the env-shared `yolo-{env}-observer` read-only policy (the drift-check inspection surface every app's deployer role attaches — see [CI/CD](/guide/ci-cd#what-yolo-sync-provisions-for-ci)), the `yolo-{env}-observer-role` an operator or agent assumes for safe **read-only** inspection (it carries that policy — point a `*-readonly` profile at it), the env-wide [grant groups](#conventions) (`yolo-{env}-observers`, `yolo-{env}-admins`) whose membership grants the read / admin tier, and the [WAF web ACL](/guide/provisioning#web-application-firewall) (with its allow/block IP sets) fronting the ALB.
 
 ```bash
 yolo sync:environment <environment> [--check] [--force] [--no-progress] [--tenant=<id>]
@@ -807,7 +822,7 @@ Arguments and options as [`sync`](#sync-options). Scope: **environment**. Admin-
 
 - **The network shell is reclaimed automatically** (VPC, subnets, route table, internet gateway, RDS security group + subnet group), after Tier A — *unless a database is attached to the VPC*. A surviving RDS instance lives in the VPC's private subnets using that security group and subnet group, and AWS pins all of it (you can't delete an in-use security group, an in-use subnet, or a VPC with a live ENI), so a live database keeps the whole shell standing; it's named in the refusal summary. Snapshot and drop the database out-of-band, then re-run to reclaim the network.
 - **RDS is never touched** — YOLO owns the security group, never the database.
-- **The env buckets go with the environment.** The env config bucket (the env manifest + env-shared `.env`) and the env logs bucket (ALB access logs) are regeneratable infrastructure config, emptied and deleted as part of the teardown. The app data bucket is never touched (it isn't even a deletable resource).
+- **The env buckets go with the environment — except the backups bucket.** The env config bucket (the env manifest + env-shared `.env`) and the env logs bucket (ALB access logs) are regeneratable infrastructure config, emptied and deleted as part of the teardown. The env backups bucket (the apps' [database dumps](/guide/databases#logical-backups)) survives, like the app data bucket — a backup's entire purpose is to outlive the loss of everything else, so it's removed by hand once the data is provably no longer needed.
 - The env-backed **service stacks** come down even though the env manifest still declares them: the command forces [the service lifecycle](/guide/services#the-service-lifecycle) to *teardown* for the duration of the run, reusing the same per-service teardown the manifest-removal path uses.
 
 **Guarded — it refuses while any app still claims the environment.** If any app has a published claim file or running tasks, destroy:environment names them and stops: tear each down with [`destroy:app`](#yolo-destroy-app) first, so the shared resources never go out from under a live app.

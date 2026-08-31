@@ -78,6 +78,20 @@ class Paths
     }
 
     /**
+     * Env-scoped bucket holding the apps' logical database dumps, one prefix
+     * per app. Env-scoped like the logs bucket (dumps are shared operational
+     * output, not app data), but never with it: dumps are full database
+     * content, and the logs bucket carries an external write principal and a
+     * bucket-wide expiry — both of which database content must never sit
+     * next to. Each app's task role can write only its own `{app}/` prefix,
+     * and can't read any.
+     */
+    public static function s3BackupsBucket(): string
+    {
+        return Helpers::keyedBucketName('backups', exclusive: false);
+    }
+
+    /**
      * Env-scoped config bucket holding the environment's declaration — the env
      * manifest (yolo-environment-{environment}.yml) and the env-shared `.env`. The env-tier sibling
      * of the per-app config buckets, carrying the same secrets posture:

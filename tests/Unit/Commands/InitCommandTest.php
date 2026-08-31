@@ -114,6 +114,11 @@ it('scaffolds a .dockerignore when none exists', function (): void {
         ->and(file_get_contents($path))->toBe(file_get_contents(Paths::stubs('.dockerignore.stub')));
 })->after(fn (): bool => @unlink(Paths::base('.dockerignore')));
 
+it('ships a Dockerfile stub that loads docker/php.ini after the extension fragments', function (): void {
+    expect(file_get_contents(Paths::stubs('Dockerfile.stub')))
+        ->toContain('COPY docker/php.ini $PHP_INI_DIR/conf.d/yolo.ini');
+});
+
 it('templates the environment block rather than hardcoding production', function (): void {
     $stub = file_get_contents(Paths::stubs('yolo.yml.stub'));
 

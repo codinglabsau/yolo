@@ -72,22 +72,33 @@ class YoloServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        // Manifest-gated, not Scout-config-gated: stock scout.php ships a
-        // typesense block for every engine, and another engine's own
-        // `scout:reimport` (scout-extended) must never be shadowed.
-        if ($this->app->runningInConsole() && $this->app->make(ManifestReader::class)->hasService(Service::TYPESENSE)) {
-            $this->commands([
-                Runtime\Commands\ScoutHealCommand::class,
-                Runtime\Commands\ScoutReimportCommand::class,
-            ]);
+        if ($this->app->runningInConsole()) {
+            // Manifest-gated, not Scout-config-gated: stock scout.php ships a
+            // typesense block for every engine, and another engine's own
+            // `scout:reimport` (scout-extended) must never be shadowed.
+            if ($this->app->make(ManifestReader::class)->hasService(Service::TYPESENSE)) {
+                $this->commands([
+                    Runtime\Commands\ScoutHealCommand::class,
+                    Runtime\Commands\ScoutReimportCommand::class,
+                ]);
 
-            // Scheduled here so a wiped index rebuilds without any app
-            // remembering a kernel line; the command is self-locking.
-            $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
-                if (config('yolo.search.heal') && (array) config('scout.typesense.client-settings', []) !== []) {
-                    $schedule->command('scout:heal')->everyFiveMinutes();
-                }
-            });
+                // Scheduled here so a wiped index rebuilds without any app
+                // remembering a kernel line; the command is self-locking.
+                $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
+                    if (config('yolo.search.heal') && (array) config('scout.typesense.client-settings', []) !== []) {
+                        $schedule->command('scout:heal')->everyFiveMinutes();
+                    }
+                });
+            }
+
+            // The backup executor lives in YOLO's own `yolo:` namespace, so it
+            // shadows nothing and registers unconditionally. Nothing schedules
+            // it here — the generated crontab carries the schedule (see
+            // GenerateSupervisorConfigStep), and `yolo backup:database` runs
+            // it on demand.
+            $this->commands([
+                Runtime\Commands\DatabaseBackupCommand::class,
+            ]);
         }
 
         if (! $this->burstEnabled()) {

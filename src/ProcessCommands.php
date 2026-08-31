@@ -125,4 +125,28 @@ class ProcessCommands
     {
         return 'php artisan inertia:start-ssr';
     }
+
+    /**
+     * The in-container backup executor invocation, shared by the generated
+     * crontab entry and `backup:database`'s one-off task override so the
+     * scheduled and on-demand paths can't drift. Everything the executor needs
+     * is baked in as arguments from the manifest — no runtime config, nothing
+     * for the app to know about. Tenant ids are the database names (the same
+     * contract the per-tenant queue fan-out relies on).
+     *
+     * @return array<int, string>
+     */
+    public static function databaseBackup(): array
+    {
+        $arguments = [
+            '--destination=' . Paths::s3BackupsBucket() . '/' . Manifest::name(),
+            '--region=' . Manifest::get('region'),
+        ];
+
+        if (Manifest::isMultitenanted()) {
+            $arguments[] = '--tenants=' . implode(',', array_keys(Manifest::tenants()));
+        }
+
+        return ['php', 'artisan', 'yolo:backup-database', ...$arguments];
+    }
 }
