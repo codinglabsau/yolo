@@ -31,11 +31,11 @@ use Symfony\Component\Process\Process;
  *    Checking the trailer instead of the pipeline's exit status also
  *    sidesteps `pipefail`, which the images' default shells don't agree on.
  *
- * Uploads land on dated keys — `{app}/{database}/{Y-m-d}.sql.zst` — so the
- * history is browsable and retention is plain lifecycle expiry on the bucket;
- * versioning stays on purely as tamper armour (a write-only producer cannot
- * destroy an existing object). A same-day rerun overwrites that day's key —
- * latest wins. The upload uses the task role's write-only grant; the archive
+ * Uploads land on timestamped keys — `{app}/{database}/{Y-m-d-Hi}.sql.zst` —
+ * so every run keeps its own object at any schedule cadence, the history is
+ * browsable (ISO timestamps sort lexically), and retention is plain lifecycle
+ * expiry on the bucket; versioning stays on purely as tamper armour (a
+ * write-only producer cannot destroy an existing object). The upload uses the task role's write-only grant; the archive
  * is deleted locally either way. A failed database is reported and the run moves on to
  * the next — one broken tenant must not cost the rest their backup — but the
  * command exits non-zero so the failure is loud in the scheduler's logs.
@@ -144,7 +144,7 @@ class DatabaseBackupCommand extends Command
                 return false;
             }
 
-            $this->upload($archive, sprintf('%s/%s/%s.sql.zst', $destination, $database, now()->toDateString()));
+            $this->upload($archive, sprintf('%s/%s/%s.sql.zst', $destination, $database, now()->format('Y-m-d-Hi')));
 
             $this->info(sprintf(
                 '%s: dumped, verified and uploaded %s in %ds.',
