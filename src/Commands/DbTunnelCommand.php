@@ -17,14 +17,16 @@ use Codinglabs\Yolo\Contracts\ReadOnlyCommand;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Input\InputArgument;
+use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\error;
 
 /**
- * Opens a local port forward to the manifest-declared database through a
- * running web task — the laptop path to a database in the private subnet tier,
- * which has no public endpoint by design. The task is the SSM target
+ * Opens a local port forward to the manifest-declared database through one of
+ * the app's running tasks (web-first, else the standalone queue/scheduler) —
+ * the laptop path to a database in the private subnet tier, which has no
+ * public endpoint by design. The task is the SSM target
  * (`AWS-StartPortForwardingSessionToRemoteHost`), so the session rides the same
  * ECS Exec plumbing `yolo run` uses: `enableExecuteCommand` on the service and
  * the `ssmmessages` channels on the task role, both already provisioned.
@@ -39,7 +41,7 @@ class DbTunnelCommand extends Command implements ReadOnlyCommand
             ->setName('db:tunnel')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('port', null, InputOption::VALUE_REQUIRED, 'The local port to listen on', '13306')
-            ->setDescription('Port-forward the manifest-declared database to localhost through a running web task');
+            ->setDescription('Port-forward the manifest-declared database to localhost through a running task');
     }
 
     public function handle(): int
@@ -50,29 +52,33 @@ class DbTunnelCommand extends Command implements ReadOnlyCommand
             return self::FAILURE;
         }
 
-        if (($host = $this->databaseHost()) === null) {
+        if (($database = $this->database()) === null) {
             return self::FAILURE;
         }
+
+        [$host, $remotePort] = $database;
 
         $cluster = (new EcsCluster())->name();
-        $taskArn = Ecs::runningTasks($cluster, Helpers::keyedResourceName('web', exclusive: true))[0] ?? null;
 
-        if ($taskArn === null) {
-            error('No running web task to tunnel through — deploy the app first.');
+        if (($running = $this->runningTask($cluster)) === null) {
+            error('No running task to tunnel through — deploy the app first.');
 
             return self::FAILURE;
         }
 
-        if (($target = $this->sessionTarget($cluster, $taskArn)) === null) {
+        [$group, $taskArn] = $running;
+
+        if (($target = $this->sessionTarget($cluster, $taskArn, $group)) === null) {
             return self::FAILURE;
         }
 
         $localPort = (string) $this->option('port');
 
-        note(sprintf('Tunnel: 127.0.0.1:%s → %s:3306 (via %s) — Ctrl-C to close.', $localPort, $host, Str::afterLast($taskArn, '/')));
+        note(sprintf('Tunnel: 127.0.0.1:%s → %s:%d (via %s) — Ctrl-C to close.', $localPort, $host, $remotePort, Str::afterLast($taskArn, '/')));
 
         $process = new Process(
-            static::startSessionArgs($target, $host, $localPort, Manifest::get('region'), Helpers::keyedEnv('AWS_PROFILE')),
+            static::startSessionArgs($target, $host, $remotePort, $localPort, Manifest::get('region'), $this->subprocessProfile()),
+            env: $this->subprocessEnv(),
             timeout: null,
         );
 
@@ -80,57 +86,101 @@ class DbTunnelCommand extends Command implements ReadOnlyCommand
     }
 
     /**
-     * The database endpoint hostname to forward to. The manifest `database:` key
-     * holds either a full endpoint (used as-is) or a bare instance identifier,
-     * which is resolved to its endpoint with a describe.
+     * The endpoint hostname and port to forward to, resolved with one describe
+     * from the bare name the manifest `database:` key declares. A cluster
+     * forwards to its cluster (writer) endpoint, so the tunnel follows
+     * failovers; an instance forwards to its instance endpoint. The port comes
+     * off the same record, so the tunnel reaches a Postgres database (or one on
+     * a non-default port) without being told.
+     *
+     * @return array{0: string, 1: int}|null [host, port]
      */
-    protected function databaseHost(): ?string
+    protected function database(): ?array
     {
-        $database = Manifest::get('database');
+        try {
+            $target = Rds::target();
+        } catch (ResourceDoesNotExistException $exception) {
+            error($exception->getMessage());
 
-        if (! is_string($database) || $database === '') {
+            return null;
+        } catch (RdsException $exception) {
+            error(sprintf('Could not classify "%s": %s.', (string) Manifest::database(), $exception->getAwsErrorCode() ?? 'unknown error'));
+
+            return null;
+        }
+
+        if ($target === null) {
             error('No `database:` declared in the manifest — nothing to tunnel to.');
 
             return null;
         }
 
-        if (str_ends_with($database, '.rds.amazonaws.com')) {
-            return $database;
-        }
-
         try {
-            $instance = Rds::instance($database);
+            $record = $target['cluster'] ? Rds::cluster($target['identifier']) : Rds::instance($target['identifier']);
         } catch (RdsException $exception) {
-            error(sprintf('Could not resolve the endpoint for "%s": %s.', $database, $exception->getAwsErrorCode() ?? 'unknown error'));
+            error(sprintf('Could not resolve the endpoint for "%s": %s.', $target['identifier'], $exception->getAwsErrorCode() ?? 'unknown error'));
 
             return null;
         }
 
-        if (($endpoint = $instance['Endpoint']['Address'] ?? null) === null) {
-            error(sprintf('Could not resolve the endpoint for "%s" — no matching DB instance.', $database));
+        $endpoint = $record === null ? null : ($target['cluster']
+            ? ($record['Endpoint'] ?? null)
+            : ($record['Endpoint']['Address'] ?? null));
+
+        if ($endpoint === null || $record === null) {
+            error(sprintf('Could not resolve the endpoint for "%s" — the database reports no endpoint yet.', $target['identifier']));
 
             return null;
         }
 
-        return $endpoint;
+        $port = Rds::portFromRecord($record, $target['cluster']);
+
+        if ($port === null) {
+            error(sprintf('Could not resolve the port for "%s" — the database reports no port yet.', $target['identifier']));
+
+            return null;
+        }
+
+        return [$endpoint, $port];
+    }
+
+    /**
+     * A running task to ride the tunnel through, probed across the app's service
+     * groups web-first (any of them shares the task security group's database
+     * grant, so a web-less worker app tunnels through its queue/scheduler task
+     * instead). Null when no group has a running task.
+     *
+     * @return array{0: string, 1: string}|null [group, taskArn]
+     */
+    protected function runningTask(string $cluster): ?array
+    {
+        foreach (Manifest::serverGroups() as $group) {
+            $taskArn = Ecs::runningTasks($cluster, Helpers::keyedResourceName($group, exclusive: true))[0] ?? null;
+
+            if ($taskArn !== null) {
+                return [$group->value, $taskArn];
+            }
+        }
+
+        return null;
     }
 
     /**
      * The SSM session target for a running task: `ecs:{cluster}_{taskId}_{runtimeId}`,
-     * where the runtime id is the web container's — SSM addresses the container
+     * where the runtime id is the group's container — SSM addresses the container
      * agent, not the task.
      */
-    protected function sessionTarget(string $cluster, string $taskArn): ?string
+    protected function sessionTarget(string $cluster, string $taskArn, string $group): ?string
     {
         $task = Aws::ecs()->describeTasks([
             'cluster' => $cluster,
             'tasks' => [$taskArn],
         ])['tasks'][0] ?? null;
 
-        $runtimeId = collect($task['containers'] ?? [])->firstWhere('name', 'web')['runtimeId'] ?? null;
+        $runtimeId = collect($task['containers'] ?? [])->firstWhere('name', $group)['runtimeId'] ?? null;
 
         if ($runtimeId === null) {
-            error('Could not resolve the web container\'s runtime id — is the task still starting?');
+            error(sprintf('Could not resolve the %s container\'s runtime id — is the task still starting?', $group));
 
             return null;
         }
@@ -140,11 +190,11 @@ class DbTunnelCommand extends Command implements ReadOnlyCommand
 
     /**
      * The `aws ssm start-session` invocation: a port-forwarding session through
-     * the task to the database host on 3306.
+     * the task to the database host on the port the database serves.
      *
      * @return array<int, string>
      */
-    public static function startSessionArgs(string $target, string $host, string $localPort, string $region, ?string $profile): array
+    public static function startSessionArgs(string $target, string $host, int $remotePort, string $localPort, string $region, ?string $profile): array
     {
         $args = [
             'aws', 'ssm', 'start-session',
@@ -152,7 +202,7 @@ class DbTunnelCommand extends Command implements ReadOnlyCommand
             '--document-name', 'AWS-StartPortForwardingSessionToRemoteHost',
             '--parameters', (string) json_encode([
                 'host' => [$host],
-                'portNumber' => ['3306'],
+                'portNumber' => [(string) $remotePort],
                 'localPortNumber' => [$localPort],
             ]),
             '--region', $region,

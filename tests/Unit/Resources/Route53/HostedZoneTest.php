@@ -126,5 +126,5 @@ it('gives no ownership warning for headless or multi-tenant apps (no single apex
     expect((new SyncAppCommand())->hostedZoneOwnershipWarning())->toBeNull();
 })->with([
     'headless' => [['tasks' => ['web' => true]]],
-    'multi-tenant' => [['tenants' => ['alpha' => []]]],
+    'multi-tenant' => [['multitenancy' => ['tenants' => ['alpha' => []]]]],
 ]);

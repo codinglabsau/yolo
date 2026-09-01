@@ -6,19 +6,21 @@ namespace Codinglabs\Yolo\Steps\Destroy\App;
 
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Aws\Rds;
-use Codinglabs\Yolo\Manifest;
 use Aws\Rds\Exception\RdsException;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 use Codinglabs\Yolo\Concerns\RevokesTaskIngress;
+use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Revokes this app's "3306 from the task SG" rule from an externally-hosted
- * database's security group (the peered posture) — the mirror of
- * SyncExternalDatabaseIngressStep. Without it, the foreign rule still
- * references the task SG and AWS refuses to delete the group. Every attached
- * SG is swept (the rule is matched by content, so only YOLO's own rule is
- * ever revoked); an unreadable database just skips — nothing referenced.
+ * Revokes this app's database ingress rules from an externally-hosted database's
+ * security group (the peered posture) — the mirror of
+ * SyncExternalDatabaseIngressStep. Without it, the foreign rule still references
+ * the task SG and AWS refuses to delete the group. Every attached SG is swept,
+ * and on each one every port referencing this app's task SG (the port is a
+ * derived fact, so a stale one must not wedge the teardown); a rule is matched
+ * by content, so a sibling app's is never touched. An unreadable database just
+ * skips — nothing referenced.
  */
 class RevokeExternalDatabaseIngressStep implements ExecutesWebStep
 {
@@ -26,23 +28,33 @@ class RevokeExternalDatabaseIngressStep implements ExecutesWebStep
 
     public function __invoke(array $options): StepResult
     {
-        $target = Manifest::rdsTarget();
+        try {
+            $target = Rds::target();
+        } catch (RdsException|ResourceDoesNotExistException) {
+            // A declared database that no longer resolves (already deleted, or
+            // unreadable) referenced nothing — teardown must not wedge on it.
+            return StepResult::SKIPPED;
+        }
 
-        if ($target === null || $target['cluster']) {
+        if ($target === null) {
             return StepResult::SKIPPED;
         }
 
         try {
-            $instance = Rds::instance($target['identifier']);
+            $record = $target['cluster'] ? Rds::cluster($target['identifier']) : Rds::instance($target['identifier']);
         } catch (RdsException) {
+            return StepResult::SKIPPED;
+        }
+
+        if ($record === null) {
             return StepResult::SKIPPED;
         }
 
         $dryRun = (bool) Arr::get($options, 'dry-run');
         $revoked = false;
 
-        foreach (collect($instance['VpcSecurityGroups'] ?? [])->pluck('VpcSecurityGroupId')->filter() as $securityGroupId) {
-            $revoked = $this->revokeTaskIngressRule($securityGroupId, 3306, $dryRun) || $revoked;
+        foreach (collect($record['VpcSecurityGroups'] ?? [])->pluck('VpcSecurityGroupId')->filter() as $securityGroupId) {
+            $revoked = $this->revokeAllTaskIngressRules($securityGroupId, $dryRun) || $revoked;
         }
 
         if (! $revoked) {

@@ -13,6 +13,9 @@ class Yolo
     protected array $commands = [
         Commands\InitCommand::class,
 
+        // Machine credentials (the developer-laptop half of onboarding)
+        Commands\ConfigureCommand::class,
+
         // App env files
         Commands\EnvPullCommand::class,
         Commands\EnvPushCommand::class,
@@ -51,8 +54,11 @@ class Yolo
         // Exec
         Commands\RunCommand::class,
 
-        // Database tunnel (port-forward the private database to localhost)
+        // Database operations (tunnel to localhost, in-place cutover, env-wide assignment map)
         Commands\DbTunnelCommand::class,
+        Commands\DbCutoverCommand::class,
+        Commands\DbStatusCommand::class,
+        Commands\DbBackupCommand::class,
 
         // Scale
         Commands\ScaleCommand::class,
@@ -102,7 +108,7 @@ class Yolo
     protected function registerCommands(): void
     {
         foreach ($this->commands as $command) {
-            $this->app->add(new $command());
+            $this->app->addCommand(new $command());
         }
     }
 }

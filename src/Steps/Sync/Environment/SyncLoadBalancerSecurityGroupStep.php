@@ -48,7 +48,7 @@ class SyncLoadBalancerSecurityGroupStep implements Step
         // only-pending-steps filter; the write happens only when applying.
         $drifted = false;
 
-        foreach ($securityGroup->synchroniseTags(apply: ! $dryRun) as $key => $value) {
+        foreach ($this->synchroniseOwnedTags($securityGroup, $dryRun) as $key => $value) {
             $this->recordChange(Change::make("tag {$key}", null, $value));
             $drifted = true;
         }

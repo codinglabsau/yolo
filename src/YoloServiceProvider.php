@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo;
 
 use Inertia\Ssr\Gateway;
+use Codinglabs\Yolo\Enums\Service;
 use Aws\CloudWatch\CloudWatchClient;
 use Illuminate\Support\Facades\Cache;
 use Codinglabs\Yolo\Runtime\CgroupCpu;
@@ -39,6 +40,11 @@ class YoloServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__ . '/../config/yolo.php', 'yolo');
 
+        // Ahead of the burst gate — manifest reads matter on every task role.
+        $this->app->singleton(ManifestReader::class, fn (): ManifestReader => ManifestReader::load($this->manifestPath(), $this->app->environment()));
+
+        $this->app->singleton(Runtime\Yolo::class);
+
         if (! $this->burstEnabled()) {
             return;
         }
@@ -66,28 +72,33 @@ class YoloServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        // The search self-heal/reimport commands register unconditionally —
-        // they're console-only and guard their own applicability (Scout +
-        // Typesense configured), so a non-search app just carries two inert
-        // commands. Ahead of the burst gate on purpose: the burst environment
-        // exists only on the web task-def, and these run on queue/scheduler
-        // tasks and operator shells.
         if ($this->app->runningInConsole()) {
-            $this->commands([
-                Runtime\Commands\ScoutHealCommand::class,
-                Runtime\Commands\ScoutReimportCommand::class,
-            ]);
+            // Manifest-gated, not Scout-config-gated: stock scout.php ships a
+            // typesense block for every engine, and another engine's own
+            // `scout:reimport` (scout-extended) must never be shadowed.
+            if ($this->app->make(ManifestReader::class)->hasService(Service::TYPESENSE)) {
+                $this->commands([
+                    Runtime\Commands\ScoutHealCommand::class,
+                    Runtime\Commands\ScoutReimportCommand::class,
+                ]);
 
-            // Set-and-forget: the provider schedules the heal itself, so a
-            // wiped index rebuilds without any app remembering a kernel line.
-            // Gated on the app actually being wired for Typesense (the same
-            // config the command reads) and on the `yolo.search.heal` opt-out.
-            // The command is self-locking, so no schedule decorations needed.
-            $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
-                if (config('yolo.search.heal') && (array) config('scout.typesense.client-settings', []) !== []) {
-                    $schedule->command('scout:heal')->everyFiveMinutes();
-                }
-            });
+                // Scheduled here so a wiped index rebuilds without any app
+                // remembering a kernel line; the command is self-locking.
+                $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
+                    if (config('yolo.search.heal') && (array) config('scout.typesense.client-settings', []) !== []) {
+                        $schedule->command('scout:heal')->everyFiveMinutes();
+                    }
+                });
+            }
+
+            // The backup executor lives in YOLO's own `yolo:` namespace, so it
+            // shadows nothing and registers unconditionally. Nothing schedules
+            // it here — the generated crontab carries the schedule (see
+            // GenerateSupervisorConfigStep), and `yolo backup:database` runs
+            // it on demand.
+            $this->commands([
+                Runtime\Commands\DatabaseBackupCommand::class,
+            ]);
         }
 
         if (! $this->burstEnabled()) {
@@ -129,6 +140,15 @@ class YoloServiceProvider extends ServiceProvider
                 taskId: $this->taskId(),
             ));
         }
+    }
+
+    /**
+     * The CLI's BASE_PATH constant doesn't exist in-app; overridable so
+     * tests can point at a fixture.
+     */
+    protected function manifestPath(): string
+    {
+        return $this->app->basePath(Helpers::manifestName());
     }
 
     /**

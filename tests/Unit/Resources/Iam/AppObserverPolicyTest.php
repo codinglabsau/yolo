@@ -80,7 +80,13 @@ it('keeps DescribeLogGroups on * — listing group names leaks nothing, reading 
 it('grants no write actions — read-only by construction', function (): void {
     $writeVerbs = ['Create', 'Update', 'Delete', 'Put', 'Modify', 'Attach', 'Detach', 'Register', 'Deregister', 'Set', 'Tag', 'Untag', 'Run', 'Stop', 'Start'];
 
-    $actions = collect(appObserverStatements())->flatMap(fn (array $s): array => (array) $s['Action']);
+    // The one deliberate exception: the db:tunnel session transport — see the
+    // matching carve-out (and its rationale) in ObserverPolicyTest.
+    $sessionTransport = ['ssm:StartSession', 'ssm:TerminateSession', 'ssm:ResumeSession'];
+
+    $actions = collect(appObserverStatements())
+        ->flatMap(fn (array $s): array => (array) $s['Action'])
+        ->diff($sessionTransport);
 
     foreach ($actions as $action) {
         [, $verb] = explode(':', (string) $action, 2);
@@ -89,4 +95,14 @@ it('grants no write actions — read-only by construction', function (): void {
             expect(str_starts_with($verb, $write))->toBeFalse("app observer grants a write action: {$action}");
         }
     }
+});
+
+it('fences the session task target to this app\'s own cluster — tunnel through your app only', function (): void {
+    $statement = collect(appObserverStatements())
+        ->first(fn (array $s): bool => in_array('ssm:StartSession', (array) $s['Action'], true));
+
+    expect($statement['Resource'])->toBe([
+        'arn:aws:ecs:ap-southeast-2:111111111111:task/yolo-testing-my-app/*',
+        'arn:aws:ssm:ap-southeast-2::document/AWS-StartPortForwardingSessionToRemoteHost',
+    ]);
 });

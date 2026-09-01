@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Enums\Scope;
 use Aws\Iam\Exception\IamException;
 use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
+use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
 use Codinglabs\Yolo\Resources\CloudWatchLogs\TaskLogGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
@@ -104,6 +105,25 @@ class AppObserverPolicy extends ObserverPolicy implements Deletable
     public function description(): string
     {
         return 'YOLO managed read-only inspection for one app, with log content fenced to the app log group';
+    }
+
+    /**
+     * Same session grant as the env policy, with the task target fenced to this
+     * app's own cluster — a per-app observer tunnels through this app's tasks
+     * only. The document pin (port-forward only, never a shell) is inherited.
+     */
+    #[\Override]
+    public function sessionStatements(): array
+    {
+        $region = Manifest::get('region');
+
+        $statements = parent::sessionStatements();
+        $statements[0]['Resource'] = [
+            sprintf('arn:aws:ecs:%s:%s:task/%s/*', $region, Aws::accountId(), (new EcsCluster())->name()),
+            sprintf('arn:aws:ssm:%s::document/AWS-StartPortForwardingSessionToRemoteHost', $region),
+        ];
+
+        return $statements;
     }
 
     #[\Override]

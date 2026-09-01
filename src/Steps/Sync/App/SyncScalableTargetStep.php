@@ -36,7 +36,11 @@ use Codinglabs\Yolo\Resources\ApplicationAutoScaling\ScalableTarget;
  * reverts to a fixed task count, frozen at its current live count (deregister
  * doesn't drop tasks); lower it with `yolo scale` if needed.
  *
- * Skips on a greenfield first sync when the ECS service doesn't exist yet.
+ * On a greenfield first sync the ECS service doesn't exist during the PLAN pass —
+ * the step must still record its pending registration (two-pass contract: a bare
+ * SKIPPED would prune it from the apply pass and leave a fresh app without
+ * autoscaling until a second sync). It never gates on the service existing: the
+ * apply pass runs in declaration order after SyncEcsServiceStep has ensured it.
  */
 class SyncScalableTargetStep implements Step
 {
@@ -54,10 +58,6 @@ class SyncScalableTargetStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        if (! (new EcsService($this->group()))->exists()) {
-            return StepResult::SKIPPED;
-        }
-
         $dryRun = (bool) Arr::get($options, 'dry-run');
         $target = new ScalableTarget($this->group());
         $live = $target->current();

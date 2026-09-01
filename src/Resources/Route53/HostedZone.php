@@ -9,12 +9,14 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\Route53;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
+use Codinglabs\Yolo\Resources\Adoptable;
 use Codinglabs\Yolo\Resources\Undeletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Commands\SyncAppCommand;
 use Codinglabs\Yolo\Concerns\SyncsRecordSets;
 use Codinglabs\Yolo\Concerns\ResolvesCanonicalHost;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
+use Codinglabs\Yolo\Steps\Deploy\SyncMultitenancyRecordSetStep;
 
 /**
  * Route 53 hosted zone for a domain (the solo app's apex, or a tenant's apex).
@@ -31,12 +33,37 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * environments' deploy in-sync gate). The shared ownership surfaces as a sync
  * plan warning instead ({@see SyncAppCommand}).
  */
-class HostedZone implements Resource, Undeletable
+class HostedZone implements Adoptable, Resource, Undeletable
 {
     use ResolvesCanonicalHost;
     use ResolvesTags;
 
-    public function __construct(protected string $apex) {}
+    /**
+     * A zone is identified by its apex alone — every caller that only needs its
+     * identity (existence, ARN, tags) passes that and nothing else.
+     *
+     * The record-management methods additionally need to know *whose* records
+     * they manage, since a tenant zone holds that tenant's hosts and wildcard,
+     * not the app's. Left null they default to the app's own hosts
+     * ({@see managedHosts()}); {@see forTenant()} names a tenant's instead.
+     */
+    public function __construct(
+        protected string $apex,
+        protected ?string $domain = null,
+        protected ?string $wildcardHost = null,
+    ) {}
+
+    /**
+     * The zone holding one tenant's records, keyed to that tenant's own hosts so a
+     * withdrawal takes exactly what {@see SyncMultitenancyRecordSetStep}
+     * wrote — never the app's, and never a sibling tenant's.
+     *
+     * @param  array<string, mixed>  $config  a {@see Manifest::tenants()} entry
+     */
+    public static function forTenant(array $config): self
+    {
+        return new self((string) $config['apex'], (string) $config['domain'], $config['wildcard-host'] ?? null);
+    }
 
     public function name(): string
     {
@@ -123,7 +150,9 @@ class HostedZone implements Resource, Undeletable
             ->filter($this->isManagedRecord(...))
             ->map(fn (array $record): array => [
                 'Type' => (string) $record['Type'],
-                'Name' => rtrim((string) $record['Name'], '.'),
+                // `\052` decoded back to `*` so the teardown plan names the wildcard
+                // record the way the operator wrote it.
+                'Name' => rtrim(str_replace('\\052', '*', (string) $record['Name']), '.'),
             ])
             ->values()
             ->all();
@@ -145,8 +174,9 @@ class HostedZone implements Resource, Undeletable
     }
 
     /**
-     * The hostnames YOLO writes A-alias records for — the canonical host and,
-     * when it's one half of the apex/www pair, its sibling. Mirrors
+     * The hostnames YOLO writes A-alias records for — the canonical host, its
+     * apex/www sibling when it has one, and the wildcard when the app serves its
+     * own subdomains. Shares {@see ResolvesCanonicalHost::aliasedHosts()} with
      * {@see SyncsRecordSets::generateChanges()} so teardown withdraws exactly what
      * sync created and nothing else.
      *
@@ -154,11 +184,13 @@ class HostedZone implements Resource, Undeletable
      */
     protected function managedHosts(): array
     {
-        $domain = Manifest::get('domain', $this->apex);
-
-        return $this->hasWwwSibling($this->apex, $domain)
-            ? [$domain, $this->wwwSibling($this->apex, $domain)]
-            : [$domain];
+        // A zone constructed without a domain manages the app's own records; one
+        // built by forTenant() manages that tenant's. Resolved here rather than
+        // defaulted inside aliasedHosts(), so a tenant's zone can never inherit the
+        // app's wildcard (which would write `*.{app domain}` into the tenant's zone).
+        return $this->domain === null
+            ? $this->aliasedHosts($this->apex, Manifest::domain() ?? $this->apex, Manifest::wildcardHost())
+            : $this->aliasedHosts($this->apex, $this->domain, $this->wildcardHost);
     }
 
     /**
@@ -169,11 +201,23 @@ class HostedZone implements Resource, Undeletable
     protected function isManagedRecord(array $record): bool
     {
         $managed = collect($this->managedHosts())
-            ->map(fn (string $host): string => rtrim($host, '.') . '.')
+            ->map($this->normaliseRecordName(...))
             ->all();
 
         return in_array($record['Type'], ['A', 'AAAA'], true)
-            && in_array(rtrim((string) $record['Name'], '.') . '.', $managed, true);
+            && in_array($this->normaliseRecordName((string) $record['Name']), $managed, true);
+    }
+
+    /**
+     * A record name in one comparable form: fully qualified, lower-cased, and with
+     * Route 53's octal escaping decoded. Route 53 stores a wildcard label as
+     * `\052` and returns it that way on read, so a `*.example.com` record YOLO
+     * wrote comes back as `\052.example.com.` — compared raw it matches nothing
+     * and teardown would leave the wildcard record behind.
+     */
+    protected function normaliseRecordName(string $name): string
+    {
+        return strtolower(rtrim(str_replace('\\052', '*', $name), '.')) . '.';
     }
 
     public function synchroniseTags(bool $apply): array

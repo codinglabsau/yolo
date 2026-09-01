@@ -45,6 +45,11 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  *          rewrite a per-app config bucket's policy to grant itself `s3:GetObject`
  *          on the per-app developer `.env` it otherwise can't read (admin reads
  *          only YOLO's own minted env-tier secrets, not the developer `.env`).
+ *          For a human admin this lever buys little: the admins grant group
+ *          separately includes every per-app deployer role, whose policy carries
+ *          a scoped get+put on its own app's `.env` (`env:pull`/`env:push`) — the
+ *          sanctioned path. The lever matters for a principal holding the admin
+ *          ROLE alone, without the group's deployer-assume grants.
  *    Closing either fully needs a permissions boundary on every YOLO-created role
  *    (so nothing YOLO mints can exceed the boundary) — deliberately NOT built here.
  *    Whether the blast-radius cap above suffices or the boundary is warranted is a
@@ -176,6 +181,26 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
         }
     }
 
+    /**
+     * The YOLO buckets teardown is allowed to remove, addressed by the type suffix
+     * every keyed bucket name ends in — the per-app and env config buckets, the app's
+     * asset bucket and the env logs bucket. All four are regeneratable from a
+     * subsequent sync.
+     *
+     * The app data bucket is deliberately absent: it holds user data, YOLO never
+     * deletes it, and in its YOLO-owned form it is `yolo-*`-named, so a namespace-wide
+     * delete grant would silently take it in.
+     *
+     * @return array<int, string>
+     */
+    protected static function regeneratableBucketArns(bool $objects = false): array
+    {
+        return array_map(
+            fn (string $suffix): string => sprintf('arn:aws:s3:::yolo-*-%s%s', $suffix, $objects ? '/*' : ''),
+            ['config', 'assets', 'logs'],
+        );
+    }
+
     public function document(): array
     {
         $accountId = Aws::accountId();
@@ -200,6 +225,10 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                         'ecs:Create*', 'ecs:Update*', 'ecs:Delete*',
                         'ecs:Register*', 'ecs:Deregister*',
                         'ecs:Put*', 'ecs:Tag*', 'ecs:Untag*',
+                        // Container execs (`db:cutover` rides the same ECS Exec
+                        // session `yolo run` uses) — Execute* fits none of the
+                        // management wildcards above.
+                        'ecs:ExecuteCommand',
                         'ecr:Create*', 'ecr:Delete*', 'ecr:Put*',
                         'ecr:Set*', 'ecr:Tag*', 'ecr:Untag*',
                         // Image push — sync builds + pushes the env Typesense image
@@ -258,6 +287,17 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                         'logs:CreateLogGroup', 'logs:DeleteLogGroup',
                         'logs:PutRetentionPolicy', 'logs:DeleteRetentionPolicy',
                         'logs:TagResource', 'logs:UntagResource',
+                        // Vended log delivery — wafv2:PutLoggingConfiguration provisions
+                        // the WAF->log-group delivery on the caller's behalf, so AWS
+                        // requires the caller (not the service) to hold the delivery
+                        // lifecycle plus the log-group resource-policy write. Delivery
+                        // APIs are unscopeable; the reads the flow also needs
+                        // (DescribeLogGroups, DescribeResourcePolicies, GetLogDelivery)
+                        // come from the observer half, but ListLogDeliveries fits none
+                        // of its read wildcards so it rides here with its family.
+                        'logs:CreateLogDelivery', 'logs:UpdateLogDelivery',
+                        'logs:DeleteLogDelivery', 'logs:ListLogDeliveries',
+                        'logs:PutResourcePolicy',
                         'events:PutRule', 'events:DeleteRule',
                         'events:PutTargets', 'events:RemoveTargets',
                         'events:TagResource', 'events:UntagResource',
@@ -277,6 +317,13 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                     // YOLO's own env-tier minted keys (the env-shared + env-side
                     // `.env` channels in the env config bucket) — granted as scoped
                     // object actions below, never the per-app developer `.env`.
+                    //
+                    // Creation and hardening cover the whole yolo-* namespace because
+                    // that includes the app data bucket in its YOLO-owned form
+                    // (`bucket: true` → yolo-{account}-{env}-{app}-data), which needs
+                    // CreateBucket plus the Block Public Access / CORS / tagging
+                    // writes. Destructive verbs deliberately do NOT follow — see the
+                    // next statement.
                     'Effect' => 'Allow',
                     'Resource' => 'arn:aws:s3:::yolo-*',
                     'Action' => [
@@ -286,12 +333,23 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                         's3:PutLifecycleConfiguration',
                         's3:PutReplicationConfiguration',
                         's3:DeleteBucketPolicy',
-                        // Teardown empties then removes the regeneratable yolo-*
-                        // buckets — ListBucketVersions for the versioned config
-                        // bucket's version sweep (ListBucket comes from the observer
-                        // read tier), then DeleteBucket. DeleteBucket can never reach
-                        // the app data bucket: it isn't yolo-named, and S3::deleteBucket
-                        // hard-blocks it by name regardless.
+                    ],
+                ],
+                [
+                    // Teardown removes the REGENERATABLE buckets only, named by their
+                    // type suffix rather than the whole yolo-* namespace. The app data
+                    // bucket holds user data and YOLO never deletes it, so it must not
+                    // sit inside a delete grant merely for being YOLO-named — which
+                    // it now can be. Suffix-scoping keeps it inside the create fence
+                    // above and outside this one, so the IAM boundary and
+                    // S3::deleteBucket's name guard agree instead of the code being
+                    // the only thing standing between the tier and user data.
+                    //
+                    // ListBucketVersions is for the versioned config buckets' version
+                    // sweep (plain ListBucket comes from the observer read tier).
+                    'Effect' => 'Allow',
+                    'Resource' => static::regeneratableBucketArns(),
+                    'Action' => [
                         's3:ListBucketVersions',
                         's3:DeleteBucket',
                     ],
@@ -301,11 +359,12 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                     // buckets (asset keys are arbitrary builds/* paths, so this can't
                     // be key-scoped) and removing the env-config claim/env files
                     // (destroy:app) and env-shared channels (destroy:environment).
-                    // Delete-only on the yolo-* namespace — never GetObject — so the
-                    // tier can clear a bucket without ever reading the per-app
-                    // developer `.env` (or anything else) it isn't already granted.
+                    // Delete-only — never GetObject — so the tier can clear a bucket
+                    // without ever reading the per-app developer `.env` (or anything
+                    // else) it isn't already granted. Scoped to the same regeneratable
+                    // buckets, so no grant here can reach a single user object.
                     'Effect' => 'Allow',
-                    'Resource' => 'arn:aws:s3:::yolo-*/*',
+                    'Resource' => static::regeneratableBucketArns(objects: true),
                     'Action' => ['s3:DeleteObject', 's3:DeleteObjectVersion'],
                 ],
                 [
@@ -439,7 +498,11 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                 [
                     // Service-linked roles AWS requires the first time ECS / App Auto
                     // Scaling / ElastiCache are used in an account — creatable only
-                    // for those specific services, never an arbitrary SLR.
+                    // for those specific services, never an arbitrary SLR. App Auto
+                    // Scaling mints one SLR per service namespace, so it's the
+                    // ECS-suffixed service name (the generic
+                    // application-autoscaling.amazonaws.com is not a valid SLR
+                    // service and would never match a real create).
                     'Effect' => 'Allow',
                     'Resource' => sprintf('arn:aws:iam::%s:role/aws-service-role/*', $accountId),
                     'Action' => ['iam:CreateServiceLinkedRole'],
@@ -447,7 +510,7 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                         'StringEquals' => [
                             'iam:AWSServiceName' => [
                                 'ecs.amazonaws.com',
-                                'application-autoscaling.amazonaws.com',
+                                'ecs.application-autoscaling.amazonaws.com',
                                 'elasticache.amazonaws.com',
                             ],
                         ],

@@ -28,6 +28,12 @@ class WithdrawAppDnsRecordsStep implements Step
 
     public function __invoke(array $options): StepResult
     {
+        // No domain of its own means no app-level records to withdraw — a tenanted
+        // app's per-tenant records are withdrawn by the per-tenant teardown.
+        if (! Manifest::hasDomain()) {
+            return StepResult::SKIPPED;
+        }
+
         $zone = new HostedZone(Manifest::apex());
 
         if (! $zone->exists()) {

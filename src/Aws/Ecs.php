@@ -55,6 +55,38 @@ class Ecs
     }
 
     /**
+     * The first live service among $names (in the given order) — one
+     * describeServices call, so probing a preference order costs no extra round
+     * trips. Missing names land in the response's `failures` list and INACTIVE
+     * ones are skipped, exactly as in {@see service()}. Throws when none exist.
+     *
+     * @param  array<int, string>  $names
+     */
+    public static function firstService(string $cluster, array $names): array
+    {
+        try {
+            $services = Aws::ecs()->describeServices([
+                'cluster' => $cluster,
+                'services' => $names,
+            ])['services'];
+        } catch (AwsException) {
+            throw new ResourceDoesNotExistException(sprintf('Could not find any ECS service of: %s', implode(', ', $names)));
+        }
+
+        $live = collect($services)
+            ->filter(fn (array $service): bool => $service['status'] !== 'INACTIVE')
+            ->keyBy('serviceName');
+
+        foreach ($names as $name) {
+            if ($live->has($name)) {
+                return $live->get($name);
+            }
+        }
+
+        throw new ResourceDoesNotExistException(sprintf('Could not find any ECS service of: %s', implode(', ', $names)));
+    }
+
+    /**
      * Running task ARNs for a service. A missing service (e.g. a group that
      * isn't its own service yet) yields an empty list rather than throwing —
      * the caller decides what "no tasks here" means.

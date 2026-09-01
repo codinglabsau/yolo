@@ -7,6 +7,7 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Aws\S3;
 use Aws\S3\Exception\S3Exception;
+use Codinglabs\Yolo\Contracts\DeployerCommand;
 use Symfony\Component\Console\Input\InputArgument;
 use Codinglabs\Yolo\Steps\Build\RetrieveEnvFileStep;
 use Codinglabs\Yolo\Concerns\ManagesEnvironmentFiles;
@@ -16,7 +17,7 @@ use function Laravel\Prompts\note;
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\warning;
 
-class EnvPushCommand extends Command
+class EnvPushCommand extends Command implements DeployerCommand
 {
     use ManagesEnvironmentFiles;
 
@@ -69,12 +70,26 @@ class EnvPushCommand extends Command
 
         note(sprintf('Uploading %s → s3://%s/%s...', $filename, Paths::s3ConfigBucket(), $filename));
 
-        Aws::s3()
-            ->putObject([
-                'Body' => file_get_contents($path),
-                'Bucket' => Paths::s3ConfigBucket(),
-                'Key' => $filename,
-            ]);
+        try {
+            Aws::s3()
+                ->putObject([
+                    'Body' => file_get_contents($path),
+                    'Bucket' => Paths::s3ConfigBucket(),
+                    'Key' => $filename,
+                ]);
+        } catch (S3Exception $e) {
+            // On a fresh app the config bucket doesn't exist until the first
+            // sync — point at the fix instead of dumping the SDK exception.
+            if ($e->getAwsErrorCode() === 'NoSuchBucket') {
+                error(sprintf('The config bucket does not exist yet — run `yolo sync %s` to provision it, then push again.', $environment));
+
+                $this->deleteTemporaryCopy($temporaryPath);
+
+                return;
+            }
+
+            throw $e;
+        }
 
         $this->deleteTemporaryCopy($temporaryPath);
 

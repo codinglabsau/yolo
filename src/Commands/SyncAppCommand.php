@@ -39,6 +39,14 @@ class SyncAppCommand extends SyncSteppedCommand
             return self::FAILURE;
         }
 
+        // A bring-your-own app data bucket must already exist on this account —
+        // refused here, before the plan, because YOLO can't create a bucket outside
+        // its own namespace and adopting one owned by another account would sync
+        // clean and then fail every runtime write.
+        if (! $this->ensureAppBucketAdoptable()) {
+            return self::FAILURE;
+        }
+
         return parent::handle();
     }
 
@@ -62,7 +70,7 @@ class SyncAppCommand extends SyncSteppedCommand
      */
     public function hostedZoneOwnershipWarning(): ?string
     {
-        if (Manifest::isMultitenanted() || Manifest::isHeadless()) {
+        if (! Manifest::hasDomain()) {
             return null;
         }
 
@@ -163,34 +171,66 @@ class SyncAppCommand extends SyncSteppedCommand
                 Steps\Sync\App\SyncDeployersGroupStep::class,
                 Steps\Sync\App\SyncAppObserversGroupStep::class,
                 // cert/DNS + queues — runs before Fargate so the SSL certificate
-                // exists before the HTTPS listener that needs it. Solo gets an
-                // env-level apex zone + cert; multi-tenant has none (certs attach
-                // per tenant via SNI), so it fans out landlord + per-tenant queues.
-                ...Manifest::isMultitenanted()
+                // exists before the HTTPS listener that needs it.
+                //
+                // The app's own zone + cert are provisioned whenever it declares a
+                // `domain`, tenanted or not: `tenants` is an orthogonal axis, so a
+                // tenanted app on its own domain (serving tenants as subdomains via
+                // `wildcard-subdomains`) gets the same app-level pair a solo app does.
+                ...Manifest::hasDomain()
                     ? [
-                        Steps\Sync\App\Landlord\SyncQueueStep::class,
-                        Steps\Sync\App\Tenant\SyncQueueStep::class,
-                    ]
-                    : [
                         Steps\Sync\App\Solo\SyncHostedZoneStep::class,
                         Steps\Sync\App\Solo\SyncSslCertificateStep::class,
-                        // The SQS queue, always wired with a melt branch:
-                        // `tasks.queue: false` runs jobs inline
+                    ]
+                    : [],
+                // Per-tenant zone + cert, for tenants the app's own certificate
+                // doesn't already cover — i.e. genuine custom domains. A tenant
+                // sitting under the app's wildcard self-skips every one of these
+                // (Manifest::servesDomain), so declaring tenants for their queues
+                // costs no DNS/TLS resources.
+                ...Manifest::hasTenants()
+                    ? [
+                        Steps\Sync\App\Tenant\SyncHostedZoneStep::class,
+                        Steps\Sync\App\Tenant\SyncSslCertificateStep::class,
+                    ]
+                    : [],
+                // A `dedicated` multi-tenant app fans queues out landlord +
+                // per-tenant; a `shared` one provisions a single queue set at the app
+                // name (the solo shape), matching the fansQueuesPerTenant() gate its
+                // worker programs key off. Gated on tenants, not the mode — with none
+                // declared there is one scope, so the solo branch (melt included) is
+                // the correct shape.
+                ...Manifest::hasTenants()
+                    ? (Manifest::fansQueuesPerTenant()
+                        ? [
+                            Steps\Sync\App\Landlord\SyncQueueStep::class,
+                            Steps\Sync\App\Tenant\SyncQueueStep::class,
+                        ]
+                        : [
+                            Steps\Sync\App\Shared\SyncQueueStep::class,
+                        ])
+                    : [
+                        // The SQS queue, always wired with a melt branch: with no
+                        // worker anywhere (tasks.queue: false, or a web-less app
+                        // with no standalone queue) jobs run inline
                         // (QUEUE_CONNECTION=sync), so the queue is never published to
                         // — tear it down instead of stranding an idle queue (mirrors
                         // the standalone-service melt below).
                         // (Multi-tenant queues stay unconditional — their per-tenant
                         // teardown is the unbuilt destroy:app gap.)
-                        ...Manifest::queueDisabled()
+                        ...Manifest::queueHost() instanceof ServerGroup
                             ? [
-                                Steps\Destroy\App\TeardownQueueStep::class,
+                                Steps\Sync\App\Solo\SyncQueueStep::class,
                             ]
                             : [
-                                Steps\Sync\App\Solo\SyncQueueStep::class,
+                                Steps\Destroy\App\TeardownQueueStep::class,
                             ],
                     ],
-                // Fargate + CDN (web tasks only)
-                ...Manifest::hasWeb()
+                // Fargate — shared by every service the app runs (web, standalone
+                // queue, standalone scheduler), so it's gated on "at least one ECS
+                // service exists", not on web. A manifest with a `tasks` block that
+                // yields no service is refused up front (ensureTasksRunnable).
+                ...Manifest::serverGroups() !== []
                     ? [
                         Steps\Sync\App\SyncEcrRepositoryStep::class,
                         Steps\Sync\App\SyncEcsClusterStep::class,
@@ -204,7 +244,7 @@ class SyncAppCommand extends SyncSteppedCommand
                         Steps\Sync\App\SyncTaskSecurityGroupStep::class,
                         Steps\Sync\App\SyncRdsSecurityGroupStep::class,
                         // An externally-hosted (peered) database gets the same
-                        // additive 3306-from-task-SG rule on its own discovered
+                        // additive database-port-from-task-SG rule on its own discovered
                         // security group; skipped by the deploy gate (its tier
                         // may not hold the RDS / foreign-SG reads).
                         Steps\Sync\App\SyncExternalDatabaseIngressStep::class,
@@ -219,25 +259,7 @@ class SyncAppCommand extends SyncSteppedCommand
                         Steps\Sync\Environment\SyncCacheSecurityGroupStep::class,
                         Steps\Sync\Environment\SyncCacheClusterStep::class,
                         Steps\Sync\App\AuthoriseCacheIngressStep::class,
-                        Steps\Sync\App\SyncTargetGroupStep::class,
-                        Steps\Sync\App\SyncHttpsListenerStep::class,
-                        Steps\Sync\App\SyncForwardRuleStep::class,
-                        Steps\Sync\App\SyncRedirectRuleStep::class,
                         Steps\Sync\App\SyncTaskLogGroupStep::class,
-                        Steps\Sync\App\SyncTaskDefinitionStep::class,
-                        Steps\Sync\App\SyncEcsServiceStep::class,
-                        // Autoscaling (web only) — registered after the service it
-                        // scales. Wired whenever the web task exists, not just when
-                        // autoscaling is on, so removing the tasks.web.autoscaling
-                        // block tears the scalable target, policies and their alarms
-                        // back down. Both steps no-op when it was never enabled.
-                        Steps\Sync\App\SyncScalableTargetStep::class,
-                        Steps\Sync\App\SyncScalingPoliciesStep::class,
-                        // Burst scale-out: a high-res worker-saturation alarm + step policy
-                        // for ~10s spike detection — part of web autoscaling, not a setting.
-                        // Wired whenever the web task exists so a non-autoscaling web tier
-                        // prunes the policy + its self-authored alarm; no-ops when it doesn't apply.
-                        Steps\Sync\App\SyncWebBurstStep::class,
                         // Standalone queue service (own task-def + service +
                         // scale-to-zero autoscaling) — only when tasks.queue extracts
                         // it from the web container. When it no longer does — the block
@@ -279,10 +301,45 @@ class SyncAppCommand extends SyncSteppedCommand
                             : [
                                 Steps\Destroy\App\TeardownSchedulerServiceStep::class,
                             ],
+                    ]
+                    : [],
+                // Web ingress + the web service + CDN (web tasks only)
+                ...Manifest::hasWeb()
+                    ? [
+                        Steps\Sync\App\SyncTargetGroupStep::class,
+                        Steps\Sync\App\SyncHttpsListenerStep::class,
+                        Steps\Sync\App\SyncForwardRuleStep::class,
+                        Steps\Sync\App\SyncRedirectRuleStep::class,
+                        // Per-tenant ingress, after the listener they attach to and
+                        // the target group they forward at. Each self-skips for a
+                        // tenant the app's own certificate already covers, so this
+                        // only does work for genuine custom domains.
+                        ...Manifest::hasTenants()
+                            ? [
+                                Steps\Sync\App\Tenant\AttachSslCertificateToLoadBalancerListenerStep::class,
+                                Steps\Sync\App\Tenant\SyncForwardRuleStep::class,
+                                Steps\Sync\App\Tenant\SyncRedirectRuleStep::class,
+                            ]
+                            : [],
+                        Steps\Sync\App\SyncTaskDefinitionStep::class,
+                        Steps\Sync\App\SyncEcsServiceStep::class,
+                        // Autoscaling (web only) — registered after the service it
+                        // scales. Wired whenever the web task exists, not just when
+                        // autoscaling is on, so removing the tasks.web.autoscaling
+                        // block tears the scalable target, policies and their alarms
+                        // back down. Both steps no-op when it was never enabled.
+                        Steps\Sync\App\SyncScalableTargetStep::class,
+                        Steps\Sync\App\SyncScalingPoliciesStep::class,
+                        // Burst scale-out: a high-res worker-saturation alarm + step policy
+                        // for ~10s spike detection — part of web autoscaling, not a setting.
+                        // Wired whenever the web task exists so a non-autoscaling web tier
+                        // prunes the policy + its self-authored alarm; no-ops when it doesn't apply.
+                        Steps\Sync\App\SyncWebBurstStep::class,
                         Steps\Sync\App\SyncCloudFrontAssetDistributionStep::class,
                     ]
                     : [],
                 // observability — runs last so every resource it charts already exists
+                Steps\Sync\App\SyncWebAlertAlarmStep::class,
                 Steps\Sync\App\SyncCloudWatchDashboardStep::class,
             ],
         ];

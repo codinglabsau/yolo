@@ -13,6 +13,7 @@ use Aws\Sqs\SqsClient;
 use Aws\CommandInterface;
 use Aws\WAFV2\WAFV2Client;
 use Laravel\Prompts\Prompt;
+use Codinglabs\Yolo\Aws\Rds;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use GuzzleHttp\Psr7\Response;
@@ -32,7 +33,9 @@ use Codinglabs\Yolo\EnvironmentVersion;
 use Codinglabs\Yolo\Services\Lifecycle;
 use Codinglabs\Yolo\Services\Typesense;
 use Codinglabs\Yolo\Resources\WafV2\WebAcl;
+use Codinglabs\Yolo\Concerns\SyncsRecordSets;
 use Symfony\Component\Console\Input\ArrayInput;
+use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
 use Aws\ApplicationAutoScaling\ApplicationAutoScalingClient;
 use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
 use Aws\ResourceGroupsTaggingAPI\ResourceGroupsTaggingAPIClient;
@@ -82,6 +85,7 @@ file_put_contents($tempDir . '/yolo.yml', Yaml::dump([
 pest()->beforeEach(function (): void {
     Helpers::app()->instance('environment', 'testing');
     Manifest::flushHydration();
+    Rds::flushTargets();
 
     // Running any console command in a Testbench app makes the framework set
     // Laravel Prompts' fallback flag (ConfiguresPrompts does so whenever
@@ -757,6 +761,22 @@ function wafWebAclTagsResult(): Result
     ]]]);
 }
 
+/** The env WAF request-log group's ARN, as WafLogGroup derives it in testing. */
+const WAF_LOG_GROUP_ARN = 'arn:aws:logs:ap-southeast-2:111111111111:log-group:aws-waf-logs-yolo-testing';
+
+/**
+ * A live GetLoggingConfiguration response already pointing at the env's
+ * aws-waf-logs- destination with the block+count filter — the in-sync shape
+ * for the logging reconcile.
+ */
+function wafLoggingConfigurationResult(): Result
+{
+    return new Result(['LoggingConfiguration' => [
+        'LogDestinationConfigs' => [WAF_LOG_GROUP_ARN],
+        'LoggingFilter' => (new WebAcl())->loggingFilter(),
+    ]]);
+}
+
 /**
  * A live GetWebACL response wrapping the given rules + default action.
  *
@@ -1080,6 +1100,104 @@ function bindHostedZones(array $zoneNames = []): void
     };
 
     Helpers::app()->instance('route53', new Route53Client([
+        'region' => 'ap-southeast-2',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+}
+
+function recordSetSyncer(): object
+{
+    return new class()
+    {
+        use SyncsRecordSets;
+    };
+}
+
+/**
+ * Bind a mock Route 53 client: ListHostedZones returns the supplied zones,
+ * ListResourceRecordSets the supplied records, and every other command
+ * (ChangeResourceRecordSets) an empty Result. All calls are captured so the
+ * change batch can be asserted.
+ *
+ * @param  array<int, array<string, mixed>>  $hostedZones
+ * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+ * @param  array<int, array<string, mixed>>  $recordSets
+ */
+function bindMockRoute53Client(array $hostedZones, array &$captured, array $recordSets = []): void
+{
+    $mock = new class($hostedZones, $captured, $recordSets) extends MockHandler
+    {
+        /**
+         * @param  array<int, array<string, mixed>>  $hostedZones
+         * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+         * @param  array<int, array<string, mixed>>  $recordSets
+         */
+        public function __construct(protected array $hostedZones, protected array &$captured, protected array $recordSets) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            $this->captured[] = ['name' => $cmd->getName(), 'args' => $cmd->toArray()];
+
+            return Create::promiseFor(match ($cmd->getName()) {
+                'ListHostedZones' => new Result(['HostedZones' => $this->hostedZones]),
+                'ListResourceRecordSets' => new Result(['ResourceRecordSets' => $this->recordSets]),
+                default => new Result(),
+            });
+        }
+    };
+
+    Helpers::app()->instance('route53', new Route53Client([
+        'region' => 'us-east-1',
+        'version' => 'latest',
+        'credentials' => false,
+        'handler' => $mock,
+    ]));
+}
+
+/**
+ * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+ */
+function bindAlbLookup(array &$captured): void
+{
+    bindRoutedElbV2Client([
+        'DescribeLoadBalancers' => new Result(['LoadBalancers' => [[
+            'LoadBalancerName' => (new LoadBalancer())->name(),
+            'DNSName' => 'alb-1.ap-southeast-2.elb.amazonaws.com',
+            'CanonicalHostedZoneId' => 'ZALB123',
+        ]]]),
+    ], $captured);
+}
+
+/**
+ * Bind a mock ACM client with command-routed responses, capturing every call.
+ * The existing bindIssuedAcmCertificate answers every command with a
+ * certificate list, which DescribeCertificate can't use — this routes by
+ * command name so a certificate's request/validate path can be exercised.
+ *
+ * @param  array<string, Result|Throwable>  $byCommand
+ * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
+ */
+function bindRoutedAcmClient(array $byCommand, array &$captured = []): void
+{
+    $mock = new class($byCommand, $captured) extends MockHandler
+    {
+        public function __construct(protected array $byCommand, protected array &$captured) {}
+
+        public function __invoke(CommandInterface $cmd, $request)
+        {
+            $this->captured[] = ['name' => $cmd->getName(), 'args' => $cmd->toArray()];
+
+            $entry = $this->byCommand[$cmd->getName()] ?? new Result();
+
+            return $entry instanceof Throwable
+                ? Create::rejectionFor($entry)
+                : Create::promiseFor($entry);
+        }
+    };
+
+    Helpers::app()->instance('acm', new AcmClient([
         'region' => 'ap-southeast-2',
         'version' => 'latest',
         'credentials' => false,

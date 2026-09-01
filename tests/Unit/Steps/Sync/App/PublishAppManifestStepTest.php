@@ -17,7 +17,12 @@ function claimMissing(string $awsErrorCode = 'NoSuchKey'): S3Exception
 
 function publishedClaim(array $services): string
 {
-    return Yaml::dump(['name' => 'my-app', 'services' => $services]);
+    return Yaml::dump([
+        'name' => 'my-app',
+        'account-id' => '111111111111',
+        'region' => 'ap-southeast-2',
+        'services' => $services,
+    ], 10, 2);
 }
 
 beforeEach(function (): void {
@@ -53,6 +58,32 @@ it('publishes the claim into the env config bucket on apply', function (): void 
     expect($put['args']['Bucket'])->toBe('yolo-111111111111-testing-config')
         ->and($put['args']['Key'])->toBe('apps/my-app.yml')
         ->and((string) $put['args']['Body'])->toBe(publishedClaim(['ivs']));
+});
+
+it('publishes the full environment block — name first, services pinned last', function (): void {
+    writeManifest([
+        'account-id' => '111111111111',
+        'region' => 'ap-southeast-2',
+        'database' => 'my-app-db',
+        'services' => ['ivs'],
+        'tasks' => ['web' => ['cpu' => 512]],
+    ]);
+
+    $captured = [];
+    bindRoutedS3Client([
+        'GetObject' => claimMissing(),
+        'PutObject' => new Result(),
+    ], $captured);
+
+    expect((new PublishAppManifestStep())([]))->toBe(StepResult::CREATED);
+
+    $claim = Yaml::parse((string) collect($captured)->firstWhere('name', 'PutObject')['args']['Body']);
+
+    expect($claim['database'])->toBe('my-app-db')
+        ->and($claim['tasks'])->toBe(['web' => ['cpu' => 512]])
+        ->and(array_key_first($claim))->toBe('name')
+        ->and(array_key_last($claim))->toBe('services')
+        ->and($claim['services'])->toBe(['ivs']);
 });
 
 it('reconciles a stale claim and leaves a current one alone', function (): void {

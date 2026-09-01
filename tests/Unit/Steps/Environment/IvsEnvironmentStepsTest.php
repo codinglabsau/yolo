@@ -35,6 +35,13 @@ function bindIvsCloudWatchLogsClient(array &$calls, bool $exists = true): void
                     'arn' => 'arn:aws:logs:ap-southeast-2:111111111111:log-group:/aws/ivs/yolo-testing',
                     'retentionInDays' => 14,
                 ]] : []]),
+                // Live tags match desired, so the existing group reads as owned
+                // (adoption guard) and clean (no tag drift).
+                'ListTagsForResource' => new Result(['tags' => [
+                    'Name' => '/aws/ivs/yolo-testing',
+                    'yolo:scope' => 'env',
+                    'yolo:environment' => 'testing',
+                ]]),
                 default => new Result([]),
             });
         }

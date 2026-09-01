@@ -9,17 +9,17 @@ use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Enums\SecurityGroup;
 use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
-use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * Security group on the Typesense node tasks. Models identity + tags; the
  * ingress rules (8108 from the ALB SG, plus 8108 and 8107 node-to-node) are
  * reconciled additively by SyncTypesenseSecurityGroupStep — consuming apps'
- * task-SG ingress arrives with the app-side consumption work, the RDS-3306
+ * task-SG ingress arrives with the app-side consumption work, the RDS
  * pattern.
  */
 class TypesenseSecurityGroup implements Deletable, Resource
 {
+    use ResolvesSecurityGroup;
     use ResolvesTags;
 
     public function name(): string
@@ -30,22 +30,6 @@ class TypesenseSecurityGroup implements Deletable, Resource
     public function scope(): Scope
     {
         return Scope::Env;
-    }
-
-    public function exists(): bool
-    {
-        try {
-            Ec2::securityGroup($this->name());
-
-            return true;
-        } catch (ResourceDoesNotExistException) {
-            return false;
-        }
-    }
-
-    public function arn(): string
-    {
-        return Ec2::securityGroup($this->name())['GroupId'];
     }
 
     public function create(): void

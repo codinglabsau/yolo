@@ -4,6 +4,8 @@ namespace Codinglabs\Yolo\Resources\Iam;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Helpers;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\EnvManifest;
@@ -305,6 +307,46 @@ class ObserverPolicy implements Deletable, Resource, SynchronisesConfiguration
                     ],
                 ],
                 ...$this->logsStatements(),
+                ...$this->sessionStatements(),
+            ],
+        ];
+    }
+
+    /**
+     * The client half of the SSM port-forwarding session `db:tunnel` opens (the
+     * task-side `ssmmessages` channels live on the task role): StartSession is
+     * authorised against BOTH the target task and the session document, so the
+     * grant pins the document to the port-forward — an observer can tunnel, but
+     * can never open an interactive shell (that's a different document, and
+     * `yolo run` runs it under the deployer/admin tiers via ecs:ExecuteCommand).
+     * Isolated in their own statement(s) so the per-app variant can fence the
+     * task target to its own cluster.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function sessionStatements(): array
+    {
+        $region = Manifest::get('region');
+
+        return [
+            [
+                'Effect' => 'Allow',
+                'Resource' => [
+                    sprintf('arn:aws:ecs:%s:%s:task/yolo-%s-*', $region, Aws::accountId(), Helpers::environment()),
+                    // The AWS-owned session document — its ARN carries no account id.
+                    sprintf('arn:aws:ssm:%s::document/AWS-StartPortForwardingSessionToRemoteHost', $region),
+                ],
+                'Action' => ['ssm:StartSession'],
+            ],
+            [
+                // Session lifecycle: the CLI terminates the session on Ctrl-C and
+                // resumes over a dropped data channel. Session ARNs embed a
+                // caller-derived id with no reliable per-user form for assumed
+                // roles, so this sits on the account's sessions — the write it
+                // permits is ending a transport session, nothing more.
+                'Effect' => 'Allow',
+                'Resource' => sprintf('arn:aws:ssm:%s:%s:session/*', $region, Aws::accountId()),
+                'Action' => ['ssm:TerminateSession', 'ssm:ResumeSession'],
             ],
         ];
     }

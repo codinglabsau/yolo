@@ -146,10 +146,11 @@ trait RendersServiceStatus
 
     /**
      * A compact health row per app in an environment — the env-tier roll-up
-     * behind `status:environment`. Each app's web service is the headline (task
-     * counts, rollout, version); apps are discovered from live ECS clusters, and
-     * cluster/service names follow the `yolo-{env}-{app}` convention so no
-     * per-app manifest is needed.
+     * behind `status:environment`. Each app's most request-facing service is the
+     * headline (task counts, rollout, version) — web when it exists, else the
+     * standalone queue, else the scheduler (a web-less worker app); apps are
+     * discovered from live ECS clusters, and cluster/service names follow the
+     * `yolo-{env}-{app}` convention so no per-app manifest is needed.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -185,7 +186,13 @@ trait RendersServiceStatus
         ];
 
         try {
-            $service = Ecs::service($cluster, "{$cluster}-web");
+            // Probe web → queue → scheduler in one describeServices call: the most
+            // request-facing service that exists is the headline, so a web-less
+            // worker app rolls up its queue/scheduler instead of "does not exist".
+            $service = Ecs::firstService($cluster, array_map(
+                fn (ServerGroup $group): string => "{$cluster}-{$group->value}",
+                ServerGroup::cases(),
+            ));
         } catch (ResourceDoesNotExistException) {
             return $row;
         }
@@ -396,20 +403,31 @@ trait RendersServiceStatus
 
     /**
      * The app's queue names, keyed by a short label: `queue` for a solo app, or
-     * `landlord` plus each tenant id for a multi-tenant one.
+     * `landlord` plus each tenant id for a multi-tenant one. When a `queues:` block
+     * declares priority tiers each scope's label carries the tier suffix
+     * (`landlord-high`, `landlord-default`, …) so the status table lists every queue.
      *
      * @return array<string, string>
      */
     protected static function queueNames(): array
     {
-        if (! Manifest::isMultitenanted()) {
-            return ['queue' => Helpers::keyedResourceName()];
+        if (Manifest::fansQueuesPerTenant()) {
+            $scopes = ['landlord' => 'landlord'];
+
+            foreach (array_keys(Manifest::tenants()) as $tenantId) {
+                $scopes[$tenantId] = $tenantId;
+            }
+        } else {
+            $scopes = ['queue' => null];
         }
 
-        $names = ['landlord' => Helpers::keyedResourceName('landlord')];
+        $tiers = Manifest::queueTiers();
+        $names = [];
 
-        foreach (array_keys(Manifest::tenants()) as $tenantId) {
-            $names[$tenantId] = Helpers::keyedResourceName($tenantId);
+        foreach ($scopes as $label => $scope) {
+            foreach (Helpers::queueNames($scope) as $index => $name) {
+                $names[$tiers === [] ? $label : "{$label}-{$tiers[$index]}"] = $name;
+            }
         }
 
         return $names;
@@ -990,7 +1008,7 @@ trait RendersServiceStatus
      */
     protected function loadLines(array $statuses): array
     {
-        $live = array_values(array_filter($statuses, fn (array $status) => $status['exists']));
+        $live = array_values(array_filter($statuses, fn (array $status): bool => (bool) $status['exists']));
 
         if ($live === []) {
             return [];

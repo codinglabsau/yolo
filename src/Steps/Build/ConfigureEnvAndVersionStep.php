@@ -21,6 +21,33 @@ use Codinglabs\Yolo\Resources\CloudFront\AssetDistribution;
 
 class ConfigureEnvAndVersionStep implements Step
 {
+    /**
+     * Every static key this step writes into the built env — enforced platform
+     * invariants plus the manifest-derived defaults below. InitCommand strips
+     * these (and anything AWS_*) from the starter env it scaffolds, so the file
+     * never carries a second copy of a value the build owns; keep this list in
+     * step with the keys written in __invoke(). Service buildValues() keys are
+     * dynamic and deliberately not listed.
+     */
+    public const array INJECTED_KEYS = [
+        'APP_VERSION',
+        'ASSET_URL',
+        'VITE_ASSET_URL',
+        'LOG_CHANNEL',
+        'OCTANE_HTTPS',
+        'OCTANE_SERVER',
+        'QUEUE_CONNECTION',
+        'SQS_PREFIX',
+        'SQS_QUEUE',
+        'FILESYSTEM_DISK',
+        'CACHE_STORE',
+        'REDIS_HOST',
+        'REDIS_PORT',
+        'REDIS_PREFIX',
+        'SESSION_DRIVER',
+        'INERTIA_SSR_ENABLED',
+    ];
+
     public function __construct(
         protected string $environment,
         protected $filesystem = new Filesystem()
@@ -64,8 +91,13 @@ class ConfigureEnvAndVersionStep implements Step
         // it (the stock Laravel `VITE_APP_NAME="${APP_NAME}"` idiom) so the same
         // prefix reaches Vite's import.meta.env — phpdotenv resolves the
         // reference both in the build step's parse and at container runtime.
-        $values['ASSET_URL'] = sprintf('https://%s/builds/%s', (new AssetDistribution())->domain(), $appVersion);
-        $values['VITE_ASSET_URL'] = '${ASSET_URL}';
+        // A web-less app serves no assets and provisions no distribution, so
+        // resolving its domain here would crash the build — skip both keys and
+        // let asset() fall back to relative URLs.
+        if (Manifest::hasWeb()) {
+            $values['ASSET_URL'] = sprintf('https://%s/builds/%s', (new AssetDistribution())->domain(), $appVersion);
+            $values['VITE_ASSET_URL'] = '${ASSET_URL}';
+        }
 
         // Platform invariants — values the YOLO image cannot run without — are
         // SET unconditionally, and a conflicting explicit value in the app's .env
@@ -93,17 +125,22 @@ class ConfigureEnvAndVersionStep implements Step
         // tasks.queue, or a headless worker — point the connection at the SQS queue
         // YOLO provisions (it owns the name + URL so the app can't target the wrong
         // one; the task role carries access), so producers (web requests, scheduled
-        // jobs) and the worker share one queue. Solo pins SQS_QUEUE; multitenancy
-        // resolves the per-tenant queue at runtime, so it isn't pinned. With no worker
-        // anywhere (tasks.queue: false, or a worker-less app) jobs would pile into a
-        // queue nothing drains, so force `sync` (run inline at dispatch) — and ENFORCE
-        // it: a non-sync override would silently break, so hard-fail rather than ship.
+        // jobs) and the worker share one queue. Solo and shared-queue apps pin
+        // SQS_QUEUE; a dedicated multi-tenant app resolves the per-tenant queue at
+        // runtime, so it isn't pinned. With no worker anywhere (tasks.queue: false, or
+        // a worker-less app) jobs would pile into a queue nothing drains, so force
+        // `sync` (run inline at dispatch) — and ENFORCE it: a non-sync override would
+        // silently break, so hard-fail rather than ship.
         if (Manifest::queueHost() instanceof ServerGroup) {
             $defaults['QUEUE_CONNECTION'] = 'sqs';
             $defaults['SQS_PREFIX'] = sprintf('https://sqs.%s.amazonaws.com/%s', Manifest::get('region'), Aws::accountId());
 
-            if (! Manifest::isMultitenanted()) {
-                $defaults['SQS_QUEUE'] = Helpers::keyedResourceName();
+            if (! Manifest::fansQueuesPerTenant()) {
+                // The default queue a producer's un-routed jobs land on — the app's
+                // (or a shared multi-tenant app's) base queue, or the higher tier a job
+                // explicitly ->onQueue()s. A dedicated multi-tenant app derives the
+                // per-tenant queue at runtime instead, so nothing is pinned there.
+                $defaults['SQS_QUEUE'] = Helpers::defaultQueueName();
             }
         } else {
             $this->ensureSyncQueueConnection($envPath);
@@ -112,11 +149,11 @@ class ConfigureEnvAndVersionStep implements Step
         }
 
         if (Manifest::has('bucket')) {
-            $defaults['AWS_BUCKET'] = Manifest::get('bucket');
+            $defaults['AWS_BUCKET'] = Paths::s3AppBucket();
             $defaults['FILESYSTEM_DISK'] = 's3';
         }
 
-        // Cache store: web apps default to the shared Valkey (Manifest::cacheStore).
+        // Cache store: apps with tasks default to the shared Valkey (Manifest::cacheStore).
         // Pin CACHE_STORE; when it's redis, point the driver at the YOLO-provisioned
         // cluster (read live — synced before deploy) and isolate this app on the
         // shared node with a per-app key prefix.
@@ -126,7 +163,13 @@ class ConfigureEnvAndVersionStep implements Step
             if ($cacheStore === 'redis') {
                 $defaults['REDIS_HOST'] = (new CacheCluster())->endpoint();
                 $defaults['REDIS_PORT'] = (string) CacheCluster::PORT;
-                $defaults['REDIS_PREFIX'] = Helpers::keyedResourceName() . '_';
+
+                // ENFORCED, not defaulted: every app in the environment shares one
+                // unauthenticated Valkey node on the same logical databases, so this
+                // prefix is the only thing keeping one app's keys off another's. Two
+                // apps each pinning the stock `laravel_database_` would silently share
+                // a keyspace, so a conflicting override hard-fails the build.
+                $this->enforce($envPath, $values, 'REDIS_PREFIX', Helpers::keyedResourceName() . '_');
             }
         }
 

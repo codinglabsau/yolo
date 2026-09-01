@@ -12,8 +12,10 @@ You own a small `Dockerfile`; YOLO generates the moving parts (entrypoint, proce
 FROM dunglas/frankenphp:1-php8.4-alpine
 
 # supercronic runs the scheduler's cron as a non-root user (busybox crond can't);
-# nodejs is the runtime for Inertia SSR (tasks.web.ssr) — drop it if you don't use SSR.
-RUN apk add --no-cache git supervisor supercronic nodejs \
+# nodejs is the runtime for Inertia SSR (tasks.web.ssr) — drop it if you don't use SSR;
+# mariadb-client + zstd drive the scheduled database dumps (opt-in via `backups:
+# true` in yolo.yml) — drop them if this app runs no database backups.
+RUN apk add --no-cache git supervisor supercronic nodejs mariadb-client zstd \
     && install-php-extensions intl pcntl bcmath redis pdo_mysql opcache excimer
 
 WORKDIR /app
@@ -22,6 +24,10 @@ COPY --chown=www-data:www-data . /app
 # Place the generated supervisor config at a default search path so both
 # `supervisord` and an interactive `supervisorctl` find it without -c.
 COPY docker/supervisord.conf /etc/supervisord.conf
+# PHP configuration — YOLO's baseline, generated into the build context unless the
+# app publishes its own docker/php.ini. conf.d loads alphabetically, so it sorts
+# after the extension fragments and its values win.
+COPY docker/php.ini $PHP_INI_DIR/conf.d/yolo.ini
 RUN chmod +x /app/.yolo-entrypoint.sh
 
 USER www-data
@@ -38,14 +44,21 @@ CMD ["web"]
 
 Customise it freely — add PHP extensions, system packages, a different base image. Just keep the contract below intact.
 
+## PHP configuration
+
+The base image activates no `php.ini`, so without one PHP runs its compile defaults — 2M uploads, 8M POST bodies, opcache stat'ing an immutable filesystem on every request. Nothing else in the stack imposes a request-body limit, so those two ini values *are* the app's upload ceiling.
+
+Every build therefore ships **YOLO's baseline** — a file that sets **only deliberate departures from PHP's defaults** (request-body limits, immutable-image opcache settings). `yolo build` bakes it into the build context as `docker/php.ini`, and the Dockerfile copies it to `$PHP_INI_DIR/conf.d/yolo.ini` — so every app behaves the same with nothing to publish, and baseline improvements arrive with each YOLO upgrade. An app that needs its own values **publishes `docker/php.ini`** (start by copying `vendor/codinglabsau/yolo/stubs/php.ini.stub`): a published copy is the app's to own — the build ships it untouched and YOLO never rewrites it, so from then on the baseline's movements are yours to adopt by hand.
+
 ## What YOLO generates
 
-During `yolo build`, YOLO writes two files into the build context that your Dockerfile copies in:
+During `yolo build`, YOLO writes three files into the build context that your Dockerfile copies in:
 
 | File | Purpose |
 |---|---|
 | `.yolo-entrypoint.sh` | The container entrypoint. Runs your `deploy-all` hooks (e.g. `php artisan optimize`) on startup, then dispatches on the container command: a role (`web` / `queue` / `scheduler`) is supervised and traps `SIGTERM` so the web tier keeps serving across the ALB drain window before forwarding the stop; any other command — a one-off task such as a deploy migration — is `exec`'d directly (no supervise, no drain). ECS can override the command, not the entrypoint, which is why the dispatch lives here. |
 | `docker/supervisord.conf` | The web container's supervisord program tree — FrankenPHP/Octane, plus the `queue:work` worker and the scheduler unless you've extracted them into their own services (or switched them off with `tasks.queue` / `tasks.scheduler: false`). A crontab is generated wherever cron runs (skipped when the scheduler is disabled). A standalone queue that also hosts the scheduler gets a second `docker/supervisord.queue.conf`. |
+| `docker/php.ini` | [YOLO's baseline PHP configuration](#php-configuration) — skipped when the app has published its own copy at that path, which then ships untouched. |
 
 Because these are generated, your Dockerfile doesn't need to know how to run Octane, the queue, or the scheduler — it just copies the config and runs the entrypoint.
 
@@ -69,15 +82,21 @@ For your image to work with YOLO, the Dockerfile must:
    CMD ["web"]
    ```
 4. **Expose port `8000`** — the web port is hardcoded to `8000` (no manifest key). The ALB health-checks this port at `/up` (Laravel's built-in [health route](https://laravel.com/docs/deployment#the-health-route)) — override the path or timing via [`tasks.web.health-check.*`](/reference/manifest#tasks-web-health-check).
-5. Have **`supervisor`** and **`supercronic`** installed (the default Dockerfile installs both via `apk add`). supervisord runs the container's process tree; [supercronic](https://github.com/aptible/supercronic) drives the scheduler's cron — the container runs as `www-data`, and busybox `crond` silently loads zero jobs for a non-root user, so it cannot stand in.
+5. **Copy the PHP configuration** (YOLO's generated baseline, or the app's published copy) into the runtime's scan directory (conf.d loads alphabetically, so `yolo.ini` sorts after the extension fragments and its values win):
+   ```dockerfile
+   COPY docker/php.ini $PHP_INI_DIR/conf.d/yolo.ini
+   ```
+6. Have **`supervisor`** and **`supercronic`** installed (the default Dockerfile installs both via `apk add`). supervisord runs the container's process tree; [supercronic](https://github.com/aptible/supercronic) drives the scheduler's cron — the container runs as `www-data`, and busybox `crond` silently loads zero jobs for a non-root user, so it cannot stand in.
 
 ## Runtime checks
 
-`yolo build` runs three preflights so a deploy can't ship an image that won't run:
+`yolo build` runs five preflights so a deploy can't ship an image that won't run:
 
-- **Octane** — *before* the build, it reads `composer.lock` and fails if `laravel/octane` isn't in the production requirements, since the web role runs `octane:start`. Skipped when [`tasks.web.octane: false`](/reference/manifest#tasks-web): classic mode runs `frankenphp php-server` and needs no octane package.
+- **Octane** — *before* the build, it reads `composer.lock` and fails if `laravel/octane` isn't in the production requirements, since the web role runs `octane:start`. Skipped when [`tasks.web.octane: false`](/reference/manifest#tasks-web): classic mode runs the `frankenphp` binary directly and needs no octane package.
 - **Scheduler (supercronic)** — it runs the freshly-built image and fails if `supercronic` isn't on the `PATH`. The scheduler runs in almost every app (the check is skipped only when cron is switched off with [`tasks.scheduler: false`](/reference/manifest#tasks-scheduler)), and the failure this prevents is **silent**: busybox `crond` — the obvious fallback already in the base image — ignores crontabs not owned by root without logging a word, so an image without supercronic deploys green, stays healthy, and simply never fires a scheduled job.
 - **SSR (Node)** — when [`tasks.web.ssr`](/reference/manifest#tasks-web) is on, it runs the freshly-built image and fails if `node` isn't on the `PATH`. Like the scheduler check, this matters because a missing SSR runtime is otherwise **silent** — Inertia falls back to client-side rendering and the web tier stays healthy on `/up`, so the deploy goes green with SSR quietly off.
+- **PHP configuration** — it runs the freshly-built image and fails if PHP loaded no app ini fragment (`yolo.ini` — see [PHP configuration](#php-configuration)). The build always supplies `docker/php.ini`, so a failure here means the Dockerfile lost its `COPY` line. An image with no ini runs PHP's compile defaults, and the failure that causes is **silent**: 2M uploads deploy green and only surface when a user's upload dies.
+- **Database backups (mysqldump + zstd)** — when the app [opts into database backups](/reference/manifest#backups), it runs the freshly-built image and fails if either binary is missing. The failure this prevents is silent in the worst way: the deploy goes green, the app serves, and the daily backup errors unnoticed in the scheduler's logs until the day a restore is needed.
 
 The image probes run the image (rather than grepping the Dockerfile), so they see the resolved base image and multi-stage `COPY --from` layers too — no false negatives.
 
@@ -93,7 +112,7 @@ tasks:
     autoscaling: true
 ```
 
-- **Web** always runs the web server on port `8000`. By default that's `php artisan octane:start` serving Laravel Octane on FrankenPHP: the image is FrankenPHP and YOLO enforces `OCTANE_SERVER=frankenphp` at build (a conflicting value in your `.env` hard-fails the build), so there's nothing to seed or set. Set [`tasks.web.octane: false`](/reference/manifest#tasks-web) to run FrankenPHP in **classic mode** (`frankenphp php-server`) instead — per-request boot, no resident app — for an app that isn't Octane-safe yet; the `frankenphp` binary ships in the base image independent of `laravel/octane`, so it serves even with no octane package.
+- **Web** always runs the web server on port `8000`. By default that's `php artisan octane:start` serving Laravel Octane on FrankenPHP: the image is FrankenPHP and YOLO enforces `OCTANE_SERVER=frankenphp` at build (a conflicting value in your `.env` hard-fails the build), so there's nothing to seed or set. Set [`tasks.web.octane: false`](/reference/manifest#tasks-web) to run FrankenPHP in **classic mode** instead — per-request boot, no resident app — for an app that isn't Octane-safe yet; the `frankenphp` binary ships in the base image independent of `laravel/octane`, so it serves even with no octane package. Classic mode runs `frankenphp run` against a Caddyfile YOLO generates into `docker/Caddyfile`, because that file is the only place FrankenPHP's thread pool can be configured — see [what the ceiling is](/guide/scaling#what-the-ceiling-is-and-why-yolo-pins-it).
 - **The queue worker** runs `queue:work`, bundled in the web container until you extract it.
 - **The scheduler** runs [supercronic](https://github.com/aptible/supercronic), firing `php artisan schedule:run` every minute, bundled until you extract it. (YOLO uses cron, not `schedule:work`, so the scheduler survives `SIGTERM` cleanly — supercronic stops scheduling on stop and waits out the in-flight run.)
 - **`ssr: true`** adds Inertia's SSR renderer — see [Inertia SSR](#inertia-ssr) below.

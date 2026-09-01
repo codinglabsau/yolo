@@ -224,7 +224,9 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
             ],
             [
                 // Roll the new revision onto this app's services and run the one-off
-                // deploy task (migrations) on its cluster.
+                // deploy task (migrations) on its cluster. ExecuteCommand backs the
+                // `yolo run` ECS Exec session — the same app-plane execution the
+                // deploy hooks already grant via RunTask, scoped to the same tasks.
                 'Effect' => 'Allow',
                 'Resource' => [
                     sprintf('arn:aws:ecs:%s:%s:cluster/%s', $region, $accountId, $cluster),
@@ -238,6 +240,7 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
                     'ecs:UpdateService',
                     'ecs:RunTask',
                     'ecs:DescribeTasks',
+                    'ecs:ExecuteCommand',
                 ],
             ],
             [
@@ -291,13 +294,16 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
                 ],
             ],
             [
-                // Pull the environment file (build) — read-only on exactly this app's
-                // env-file object. RetrieveEnvFileStep GetObjects one key; it never
-                // writes the config bucket (env:push is a separate, non-deploy
-                // command) and never lists it.
+                // The app's env file: read on the build pull (RetrieveEnvFileStep)
+                // and write for `env:push` — both run under this tier, scoped to
+                // exactly this app's env-file object, never a list or the bucket.
+                // Without the write here the only role-model path to author an
+                // app `.env` would be rewriting the bucket policy via the admin
+                // tier's s3:PutBucket* — a scoped object grant on the tier that
+                // owns the app's lifecycle beats an escalation lever.
                 'Effect' => 'Allow',
                 'Resource' => sprintf('%s/%s', $configBucketArn, Paths::s3AppEnvKey()),
-                'Action' => ['s3:GetObject'],
+                'Action' => ['s3:GetObject', 's3:PutObject'],
             ],
             [
                 // Publish this app's claim file into the env config bucket on
@@ -324,17 +330,30 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
                 'Resource' => sprintf('%s/%s', (new EnvConfigBucket())->arn(), Paths::s3EnvAppEnvKey()),
                 'Action' => ['s3:GetObject'],
             ],
+            [
+                // Bucket-name discovery for the pre-deploy `sync --check` gate, which
+                // verifies that a bring-your-own app data bucket still exists on this
+                // account before a deploy points AWS_BUCKET at it. Ownership can only
+                // be established by listing the account's own buckets — a probe of the
+                // bucket itself answers 403 for both "someone else owns this name" and
+                // "yours, unreadable by this tier". A collection operation, so it takes
+                // no resource-level scoping; it returns bucket names only, never any
+                // object or bucket configuration.
+                'Effect' => 'Allow',
+                'Resource' => '*',
+                'Action' => ['s3:ListAllMyBuckets'],
+            ],
         ];
 
         // The apex/www DNS cutover only runs for apps with a public domain. Scope
         // the record change to the app's hosted zone; the change-status poll
         // can't be scoped (change ids aren't known ahead of time).
-        if (Manifest::has('domain')) {
+        if (Manifest::hasDomain()) {
             $statements = [...$statements, ...$this->route53Statements()];
         }
 
         // When the app uses the shared Valkey cache (`cache.store: redis`, the
-        // web-app default), the build bakes REDIS_HOST by reading the cluster's
+        // default for any app with tasks), the build bakes REDIS_HOST by reading the cluster's
         // primary endpoint (ConfigureEnvAndVersionStep -> CacheCluster::endpoint()).
         // DescribeReplicationGroups has no resource-level scoping, so it's granted
         // on "*". Apps that opt out (file/database/array) never read the cluster

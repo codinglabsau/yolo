@@ -61,16 +61,37 @@ class WafV2
     }
 
     /**
-     * The shared bounded-retry loop: run $operation, retrying only while it throws
-     * the given eventually-consistent WAFv2 error code, then let anything else (or
-     * exhaustion) propagate.
+     * Run the logging-configuration put, retrying on WAFUnavailableEntityException
+     * (the web ACL not yet referenceable) and AccessDeniedException. Retrying a
+     * denial normally masks a real permission gap — the carve-out exists because
+     * sync grants its own logging permissions: the admin policy step widens the
+     * tier's document earlier in the same apply pass, and IAM propagation to
+     * WAF's authorisation layer can lag that write by seconds, so the very first
+     * sync to enable logging races its own grant. A real gap still fails, just
+     * after the bounded window.
      *
      * @template T
      *
      * @param  callable(): T  $operation
      * @return T
      */
-    private static function retryWhileCode(callable $operation, string $retryableCode, int $maxAttempts, int $sleepSeconds): mixed
+    public static function retryWhileLoggingPermissionsPropagate(callable $operation, int $maxAttempts = 5, int $sleepSeconds = 5): mixed
+    {
+        return self::retryWhileCode($operation, ['WAFUnavailableEntityException', 'AccessDeniedException'], $maxAttempts, $sleepSeconds);
+    }
+
+    /**
+     * The shared bounded-retry loop: run $operation, retrying only while it throws
+     * one of the given eventually-consistent WAFv2 error codes, then let anything
+     * else (or exhaustion) propagate.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $operation
+     * @param  string|array<int, string>  $retryableCodes
+     * @return T
+     */
+    private static function retryWhileCode(callable $operation, string|array $retryableCodes, int $maxAttempts, int $sleepSeconds): mixed
     {
         $attempt = 0;
 
@@ -80,7 +101,7 @@ class WafV2
             } catch (AwsException $exception) {
                 $attempt++;
 
-                if ($attempt >= $maxAttempts || $exception->getAwsErrorCode() !== $retryableCode) {
+                if ($attempt >= $maxAttempts || ! in_array($exception->getAwsErrorCode(), (array) $retryableCodes, true)) {
                     throw $exception;
                 }
 
@@ -98,6 +119,28 @@ class WafV2
     {
         return static::findByName('listWebACLs', 'WebACLs', $name)
             ?? throw new ResourceDoesNotExistException("Could not find WAF web ACL $name");
+    }
+
+    /**
+     * The web ACL's logging configuration, or null when logging has never been
+     * enabled — WAFv2 models "no logging" as a nonexistent item, not an empty
+     * configuration.
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function loggingConfiguration(string $webAclArn): ?array
+    {
+        try {
+            return Aws::wafV2()->getLoggingConfiguration([
+                'ResourceArn' => $webAclArn,
+            ])['LoggingConfiguration'];
+        } catch (AwsException $exception) {
+            if ($exception->getAwsErrorCode() === 'WAFNonexistentItemException') {
+                return null;
+            }
+
+            throw $exception;
+        }
     }
 
     /**

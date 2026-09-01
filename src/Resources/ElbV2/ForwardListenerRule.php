@@ -6,9 +6,12 @@ use Codinglabs\Yolo\Change;
 use Codinglabs\Yolo\Manifest;
 
 /**
- * Forwards the app's canonical host (`domain`) to its target group. This is the
- * only host the app is served on — the apex/`www` sibling, when there is one, is
- * 301-redirected to it by a {@see RedirectListenerRule} rather than served.
+ * Forwards the app's canonical host (`domain`) to its target group, plus
+ * `*.{domain}` when the app serves its own subdomains. The apex/`www` sibling,
+ * when there is one, is 301-redirected here by a {@see RedirectListenerRule}
+ * rather than served — and because `*.{apex}` would otherwise also match that
+ * sibling, redirect rules take a priority band above every forward rule
+ * ({@see ListenerRule::PRIORITY_BANDS}).
  */
 class ForwardListenerRule extends ListenerRule
 {
@@ -19,7 +22,10 @@ class ForwardListenerRule extends ListenerRule
 
     public function hosts(): array
     {
-        return [Manifest::get('domain') ?? Manifest::apex()];
+        return array_values(array_filter([
+            Manifest::domain() ?? Manifest::apex(),
+            Manifest::wildcardHost(),
+        ]));
     }
 
     protected function action(): array

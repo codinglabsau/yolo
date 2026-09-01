@@ -23,6 +23,7 @@ it('creates a single-node Valkey replication group locked to the cache SG', func
     $captured = [];
 
     bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
         'DescribeSecurityGroups' => new Result(['SecurityGroups' => [
             ['GroupName' => 'yolo-testing-cache-security-group', 'GroupId' => 'sg-cache1'],
         ]]),

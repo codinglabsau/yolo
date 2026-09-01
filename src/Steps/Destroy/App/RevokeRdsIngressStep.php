@@ -11,10 +11,13 @@ use Codinglabs\Yolo\Concerns\RevokesTaskIngress;
 use Codinglabs\Yolo\Resources\Ec2\RdsSecurityGroup;
 
 /**
- * Revokes this app's "3306 from the task SG" ingress rule from the shared RDS
- * security group — never the group itself, which stays for the database and the
- * environment's other apps. Must run before the task SG is deleted (AWS refuses
- * to delete a security group another group's rule still references).
+ * Revokes this app's database ingress rules from the shared RDS security group —
+ * never the group itself, which stays for the database and the environment's
+ * other apps. Must run before the task SG is deleted (AWS refuses to delete a
+ * security group another group's rule still references), and every port is swept
+ * rather than just the database's current one: the port is derived, so a rule
+ * written under a fallback or a since-changed port would otherwise wedge the
+ * teardown.
  */
 class RevokeRdsIngressStep implements ExecutesWebStep
 {
@@ -30,7 +33,7 @@ class RevokeRdsIngressStep implements ExecutesWebStep
 
         $dryRun = (bool) Arr::get($options, 'dry-run');
 
-        if (! $this->revokeTaskIngressRule($securityGroup->arn(), 3306, $dryRun)) {
+        if (! $this->revokeAllTaskIngressRules($securityGroup->arn(), $dryRun)) {
             return StepResult::SKIPPED;
         }
 

@@ -62,6 +62,11 @@ it('reports drift but does not mutate the bucket during a dry-run', function ():
 
     bindRoutedS3Client([
         'HeadBucket' => new Result(),   // exists; hardening reads come back empty → drift
+        // Owned (the scope marker is present) — the guard passes and the
+        // remaining missing tags read as reconcilable drift.
+        'GetBucketTagging' => new Result(['TagSet' => [
+            ['Key' => 'yolo:scope', 'Value' => 'env'],
+        ]]),
     ], $captured);
 
     expect((new SyncEnvConfigBucketStep())(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC);

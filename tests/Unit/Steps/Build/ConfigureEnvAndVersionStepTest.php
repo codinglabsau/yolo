@@ -3,6 +3,7 @@
 use Aws\Result;
 use Dotenv\Dotenv;
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Helpers;
 use GuzzleHttp\Psr7\Response;
 use Aws\Command as AwsCommand;
 use Aws\S3\Exception\S3Exception;
@@ -67,7 +68,12 @@ beforeEach(function (): void {
     ], $captured);
 });
 
-it('always points ASSET_URL at the CloudFront distribution, versioned per build', function (): void {
+it('points a web app\'s ASSET_URL at the CloudFront distribution, versioned per build', function (): void {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => true],
+    ]);
+
     (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
 
     $env = file_get_contents(Paths::build('.env.testing'));
@@ -80,6 +86,23 @@ it('always points ASSET_URL at the CloudFront distribution, versioned per build'
     expect($env)->toContain('VITE_ASSET_URL=${ASSET_URL}');
     expect(Dotenv::parse($env)['VITE_ASSET_URL'])
         ->toBe('https://d123abc.cloudfront.net/builds/26.21.5.0611');
+});
+
+it('skips ASSET_URL for a web-less app — no distribution exists to resolve', function (): void {
+    // A worker app provisions no CloudFront distribution; resolving its domain
+    // here would crash the build, so neither asset key is written.
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => false, 'queue' => false, 'scheduler' => true],
+    ]);
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('APP_VERSION=26.21.5.0611');
+    expect($env)->not->toContain('ASSET_URL');
+    expect($env)->not->toContain('VITE_ASSET_URL');
 });
 
 it('injects AWS_BUCKET from the manifest when the .env does not define it', function (): void {
@@ -97,6 +120,26 @@ it('injects AWS_BUCKET from the manifest when the .env does not define it', func
     (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
 
     expect(file_get_contents(Paths::build('.env.testing')))->toContain('AWS_BUCKET=my-app-bucket');
+});
+
+it('injects the resolved keyed bucket name, not the literal manifest value, when the bucket is YOLO-managed', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => true,
+    ]);
+
+    if (! is_dir(Paths::build())) {
+        mkdir(Paths::build(), 0755, true);
+    }
+    if (file_exists(Paths::build('.env.testing'))) {
+        unlink(Paths::build('.env.testing'));
+    }
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('AWS_BUCKET=' . Helpers::keyedBucketName('data'));
+    expect($env)->not->toContain('AWS_BUCKET=1');
 });
 
 it('does not inject AWS_BUCKET when the manifest does not define one', function (): void {
@@ -248,11 +291,11 @@ it('hard-fails when QUEUE_CONNECTION is non-sync but no worker runs', function (
         ->toThrow(IntegrityCheckException::class);
 });
 
-it('does not pin SQS_QUEUE for a multitenant app (worker resolves it per tenant)', function (): void {
+it('does not pin SQS_QUEUE for a dedicated multitenant app (worker resolves it per tenant)', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => true],
-        'tenants' => ['acme' => ['domain' => 'acme.test']],
+        'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => ['acme' => ['domain' => 'acme.test']]],
     ]);
 
     if (! is_dir(Paths::build())) {
@@ -268,6 +311,31 @@ it('does not pin SQS_QUEUE for a multitenant app (worker resolves it per tenant)
 
     expect($env)->toContain('QUEUE_CONNECTION=sqs');
     expect($env)->not->toContain('SQS_QUEUE=');
+});
+
+it('pins SQS_QUEUE to the shared queue for a shared multitenant app', function (): void {
+    // Shared collapses to the solo queue shape: one queue at the app name that every
+    // tenant's jobs land on (the tenant rides the payload), so the base queue is pinned
+    // exactly like a solo app — the per-tenant runtime resolution is what shared drops.
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => true],
+        'multitenancy' => ['queue-isolation' => 'shared', 'tenants' => ['acme' => ['domain' => 'acme.test']]],
+    ]);
+
+    if (! is_dir(Paths::build())) {
+        mkdir(Paths::build(), 0755, true);
+    }
+    if (file_exists(Paths::build('.env.testing'))) {
+        unlink(Paths::build('.env.testing'));
+    }
+
+    (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']);
+
+    $env = file_get_contents(Paths::build('.env.testing'));
+
+    expect($env)->toContain('QUEUE_CONNECTION=sqs');
+    expect($env)->toContain('SQS_QUEUE=yolo-testing-my-app');
 });
 
 it('respects an AWS_BUCKET already set in the .env', function (): void {
@@ -385,6 +453,17 @@ it('hard-fails when OCTANE_SERVER is set to a conflicting value', function (): v
         'tasks' => ['web' => true],
     ]);
     file_put_contents(Paths::build('.env.testing'), "OCTANE_SERVER=swoole\n");
+
+    expect(fn (): mixed => (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']))
+        ->toThrow(IntegrityCheckException::class);
+});
+
+it('hard-fails when REDIS_PREFIX is set to a conflicting value', function (): void {
+    rebuildEnvFixture([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => true],
+    ]);
+    file_put_contents(Paths::build('.env.testing'), "REDIS_PREFIX=laravel_database_\n");
 
     expect(fn (): mixed => (new ConfigureEnvAndVersionStep('testing'))(['app-version' => '26.21.5.0611']))
         ->toThrow(IntegrityCheckException::class);

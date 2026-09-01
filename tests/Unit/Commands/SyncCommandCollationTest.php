@@ -74,7 +74,7 @@ it('constructs every declared step with just the environment string', function (
         });
 })->with([
     'solo web app' => [['domain' => 'example.com', 'tasks' => ['web' => true]]],
-    'multi-tenant app' => [['tenants' => ['alpha' => []]]],
+    'multi-tenant app' => [['multitenancy' => ['tenants' => ['alpha' => []]]]],
 ]);
 
 it('orchestrates the three scopes in order — account → environment → app', function (): void {
@@ -96,25 +96,118 @@ it('folds the Fargate + CDN steps into the app scope when a web task is declared
         ->and($appSteps)->toContain(Steps\Sync\App\SyncCloudFrontAssetDistributionStep::class);
 });
 
-it('omits the Fargate + CDN steps from a solo app with no web task', function (): void {
+it('omits the Fargate + CDN steps from a solo app with no tasks at all', function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 
     $appSteps = (new SyncCommand())->scopes()['app'];
 
+    // No tasks block → no ECS services → none of the shared container infra either.
+    // And with no `domain` there is no zone or certificate to sync: the pair is
+    // collated off the domain, not off being solo, so a tenanted app that declares
+    // its landlord's domain gets exactly the same two steps.
     expect($appSteps)->not->toContain(Steps\Sync\App\SyncEcsServiceStep::class)
-        ->and($appSteps)->toContain(Steps\Sync\App\Solo\SyncHostedZoneStep::class);
+        ->and($appSteps)->not->toContain(Steps\Sync\App\SyncEcsClusterStep::class)
+        ->and($appSteps)->not->toContain(Steps\Sync\App\SyncEcrRepositoryStep::class)
+        ->and($appSteps)->not->toContain(Steps\Sync\App\Solo\SyncHostedZoneStep::class);
 });
 
-it('swaps the Solo steps for Landlord + Tenant steps on a multi-tenant app', function (): void {
+it('collates the app zone + certificate off the domain, solo or tenanted', function (array $manifest): void {
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', ...$manifest]);
+
+    $appSteps = (new SyncCommand())->scopes()['app'];
+
+    expect($appSteps)->toContain(Steps\Sync\App\Solo\SyncHostedZoneStep::class)
+        ->and($appSteps)->toContain(Steps\Sync\App\Solo\SyncSslCertificateStep::class);
+})->with([
+    'solo' => [['domain' => 'example.com']],
+    'tenanted, landlord on its own domain' => [[
+        'multitenancy' => [
+            'landlord' => ['domain' => 'app.example.com', 'wildcard-subdomains' => true],
+            'tenants' => ['acme' => null],
+        ],
+    ]],
+]);
+
+it('provisions the shared container infra without any web resources for a scheduler-only worker app', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tenants' => ['alpha' => []],
+        'tasks' => ['web' => false, 'queue' => false, 'scheduler' => true],
+    ]);
+
+    $appSteps = (new SyncCommand())->scopes()['app'];
+
+    // The shared plumbing every ECS service needs…
+    expect($appSteps)
+        ->toContain(Steps\Sync\App\SyncEcrRepositoryStep::class)
+        ->toContain(Steps\Sync\App\SyncEcsClusterStep::class)
+        ->toContain(Steps\Sync\App\SyncEcsTaskRoleStep::class)
+        ->toContain(Steps\Sync\App\SyncTaskSecurityGroupStep::class)
+        ->toContain(Steps\Sync\App\SyncRdsSecurityGroupStep::class)
+        ->toContain(Steps\Sync\App\SyncTaskLogGroupStep::class)
+        // …the scheduler's own service…
+        ->toContain(Steps\Sync\App\SyncSchedulerTaskDefinitionStep::class)
+        ->toContain(Steps\Sync\App\SyncSchedulerServiceStep::class)
+        // …and the melt branches for everything this shape doesn't run: the queue
+        // service (never extracted here) and the SQS queue (no worker anywhere —
+        // jobs run inline, so nothing would ever consume it).
+        ->toContain(Steps\Destroy\App\TeardownQueueServiceStep::class)
+        ->toContain(Steps\Destroy\App\TeardownQueueStep::class)
+        // No web tier → none of the web ingress / service / scaling / CDN steps.
+        ->not->toContain(Steps\Sync\App\SyncTargetGroupStep::class)
+        ->not->toContain(Steps\Sync\App\SyncHttpsListenerStep::class)
+        ->not->toContain(Steps\Sync\App\SyncTaskDefinitionStep::class)
+        ->not->toContain(Steps\Sync\App\SyncEcsServiceStep::class)
+        ->not->toContain(Steps\Sync\App\SyncScalableTargetStep::class)
+        ->not->toContain(Steps\Sync\App\SyncWebBurstStep::class)
+        ->not->toContain(Steps\Sync\App\SyncCloudFrontAssetDistributionStep::class);
+});
+
+it('provisions the SQS queue and queue service for a web-less worker app with a standalone queue', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => false, 'queue' => ['autoscaling' => true]],
+    ]);
+
+    $appSteps = (new SyncCommand())->scopes()['app'];
+
+    // A real worker runs (queueHost = queue), so the SQS queue IS provisioned —
+    // unlike the scheduler-only shape above.
+    expect($appSteps)
+        ->toContain(Steps\Sync\App\Solo\SyncQueueStep::class)
+        ->toContain(Steps\Sync\App\SyncQueueTaskDefinitionStep::class)
+        ->toContain(Steps\Sync\App\SyncQueueServiceStep::class)
+        ->not->toContain(Steps\Destroy\App\TeardownQueueStep::class)
+        ->not->toContain(Steps\Sync\App\SyncEcsServiceStep::class)
+        ->not->toContain(Steps\Sync\App\SyncTargetGroupStep::class);
+});
+
+it('swaps the Solo steps for Landlord + Tenant queue steps on a dedicated multi-tenant app', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => ['alpha' => []]],
     ]);
 
     $appSteps = (new SyncCommand())->scopes()['app'];
 
     expect($appSteps)->toContain(Steps\Sync\App\Landlord\SyncQueueStep::class)
         ->and($appSteps)->toContain(Steps\Sync\App\Tenant\SyncQueueStep::class)
+        ->and($appSteps)->not->toContain(Steps\Sync\App\Shared\SyncQueueStep::class)
+        ->and($appSteps)->not->toContain(Steps\Sync\App\Solo\SyncHostedZoneStep::class);
+});
+
+it('provisions one shared queue set on a shared multi-tenant app — the default', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'multitenancy' => ['tenants' => ['alpha' => []]],
+    ]);
+
+    $appSteps = (new SyncCommand())->scopes()['app'];
+
+    // Shared is the default, so a plain multi-tenant app gets the single shared queue
+    // step, not the per-tenant landlord + tenant fan-out — and still no solo DNS.
+    expect($appSteps)->toContain(Steps\Sync\App\Shared\SyncQueueStep::class)
+        ->and($appSteps)->not->toContain(Steps\Sync\App\Landlord\SyncQueueStep::class)
+        ->and($appSteps)->not->toContain(Steps\Sync\App\Tenant\SyncQueueStep::class)
         ->and($appSteps)->not->toContain(Steps\Sync\App\Solo\SyncHostedZoneStep::class);
 });
 
@@ -261,7 +354,7 @@ it('plans the web ingress steps when the app has a domain', function (): void {
 it('fans a per-tenant step out across every tenant by default', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tenants' => ['alpha' => [], 'beta' => []],
+        'multitenancy' => ['tenants' => ['alpha' => [], 'beta' => []]],
     ]);
 
     [$plan] = collate(['app' => [CollationFakeTenantStep::class]], new SyncAppCommand());
@@ -272,7 +365,7 @@ it('fans a per-tenant step out across every tenant by default', function (): voi
 it('narrows the per-tenant fan-out to a single tenant with --tenant', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tenants' => ['alpha' => [], 'beta' => []],
+        'multitenancy' => ['tenants' => ['alpha' => [], 'beta' => []]],
     ]);
 
     [$plan] = collate(['app' => [CollationFakeTenantStep::class]], new SyncAppCommand(), ['--tenant' => 'alpha']);
@@ -284,7 +377,7 @@ it('narrows the per-tenant fan-out to a single tenant with --tenant', function (
 it('errors on an unknown --tenant id', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tenants' => ['alpha' => []],
+        'multitenancy' => ['tenants' => ['alpha' => []]],
     ]);
 
     collate(['app' => [CollationFakeTenantStep::class]], new SyncAppCommand(), ['--tenant' => 'ghost']);

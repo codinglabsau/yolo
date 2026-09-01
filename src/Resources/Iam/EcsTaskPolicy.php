@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Resources\Iam;
 
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
@@ -15,13 +16,15 @@ use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Resources\S3\S3Bucket;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
+use Codinglabs\Yolo\Resources\CloudWatchLogs\WafLogGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
 
 /**
  * YOLO-managed customer-managed IAM policy granting this app's ECS task role its
  * baseline runtime permissions: the four ssmmessages permissions ECS Exec needs,
- * SQS access scoped to this app's own queues, and SES send — plus read+write on
+ * SQS access scoped to this app's own queues, SES send, and read on the env WAF
+ * request-log group — plus read+write on
  * the application data bucket when the manifest declares one (`bucket`). App-scoped
  * so the grants are this app's alone and never reach another app's role — attached
  * to the app task role by AttachEcsTaskRolePoliciesStep.
@@ -193,6 +196,23 @@ class EcsTaskPolicy implements Deletable, Resource, SynchronisesConfiguration
                     'ses:SendEmail',
                 ],
             ],
+            [
+                // Read on the env WAF's request logs (blocked/counted requests,
+                // rule-attributed) so the app can answer "is this IP tripping a
+                // rule" and feed ban decisions. Content-ARN (':*') form — the
+                // read actions address streams, not the group. Env-shared like
+                // the WAF itself, so the stream spans every app behind the ALB.
+                // Insights (GetQueryResults) deliberately omitted: results are
+                // unscopeable, and FilterLogEvents covers the lookup shape.
+                'Effect' => 'Allow',
+                'Resource' => (new WafLogGroup())->arn() . ':*',
+                'Action' => [
+                    'logs:GetLogEvents',
+                    'logs:GetLogGroupFields',
+                    'logs:GetLogRecord',
+                    'logs:FilterLogEvents',
+                ],
+            ],
         ];
 
         // When web autoscaling burst is on, the runtime worker-saturation reporter
@@ -217,6 +237,23 @@ class EcsTaskPolicy implements Deletable, Resource, SynchronisesConfiguration
         // the per-app role means this can't reach another app's bucket.
         if (Manifest::has('bucket')) {
             $statements = [...$statements, ...$this->bucketStatements()];
+        }
+
+        // Scheduled database dumps upload to this app's own prefix of the env
+        // backups bucket. Write-only by design — the producer verifies the
+        // archive locally before uploading, so the container never needs read,
+        // and a compromised task can't exfiltrate its own dump history (or any
+        // sibling app's). AbortMultipartUpload keeps a failed large upload
+        // from stranding parts the lifecycle would otherwise hold for 7 days.
+        if (Manifest::backsUpDatabases()) {
+            $statements[] = [
+                'Effect' => 'Allow',
+                'Resource' => sprintf('arn:aws:s3:::%s/%s/*', Paths::s3BackupsBucket(), Manifest::name()),
+                'Action' => [
+                    's3:PutObject',
+                    's3:AbortMultipartUpload',
+                ],
+            ];
         }
 
         // Each consumed service yields the statements its consumption grants —

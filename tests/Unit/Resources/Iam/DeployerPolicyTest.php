@@ -79,6 +79,17 @@ it('scopes UpdateService and RunTask to this app\'s cluster resources', function
     expect($statement['Action'])->toContain('ecs:RunTask', 'ecs:DescribeServices');
 });
 
+it('grants ecs:ExecuteCommand on the same scoped cluster resources so yolo run can open an ECS Exec session', function (): void {
+    $statement = statementFor((new DeployerPolicy())->document(), 'ecs:ExecuteCommand');
+
+    // Same app-plane execution the deploy hooks already grant via RunTask —
+    // scoped to this app's cluster and tasks, never account-wide.
+    expect($statement['Resource'])->toContain(
+        'arn:aws:ecs:ap-southeast-2:111111111111:cluster/yolo-testing-my-app',
+        'arn:aws:ecs:ap-southeast-2:111111111111:task/yolo-testing-my-app/*',
+    );
+});
+
 it('widens UpdateService scope to the standalone queue and scheduler services when extracted', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
@@ -107,7 +118,7 @@ it('scopes PassRole to the per-app task role and shared execution role, passed o
     ]);
 });
 
-it('grants write-only asset push on builds/* and read-only env-file pull, least-privilege', function (): void {
+it('grants write-only asset push on builds/* and object-scoped env-file access, least-privilege', function (): void {
     $document = (new DeployerPolicy())->document();
 
     // Asset push (deploy): write-only on the per-deploy builds/ prefix — no read,
@@ -121,11 +132,12 @@ it('grants write-only asset push on builds/* and read-only env-file pull, least-
         's3:ListMultipartUploadParts',
     ]);
 
-    // Env-file pull (build): read-only on exactly this app's .env.{env} object.
+    // Env file (build pull + env:push): get and put on exactly this app's
+    // .env.{env} object — never a delete, never the bucket.
     $envFile = collect($document['Statement'])
         ->first(fn (array $statement): bool => $statement['Resource'] === 'arn:aws:s3:::yolo-111111111111-testing-my-app-config/.env.testing');
     expect($envFile)->not->toBeNull();
-    expect($envFile['Action'])->toBe(['s3:GetObject']);
+    expect($envFile['Action'])->toBe(['s3:GetObject', 's3:PutObject']);
 
     // No bucket-level S3 grant survives the tightening, and the asset/config
     // buckets are never reachable at the bucket root or whole-object level.
@@ -243,4 +255,17 @@ it('includes Route 53 statements for a subdomain canary', function (): void {
     $document = (new DeployerPolicy())->document();
 
     expect(statementFor($document, 'route53:ChangeResourceRecordSets'))->not->toBeNull();
+});
+
+it('grants bucket-name discovery for the pre-deploy adoption gate, and nothing more on it', function (): void {
+    // The deploy path runs `sync --check` as the deployer, which verifies a
+    // bring-your-own app data bucket still exists. Ownership needs ListBuckets (a
+    // probe of the bucket 403s identically whether it's foreign or just unreadable),
+    // so the deployer holds the collection op — names only, no bucket or object reads.
+    $listing = collect((new DeployerPolicy())->document()['Statement'])
+        ->first(fn (array $statement): bool => in_array('s3:ListAllMyBuckets', (array) $statement['Action'], true));
+
+    expect($listing)->not->toBeNull();
+    expect($listing['Resource'])->toBe('*');
+    expect($listing['Action'])->toBe(['s3:ListAllMyBuckets']);
 });

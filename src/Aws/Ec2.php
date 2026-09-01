@@ -236,9 +236,20 @@ class Ec2
         ));
     }
 
-    public static function securityGroup(string $name): array
+    public static function securityGroup(string $name, string $vpcId): array
     {
-        $securityGroups = Aws::ec2()->describeSecurityGroups()['SecurityGroups'];
+        // Group names are only unique per VPC — a name-only lookup can match a
+        // same-named group in another VPC (another deployment generation
+        // co-located on the account) and leak its id into creates against this
+        // environment's VPC, which AWS rejects as an invalid security group.
+        // The vpc-id filter scopes the lookup; the client-side re-check keeps
+        // mock-backed tests honest about the name match.
+        $securityGroups = Aws::ec2()->describeSecurityGroups([
+            'Filters' => [
+                ['Name' => 'group-name', 'Values' => [$name]],
+                ['Name' => 'vpc-id', 'Values' => [$vpcId]],
+            ],
+        ])['SecurityGroups'] ?? [];
 
         foreach ($securityGroups as $securityGroup) {
             if ($securityGroup['GroupName'] === $name) {
@@ -246,7 +257,7 @@ class Ec2
             }
         }
 
-        throw new ResourceDoesNotExistException("Could not find security group $name");
+        throw new ResourceDoesNotExistException("Could not find security group $name in VPC $vpcId");
     }
 
     /**

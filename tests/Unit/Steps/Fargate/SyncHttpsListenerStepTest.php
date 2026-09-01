@@ -60,6 +60,60 @@ it('records drift on the plan pass and attaches the cert on apply', function ():
     expect(array_column($captured, 'name'))->toContain('AddListenerCertificates');
 });
 
+it('plans the listener as pending on a greenfield sync, before the certificate exists', function (): void {
+    // The head of the prune chain: with no certificate at plan time (it's requested
+    // and validated to ISSUED earlier in this same apply) a bare SKIPPED drops this
+    // step from the apply pass — so no :443 listener is created, the forward rule has
+    // nothing to hang off, and ECS CreateService rejects the web service for an
+    // unattached target group.
+    $captured = [];
+    bindRoutedElbV2Client([
+        'DescribeLoadBalancers' => new Result(['LoadBalancers' => [
+            ['LoadBalancerName' => 'yolo-testing', 'LoadBalancerArn' => 'arn:alb'],
+        ]]),
+        'DescribeListeners' => new Result(['Listeners' => []]),
+    ], $captured);
+    bindNoAcmCertificates();
+
+    $step = new SyncHttpsListenerStep();
+
+    expect($step(['dry-run' => true]))->toBe(StepResult::WOULD_CREATE);
+    expect($step->changes())->not->toBeEmpty();
+    expect(array_column($captured, 'name'))->not->toContain('CreateListener');
+});
+
+it('plans a pending cert attach when a sibling app already created the listener', function (): void {
+    // Same greenfield pass, but the env :443 listener is already up (another app in
+    // the environment created it) — this app's work is the SNI attach, not a create.
+    $captured = [];
+    bindRoutedElbV2Client(httpsListenerElbV2(attached: [HTTPS_DEFAULT_CERT]), $captured);
+    bindNoAcmCertificates();
+
+    $step = new SyncHttpsListenerStep();
+
+    expect($step(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC);
+    expect($step->changes())->not->toBeEmpty();
+    expect(array_column($captured, 'name'))->not->toContain('AddListenerCertificates');
+});
+
+it('skips when the certificate cannot be issued this run', function (): void {
+    // A terminal certificate status is not a "yet" — nothing this run makes it
+    // issuable, so there is no default cert to create the listener with.
+    $captured = [];
+    bindRoutedElbV2Client([
+        'DescribeLoadBalancers' => new Result(['LoadBalancers' => [
+            ['LoadBalancerName' => 'yolo-testing', 'LoadBalancerArn' => 'arn:alb'],
+        ]]),
+        'DescribeListeners' => new Result(['Listeners' => []]),
+    ], $captured);
+    bindIssuedAcmCertificate(HTTPS_APEX, HTTPS_APP_CERT, 'FAILED');
+
+    $step = new SyncHttpsListenerStep();
+
+    expect($step(['dry-run' => true]))->toBe(StepResult::SKIPPED);
+    expect($step->changes())->toBeEmpty();
+});
+
 it('skips when no domain is configured', function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 

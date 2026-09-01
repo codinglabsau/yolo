@@ -3,10 +3,12 @@
 namespace Codinglabs\Yolo;
 
 use Illuminate\Support\Arr;
+use Codinglabs\Yolo\Aws\Rds;
 use Codinglabs\Yolo\Aws\Route53;
 use Symfony\Component\Yaml\Yaml;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServerGroup;
+use Codinglabs\Yolo\Enums\QueueIsolation;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 class Manifest
@@ -37,6 +39,17 @@ class Manifest
     protected static array $apexCache = [];
 
     /**
+     * The account's hosted-zone names, memoised for the run. Every apex derivation
+     * walks the same list, so without this a multi-tenant app pays one
+     * ListHostedZones per distinct tenant domain — enough to trip Route 53's rate
+     * limit on a large tenant set, for an answer that can't differ between calls.
+     * Reset alongside {@see $apexCache}, which memoises what this feeds.
+     *
+     * @var array<int, string>|null
+     */
+    protected static ?array $hostedZoneNamesCache = null;
+
+    /**
      * The complete set of valid environment-block keys as dot-paths — the single
      * source of truth for the manifest's shape. There is no `aws.*` namespace:
      * every key sits at the top of the environment block. A trailing `.*` allows
@@ -47,9 +60,22 @@ class Manifest
      */
     protected const ALLOWED_ENVIRONMENT_KEYS = [
         'account-id', 'region',
-        'domain', 'branch', 'tag', 'repository',
-        'tenants.*',
+        'domain', 'wildcard-subdomains', 'branch', 'tag', 'repository',
+        // Multi-tenancy. Every key is listed explicitly (no free-form subtree) so a
+        // stray or misremembered key hard-fails instead of being silently accepted
+        // and ignored — `apex` is the one that used to slip through, and it is
+        // always derived from `domain`, never declared. The landlord and each
+        // tenant are declared the same way: a domain, optionally wildcarded.
+        'multitenancy.landlord.domain',
+        'multitenancy.landlord.wildcard-subdomains',
+        'multitenancy.queue-isolation',
+        'multitenancy.tenants.*.domain',
+        'multitenancy.tenants.*.wildcard-subdomains',
+        'queues.*',
+        'queue-visibility-timeout',
         'bucket',
+        'backups',
+        'backups.schedule',
         'services',
         'database',
         'cache.store',
@@ -100,6 +126,7 @@ class Manifest
     {
         static::$hydrated = null;
         static::$apexCache = [];
+        static::$hostedZoneNamesCache = null;
     }
 
     public static function environments(): array
@@ -187,9 +214,41 @@ class Manifest
             if (str_ends_with($allowed, '.*') && str_starts_with($path . '.', substr($allowed, 0, -1))) {
                 return true;
             }
+
+            if (str_contains($allowed, '.*.') && static::matchesWildcardSegment($allowed, $path)) {
+                return true;
+            }
         }
 
         return false;
+    }
+
+    /**
+     * Match a dot-path against a pattern holding a mid-path `*`, which stands for
+     * exactly one segment: `multitenancy.tenants.*.domain` covers any tenant id,
+     * while still rejecting a key the pattern doesn't name — a hand-written
+     * `apex` fails rather than being silently accepted and then overwritten.
+     *
+     * A path that stops short of the full pattern matches too, because a tenant
+     * declared bare (`acme:` with no config) flattens to
+     * `multitenancy.tenants.acme` — a legitimate leaf, not an unknown key.
+     */
+    protected static function matchesWildcardSegment(string $allowed, string $path): bool
+    {
+        $pattern = explode('.', $allowed);
+        $segments = explode('.', $path);
+
+        if (count($segments) > count($pattern)) {
+            return false;
+        }
+
+        foreach ($segments as $index => $segment) {
+            if ($pattern[$index] !== '*' && $pattern[$index] !== $segment) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public static function name(): string
@@ -199,16 +258,25 @@ class Manifest
 
     public static function has(string $key): bool
     {
-        return Arr::has(static::current()['environments'][Helpers::environment()], $key);
+        return static::reader()->has($key);
     }
 
     public static function get(string $key, $default = null): mixed
     {
-        if (! static::has($key)) {
-            return $default;
-        }
+        return static::reader()->get($key, $default);
+    }
 
-        return Arr::get(static::current()['environments'][Helpers::environment()], $key);
+    /**
+     * Whether YOLO owns the application data bucket. `bucket: true` puts it in
+     * YOLO's keyed namespace (see {@see Paths::s3AppBucket}), so YOLO creates and
+     * hardens it at birth — then hands it over: like an adopted bucket, it is never
+     * reconciled afterwards (see {@see S3Bucket} — it holds user data). A bucket
+     * *name* is a bring-your-own bucket YOLO adopts, never creates and never
+     * writes a byte of configuration to.
+     */
+    public static function managesAppBucket(): bool
+    {
+        return static::get('bucket') === true;
     }
 
     public static function put(string $key, mixed $value): false|int
@@ -574,15 +642,16 @@ class Manifest
     }
 
     /**
-     * The effective cache store. Web apps default to the shared Valkey cluster
-     * (`redis`) — the ephemeral per-task filesystem is broken across multiple
-     * Fargate tasks, so a working shared cache is the right default. Set
-     * `cache.store` to opt out (`file` / `database` / `array`). Non-web apps get
-     * no default.
+     * The effective cache store. Any app that runs tasks defaults to the shared
+     * Valkey cluster (`redis`) — the ephemeral per-task filesystem is broken
+     * across multiple Fargate tasks, and web-less workers lean on a shared cache
+     * just as hard (atomic locks, rate limiters, `onOneServer`). Set
+     * `cache.store` to opt out (`file` / `database` / `array`). Build-only apps
+     * (no `tasks`) run no containers, so they get no default.
      */
     public static function cacheStore(): ?string
     {
-        return static::get('cache.store', static::hasWeb() ? 'redis' : null);
+        return static::get('cache.store', static::serverGroups() !== [] ? 'redis' : null);
     }
 
     /**
@@ -599,10 +668,11 @@ class Manifest
 
     /**
      * Whether the app runs a web (Fargate) service — `tasks.web: true` or a config
-     * object. Absent ⇒ build-only/worker app; `tasks.web: false` ⇒ explicitly
-     * headless (no web service), same as absent. The single gate for the ALB / CDN /
-     * Route 53 / web-task provisioning (the value-aware replacement for
-     * `has('tasks.web')`).
+     * object. Absent or `tasks.web: false` ⇒ a web-less app: a worker running a
+     * standalone queue and/or scheduler (a `tasks` block with neither is refused —
+     * see Command::ensureTasksRunnable), or a build-only app with no `tasks` at
+     * all. The single gate for the ALB / CDN / Route 53 / web-task provisioning
+     * (the value-aware replacement for `has('tasks.web')`).
      */
     public static function hasWeb(): bool
     {
@@ -611,7 +681,7 @@ class Manifest
 
     /**
      * Whether the web service is switched off explicitly (`tasks.web: false`) — a
-     * headless app. Distinct from absent (also headless) only in being self-documenting.
+     * web-less app. Distinct from absent (also web-less) only in being self-documenting.
      */
     public static function webDisabled(): bool
     {
@@ -781,6 +851,43 @@ class Manifest
     }
 
     /**
+     * Whether this app runs scheduled logical database backups — opt-in via
+     * `backups: true` (or a `backups:` map carrying overrides like `time`).
+     * Backups ride the scheduler (the generated crontab carries the daily
+     * entry), so an app with cron switched off has no host to run them and
+     * the whole feature is moot there.
+     */
+    public static function backsUpDatabases(): bool
+    {
+        return (bool) static::get('backups', false)
+            && static::schedulerHost() instanceof ServerGroup;
+    }
+
+    /**
+     * The cron schedule the backup fires on (manifest timezone) —
+     * `backups.schedule`, a standard 5-field cron expression. Default is
+     * daily at 05:00: off-peak in the timezone the app declares, while the
+     * previous night's data is still fresh. The gate checks shape (five
+     * fields, cron charset), not cron semantics — supercronic is the parser
+     * of record.
+     */
+    public static function backupSchedule(): string
+    {
+        $schedule = static::get('backups.schedule', '0 5 * * *');
+
+        $fields = is_string($schedule) ? preg_split('/\s+/', trim($schedule)) : [];
+
+        if (count($fields) !== 5 || array_filter($fields, fn (string $field): bool => in_array(preg_match('#^[0-9*,/-]+$#', $field), [0, false], true)) !== []) {
+            throw new IntegrityCheckException(sprintf(
+                'backups.schedule must be a 5-field cron expression (e.g. "0 5 * * *" or "0 */4 * * *"), got "%s".',
+                is_scalar($schedule) ? $schedule : gettype($schedule),
+            ));
+        }
+
+        return implode(' ', $fields);
+    }
+
+    /**
      * The autoscaling/desired-count floor for the standalone queue — its
      * `autoscaling.min` (default 1). `0` opts into scale-to-zero (idle to no tasks,
      * zero cost), except when the queue also hosts the scheduler, where cron can't
@@ -933,13 +1040,130 @@ class Manifest
         };
     }
 
+    /**
+     * The host this app is served on, or null when it has none.
+     *
+     * The single source for "the app's domain", because it lives in two places by
+     * design: a solo app declares `domain` at the root of the environment block,
+     * while a multi-tenant app declares its landlord's host inside the
+     * `multitenancy` block. Under multi-tenancy a root `domain` would be ambiguous
+     * — it would mean both "where the landlord is served" and "what subdomain
+     * tenants hang off", and those separate the moment one tenant takes a custom
+     * domain — so validation refuses it there.
+     */
+    public static function domain(): ?string
+    {
+        $domain = static::isMultitenanted()
+            ? static::get('multitenancy.landlord.domain')
+            : static::get('domain');
+
+        return $domain === null ? null : (string) $domain;
+    }
+
+    public static function hasDomain(): bool
+    {
+        return static::domain() !== null;
+    }
+
+    /**
+     * The app's own apex. A tenanted app has one whenever its landlord declares a
+     * domain — tenants are an orthogonal axis, not a reason the app can't be served
+     * on a host of its own. Only an app with no domain at all (headless, or a
+     * tenanted app whose tenants each bring their own domain) has no app apex;
+     * there the apex is per tenant, {@see tenants()}.
+     */
     public static function apex(): string
     {
-        if (static::isMultitenanted()) {
-            return throw new IntegrityCheckException('Cannot determine apex domain for multitenanted environments.');
+        $domain = static::domain();
+
+        if ($domain === null) {
+            return throw new IntegrityCheckException('Cannot determine apex domain: no `domain` is declared, so this app has no apex of its own.');
         }
 
-        return static::deriveApex((string) static::get('domain'));
+        return static::deriveApex($domain);
+    }
+
+    /**
+     * Whether the app's own certificate and listener rule already serve this host.
+     * True when it *is* the app's domain, or when the app serves every subdomain
+     * of that domain and this sits exactly one label below it.
+     *
+     * This is what lets `tenants` compose with `wildcard-subdomains` instead of
+     * excluding it: a tenant served on a subdomain of the app's domain needs no
+     * hosted zone, certificate, SNI attachment or listener rule of its own — the
+     * app's wildcard already covers it — while a tenant on a genuine custom domain
+     * gets all four. Each per-tenant DNS/TLS step gates on this, so one manifest
+     * shape covers both without a mode switch.
+     */
+    public static function servesDomain(string $domain): bool
+    {
+        $appDomain = static::domain();
+
+        if ($appDomain === null) {
+            return false;
+        }
+
+        if ($domain === $appDomain) {
+            return true;
+        }
+
+        if (! static::servesWildcardSubdomains() || ! str_ends_with($domain, ".$appDomain")) {
+            return false;
+        }
+
+        // One label only — ACM and ALB host wildcards both match a single label,
+        // so `*.{domain}` covers `tenant.{domain}` but never `a.b.{domain}`.
+        return ! str_contains(substr($domain, 0, -strlen($appDomain) - 1), '.');
+    }
+
+    /**
+     * Whether every subdomain of the app's own `domain` is served by the app —
+     * one wildcard listener-rule host and one `*.{domain}` alias record instead
+     * of a resource per subdomain, so a multi-tenant app can bring a tenant live
+     * on a database insert with no infrastructure run.
+     *
+     * Opt-in, because a wildcard is only ever safe beneath the app's OWN domain.
+     * Several apps commonly hang off one shared apex (`app-a.example.com`,
+     * `app-b.example.com`); a wildcard at the apex would have whichever app won
+     * the ALB rule priority swallow its siblings' traffic. Scoped to `domain` it
+     * can only ever match hosts below this app.
+     */
+    public static function servesWildcardSubdomains(): bool
+    {
+        return (bool) static::get(
+            static::isMultitenanted() ? 'multitenancy.landlord.wildcard-subdomains' : 'wildcard-subdomains',
+            false,
+        );
+    }
+
+    /**
+     * The wildcard host the app serves, or null when it serves only its canonical
+     * host. One label deep — ACM wildcards and ALB host-header wildcards both
+     * match a single label, so `*.{domain}` covers `{tenant}.{domain}` and
+     * nothing deeper.
+     */
+    public static function wildcardHost(): ?string
+    {
+        return static::servesWildcardSubdomains()
+            ? '*.' . static::domain()
+            : null;
+    }
+
+    /**
+     * The domain the app's ACM certificate is issued for; the certificate covers
+     * that name plus its single-label wildcard.
+     *
+     * Normally the apex, so one certificate serves the app and any sibling app on
+     * the same zone. A wildcard-subdomain app needs the wildcard one level
+     * deeper: with `domain: app.example.com`, the apex certificate's
+     * `*.example.com` matches `app.example.com` but NOT `tenant.app.example.com`,
+     * so the certificate is issued for the domain itself instead.
+     */
+    public static function certificateDomain(): string
+    {
+        return static::servesWildcardSubdomains()
+            ? (string) static::domain()
+            : static::apex();
     }
 
     /**
@@ -957,7 +1181,7 @@ class Manifest
 
     protected static function resolveApex(string $domain): string
     {
-        $zones = Route53::hostedZoneNames();
+        $zones = static::$hostedZoneNamesCache ??= Route53::hostedZoneNames();
         $labels = explode('.', $domain);
 
         for ($i = 0, $count = count($labels); $i < $count - 1; $i++) {
@@ -972,20 +1196,18 @@ class Manifest
     }
 
     /**
-     * The RDS target DECLARED by the flat `database:` manifest key. Accepts either
-     * a bare RDS identifier (a plain instance, charted via DBInstanceIdentifier) or
-     * a full endpoint hostname — which auto-detects an Aurora cluster
-     * (`.cluster-` in the host) vs a plain instance, and skips an RDS Proxy /
-     * non-RDS host. Null when nothing's declared.
+     * The database DECLARED by the flat `database:` manifest key — the bare human
+     * name of an RDS instance or Aurora cluster (its DBInstanceIdentifier /
+     * DBClusterIdentifier, never an endpoint hostname). Null when nothing's
+     * declared. Whether the name is a cluster or a plain instance is resolved
+     * live by {@see Rds::target()}.
      *
      * Read from the manifest, never the app's secret `.env`: every consumer (the
      * CloudWatch dashboard body, the status TUI, the audit health probe) must
      * resolve the same target under every RBAC tier, which a secret read can't
      * guarantee. The dashboard tier-parity contract leans on this directly.
-     *
-     * @return array{identifier: string, cluster: bool}|null
      */
-    public static function rdsTarget(): ?array
+    public static function database(): ?string
     {
         $database = static::get('database');
 
@@ -993,37 +1215,90 @@ class Manifest
             return null;
         }
 
-        // A bare value is a plain instance identifier; a full endpoint hostname
-        // self-describes its kind.
-        if (! str_ends_with($database, '.rds.amazonaws.com')) {
-            return ['identifier' => $database, 'cluster' => false];
+        // RDS identifiers can't contain dots, so a dotted value is an endpoint
+        // hostname — reject it with a pointed message rather than letting RDS
+        // bounce the describe with an opaque InvalidParameterValue.
+        if (str_contains($database, '.')) {
+            throw new IntegrityCheckException(sprintf(
+                'The manifest `database:` key takes the bare database name (its DBInstanceIdentifier or DBClusterIdentifier), not an endpoint hostname — got "%s".',
+                $database,
+            ));
         }
 
-        // RDS Proxy endpoints don't map to a DB metric identifier.
-        if (str_contains($database, '.proxy-')) {
-            return null;
-        }
-
-        return [
-            'identifier' => strtok($database, '.'),
-            'cluster' => str_contains($database, '.cluster-'),
-        ];
+        return $database;
     }
 
+    /**
+     * Whether the app runs in multi-tenant mode — i.e. declares a `multitenancy`
+     * block. This is the **mode** predicate, and it deliberately does not depend on
+     * tenants being declared: the block's landlord is where a multi-tenant app's
+     * own host lives, so gating this on `multitenancy.tenants` would leave a
+     * landlord-only manifest with no reader for its domain and silently deploy it
+     * as a headless worker (validation forbids a root `domain` alongside the block,
+     * so there is nowhere else for the host to come from).
+     *
+     * The orthogonal question — are there tenants to fan out over — is
+     * {@see hasTenants()}. Every per-tenant fan-out gate keys off that one.
+     */
     public static function isMultitenanted(): bool
     {
-        return ! empty(static::get('tenants'));
+        return static::has('multitenancy');
+    }
+
+    /**
+     * Whether any tenant is declared. The fan-out predicate: per-tenant queues,
+     * DNS/TLS resources and teardown all key off this, never {@see isMultitenanted()},
+     * so a landlord-only app provisions exactly what the solo shape does.
+     */
+    public static function hasTenants(): bool
+    {
+        return ! empty(static::get('multitenancy.tenants'));
+    }
+
+    /**
+     * How a multi-tenant app's queues fan out — `shared` (one queue set for all
+     * tenants, the default) or `dedicated` (a queue set and worker program per tenant).
+     * Solo apps have a single scope, so the knob is meaningless for them
+     * (ensureQueueIsolationValid rejects it there). An unknown value hard-fails rather
+     * than silently falling back.
+     */
+    public static function queueIsolation(): QueueIsolation
+    {
+        $value = static::get('multitenancy.queue-isolation', QueueIsolation::Shared->value);
+
+        return QueueIsolation::tryFrom($value) ?? throw new IntegrityCheckException(sprintf(
+            'Unknown queue-isolation "%s" — expected "shared" or "dedicated".',
+            $value,
+        ));
+    }
+
+    /**
+     * Whether the queue layer fans out per tenant — one SQS queue set and one worker
+     * program per tenant. True only for an app with declared tenants that opts into
+     * the `dedicated` strategy; by default a multi-tenant app is `shared` — one queue
+     * set at the app name, the tenant carried in the job payload — so every
+     * per-tenant queue branch keys off this rather than isMultitenanted() alone.
+     *
+     * Gated on {@see hasTenants()}, not the mode: `dedicated` with no tenants would
+     * otherwise fan out to a lone `queue_landlord` program, renaming a landlord-only
+     * app's queues for no isolation benefit.
+     */
+    public static function fansQueuesPerTenant(): bool
+    {
+        return static::hasTenants() && static::queueIsolation() === QueueIsolation::Dedicated;
     }
 
     public static function isHeadless(): bool
     {
-        if (static::has('domain')) {
+        if (static::hasDomain()) {
             return false;
         }
 
-        // Read raw — tenants() normaliser TypeErrors on a headless tenant.
-        return collect(static::get('tenants', []))
-            ->every(fn (array $config): bool => ! isset($config['domain']));
+        // Read raw rather than through tenants(): that normaliser derives each
+        // tenant's apex, which probes Route 53 — an AWS round-trip this predicate
+        // (used during manifest validation) must not need.
+        return collect(static::get('multitenancy.tenants') ?? [])
+            ->every(fn (?array $config): bool => ! isset($config['domain']));
     }
 
     /**
@@ -1037,9 +1312,7 @@ class Manifest
      */
     public static function services(): array
     {
-        $services = static::get('services', []);
-
-        return is_array($services) && array_is_list($services) ? $services : [];
+        return static::reader()->services();
     }
 
     public static function usesService(Service $service): bool
@@ -1048,25 +1321,131 @@ class Manifest
     }
 
     /**
+     * The shared read core — this static class only supplies the CLI's
+     * context: BASE_PATH file resolution, hydration, the selected environment.
+     */
+    protected static function reader(): ManifestReader
+    {
+        return new ManifestReader(static::current(), Helpers::environment());
+    }
+
+    /**
+     * Every declared tenant domain, read raw. Deliberately not via {@see tenants()}:
+     * that normaliser derives each apex through the Route 53 suffix walk, so a
+     * caller that only wants the declared hosts (printing URLs, a validation
+     * predicate) would pay an AWS round-trip per tenant for nothing.
+     *
+     * @return array<int, string>
+     */
+    public static function tenantDomains(): array
+    {
+        return collect(static::get('multitenancy.tenants') ?? [])
+            ->map(fn (?array $config): ?string => $config['domain'] ?? null)
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    /**
      * @return array<string, array<string, mixed>>
      */
     public static function tenants(): array
     {
-        /** @var array<string, array<string, mixed>> $configured */
-        $configured = static::get('tenants') ?? [];
+        /** @var array<string, array<string, mixed>|null> $configured */
+        $configured = static::get('multitenancy.tenants') ?? [];
 
         $tenants = [];
 
         foreach ($configured as $tenantId => $config) {
+            // A tenant declared bare (`acme:` with no config) parses as null — it
+            // takes every default, including being served under the landlord's
+            // wildcard, so normalise it to an empty config rather than TypeError
+            // on every reader.
+            $config ??= [];
+
             // Per-tenant apex is derived from the tenant's domain the same way the
-            // solo apex is (deriveApex) — a headless tenant (no domain) keeps none.
+            // app's own apex is (deriveApex) — a tenant with no domain keeps none.
             if (isset($config['domain'])) {
                 $config['apex'] = static::deriveApex($config['domain']);
+
+                // A tenant wildcards its own domain exactly as the app does: the
+                // certificate moves off the apex onto the domain itself (an apex
+                // cert's `*.{apex}` doesn't reach `x.{sub}.{apex}`), and the extra
+                // host rides its forward rule and alias records.
+                $wildcarded = (bool) ($config['wildcard-subdomains'] ?? false);
+
+                $config['certificate-domain'] = $wildcarded ? $config['domain'] : $config['apex'];
+                $config['wildcard-host'] = $wildcarded ? '*.' . $config['domain'] : null;
             }
 
-            $tenants[$tenantId] = $config;
+            $tenants[(string) $tenantId] = $config;
         }
 
         return $tenants;
+    }
+
+    /**
+     * The declared SQS queue tiers, in priority order — a list of tier names under
+     * the `queues:` block. List order IS the strict-priority order the worker drains
+     * them in (a leading `high` tier is polled to empty before the next). An absent
+     * block returns `[]`: the app runs a single queue at its own name
+     * (Helpers::queueNames).
+     *
+     * Tiers are names only. Visibility timeout is deliberately app-wide
+     * ({@see queueVisibilityTimeout} — every tier drains through the one worker
+     * command with a single job timeout, so a per-tier value would have nothing to
+     * pair with), and no other per-tier knob has a consumer yet, so a map form
+     * (`queues: {high: …}`) is rejected rather than half-supported. When real
+     * per-tier config lands it introduces the map form alongside this list, not in
+     * place of it, so the list stays valid.
+     *
+     * @return array<int, string>
+     */
+    public static function queueTiers(): array
+    {
+        $queues = static::get('queues');
+
+        if (! is_array($queues) || $queues === []) {
+            return [];
+        }
+
+        if (! array_is_list($queues)) {
+            throw new IntegrityCheckException(
+                'The manifest `queues:` block must be a list of tier names in priority '
+                . "order (e.g. `queues:\n  - high\n  - default`). Per-queue configuration "
+                . 'is not supported yet, so the map form is rejected.',
+            );
+        }
+
+        return array_map(static fn ($tier): string => (string) $tier, $queues);
+    }
+
+    /**
+     * How long SQS hides a delivered message before re-delivering it, in seconds —
+     * the queue's VisibilityTimeout, applied to every queue the app provisions
+     * (all tiers, every tenant scope). One app-wide value rather than per-tier:
+     * visibility exists to outlast job runtime, and every tier drains through the
+     * same worker command with a single job timeout, so per-tier values would have
+     * nothing to pair with.
+     *
+     * The default clears the worker's default 60s job timeout with margin — a
+     * visibility below the job timeout re-delivers a message whose job is still
+     * running, so the job executes twice. Raise it in step with the app's
+     * longest-running job.
+     */
+    public static function queueVisibilityTimeout(): int
+    {
+        $seconds = Helpers::validatePositiveInt(
+            static::get('queue-visibility-timeout', 90),
+            'queue-visibility-timeout',
+        );
+
+        if ($seconds > 43200) {
+            throw new IntegrityCheckException(
+                'queue-visibility-timeout must be at most 43200 (12 hours, the SQS maximum)',
+            );
+        }
+
+        return $seconds;
     }
 }

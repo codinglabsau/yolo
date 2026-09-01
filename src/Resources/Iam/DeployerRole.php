@@ -153,9 +153,15 @@ class DeployerRole implements Deletable, Resource, SynchronisesConfiguration
                     // deploy, never their broader profile. The real gate is the
                     // identity-based `sts:AssumeRole` grant on the assuming
                     // principal (the same account-root model as the observer role).
+                    // MFA is required on every tier (see ObserverRole) — the human
+                    // path only; the OIDC statement above stays keyless, since a
+                    // federated CI run has no MFA context to present.
                     'Effect' => 'Allow',
                     'Principal' => ['AWS' => sprintf('arn:aws:iam::%s:root', Aws::accountId())],
                     'Action' => 'sts:AssumeRole',
+                    'Condition' => [
+                        'Bool' => ['aws:MultiFactorAuthPresent' => 'true'],
+                    ],
                 ],
             ],
         ];

@@ -23,6 +23,7 @@ class SyncAccountCommand extends SyncSteppedCommand
     {
         return [
             'account' => [
+                Steps\Sync\Account\SyncServiceLinkedRolesStep::class,
                 Steps\Sync\Account\SyncGithubOidcProviderStep::class,
             ],
         ];

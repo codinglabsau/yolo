@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Aws\Result;
 use Codinglabs\Yolo\Tui\Panels\DatabasePanel;
 
 it('summarises the id and kind', function (): void {
@@ -29,4 +30,19 @@ it('renders cpu, connections, memory and latency charts, converting bytes and se
         ->toContain('Read latency')
         ->toContain('MB')
         ->toContain('ms');
+});
+
+it('reports a declared database that matches no RDS cluster or instance instead of charting nothing', function (): void {
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'typo-db']);
+
+    $captured = [];
+    bindMockRdsClient([
+        'DescribeDBClusters' => new Result(['DBClusters' => []]),
+        'DescribeDBInstances' => new Result(['DBInstances' => []]),
+    ], $captured);
+
+    $panel = new DatabasePanel();
+    $panel->gather();
+
+    expect(implode("\n", $panel->render(80, 20)))->toContain('typo-db')->toContain('matches no RDS cluster or instance');
 });

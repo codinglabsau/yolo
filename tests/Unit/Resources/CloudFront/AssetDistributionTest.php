@@ -49,6 +49,32 @@ beforeEach(function (): void {
     ]);
 });
 
+it('enables additional metrics at create so the first sync converges', function (): void {
+    // The monitoring subscription is desired state, and it must land in create()
+    // — enabling it only in synchroniseConfiguration() makes every fresh
+    // distribution self-drift (created without metrics, flagged as drift on the
+    // very next plan), which trips the deploy gate right after a first sync.
+    $s3 = [];
+    bindRoutedS3Client(['PutBucketPolicy' => new Result()], $s3);
+
+    $cloudFront = bindRecordingCloudFrontClient([
+        'CreateOriginAccessControl' => new Result(['OriginAccessControl' => ['Id' => 'oac-1']]),
+        'CreateResponseHeadersPolicy' => new Result(['ResponseHeadersPolicy' => ['Id' => 'rhp-1']]),
+        'CreateDistributionWithTags' => new Result(['Distribution' => [
+            'Id' => 'DIST123',
+            'ARN' => 'arn:aws:cloudfront::111111111111:distribution/DIST123',
+        ]]),
+    ]);
+
+    (new AssetDistribution())->create();
+
+    $subscription = collect($cloudFront->calls)->firstWhere('name', 'CreateMonitoringSubscription');
+
+    expect($subscription)->not->toBeNull()
+        ->and($subscription['args']['DistributionId'])->toBe('DIST123')
+        ->and($subscription['args']['MonitoringSubscription']['RealtimeMetricsSubscriptionConfig']['RealtimeMetricsSubscriptionStatus'])->toBe('Enabled');
+});
+
 it('names + tags per app + environment', function (): void {
     expect((new AssetDistribution())->name())->toBe('yolo-testing-my-app-assets');
     expect((new AssetDistribution())->tags())->toBe(['Name' => 'yolo-testing-my-app-assets', 'yolo:scope' => 'app', 'yolo:app' => 'my-app']);

@@ -24,24 +24,42 @@ function skipReasonFor(object $step): ?string
     return (new SyncCommand())->skipReason($step);
 }
 
-it('skips solo-only steps in a multi-tenant app', function (): void {
-    writeManifest(['tenants' => ['alpha' => []]]);
+it('skips single-scope steps in an app with tenants', function (): void {
+    writeManifest(['multitenancy' => ['tenants' => ['alpha' => []]]]);
 
     expect(skipReasonFor(new class() implements ExecutesSoloStep
     {
         use FakeStepInvoke;
     }))
-        ->toBe('solo-only step in a multi-tenant app');
+        ->toBe('single-scope step in an app with tenants');
 });
 
-it('skips multi-tenancy steps in a solo app', function (): void {
+it('skips per-tenant steps in a solo app', function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 
     expect(skipReasonFor(new class() implements ExecutesMultitenancyStep
     {
         use FakeStepInvoke;
     }))
-        ->toBe('multi-tenancy step in a solo app');
+        ->toBe('per-tenant step in an app with no tenants');
+});
+
+// A landlord-only `multitenancy` block is multi-tenant *mode* with a single scope,
+// so it takes the single-scope shape — the exact inversion that made a
+// landlord-only manifest deploy as a headless worker before the split.
+it('takes the single-scope shape for a landlord-only multitenancy block', function (): void {
+    writeManifest(['multitenancy' => ['landlord' => ['domain' => 'app.example.com']]]);
+
+    expect(skipReasonFor(new class() implements ExecutesSoloStep
+    {
+        use FakeStepInvoke;
+    }))
+        ->toBeNull()
+        ->and(skipReasonFor(new class() implements ExecutesMultitenancyStep
+        {
+            use FakeStepInvoke;
+        }))
+        ->toBe('per-tenant step in an app with no tenants');
 });
 
 it('skips web steps for a headless app', function (): void {

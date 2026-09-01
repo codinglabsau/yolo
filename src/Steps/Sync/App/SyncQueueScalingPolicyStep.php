@@ -8,7 +8,6 @@ use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
-use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\QueueBacklogPolicy;
 
 /**
@@ -16,8 +15,10 @@ use Codinglabs\Yolo\Resources\ApplicationAutoScaling\QueueBacklogPolicy;
  * scalable target — the policy that scales the queue 1→N on
  * messages-per-running-task. Wired into sync:app only when tasks.queue is set.
  *
- * Skips on a greenfield first sync when the queue service doesn't exist yet (the
- * scalable target lands first, in the same sync pass, just before this).
+ * Never gates on the queue service existing — on a greenfield PLAN pass nothing
+ * exists yet, and a bare SKIPPED there would prune the step from the apply pass
+ * (two-pass contract); the apply runs after the queue service and its scalable
+ * target have been created earlier in the same pass.
  */
 class SyncQueueScalingPolicyStep implements Step
 {
@@ -28,10 +29,6 @@ class SyncQueueScalingPolicyStep implements Step
         // Off when the queue runs a fixed single task (autoscaling: false) — the
         // scalable target's deregistration cascades this policy away, so just skip.
         if (! Manifest::autoscales(ServerGroup::QUEUE)) {
-            return StepResult::SKIPPED;
-        }
-
-        if (! (new EcsService(ServerGroup::QUEUE))->exists()) {
             return StepResult::SKIPPED;
         }
 

@@ -6,9 +6,7 @@ use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
-use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
-use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
 
 /**
@@ -20,8 +18,10 @@ use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
  * than orphaned — App Auto Scaling cascades the step policy when the scalable target
  * is deregistered, but the alarm is standalone and must be deleted explicitly.
  *
- * Skips on a greenfield first sync when the web ECS service doesn't exist yet (the
- * policy attaches to its scalable target).
+ * Never gates on the web ECS service existing — on a greenfield PLAN pass nothing
+ * exists yet, and a bare SKIPPED there would prune the step from the apply pass
+ * (two-pass contract); the apply runs after the service and scalable target the
+ * policy attaches to have been created earlier in the same pass.
  */
 class SyncWebBurstStep implements Step
 {
@@ -29,10 +29,6 @@ class SyncWebBurstStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        if (! (new EcsService(ServerGroup::WEB))->exists()) {
-            return StepResult::SKIPPED;
-        }
-
         $dryRun = (bool) Arr::get($options, 'dry-run');
         $burst = new WebBurstPolicy();
 

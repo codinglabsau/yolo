@@ -7,8 +7,8 @@ namespace Codinglabs\Yolo\Steps\Sync\App;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Aws\Ec2;
 use Codinglabs\Yolo\Aws\Rds;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\EnvManifest;
+use Illuminate\Support\Collection;
 use Aws\Rds\Exception\RdsException;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -21,11 +21,14 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 /**
  * Authorises this app's tasks to reach an EXTERNALLY-hosted database — the
  * peered-migration posture. The manifest `database:` is the only declaration;
- * everything else is discovered live: the instance's VPC (in the env VPC the
- * managed path's SyncRdsSecurityGroupStep owns the rule instead), and its
- * attached security group, which gets the same additive 3306-from-task-SG rule
- * (a same-region peered SG can reference the task SG directly). Discovery
- * can't go stale the way a declared group id would.
+ * everything else is discovered live: the database's VPC (in the env VPC the
+ * managed path's SyncRdsSecurityGroupStep owns the rule instead), its port, and
+ * its attached security group, which gets the same additive
+ * port-from-task-SG rule the managed path writes (a same-region peered SG can
+ * reference the task SG directly). Discovery can't go stale the way a declared
+ * group id would. An Aurora cluster gets the rule on the cluster's security
+ * group; its VPC is a per-member fact (the cluster record carries only the
+ * subnet group's name), read off a member instance.
  *
  * Exactly one attached security group is required to write — two or more is an
  * ambiguous target, surfaced as a warning to wire by hand (the audit's
@@ -42,27 +45,39 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
 
     public function __invoke(array $options): StepResult
     {
-        $target = Manifest::rdsTarget();
+        try {
+            $target = Rds::target();
+        } catch (RdsException|ResourceDoesNotExistException) {
+            // Unreadable or matching nothing (the dashboard step hard-fails on
+            // that, and the audit's posture probe reports it) — sync moves on.
+            return StepResult::SKIPPED;
+        }
 
-        if ($target === null || $target['cluster']) {
-            // Nothing declared, or an Aurora cluster (declare those by endpoint
-            // and wire ingress by hand for now) — nothing to reconcile.
+        if ($target === null) {
             return StepResult::SKIPPED;
         }
 
         try {
-            $instance = Rds::instance($target['identifier']);
+            $discovered = $this->discover($target);
         } catch (RdsException) {
             // Unreadable (not found, or denied under this tier) — the audit's
             // posture probe owns reporting that; sync just moves on.
             return StepResult::SKIPPED;
         }
 
-        if ($instance === null || $this->inEnvironmentVpc($instance)) {
+        if ($discovered === null) {
             return StepResult::SKIPPED;
         }
 
-        $databaseVpcId = $instance['DBSubnetGroup']['VpcId'] ?? null;
+        [$databaseVpcId, $securityGroupIds, $port] = $discovered;
+
+        $rule = $port === null
+            ? 'task-SG ingress rule'
+            : sprintf('%d/tcp-from-task-SG rule', $port);
+
+        if ($this->inEnvironmentVpc($databaseVpcId)) {
+            return StepResult::SKIPPED;
+        }
 
         // A cross-VPC security-group reference is only valid over an ACTIVE
         // peering, so an external database whose VPC is neither peered nor
@@ -72,32 +87,36 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
         // reference is valid (and the plan pass reports the pending rule).
         if ($databaseVpcId === null || ! $this->reachable($databaseVpcId)) {
             $this->recordWarning(sprintf(
-                'The database "%s" is externally hosted (%s) with no peering to its VPC — the 3306-from-task-SG rule was not written. Declare the VPC in the env manifest `peering` list to bridge it.',
+                'The database "%s" is externally hosted (%s) with no peering to its VPC — the %s was not written. Declare the VPC in the env manifest `peering` list to bridge it.',
                 $target['identifier'],
                 $databaseVpcId ?? 'unknown VPC',
+                $rule,
             ));
 
             return StepResult::SKIPPED;
         }
 
-        $securityGroupIds = collect($instance['VpcSecurityGroups'] ?? [])
-            ->pluck('VpcSecurityGroupId')
-            ->filter()
-            ->values();
-
         if ($securityGroupIds->count() !== 1) {
             $this->recordWarning(sprintf(
-                'The external database "%s" carries %d attached security groups — ambiguous, so the 3306-from-task-SG rule was not written. Add it to the right group by hand (`yolo audit` verifies it).',
+                'The external database "%s" carries %d attached security groups — ambiguous, so the %s was not written. Add it to the right group by hand (`yolo audit` verifies it).',
                 $target['identifier'],
                 $securityGroupIds->count(),
+                $rule,
             ));
 
+            return StepResult::SKIPPED;
+        }
+
+        // No port on the record (an instance still being created) — there is
+        // nothing to authorise yet, and guessing one would leave a rule on a
+        // foreign group that YOLO can never revoke. The next sync writes it.
+        if ($port === null) {
             return StepResult::SKIPPED;
         }
 
         $dryRun = (bool) Arr::get($options, 'dry-run');
 
-        if ($this->reconcileTaskIngressRule($securityGroupIds->first(), 3306, 'Enable Fargate tasks to connect to the external database', $dryRun, foreign: true)) {
+        if ($this->reconcileTaskIngressRule($securityGroupIds->first(), $port, 'Enable Fargate tasks to connect to the external database', $dryRun, foreign: true)) {
             return $dryRun ? StepResult::WOULD_SYNC : StepResult::SYNCED;
         }
 
@@ -105,16 +124,45 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
     }
 
     /**
-     * Whether the instance already sits in the environment's VPC — then it's
+     * The database's VPC, attached security groups and port, read off the live
+     * record for whichever kind the manifest name classified as. Null when the
+     * record has gone missing between classification and here.
+     *
+     * @param  array{identifier: string, cluster: bool}  $target
+     * @return array{0: string|null, 1: Collection<int, string>, 2: int|null}|null
+     */
+    protected function discover(array $target): ?array
+    {
+        $record = $target['cluster'] ? Rds::cluster($target['identifier']) : Rds::instance($target['identifier']);
+
+        if ($record === null) {
+            return null;
+        }
+
+        // A cluster record's DBSubnetGroup is just the group's NAME — the VPC
+        // is a per-member fact, so read it off a member instance.
+        $vpcId = $target['cluster']
+            ? (Rds::clusterInstances($target['identifier'])[0]['DBSubnetGroup']['VpcId'] ?? null)
+            : ($record['DBSubnetGroup']['VpcId'] ?? null);
+
+        return [
+            $vpcId,
+            collect($record['VpcSecurityGroups'] ?? [])->pluck('VpcSecurityGroupId')->filter()->values(),
+            Rds::portFromRecord($record, $target['cluster']),
+        ];
+    }
+
+    /**
+     * Whether the database already sits in the environment's VPC — then it's
      * the managed posture and the shared RDS security group's rule (written by
      * SyncRdsSecurityGroupStep) is the path, not this step. A greenfield plan
      * pass (no env VPC yet) can't have an in-VPC database, so absence reads as
      * external-or-unknown and the VPC comparison simply won't match.
      */
-    protected function inEnvironmentVpc(array $instance): bool
+    protected function inEnvironmentVpc(?string $databaseVpcId): bool
     {
         try {
-            return ($instance['DBSubnetGroup']['VpcId'] ?? null) === (new Vpc())->arn();
+            return $databaseVpcId === (new Vpc())->arn();
         } catch (ResourceDoesNotExistException) {
             return false;
         }

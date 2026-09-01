@@ -8,6 +8,7 @@ use Codinglabs\Yolo\EnvManifest;
 use Symfony\Component\Yaml\Yaml;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Services\Lifecycle;
+use Codinglabs\Yolo\Contracts\AdminCommand;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Input\InputArgument;
@@ -40,7 +41,7 @@ use function Laravel\Prompts\warning;
  *   yolo services production --add=typesense --set version=29.0 --set nodes=3
  *   yolo services production --remove=typesense
  */
-class ServicesCommand extends Command
+class ServicesCommand extends Command implements AdminCommand
 {
     use ManagesEnvironmentFiles;
 

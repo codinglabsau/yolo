@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Steps;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Contracts\DeployerCommand;
 use Symfony\Component\Console\Input\InputOption;
@@ -99,5 +100,36 @@ class DeployCommand extends SteppedCommand implements DeployerCommand
         foreach ($this->statusLines(static::gatherServiceStatuses(withLoad: false), time(), deployments: false, load: false) as $line) {
             $this->output->writeln($line);
         }
+
+        foreach ($this->appUrlLines() as $line) {
+            $this->output->writeln($line);
+        }
+    }
+
+    /**
+     * The freshly deployed app's public URL(s) — the "go visit it" link the
+     * summary ends on. The app's own domain (a solo app's, or a multi-tenant app's
+     * landlord) plus every tenant served on a domain of its own. Headless apps (no
+     * domain anywhere) get no line.
+     *
+     * @return array<int, string>
+     */
+    protected function appUrlLines(): array
+    {
+        // Raw tenant config, not Manifest::tenants() — that derives each apex via
+        // the Route 53 suffix walk, and printing URLs needs no AWS reads.
+        $domains = array_values(array_unique([
+            ...array_filter([Manifest::domain()]),
+            ...Manifest::tenantDomains(),
+        ]));
+
+        if ($domains === []) {
+            return [];
+        }
+
+        return ['', ...array_map(
+            fn (string $domain): string => sprintf('  <options=bold>Live</> <href=https://%s>https://%s</>', $domain, $domain),
+            $domains,
+        )];
     }
 }

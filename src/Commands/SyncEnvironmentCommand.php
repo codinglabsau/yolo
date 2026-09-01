@@ -167,16 +167,23 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 // `SyncLoadBalancerStep` enables access logs (AWS verifies the
                 // policy at attribute-write time).
                 Steps\Sync\Environment\SyncS3LogsBucketStep::class,
+                // env backups bucket — the apps' logical database dumps, one
+                // write-only prefix per app task role
+                Steps\Sync\Environment\SyncS3BackupsBucketStep::class,
                 // load balancer + :80 listener
                 Steps\Sync\Environment\SyncLoadBalancerStep::class,
                 Steps\Sync\Environment\SyncHttpListenerStep::class,
-                // WAF (opt-in via `waf: true`) — the IP sets are referenced by the
-                // web ACL's rules, so they're created first; the ACL is then bound
-                // to the load balancer. Inert unless the manifest enables it.
+                // WAF — the IP sets are referenced by the web ACL's rules and the
+                // log group by its logging configuration, so all three are created
+                // first; the ACL is then bound to the load balancer.
                 Steps\Sync\Environment\SyncWafAllowIpSetStep::class,
                 Steps\Sync\Environment\SyncWafBlockIpSetStep::class,
+                Steps\Sync\Environment\SyncWafLogGroupStep::class,
                 Steps\Sync\Environment\SyncWafWebAclStep::class,
                 Steps\Sync\Environment\SyncWafAssociationStep::class,
+                // The env alert alarms — after the SNS topic they fire to and
+                // the load balancer whose ARN suffix they dimension on.
+                Steps\Sync\Environment\SyncAlertAlarmsStep::class,
                 // Last on purpose: the version-of-record stamp only lands after
                 // the rest of the tier has synced under the stamped release.
                 Steps\Sync\Environment\SyncEnvironmentVersionStep::class,

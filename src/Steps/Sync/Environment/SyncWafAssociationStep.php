@@ -57,11 +57,17 @@ class SyncWafAssociationStep implements ExecutesWebStep
         }
 
         // Retry on eventual consistency: a just-created web ACL isn't immediately
-        // associable, so the first attempt can report it as unavailable.
+        // associable, so the first attempt can report it as unavailable. On a
+        // greenfield environment sync both sides of this association are minutes
+        // old — the web ACL created moments earlier in the same scope, the ALB
+        // only just past `active` — and propagation there has been observed to
+        // outlast the default budget, failing the whole sync on the last step of
+        // a first sync that a plain re-run then completes. Give it a couple of
+        // minutes; every steady-state run still short-circuits above.
         WafV2::retryWhileUnavailable(fn () => Aws::wafV2()->associateWebACL([
             'WebACLArn' => $webAclArn,
             'ResourceArn' => $loadBalancerArn,
-        ]));
+        ]), maxAttempts: 24, sleepSeconds: 5);
 
         return StepResult::SYNCED;
     }

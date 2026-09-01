@@ -8,8 +8,8 @@ You don't need prior YOLO knowledge. Each step links to a deeper page if you wan
 
 - **PHP 8.3+** and **Composer**
 - **Docker**, running locally — YOLO builds your container image on your machine
-- An **AWS account** and a **named AWS profile** configured on your machine (in `~/.aws/config` / `~/.aws/credentials`). Don't use the `default` profile — give it a specific name like `myapp-production`. (Setting up a whole team, or want short-lived MFA-backed sessions instead of static keys? See [Developer Credentials](/guide/credentials).)
-- **For a public app:** a domain you can manage in **Route 53** on that account. (You can skip this and run a [headless app](/guide/domains#headless-apps) with no public URL.)
+- An **AWS account** and an **access key for your IAM user** — step 3's `yolo configure` turns it into a named profile with short-lived sessions. (Already have a named profile in `~/.aws/config`? That works too — just don't use the `default` profile.)
+- **For a web app:** a domain you can manage in **Route 53** on that account — a web task requires one. (A [worker app](/guide/domains#headless-apps) — a standalone queue/scheduler with no web task — needs no domain.)
 
 ::: tip The whole thing in one line
 Once you've done the setup below, day-to-day it's just:
@@ -46,48 +46,60 @@ yolo init
 This interactive command scaffolds everything you need:
 
 - **`yolo.yml`** — your manifest, pre-filled with the environment you named (e.g. `production`) from your answers (app name, AWS account ID, region, domain).
-- **`Dockerfile`** and **`.dockerignore`** — sensible defaults you can customise. See [The Container Image](/guide/images).
-- **`.env.<environment>`** — a starter environment file.
-- It appends `.yolo` and your environment's `.env` file (plus `.env.staging`/`.env.production`) to your `.gitignore`, and offers to install the [AWS Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) (needed later for `yolo run`).
+- **`Dockerfile`**, **`.dockerignore`**, and **`docker/php.ini`** — sensible defaults you can customise. See [The Container Image](/guide/images).
+- **`.env.<environment>`** — a starter environment file (offered, default yes): your `.env.example` with `APP_ENV`, `APP_DEBUG`, `APP_URL`, and a freshly generated `APP_KEY` corrected for the environment.
+- It appends `.yolo` and your environment's `.env` file (plus `.env.staging`/`.env.production`) to your `.gitignore`, and offers to run [`yolo configure`](/reference/commands#yolo-configure) at the end to set up this machine's credentials (step 3).
 
 Open `yolo.yml` and skim it — it's short and commented. You can tweak it now or come back later. The full key reference is in the [Manifest reference](/reference/manifest).
 
 ## 3. Point YOLO at AWS
 
-YOLO authenticates to AWS using a **named profile per environment**, set in your local `.env` file:
+YOLO authenticates to AWS using a **named profile per environment**. If you accepted the `configure` offer at the end of `init`, this is already done — skip to step 4. Otherwise run it now — profile, short-lived-session credential helper, and the `.env` wiring in one interactive run:
+
+```bash
+yolo configure production
+```
+
+It ends with a live STS verification, so when it goes green this machine is provably ready. See [`yolo configure`](/reference/commands#yolo-configure) for each step, and [Developer Credentials](/guide/credentials) for the full team-onboarding picture (IAM users, access tiers, MFA).
+
+Already have a named profile? Point YOLO at it in your local `.env` instead:
 
 ```bash
 # .env
 YOLO_PRODUCTION_AWS_PROFILE=myapp-production
 ```
 
-The pattern is `YOLO_<ENVIRONMENT>_AWS_PROFILE`. Before YOLO touches AWS it calls STS to confirm the profile resolves to the same account ID you declared in `yolo.yml` — so a wrong profile fails fast instead of provisioning into the wrong account.
+The pattern is `YOLO_<ENVIRONMENT>_AWS_PROFILE`. Either way, before YOLO touches AWS it calls STS to confirm the profile resolves to the same account ID you declared in `yolo.yml` — so a wrong profile fails fast instead of provisioning into the wrong account.
 
 ::: warning
 Don't point this at your `default` profile. YOLO rejects it deliberately — a named profile makes "which account am I about to change?" unambiguous.
 :::
 
-## 4. Push your environment file
+## 4. Provision your infrastructure
 
-Your application's runtime `.env` lives in S3, not in the image source. Fill in `.env.production` (database, cache, mail, etc.), then push it:
+This is the big one — `yolo sync` creates the VPC, load balancer, ECS cluster, IAM roles, S3 buckets, certificate, and DNS for your app. On a **fresh environment** the very first sync needs the bootstrap flag:
+
+```bash
+yolo sync production --dangerously-skip-permissions
+```
+
+::: info Why the flag?
+Normally `sync` caps itself to the [admin tier](/guide/provisioning) by assuming a YOLO-provisioned role — but on the first run that role doesn't exist yet (creating it is part of what this sync does), and the tier guard fails closed rather than silently falling back to your full identity. The flag runs this one sync uncapped to break the loop; every sync after it is capped as usual: just `yolo sync production`.
+:::
+
+YOLO **always shows the plan before it touches anything** — a diff grouped by scope (account → environment → app) of exactly what would be created or changed — then asks you to confirm. So to preview, just run it and read the plan; decline (or Ctrl-C) if it's not what you expected, confirm when it looks right. The first sync provisions a fair amount and can take several minutes (ACM certificate validation and load balancer provisioning are the slow parts). It's safe to re-run any time — a second `sync` on an unchanged manifest reports "already in sync" and does nothing.
+
+See [Provisioning](/guide/provisioning) for what each scope creates and how the plan/confirm/apply flow works.
+
+## 5. Push your environment file
+
+Your application's runtime `.env` lives in S3, not in the image source — in the app config bucket the sync you just ran created. Fill in `.env.production` (database, cache, mail, etc.), then push it:
 
 ```bash
 yolo env:push production
 ```
 
 YOLO shows a diff of what's changing and asks for confirmation before uploading. This `.env.production` is baked into the image at build time. More in [Environment Files](/guide/environment-files).
-
-## 5. Provision your infrastructure
-
-This is the big one — `yolo sync` creates the VPC, load balancer, ECS cluster, IAM roles, S3 buckets, certificate, and DNS for your app:
-
-```bash
-yolo sync production
-```
-
-YOLO **always shows the plan before it touches anything** — a diff grouped by scope (account → environment → app) of exactly what would be created or changed — then asks you to confirm. So to preview, just run it and read the plan; decline (or Ctrl-C) if it's not what you expected, confirm when it looks right. The first sync provisions a fair amount and can take several minutes (ACM certificate validation and load balancer provisioning are the slow parts). It's safe to re-run any time — a second `sync` on an unchanged manifest reports "already in sync" and does nothing.
-
-See [Provisioning](/guide/provisioning) for what each scope creates and how the plan/confirm/apply flow works.
 
 ## 6. Deploy
 

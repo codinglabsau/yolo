@@ -1,6 +1,7 @@
 <?php
 
 use Aws\Command;
+use Codinglabs\Yolo\Enums\StepResult;
 use Symfony\Component\Filesystem\Filesystem;
 use Codinglabs\Yolo\Steps\Deploy\PushAssetsToS3Step;
 
@@ -36,6 +37,15 @@ function uploadKeys(string $root): array
 
     return $keys;
 }
+
+it('skips the push for a web-less app — no distribution serves the bucket', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => false, 'queue' => false, 'scheduler' => true],
+    ]);
+
+    expect((new PushAssetsToS3Step('testing'))([]))->toBe(StepResult::SKIPPED);
+});
 
 it('uploads ordinary assets across the whole public/ tree', function (): void {
     $this->root = seedPublic([

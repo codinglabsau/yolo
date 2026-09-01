@@ -8,8 +8,10 @@ use Aws\CommandInterface;
 use Codinglabs\Yolo\Helpers;
 use GuzzleHttp\Promise\Create;
 use Aws\Exception\AwsException;
+use Codinglabs\Yolo\Services\Alerts;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\CloudWatch\Dashboard;
+use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 use Codinglabs\Yolo\Steps\Sync\App\SyncCloudWatchDashboardStep;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
 
@@ -39,6 +41,8 @@ function dashboardContext(array $overrides = []): array
         'queueService' => null,
         'schedulerService' => null,
         'rds' => ['identifier' => 'my-cluster', 'cluster' => true],
+        'databaseWriterClass' => 'db.r6g.large',
+        'cacheNodeId' => 'yolo-testing-cache-001',
         'buckets' => ['yolo-111111111111-testing-my-app-config', 'yolo-111111111111-testing-my-app-assets'],
         'taskLogGroup' => '/yolo/testing-my-app',
         'ivsLogGroup' => null,
@@ -89,6 +93,11 @@ function bindDashboardEnv(string $body): void
 
 beforeEach(function (): void {
     writeManifest(['region' => 'ap-southeast-2', 'account-id' => '111111111111']);
+
+    // resolveContext probes the env cache cluster for the # Cache section —
+    // an empty ElastiCache world reads as "no cluster yet" (section omitted).
+    $elastiCache = [];
+    bindMockElastiCacheClient([], $elastiCache);
 });
 
 it('names the dashboard per app + environment', function (): void {
@@ -204,6 +213,49 @@ it('omits the target-health panel when the target group is not resolved yet', fu
     expect(findWidget($body, 'Target health'))->toBeNull();
     // The 5xx rate only needs the ALB, so it still renders and takes the left slot.
     expect(findWidget($body, '5xx error rate')['x'])->toBe(0);
+});
+
+it('draws every alert alarm threshold as a red line from the same values the alarms sync', function (): void {
+    $body = Dashboard::body(dashboardContext());
+
+    $line = function (?array $widget): array {
+        expect($widget)->not->toBeNull();
+
+        return collect($widget['properties']['annotations']['horizontal'])
+            ->firstWhere('color', Dashboard::RED);
+    };
+
+    expect($line(findWidget($body, '5xx error rate'))['value'])->toBe(Alerts::WEB_5XX_RATE_PERCENT);
+    expect($line(findWidget($body, 'HTTP errors'))['value'])->toBe(Alerts::ALB_5XX_PER_FIVE_MINUTES);
+    expect($line(findWidget($body, 'RDS CPU'))['value'])->toBe(Alerts::DATABASE_CPU_PERCENT);
+    expect($line(findWidget($body, 'RDS connections'))['value'])->toBe(Alerts::databaseConnectionsCeiling('db.r6g.large'));
+    expect($line(findWidget($body, 'RDS freeable memory'))['value'])->toBe(Alerts::databaseMemoryFloorBytes('db.r6g.large'));
+    expect($line(findWidget($body, 'Aurora buffer cache hit ratio'))['value'])->toBe(Alerts::DATABASE_BUFFER_CACHE_PERCENT);
+
+    // The HTTP errors panel runs at the alarm's own 5-minute period so the
+    // line means what the alarm means.
+    expect(findWidget($body, 'HTTP errors')['properties']['period'])->toBe(300);
+});
+
+it('renders the # Cache section with the valkey alarm lines, and omits it without a cache node', function (): void {
+    $body = Dashboard::body(dashboardContext());
+
+    expect(widgetTitles($body))->toContain('# Cache');
+    expect(findWidget($body, 'Valkey memory')['properties']['annotations']['horizontal'][0]['value'])->toBe(Alerts::VALKEY_MEMORY_PERCENT);
+
+    $evictions = findWidget($body, 'Valkey evictions');
+    expect($evictions['properties']['annotations']['horizontal'][0]['value'])->toBe(Alerts::VALKEY_EVICTIONS_PER_FIVE_MINUTES)
+        ->and($evictions['properties']['period'])->toBe(300);
+
+    expect(widgetTitles(Dashboard::body(dashboardContext(['cacheNodeId' => null]))))->not->toContain('# Cache');
+});
+
+it('omits the capacity-derived lines for a Serverless v2 writer but keeps the percentage lines', function (): void {
+    $body = Dashboard::body(dashboardContext(['databaseWriterClass' => 'db.serverless']));
+
+    expect(findWidget($body, 'RDS connections')['properties'])->not->toHaveKey('annotations');
+    expect(findWidget($body, 'RDS freeable memory')['properties'])->not->toHaveKey('annotations');
+    expect(findWidget($body, 'RDS CPU')['properties']['annotations']['horizontal'][0]['value'])->toBe(Alerts::DATABASE_CPU_PERCENT);
 });
 
 it('expresses the 5xx error rate as this app target 5xx over its own requests with a 1% SLO line', function (): void {
@@ -454,6 +506,30 @@ it('charts Aurora DML throughput for a cluster and read/write IOPS for a plain i
         ->and($iops['properties']['metrics'][0])->toContain('AWS/RDS', 'DBInstanceIdentifier', 'my-db');
 });
 
+it('splits a cluster\'s CPU and connections into writer and reader series — a plain instance charts one', function (): void {
+    // The READER role is a static aggregate dimension: readers chart without
+    // enumerating members, so the body stays deterministic as readers scale.
+    $cpu = findWidget(Dashboard::body(dashboardContext()), 'RDS CPU');
+    expect(collect($cpu['properties']['metrics'])->map(fn (array $m): mixed => end($m)['label'])->all())->toBe(['Writer', 'Readers'])
+        ->and($cpu['properties']['metrics'][0])->toContain('DBClusterIdentifier', 'my-cluster', 'Role', 'WRITER')
+        ->and($cpu['properties']['metrics'][1])->toContain('DBClusterIdentifier', 'my-cluster', 'Role', 'READER');
+
+    $connections = findWidget(Dashboard::body(dashboardContext()), 'RDS connections');
+    expect($connections['properties']['metrics'])->toHaveCount(2);
+
+    $instance = Dashboard::body(dashboardContext(['rds' => ['identifier' => 'my-db', 'cluster' => false]]));
+    expect(findWidget($instance, 'RDS CPU')['properties']['metrics'])->toHaveCount(1)
+        ->and(findWidget($instance, 'RDS connections')['properties']['metrics'])->toHaveCount(1);
+});
+
+it('charts Aurora replica lag for a cluster only', function (): void {
+    $lag = findWidget(Dashboard::body(dashboardContext()), 'Aurora replica lag');
+    expect($lag)->not->toBeNull()
+        ->and($lag['properties']['metrics'][0])->toContain('AWS/RDS', 'AuroraReplicaLag', 'DBClusterIdentifier', 'my-cluster', 'Role', 'READER');
+
+    expect(findWidget(Dashboard::body(dashboardContext(['rds' => ['identifier' => 'my-db', 'cluster' => false]])), 'Aurora replica lag'))->toBeNull();
+});
+
 it('creates the dashboard when it does not exist (apply) and reports WOULD_CREATE on a dry-run', function (): void {
     bindDashboardEnv("APP_ENV=production\n");
 
@@ -468,6 +544,33 @@ it('creates the dashboard when it does not exist (apply) and reports WOULD_CREAT
 
     expect((new SyncCloudWatchDashboardStep())(['dry-run' => false]))->toBe(StepResult::CREATED);
     expect(collect($captured)->pluck('name'))->toContain('PutDashboard');
+});
+
+it('fails the sync when the declared database does not exist — a manifest error, not an omitted panel', function (): void {
+    writeManifest(['region' => 'ap-southeast-2', 'account-id' => '111111111111', 'database' => 'not-created-yet']);
+
+    $captured = [];
+    bindMockRdsClient([
+        'DescribeDBClusters' => new Result(['DBClusters' => []]),
+        'DescribeDBInstances' => new Result(['DBInstances' => []]),
+    ], $captured);
+
+    // Declaring a database ahead of creating it must not read as a clean sync —
+    // the key is declared once the database exists, and the message says so.
+    expect(fn (): array => (new Dashboard())->resolveContext())
+        ->toThrow(ResourceDoesNotExistException::class, 'Create the database first');
+});
+
+it('charts the database once it exists', function (): void {
+    writeManifest(['region' => 'ap-southeast-2', 'account-id' => '111111111111', 'database' => 'app-db']);
+
+    $captured = [];
+    bindMockRdsClient([
+        'DescribeDBClusters' => new Result(['DBClusters' => []]),
+        'DescribeDBInstances' => new Result(['DBInstances' => [['DBInstanceIdentifier' => 'app-db']]]),
+    ], $captured);
+
+    expect((new Dashboard())->resolveContext()['rds'])->toBe(['identifier' => 'app-db', 'cluster' => false]);
 });
 
 it('makes no write when the live body already matches', function (): void {

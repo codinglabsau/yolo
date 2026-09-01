@@ -5,18 +5,61 @@ namespace Codinglabs\Yolo\Commands;
 use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Symfony\Component\Process\Process;
-use Symfony\Component\Process\ExecutableFinder;
+use Symfony\Component\Console\Application;
+use Symfony\Component\Console\Input\ArrayInput;
+use Codinglabs\Yolo\Steps\Build\ConfigureEnvAndVersionStep;
 
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\text;
 use function Laravel\Prompts\intro;
+use function Laravel\Prompts\select;
 use function Laravel\Prompts\confirm;
-use function Laravel\Prompts\warning;
 
 class InitCommand extends Command
 {
+    /**
+     * The commercial AWS regions, keyed by region code. Curated rather than
+     * fetched — the SSM region listing needs credentials this command runs
+     * without, and new regions appear rarely enough that a release keeps pace.
+     */
+    protected const array AWS_REGIONS = [
+        'af-south-1' => 'af-south-1 — Cape Town',
+        'ap-east-1' => 'ap-east-1 — Hong Kong',
+        'ap-east-2' => 'ap-east-2 — Taipei',
+        'ap-northeast-1' => 'ap-northeast-1 — Tokyo',
+        'ap-northeast-2' => 'ap-northeast-2 — Seoul',
+        'ap-northeast-3' => 'ap-northeast-3 — Osaka',
+        'ap-south-1' => 'ap-south-1 — Mumbai',
+        'ap-south-2' => 'ap-south-2 — Hyderabad',
+        'ap-southeast-1' => 'ap-southeast-1 — Singapore',
+        'ap-southeast-2' => 'ap-southeast-2 — Sydney',
+        'ap-southeast-3' => 'ap-southeast-3 — Jakarta',
+        'ap-southeast-4' => 'ap-southeast-4 — Melbourne',
+        'ap-southeast-5' => 'ap-southeast-5 — Malaysia',
+        'ap-southeast-6' => 'ap-southeast-6 — New Zealand',
+        'ap-southeast-7' => 'ap-southeast-7 — Thailand',
+        'ca-central-1' => 'ca-central-1 — Montreal',
+        'ca-west-1' => 'ca-west-1 — Calgary',
+        'eu-central-1' => 'eu-central-1 — Frankfurt',
+        'eu-central-2' => 'eu-central-2 — Zurich',
+        'eu-north-1' => 'eu-north-1 — Stockholm',
+        'eu-south-1' => 'eu-south-1 — Milan',
+        'eu-south-2' => 'eu-south-2 — Spain',
+        'eu-west-1' => 'eu-west-1 — Ireland',
+        'eu-west-2' => 'eu-west-2 — London',
+        'eu-west-3' => 'eu-west-3 — Paris',
+        'il-central-1' => 'il-central-1 — Tel Aviv',
+        'me-central-1' => 'me-central-1 — UAE',
+        'me-south-1' => 'me-south-1 — Bahrain',
+        'mx-central-1' => 'mx-central-1 — Mexico',
+        'sa-east-1' => 'sa-east-1 — São Paulo',
+        'us-east-1' => 'us-east-1 — N. Virginia',
+        'us-east-2' => 'us-east-2 — Ohio',
+        'us-west-1' => 'us-west-1 — N. California',
+        'us-west-2' => 'us-west-2 — Oregon',
+    ];
+
     protected string $appName;
 
     protected string $environment;
@@ -48,9 +91,40 @@ class InitCommand extends Command
         $this->initialiseDockerfile();
         $this->initialiseDockerignore();
         $this->initialiseEnv();
-        $this->ensureSessionManagerPlugin();
 
         info('Manifest generated successfully.');
+
+        $this->offerCredentialsSetup();
+    }
+
+    /**
+     * The natural next step after scaffolding is authenticating the machine, so
+     * offer `configure` inline — same pattern as the Session Manager plugin
+     * offer. Init and configure stay separate commands because their cadences
+     * differ (once per app vs once per machine per account): a dev joining an
+     * existing app runs configure without ever running init, and an
+     * already-configured machine scaffolding a second app declines here.
+     */
+    protected function offerCredentialsSetup(): void
+    {
+        if (! $this->input->isInteractive() || ! $this->getApplication() instanceof Application) {
+            return;
+        }
+
+        if (! confirm(sprintf("Set up this machine's AWS credentials for %s now?", $this->environment), default: true)) {
+            note(sprintf('Run `yolo configure %s` when you are ready.', $this->environment));
+
+            return;
+        }
+
+        $exitCode = $this->getApplication()->find('configure')->run(
+            new ArrayInput(['environment' => $this->environment]),
+            $this->output,
+        );
+
+        if ($exitCode !== self::SUCCESS) {
+            note(sprintf('Credential setup did not finish — re-run `yolo configure %s` any time.', $this->environment));
+        }
     }
 
     protected function initialiseManifest(): void
@@ -68,21 +142,34 @@ class InitCommand extends Command
                     $this->appName,
                     $this->environment,
                     text('What is the account ID of the AWS account you want to deploy to?'),
-                    text('Which AWS region do you want to deploy to?', default: env('AWS_DEFAULT_REGION', 'ap-southeast-2')),
+                    select(
+                        label: 'Which AWS region do you want to deploy to?',
+                        options: self::AWS_REGIONS,
+                        default: array_key_exists($preferredRegion = (string) env('AWS_DEFAULT_REGION', 'ap-southeast-2'), self::AWS_REGIONS)
+                            ? $preferredRegion
+                            : 'ap-southeast-2',
+                        scroll: 12,
+                    ),
                 ],
                 subject: file_get_contents(Paths::stubs('yolo.yml.stub'))
             )
         );
 
         if (confirm('Is the app multi-tenant?', default: false)) {
-            Manifest::put('tenants', [
-                'tenant-id' => ['domain' => 'tenant-domain.tld'],
+            // The landlord's own host, wildcarded, is the cheapest tenancy to start
+            // on: tenants are served beneath it with no per-tenant infrastructure.
+            // A tenant graduates to its own domain later by gaining a `domain` key.
+            Manifest::put('multitenancy', [
+                'landlord' => [
+                    'domain' => text('What is the landlord domain?', placeholder: 'eg. app.example.com'),
+                    'wildcard-subdomains' => true,
+                ],
+                'tenants' => [
+                    'tenant-id' => null,
+                ],
             ]);
 
-            Manifest::put('deploy', [
-                'php artisan migrate --path=database/migrations/landlord --force',
-                'php artisan tenants:artisan "migrate --path=database/migrations/tenant --database=tenant --force"',
-            ]);
+            Manifest::put('deploy', $this->multitenantDeploySteps());
         } else {
             Manifest::put('domain', text('What is the domain?', placeholder: 'eg. example.com'));
 
@@ -95,6 +182,39 @@ class InitCommand extends Command
         if ($s3Bucket !== '' && $s3Bucket !== '0') {
             Manifest::put('bucket', $s3Bucket);
         }
+    }
+
+    /**
+     * How an app stores its tenants decides what `deploy` has to run, and the
+     * migration layout gives it away. A database-per-tenant app keeps its
+     * migrations split (`landlord/` holds the tenant registry, `tenant/` the
+     * per-tenant schema) and has to run both — the second over every tenant
+     * connection. A single-database app scoping rows by a `tenant_id` column
+     * has one flat set and one `migrate`, exactly like a solo app.
+     *
+     * Scaffolding the split form unconditionally left the flat majority with a
+     * deploy hook that fails on the first run: no such path, no such command.
+     * Assume the layout on disk, and say which was assumed.
+     *
+     * @return array<int, string>
+     */
+    protected function multitenantDeploySteps(): array
+    {
+        if (! is_dir(Paths::base('database/migrations/landlord'))
+            || ! is_dir(Paths::base('database/migrations/tenant'))) {
+            note('Scaffolded a single `migrate` deploy hook — no `database/migrations/landlord` and `tenant` directories, so this reads as a single-database app. If tenants live in databases of their own, split the hook in `yolo.yml`.');
+
+            return [
+                'php artisan migrate --force',
+            ];
+        }
+
+        note('Scaffolded landlord and per-tenant `migrate` deploy hooks from the split `database/migrations` layout.');
+
+        return [
+            'php artisan migrate --path=database/migrations/landlord --force',
+            'php artisan tenants:artisan "migrate --path=database/migrations/tenant --database=tenant --force"',
+        ];
     }
 
     protected function initialiseDockerfile(): void
@@ -115,34 +235,6 @@ class InitCommand extends Command
         }
 
         copy(Paths::stubs('.dockerignore.stub'), Paths::base('.dockerignore'));
-    }
-
-    /**
-     * `yolo run` opens a shell / runs one-off commands in a running container
-     * via ECS Exec, which needs AWS's Session Manager plugin on this machine.
-     * Offer to install it at setup so it's there before it's needed. (A future
-     * `yolo doctor` will report its status alongside Docker / the AWS CLI.)
-     */
-    protected function ensureSessionManagerPlugin(): void
-    {
-        if ((new ExecutableFinder())->find('session-manager-plugin')) {
-            info('AWS Session Manager plugin found.');
-
-            return;
-        }
-
-        note("The AWS Session Manager plugin isn't installed — `yolo run` needs it to open a shell or run one-off commands in a running container.");
-
-        if (PHP_OS_FAMILY === 'Darwin' && $this->input->isInteractive() && (new ExecutableFinder())->find('brew') && confirm('Install it now with Homebrew? (you may be prompted for your password)', default: true)) {
-            (new Process(['brew', 'install', '--cask', 'session-manager-plugin']))
-                ->setTty(Process::isTtySupported())
-                ->setTimeout(null)
-                ->run();
-
-            return;
-        }
-
-        warning('Install it before using `yolo run`: https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html');
     }
 
     protected function gitIgnoreFilesAndDirectories(): void
@@ -171,13 +263,69 @@ class InitCommand extends Command
     {
         $envFile = '.env.' . $this->environment;
 
-        if (! file_exists(Paths::base($envFile))) {
-            file_put_contents(
-                Paths::base($envFile),
-                'APP_ENV=' . $this->environment . PHP_EOL .
-                'APP_KEY=' . PHP_EOL .
-                'APP_DEBUG=false' . PHP_EOL,
-            );
+        if (file_exists(Paths::base($envFile))) {
+            note(sprintf('%s already exists — leaving it untouched.', $envFile));
+
+            return;
         }
+
+        if (! confirm(sprintf('Create a starter %s file?', $envFile), default: true)) {
+            return;
+        }
+
+        file_put_contents(Paths::base($envFile), $this->starterEnvContents());
+
+        info(sprintf('Created %s with a fresh APP_KEY.', $envFile));
+        note(sprintf(
+            'Review %s before deploying — fill in the app-specific values (database, mail, third-party keys), then upload it with `yolo env:push %s`.',
+            $envFile,
+            $this->environment,
+        ));
+    }
+
+    /**
+     * The starter env is the app's own .env.example corrected for the target
+     * environment: APP_ENV, APP_DEBUG=false, a freshly minted APP_KEY (the same
+     * base64 32-byte key `artisan key:generate` produces), and APP_URL when the
+     * manifest declares a domain. Every AWS_* key and every platform-injected
+     * key is stripped — ConfigureEnvAndVersionStep writes those from the
+     * manifest at build time, so a copy here is drift at best and a build
+     * failure at worst (the stock example's LOG_CHANNEL=stack conflicts with
+     * the enforced stderr).
+     */
+    protected function starterEnvContents(): string
+    {
+        $overrides = collect([
+            'APP_ENV' => $this->environment,
+            'APP_KEY' => 'base64:' . base64_encode(random_bytes(32)),
+            'APP_DEBUG' => 'false',
+        ])->when(
+            Manifest::hasDomain(),
+            fn ($overrides) => $overrides->put('APP_URL', 'https://' . Manifest::domain())
+        );
+
+        if (! file_exists(Paths::base('.env.example'))) {
+            return $overrides->map(fn ($value, $key): string => $key . '=' . $value)->implode(PHP_EOL) . PHP_EOL;
+        }
+
+        $contents = preg_replace(
+            '/\n{3,}/',
+            "\n\n",
+            (string) preg_replace(
+                sprintf('/^(?:AWS_[A-Z0-9_]*|%s)=.*\n?/m', implode('|', ConfigureEnvAndVersionStep::INJECTED_KEYS)),
+                '',
+                file_get_contents(Paths::base('.env.example'))
+            )
+        );
+
+        foreach ($overrides as $key => $value) {
+            $line = $key . '=' . $value;
+
+            $contents = preg_match(sprintf('/^%s=.*$/m', $key), (string) $contents) === 1
+                ? preg_replace_callback(sprintf('/^%s=.*$/m', $key), fn (): string => $line, (string) $contents)
+                : rtrim((string) $contents, "\n") . "\n" . $line . "\n";
+        }
+
+        return (string) $contents;
     }
 }

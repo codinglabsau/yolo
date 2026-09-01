@@ -35,7 +35,7 @@ A single container image runs the web server, queue workers, and the scheduler t
 
 YOLO groups every resource it manages by **blast radius** — who is affected if it changes:
 
-- **Account** — account-global, shared by every environment (e.g. the GitHub OIDC provider).
+- **Account** — account-global, shared by every environment (e.g. the service-linked roles AWS services require, the GitHub OIDC provider).
 - **Environment** — shared by every app in one environment (e.g. the VPC, subnets, load balancer, shared IAM roles).
 - **App** — belongs to one app in one environment (e.g. its ECS service, task definition, CloudFront distribution).
 

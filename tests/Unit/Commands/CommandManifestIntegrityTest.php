@@ -100,6 +100,79 @@ it('bails on a key at the wrong level (cache.store under a misplaced parent)', f
     expect(test()->promptOutput->fetch())->toContain('cache.driver');
 });
 
+it('bails when a tasks block yields no runnable service', function (string $description, array $tasks): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => $tasks,
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    expect(test()->promptOutput->fetch())->toContain('nothing would run');
+})->with([
+    // The bundled queue/scheduler have no web container to ride, and nothing is
+    // extracted into its own service — nowhere to run any work.
+    ['web switched off, nothing extracted', ['web' => false]],
+    ['everything switched off', ['web' => false, 'queue' => false, 'scheduler' => false]],
+    ['only disabled roles declared', ['queue' => false, 'scheduler' => false]],
+]);
+
+it('accepts a web-less worker app with a standalone queue or scheduler', function (array $tasks): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => $tasks,
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+})->with([
+    'scheduler-only' => [['web' => false, 'queue' => false, 'scheduler' => true]],
+    'queue-only worker' => [['web' => false, 'queue' => ['autoscaling' => true]]],
+    'queue + scheduler worker' => [['web' => false, 'queue' => ['autoscaling' => true], 'scheduler' => true]],
+]);
+
+it('refuses a web task with no public host — web requires a domain', function (array $manifest): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        ...$manifest,
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    expect(test()->promptOutput->fetch())->toContain('no `domain`');
+})->with([
+    // No listener rule ever routes to a domain-less web task — it's a web
+    // server nobody can reach. Workers (no web task) are the headless shape.
+    'solo, no domain' => [['tasks' => ['web' => ['autoscaling' => true]]]],
+    'multi-tenant, no tenant domains' => [[
+        'multitenancy' => ['tenants' => ['alpha' => [], 'beta' => []]],
+        'tasks' => ['web' => ['autoscaling' => true]],
+    ]],
+]);
+
+it('accepts a web task when a public host exists', function (array $manifest): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        ...$manifest,
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+})->with([
+    'solo with a domain' => [['domain' => 'example.com', 'tasks' => ['web' => ['autoscaling' => true]]]],
+    // One routed tenant is enough — a domain-less sibling may be mid-onboarding.
+    'multi-tenant with one tenant domain' => [[
+        'multitenancy' => ['tenants' => ['alpha' => ['domain' => 'alpha.example.com'], 'beta' => []]],
+        'tasks' => ['web' => ['autoscaling' => true]],
+    ]],
+]);
+
+it('accepts a manifest with no tasks at all (a build-only app)', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+});
+
 it('accepts a supported session.driver', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
@@ -221,6 +294,7 @@ it('accepts every known service as a consumed service', function (): void {
 it('accepts the known shape of every task group', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'example.com',
         'tasks' => [
             'web' => [
                 'cpu' => '512', 'memory' => '1024', 'platform' => 'linux/amd64',
@@ -245,6 +319,7 @@ it('accepts the known shape of every task group', function (): void {
 it('bails on an unrecognised key inside a task group', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'example.com',
         'tasks' => ['web' => ['nonsense' => true]],
     ]);
 
@@ -255,6 +330,7 @@ it('bails on an unrecognised key inside a task group', function (): void {
 it('bails when a web config map omits autoscaling', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'example.com',
         'tasks' => ['web' => ['cpu' => '512']],
     ]);
 
@@ -268,6 +344,7 @@ it('bails when a web config map omits autoscaling', function (): void {
 it('bails on the bare `tasks.web: true` shorthand — web needs an explicit autoscaling decision', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'example.com',
         'tasks' => ['web' => true],
     ]);
 
@@ -278,6 +355,7 @@ it('bails on the bare `tasks.web: true` shorthand — web needs an explicit auto
 it('bails when a standalone queue omits autoscaling', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'example.com',
         'tasks' => ['web' => ['autoscaling' => true], 'queue' => ['spot' => true]],
     ]);
 
@@ -291,6 +369,7 @@ it('bails when a standalone queue omits autoscaling', function (): void {
 it('bails on the bare `tasks.queue: true` shorthand', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'example.com',
         'tasks' => ['web' => ['autoscaling' => true], 'queue' => true],
     ]);
 
@@ -298,10 +377,12 @@ it('bails on the bare `tasks.queue: true` shorthand', function (): void {
     expect(test()->promptOutput->fetch())->toContain('tasks.queue');
 });
 
-it('accepts a headless app — a disabled web tier needs no autoscaling', function (): void {
+it('demands no autoscaling declaration of a disabled web tier', function (): void {
+    // `web: false` alone would be refused (nothing runnable — see the runnable-
+    // service cases above), so the disabled tier is exercised beside a scheduler.
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => false],
+        'tasks' => ['web' => false, 'scheduler' => true],
     ]);
 
     expect(invokeManifestIntegrity())->toBeTrue();
@@ -310,6 +391,7 @@ it('accepts a headless app — a disabled web tier needs no autoscaling', functi
 it('keeps the bare `tasks.scheduler: true` shorthand — the scheduler never scales', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'example.com',
         'tasks' => ['web' => ['autoscaling' => true], 'scheduler' => true],
     ]);
 
@@ -319,6 +401,7 @@ it('keeps the bare `tasks.scheduler: true` shorthand — the scheduler never sca
 it('bails when the scheduler rides a queue explicitly set to scale to zero', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'example.com',
         'tasks' => ['web' => ['autoscaling' => true], 'queue' => ['autoscaling' => ['min' => 0]]],
     ]);
 
@@ -332,6 +415,7 @@ it('bails when the scheduler rides a queue explicitly set to scale to zero', fun
 it('accepts a scheduler-hosting queue with a standing floor of one', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'example.com',
         'tasks' => ['web' => ['autoscaling' => true], 'queue' => ['autoscaling' => ['min' => 1]]],
     ]);
 
@@ -341,6 +425,7 @@ it('accepts a scheduler-hosting queue with a standing floor of one', function ()
 it('accepts a scheduler-hosting queue with no explicit floor (defaults to one)', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'example.com',
         'tasks' => ['web' => ['autoscaling' => true], 'queue' => ['autoscaling' => true]],
     ]);
 
@@ -350,6 +435,7 @@ it('accepts a scheduler-hosting queue with no explicit floor (defaults to one)',
 it('accepts a scale-to-zero queue when the scheduler is its own service', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'example.com',
         'tasks' => ['web' => ['autoscaling' => true], 'queue' => ['autoscaling' => ['min' => 0]], 'scheduler' => true],
     ]);
 
@@ -377,4 +463,173 @@ it('rejects the reserved app name `services` — it collides with the env servic
     expect(invokeManifestIntegrity())->toBeFalse();
 
     expect(test()->promptOutput->fetch())->toContain('reserved');
+});
+
+it('bails when queue-isolation is set on a solo app', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'multitenancy' => ['queue-isolation' => 'dedicated'],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    expect(test()->promptOutput->fetch())->toContain('queue-isolation');
+});
+
+describe('the multitenancy block', function (): void {
+    // Every key that moved is refused where it used to live, naming the exact path
+    // it moved to — an "unknown key" error would be correct and useless.
+    it('names the new path for a relocated root key', function (string $manifest, string $expected): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            ...json_decode($manifest, true),
+        ]);
+
+        expect(invokeManifestIntegrity())->toBeFalse();
+        expect(test()->promptOutput->fetch())->toContain($expected);
+    })->with([
+        'tenants' => ['{"tenants":{"acme":[]}}', 'multitenancy.tenants'],
+        'queue-isolation' => ['{"queue-isolation":"dedicated"}', 'multitenancy.queue-isolation'],
+        'domain' => [
+            '{"domain":"example.com","multitenancy":{"tenants":{"acme":null}}}',
+            'multitenancy.landlord.domain',
+        ],
+        'wildcard-subdomains' => [
+            '{"wildcard-subdomains":true,"multitenancy":{"tenants":{"acme":null}}}',
+            'multitenancy.landlord.wildcard-subdomains',
+        ],
+    ]);
+
+    it('refuses a key the multitenancy block does not name', function (): void {
+        // `apex` is always derived from `domain`. Accepting it silently — which the
+        // old free-form `tenants.*` subtree did — meant a hand-written value was
+        // taken and then overwritten.
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'multitenancy' => ['tenants' => ['acme' => ['domain' => 'acme.test', 'apex' => 'acme.test']]],
+        ]);
+
+        expect(invokeManifestIntegrity())->toBeFalse();
+        expect(test()->promptOutput->fetch())->toContain('multitenancy.tenants.acme.apex');
+    });
+
+    it('accepts a tenant declared bare, with no config of its own', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'multitenancy' => [
+                'landlord' => ['domain' => 'app.example.com', 'wildcard-subdomains' => true],
+                'tenants' => ['acme' => null, 'globex' => null],
+            ],
+        ]);
+
+        expect(invokeManifestIntegrity())->toBeTrue();
+    });
+});
+
+it('bails on an unknown queue-isolation value', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'multitenancy' => ['queue-isolation' => 'sometimes', 'tenants' => ['acme' => []]],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    expect(test()->promptOutput->fetch())->toContain('queue-isolation');
+});
+
+it('passes for a shared multi-tenant app', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'multitenancy' => ['queue-isolation' => 'shared', 'tenants' => ['acme' => []]],
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+});
+
+it('bails when wildcard-subdomains is set with no domain to be a wildcard of', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'wildcard-subdomains' => true,
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    expect(test()->promptOutput->fetch())->toContain('wildcard-subdomains');
+});
+
+it('bails when wildcard-subdomains and tenants are both declared', function (): void {
+    // Two different tenancy models — one host with a wildcard, versus a zone and
+    // certificate per tenant. Declaring both says nothing coherent.
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'multitenancy' => ['tenants' => ['acme' => ['domain' => 'acme.example.com']]],
+        'wildcard-subdomains' => true,
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    expect(test()->promptOutput->fetch())->toContain('wildcard-subdomains');
+});
+
+it('bails on wildcard-subdomains with a www-canonical domain', function (): void {
+    // The wildcard would land at *.www.{apex}, and moving the certificate onto the
+    // www host leaves the apex it redirects from with no certificate covering it —
+    // a TLS failure before the 301 could fire.
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'www.example.com',
+        'wildcard-subdomains' => true,
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    expect(test()->promptOutput->fetch())->toContain('www-canonical');
+});
+
+it('passes for a wildcard-subdomain app', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'domain' => 'app.example.com',
+        'wildcard-subdomains' => true,
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+});
+
+it('accepts `bucket: true` — the YOLO-owned app data bucket', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => true,
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+});
+
+it('accepts a bucket name to adopt', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => 'my-app-bucket',
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeTrue();
+});
+
+it('refuses `bucket: false` rather than reading it as no bucket', function (): void {
+    // Omitting the key already says "no bucket". Reading `false` as that too would
+    // silently ship an app with no AWS_BUCKET when the intent was clearly to have one.
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => false,
+    ]);
+
+    expect(invokeManifestIntegrity())->toBeFalse();
+
+    expect(test()->promptOutput->fetch())->toContain('bucket');
+});
+
+it('refuses a bucket name S3 would reject, rather than failing mid-apply', function (): void {
+    foreach (['My-App-Bucket', 'ab', 'bucket..name', '10.0.0.1', 'trailing-'] as $invalid) {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => $invalid,
+        ]);
+
+        expect(invokeManifestIntegrity())->toBeFalse();
+    }
 });

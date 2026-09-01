@@ -30,15 +30,6 @@ it('drains for the manifest web shutdown-grace-period', function (): void {
     expect(ShutdownTimings::drain())->toBe(45);
 });
 
-it('skips the drain entirely when headless (no ALB to drain)', function (): void {
-    writeManifest([
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['shutdown-grace-period' => 45]],
-    ]);
-
-    expect(ShutdownTimings::drain())->toBe(0);
-});
-
 it('bundles the web server, scheduler and queue worker into the web container for a plain web app', function (): void {
     // The scheduler's grace defaults to the whole stop window (Fargate's 120s
     // cap minus the 5s buffer) — its stop overlaps the other programs'.
@@ -127,17 +118,6 @@ it('sizes the web stop timeout as the slower of the drain track and the schedule
     // max(drain 15 + slowest other program 60, scheduler 115) + 5 buffer —
     // never the sum, so the in-flight schedule:run keeps the whole window.
     expect(ShutdownTimings::stopTimeoutFor(ServerGroup::WEB))->toBe(120);
-});
-
-it('drops the ALB drain window from the web stop timeout when headless', function (): void {
-    // Scheduler extracted so the drain track is what sizes the budget.
-    writeManifest([
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => true, 'scheduler' => true],
-    ]);
-
-    // no drain window: 0 + max(web 15, queue 60) + 5 buffer.
-    expect(ShutdownTimings::stopTimeoutFor(ServerGroup::WEB))->toBe(65);
 });
 
 it('allows graces that exactly fill the Fargate stop ceiling', function (): void {

@@ -65,12 +65,12 @@ final class ShutdownTimings
 
     /**
      * Seconds the entrypoint keeps serving after SIGTERM before forwarding the
-     * stop — the window the ALB needs to stop routing. Zero when headless: with
-     * no target group there's nothing to drain, so forward the stop immediately.
+     * stop — the window the ALB needs to stop routing. Every web app sits behind
+     * the ALB (a web task requires a domain), so the drain is always the web grace.
      */
     public static function drain(): int
     {
-        return Manifest::isHeadless() ? 0 : self::webGrace();
+        return self::webGrace();
     }
 
     /**

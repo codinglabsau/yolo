@@ -3,6 +3,8 @@
 namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Aws\S3;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
@@ -15,6 +17,7 @@ use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Concerns\RegistersAws;
 use Codinglabs\Yolo\Contracts\AdminCommand;
 use Codinglabs\Yolo\Resources\Iam\AdminRole;
+use Codinglabs\Yolo\Contracts\RunsWithoutAws;
 use Codinglabs\Yolo\Contracts\DeployerCommand;
 use Codinglabs\Yolo\Contracts\ReadOnlyCommand;
 use Codinglabs\Yolo\Concerns\HasAfterCallbacks;
@@ -25,6 +28,7 @@ use Codinglabs\Yolo\Resources\Iam\AppObserverRole;
 use Symfony\Component\Console\Input\InputInterface;
 use Codinglabs\Yolo\Contracts\RunsOnBaseCredentials;
 use Symfony\Component\Console\Output\OutputInterface;
+use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Codinglabs\Yolo\Concerns\ChecksIfCommandsShouldBeRunning;
 use Symfony\Component\Console\Command\Command as SymfonyCommand;
 
@@ -37,6 +41,13 @@ abstract class Command extends SymfonyCommand
     use ChecksIfCommandsShouldBeRunning;
     use HasAfterCallbacks;
     use RegistersAws;
+
+    /**
+     * How many MFA codes an admin-tier assume will take before giving up. Enough
+     * for a spent code plus the next one to come around, without leaving a
+     * mistyped serial or a trust-policy refusal prompting in a loop.
+     */
+    protected const MFA_ATTEMPTS = 3;
 
     public InputInterface $input;
 
@@ -94,7 +105,7 @@ abstract class Command extends SymfonyCommand
 
         Helpers::app()->instance('environment', $this->argument('environment'));
 
-        if (static::requiresAwsProfile() && ! Helpers::keyedEnv('AWS_PROFILE')) {
+        if (static::requiresAwsProfile() && ! $this instanceof RunsWithoutAws && ! Helpers::keyedEnv('AWS_PROFILE')) {
             error(sprintf('You need to specify YOLO_%s_AWS_PROFILE in your .env file before proceeding', strtoupper((string) Helpers::environment())));
 
             return 1;
@@ -102,6 +113,20 @@ abstract class Command extends SymfonyCommand
 
         if (! $this->ensureManifestIntegrity()) {
             return 1;
+        }
+
+        // A RunsWithoutAws command works against the manifest and the local
+        // machine only — resolving credentials here would be circular, since
+        // creating them is the command's own job. Manifest and environment
+        // checks above still apply; everything AWS below does not.
+        if ($this instanceof RunsWithoutAws) {
+            $exitCode = (int) (Helpers::app()->call([$this, 'handle']) ?: 0);
+
+            foreach ($this->after as $closure) {
+                $closure();
+            }
+
+            return $exitCode;
         }
 
         $this->registerAwsServices();
@@ -131,14 +156,184 @@ abstract class Command extends SymfonyCommand
     {
         return $this->ensureNameDeclared()
             && $this->ensureNameNotReserved()
+            && $this->ensureMultitenancyKeysNested()
             && $this->ensureNoUnknownManifestKeys()
             && $this->ensureManifestKeyDeclared('region')
             && $this->ensureManifestKeyDeclared('account-id')
             && $this->ensureCacheStoreValid()
+            && $this->ensureAppBucketValid()
             && $this->ensureSessionDriverValid()
             && $this->ensureServicesValid()
+            && $this->ensureTasksRunnable()
+            && $this->ensureWebReachable()
             && $this->ensureAutoscalingDeclared()
-            && $this->ensureSchedulerHostNotScaleToZero();
+            && $this->ensureSchedulerHostNotScaleToZero()
+            && $this->ensureQueueIsolationValid()
+            && $this->ensureWildcardSubdomainsValid();
+    }
+
+    /**
+     * Multi-tenancy lives in one nested block. Every key that used to sit at the
+     * top of the environment block is refused there with the exact path it moved
+     * to — an unrecognised-key error would be technically correct and useless.
+     *
+     * `domain` is the pointed one: alongside a `multitenancy` block it is genuinely
+     * ambiguous, meaning both "where the landlord is served" and "what subdomain
+     * tenants hang off" — readings that separate the moment one tenant takes a
+     * custom domain. The landlord's own block says it once.
+     *
+     * Runs before the unknown-key sweep so these get the specific message.
+     */
+    protected function ensureMultitenancyKeysNested(): bool
+    {
+        foreach (['tenants' => 'multitenancy.tenants', 'queue-isolation' => 'multitenancy.queue-isolation'] as $old => $new) {
+            if (Manifest::has($old)) {
+                error(sprintf('yolo.yml declares `%s` at the top of the environment block — it now lives inside the multitenancy block as `%s`.', $old, $new));
+
+                return false;
+            }
+        }
+
+        if (! Manifest::has('multitenancy')) {
+            return true;
+        }
+
+        if (Manifest::has('domain')) {
+            error(
+                "yolo.yml declares both `domain` and `multitenancy` — under multi-tenancy a top-level `domain` is ambiguous (the landlord's own host, or the domain tenant subdomains hang off?).\n"
+                . 'Move it to `multitenancy.landlord.domain`.'
+            );
+
+            return false;
+        }
+
+        if (Manifest::has('wildcard-subdomains')) {
+            error(
+                "yolo.yml declares both `wildcard-subdomains` and `multitenancy` — the flag belongs to the landlord or tenant whose domain it wildcards.\n"
+                . 'Move it to `multitenancy.landlord.wildcard-subdomains`, or onto the tenant as `multitenancy.tenants.<id>.wildcard-subdomains`.'
+            );
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * `wildcard-subdomains` serves every subdomain of the app's own `domain` from
+     * the one service, so it needs a `domain` to be a wildcard *of*.
+     *
+     * It deliberately composes with `tenants` rather than excluding it: the two
+     * answer different questions — how the app is routed to, versus what each
+     * tenant gets of its own. A tenant whose domain sits under the wildcard is
+     * already served by the app's certificate and rule and provisions no DNS/TLS
+     * resources ({@see Manifest::servesDomain()}); a tenant on its own domain
+     * still gets a zone, certificate, SNI attachment and rule.
+     */
+    protected function ensureWildcardSubdomainsValid(): bool
+    {
+        if (! Manifest::servesWildcardSubdomains()) {
+            return true;
+        }
+
+        if (! Manifest::hasDomain()) {
+            error('yolo.yml declares `wildcard-subdomains` but no `domain` — there is nothing to serve subdomains of. Declare `domain`, or drop the key.');
+
+            return false;
+        }
+
+        // A www-canonical domain would put the wildcard a level too deep
+        // (`*.www.{apex}`, which nobody wants) and, worse, move the certificate
+        // off the apex — leaving the apex/www redirect's own host with no valid
+        // certificate, so it would fail the TLS handshake before it could ever
+        // 301. Refuse the combination rather than silently serve that.
+        $domain = (string) Manifest::domain();
+
+        if (str_starts_with($domain, 'www.')) {
+            error(sprintf(
+                'yolo.yml declares `wildcard-subdomains` with a www-canonical `domain` (%s) — the wildcard would land at *.%s and the certificate would no longer cover the apex it redirects from. Serve the app from the apex or a bare subdomain instead.',
+                $domain,
+                $domain,
+            ));
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * `queue-isolation` (`dedicated` | `shared`) only means something once tenants
+     * are declared — it decides whether the queue layer fans out per tenant. With a
+     * single scope (a solo app, or a landlord-only `multitenancy` block) there is
+     * nothing to isolate, so the key is refused rather than silently ignored.
+     * Manifest::queueIsolation() validates the value.
+     */
+    protected function ensureQueueIsolationValid(): bool
+    {
+        if (! Manifest::has('multitenancy.queue-isolation')) {
+            return true;
+        }
+
+        if (! Manifest::hasTenants()) {
+            error('yolo.yml declares `multitenancy.queue-isolation` but no `multitenancy.tenants` — the strategy only applies to a multi-tenant app. Remove it, or declare tenants.');
+
+            return false;
+        }
+
+        try {
+            Manifest::queueIsolation();
+        } catch (IntegrityCheckException $e) {
+            error($e->getMessage());
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * A web task must be reachable: the task security group only accepts ingress
+     * from the ALB, and with no domain no listener rule ever points at the
+     * service — a web server nobody can reach, burning a Fargate task. So a solo
+     * web app must declare `domain`, and a multi-tenant web app needs at least
+     * one tenant domain. An app with no public host runs as a worker instead
+     * (standalone queue/scheduler, no web task).
+     */
+    protected function ensureWebReachable(): bool
+    {
+        if (! Manifest::hasWeb() || ! Manifest::isHeadless()) {
+            return true;
+        }
+
+        error(
+            "yolo.yml declares `tasks.web` but no `domain` — a web task with no public host serves nothing (no listener rule ever routes to it).\n"
+            . 'Declare `domain` (or a tenant domain), or drop `tasks.web` and run a worker app (standalone tasks.queue / tasks.scheduler).'
+        );
+
+        return false;
+    }
+
+    /**
+     * A declared `tasks` block must yield at least one ECS service. A web-less
+     * app is valid only with a standalone queue and/or scheduler — with neither
+     * there is nowhere to run any work (the bundled queue/scheduler have no web
+     * container to ride), so the shape is refused rather than silently
+     * provisioning nothing. A manifest with no `tasks` key at all is untouched
+     * (a build-only app).
+     */
+    protected function ensureTasksRunnable(): bool
+    {
+        if (! Manifest::has('tasks') || Manifest::serverGroups() !== []) {
+            return true;
+        }
+
+        error(
+            "yolo.yml declares `tasks` but nothing would run — no web task, and no standalone queue or scheduler to run instead.\n"
+            . 'Declare `tasks.web`, or extract `tasks.queue` / `tasks.scheduler` into their own service (a web-less app needs at least one).'
+        );
+
+        return false;
     }
 
     /**
@@ -225,7 +420,7 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * `cache.store` (web apps default to `redis`). `redis` provisions the shared
+     * `cache.store` (apps with tasks default to `redis`). `redis` provisions the shared
      * Valkey cluster; `file`/`database`/`array` opt out and are app-managed. Any
      * other store should be configured in the app's `.env`, not here.
      */
@@ -246,6 +441,70 @@ abstract class Command extends SymfonyCommand
         }
 
         return true;
+    }
+
+    /**
+     * `bucket` says who owns the app data bucket: `true` for one YOLO provisions in
+     * its own namespace, or the name of an existing bucket to adopt. `false` is
+     * refused rather than read as "no bucket" — omitting the key already says that,
+     * and a silently-ignored `false` would ship an app with no AWS_BUCKET. A name S3
+     * would reject is caught here too, so a typo fails validation instead of
+     * surfacing as an InvalidBucketName mid-apply.
+     */
+    protected function ensureAppBucketValid(): bool
+    {
+        if (! Manifest::has('bucket') || Manifest::managesAppBucket()) {
+            return true;
+        }
+
+        $bucket = Manifest::get('bucket');
+
+        if (! is_string($bucket) || ! S3::isValidBucketName($bucket)) {
+            error(
+                'yolo.yml `bucket` must be `true` — YOLO provisions and owns the bucket — or the name of an existing bucket to adopt '
+                    . "(3-63 characters: lowercase letters, numbers, dots and hyphens, starting and ending alphanumeric).\nOmit the key entirely for no app data bucket."
+            );
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * A bring-your-own app data bucket must already exist on this account. YOLO
+     * never creates one: the name sits outside the `yolo-*` namespace the admin tier
+     * is fenced to, so CreateBucket — and the Block Public Access and CORS writes
+     * that follow it — would AccessDenied mid-apply.
+     *
+     * Ownership comes from ListBuckets rather than a HeadBucket probe. The bucket
+     * namespace is global, so a bucket owned by someone else answers HeadBucket with
+     * a 403 indistinguishable from "yours, but this tier may not read it"; adopting
+     * one of those looks like a clean sync and then fails every runtime write.
+     */
+    protected function ensureAppBucketAdoptable(): bool
+    {
+        if (! Manifest::has('bucket') || Manifest::managesAppBucket()) {
+            return true;
+        }
+
+        $bucket = Paths::s3AppBucket();
+
+        if (S3::accountOwnsBucket($bucket)) {
+            return true;
+        }
+
+        error(sprintf(
+            "The app data bucket \"%s\" doesn't exist on this account%s.\n"
+                . "YOLO adopts a bucket named in yolo.yml but never creates one — the name is outside the yolo-* namespace this tier may write.\n"
+                . 'Either set `bucket: true` and let YOLO provision and own it as "%s", or create "%s" yourself and re-run.',
+            $bucket,
+            S3::bucketTaken($bucket) ? ' — the name is taken in another AWS account' : '',
+            Helpers::keyedBucketName('data'),
+            $bucket,
+        ));
+
+        return false;
     }
 
     /**
@@ -271,7 +530,7 @@ abstract class Command extends SymfonyCommand
         // that opts the cache out (cache.store: file) without re-pinning the
         // session driver is caught, not silently shipped pointing at no cluster.
         if (Manifest::sessionDriver() === 'redis' && Manifest::cacheStore() !== 'redis') {
-            error('yolo.yml `session.driver: redis` needs the Valkey cache (`cache.store: redis`, the web-app default) — don\'t opt the cache out.');
+            error('yolo.yml `session.driver: redis` needs the Valkey cache (`cache.store: redis`, the default) — don\'t opt the cache out.');
 
             return false;
         }
@@ -537,9 +796,13 @@ abstract class Command extends SymfonyCommand
         }
 
         try {
-            // Resolve the ARN first — a missing role fails closed here, before any
-            // MFA prompt, so "role not provisioned" never asks for a code.
-            $roleArn = $role->arn();
+            // Build the ARN deterministically (account id from the manifest, no
+            // IAM path on YOLO roles) — never resolve it live. A tier member's
+            // base identity holds nothing but the group grants, so any IAM read
+            // here (a GetRole, a ListRoles) is an AccessDenied that blocks the
+            // assume it was trying to help. A missing role surfaces from
+            // AssumeRole itself instead.
+            $roleArn = sprintf('arn:aws:iam::%s:role/%s', Aws::accountId(), $role->name());
             $sessionName = sprintf('yolo-%s', $tier->value);
 
             if ($tier === Iam::ADMIN_ROLE) {
@@ -553,7 +816,7 @@ abstract class Command extends SymfonyCommand
                     return self::FAILURE;
                 }
 
-                $credentials = Aws::assumeRole($roleArn, $sessionName, $mfaSerial, $this->promptMfaCode());
+                $credentials = $this->assumeAdminRole($roleArn, $sessionName, $mfaSerial);
             } else {
                 $credentials = Aws::assumeRole($roleArn, $sessionName);
             }
@@ -570,16 +833,78 @@ abstract class Command extends SymfonyCommand
 
             return null;
         } catch (\Throwable $e) {
-            error(sprintf(
-                "Refusing to run '%s' on your full AWS identity: could not assume %s (%s).\n"
-                . 'Bootstrap a fresh environment once with --dangerously-skip-permissions; otherwise check the role exists and that your identity may assume it.',
-                $this->getName(),
-                $role->name(),
-                $e->getMessage(),
-            ));
+            // A rejected TOTP is an operator-fixable slip, not a broken tier — say so
+            // plainly instead of sending them off to check role existence and MFA
+            // enrolment, neither of which is the problem.
+            error(static::isRejectedMfaCode($e)
+                ? sprintf(
+                    "Refusing to run '%s': AWS rejected the MFA code.\n"
+                    . 'Each code mints one session only — a code already spent (on an earlier run, or entered twice) is denied for the rest of its window, even while your authenticator still shows it. Wait for the next code and run the command again.',
+                    $this->getName(),
+                )
+                : sprintf(
+                    "Refusing to run '%s' on your full AWS identity: could not assume %s (%s).\n"
+                    . 'Every YOLO tier requires MFA — sessions minted without it are denied, so if this is an AccessDenied check your credentials carry MFA (`yolo configure %s` sets that up and verifies it). '
+                    . 'Bootstrap a fresh environment once with --dangerously-skip-permissions; otherwise check the role exists and that your identity may assume it.',
+                    $this->getName(),
+                    $role->name(),
+                    $e->getMessage(),
+                    Helpers::environment(),
+                ));
 
             return self::FAILURE;
         }
+    }
+
+    /**
+     * Assume the admin role, re-prompting on a rejected MFA code rather than
+     * losing the run.
+     *
+     * A TOTP mints exactly one session: re-entering the code from the previous
+     * command — or the one still on screen after a successful run — is denied by
+     * STS, and that is by far the likeliest way this fails. Re-prompting costs the
+     * operator the seconds until their authenticator rolls over; aborting costs
+     * them the whole command, which for a sync is a full plan pass.
+     *
+     * Only a rejected code retries. Anything else (a missing role, a trust policy
+     * that won't have them) is not fixed by another code, so it surfaces
+     * immediately.
+     *
+     * @return array<string, mixed>
+     */
+    protected function assumeAdminRole(string $roleArn, string $sessionName, string $mfaSerial): array
+    {
+        $rejected = [];
+
+        while (true) {
+            $code = $this->promptMfaCode($rejected);
+
+            try {
+                return Aws::assumeRole($roleArn, $sessionName, $mfaSerial, $code);
+            } catch (\Throwable $e) {
+                if (count($rejected) + 1 >= self::MFA_ATTEMPTS || ! static::isRejectedMfaCode($e)) {
+                    throw $e;
+                }
+
+                $rejected[] = $code;
+
+                warning('AWS rejected that code. Each code mints a single session — wait for your authenticator to roll to the next one.');
+            }
+        }
+    }
+
+    /**
+     * Whether a failed assume was AWS refusing the TOTP itself — the retryable
+     * case. Matched on the message because STS reports it as a plain AccessDenied,
+     * indistinguishable by error code from a trust-policy refusal. The narrower
+     * "one time pass code" phrasing keeps the sibling MFA failure (a serial number
+     * that isn't the caller's device) out: another code never fixes that, and a
+     * reworded message simply falls back to surfacing the error as before.
+     */
+    protected static function isRejectedMfaCode(\Throwable $e): bool
+    {
+        return str_contains($e->getMessage(), 'MultiFactorAuthentication failed')
+            && str_contains($e->getMessage(), 'one time pass code');
     }
 
     /**
@@ -601,6 +926,46 @@ abstract class Command extends SymfonyCommand
         Helpers::app()->forgetInstance('yoloAssumedCredentials');
         static::forgetAwsClients();
         $this->registerAwsServices();
+    }
+
+    /**
+     * The env block handing the minted tier credentials to a subprocess (the
+     * aws CLI, session-manager-plugin). A subprocess must run on the tier, not
+     * the base profile: --profile resolves the operator's FULL identity, both
+     * escaping the tier cap and failing for least-privileged members, whose
+     * base identity holds nothing but the group grants (the tier role is where
+     * the session permission lives). Env credentials outrank every other
+     * source in the CLI's chain, so exporting the minted session is enough.
+     * Null when no tier was minted — see {@see subprocessProfile()}.
+     *
+     * @return array<string, string>|null
+     */
+    protected function subprocessEnv(): ?array
+    {
+        if (! Helpers::app()->bound('yoloAssumedCredentials')) {
+            return null;
+        }
+
+        $minted = Helpers::app('yoloAssumedCredentials');
+
+        return [
+            'AWS_ACCESS_KEY_ID' => $minted->getAccessKeyId(),
+            'AWS_SECRET_ACCESS_KEY' => $minted->getSecretKey(),
+            'AWS_SESSION_TOKEN' => $minted->getSecurityToken(),
+        ];
+    }
+
+    /**
+     * The --profile for a subprocess: only uncapped runs (break-glass, or the
+     * CI/OIDC path where the process already IS the tier role) carry one —
+     * whenever tier credentials were minted, {@see subprocessEnv()} exports
+     * them and the profile must stay out of the invocation entirely.
+     */
+    protected function subprocessProfile(): ?string
+    {
+        return Helpers::app()->bound('yoloAssumedCredentials')
+            ? null
+            : Helpers::keyedEnv('AWS_PROFILE');
     }
 
     /**
@@ -638,17 +1003,32 @@ abstract class Command extends SymfonyCommand
     /**
      * Prompt for the fresh 6-digit TOTP that gates an admin-tier assume — the
      * human factor an agent running as the operator can't generate.
+     *
+     * Codes AWS has already rejected this run are refused here rather than sent
+     * back to STS: the code is still displayed on the authenticator for the rest
+     * of its window, so re-entering it is the natural thing to do and guarantees
+     * a second rejection.
+     *
+     * @param  array<int, string>  $rejected  codes AWS has refused this run
      */
-    protected function promptMfaCode(): string
+    protected function promptMfaCode(array $rejected = []): string
     {
         return text(
             label: 'MFA code (admin tier)',
             placeholder: '123456',
             required: true,
-            validate: fn (string $value): ?string => preg_match('/^\d{6}$/', $value) === 1
-                ? null
-                : 'Enter the 6-digit code from your MFA device.',
-            hint: 'Admin requires MFA — it proves a human, not an agent, is escalating.',
+            validate: function (string $value) use ($rejected): ?string {
+                if (preg_match('/^\d{6}$/', $value) !== 1) {
+                    return 'Enter the 6-digit code from your MFA device.';
+                }
+
+                return in_array($value, $rejected, true)
+                    ? 'AWS already rejected that code — a code mints one session only. Wait for the next one.'
+                    : null;
+            },
+            hint: $rejected === []
+                ? 'Admin requires MFA — it proves a human, not an agent, is escalating.'
+                : 'Each code mints one session only — wait for your authenticator to roll over.',
         );
     }
 

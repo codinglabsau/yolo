@@ -23,11 +23,21 @@ beforeEach(function (): void {
     burstManifest(on: true);
 });
 
-it('skips on a greenfield sync when the web service does not exist yet', function (): void {
-    $ecs = [];
-    bindRoutedEcsClient(['DescribeServices' => new Result(['services' => []])], $ecs);
+it('records the pending burst pieces on a greenfield plan pass instead of skipping', function (): void {
+    // Nothing exists yet — the step must survive the plan pass with the policy
+    // and alarm pending (two-pass contract), not prune itself with a bare
+    // SKIPPED; the scalable target it attaches to is created earlier in the
+    // same apply pass. No ECS client is bound: no gating on the live service.
+    $aa = [];
+    $cw = [];
+    bindMockApplicationAutoScalingClient(['DescribeScalingPolicies' => new Result(['ScalingPolicies' => []])], $aa);
+    bindMockCloudWatchClient(['DescribeAlarms' => new Result(['MetricAlarms' => []])], $cw);
 
-    expect((new SyncWebBurstStep())([]))->toBe(StepResult::SKIPPED);
+    $step = new SyncWebBurstStep();
+
+    expect($step(['dry-run' => true]))->toBe(StepResult::WOULD_CREATE)
+        ->and($step->changes())->toHaveCount(2)
+        ->and(collect($aa)->pluck('name'))->not->toContain('PutScalingPolicy');
 });
 
 it('creates the burst policy and alarm when burst is enabled', function (): void {

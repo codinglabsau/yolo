@@ -115,7 +115,7 @@ it('a typesense alarm renders the full payload and upserts on drift', function (
     $snsCaptured = [];
     bindTypesenseRoutedClient('sns', SnsClient::class, [
         'ListTopics' => new Result(['Topics' => [
-            ['TopicArn' => 'arn:aws:sns:ap-southeast-2:111111111111:yolo-testing'],
+            ['TopicArn' => 'arn:aws:sns:ap-southeast-2:111111111111:yolo-testing-alarms'],
         ]]),
     ], $snsCaptured);
 
@@ -134,12 +134,14 @@ it('a typesense alarm renders the full payload and upserts on drift', function (
     expect($alarm->name())->toBe('yolo-testing-typesense-quorum-lost')
         ->and($alarm->exists())->toBeTrue();
 
+    // Two drifts: the threshold, and the live alarm firing to no topic yet
+    // (AlarmActions re-points as reconcilable drift, e.g. after a topic rename).
     $changes = $alarm->synchroniseConfiguration(apply: true);
-    expect($changes)->toHaveCount(1);
+    expect($changes)->toHaveCount(2);
 
     $put = collect($captured)->firstWhere('name', 'PutMetricAlarm');
     expect($put['args']['Threshold'])->toBe(2.0)
-        ->and($put['args']['AlarmActions'])->toBe(['arn:aws:sns:ap-southeast-2:111111111111:yolo-testing'])
+        ->and($put['args']['AlarmActions'])->toBe(['arn:aws:sns:ap-southeast-2:111111111111:yolo-testing-alarms'])
         ->and($put['args']['TreatMissingData'])->toBe('breaching');
 
     $alarm->delete();

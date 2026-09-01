@@ -1,6 +1,8 @@
 <?php
 
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Helpers;
+use Symfony\Component\Yaml\Yaml;
 use Codinglabs\Yolo\Steps\Build\Fargate\GenerateSupervisorConfigStep;
 
 beforeEach(function (): void {
@@ -109,7 +111,7 @@ it('pins --workers after --caddyfile on an autoscaling octane tier', function ()
         ->toContain('command=php artisan octane:start --host=0.0.0.0 --port=8000 --caddyfile=/app/docker/Caddyfile --workers=8');
 });
 
-it('passes no --workers in classic mode (frankenphp php-server takes none)', function (): void {
+it('passes no --workers in classic mode (the pool is set in the Caddyfile instead)', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['octane' => false, 'autoscaling' => false]],
@@ -129,8 +131,10 @@ it('runs frankenphp classic mode on the hardcoded 8000 port when tasks.web.octan
     $config = generatedSupervisorConfig();
 
     // Same web program slot, classic-mode command — no octane:start, no worker boot.
+    // The port lives in the generated Caddyfile rather than a --listen flag, because
+    // that Caddyfile is also the only place the thread bounds can be set.
     expect($config)->toContain('[program:web]');
-    expect($config)->toContain('command=frankenphp php-server --listen 0.0.0.0:8000 --root public/');
+    expect($config)->toContain('command=frankenphp run --config /app/docker/Caddyfile');
     expect($config)->not->toContain('octane:start');
 });
 
@@ -172,7 +176,7 @@ it('nices the bundled background programs in classic mode too', function (): voi
 
     $config = generatedSupervisorConfig();
 
-    expect($config)->toContain('command=frankenphp php-server');
+    expect($config)->toContain('command=frankenphp run --config');
     expect($config)->not->toContain('nice -n 19 frankenphp');
     expect($config)->toContain('command=nice -n 19 php artisan queue:work --tries=3 --max-time=3600');
     expect($config)->toContain('command=nice -n 10 supercronic /app/docker/crontab');
@@ -348,6 +352,47 @@ it('writes no queue supervisord config when the standalone queue is a single pro
     expect(is_file(Paths::build('docker/supervisord.queue.conf')))->toBeFalse();
 });
 
+it('writes a placeholder web config for a web-less worker app — the Dockerfile still COPYs it', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => false, 'queue' => false, 'scheduler' => true],
+    ]);
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    // No container runs this config (the scheduler is a single exec'd process),
+    // but the scaffolded Dockerfile unconditionally COPYs the path — so it
+    // exists, and carries no runnable program.
+    $config = file_get_contents(Paths::build('docker/supervisord.conf'));
+    expect($config)->toContain('never used at runtime');
+    expect($config)->not->toContain('[program:');
+    expect($config)->not->toContain('[supervisord]');
+
+    // Scheduler-only → no queue container, but cron still needs its crontab.
+    expect(is_file(Paths::build('docker/supervisord.queue.conf')))->toBeFalse();
+    expect(file_get_contents(Paths::build('docker/crontab')))
+        ->toContain("* * * * * cd /app && php artisan schedule:run\n");
+});
+
+it('writes the queue supervisord config for a web-less app whose queue hosts the scheduler', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => false, 'queue' => ['autoscaling' => true]],
+    ]);
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    // The queue co-hosts the scheduler (queue:work + supercronic) exactly as it
+    // would beside a web tier; only the web config differs (placeholder).
+    $queue = file_get_contents(Paths::build('docker/supervisord.queue.conf'));
+    expect($queue)->toContain('[program:queue]');
+    expect($queue)->toContain('[program:scheduler]');
+    expect($queue)->not->toContain('[program:web]');
+
+    expect(file_get_contents(Paths::build('docker/supervisord.conf')))
+        ->not->toContain('[program:');
+});
+
 it('writes a crontab firing schedule:run each minute wherever the scheduler runs', function (): void {
     (new GenerateSupervisorConfigStep('testing'))();
 
@@ -415,6 +460,97 @@ it('does not run the ssr renderer by default', function (): void {
     expect(generatedSupervisorConfig())->not->toContain('[program:ssr]');
 });
 
+it('fans the bundled queue worker into one program per scope for a dedicated multi-tenant app', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => false]],
+        'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => ['acme' => [], 'globex' => []]],
+    ]);
+
+    $config = generatedSupervisorConfig();
+
+    // One worker program per scope — landlord plus each tenant — so a whale tenant's
+    // backlog can't starve the others; there is no single bare `queue` program.
+    expect($config)->toContain('[program:queue_landlord]');
+    expect($config)->toContain('[program:queue_acme]');
+    expect($config)->toContain('[program:queue_globex]');
+    expect($config)->not->toContain('[program:queue]');
+
+    // Each program drains only its own scope's queue.
+    expect($config)->toContain('--queue=yolo-testing-my-app-landlord');
+    expect($config)->toContain('--queue=yolo-testing-my-app-acme');
+    expect($config)->toContain('--queue=yolo-testing-my-app-globex');
+});
+
+it('chains each per-tenant program over the declared priority tiers', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => false]],
+        'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => ['acme' => []]],
+        'queues' => ['high', 'default'],
+    ]);
+
+    $config = generatedSupervisorConfig();
+
+    // The comma list drains high before default — strict priority is now the
+    // intra-tenant feature, one program still isolating each tenant. The `default`
+    // tier is the naked scope queue, so the chain ends on the base tenant queue.
+    expect($config)->toContain('--queue=yolo-testing-my-app-landlord-high,yolo-testing-my-app-landlord');
+    expect($config)->toContain('--queue=yolo-testing-my-app-acme-high,yolo-testing-my-app-acme');
+});
+
+it('chains a solo worker over the declared tiers, keeping the single queue program', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => false]],
+        'queues' => ['high', 'default'],
+    ]);
+
+    $config = generatedSupervisorConfig();
+
+    expect($config)->toContain('[program:queue]');
+    expect($config)->toContain('--queue=yolo-testing-my-app-high,yolo-testing-my-app');
+});
+
+it('runs one shared queue program for a shared multi-tenant app, not one per tenant', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => false]],
+        'multitenancy' => ['queue-isolation' => 'shared', 'tenants' => ['acme' => [], 'globex' => []]],
+        'queues' => ['high', 'default'],
+    ]);
+
+    $config = generatedSupervisorConfig();
+
+    // Shared collapses to the solo queue shape — a single program draining the app's
+    // own queue set (tenant rides the job payload), no per-tenant fan-out.
+    expect($config)->toContain('[program:queue]');
+    expect($config)->not->toContain('[program:queue_landlord]');
+    expect($config)->not->toContain('[program:queue_acme]');
+    expect($config)->toContain('--queue=yolo-testing-my-app-high,yolo-testing-my-app');
+});
+
+it('runs a multi-tenant standalone queue under supervisord even without a co-hosted scheduler', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        // queue and scheduler both extracted into their own services: a solo app's
+        // queue task would be a single exec'd worker, but a dedicated multi-tenant app
+        // needs supervisord to run one program per tenant.
+        'tasks' => ['web' => true, 'queue' => true, 'scheduler' => true],
+        'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => ['acme' => []]],
+    ]);
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    $queue = file_get_contents(Paths::build('docker/supervisord.queue.conf'));
+    expect($queue)->toContain('[program:queue_landlord]');
+    expect($queue)->toContain('[program:queue_acme]');
+    // The scheduler is its own service, so it isn't in the queue container.
+    expect($queue)->not->toContain('[program:scheduler]');
+    // Standalone queue: no web server to protect, so the workers run un-niced.
+    expect($queue)->not->toContain('nice');
+});
+
 it('never bundles a saturation program — burst metrics ride the request, not a supervised loop', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
@@ -471,20 +607,64 @@ it('writes no Caddyfile and passes no --caddyfile when the web tier is not autos
     expect(is_file(Paths::build('docker/Caddyfile')))->toBeFalse();
 });
 
-it('writes no Caddyfile in classic mode even when autoscaling', function (): void {
+it('generates a classic-mode Caddyfile carrying both pinned thread bounds', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['octane' => false, 'autoscaling' => false]],
+    ]);
+
+    generatedSupervisorConfig();
+
+    // Default 0.5 vCPU web task → floor 8, ceiling 16. Both must be explicit: FrankenPHP
+    // would otherwise size num_threads off the microVM's visible CPUs, and `max_threads
+    // auto` sizes off host memory without reading the container's limit.
+    expect((string) file_get_contents(Paths::build('docker/Caddyfile')))
+        ->toContain('num_threads 8')
+        ->toContain('max_threads 16')
+        // No emitted directive may be `auto` (the header comment names it; that's prose).
+        ->not->toMatch('/^\s*max_threads\s+auto/m');
+});
+
+it('bakes the classic-mode thread bounds from the declared task size', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['octane' => false, 'cpu' => 2048, 'memory' => 4096, 'autoscaling' => false]],
+    ]);
+
+    generatedSupervisorConfig();
+
+    expect((string) file_get_contents(Paths::build('docker/Caddyfile')))
+        ->toContain('num_threads 32')
+        ->toContain('max_threads 64');
+});
+
+it('serves the classic-mode Caddyfile on the port the target group health-checks', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['octane' => false, 'autoscaling' => false]],
+    ]);
+
+    generatedSupervisorConfig();
+
+    expect((string) file_get_contents(Paths::build('docker/Caddyfile')))
+        ->toContain(':8000')
+        ->toContain('root /app/public')
+        ->toContain('php_server')
+        // The ALB terminates TLS; the container must never try to provision its own.
+        ->toContain('auto_https off');
+});
+
+it('runs the classic-mode Caddyfile through frankenphp run, never php-server', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['octane' => false, 'autoscaling' => true]],
     ]);
 
-    $config = generatedSupervisorConfig();
-
-    // Classic mode runs frankenphp php-server, not octane:start — no Caddyfile, no flag.
     // Autoscaling still bundles the emitter, but the web command stays at the default
     // priority like the emitter itself.
-    expect($config)->toContain('command=frankenphp php-server');
-    expect($config)->not->toContain('--caddyfile');
-    expect(is_file(Paths::build('docker/Caddyfile')))->toBeFalse();
+    expect(generatedSupervisorConfig())
+        ->toContain('command=frankenphp run --config /app/docker/Caddyfile')
+        ->not->toContain('php-server');
 });
 
 it('hard-fails the build when the Octane Caddyfile stub is missing for an autoscaling app', function (): void {
@@ -543,4 +723,82 @@ STUB);
 
     expect(fn (): mixed => (new GenerateSupervisorConfigStep('testing'))())
         ->toThrow(RuntimeException::class, 'global options block');
+});
+
+it('adds the backup entry to the crontab with every argument baked from the manifest', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'backups' => true,
+        'tasks' => ['web' => true],
+    ]);
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    // No runtime config involved: destination, region (and tenants, below) all
+    // ride the invocation itself, baked at build time.
+    expect(file_get_contents(Paths::build('docker/crontab')))
+        ->toContain("CRON_TZ=UTC\n")
+        ->toContain('0 5 * * * cd /app && php artisan yolo:backup-database --destination=yolo-111111111111-testing-backups/my-app --region=ap-southeast-2');
+});
+
+it('writes the backup entry on the configured cron schedule', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'backups' => ['schedule' => '0 */4 * * *'],
+        'tasks' => ['web' => true],
+    ]);
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    expect(file_get_contents(Paths::build('docker/crontab')))
+        ->toContain('0 */4 * * * cd /app && php artisan yolo:backup-database');
+});
+
+it('bakes the tenant database list into the backup entry', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'backups' => true,
+        'multitenancy' => [
+            'landlord' => ['domain' => 'app.example.com', 'wildcard-subdomains' => true],
+            'tenants' => ['acme' => null, 'globex' => null],
+        ],
+        'tasks' => ['web' => true],
+    ]);
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    expect(file_get_contents(Paths::build('docker/crontab')))
+        ->toContain('--tenants=acme,globex');
+});
+
+it('pins the backup schedule to the manifest timezone', function (): void {
+    file_put_contents(Paths::manifest(), Yaml::dump([
+        'name' => 'my-app',
+        'timezone' => 'Australia/Brisbane',
+        'environments' => ['testing' => [
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'backups' => true,
+            'tasks' => ['web' => true],
+        ]],
+    ], 10, 2));
+    Helpers::app()->instance('environment', 'testing');
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    expect(file_get_contents(Paths::build('docker/crontab')))
+        ->toContain("CRON_TZ=Australia/Brisbane\n");
+});
+
+it('writes no backup entry by default — backups are an opt-in', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => true],
+    ]);
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    // The scheduler line survives untouched; only the backup entry is gone.
+    expect(file_get_contents(Paths::build('docker/crontab')))
+        ->toContain("* * * * * cd /app && php artisan schedule:run\n")
+        ->not->toContain('yolo:backup-database');
 });

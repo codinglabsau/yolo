@@ -89,7 +89,13 @@ class QueueBacklogPolicy
      */
     public function configuration(): array
     {
-        $queueName = Helpers::keyedResourceName();
+        // Scale on the base (default-tier) queue's backlog. With no `queues:` block
+        // this is the app's single queue (unchanged); with priority tiers it's the
+        // base queue below `high` — the high tier is meant to stay near-empty, so
+        // the base backlog is the throughput signal. (A multi-tenant standalone
+        // queue has no single aggregate metric here — that combination is a separate
+        // concern.)
+        $queueName = Helpers::defaultQueueName();
         $cluster = (new EcsCluster())->name();
         $service = (new EcsService(ServerGroup::QUEUE))->name();
 

@@ -115,6 +115,7 @@ it('waits for the load balancer to become active before reconciling attributes',
     $ec2 = [];
 
     bindMockEc2Client([
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
         'DescribeSecurityGroups' => new Result(['SecurityGroups' => [
             ['GroupName' => 'yolo-testing-load-balancer-security-group', 'GroupId' => 'sg-lb1'],
         ]]),

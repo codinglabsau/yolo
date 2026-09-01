@@ -13,6 +13,10 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * Shared SNS topic that CloudWatch alarms (e.g. queue backlogs) publish to.
+ * Suffixed `alarms` (not the bare env name) so the name says what it carries
+ * and can't collide with a bare-keyed resource from another deployment
+ * generation sharing the account. Topic subscriptions are not YOLO-managed —
+ * subscribe endpoints by hand after the topic is created.
  */
 class SnsAlarmTopic implements Deletable, Resource
 {
@@ -20,7 +24,7 @@ class SnsAlarmTopic implements Deletable, Resource
 
     public function name(): string
     {
-        return $this->keyedName();
+        return $this->keyedName('alarms');
     }
 
     public function scope(): Scope

@@ -44,6 +44,31 @@ it('pulls the app env file naming both ends of the transfer', function (): void 
         ->toContain('Downloaded successfully');
 });
 
+it('points a first-ever push at sync when the config bucket does not exist', function (): void {
+    // Fresh app, nothing provisioned: the remote read 404s (first-push
+    // warning) and the upload itself hits NoSuchBucket — the command must
+    // land on the run-sync-first message, not the raw SDK exception.
+    Prompt::fake([Key::ENTER]);
+    file_put_contents(Paths::base('.env.testing'), "APP_KEY=secret\n");
+
+    $noSuchBucket = fn (string $operation): S3Exception => new S3Exception('No such bucket', new Command($operation), [
+        'code' => 'NoSuchBucket',
+    ]);
+
+    $captured = [];
+    bindRoutedS3Client([
+        'GetObject' => $noSuchBucket('GetObject'),
+        'PutObject' => $noSuchBucket('PutObject'),
+    ], $captured);
+
+    runEnvironmentFileCommand(new EnvPushCommand());
+
+    expect(Prompt::content())
+        ->toContain('does not exist in the config bucket yet')
+        ->toContain('run `yolo sync testing` to provision it')
+        ->and(file_exists(Paths::base('.env.testing.tmp')))->toBeFalse();
+});
+
 it('errors when no local app env file exists to push', function (): void {
     Prompt::fake();
 

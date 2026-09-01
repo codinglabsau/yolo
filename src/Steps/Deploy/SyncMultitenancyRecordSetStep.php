@@ -14,10 +14,15 @@ class SyncMultitenancyRecordSetStep extends TenantStep implements ExecutesWebSte
 
     public function __invoke(array $options): StepResult
     {
+        if (! isset($this->config['domain'])) {
+            return StepResult::SKIPPED;
+        }
+
         if (! Arr::get($options, 'dry-run')) {
             $this->syncRecordSet(
                 apex: $this->config['apex'],
                 domain: $this->config['domain'],
+                wildcardHost: $this->config['wildcard-host'],
             );
 
             return StepResult::SYNCED;

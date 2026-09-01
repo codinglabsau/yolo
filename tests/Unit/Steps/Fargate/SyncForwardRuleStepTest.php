@@ -58,10 +58,38 @@ it('reports the rule as pending on the plan pass when the listener will be creat
     expect(array_column($captured, 'name'))->not->toContain('CreateRule');
 });
 
-it('defers on the plan pass when no issued cert means the listener will not be created', function (): void {
+it('reports the rule as pending on a greenfield plan pass, before the certificate is even requested', function (): void {
+    // The greenfield shape of the same prune trap: on a first-ever sync there is no
+    // certificate at plan time either — it's requested AND validated to ISSUED
+    // earlier in the same apply — so gating on "issued right now" reads this as a
+    // defer, prunes the step, and leaves the target group unattached.
     $captured = [];
     bindForwardStepWithoutListener($captured);
     bindNoAcmCertificates();
+
+    $step = new SyncForwardRuleStep();
+
+    expect($step(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC);
+    expect($step->changes())->not->toBeEmpty();
+    expect(array_column($captured, 'name'))->not->toContain('CreateRule');
+});
+
+it('reports the rule as pending on the plan pass while the certificate is still validating', function (): void {
+    // PENDING_VALIDATION resolves within this apply too — the certificate step blocks
+    // until ACM reports it issued.
+    $captured = [];
+    bindForwardStepWithoutListener($captured);
+    bindIssuedAcmCertificate(FORWARD_APEX, FORWARD_CERT, 'PENDING_VALIDATION');
+
+    expect((new SyncForwardRuleStep())(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC);
+});
+
+it('defers on the plan pass when the certificate cannot be issued this run', function (): void {
+    // A terminal status the certificate step passes through untouched: nothing this
+    // run makes it issuable, so no listener is created and the rule genuinely defers.
+    $captured = [];
+    bindForwardStepWithoutListener($captured);
+    bindIssuedAcmCertificate(FORWARD_APEX, FORWARD_CERT, 'VALIDATION_TIMED_OUT');
 
     $step = new SyncForwardRuleStep();
 

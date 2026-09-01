@@ -29,7 +29,7 @@ deployments.
 - Always run tests before pushing changes
 - **Any new/changed sync step or reconciler must survive the plan pass with nothing created yet** — work
   through [the two-pass contract checklist](#the-two-pass-contract--read-this-before-writing-any-sync-step-or-reconciler)
-  before shipping; this exact crash class has shipped four times
+  before shipping; this exact crash class has shipped six times
 - **Update the docs when you change behaviour or the public surface.** Any change to a command's
   arguments/options, a manifest key (name, default, or semantics), the Dockerfile/entrypoint contract, the
   manifest-required keys, or the sync/audit scope model must update the matching page under `docs/` in the same
@@ -87,7 +87,9 @@ All commands extend `Command` (base) or, for multi-step work, `SteppedCommand` /
   the preview), and `--check` is the non-interactive plan-only/fail-on-drift form for CI. `DestroyAppCommand`
   (`destroy:app`) extends it too — the teardown reverse of `sync:app`, reusing the same plan → confirm → apply runner.
 
-The full command set: `init`; the env-file and env-manifest pull/push pairs (`env:pull`/`env:push`,
+The full command set: `init`; `configure` (developer-machine credential setup — installs the `bin/yolo-credentials-1password`
+helper, writes the AWS profile, wires the app's `.env`; runs with no AWS credentials via the `RunsWithoutAws`
+contract); the env-file and env-manifest pull/push pairs (`env:pull`/`env:push`,
 `environment:manifest:pull`/`push`, `environment:env:pull`/`push`); `build`, `deploy`, `rollback`, `run`, `scale`,
 and `destroy:app` (app teardown); the scope-grouped `status` / `status:*` read surfaces; `permissions`; `services`;
 and the scope-grouped `sync` / `audit` verbs below.
@@ -100,13 +102,13 @@ allowed to write it:
 
 | Command | `Scope` | Blast radius | Examples |
 | --- | --- | --- | --- |
-| `sync:account` | `Account` | the whole AWS account | GitHub OIDC provider |
-| `sync:environment <env>` | `Env` | every app in the environment | VPC, subnets, IGW/routes, RDS SG, SNS topic, shared ECS execution role, env logs bucket (ALB access logs under `alb/`), ALB + `:80` and `:443` listeners, the env-backed services (IVS event-logging pipeline, Typesense search cluster) |
+| `sync:account` | `Account` | the whole AWS account | service-linked roles (ECS / App Auto Scaling / ElastiCache), GitHub OIDC provider |
+| `sync:environment <env>` | `Env` | every app in the environment | VPC, subnets, IGW/routes, RDS SG, SNS topic, shared ECS execution role, env logs bucket (ALB access logs under `alb/`), env dumps bucket (the apps' database dumps), ALB + `:80` and `:443` listeners, the env-backed services (IVS event-logging pipeline, Typesense search cluster) |
 | `sync:app <env>` | `App` | one app | Storage, app IAM (deployer + per-app ECS task role + `task-role-policies`), Fargate (cluster/service/task def), CDN, mode-aware Queue/DNS |
 
 `sync` orchestrates **account → environment → app** in dependency order. `sync:app` only depends on and *additively
-attaches to* shared infra (its SNI cert + listener-rule on the env `:443` listener, its 3306 ingress on the env RDS
-SG) — never mutating the shared resource itself, so the shared tier keeps a single writer. Two env-scope resources
+attaches to* shared infra (its SNI cert + listener-rule on the env `:443` listener, its database-port ingress on the
+env RDS SG) — never mutating the shared resource itself, so the shared tier keeps a single writer. Two env-scope resources
 (the HTTPS `:443` listener and the RDS SG) are bootstrapped from `sync:app` by exception because their creation has
 a per-app trigger — the listener needs a first SNI cert, the SG needs a task SG to authorise — but both are tagged
 env-scope, created-if-missing, and never mutated by `sync:app`.
@@ -153,12 +155,18 @@ decide *what* the resource is.
 `sync` runs every step **twice**: a **plan pass** (every step, dry, against live AWS, *before anything has been
 created*) and an **apply pass** (confirmed steps, in declaration order). The plan pass therefore runs on
 first-ever syncs and on migrations where resources have been renamed — i.e. **exactly when sibling resources
-don't exist yet**. The same crash class has shipped four times (a step eager-resolving a not-yet-created
+don't exist yet**. The same crash class has shipped six times (a step eager-resolving a not-yet-created
 sibling's live state: the WAF web ACL ARN in `5ca02fe`, the asset bucket's OAC policy in `0d9fbe8`; plus the
 eventual-consistency cousin in `4899c76`; plus the forward/redirect listener-rule steps returning a bare
 `SKIPPED` — not a `WOULD_*` — when the env `:443` listener wasn't created yet on the plan pass, so they pruned
 themselves out of apply and left the target group unattached, which surfaced two steps later as ECS
-`CreateService` rejecting the service). Checklist for any code that reads or writes live AWS state:
+`CreateService` rejecting the service; plus every autoscaling step gating on the not-yet-created ECS service
+with a bare `SKIPPED`, so a greenfield first sync reported success with no scalable target, policies, or burst
+alarm — and the very next deploy's drift gate refused; plus the *greenfield* form of that same listener-rule bug,
+where the guard added to fix it asked "is the certificate ISSUED **now**" — true on a re-sync, false on a
+first-ever sync where the certificate is requested and validated inside the same apply, so the listener,
+its rules and the target-group attachment were pruned all over again). Checklist for any code that reads or
+writes live AWS state:
 
 1. **Walk the first-sync scenario by hand.** Before shipping, answer: *"what does every AWS read in this code
    return when NOTHING exists yet — fresh account, fresh env, renamed sibling?"* If the answer is "it throws",
@@ -285,7 +293,8 @@ image, and push it.
 revision → run deploy hooks (migrate, etc.) as a one-off `ecs:RunTask` (`ExecuteDeployStepsStep`) → update the ECS
 service → `WaitForDeploymentHealthyStep` (the ECS deployment circuit breaker fast-fails and auto-rolls-back on a
 broken deploy) → UPSERT the Route 53 record(s) once healthy. Once the rollout settles it prints an end-of-deploy
-recap — the per-group summary table + CloudWatch dashboard link from the `RendersServiceStatus` concern.
+recap — the per-group summary table + CloudWatch dashboard link from the `RendersServiceStatus` concern, plus
+the app's live URL(s).
 
 `yolo status` (`StatusCommand`) is the read-only live dashboard built on the same `RendersServiceStatus` concern: per
 group (web/queue/scheduler) it reads ECS, Application Auto Scaling and CloudWatch to show what's running, the task

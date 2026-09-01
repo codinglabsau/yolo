@@ -118,6 +118,9 @@ it('honours the reconciler contract (tag drift) for the IP set step', function (
                 'ListIPSets' => allowIpSetListResult(),
                 'ListTagsForResource' => new Result(['TagInfoForResource' => ['TagList' => [
                     ['Key' => 'Name', 'Value' => 'yolo-testing-waf-allow'],
+                    // Owned (the scope marker is present) — the drift is the
+                    // missing yolo:environment baseline, not a foreign IP set.
+                    ['Key' => 'yolo:scope', 'Value' => 'env'],
                 ]]]),
                 'TagResource' => new Result([]),
             ], $captured);

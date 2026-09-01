@@ -23,21 +23,81 @@ it('names each grant group and scopes it correctly', function (AssumeRoleGroup $
     'env admins' => [fn (): AssumeRoleGroup => new AdminsGroup(), Scope::Env, 'yolo-testing-admins'],
 ]);
 
-it('grants nothing but sts:AssumeRole on exactly its tier role, built purely from the manifest', function (AssumeRoleGroup $group, string $roleArn): void {
+it('grants sts:AssumeRole on exactly its tier role plus the self-service credential slice, built purely from the manifest', function (AssumeRoleGroup $group, string|array $roleArn): void {
     $document = $group->document();
+    $self = [
+        'arn:aws:iam::111111111111:user/${aws:username}',
+        'arn:aws:iam::111111111111:mfa/*',
+    ];
 
     expect($document['Version'])->toBe('2012-10-17');
-    expect($document['Statement'])->toHaveCount(1);
+    expect($document['Statement'])->toHaveCount(4);
 
-    $statement = $document['Statement'][0];
-    expect($statement['Effect'])->toBe('Allow');
-    expect($statement['Action'])->toBe('sts:AssumeRole');
-    expect($statement['Resource'])->toBe($roleArn);
+    $assumeRole = $document['Statement'][0];
+    expect($assumeRole['Effect'])->toBe('Allow');
+    expect($assumeRole['Action'])->toBe('sts:AssumeRole');
+    expect($assumeRole['Resource'])->toBe($roleArn);
+
+    // The MFA bootstrap path — ungated so a new user can enrol their first
+    // device, scoped to the member's own user/mfa ARNs so nothing broader leaks.
+    $bootstrap = $document['Statement'][1];
+    expect($bootstrap['Effect'])->toBe('Allow');
+    expect($bootstrap['Action'])->toBe([
+        'iam:GetUser',
+        'iam:GetMFADevice',
+        'iam:ListMFADevices',
+        'iam:CreateVirtualMFADevice',
+        'iam:EnableMFADevice',
+        'iam:ResyncMFADevice',
+    ]);
+    expect($bootstrap['Resource'])->toBe($self);
+    expect($bootstrap)->not->toHaveKey('Condition');
+
+    // Account-level console reads — ungated, needed to render the MFA and
+    // password screens; neither action supports resource-level scoping.
+    $consoleReads = $document['Statement'][2];
+    expect($consoleReads['Effect'])->toBe('Allow');
+    expect($consoleReads['Action'])->toBe([
+        'iam:ListVirtualMFADevices',
+        'iam:GetAccountPasswordPolicy',
+    ]);
+    expect($consoleReads['Resource'])->toBe('*');
+    expect($consoleReads)->not->toHaveKey('Condition');
+
+    // Credential self-management — MFA-gated, so a leaked bare key or pre-MFA
+    // console session can't cut a fresh key, change the password, or strip the
+    // device.
+    $credentials = $document['Statement'][3];
+    expect($credentials['Effect'])->toBe('Allow');
+    expect($credentials['Action'])->toBe([
+        'iam:CreateAccessKey',
+        'iam:ListAccessKeys',
+        'iam:UpdateAccessKey',
+        'iam:DeleteAccessKey',
+        'iam:ChangePassword',
+        'iam:DeactivateMFADevice',
+        'iam:DeleteVirtualMFADevice',
+    ]);
+    expect($credentials['Resource'])->toBe($self);
+    expect($credentials['Condition'])->toBe(['Bool' => ['aws:MultiFactorAuthPresent' => 'true']]);
 })->with([
-    'env observers -> observer role' => [fn (): AssumeRoleGroup => new ObserversGroup(), 'arn:aws:iam::111111111111:role/yolo-testing-observer-role'],
+    // Env-wide read subsumes per-app read: the env observers grant carries the
+    // env role plus a wildcard over every per-app observer role, so app-scoped
+    // commands (which mint the narrower role) work for an env observer.
+    'env observers -> observer role + all app observer roles' => [fn (): AssumeRoleGroup => new ObserversGroup(), [
+        'arn:aws:iam::111111111111:role/yolo-testing-observer-role',
+        'arn:aws:iam::111111111111:role/yolo-testing-*-observer-role',
+    ]],
     'app observers -> per-app observer role' => [fn (): AssumeRoleGroup => new AppObserversGroup(), 'arn:aws:iam::111111111111:role/yolo-testing-my-app-observer-role'],
     'app deployers -> deployer role' => [fn (): AssumeRoleGroup => new DeployersGroup(), 'arn:aws:iam::111111111111:role/yolo-testing-my-app-deployer'],
-    'env admins -> admin role' => [fn (): AssumeRoleGroup => new AdminsGroup(), 'arn:aws:iam::111111111111:role/yolo-testing-admin-role'],
+    // Admin subsumes every tier: commands mint the least-privileged role for
+    // their job, so the admin grant must cover the whole role hierarchy.
+    'env admins -> every tier role' => [fn (): AssumeRoleGroup => new AdminsGroup(), [
+        'arn:aws:iam::111111111111:role/yolo-testing-admin-role',
+        'arn:aws:iam::111111111111:role/yolo-testing-observer-role',
+        'arn:aws:iam::111111111111:role/yolo-testing-*-observer-role',
+        'arn:aws:iam::111111111111:role/yolo-testing-*-deployer',
+    ]],
 ]);
 
 it('is untaggable — synchroniseTags is a no-op (ownership lives in the name)', function (): void {

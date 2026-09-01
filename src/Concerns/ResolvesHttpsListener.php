@@ -39,19 +39,60 @@ trait ResolvesHttpsListener
     }
 
     /**
+     * Whether a certificate is already in the listener's SNI certificate list.
+     *
+     * The list read (DescribeListenerCertificates) is the only honest source: an
+     * app's cert hangs off the shared listener as an SNI cert, not as its single
+     * default cert, so inspecting the default reads every non-creator app's cert
+     * as missing on every sync.
+     */
+    protected function listenerHasCertificate(string $listenerArn, string $certificateArn): bool
+    {
+        try {
+            ElbV2::listenerCertificate($listenerArn, $certificateArn);
+
+            return true;
+        } catch (ResourceDoesNotExistException) {
+            return false;
+        }
+    }
+
+    /**
      * Whether the `:443` listener will exist by the time the apply pass reaches
-     * the rule steps. It's created by SyncHttpsListenerStep gated on this app's
-     * cert being ISSUED, so that exact condition is the discriminator: an issued
-     * cert means the listener is created earlier in this same apply (so the rule
-     * should plan as pending); no issued cert means the listener won't be created
-     * this run either (so the rule genuinely defers to a later sync).
+     * the rule steps. It's created by SyncHttpsListenerStep as soon as a
+     * certificate is available to be its default, so the discriminator is
+     * whether this app's certificate will be issued this run.
      */
     protected function httpsListenerWillBeCreatedThisSync(): bool
     {
+        return $this->certificateWillBeIssued(Manifest::certificateDomain());
+    }
+
+    /**
+     * Whether a domain's certificate will be ISSUED by the time the apply pass
+     * reaches the caller — the plan-pass question, asked before anything exists.
+     *
+     * Already ISSUED is the steady-state yes. Absent or PENDING_VALIDATION is
+     * equally a yes: the certificate step for this domain runs earlier in the SAME
+     * apply and blocks until ACM reports the certificate issued, so a greenfield
+     * sync — where no certificate exists at plan time at all — still has one by the
+     * time the listener is created. Asking "is it issued right now" instead reads
+     * a greenfield run as a no and prunes the caller out of the apply pass.
+     *
+     * Any other status (FAILED, EXPIRED, REVOKED, VALIDATION_TIMED_OUT) is terminal
+     * for this run — the certificate step passes it through untouched — so nothing
+     * will make it issuable and the caller should genuinely defer.
+     *
+     * Only meaningful where a certificate step is wired for the domain, which is
+     * exactly where the callers ask it (each already returned SKIPPED otherwise).
+     */
+    protected function certificateWillBeIssued(string $domain): bool
+    {
         try {
-            return Acm::certificate(Manifest::apex())['Status'] === 'ISSUED';
+            return in_array(Acm::certificate($domain)['Status'], ['ISSUED', 'PENDING_VALIDATION'], true);
         } catch (ResourceDoesNotExistException) {
-            return false;
+            // Nothing requested yet — the certificate step requests it this sync.
+            return true;
         }
     }
 }

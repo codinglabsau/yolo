@@ -40,7 +40,13 @@ class DetachSslCertificateStep implements ExecutesWebStep
 
     public function __invoke(array $options): StepResult
     {
-        $certificate = new SslCertificate(Manifest::apex());
+        // No domain of its own means no app-level certificate; a tenanted app's
+        // per-tenant certificates are detached by the per-tenant teardown.
+        if (! Manifest::hasDomain()) {
+            return StepResult::SKIPPED;
+        }
+
+        $certificate = new SslCertificate(Manifest::certificateDomain(), Manifest::apex());
         $summary = $certificate->find();
 
         if ($summary === null) {
@@ -56,7 +62,7 @@ class DetachSslCertificateStep implements ExecutesWebStep
         }
 
         $this->recordChange(Change::make(
-            sprintf('%s SSL certificate (ACM cert kept — never deleted)', Manifest::apex()),
+            sprintf('%s SSL certificate (ACM cert kept — never deleted)', Manifest::certificateDomain()),
             'attached to this app\'s HTTPS listener',
             'detached',
         ));

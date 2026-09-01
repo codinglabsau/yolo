@@ -31,6 +31,26 @@ abstract class ListenerRule implements Deletable, Resource, SynchronisesConfigur
 {
     use ResolvesTags;
 
+    /**
+     * Priority bands, by rule kind. ALB evaluates rules lowest-priority-number
+     * first, so a rule matching an exact host must sit below any rule that can
+     * match it by wildcard: a wildcard-subdomain app's `*.{apex}` forward rule
+     * also matches `www.{apex}` and `search.{apex}`, and whichever rule drew the
+     * lower number would win. Banding makes that ordering deterministic instead
+     * of a hash race — the apex/www redirect outranks every forward rule, and an
+     * exact-host forward rule (an env service's `search.{domain}`, a sibling
+     * app's host) outranks any wildcard-carrying forward rule, so a wildcard
+     * only ever catches hosts nothing else claims.
+     *
+     * Within a band the number is still a stable hash of the rule name, so two
+     * apps never collide and a rule keeps its priority across syncs.
+     */
+    protected const PRIORITY_BANDS = [
+        'redirect' => [1000, 9999],
+        'forward' => [10000, 29999],
+        'wildcard' => [30000, 49999],
+    ];
+
     protected ?array $cachedRule = null;
 
     public function __construct(protected string $httpsListenerArn) {}
@@ -109,10 +129,12 @@ abstract class ListenerRule implements Deletable, Resource, SynchronisesConfigur
     }
 
     /**
-     * Reconcile the live rule's host conditions and action onto the desired ones,
-     * in place — so changing `domain` (apex↔www, or to a different host) rewrites
-     * this app's existing rule rather than orphaning it and creating a new one.
-     * Only this rule (found by Name) is ever modified.
+     * Reconcile the live rule's host conditions, action and priority band onto
+     * the desired ones, in place — so changing `domain` (apex↔www, or to a
+     * different host) rewrites this app's existing rule rather than orphaning it
+     * and creating a new one, and flipping `wildcard-subdomains` moves the rule
+     * into the band its new host-set demands. Only this rule (found by Name) is
+     * ever modified.
      */
     public function synchroniseConfiguration(bool $apply = true): array
     {
@@ -143,7 +165,40 @@ abstract class ListenerRule implements Deletable, Resource, SynchronisesConfigur
             $this->cachedRule = null;
         }
 
+        if (($priorityChange = $this->reconcilePriority($rule, $apply)) instanceof Change) {
+            $changes[] = $priorityChange;
+        }
+
         return $changes;
+    }
+
+    /**
+     * A Change (applied via SetRulePriorities when $apply) when the live rule
+     * sits outside its band, else null. The band is derived from the DESIRED
+     * host-set, so this both migrates rules created before the forward band was
+     * split and moves a rule whose band changed with its hosts — without it, the
+     * banding above would only ever govern freshly-created rules.
+     */
+    protected function reconcilePriority(array $rule, bool $apply): ?Change
+    {
+        $livePriority = (int) $rule['Priority'];
+        [$floor, $ceiling] = static::PRIORITY_BANDS[$this->band()];
+
+        if ($livePriority >= $floor && $livePriority <= $ceiling) {
+            return null;
+        }
+
+        $priority = $this->priority();
+
+        if ($apply) {
+            Aws::elasticLoadBalancingV2()->setRulePriorities([
+                'RulePriorities' => [['RuleArn' => $rule['RuleArn'], 'Priority' => $priority]],
+            ]);
+
+            $this->cachedRule = null;
+        }
+
+        return Change::make('priority', $livePriority, $priority);
     }
 
     protected function hostCondition(): array
@@ -183,6 +238,25 @@ abstract class ListenerRule implements Deletable, Resource, SynchronisesConfigur
         return $this->cachedRule = ElbV2::ruleByName($this->httpsListenerArn, $this->name());
     }
 
+    /**
+     * Which {@see PRIORITY_BANDS} entry this rule takes, derived from the
+     * host-set: a rule carrying a wildcard host takes the wildcard band so every
+     * exact-host rule on the shared listener outranks it. Derived rather than
+     * declared per class because the same rule moves bands when the manifest
+     * flips `wildcard-subdomains` — which {@see synchroniseConfiguration}
+     * reconciles. The redirect rule overrides this.
+     */
+    protected function band(): string
+    {
+        foreach ($this->hosts() as $host) {
+            if (str_starts_with($host, '*.')) {
+                return 'wildcard';
+            }
+        }
+
+        return 'forward';
+    }
+
     protected function priority(): int
     {
         $usedPriorities = collect(ElbV2::rules($this->httpsListenerArn))
@@ -190,20 +264,28 @@ abstract class ListenerRule implements Deletable, Resource, SynchronisesConfigur
             ->map(fn (array $rule): int => (int) $rule['Priority'])
             ->all();
 
-        return static::nextAvailablePriority($this->name(), $usedPriorities);
+        [$floor, $ceiling] = static::PRIORITY_BANDS[$this->band()];
+
+        return static::nextAvailablePriority($this->name(), $usedPriorities, $floor, $ceiling);
     }
 
-    public static function nextAvailablePriority(string $name, array $usedPriorities): int
+    /**
+     * A stable per-name priority inside a band, skipping any already taken. The
+     * band is explicit rather than defaulted: a caller that fell back to the full
+     * 1000-49999 range could land a forward rule on top of a redirect and undo
+     * the ordering {@see PRIORITY_BANDS} exists to guarantee.
+     *
+     * @param  array<int, int>  $usedPriorities
+     */
+    public static function nextAvailablePriority(string $name, array $usedPriorities, int $floor, int $ceiling): int
     {
-        $floor = 1000;
-        $ceiling = 49999;
         $range = $ceiling - $floor + 1;
 
         $base = (abs(crc32($name)) % $range) + $floor;
 
         for ($attempts = 0; in_array($base, $usedPriorities, true); $attempts++) {
             if ($attempts >= $range) {
-                throw new IntegrityCheckException('ALB listener rule priority space (1000-49999) exhausted');
+                throw new IntegrityCheckException(sprintf('ALB listener rule priority space (%d-%d) exhausted', $floor, $ceiling));
             }
 
             $base = $base >= $ceiling ? $floor : $base + 1;

@@ -59,7 +59,16 @@ The ALB doesn't publish in-flight concurrency, so YOLO derives it with CloudWatc
 concurrency_per_task = (RequestCountPerTarget / 60) × TargetResponseTime
 ```
 
-and target-tracks it against the task's **pinned worker pool** held at **70% utilisation**. The web tier pins its FrankenPHP worker count from the task's *real* vCPU allocation — `16 × vCPU`, capped by memory — rather than letting FrankenPHP auto-detect it, which on Fargate reads the microVM's fixed ~2 vCPUs and so pins ~4 workers on every task whatever its size. Each worker serves one request at a time and blocks for that request's whole lifetime (including an SSR render it can't yield during), so the pool size *is* the per-task concurrency ceiling. A 1 vCPU task → 16 workers → a target of ~11 concurrent requests, leaving headroom for the within-minute peak and the next task's cold start. Resize the task (`tasks.web.cpu`) and both the pool and the target follow; there's no separate knob.
+and target-tracks it against the task's **pinned concurrency ceiling** held at **70% utilisation**. A 1 vCPU Octane task → 16 workers → a target of ~11 concurrent requests, leaving headroom for the within-minute peak and the next task's cold start. Resize the task (`tasks.web.cpu`) and both the ceiling and the target follow; there's no separate knob.
+
+### What the ceiling is, and why YOLO pins it
+
+Whichever mode the tier runs, one PHP worker or thread serves one request at a time and blocks for that request's whole lifetime — including a downstream wait or an SSR render it can't yield during. So the size of that pool *is* the per-task concurrency ceiling, and YOLO pins it from the task's *real* vCPU allocation rather than letting FrankenPHP auto-detect it. Auto-detection reads the CPUs visible to the process, which on Fargate is the microVM's fixed ~2 vCPUs — so it would pin ~4 on every task whatever its size, and resizing the task wouldn't move it.
+
+- **Octane (worker mode, the default)** — a resident pool of `16 × vCPU` workers, capped by memory, pinned with `octane:start --workers`. Fixed at boot: the pool *is* the ceiling.
+- **Classic mode** ([`tasks.web.octane: false`](/reference/manifest#tasks-web)) — threads spawned on demand between a floor of `16 × vCPU` and a ceiling of `32 × vCPU`, both capped by memory. The ceiling is what the target tracks; the floor is just where the pool idles. The extra headroom absorbs a within-minute arrival spike while ECS brings another task up.
+
+Classic mode needs both bounds written explicitly, which is why YOLO generates a `docker/Caddyfile` and runs `frankenphp run --config` against it rather than the simpler `frankenphp php-server`: that command exposes no thread flag and reads no Caddyfile, so its pool can't be moved off the microVM-derived default. `max_threads auto` isn't an option either — it sizes off host memory without consulting the container's limit, returning the same ceiling whether the task is capped at 512 MB or 4 GB, so a small task would grow a pool it can't hold.
 
 Because the signal includes latency, a slow downstream dependency (a struggling database) raises concurrency and scales the web tier out even when more tasks won't help — the `max` bound is the backstop there, since CPU stays low when the stall is downstream.
 

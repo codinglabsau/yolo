@@ -4,7 +4,6 @@ use Codinglabs\Yolo\Steps\Sync\Account\SyncGithubOidcProviderStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncIvsEventBridgeTargetStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncInternetGatewayAttachmentStep;
 use Codinglabs\Yolo\Steps\Sync\App\Solo\SyncSslCertificateStep as SoloSslCertificateStep;
-use Codinglabs\Yolo\Steps\Sync\App\Tenant\AttachSslCertificateToLoadBalancerListenerStep;
 use Codinglabs\Yolo\Steps\Sync\App\Tenant\SyncSslCertificateStep as TenantSslCertificateStep;
 
 /**
@@ -23,22 +22,13 @@ use Codinglabs\Yolo\Steps\Sync\App\Tenant\SyncSslCertificateStep as TenantSslCer
 it('every sync step can record drift into the plan, or is an explicit exemption', function (): void {
     // Existence/state-diff steps: they check live state first and return SYNCED
     // (without writing) when already provisioned, so a clean sync stays quiet.
-    $existenceDiff = [
+    $exempt = [
         SyncGithubOidcProviderStep::class,        // account-level singleton: exists ⇒ done
         SoloSslCertificateStep::class,            // ACM cert lifecycle (request/validate by state)
         TenantSslCertificateStep::class,          // same, per tenant
         SyncIvsEventBridgeTargetStep::class,      // compares the live target ARN before putTargets
         SyncInternetGatewayAttachmentStep::class, // checks the attachment state before attaching
     ];
-
-    // Known debt — does NOT belong here long-term: it returns
-    // WOULD_SYNC on every plan pass regardless of drift, so a multi-tenant sync
-    // never reaches "Already in sync". Remove once it's made diff-first.
-    $knownOverReporters = [
-        AttachSslCertificateToLoadBalancerListenerStep::class,
-    ];
-
-    $exempt = [...$existenceDiff, ...$knownOverReporters];
 
     $root = dirname(__DIR__, 2) . '/src';
     $syncRoot = $root . '/Steps/Sync';

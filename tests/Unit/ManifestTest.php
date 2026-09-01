@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServerGroup;
+use Codinglabs\Yolo\Enums\QueueIsolation;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 describe('has and get', function (): void {
@@ -66,9 +67,9 @@ describe('multitenancy', function (): void {
 
     it('is multitenanted with tenants config', function (): void {
         writeManifest([
-            'tenants' => [
+            'multitenancy' => ['tenants' => [
                 'au' => ['domain' => 'au.example.com'],
-            ],
+            ]],
         ]);
 
         expect(Manifest::isMultitenanted())->toBeTrue();
@@ -76,9 +77,9 @@ describe('multitenancy', function (): void {
 
     it('derives each tenant apex from its domain', function (): void {
         writeManifest([
-            'tenants' => [
+            'multitenancy' => ['tenants' => [
                 'au' => ['domain' => 'au.example.com'],
-            ],
+            ]],
         ]);
 
         bindHostedZones();
@@ -90,9 +91,9 @@ describe('multitenancy', function (): void {
 
     it('derives a tenant apex from the longest matching hosted zone', function (): void {
         writeManifest([
-            'tenants' => [
+            'multitenancy' => ['tenants' => [
                 'au' => ['domain' => 'shop.au.example.com'],
-            ],
+            ]],
         ]);
 
         bindHostedZones(['au.example.com']);
@@ -100,6 +101,97 @@ describe('multitenancy', function (): void {
         $tenants = Manifest::tenants();
 
         expect($tenants['au']['apex'])->toBe('au.example.com');
+    });
+});
+
+describe('queue tiers', function (): void {
+    it('declares no tiers without a queues: block', function (): void {
+        writeManifest([]);
+
+        expect(Manifest::queueTiers())->toBe([]);
+    });
+
+    it('reads the declared tiers as a list in priority order', function (): void {
+        writeManifest(['queues' => ['high', 'default']]);
+
+        expect(Manifest::queueTiers())->toBe(['high', 'default']);
+    });
+
+    it('accepts the queues: list through the manifest validator', function (): void {
+        writeManifest(['queues' => ['high', 'default']]);
+
+        expect(Manifest::unknownKeys())->toBe([]);
+    });
+
+    it('rejects a queues: map — per-queue config is not supported yet', function (): void {
+        writeManifest(['queues' => ['high' => null, 'default' => null]]);
+
+        expect(fn (): array => Manifest::queueTiers())->toThrow(IntegrityCheckException::class);
+    });
+});
+
+describe('queue visibility timeout', function (): void {
+    it('defaults the visibility timeout past the worker\'s default job timeout', function (): void {
+        writeManifest([]);
+
+        expect(Manifest::queueVisibilityTimeout())->toBe(90);
+    });
+
+    it('reads a declared visibility timeout', function (): void {
+        writeManifest(['queue-visibility-timeout' => 900]);
+
+        expect(Manifest::queueVisibilityTimeout())->toBe(900);
+    });
+
+    it('accepts queue-visibility-timeout through the manifest validator', function (): void {
+        writeManifest(['queue-visibility-timeout' => 900]);
+
+        expect(Manifest::unknownKeys())->toBe([]);
+    });
+
+    it('hard-fails on a non-integer visibility timeout', function (): void {
+        writeManifest(['queue-visibility-timeout' => '5 minutes']);
+
+        expect(fn (): int => Manifest::queueVisibilityTimeout())->toThrow(IntegrityCheckException::class);
+    });
+
+    it('hard-fails on a visibility timeout outside the SQS bounds', function (int $seconds): void {
+        writeManifest(['queue-visibility-timeout' => $seconds]);
+
+        expect(fn (): int => Manifest::queueVisibilityTimeout())->toThrow(IntegrityCheckException::class);
+    })->with([0, 43201]);
+});
+
+describe('queue isolation', function (): void {
+    it('defaults a multi-tenant app to shared queues', function (): void {
+        writeManifest(['multitenancy' => ['tenants' => ['acme' => [], 'globex' => []]]]);
+
+        expect(Manifest::queueIsolation())->toBe(QueueIsolation::Shared);
+        // shared collapses to the solo queue shape — the layer does not fan per tenant
+        expect(Manifest::fansQueuesPerTenant())->toBeFalse();
+    });
+
+    it('fans queues per tenant when isolation is dedicated', function (): void {
+        writeManifest([
+            'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => ['acme' => [], 'globex' => []]],
+        ]);
+
+        expect(Manifest::queueIsolation())->toBe(QueueIsolation::Dedicated);
+        expect(Manifest::fansQueuesPerTenant())->toBeTrue();
+    });
+
+    it('never fans queues per tenant for a solo app', function (): void {
+        writeManifest([]);
+
+        expect(Manifest::fansQueuesPerTenant())->toBeFalse();
+    });
+
+    it('hard-fails on an unknown isolation value', function (): void {
+        writeManifest([
+            'multitenancy' => ['queue-isolation' => 'sometimes', 'tenants' => ['acme' => []]],
+        ]);
+
+        expect(fn (): QueueIsolation => Manifest::queueIsolation())->toThrow(IntegrityCheckException::class);
     });
 });
 
@@ -114,7 +206,17 @@ describe('cache + session defaults', function (): void {
         expect(Manifest::sessionDriver())->toBe('redis');
     });
 
-    it('has no cache or session default for a non-web app', function (): void {
+    it('defaults a web-less worker app to the shared redis cache but no session driver', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => false, 'queue' => ['autoscaling' => true]],
+        ]);
+
+        expect(Manifest::cacheStore())->toBe('redis');
+        expect(Manifest::sessionDriver())->toBeNull();
+    });
+
+    it('has no cache or session default for a build-only app', function (): void {
         writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 
         expect(Manifest::cacheStore())->toBeNull();
@@ -336,9 +438,9 @@ describe('apex', function (): void {
 
     it('throws for multitenanted environments', function (): void {
         writeManifest([
-            'tenants' => [
+            'multitenancy' => ['tenants' => [
                 'au' => ['domain' => 'au.example.com'],
-            ],
+            ]],
         ]);
 
         expect(fn (): string => Manifest::apex())
@@ -598,29 +700,77 @@ describe('unified autoscaling', function (): void {
     });
 });
 
-describe('rdsTarget', function (): void {
-    it('reads the RDS target from the flat manifest key — a bare value is an instance, a full endpoint auto-detects Aurora', function (): void {
+describe('database', function (): void {
+    it('reads the declared database name from the flat manifest key', function (): void {
         // Sourced from the manifest, never the app's secret .env, so every
         // consumer (dashboard writer, deploy gate, audit probe) resolves the SAME
-        // target under any RBAC tier — no identity-dependent drift.
+        // target under any RBAC tier — no identity-dependent drift. Whether the
+        // name is a cluster or an instance is Rds::target()'s live call.
         writeManifest(['database' => 'my-db']);
-        expect(Manifest::rdsTarget())->toBe(['identifier' => 'my-db', 'cluster' => false]);
-
-        writeManifest(['database' => 'my-cluster.cluster-cabc123.ap-southeast-2.rds.amazonaws.com']);
-        expect(Manifest::rdsTarget())->toBe(['identifier' => 'my-cluster', 'cluster' => true]);
-
-        writeManifest(['database' => 'my-instance.cabc123.ap-southeast-2.rds.amazonaws.com']);
-        expect(Manifest::rdsTarget())->toBe(['identifier' => 'my-instance', 'cluster' => false]);
+        expect(Manifest::database())->toBe('my-db');
     });
 
-    it('returns no RDS target when nothing is declared, the value is blank, or it is an RDS Proxy', function (): void {
+    it('returns null when nothing is declared or the value is blank', function (): void {
         writeManifest([]);
-        expect(Manifest::rdsTarget())->toBeNull();
+        expect(Manifest::database())->toBeNull();
 
         writeManifest(['database' => '']);
-        expect(Manifest::rdsTarget())->toBeNull();
+        expect(Manifest::database())->toBeNull();
+    });
 
-        writeManifest(['database' => 'my-proxy.proxy-cabc.ap-southeast-2.rds.amazonaws.com']);
-        expect(Manifest::rdsTarget())->toBeNull();
+    it('rejects an endpoint hostname with a pointed message — identifiers cannot contain dots', function (): void {
+        writeManifest(['database' => 'my-db.cabc123.ap-southeast-2.rds.amazonaws.com']);
+
+        expect(fn (): ?string => Manifest::database())
+            ->toThrow(IntegrityCheckException::class, 'not an endpoint hostname');
+    });
+});
+
+describe('mysql backups', function (): void {
+    it('defaults backups OFF — an opt-in via backups: true', function (): void {
+        writeManifest(['tasks' => ['web' => true]]);
+
+        expect(Manifest::backsUpDatabases())->toBeFalse();
+    });
+
+    it('turns backups on when the manifest opts in', function (): void {
+        writeManifest(['backups' => true, 'tasks' => ['web' => true]]);
+
+        expect(Manifest::backsUpDatabases())->toBeTrue();
+    });
+
+    it('treats a backups map as opted in and reads its cron schedule', function (): void {
+        writeManifest(['backups' => ['schedule' => '0 */4 * * *'], 'tasks' => ['web' => true]]);
+
+        expect(Manifest::backsUpDatabases())->toBeTrue()
+            ->and(Manifest::backupSchedule())->toBe('0 */4 * * *');
+    });
+
+    it('defaults the backup schedule to daily 05:00', function (): void {
+        writeManifest(['backups' => true, 'tasks' => ['web' => true]]);
+
+        expect(Manifest::backupSchedule())->toBe('0 5 * * *');
+    });
+
+    it('refuses a malformed backup schedule', function (): void {
+        // Shape gate only — five cron fields of cron charset; supercronic is
+        // the parser of record for the semantics.
+        writeManifest(['backups' => ['schedule' => 'every 4 hours'], 'tasks' => ['web' => true]]);
+
+        expect(fn (): string => Manifest::backupSchedule())
+            ->toThrow(IntegrityCheckException::class, '5-field cron expression');
+    });
+
+    it('keeps backups off when cron runs nowhere to host the dump', function (): void {
+        // Opted in, but no scheduler host exists to fire the crontab entry.
+        writeManifest(['backups' => true, 'tasks' => ['web' => true, 'scheduler' => false]]);
+
+        expect(Manifest::backsUpDatabases())->toBeFalse();
+    });
+
+    it('accepts the backups key through the manifest validator', function (): void {
+        writeManifest(['backups' => true]);
+
+        expect(Manifest::unknownKeys())->toBe([]);
     });
 });

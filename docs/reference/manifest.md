@@ -2,119 +2,128 @@
 
 `yolo.yml` is the single source of truth for your application's infrastructure. Both `yolo sync` (infrastructure) and `yolo deploy` (code) read from it. This page documents every key.
 
-## A complete example
+## A minimal manifest
 
-Every key YOLO understands, in one annotated `yolo.yml`. **Required keys are uncommented; everything else is commented out showing its default**, so you can copy this and uncomment only what you need to change. `yolo init` scaffolds a minimal subset of this — a plain web app whose one container runs all three roles (web, queue worker, scheduler).
+The smallest useful web app — one container running all three roles (web, queue worker, scheduler), which is what `yolo init` scaffolds:
 
 ```yaml
-name: codinglabs                 # required — app name, prefixes every app-scoped resource
-# timezone: Australia/Brisbane   # default UTC — sets the year.week build-version prefix
+name: my-app
 
 environments:
   production:
-    # --- Required ---
-    account-id: '123456789012'   # required — verified against your AWS profile via STS
-    region: ap-southeast-2       # required
+    account-id: '123456789012'
+    region: ap-southeast-2
+    domain: example.com
 
-    # --- Routing (see /guide/domains) ---
-    domain: example.com    # public domain; omit domain + tenants for a headless app
-    #                      # the apex is derived automatically from the matching Route 53 zone
-    #
-    # Multi-tenant instead of a single domain (mutually exclusive with domain):
-    # tenants:
-    #   acme:   { domain: acme.example.com }
-    #   globex: { domain: globex.example.com }
-
-    # --- CI deployer OIDC trust (see /guide/ci-cd) ---
-    # branch: main               # default: main — branch this env deploys from
-    # tag: 'v*'                  # deploy on a tag pattern instead of a branch
-    # repository: org/repo       # default: inferred from your git origin
-
-    # --- App storage & shared infra names ---
-    # bucket: my-app-bucket                          # app S3 bucket, injected as AWS_BUCKET
-
-    # --- Cache & session (web apps default to these; uncomment only to override) ---
-    # cache:
-    #   store: redis             # default; file/database/array to opt out of the shared Valkey
-    # session:
-    #   driver: redis            # default (sessions live on the Valkey cluster); database/cookie/file to change the session backend
-
-    # --- YOLO-provisioned services this app consumes ---
-    # services:            # bare capability names only — service shape is hardcoded or lives in the environment manifest
-    #   - ivs
-    #   - mediaconvert
-    #   - rekognition
-
-    # --- Extra IAM for this app's task role (per-app; never reaches another app) ---
-    # task-role-policies:
-    #   - arn:aws:iam::123456789012:policy/my-app-extra-access
-    #   - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
-
-    # Every app runs three roles — web, the queue worker, and the scheduler. With
-    # just `web` below they share the one web container; uncommenting `queue` and/or
-    # `scheduler` further down extracts them into their own service (see the cascade
-    # table under tasks.web.*).
     tasks:
       web:
-        cpu: '512'               # default: '512' — Fargate CPU units
-        memory: '1024'           # default: '1024' — Fargate memory (MB)
-        # enable-execute-command: false  # default: true — ECS Exec shell access (gated by MFA on the admin tier)
-        # ssr: true                       # default: false — bundle Inertia SSR (needs Node in the Dockerfile)
-        # platform: linux/amd64           # default: linux/amd64
-        # shutdown-grace-period: 15       # default: 15 — web SIGTERM→SIGKILL window (also the ALB drain)
-        # log-retention: 30               # default: 30 — CloudWatch Logs retention (days)
-        #
-        # health-check:
-        #   path: /up                     # default: /up (Laravel's built-in health route)
-        #   interval: 10                  # default: 10 (seconds between checks)
-        #   timeout: 5                    # default: 5 — tolerant of a slow /up under load
-        #   healthy-threshold: 2          # default: 2
-        #   unhealthy-threshold: 5        # default: 5 — cushion for a slow-but-alive task
-        #   grace-period: 60              # default: 60 (ECS health-check grace period)
-        #
-        autoscaling: true              # REQUIRED for web — true (min 1, max 5) | false (fixed single task) | a block
-        # autoscaling:                    # …or tune it (web min must be ≥ 1)
-        #   min: 1                        # default: 1
-        #   max: 5                        # default: 5
-        #   cpu-utilization: 65           # default: 65 — the CPU safety-net policy
-        #   scale-out-cooldown: 60        # default: 60
-        #   scale-in-cooldown: 300        # default: 300
-        #   # request concurrency is the default signal (derived from task memory); burst
-        #   # (~10s spike detection) is unconditional for octane — neither has a knob
-
-      # Extract the queue into its own ECS service (scale independently of web). Like
-      # web, a standalone queue must be a config map that declares `autoscaling` — there's
-      # no bare `queue: true` shorthand. `false` switches the worker off entirely (jobs run
-      # inline, QUEUE_CONNECTION=sync) and tears the SQS queue down. Set
-      # autoscaling.min: 0 to scale to zero when idle — except when it also hosts the
-      # scheduler (no `scheduler` block below), where min 0 is rejected so cron isn't
-      # killed when it idles.
-      # queue:
-      #   autoscaling:                    # required — true | false | a { min, max } block
-      #     min: 0                        # 0 = scale to zero when idle (floor defaults to 1)
-      #     max: 5                        # default: 5
-      #     backlog-per-task: 100         # default: 100 — target messages per running task
-      #   cpu: '256'                      # default: '256'
-      #   memory: '512'                   # default: '512'
-      #   spot: false                     # default: false — true = Fargate Spot (~70% cheaper)
-      #   shutdown-grace-period: 60       # default: 60 — let an in-flight job finish on SIGTERM
-      #   enable-execute-command: false   # default: true
-
-      # Extract the scheduler into its own pinned-singleton service (always one
-      # task; deploys stop-then-start so a rollout never runs two crons), which
-      # drops the onOneServer() requirement. Without this block the scheduler rides
-      # the standalone queue if there is one, else the web container.
-      # scheduler:
-      #   cpu: '256'                      # default: '256'
-      #   memory: '512'                   # default: '512'
-      #   shutdown-grace-period: 115      # default: 115 — the in-flight schedule:run gets the whole stop window
-      #   enable-execute-command: false   # default: true
+        autoscaling: true
 
     build:
       - composer install --no-cache --no-interaction --optimize-autoloader --no-progress --classmap-authoritative --no-dev
       - npm ci
       - npm run build
-      - rm -rf package-lock.json node_modules database/seeders database/factories
+
+    deploy:
+      - php artisan migrate --force
+```
+
+## The full shape
+
+Every key YOLO understands, each value showing its default where one exists. This is a reference skeleton, not a valid manifest — some keys are mutually exclusive (a root `domain` is refused alongside `multitenancy`; `branch` and `tag` are alternatives) — so jump to a key's section below for its semantics before copying it.
+
+```yaml
+name: my-app
+timezone: UTC
+
+environments:
+  production:
+    account-id: '123456789012'
+    region: ap-southeast-2
+
+    domain: example.com
+    wildcard-subdomains: false
+
+    multitenancy:
+      landlord:
+        domain: app.example.com
+        wildcard-subdomains: true
+      queue-isolation: shared
+      tenants:
+        acme:
+        globex: { domain: globex.io }
+
+    branch: main
+    tag: 'v*'
+    repository: org/repo
+
+    bucket: true
+    services:
+      - ivs
+      - mediaconvert
+      - rekognition
+    task-role-policies:
+      - arn:aws:iam::123456789012:policy/my-app-extra-access
+
+    queues:
+      - high
+      - default
+    queue-visibility-timeout: 90
+
+    database: my-database
+    backups: false
+    cache:
+      store: redis
+    session:
+      driver: redis
+
+    budget:
+      amount: 100
+      strategy: balanced
+
+    tasks:
+      web:
+        autoscaling:
+          min: 1
+          max: 5
+          cpu-utilization: 65
+          scale-out-cooldown: 60
+          scale-in-cooldown: 300
+        octane: true
+        cpu: '512'
+        memory: '1024'
+        platform: linux/amd64
+        shutdown-grace-period: 15
+        enable-execute-command: true
+        log-retention: 30
+        ssr: false
+        health-check:
+          path: /up
+          interval: 10
+          timeout: 5
+          healthy-threshold: 2
+          unhealthy-threshold: 5
+          grace-period: 60
+      queue:
+        autoscaling:
+          min: 1
+          max: 5
+          backlog-per-task: 100
+        cpu: '256'
+        memory: '512'
+        spot: false
+        shutdown-grace-period: 60
+        enable-execute-command: true
+      scheduler:
+        cpu: '256'
+        memory: '512'
+        shutdown-grace-period: 115
+        enable-execute-command: true
+
+    build:
+      - composer install --no-cache --no-interaction --optimize-autoloader --no-progress --classmap-authoritative --no-dev
+      - npm ci
+      - npm run build
 
     deploy:
       - php artisan migrate --force
@@ -123,7 +132,13 @@ environments:
       - php artisan optimize
 ```
 
-> Every commented key above has its own section below with the full semantics — this block is the map; the sections are the detail.
+| Area | Keys |
+|---|---|
+| App | [`name`](#name), [`timezone`](#timezone), [`environments`](#environments) |
+| Routing | [`domain`](#domain), [`wildcard-subdomains`](#wildcard-subdomains), [`multitenancy`](#multitenancy), [`branch` / `tag` / `repository`](#branch-tag-repository) |
+| Infrastructure | [`account-id`](#account-id), [`region`](#region), [`bucket`](#bucket), [`services`](#services), [`task-role-policies`](#task-role-policies), [`queues`](#queues), [`queue-visibility-timeout`](#queue-visibility-timeout), [`database`](#database), [`backups`](#backups), [`cache.store`](#cache), [`session.driver`](#session), [`budget`](#budget) |
+| Tasks | [`tasks.web`](#tasks-web), [`tasks.web.autoscaling`](#tasks-web-autoscaling), [`tasks.web.health-check`](#tasks-web-health-check), [`tasks.queue`](#tasks-queue), [`tasks.scheduler`](#tasks-scheduler) |
+| Hooks | [`build`](#build), [`deploy`](#deploy), [`deploy-all`](#deploy-all) |
 
 ::: warning Required keys
 Every command except `init` fails fast unless these three are present:
@@ -155,21 +170,87 @@ These live directly under an environment and determine how the app is reached. S
 
 ### `domain`
 
-The canonical public domain the app is served on (e.g. `app.example.com`). When it's one half of the apex/`www` pair (the apex itself, or `www.{apex}`), YOLO serves it and 301-redirects the other half to it. Omit for a [headless app](/guide/domains#headless-apps).
+The canonical public domain the app is served on (e.g. `app.example.com`). Under [`multitenancy`](#multitenancy) it moves to [`multitenancy.landlord.domain`](#multitenancy-landlord) and is **refused** at the root: there it would be ambiguous, meaning both "where the landlord is served" and "what subdomain tenants hang off", readings that separate the moment one tenant takes a domain of its own. When it's one half of the apex/`www` pair (the apex itself, or `www.{apex}`), YOLO serves it and 301-redirects the other half to it. **Required for a web app** — a `tasks.web` block with no domain (or, multi-tenant, no tenant domains) is refused, since no listener rule would ever route to it. Omit it for a [worker app](/guide/domains#headless-apps); declaring one there is allowed (the zone + certificate stay provisioned, unattached).
 
 The apex (registrable root, naming the Route 53 hosted zone) is **derived automatically** — there is no `apex` key. YOLO walks the domain's label-suffixes longest-first and uses the longest one that already has a hosted zone in the account (so `app.example.com` resolves to the `example.com` zone). When no ancestor zone exists yet, the domain itself is the apex (sync then creates the zone), with any leading `www.` stripped. See [Domains](/guide/domains).
 
-### `tenants`
+### `wildcard-subdomains`
 
-A map of tenant id → `{ domain }` that puts the app in [multi-tenant mode](/guide/multi-tenancy); each tenant's apex is derived from its domain the same way. When set, `domain` must **not** be set at the environment level.
+`true` to serve **every subdomain of `domain`** from the same service — one wildcard listener rule and one `*.{domain}` alias record instead of a resource per subdomain. A multi-tenant app that gives each tenant a subdomain then brings a tenant live on a database insert, with no infrastructure run. Defaults to `false`.
+
+```yaml
+domain: app.example.com
+wildcard-subdomains: true   # tenant-a.app.example.com, tenant-b.app.example.com, …
+```
+
+Requires `domain`. Under [`multitenancy`](#multitenancy) it moves inside the block, onto the landlord or tenant whose domain it wildcards ([`multitenancy.landlord.wildcard-subdomains`](#multitenancy-landlord) or per tenant) — declared at the root alongside a `multitenancy` block it is refused. A `www`-canonical `domain` is also refused: the wildcard would land at `*.www.{apex}` and the certificate would stop covering the apex the [redirect](/guide/domains#apex-and-www) fires from.
+
+It also moves where the certificate is issued: normally YOLO requests one for the **apex** (covering `{apex}` + `*.{apex}`), but wildcards match a single label, so `*.example.com` would not cover `tenant.app.example.com`. With `wildcard-subdomains` the certificate is issued for `domain` instead (`app.example.com` + `*.app.example.com`). Its DNS validation record and the wildcard alias record are both written into the existing apex zone, so no extra hosted zone or NS delegation is needed.
+
+Wildcards are one label deep on both sides — `tenant.app.example.com` is served, `a.b.app.example.com` is not.
+
+The wildcard is purpose-agnostic: any extra host the app answers on (`api.{domain}`, a marketing subdomain) rides it with no manifest declaration — traffic reaches the same service and the app routes by `Host`. An exact host claimed by anything else on the shared listener (an environment service's `search.{domain}`, a sibling app) always outranks the wildcard — see [priority banding](/guide/domains#with-the-apex-www-redirect).
+
+### `multitenancy`
+
+Everything multi-tenant, in one block. Its presence is what puts the app in [multi-tenant mode](/guide/multi-tenancy).
+
+```yaml
+multitenancy:
+  landlord:
+    domain: app.example.com
+    wildcard-subdomains: true
+  queue-isolation: dedicated
+  tenants:
+    acme:                      # served at acme.app.example.com
+    globex:
+      domain: globex.io        # served on its own domain
+      wildcard-subdomains: true
+```
+
+Every key is validated explicitly — there is no free-form subtree, so a misremembered or hand-written key (`apex`, say, which is always derived) fails the manifest check rather than being silently accepted and ignored.
+
+Four keys moved here and are refused where they used to sit, each naming its new path:
+
+| Was | Now |
+| --- | --- |
+| `domain` | `multitenancy.landlord.domain` |
+| `wildcard-subdomains` | `multitenancy.landlord.wildcard-subdomains`, or per tenant |
+| `tenants` | `multitenancy.tenants` |
+| `queue-isolation` | `multitenancy.queue-isolation` |
+
+#### `multitenancy.landlord`
+
+The landlord's own hosting, using the same shape a tenant does: a `domain`, optionally `wildcard-subdomains`. Wildcarding the landlord is what serves tenants beneath it, so a tenant needs no domain of its own. It also serves any extra landlord host (`api.{domain}`, `www.{domain}`) with no further declaration — the app routes by `Host` — which is why `domain` takes a single host, not a list.
+
+Optional — omit it for a multi-tenant app with no landlord host, where every tenant brings its own domain. The `:443` listener then takes its default certificate from the first tenant by sorted id.
+
+#### `multitenancy.tenants`
+
+A map of tenant id → that tenant's config. The id identifies that tenant's resources throughout YOLO.
+
+Also optional. A block with a landlord and no tenants is the shape of an app that resolves its tenants entirely from its own database — YOLO serves the landlord (and its wildcard, if declared) and provisions exactly what the solo shape does, because there is nothing to fan out over. Declaring tenants is what buys them AWS resources of their own; a tenant served under the landlord's wildcard still gets none unless [`queue-isolation`](#multitenancy-queue-isolation) is `dedicated`.
 
 ```yaml
 tenants:
-  acme:
-    domain: acme.example.com
+  acme:                       # bare: served under the landlord's wildcard
   globex:
-    domain: globex-with-yolo.com
+    domain: globex.io         # its own zone, certificate, SNI attachment and rules
+    wildcard-subdomains: true # …and *.globex.io
 ```
+
+A tenant's `apex` is derived from its `domain` exactly as the app's is — never declared. A tenant whose domain the landlord's certificate already covers provisions no DNS/TLS resources of its own; see [Graduating a tenant onto its own domain](/guide/multi-tenancy#graduating-a-tenant-onto-its-own-domain).
+
+#### `multitenancy.queue-isolation`
+
+How tenants map onto SQS queues and worker programs — `shared` (default) or `dedicated`. Only valid alongside `multitenancy.tenants`; with a single scope (a solo app, or a landlord-only block) there is nothing to isolate, so the key is refused rather than silently ignored.
+
+| Value | Queues | Workers | Trade |
+| --- | --- | --- | --- |
+| `shared` (default) | one queue set at the app name, the same shape a solo app has; the tenant rides the job payload | one worker per tier drains every tenant | Scales to any tenant count. A whale tenant's backlog delays the others. |
+| `dedicated` | one queue set per tenant (`…-{tenant}[-tier]`), plus a landlord set | supervisord runs one `queue:work` per tenant | Fair — no tenant can starve another. N tenants means N queues and N worker programs per tier, so it scales to dozens, not hundreds. |
+
+A `shared` app pins `SQS_QUEUE` at build; a `dedicated` one resolves the per-tenant queue at runtime, so nothing is pinned.
 
 ### `branch` / `tag` / `repository`
 
@@ -195,11 +276,26 @@ These live directly under an environment and provision or configure the app's AW
 
 ### `bucket`
 
-Name of an app S3 bucket for application storage. Injected into the container as `AWS_BUCKET`, and this app's [ECS task role](#task-role-policies) is automatically granted read+write on it (object get/put/delete + ACL get/set + multipart, plus bucket listing) — so the container reaches its bucket through the role. The grant is scoped to this one bucket. YOLO creates the bucket (Block Public Access on) when it doesn't already exist. On every sync it reconciles the bucket's CORS — a permissive ruleset (origins `*`, methods `GET`/`PUT`/`HEAD`) that lets the browser PUT directly to the bucket via a presigned URL — together with its `yolo:*` tags, surfacing any change in the plan and `--check`. The presigned URL (auth + same-origin), not CORS, is the access gate. Block Public Access is applied at create only and is never reconciled onto an existing bucket, so an adopted bucket (e.g. one carried over from another platform) keeps serving any public objects unchanged.
+An S3 bucket for application storage, injected into the container as `AWS_BUCKET`. This app's [ECS task role](#task-role-policies) is automatically granted read+write on it (object get/put/delete + ACL get/set + multipart, plus bucket listing), scoped to this one bucket — so the container reaches its bucket through the role, with no credentials to manage.
 
-### `alb`
+The value says **who owns the bucket**, and that is the whole difference:
 
-Name of the Application Load Balancer to use. Defaults to the per-environment shared `yolo-{env}` ALB.
+| Value | Behaviour |
+| --- | --- |
+| `true` | **YOLO-provisioned.** The bucket is named `yolo-{account-id}-{environment}-{app}-data`, so it is globally unique by construction and two environments can never end up sharing one. `sync:app` creates it, with Block Public Access on and a permissive CORS ruleset (origins `*`, methods `GET`/`PUT`/`HEAD`) that lets the browser PUT directly to it via a presigned URL — the signed URL, not CORS, is the access gate. |
+| a bucket name | **Bring your own.** The bucket must already exist **on this account**; YOLO adopts it and never creates one. A name YOLO didn't choose sits outside the `yolo-*` namespace the admin tier may write, so creating or configuring it isn't something YOLO can do — see the failure modes below. |
+| omitted | No app data bucket, and no `AWS_BUCKET`. (`false` is refused rather than read as this — omitting the key already says it.) |
+
+**Create-only in both modes.** Whatever YOLO sets, it sets once at create and then never touches the bucket again: no CORS reconcile, no Block Public Access reconcile, no tags. It holds user data, an app may legitimately serve public objects or own its own CORS rules, and a bucket handed over at birth isn't one YOLO should keep claiming — so it also carries no `yolo:*` tags and never appears in [`yolo audit`](/reference/commands#yolo-audit).
+
+**Never deleted.** [`destroy:app`](/reference/commands#yolo-destroy-app) tears down everything else and leaves this bucket standing, in both modes. Three independent things guarantee that: it isn't a deletable resource, `S3::deleteBucket` refuses it by name, and the admin tier's destructive S3 grants are scoped to the regeneratable bucket suffixes (`-config`, `-assets`, `-logs`) rather than all of `yolo-*` — so a YOLO-provisioned data bucket sits inside the create grant and outside the delete one.
+
+**A bring-your-own bucket is verified before the plan runs.** Two cases fail the sync up front, with `bucket: true` offered as the fix:
+
+- **It doesn't exist.** YOLO won't create it, so the sync would otherwise fail mid-apply on `AccessDenied`.
+- **It exists in another AWS account.** S3's bucket namespace is global, so a name someone else has taken answers a probe with a 403 that is indistinguishable from "yours, but this tier may not read it". Adopting one of those would sync perfectly cleanly, grant the task role an ARN in a foreign account, and then fail every runtime write — so ownership is resolved from this account's own bucket listing, and a name that isn't in it is refused by name.
+
+A bucket name S3 would reject (wrong case, too short, doubled dots, IP-shaped) also fails validation here rather than surfacing as an `InvalidBucketName` part-way through an apply.
 
 ### `services`
 
@@ -224,7 +320,7 @@ An entry is deliberately just a name — *this app uses ivs*: all service **shap
 The corresponding env-shared infrastructure is the environment manifest's side of the contract — e.g. the IVS event-logging pipeline (one `/aws/ivs/yolo-{env}` log group + EventBridge rule per environment, because the `aws.ivs` event stream is account-wide) is provisioned by `sync:environment` while `yolo-environment-{environment}.yml` **declares** `services.ivs` — [the service lifecycle](/guide/services#the-service-lifecycle). Using an env-backed service the environment doesn't declare is a **hard error** at `build`, `deploy` and `sync:app` (declare it, or take it out of `yolo.yml`); when an app stops using a service, its app-side resources (e.g. the MediaConvert role) melt away on the next sync. Defaulted framework backends ([`cache`](#cache), [`session`](#session)) deliberately stay separate keys — `services` is for opt-in capabilities only.
 
 ::: tip No `waf` key
-The [web application firewall](/guide/provisioning#web-application-firewall) is a **compulsory** environment resource — every environment with a load balancer gets one automatically, so there's nothing to configure here. Day-to-day tuning happens in its allow/block IP sets, not the manifest.
+The [web application firewall](/guide/provisioning#web-application-firewall) is a **compulsory** environment resource — every environment with a load balancer gets one automatically, so there's nothing to configure here. Day-to-day tuning happens in its allow/block IP sets, not the manifest. Blocked and counted requests are logged, rule-attributed, to the `aws-waf-logs-yolo-{env}` CloudWatch log group (WAFv2 mandates the prefix), retained 30 days and readable by every app's task role; allowed traffic is already covered by the ALB access logs.
 :::
 
 ### `task-role-policies`
@@ -239,6 +335,24 @@ task-role-policies:
 
 The list is reconciled on every `yolo sync`: an ARN you add gets attached, and one you remove gets detached — the role's attachment set is YOLO's to own, so there's no left-behind grant. Each entry must be a customer- or AWS-managed IAM policy ARN; a malformed value fails the sync plan rather than silently dropping the grant. The YOLO baseline policy (ECS Exec channels, this app's SQS queues, SES send, and read+write on the [`bucket`](#bucket) when declared) is always attached and isn't listed here.
 
+### `queues`
+
+A list of queue **tier names in strict-priority order** — the worker drains the first tier to empty before glancing at the next (the comma-list semantics of Laravel's `--queue`). Declaring tiers provisions one SQS queue per tier per scope: `high` becomes `yolo-{env}-{app}-high` while the `default` tier keeps the naked scope name (it's Laravel's default queue, so un-routed jobs keep landing on it and adding tiers never renames it). On a multi-tenant app with [`queue-isolation: dedicated`](#multitenancy-queue-isolation), every tenant (and the landlord) gets the full tier set.
+
+```yaml
+queues:
+  - high
+  - default
+```
+
+Tiers are names only — the map form (`queues: {high: ...}`) is rejected. Omit the block entirely for a single queue at the app's name.
+
+### `queue-visibility-timeout`
+
+How long SQS hides a delivered message before re-delivering it, in seconds — the visibility timeout on every queue the app provisions (all tiers, every tenant scope). Default `90`; SQS caps it at `43200` (12 hours).
+
+Visibility must outlast your longest job: a message re-delivered while its job is still running executes the job twice, so keep this above the worker's job timeout (60s unless a job declares its own `$timeout`). Raise it in step with long-running jobs — and consider [`tasks.queue.shutdown-grace-period`](#tasks-queue) alongside it, so an in-flight long job also survives a deploy's drain window. The value is reconciled on every `yolo sync`, so a change reaches already-provisioned queues.
+
 ---
 
 ## `database`
@@ -247,31 +361,42 @@ Declares the RDS instance or Aurora cluster the app connects to, so YOLO can cha
 
 YOLO doesn't manage your database, so it can't discover the identifier on its own. It's declared in the manifest — rather than read from `DB_HOST` in the app's `.env` — because the dashboard is written by `yolo sync` under the admin tier, which is deliberately barred from reading app secrets; a manifest value is read identically by every tier, so the dashboard never drifts between who writes it and who checks it.
 
-A single flat value, taken two ways:
+A single flat value: the database's **name** (its `DBInstanceIdentifier` or `DBClusterIdentifier`), never an endpoint hostname.
 
 ```yaml
-# A plain RDS instance — the bare identifier (its DBInstanceIdentifier):
 database: my-app-db
-
-# An Aurora cluster — paste the full cluster endpoint host; YOLO detects the
-# cluster and charts the writer (DBClusterIdentifier + Role=WRITER), which
-# follows failovers. An RDS Proxy / non-RDS host is skipped.
-database: my-app.cluster-cabc123.ap-southeast-2.rds.amazonaws.com
 ```
 
-A bare value (no `.rds.amazonaws.com`) is charted as a plain instance; a full endpoint hostname self-describes whether it's an Aurora cluster or an instance. For a plain RDS instance the short name is enough; for Aurora use the endpoint so the writer metrics are charted.
+YOLO looks the name up and detects which kind it is. An Aurora cluster is charted through its cluster roles — the writer series follows failovers, and readers chart as an aggregate alongside (with a replica-lag panel) — while anything else is charted as a plain instance. Endpoints are resolved live wherever one is needed: [`yolo db:tunnel`](/reference/commands#yolo-db-tunnel) describes the name and forwards to a cluster's writer endpoint or the instance endpoint.
+
+A name that matches no RDS cluster or instance in the account/region **fails the sync**: a declared database that doesn't exist is a manifest typo to surface loudly, not an empty dashboard panel to puzzle over.
 
 Where the database should live, the managed/external/exposed postures, and how to reach a private one are covered in the **[Databases](/guide/databases)** guide.
 
 ---
 
+## `backups`
+
+Opt in to scheduled logical database backups. On each run the scheduler's host container dumps every database (`mysqldump | zstd`, tenant databases included on a multi-tenant app), **verifies the archive at the producer** (integrity via `zstd -t`, completeness via the dump's own `Dump completed` trailer — a bad dump fails the run rather than shipping), and uploads it to the env backups bucket on a timestamped key under this app's prefix (`{app}/{database}/{YYYY-MM-DD-HHMM}.sql.zst`) — every run keeps its own object whatever the schedule cadence. Retention is plain lifecycle: dumps expire after 35 days. The bucket stays versioned purely as tamper protection — the producer's write-only grant cannot destroy an existing object. The app's task role can **write only its own prefix and read none** — restores are an operator action, not an app capability.
+
+```yaml
+backups: true          # daily at 05:00 (manifest timezone)
+
+backups:
+  schedule: "0 */4 * * *"   # or any standard 5-field cron expression
+```
+
+The schedule is a **generated crontab entry**, not anything the app registers: `yolo build` writes the cron line — `backups.schedule`, default daily at 05:00, pinned to the manifest [`timezone`](#timezone) via `CRON_TZ` — into the crontab the scheduler host's supercronic runs, with every argument — destination, region, tenant list — baked in from the manifest, so Laravel's own scheduler is never involved. Backups therefore ride the scheduler host ([where each role runs](#where-each-role-runs)), and `tasks.scheduler: false` also turns them off. [`yolo backup:database <env>`](/reference/commands#yolo-backup-database) runs the identical invocation on demand as a one-off task with streamed output. `yolo build` also probes the built image for the `mysqldump` and `zstd` binaries when backups are on and refuses to ship without them (see [Runtime checks](/guide/images#runtime-checks)) — the scaffolded Dockerfile installs both. More in the **[Databases](/guide/databases)** guide.
+
+---
+
 ## `cache.*`
 
-Declares the app's cache store. **Web apps (`tasks.web`) default to `redis`** — the per-task filesystem is broken across multiple Fargate tasks, so a working shared cache is the right default. `redis` provisions a shared **ElastiCache for Valkey** cache for the environment (one cluster shared by every app, isolated by a per-app key prefix). Set `cache.store` to `file`, `database`, or `array` to opt out (app-managed, nothing provisioned). Non-web apps get no default.
+Declares the app's cache store. **Every app that runs tasks defaults to `redis`** — web or web-less. The per-task filesystem is broken across multiple Fargate tasks, and worker apps lean on a shared cache just as hard (atomic locks, rate limiters, `onOneServer`), so a working shared cache is the right default for anything that runs. `redis` provisions a shared **ElastiCache for Valkey** cache for the environment (one cluster shared by every app, isolated by a per-app key prefix). Set `cache.store` to `file`, `database`, or `array` to opt out (app-managed, nothing provisioned). Build-only apps (no `tasks`) run no containers, so they get no default.
 
 ```yaml
 cache:
-  store: redis   # the web-app default; set file/database/array to opt out
+  store: redis   # the default for any app with tasks; set file/database/array to opt out
 ```
 
 `redis` provisions, with hardcoded sensible defaults (no tuning knobs until a real need lands):
@@ -281,7 +406,7 @@ cache:
 - a security group allowing ingress on `6379` **only** from the Fargate task security group (the cache has no public endpoint);
 - a cache subnet group across the VPC subnets.
 
-With the `redis` store, the container env gets `CACHE_STORE=redis`, `REDIS_HOST` (the cluster's primary endpoint), `REDIS_PORT=6379`, and a per-app `REDIS_PREFIX` — each only if your `.env` doesn't already set it. Scaling is a manual vertical resize; there's no autoscaling. For availability, see the [Laravel `failover` cache store](/guide/provisioning#cache-high-availability) rather than adding a replica. For a backend YOLO doesn't model, set `CACHE_STORE` in your `.env` and `cache.store: file`.
+With the `redis` store, the container env gets `CACHE_STORE=redis`, `REDIS_HOST` (the cluster's primary endpoint) and `REDIS_PORT=6379` — each only if your `.env` doesn't already set it — plus a per-app `REDIS_PREFIX`, which is enforced: it's the only separation between apps sharing the environment's cache node, so a conflicting value in your `.env` fails the build. Scaling is a manual vertical resize; there's no autoscaling. For availability, see the [Laravel `failover` cache store](/guide/provisioning#cache-high-availability) rather than adding a replica. For a backend YOLO doesn't model, set `CACHE_STORE` in your `.env` and `cache.store: file`.
 
 ---
 
@@ -296,7 +421,7 @@ session:
 
 | `session.driver` | YOLO provisions | Also injects | Notes |
 |---|---|---|---|
-| `redis` (default) | Nothing new (reuses the Valkey cache) | `SESSION_DRIVER` only | **Requires `cache.store: redis`** (the web-app default) — there's no redis store without it, and YOLO hard-fails if you opt the cache out without re-pinning the session driver. Sessions sit on Laravel's stock `default` connection (**DB 0**), the cache on the `cache` connection (**DB 1**) — same Valkey instance, separate keyspace, so a `cache:clear` never touches sessions. YOLO injects `SESSION_DRIVER=redis` only and leaves `SESSION_CONNECTION` unset; the split is inherited from your stock `config/database.php`, not enforced by YOLO, and relies on cluster-mode-disabled Valkey. A single node has no session HA — a node loss logs users out. See [Sessions and cache share the node, not the keyspace](/guide/provisioning#sessions-and-cache-share-the-node-not-the-keyspace) for the mechanism and caveats. |
+| `redis` (default) | Nothing new (reuses the Valkey cache) | `SESSION_DRIVER` only | **Requires `cache.store: redis`** (the default) — there's no redis store without it, and YOLO hard-fails if you opt the cache out without re-pinning the session driver. Sessions sit on Laravel's stock `default` connection (**DB 0**), the cache on the `cache` connection (**DB 1**) — same Valkey instance, separate keyspace, so a `cache:clear` never touches sessions. YOLO injects `SESSION_DRIVER=redis` only and leaves `SESSION_CONNECTION` unset; the split is inherited from your stock `config/database.php`, not enforced by YOLO, and relies on cluster-mode-disabled Valkey. A single node has no session HA — a node loss logs users out. See [Sessions and cache share the node, not the keyspace](/guide/provisioning#sessions-and-cache-share-the-node-not-the-keyspace) for the mechanism and caveats. |
 | `database` / `cookie` / `file` | Nothing | `SESSION_DRIVER` only | App-managed (pin-only). `cookie` is capped at ~4&nbsp;KB per browser cookie — risky once flashed validation errors are stored. |
 
 On a web app, omitting `session` gives you the `redis` default; set a driver to override it. On a non-web app, `SESSION_DRIVER` is left to your `.env`.
@@ -326,7 +451,7 @@ The budget block is **two-tier**: the same `budget` shape can also be declared i
 
 ## `tasks.web.*`
 
-Declaring `tasks.web` as a config object makes the app a Fargate web service; it **must declare** [`autoscaling`](#tasks-web-autoscaling) — there's no implicit default, and the bare `tasks.web: true` shorthand isn't accepted (a scalar tier has nowhere to state its scaling behaviour). `tasks.web: false` — or omitting `tasks` entirely — is a build-only / headless app with no web container.
+Declaring `tasks.web` as a config object makes the app a Fargate web service; it **must declare** [`autoscaling`](#tasks-web-autoscaling) — there's no implicit default, and the bare `tasks.web: true` shorthand isn't accepted (a scalar tier has nowhere to state its scaling behaviour). `tasks.web: false` (or just omitting `web`) drops the web tier entirely — a **web-less worker app** that runs only a standalone [`tasks.queue`](#tasks-queue) and/or [`tasks.scheduler`](#tasks-scheduler). A `tasks` block that yields no service at all (no web, and neither role extracted — the bundled queue/scheduler would have no container to ride) is rejected up front rather than silently provisioning nothing. Omitting `tasks` entirely is a build-only app with no containers.
 
 ### Where each role runs
 
@@ -347,38 +472,30 @@ In the placement table below, `queue: true` is shorthand for "queue extracted" �
 | `web` + `queue: true` + `scheduler: true` | web | queue | scheduler |
 | `web` + `queue: false` | web (no worker) | — | — |
 | `web` + `scheduler: false` | web + queue (no cron) | — | — |
+| `queue: true` (no `web`) | — | queue + scheduler | — |
+| `queue: true` + `scheduler: true` (no `web`) | — | queue | scheduler |
+| `scheduler: true` (no `web`) | — | — | scheduler |
 
 The scheduler rides the worker container (the `web` + `queue` row) rather than getting its own task — there's no point paying for a separate one-task service for cron when the queue is already a managed tier. Because cron then runs on the autoscaling queue, guard scheduled tasks with `->onOneServer()`, or add `tasks.scheduler` for a true singleton. A queue that hosts the scheduler can't scale to zero — cron would stop when it idled — so its floor stays at `1` (an explicit `tasks.queue.autoscaling.min: 0` there is rejected).
+
+The last three rows are **web-less worker apps**: a pure queue consumer, a scheduled-job runner, or both. They get the same shared plumbing a web app does (ECR, cluster, task role, security groups, database access, log group) with no ALB attachment, target group, CDN, or web autoscaling. A scheduler-only app runs no worker anywhere, so its queue behaves exactly like `queue: false` — jobs run inline (`QUEUE_CONNECTION=sync`, enforced at build) and no SQS queue is provisioned. Worker apps are the [headless](/guide/domains#headless-apps) shape — they need no `domain` (declaring one anyway is fine; it's metadata) — while a web task always requires one. Acceptance-test a worker's first deploy by watching the service actually consume its queue or fire its schedule — there's no health-checked URL to probe.
 
 **Disabling the queue (`queue: false`)** means no worker runs anywhere, so jobs can't be processed off-request: YOLO bakes `QUEUE_CONNECTION=sync` (jobs run inline at dispatch) and **fails the build** if your `.env` pins it to anything else, rather than ship an app that black-holes queued work. **Disabling the scheduler (`scheduler: false`)** stops `schedule:run` running anywhere — framework and package maintenance that rides cron (model pruning, `auth:clear-resets`, Telescope/Pulse pruning, …) silently stops, so `sync` surfaces a warning. Reach for these only when the app genuinely has no background work.
 
 | Key | Default | Description |
 |---|---|---|
-| `tasks.web.octane` | `true` | Run the web tier on Octane (FrankenPHP **worker mode**) via `octane:start`. Set `false` to run FrankenPHP in **classic mode** (`frankenphp php-server` — per-request boot, no resident app) for an app that isn't Octane-safe yet. Same image and port either way; only the launch command differs, and the build's [Octane preflight](/guide/building-and-deploying) is skipped (classic mode needs no `laravel/octane`). |
+| `tasks.web.autoscaling` | *(required)* | `true` for scaling on defaults, `false` for a fixed single task, or an object to tune — see [`tasks.web.autoscaling.*`](#tasks-web-autoscaling). |
+| `tasks.web.octane` | `true` | Run the web tier on Octane (FrankenPHP **worker mode**) via `octane:start`. Set `false` to run FrankenPHP in **classic mode** — per-request boot, no resident app — for an app that isn't Octane-safe yet. Same image and port either way; only the launch command differs, and the build's [Octane preflight](/guide/building-and-deploying) is skipped (classic mode needs no `laravel/octane`). YOLO sizes the classic thread pool from this task's `cpu`/`memory` — see [what the ceiling is](/guide/scaling#what-the-ceiling-is-and-why-yolo-pins-it). |
 | `tasks.web.cpu` | `'512'` | Fargate CPU units. |
 | `tasks.web.memory` | `'1024'` | Fargate memory (MB). |
 | `tasks.web.platform` | `linux/amd64` | Docker build platform. |
-| `tasks.web.enable-execute-command` | `true` | Enable ECS Exec so [`yolo run`](/reference/commands#yolo-run) can attach. Access is gated by MFA on the admin IAM tier; set `false` to disable it for this group. |
-| `tasks.web.ssr` | `false` | Run Inertia's SSR renderer (`inertia:start-ssr`, a Node process on `127.0.0.1:13714`) **bundled** in the web container, so PHP server-renders your Vue pages. `true`, or an object to override its `shutdown-grace-period`. SSR is always bundled — never its own service. Needs a Node runtime in your Dockerfile and an SSR bundle from `npm run build`; YOLO injects `INERTIA_SSR_ENABLED=true` unless your `.env` sets it. See [Inertia SSR](/guide/images#inertia-ssr). |
 | `tasks.web.shutdown-grace-period` | `15` | Seconds the web process gets on `SIGTERM` before `SIGKILL`. It's also the ALB drain window and the container `stopTimeout`. See [graceful shutdown](/guide/images#graceful-shutdown). |
+| `tasks.web.enable-execute-command` | `true` | Enable ECS Exec so [`yolo run`](/reference/commands#yolo-run) can attach. Access is gated by MFA on the admin IAM tier; set `false` to disable it for this group. |
 | `tasks.web.log-retention` | `30` | CloudWatch Logs retention (days). Must be a valid CloudWatch retention value. |
+| `tasks.web.ssr` | `false` | Run Inertia's SSR renderer (`inertia:start-ssr`, a Node process on `127.0.0.1:13714`) **bundled** in the web container, so PHP server-renders your Vue pages. `true`, or an object to override its `shutdown-grace-period`. SSR is always bundled — never its own service. Needs a Node runtime in your Dockerfile and an SSR bundle from `npm run build`; YOLO injects `INERTIA_SSR_ENABLED=true` unless your `.env` sets it. See [Inertia SSR](/guide/images#inertia-ssr). |
+| `tasks.web.health-check` | *(defaults)* | ALB health-check tuning — see [`tasks.web.health-check.*`](#tasks-web-health-check). |
 
 YOLO manages the ECS task and execution roles for you — the task role is per-app (extend it with [`task-role-policies`](#task-role-policies)); the execution role is shared per environment.
-
-### `tasks.web.health-check.*`
-
-ALB target-group health check. The path defaults to Laravel's built-in [`/up` health route](https://laravel.com/docs/deployment#the-health-route), which returns `200` only once the framework boots without exceptions (and `500` otherwise) — so a broken boot fails the check. Requests to it also dispatch Laravel's `Illuminate\Foundation\Events\DiagnosingHealth` event, so you can add a listener that checks your database or cache and throws to mark the app unhealthy.
-
-The other defaults are tuned to avoid false-positive failures on a Laravel/Octane app under load: when the FrankenPHP worker pool is saturated the `/up` probe answers slowly (4–5s) rather than failing, so the timeout sits at `5`s — a slow-but-alive task stays in service — with a roomier `5`-failure unhealthy threshold for cushion. A genuine deadlock (no response / 30s+) still trips within ~a minute. Capacity is [autoscaling](/guide/scaling)'s job, not the health check's. (An app on classic mode — [`tasks.web.octane: false`](#tasks-web) — boots per request rather than saturating a worker pool, so its latency shape differs, but the same generous defaults apply.) Override any field per app if you need to:
-
-| Key | Default | Description |
-|---|---|---|
-| `health-check.path` | `/up` | Path the ALB requests — defaults to Laravel's built-in `/up` health route. Keep it on a route that exercises PHP so a broken boot still fails the check. |
-| `health-check.interval` | `10` | Seconds between checks. |
-| `health-check.timeout` | `5` | Seconds before a check times out. Must stay below the interval. |
-| `health-check.healthy-threshold` | `2` | Consecutive successes to mark healthy. |
-| `health-check.unhealthy-threshold` | `5` | Consecutive failures to mark unhealthy. |
-| `health-check.grace-period` | `60` | Seconds after task start before health checks count (the ECS health-check grace period). |
 
 ### `tasks.web.autoscaling.*`
 
@@ -410,11 +527,26 @@ tasks:
 A plain web app bundles the scheduler in the web container, so scaling to N tasks runs cron N times — every scheduled task would fire on each replica. Every scheduled task **must** use Laravel's `->onOneServer()`, or extract the scheduler into its own service ([`tasks.scheduler`](#tasks-scheduler)). The `sync` plan lists an advisory under its **Warnings** section whenever the scheduler is bundled into an autoscaling host (the web task, or a standalone queue — both must declare autoscaling). See [Scaling → the scheduler](/guide/scaling#the-scheduler).
 :::
 
+### `tasks.web.health-check.*`
+
+ALB target-group health check. The path defaults to Laravel's built-in [`/up` health route](https://laravel.com/docs/deployment#the-health-route), which returns `200` only once the framework boots without exceptions (and `500` otherwise) — so a broken boot fails the check. Requests to it also dispatch Laravel's `Illuminate\Foundation\Events\DiagnosingHealth` event, so you can add a listener that checks your database or cache and throws to mark the app unhealthy.
+
+The other defaults are tuned to avoid false-positive failures on a Laravel/Octane app under load: when the FrankenPHP worker pool is saturated the `/up` probe answers slowly (4–5s) rather than failing, so the timeout sits at `5`s — a slow-but-alive task stays in service — with a roomier `5`-failure unhealthy threshold for cushion. A genuine deadlock (no response / 30s+) still trips within ~a minute. Capacity is [autoscaling](/guide/scaling)'s job, not the health check's. (An app on classic mode — [`tasks.web.octane: false`](#tasks-web) — boots per request rather than saturating a worker pool, so its latency shape differs, but the same generous defaults apply.) Override any field per app if you need to:
+
+| Key | Default | Description |
+|---|---|---|
+| `health-check.path` | `/up` | Path the ALB requests — defaults to Laravel's built-in `/up` health route. Keep it on a route that exercises PHP so a broken boot still fails the check. |
+| `health-check.interval` | `10` | Seconds between checks. |
+| `health-check.timeout` | `5` | Seconds before a check times out. Must stay below the interval. |
+| `health-check.healthy-threshold` | `2` | Consecutive successes to mark healthy. |
+| `health-check.unhealthy-threshold` | `5` | Consecutive failures to mark unhealthy. |
+| `health-check.grace-period` | `60` | Seconds after task start before health checks count (the ECS health-check grace period). |
+
 ---
 
 ## `tasks.queue.*`
 
-`tasks.queue` is a **config object** that extracts the queue worker into its **own** ECS service (so it scales independently of web), or **`false`** to switch the worker off entirely (it runs nowhere, and YOLO enforces `QUEUE_CONNECTION=sync` — see [Where each role runs](#where-each-role-runs)); omitting the block leaves the worker bundled in the web container. Like web, a standalone queue **must declare `autoscaling`** — there's no bare `queue: true` shorthand, and an empty block (`queue:`) or empty object (`{}`) is rejected.
+`tasks.queue` is a **config object** that extracts the queue worker into its **own** ECS service (so it scales independently of web), or **`false`** to switch the worker off entirely (it runs nowhere, and YOLO enforces `QUEUE_CONNECTION=sync` — see [Where each role runs](#where-each-role-runs)); omitting the block leaves the worker bundled in the web container (on a [web-less app](#where-each-role-runs) there's no web container to bundle into, so an omitted queue is off there too). Like web, a standalone queue **must declare `autoscaling`** — there's no bare `queue: true` shorthand, and an empty block (`queue:`) or empty object (`{}`) is rejected.
 
 `autoscaling` is the same `true | false | {min, max, backlog-per-task}` knob as web: `true` takes the defaults (`min: 1`, `max: 5`), `false` pins a fixed single task (no scalable target, no backlog policy). Set **`autoscaling.min: 0`** to opt into **scale to zero**: zero tasks — and zero compute cost — when the queue is empty, at the cost of a ~30–60s Fargate cold start on the first message after idle (so it suits bursty, latency-tolerant work). The queue `min` may be `0` (unlike web); but when the queue also hosts the scheduler (a `tasks.queue` block with no [`tasks.scheduler`](#tasks-scheduler)) it can't scale to zero — cron would stop — so an explicit `tasks.queue.autoscaling.min: 0` is rejected there.
 
@@ -438,7 +570,7 @@ See [Scaling → the queue](/guide/scaling#the-queue-scale-to-zero).
 
 ## `tasks.scheduler.*`
 
-`tasks.scheduler` is **`true | false | {config}`**. `true` (or a config object) extracts the scheduler ([supercronic](https://github.com/aptible/supercronic) firing `schedule:run`) into its **own** ECS service, pinned at exactly one task — a genuine singleton, so `->onOneServer()` is no longer required. It deploys **stop-then-start** (`minimumHealthyPercent: 0` / `maximumPercent: 100`) so a rollout never briefly runs two crons; a missed cron minute is harmless, a double-run isn't. `false` switches cron off entirely — `schedule:run` runs nowhere, so framework/package maintenance that rides the scheduler silently stops (`sync` warns); use it only for an app with no scheduled work. Omitting the block leaves the scheduler riding the standalone queue if there is one, else the web container (see [Where each role runs](#where-each-role-runs)). An empty block (`scheduler:`) or empty object (`{}`) is rejected — write `true` for default sizing.
+`tasks.scheduler` is **`true | false | {config}`**. `true` (or a config object) extracts the scheduler ([supercronic](https://github.com/aptible/supercronic) firing `schedule:run`) into its **own** ECS service, pinned at exactly one task — a genuine singleton, so `->onOneServer()` is no longer required. It deploys **stop-then-start** (`minimumHealthyPercent: 0` / `maximumPercent: 100`) so a rollout never briefly runs two crons; a missed cron minute is harmless, a double-run isn't. `false` switches cron off entirely — `schedule:run` runs nowhere, so framework/package maintenance that rides the scheduler silently stops (`sync` warns); use it only for an app with no scheduled work. Omitting the block leaves the scheduler riding the standalone queue if there is one, else the web container (see [Where each role runs](#where-each-role-runs)); on a [web-less app](#where-each-role-runs) with no standalone queue there's nowhere to ride, so the block is required. An empty block (`scheduler:`) or empty object (`{}`) is rejected — write `true` for default sizing.
 
 The scheduler never scales (a per-minute cron can't tolerate a cold start), so it has no `min`/`max`.
 
@@ -476,8 +608,10 @@ Your manifest implies one of three modes:
 | Mode | Condition | Behaviour |
 |---|---|---|
 | **Solo** | `domain` set at the environment level | One app, one hosted zone + certificate, served on its domain. |
-| **Multi-tenant** | `tenants` set (no env-level `domain`) | Per-tenant domains and queues; certs attach per tenant via SNI. |
-| **Headless** | no `domain` or tenant domains | No ALB attachment or DNS. Still deploys and processes queues/scheduled work. |
+| **Multi-tenant** | a [`multitenancy`](#multitenancy) block | A landlord on its own host plus per-tenant resources: queues, and for a tenant on its own domain a hosted zone, certificate, SNI attachment and listener rules. With no tenants declared it provisions exactly what the solo shape does. |
+| **Headless** | no `domain` or tenant domains | A [worker app](#where-each-role-runs) — no web task (web requires a domain), no ALB attachment or DNS. Still deploys and processes queued/scheduled work. |
+
+The mode is the **domain axis** — whether and how the app is exposed. The `tasks` block sets the orthogonal **topology axis**: a web service, a [web-less worker app](#where-each-role-runs) (a standalone queue and/or scheduler with no web container), or a build-only app (no `tasks` at all).
 
 ---
 
@@ -495,7 +629,7 @@ services: {}             # env-shared services — the extension point for what 
 | Key | Purpose |
 |---|---|
 | `domain` | The environment's canonical domain for shared-service hostnames (e.g. `search.{domain}`). Distinct from any app's `domain` — shared services are served on the *environment's* name, reachable from every app regardless of their own domains. |
-| `peering` | A list of VPC ids this environment peers with — the declared bridge to infrastructure outside the YOLO network, typically an [externally-hosted database mid-migration](/guide/databases). For each entry, `sync:environment` reconciles the bridge in a strict order: the peering connection created and accepted (same-account); routes both ways — the peer's CIDR into **every** yolo-managed route table (the public and private tiers), the env's CIDR into every peer-VPC route table with at least one subnet association (the peer's main table only as a fallback when nothing in that VPC is associated — a route in an unassociated main table steers no subnet); and DNS resolution over the peering **last**, only once every route exists, so nothing resolves across a bridge that can't route yet. The bridge makes exactly two writes into resources YOLO doesn't own — the return routes in the peer's tables, and the `3306` ingress rule on an external database's security group — and the plan names each and marks it `not yolo-managed`. Entries must be VPC ids (`vpc-…`); anything else hard-fails. **Removing an entry tears the whole bridge down** on the next sync, in reverse: DNS resolution off, the yolo-side routes, the return routes YOLO wrote into the peer's tables (matched strictly by destination and connection — nothing else in the foreign tables is ever touched), then the connection. Environment-scoped on purpose: peering is VPC-to-VPC, so it can never live in an app's manifest. |
+| `peering` | A list of VPC ids this environment peers with — the declared bridge to infrastructure outside the YOLO network, typically an [externally-hosted database mid-migration](/guide/databases). For each entry, `sync:environment` reconciles the bridge in a strict order: the peering connection created and accepted (same-account); routes both ways — the peer's CIDR into **every** yolo-managed route table (the public and private tiers), the env's CIDR into every peer-VPC route table with at least one subnet association (the peer's main table only as a fallback when nothing in that VPC is associated — a route in an unassociated main table steers no subnet); and DNS resolution over the peering **last**, only once every route exists, so nothing resolves across a bridge that can't route yet. The bridge makes exactly two writes into resources YOLO doesn't own — the return routes in the peer's tables, and the database-port ingress rule on an external database's security group — and the plan names each and marks it `not yolo-managed`. Entries must be VPC ids (`vpc-…`); anything else hard-fails. **Removing an entry tears the whole bridge down** on the next sync, in reverse: DNS resolution off, the yolo-side routes, the return routes YOLO wrote into the peer's tables (matched strictly by destination and connection — nothing else in the foreign tables is ever touched), then the connection. Environment-scoped on purpose: peering is VPC-to-VPC, so it can never live in an app's manifest. |
 | `services` | The env-shared services this environment runs — a map of service ⇒ config (`services.ivs: {}`). The declaration is the whole trigger of [the service lifecycle](/guide/services#the-service-lifecycle): `sync:environment` provisions a declared service (independent of any consumer) and plans its teardown once the entry is removed; a declared service no running app uses is flagged as **idle** (a plan warning), not torn down. `environment:manifest:push` refuses to remove a service apps still use. Each entry is a map (never a scalar or list); its allowed keys come from the service's definition. |
 | `services.typesense` | The environment's [Typesense search cluster](/guide/services#typesense-the-environment-s-search-cluster). `version` (the `typesense/typesense` image tag) is required — an environment never runs an implicit search engine version. `nodes`, `cpu` and `memory` follow the [`tasks.*` conventions](#tasks-web): optional, defaulting to `3` nodes at `'256'`/`'1024'` each. `nodes` accepts `3` or `5` — five spreads read load wider and survives two losses; an even count pays for an extra node without gaining the ability to lose another one, and a single node would lose its search data whenever the task is replaced, so neither is offered. `services: { typesense: { version: "30.2" } }` is a complete entry. A version bump or resize is a manifest edit + `sync:environment` — the nodes roll one at a time. |
 

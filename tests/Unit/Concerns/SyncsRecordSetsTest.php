@@ -2,74 +2,6 @@
 
 declare(strict_types=1);
 
-use Aws\Result;
-use Aws\MockHandler;
-use Aws\CommandInterface;
-use Codinglabs\Yolo\Helpers;
-use Aws\Route53\Route53Client;
-use GuzzleHttp\Promise\Create;
-use Codinglabs\Yolo\Concerns\SyncsRecordSets;
-use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
-
-function recordSetSyncer(): object
-{
-    return new class()
-    {
-        use SyncsRecordSets;
-    };
-}
-
-/**
- * Bind a mock Route 53 client: ListHostedZones returns the supplied zones, and
- * every other command (ChangeResourceRecordSets) resolves an empty Result. All
- * calls are captured so the change batch can be asserted.
- *
- * @param  array<int, array<string, mixed>>  $hostedZones
- * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
- */
-function bindMockRoute53Client(array $hostedZones, array &$captured): void
-{
-    $mock = new class($hostedZones, $captured) extends MockHandler
-    {
-        /**
-         * @param  array<int, array<string, mixed>>  $hostedZones
-         * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
-         */
-        public function __construct(protected array $hostedZones, protected array &$captured) {}
-
-        public function __invoke(CommandInterface $cmd, $request)
-        {
-            $this->captured[] = ['name' => $cmd->getName(), 'args' => $cmd->toArray()];
-
-            return Create::promiseFor(match ($cmd->getName()) {
-                'ListHostedZones' => new Result(['HostedZones' => $this->hostedZones]),
-                default => new Result(),
-            });
-        }
-    };
-
-    Helpers::app()->instance('route53', new Route53Client([
-        'region' => 'us-east-1',
-        'version' => 'latest',
-        'credentials' => false,
-        'handler' => $mock,
-    ]));
-}
-
-/**
- * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
- */
-function bindAlbLookup(array &$captured): void
-{
-    bindRoutedElbV2Client([
-        'DescribeLoadBalancers' => new Result(['LoadBalancers' => [[
-            'LoadBalancerName' => (new LoadBalancer())->name(),
-            'DNSName' => 'alb-1.ap-southeast-2.elb.amazonaws.com',
-            'CanonicalHostedZoneId' => 'ZALB123',
-        ]]]),
-    ], $captured);
-}
-
 beforeEach(function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 });
@@ -81,7 +13,7 @@ it('upserts both the apex and www alias records for an apex domain', function ()
     $r53 = [];
     bindMockRoute53Client([['Name' => 'example.com.', 'Id' => '/hostedzone/ZONE1']], $r53);
 
-    recordSetSyncer()->syncRecordSet('example.com', 'example.com');
+    recordSetSyncer()->syncRecordSet('example.com', 'example.com', null);
 
     $change = collect($r53)->firstWhere('name', 'ChangeResourceRecordSets');
     $changes = $change['args']['ChangeBatch']['Changes'];
@@ -104,7 +36,7 @@ it('upserts both records for a www-canonical domain (www served, apex redirects)
     $r53 = [];
     bindMockRoute53Client([['Name' => 'example.com.', 'Id' => '/hostedzone/ZONE1']], $r53);
 
-    recordSetSyncer()->syncRecordSet('example.com', 'www.example.com');
+    recordSetSyncer()->syncRecordSet('example.com', 'www.example.com', null);
 
     $changes = collect($r53)->firstWhere('name', 'ChangeResourceRecordSets')['args']['ChangeBatch']['Changes'];
 
@@ -122,7 +54,7 @@ it('upserts a single alias record for a subdomain', function (): void {
     $r53 = [];
     bindMockRoute53Client([['Name' => 'example.com.', 'Id' => '/hostedzone/ZONE1']], $r53);
 
-    recordSetSyncer()->syncRecordSet('example.com', 'app.example.com');
+    recordSetSyncer()->syncRecordSet('example.com', 'app.example.com', null);
 
     $changes = collect($r53)->firstWhere('name', 'ChangeResourceRecordSets')['args']['ChangeBatch']['Changes'];
 

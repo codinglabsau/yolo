@@ -144,19 +144,60 @@ it('tracks the manifest web shutdown-grace-period for the drain duration', funct
     expect(generatedEntrypointScript())->toContain("sleep 45\n");
 });
 
-it('omits the ALB drain window when headless — no target to drain', function (): void {
+it('emits no web branch and defaults the role to scheduler for a scheduler-only worker app', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        'tasks' => ['web' => ['shutdown-grace-period' => 45], 'scheduler' => true],
+        'tasks' => ['web' => false, 'queue' => false, 'scheduler' => true],
     ]);
 
     $script = generatedEntrypointScript();
 
-    // Still supervises + traps so the stop is forwarded cleanly, just no lame-duck
-    // ALB sleep window.
-    expect($script)->not->toContain('sleep 45');
+    // No web tier → no web dispatch, no ALB drain case; a bare container run
+    // lands on the app's one real role instead of a web server that isn't there.
+    expect($script)->toContain('role="${1:-scheduler}"');
+    expect($script)->not->toContain('web)       cmd=');
+    expect($script)->not->toContain('supervisord -c /etc/supervisord.conf');
+    expect($script)->toContain("scheduler) cmd='supercronic");
+    expect($script)->not->toContain('queue)     cmd=');
+    // The SIGTERM forward is the whole drain — trap intact, no drain dispatch.
     expect($script)->toContain('trap drain TERM');
+    expect($script)->not->toContain('case "$role" in
+        web)');
     expect($script)->toContain('kill -TERM "$child"');
+    // One-off deploy tasks still exec through the catchall.
+    expect($script)->toContain('exec "$@"');
+});
+
+it('defaults the role to queue for a web-less worker app whose queue hosts the scheduler', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => false, 'queue' => ['autoscaling' => true]],
+    ]);
+
+    $script = generatedEntrypointScript();
+
+    expect($script)->toContain('role="${1:-queue}"');
+    // The queue co-hosts the scheduler (two processes) → supervisord with the
+    // queue config; no web branch anywhere.
+    expect($script)->toContain("queue)     cmd='supervisord -c /app/docker/supervisord.queue.conf -n'");
+    expect($script)->not->toContain('web)       cmd=');
+    expect($script)->not->toContain('scheduler) cmd=');
+});
+
+it('runs a multi-tenant standalone queue under supervisord even when the scheduler is its own service', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        // A solo app with this shape runs a single exec'd worker; a dedicated
+        // multi-tenant app needs supervisord to run one queue:work program per tenant,
+        // so it routes there.
+        'tasks' => ['web' => true, 'queue' => true, 'scheduler' => true],
+        'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => ['acme' => []]],
+    ]);
+
+    $script = generatedEntrypointScript();
+
+    expect($script)->toContain("queue)     cmd='supervisord -c /app/docker/supervisord.queue.conf -n'");
+    expect($script)->not->toContain("queue)     cmd='php artisan queue:work");
 });
 
 it('forwards SIGTERM to the child and waits for a clean shutdown', function (): void {

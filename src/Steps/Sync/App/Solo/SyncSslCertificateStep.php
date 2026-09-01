@@ -12,7 +12,7 @@ class SyncSslCertificateStep implements ExecutesWebStep
 {
     public function __invoke(array $options): StepResult
     {
-        $certificate = new SslCertificate(Manifest::apex());
+        $certificate = new SslCertificate(Manifest::certificateDomain(), Manifest::apex());
         $summary = $certificate->find();
 
         if ($summary === null) {

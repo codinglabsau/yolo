@@ -28,6 +28,21 @@ class Iam
         }
     }
 
+    /**
+     * Whether the service-linked role for an AWS service exists. SLRs live
+     * under the /aws-service-role/{service}/ path, so a path-scoped ListRoles
+     * pins the check to that single role without enumerating (or paginating)
+     * the account's whole role set — and ListRoles is a collection op the
+     * observer tier already grants account-wide, so no aws-service-role read
+     * grant is needed.
+     */
+    public static function serviceLinkedRoleExists(string $serviceName): bool
+    {
+        return Aws::iam()->listRoles([
+            'PathPrefix' => sprintf('/aws-service-role/%s/', $serviceName),
+        ])['Roles'] !== [];
+    }
+
     public static function role(string $name): array
     {
         $roles = Aws::iam()->listRoles();

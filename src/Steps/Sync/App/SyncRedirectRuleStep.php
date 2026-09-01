@@ -20,17 +20,17 @@ class SyncRedirectRuleStep implements ExecutesWebStep
 
     public function __invoke(array $options): StepResult
     {
-        if (! Manifest::has('domain')) {
+        if (! Manifest::hasDomain()) {
             return StepResult::SKIPPED;
         }
 
         $apex = Manifest::apex();
-        $hasWwwSibling = $this->hasWwwSibling($apex, Manifest::get('domain', $apex));
+        $hasWwwSibling = $this->hasWwwSibling($apex, Manifest::domain() ?? $apex);
 
         $listener = $this->httpsListener();
 
         if ($listener === null) {
-            // Same first-sync deferral as the forward rule: the `:443` listener is
+            // Same greenfield deferral as the forward rule: the `:443` listener is
             // bootstrapped earlier in this apply but is absent on the plan pass, so
             // report the rule as pending (rather than a self-pruning SKIPPED) when it
             // will be created this run, else defer. Only a redirecting apex/www app

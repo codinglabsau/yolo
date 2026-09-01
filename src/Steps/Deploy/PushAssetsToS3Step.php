@@ -6,6 +6,7 @@ use Aws\S3\Transfer;
 use Codinglabs\Yolo\Aws;
 use Aws\CommandInterface;
 use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
@@ -37,6 +38,12 @@ class PushAssetsToS3Step implements Step
 
     public function __invoke(array $options = []): StepResult
     {
+        // A web-less app has no CloudFront distribution (and no baked ASSET_URL)
+        // to serve these from — uploading would just accrue orphaned objects.
+        if (! Manifest::hasWeb()) {
+            return StepResult::SKIPPED;
+        }
+
         $appVersion = $this->filesystem->get(Paths::version());
         $public = Paths::build('public');
 

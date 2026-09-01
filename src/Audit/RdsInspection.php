@@ -7,11 +7,12 @@ namespace Codinglabs\Yolo\Audit;
 use Codinglabs\Yolo\Aws\Rds;
 use Codinglabs\Yolo\Manifest;
 use Aws\Rds\Exception\RdsException;
+use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * A read-only health snapshot of the database an app is wired to — the RDS
  * instance or Aurora cluster DECLARED by the manifest `database:` key (see
- * {@see Manifest::rdsTarget()}). It is NOT a YOLO-managed, YOLO-tagged resource,
+ * {@see Rds::target()}). It is NOT a YOLO-managed, YOLO-tagged resource,
  * so it never shows up in the tag-based audit inventory; the audit health check
  * looks it up directly by the manifest identifier instead.
  *
@@ -20,8 +21,11 @@ use Aws\Rds\Exception\RdsException;
  *    (the audit exits non-zero on it), so a single fat-fingered console delete
  *    can't take the app's data with it.
  *  - **network posture** — which VPC and subnet group the database actually sits
- *    in, which security groups it carries and whether it's publicly accessible;
- *    classified by {@see RdsNetworkPosture}. Audit-only, never sync drift: an
+ *    in, which security groups it carries, which port it listens on and whether
+ *    it's publicly accessible; classified by {@see RdsNetworkPosture}. The port
+ *    comes off this record rather than a second describe, so the reachability
+ *    check tests the port the database actually serves (Postgres's 5432 as
+ *    readily as MySQL's 3306). Audit-only, never sync drift: an
  *    externally-hosted database must not block deploys (the deploy gate runs
  *    `sync --check`).
  *  - **topology basics** — engine, version, size and (for Aurora) the writer +
@@ -43,7 +47,7 @@ final readonly class RdsInspection
         public bool $readable,
         public ?string $reason,
         public string $identifier,
-        public bool $cluster,
+        public ?bool $cluster,
         public ?bool $deletionProtection,
         public ?string $engine,
         public ?string $engineVersion,
@@ -56,6 +60,7 @@ final readonly class RdsInspection
         public ?string $vpcId = null,
         public array $securityGroupIds = [],
         public ?bool $publiclyAccessible = null,
+        public ?int $port = null,
     ) {}
 
     /**
@@ -64,10 +69,20 @@ final readonly class RdsInspection
      */
     public static function inspect(): ?self
     {
-        $target = Manifest::rdsTarget();
-
-        if ($target === null) {
+        if (($database = Manifest::database()) === null) {
             return null;
+        }
+
+        // Classification itself can fail — the declared name matches nothing, or
+        // the running tier was denied the describe. Either degrades to an
+        // unreadable snapshot (a warning, never an error), same as a failed read
+        // of a classified target; the kind is simply unknown at that point.
+        try {
+            $target = Rds::target();
+        } catch (RdsException $exception) {
+            return self::unreadable($database, null, self::reason($exception));
+        } catch (ResourceDoesNotExistException) {
+            return self::unreadable($database, null, 'no matching database in this account/region');
         }
 
         return $target['cluster']
@@ -87,7 +102,13 @@ final readonly class RdsInspection
 
     public function kind(): string
     {
-        return $this->cluster ? 'Aurora cluster' : 'instance';
+        return match ($this->cluster) {
+            // A snapshot unreadable at classification never learned its kind —
+            // don't render a guess.
+            null => 'database',
+            true => 'Aurora cluster',
+            false => 'instance',
+        };
     }
 
     /**
@@ -147,6 +168,7 @@ final readonly class RdsInspection
             vpcId: $instance['DBSubnetGroup']['VpcId'] ?? null,
             securityGroupIds: self::securityGroupIds($instance),
             publiclyAccessible: isset($instance['PubliclyAccessible']) ? (bool) $instance['PubliclyAccessible'] : null,
+            port: Rds::portFromRecord($instance, cluster: false),
         );
     }
 
@@ -202,6 +224,7 @@ final readonly class RdsInspection
             vpcId: $instances[0]['DBSubnetGroup']['VpcId'] ?? null,
             securityGroupIds: self::securityGroupIds($cluster),
             publiclyAccessible: $publiclyAccessible->isEmpty() ? null : $publiclyAccessible->contains(true),
+            port: Rds::portFromRecord($cluster, cluster: true),
         );
     }
 
@@ -242,7 +265,7 @@ final readonly class RdsInspection
         return $members;
     }
 
-    protected static function unreadable(string $identifier, bool $cluster, string $reason): self
+    protected static function unreadable(string $identifier, ?bool $cluster, string $reason): self
     {
         return new self(
             readable: false,

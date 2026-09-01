@@ -8,16 +8,102 @@ function describeRdsAndTaskGroups(): Result
 {
     return new Result([
         'SecurityGroups' => [
-            ['GroupName' => 'yolo-testing-rds-security-group', 'GroupId' => 'sg-rds123'],
-            ['GroupName' => 'yolo-testing-my-app-ecs-task-security-group', 'GroupId' => 'sg-task456'],
+            ['GroupName' => 'yolo-testing-rds-security-group', 'GroupId' => 'sg-rds123', 'VpcId' => 'vpc-1'],
+            ['GroupName' => 'yolo-testing-my-app-ecs-task-security-group', 'GroupId' => 'sg-task456', 'VpcId' => 'vpc-1'],
         ],
     ]);
 }
 
+/**
+ * The base mock map for an existing YOLO-owned RDS SG: the VPC the lookup is
+ * scoped to, the RDS + task groups, and live tags already matching desired.
+ *
+ * @return array<string, Result>
+ */
+function rdsSecurityGroupMocks(): array
+{
+    return [
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
+        'DescribeSecurityGroups' => describeRdsAndTaskGroups(),
+        'DescribeTags' => new Result(['Tags' => [
+            ['Key' => 'Name', 'Value' => 'yolo-testing-rds-security-group'],
+            ['Key' => 'yolo:scope', 'Value' => 'env'],
+            ['Key' => 'yolo:environment', 'Value' => 'testing'],
+        ]]),
+    ];
+}
+
 beforeEach(function (): void {
     writeManifest([
-        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'app-db',
     ]);
+
+    // The ingress port is derived from the database, so these tests declare one:
+    // a MySQL instance on 3306, which is what their 3306 assertions describe.
+    $rds = [];
+    bindMockRdsClient([
+        'DescribeDBClusters' => new Result(['DBClusters' => []]),
+        'DescribeDBInstances' => new Result(['DBInstances' => [[
+            'DBInstanceIdentifier' => 'app-db',
+            'Engine' => 'mysql',
+            'Endpoint' => ['Address' => 'app-db.abc.rds.amazonaws.com', 'Port' => 3306],
+        ]]]),
+    ], $rds);
+});
+
+it('provisions the group but writes no ingress rule when no database is declared yet', function (): void {
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
+
+    $captured = [];
+    bindMockEc2Client([
+        'DescribeSecurityGroups' => [
+            new Result(['SecurityGroups' => []]),   // first lookup → not found → create
+            describeRdsAndTaskGroups(),             // re-lookup after create (repeats)
+        ],
+        'DescribeVpcs' => new Result(['Vpcs' => [['VpcId' => 'vpc-1']]]),
+        'CreateSecurityGroup' => new Result(['GroupId' => 'sg-rds123']),
+        'DescribeSecurityGroupRules' => new Result(['SecurityGroupRules' => []]),
+        'AuthorizeSecurityGroupIngress' => new Result(),
+    ], $captured);
+
+    expect((new SyncRdsSecurityGroupStep())([]))->toBe(StepResult::CREATED);
+
+    // The group is what the database is created INTO, and an empty security group
+    // attaches fine — so provisioning it is the whole job on a first sync. Writing
+    // a speculative rule here would guess a port sync can never revoke.
+    $names = array_column($captured, 'name');
+    expect($names)->toContain('CreateSecurityGroup')
+        ->and($names)->not->toContain('AuthorizeSecurityGroupIngress');
+});
+
+it('authorises the port the database actually serves, not a MySQL assumption', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'app-db',
+    ]);
+
+    $rds = [];
+    bindMockRdsClient([
+        'DescribeDBClusters' => new Result(['DBClusters' => []]),
+        'DescribeDBInstances' => new Result(['DBInstances' => [[
+            'DBInstanceIdentifier' => 'app-db',
+            'Engine' => 'postgres',
+            'Endpoint' => ['Address' => 'app-db.abc.rds.amazonaws.com', 'Port' => 5432],
+        ]]]),
+    ], $rds);
+
+    $captured = [];
+    bindMockEc2Client([
+        ...rdsSecurityGroupMocks(),
+        'DescribeSecurityGroupRules' => new Result(['SecurityGroupRules' => []]),
+        'AuthorizeSecurityGroupIngress' => new Result(),
+    ], $captured);
+
+    (new SyncRdsSecurityGroupStep())([]);
+
+    $permission = collect($captured)->firstWhere('name', 'AuthorizeSecurityGroupIngress')['args']['IpPermissions'][0];
+
+    expect($permission['FromPort'])->toBe(5432)
+        ->and($permission['ToPort'])->toBe(5432);
 });
 
 it('creates the RDS security group and adds the task-SG ingress rule when absent', function (): void {
@@ -42,11 +128,11 @@ it('creates the RDS security group and adds the task-SG ingress rule when absent
     expect($names)->not->toContain('RevokeSecurityGroupIngress');
 });
 
-it('additively authorises 3306 from the task security group on an existing RDS SG', function (): void {
+it('additively authorises the database\'s port from the task security group on an existing RDS SG', function (): void {
     $captured = [];
 
     bindMockEc2Client([
-        'DescribeSecurityGroups' => describeRdsAndTaskGroups(),
+        ...rdsSecurityGroupMocks(),
         'DescribeSecurityGroupRules' => new Result(['SecurityGroupRules' => []]),
         'AuthorizeSecurityGroupIngress' => new Result(),
     ], $captured);
@@ -70,7 +156,7 @@ it('does not authorise again when a matching task-SG rule already exists', funct
     $captured = [];
 
     bindMockEc2Client([
-        'DescribeSecurityGroups' => describeRdsAndTaskGroups(),
+        ...rdsSecurityGroupMocks(),
         // An existing 3306-from-task-SG rule — note it carries no marker tag, so
         // matching by content (not a tag) is what lets us spot it.
         'DescribeSecurityGroupRules' => new Result(['SecurityGroupRules' => [
@@ -96,7 +182,7 @@ it('does not authorise during a dry-run', function (): void {
     $captured = [];
 
     bindMockEc2Client([
-        'DescribeSecurityGroups' => describeRdsAndTaskGroups(),
+        ...rdsSecurityGroupMocks(),
         'DescribeSecurityGroupRules' => new Result(['SecurityGroupRules' => []]),
     ], $captured);
 

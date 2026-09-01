@@ -6,13 +6,16 @@ namespace Codinglabs\Yolo\Tui\Panels;
 
 use Codinglabs\Yolo\Arn;
 use Codinglabs\Yolo\Aws;
+use Codinglabs\Yolo\Aws\Rds;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Tui\Chart;
 use Codinglabs\Yolo\Tui\Theme;
 use Codinglabs\Yolo\ConsoleUrl;
 use Codinglabs\Yolo\Tui\Viewport;
+use Aws\Rds\Exception\RdsException;
 use Codinglabs\Yolo\Aws\CloudWatch;
+use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * The app's database at a glance — the RDS instance/cluster declared by the
@@ -34,6 +37,9 @@ class DatabasePanel implements Panel
     /** @var array{identifier: string, cluster: bool}|null */
     protected ?array $target = null;
 
+    /** Why the declared database couldn't be classified, when it couldn't. */
+    protected ?string $unresolvable = null;
+
     /** @var array{cpu: array<int, float>, connections: array<int, float>, memory: array<int, float>, readLatency: array<int, float>, writeLatency: array<int, float>} */
     protected array $series = self::EMPTY_SERIES;
 
@@ -53,8 +59,22 @@ class DatabasePanel implements Panel
 
     public function gather(): void
     {
-        $this->target = Manifest::rdsTarget();
         $this->series = self::EMPTY_SERIES;
+        $this->unresolvable = null;
+
+        try {
+            $this->target = Rds::target();
+        } catch (ResourceDoesNotExistException) {
+            $this->target = null;
+            $this->unresolvable = sprintf('"%s" matches no RDS cluster or instance in this account/region.', (string) Manifest::database());
+
+            return;
+        } catch (RdsException $exception) {
+            $this->target = null;
+            $this->unresolvable = sprintf('Could not classify "%s" (%s).', (string) Manifest::database(), $exception->getAwsErrorCode() ?? 'unknown error');
+
+            return;
+        }
 
         if ($this->target === null) {
             return;
@@ -76,8 +96,12 @@ class DatabasePanel implements Panel
     {
         $target = $this->target;
 
+        if ($this->unresolvable !== null) {
+            return [Theme::Warning->fg('  ' . $this->unresolvable)];
+        }
+
         if ($target === null) {
-            return [Theme::Muted->fg('  No database declared — set `database.identifier` in yolo.yml to chart RDS metrics.')];
+            return [Theme::Muted->fg('  No database declared — set `database:` in yolo.yml to chart RDS metrics.')];
         }
 
         $header = [...self::details($target), ''];

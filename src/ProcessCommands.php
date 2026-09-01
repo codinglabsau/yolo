@@ -17,6 +17,15 @@ namespace Codinglabs\Yolo;
 class ProcessCommands
 {
     /**
+     * The in-image path of the Caddyfile YOLO generates into the build context at
+     * docker/Caddyfile (GenerateSupervisorConfigStep) and runs the web server against.
+     * Both modes use it for a different reason — Octane for the metrics global option,
+     * classic mode for the thread bounds — and never both at once, so one path serves
+     * both. Absolute because supervisord's working directory is not contractual.
+     */
+    public const string CADDYFILE = '/app/docker/Caddyfile';
+
+    /**
      * The web process. By default Octane: `octane:start` is the server-agnostic
      * launcher — it boots whichever Octane server OCTANE_SERVER names. That var is
      * the app's to own (it pairs with the Dockerfile's base image; `yolo init`
@@ -31,11 +40,20 @@ class ProcessCommands
      * Octane-safe yet. That's the same frankenphp binary the base image already
      * ships, independent of laravel/octane, so it serves even when the app has no
      * Octane package; only the launch command differs.
+     *
+     * Classic mode runs `frankenphp run` against a generated Caddyfile rather than
+     * the simpler `frankenphp php-server`, because php-server exposes no way to
+     * configure the thread pool: it has no thread flag, and it does not read a
+     * Caddyfile — so the FRANKENPHP_CONFIG env var the base image's own Caddyfile
+     * threads into the `frankenphp` global option is inert on that path. Its pool is
+     * therefore fixed at 2 × the CPUs visible to the process, which on Fargate is the
+     * microVM's ~2 vCPUs regardless of task size. A Caddyfile is the only channel
+     * that can set the bounds at all; see {@see WebThreads}.
      */
     public static function web(): string
     {
         if (! Manifest::usesOctane()) {
-            return 'frankenphp php-server --listen 0.0.0.0:8000 --root public/';
+            return 'frankenphp run --config ' . self::CADDYFILE;
         }
 
         $command = 'php artisan octane:start --host=0.0.0.0 --port=8000';
@@ -49,7 +67,7 @@ class ProcessCommands
         // --caddyfile runs it.
         // Web autoscaling only; classic mode returned above and never reaches here.
         if (Manifest::usesMetricsCaddyfile()) {
-            $command .= ' --caddyfile=/app/docker/Caddyfile';
+            $command .= ' --caddyfile=' . self::CADDYFILE;
         }
 
         // Pin the worker pool to the task's real vCPU allocation rather than letting
@@ -61,9 +79,19 @@ class ProcessCommands
         return $command;
     }
 
-    public static function queue(): string
+    /**
+     * The queue worker. A solo app runs the bare command against the pinned
+     * SQS_QUEUE; a multi-tenant app (and any app declaring a `queues:` block) passes
+     * an explicit `--queue=` value so one program drains one scope's queues — the
+     * per-tenant/per-tier fan-out GenerateSupervisorConfigStep builds. A comma list
+     * drains strict-priority (high before default), which is the intra-scope
+     * priority feature; fairness across scopes comes from a separate program each.
+     */
+    public static function queue(?string $queue = null): string
     {
-        return 'php artisan queue:work --tries=3 --max-time=3600';
+        $command = 'php artisan queue:work --tries=3 --max-time=3600';
+
+        return $queue === null ? $command : "{$command} --queue={$queue}";
     }
 
     /**
@@ -96,5 +124,29 @@ class ProcessCommands
     public static function ssr(): string
     {
         return 'php artisan inertia:start-ssr';
+    }
+
+    /**
+     * The in-container backup executor invocation, shared by the generated
+     * crontab entry and `backup:database`'s one-off task override so the
+     * scheduled and on-demand paths can't drift. Everything the executor needs
+     * is baked in as arguments from the manifest — no runtime config, nothing
+     * for the app to know about. Tenant ids are the database names (the same
+     * contract the per-tenant queue fan-out relies on).
+     *
+     * @return array<int, string>
+     */
+    public static function databaseBackup(): array
+    {
+        $arguments = [
+            '--destination=' . Paths::s3BackupsBucket() . '/' . Manifest::name(),
+            '--region=' . Manifest::get('region'),
+        ];
+
+        if (Manifest::isMultitenanted()) {
+            $arguments[] = '--tenants=' . implode(',', array_keys(Manifest::tenants()));
+        }
+
+        return ['php', 'artisan', 'yolo:backup-database', ...$arguments];
     }
 }

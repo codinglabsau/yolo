@@ -1,7 +1,9 @@
 <?php
 
+use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Iam\AdminPolicy;
+use Codinglabs\Yolo\Steps\Sync\Account\SyncServiceLinkedRolesStep;
 
 beforeEach(function (): void {
     writeManifest([
@@ -40,6 +42,9 @@ it('grants the write surface for the services YOLO provisions', function (): voi
         'cloudfront:Create*',
         'route53:ChangeResourceRecordSets',
         'wafv2:Create*',
+        // db:cutover's container execs ride ECS Exec, which no management
+        // wildcard covers.
+        'ecs:ExecuteCommand',
     );
 });
 
@@ -69,6 +74,24 @@ it('grants the ECR login + layer-upload chain sync needs to push the Typesense i
         'ecr:InitiateLayerUpload',
         'ecr:UploadLayerPart',
         'ecr:CompleteLayerUpload',
+    );
+});
+
+it('grants the vended log delivery chain wafv2:PutLoggingConfiguration provisions on the caller', function (): void {
+    // Streaming WAF traffic to a CloudWatch Logs log group rides vended log
+    // delivery: the Put call creates the delivery and writes the log-group
+    // resource policy on the CALLER's permissions, not the service's — so
+    // wafv2:Put* alone AccessDenieds the sync. The logs verbs are enumerated
+    // (no write wildcard to absorb a new one), which is how this gap shipped.
+    // The flow's reads (DescribeLogGroups, DescribeResourcePolicies,
+    // GetLogDelivery) come from the observer half's Describe*/Get*;
+    // ListLogDeliveries fits none of its read wildcards so it lives here.
+    expect(adminActions())->toContain(
+        'logs:CreateLogDelivery',
+        'logs:UpdateLogDelivery',
+        'logs:DeleteLogDelivery',
+        'logs:ListLogDeliveries',
+        'logs:PutResourcePolicy',
     );
 });
 
@@ -175,11 +198,10 @@ it('limits service-linked-role creation to the three services that need it', fun
         ->first(fn (array $statement): bool => in_array('iam:CreateServiceLinkedRole', (array) $statement['Action'], true));
 
     expect($slr)->not->toBeNull();
-    expect($slr['Condition']['StringEquals']['iam:AWSServiceName'])->toBe([
-        'ecs.amazonaws.com',
-        'application-autoscaling.amazonaws.com',
-        'elasticache.amazonaws.com',
-    ]);
+    // Pinned to the exact set SyncServiceLinkedRolesStep provisions — the grant
+    // exists to serve that step, so the two lists must never drift apart.
+    expect($slr['Condition']['StringEquals']['iam:AWSServiceName'])
+        ->toBe(SyncServiceLinkedRolesStep::SERVICES);
 });
 
 it('grants S3 object write to the env manifest + app claim keys, never the env-shared .env', function (): void {
@@ -224,28 +246,77 @@ it('grants get+put on YOLO env-tier secret channels: the env-shared .env and eac
     ]);
 });
 
-it('grants delete-only on the yolo-* object namespace for teardown, never a new read', function (): void {
+it('grants object deletes only on the regeneratable buckets, and never a new read', function (): void {
     // destroy empties the per-app asset + config buckets (arbitrary builds/* keys, so
     // it can't be key-scoped) and removes the env-config claim/env files. Delete-only,
     // so the tier can clear a bucket without gaining any new read — the per-app
-    // developer `.env` stays unreadable by admin.
+    // developer `.env` stays unreadable by admin. Scoped by bucket-type suffix rather
+    // than all of yolo-*, so no grant here can reach a single user object in the app
+    // data bucket.
     $objectDelete = collect((new AdminPolicy())->document()['Statement'])
         ->first(fn (array $statement): bool => (array) $statement['Action'] === ['s3:DeleteObject', 's3:DeleteObjectVersion']);
 
     expect($objectDelete)->not->toBeNull();
-    expect($objectDelete['Resource'])->toBe('arn:aws:s3:::yolo-*/*');
+    expect($objectDelete['Resource'])->toBe([
+        'arn:aws:s3:::yolo-*-config/*',
+        'arn:aws:s3:::yolo-*-assets/*',
+        'arn:aws:s3:::yolo-*-logs/*',
+    ]);
     expect($objectDelete['Action'])->not->toContain('s3:GetObject');
 });
 
-it('grants the bucket empty+delete teardown, fenced to yolo-* (never the data bucket)', function (): void {
+it('grants the bucket empty+delete teardown only on regeneratable buckets, never the data bucket', function (): void {
     // Emptying a versioned config bucket needs ListBucketVersions (ListBucket comes
-    // from the observer read tier); DeleteBucket removes the regeneratable yolo-*
-    // buckets. The app data bucket isn't yolo-named — and S3::deleteBucket hard-blocks
-    // it by name — so this can never reach user data.
+    // from the observer read tier); DeleteBucket removes the regeneratable buckets.
+    // The app data bucket CAN be yolo-named (`bucket: true`), so a namespace-wide
+    // grant would silently take user data in — hence suffix-scoping, which keeps the
+    // IAM boundary and S3::deleteBucket's name guard in agreement.
     $bucketLifecycle = collect((new AdminPolicy())->document()['Statement'])
         ->first(fn (array $statement): bool => in_array('s3:DeleteBucket', (array) $statement['Action'], true));
 
     expect($bucketLifecycle)->not->toBeNull();
-    expect($bucketLifecycle['Resource'])->toBe('arn:aws:s3:::yolo-*');
+    expect($bucketLifecycle['Resource'])->toBe([
+        'arn:aws:s3:::yolo-*-config',
+        'arn:aws:s3:::yolo-*-assets',
+        'arn:aws:s3:::yolo-*-logs',
+    ]);
     expect($bucketLifecycle['Action'])->toContain('s3:ListBucketVersions', 's3:DeleteBucket');
+});
+
+it('never lets a destructive S3 grant match a YOLO-named app data bucket', function (): void {
+    // The whole point of suffix-scoping: `bucket: true` names the data bucket
+    // yolo-{account}-{env}-{app}-data, which a bare yolo-* delete grant would match.
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => true,
+    ]);
+
+    $dataBucket = Paths::s3AppBucket();
+
+    $destructive = collect((new AdminPolicy())->document()['Statement'])
+        ->filter(fn (array $statement): bool => collect((array) $statement['Action'])
+            ->contains(fn (string $action): bool => in_array($action, ['s3:DeleteBucket', 's3:DeleteObject', 's3:DeleteObjectVersion'], true)))
+        ->flatMap(fn (array $statement): array => (array) $statement['Resource']);
+
+    expect($destructive)->not->toBeEmpty();
+
+    foreach ($destructive as $pattern) {
+        expect(fnmatch($pattern, 'arn:aws:s3:::' . $dataBucket))->toBeFalse();
+        expect(fnmatch($pattern, 'arn:aws:s3:::' . $dataBucket . '/uploads/private.pdf'))->toBeFalse();
+    }
+});
+
+it('still lets the create+harden grant reach a YOLO-named app data bucket', function (): void {
+    // The mirror of the test above: creation and the Block Public Access / CORS writes
+    // must reach it, which is the entire reason `bucket: true` derives a yolo-* name.
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => true,
+    ]);
+
+    $create = collect((new AdminPolicy())->document()['Statement'])
+        ->first(fn (array $statement): bool => in_array('s3:CreateBucket', (array) $statement['Action'], true));
+
+    expect($create)->not->toBeNull();
+    expect(fnmatch((string) $create['Resource'], 'arn:aws:s3:::' . Paths::s3AppBucket()))->toBeTrue();
+    expect($create['Action'])->toContain('s3:PutBucket*');
+    expect($create['Action'])->not->toContain('s3:DeleteBucket');
 });

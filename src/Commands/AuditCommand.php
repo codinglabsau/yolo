@@ -117,8 +117,9 @@ class AuditCommand extends AbstractAuditCommand
 
             if ($posture->taskIngress === false) {
                 $this->recordWarning(sprintf(
-                    'No attached security group on "%s" allows 3306 from the app\'s task security group — Fargate tasks may not be able to reach the database.',
+                    'No attached security group on "%s" allows %d from the app\'s task security group — Fargate tasks may not be able to reach the database.',
                     $rds->identifier,
+                    $rds->port,
                 ));
             }
         }
@@ -153,7 +154,11 @@ class AuditCommand extends AbstractAuditCommand
 
     protected function renderRds(RdsInspection $rds, ?RdsNetworkPosture $posture): void
     {
-        note(sprintf('Database: %s "%s"', ucfirst($rds->kind()), $rds->identifier));
+        // An unreadable snapshot may not know its kind — "Database: Database"
+        // reads doubled, so drop the kind and let the identifier speak.
+        note($rds->readable
+            ? sprintf('Database: %s "%s"', ucfirst($rds->kind()), $rds->identifier)
+            : sprintf('Database: "%s"', $rds->identifier));
 
         if (! $rds->readable) {
             // The recorded warning carries the why; nothing to tabulate.
@@ -209,7 +214,7 @@ class AuditCommand extends AbstractAuditCommand
             $posture->vpcId === null ? null : ['VPC', $posture->vpcId],
             $rds->subnetGroupName === null ? null : ['Subnet group', $rds->subnetGroupName],
             $rds->securityGroupIds === [] ? null : ['Security groups', implode(', ', $rds->securityGroupIds)],
-            ['Task ingress 3306', match ($posture->taskIngress) {
+            [$rds->port === null ? 'Task ingress' : sprintf('Task ingress %d', $rds->port), match ($posture->taskIngress) {
                 true => '<fg=green>yes</>',
                 false => '<fg=yellow>none found</>',
                 null => 'unknown',

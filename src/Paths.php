@@ -2,6 +2,8 @@
 
 namespace Codinglabs\Yolo;
 
+use Codinglabs\Yolo\Resources\S3\S3Bucket;
+
 class Paths
 {
     public static function base($path = null): string
@@ -24,6 +26,11 @@ class Paths
         return __DIR__ . '/../stubs' . ($path ? '/' . ltrim((string) $path, '/') : '');
     }
 
+    public static function bin($path = null): string
+    {
+        return __DIR__ . '/../bin' . ($path ? '/' . ltrim((string) $path, '/') : '');
+    }
+
     public static function manifest(): string
     {
         return static::base(Helpers::manifestName());
@@ -34,9 +41,19 @@ class Paths
         return static::build(Helpers::versionName());
     }
 
+    /**
+     * The application data bucket (AWS_BUCKET). `bucket: true` derives a name in
+     * YOLO's own keyed namespace — account, environment and app — so it is
+     * globally unique by construction and two environments can never collide on
+     * one bucket. Any other value is a bucket name taken verbatim: a
+     * bring-your-own bucket YOLO adopts and never creates (see
+     * {@see S3Bucket}).
+     */
     public static function s3AppBucket(): string
     {
-        return Manifest::get('bucket');
+        return Manifest::managesAppBucket()
+            ? Helpers::keyedBucketName('data')
+            : Manifest::get('bucket');
     }
 
     public static function s3ConfigBucket(): string
@@ -58,6 +75,20 @@ class Paths
     public static function s3LogsBucket(): string
     {
         return Helpers::keyedBucketName('logs', exclusive: false);
+    }
+
+    /**
+     * Env-scoped bucket holding the apps' logical database dumps, one prefix
+     * per app. Env-scoped like the logs bucket (dumps are shared operational
+     * output, not app data), but never with it: dumps are full database
+     * content, and the logs bucket carries an external write principal and a
+     * bucket-wide expiry — both of which database content must never sit
+     * next to. Each app's task role can write only its own `{app}/` prefix,
+     * and can't read any.
+     */
+    public static function s3BackupsBucket(): string
+    {
+        return Helpers::keyedBucketName('backups', exclusive: false);
     }
 
     /**
