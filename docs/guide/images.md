@@ -56,7 +56,7 @@ During `yolo build`, YOLO writes three files into the build context that your Do
 
 | File | Purpose |
 |---|---|
-| `.yolo-entrypoint.sh` | The container entrypoint. Runs your `deploy-all` hooks (e.g. `php artisan optimize`) on startup, then dispatches on the container command: a role (`web` / `queue` / `scheduler`) is supervised and traps `SIGTERM` so the web tier keeps serving across the ALB drain window before forwarding the stop; any other command — a one-off task such as a deploy migration — is `exec`'d directly (no supervise, no drain). ECS can override the command, not the entrypoint, which is why the dispatch lives here. |
+| `.yolo-entrypoint.sh` | The container entrypoint. Runs your `start` hooks (e.g. `php artisan optimize`), then dispatches on the container command: a role (`web` / `queue` / `scheduler`) is supervised and traps `SIGTERM` so the web tier keeps serving across the ALB drain window before forwarding the stop; any other command — a one-off task such as a deploy migration — is `exec`'d directly (no supervise, no drain). ECS can override the command, not the entrypoint, which is why the dispatch lives here. |
 | `docker/supervisord.conf` | The web container's supervisord program tree — FrankenPHP/Octane, plus the `queue:work` worker and the scheduler unless you've extracted them into their own services (or switched them off with `tasks.queue` / `tasks.scheduler: false`). A crontab is generated wherever cron runs (skipped when the scheduler is disabled). A standalone queue that also hosts the scheduler gets a second `docker/supervisord.queue.conf`. |
 | `docker/php.ini` | [YOLO's baseline PHP configuration](#php-configuration) — skipped when the app has published its own copy at that path, which then ships untouched. |
 

@@ -87,7 +87,7 @@ class Manifest
         'tasks.scheduler',
         'tasks.scheduler.cpu', 'tasks.scheduler.memory',
         'tasks.scheduler.shutdown-grace-period', 'tasks.scheduler.enable-execute-command',
-        'build', 'deploy', 'deploy-all',
+        'build', 'deploy', 'start',
     ];
 
     public static function exists(): bool

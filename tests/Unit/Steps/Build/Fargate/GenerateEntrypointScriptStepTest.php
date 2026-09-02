@@ -22,12 +22,12 @@ function generatedEntrypointScript(): string
     return file_get_contents(Paths::build('.yolo-entrypoint.sh'));
 }
 
-it('starts with a shebang and fails fast through the deploy-all hooks', function (): void {
+it('starts with a shebang and fails fast through the start hooks', function (): void {
     writeManifest([
         'domain' => 'example.com',
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => true],
-        'deploy-all' => ['php artisan migrate --force', 'php artisan config:cache'],
+        'start' => ['php artisan migrate --force', 'php artisan config:cache'],
     ]);
 
     $script = generatedEntrypointScript();

@@ -128,7 +128,7 @@ environments:
     deploy:
       - php artisan migrate --force
 
-    deploy-all:
+    start:
       - php artisan optimize
 ```
 
@@ -139,7 +139,7 @@ environments:
 | CI trust | [`branch` / `tag` / `repository`](#branch-tag-repository) |
 | Infrastructure | [`account-id`](#account-id), [`region`](#region), [`bucket`](#bucket), [`services`](#services), [`task-role-policies`](#task-role-policies), [`queues`](#queues), [`queue-visibility-timeout`](#queue-visibility-timeout), [`database`](#database), [`backups`](#backups), [`cache.store`](#cache), [`session.driver`](#session), [`budget`](#budget) |
 | Tasks | [`tasks.web`](#tasks-web), [`tasks.web.autoscaling`](#tasks-web-autoscaling), [`tasks.web.health-check`](#tasks-web-health-check), [`tasks.queue`](#tasks-queue), [`tasks.scheduler`](#tasks-scheduler) |
-| Hooks | [`build`](#build), [`deploy`](#deploy), [`deploy-all`](#deploy-all) |
+| Hooks | [`build`](#build), [`deploy`](#deploy), [`start`](#start) |
 
 ::: warning Required keys
 Every command except `init` fails fast unless these three are present:
@@ -573,9 +573,9 @@ The scheduler never scales (a per-minute cron can't tolerate a cold start), so i
 
 ---
 
-## Deploy hooks
+## Hooks
 
-Three arrays run shell commands at different points in the pipeline — see [Building & Deploying](/guide/building-and-deploying#hooks-build-vs-deploy-vs-deploy-all).
+Three arrays run shell commands at different points in an image's lifecycle — see [Building & Deploying](/guide/building-and-deploying#hooks-build-vs-deploy-vs-start).
 
 ### `build`
 
@@ -585,9 +585,9 @@ Runs at build time on your machine, in the build context. For dependency install
 
 Runs once per deploy as a one-off ECS task, before traffic shifts. For migrations.
 
-### `deploy-all`
+### `start`
 
-Runs on every container start (via the entrypoint). For cache warming like `php artisan optimize`.
+Runs on every container start, via the entrypoint, before the container's role process comes up — a deploy, a scale-out replica, a replaced task, a one-off `yolo run`. For cache warming like `php artisan optimize`; keep it idempotent.
 
 ---
 

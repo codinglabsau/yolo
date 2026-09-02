@@ -6,7 +6,7 @@
 #   vendor                installed by the build hook, not by the Dockerfile
 #   public/build          compiled Vite assets
 #   docker/               generated supervisord config(s) + crontab
-#   .yolo-entrypoint.sh   generated deploy-all entrypoint
+#   .yolo-entrypoint.sh   generated start entrypoint
 
 # VCS & CI
 .git
