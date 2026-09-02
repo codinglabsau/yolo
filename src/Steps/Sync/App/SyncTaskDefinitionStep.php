@@ -120,7 +120,18 @@ class SyncTaskDefinitionStep implements Step
             }
 
             if (is_array($value)) {
-                if (! is_array($live[$key]) || ! $this->matchesDesired($value, $live[$key])) {
+                if (! is_array($live[$key])) {
+                    return false;
+                }
+
+                $liveValue = $live[$key];
+
+                if (in_array($key, self::NAME_KEYED_LISTS, true)) {
+                    $value = $this->sortByName($value);
+                    $liveValue = $this->sortByName($liveValue);
+                }
+
+                if (! $this->matchesDesired($value, $liveValue)) {
                     return false;
                 }
             } elseif ((string) $value !== (string) $live[$key]) {
@@ -129,6 +140,23 @@ class SyncTaskDefinitionStep implements Step
         }
 
         return true;
+    }
+
+    /**
+     * Container lists ECS returns in its own order, not registration order. They are
+     * sets keyed by `name`, so both sides are sorted on it before the index-by-index
+     * compare — otherwise a permuted read-back is phantom drift that re-registers a
+     * byte-identical revision on every sync.
+     */
+    private const array NAME_KEYED_LISTS = ['environment', 'secrets'];
+
+    /**
+     * @param  array<int, array<string, mixed>>  $entries
+     * @return array<int, array<string, mixed>>
+     */
+    private function sortByName(array $entries): array
+    {
+        return collect($entries)->sortBy('name')->values()->all();
     }
 
     /**

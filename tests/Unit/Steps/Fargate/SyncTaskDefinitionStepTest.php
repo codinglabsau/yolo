@@ -321,3 +321,65 @@ it('keeps the thread ceiling off the queue and scheduler task definitions in cla
     expect(SyncTaskDefinitionStep::payload(ServerGroup::SCHEDULER)['containerDefinitions'][0])
         ->not->toHaveKey('environment');
 });
+
+it('is in sync when the live environment is a permutation of the desired one', function (): void {
+    // ECS returns containerDefinitions[].environment in its own order, not the
+    // registration order. An index-by-index compare reads the permutation as
+    // drift, registers a byte-identical revision every sync, and the deploy
+    // gate then refuses forever — the list is a set keyed by name.
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['octane' => false, 'cpu' => '512', 'memory' => '1024']],
+    ]);
+
+    bindMockIamClient([
+        'yolo-testing-my-app-ecs-task-role' => 'arn:aws:iam::111111111111:role/yolo-testing-my-app-ecs-task-role',
+        'yolo-testing-ecs-execution-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role',
+    ]);
+
+    $live = liveTaskDefinition();
+    $desiredEnvironment = $live['containerDefinitions'][0]['environment'];
+    expect($desiredEnvironment)->toHaveCount(3);
+
+    // SERVICE, CPU, THREADS registered → SERVICE, THREADS, CPU read back.
+    $live['containerDefinitions'][0]['environment'] = [$desiredEnvironment[0], $desiredEnvironment[2], $desiredEnvironment[1]];
+
+    $captured = [];
+    bindRoutedEcsClient([
+        'DescribeTaskDefinition' => new Result(['taskDefinition' => $live]),
+    ], $captured);
+
+    $step = new SyncTaskDefinitionStep();
+    expect($step(['dry-run' => true]))->toBe(StepResult::SYNCED);
+    expect($step->changes())->toBeEmpty();
+    expect(array_column($captured, 'name'))->not->toContain('RegisterTaskDefinition');
+});
+
+it('still records drift when an environment value changes, whatever the live order', function (): void {
+    // Order-insensitivity must not become value-insensitivity: a changed thread
+    // ceiling in a reordered list is real drift.
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['octane' => false, 'cpu' => '512', 'memory' => '1024']],
+    ]);
+
+    bindMockIamClient([
+        'yolo-testing-my-app-ecs-task-role' => 'arn:aws:iam::111111111111:role/yolo-testing-my-app-ecs-task-role',
+        'yolo-testing-ecs-execution-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role',
+    ]);
+
+    $live = liveTaskDefinition();
+    $live['containerDefinitions'][0]['environment'] = array_reverse(array_map(
+        fn (array $entry): array => $entry['name'] === 'YOLO_BURST_THREADS' ? ['name' => 'YOLO_BURST_THREADS', 'value' => '999'] : $entry,
+        $live['containerDefinitions'][0]['environment'],
+    ));
+
+    $captured = [];
+    bindRoutedEcsClient([
+        'DescribeTaskDefinition' => new Result(['taskDefinition' => $live]),
+    ], $captured);
+
+    $step = new SyncTaskDefinitionStep();
+    expect($step(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC);
+    expect($step->changes())->not->toBeEmpty();
+});
