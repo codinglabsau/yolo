@@ -242,41 +242,41 @@ it('divides classic-mode saturation by the pinned thread ceiling, never the scra
     expect($published)->toBe([75.0]);
 });
 
-it('takes the larger of the in-flight peak and busy_threads as the classic numerator', function (): void {
+it('counts a queued request as load on top of the busy threads', function (): void {
     $published = [];
     $cache = arrayCache();
-    // A thread is busy before the request reaches any middleware, so busy_threads can
-    // lead the counted peak; the safe bias is upward.
-    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::threads(6, 0)]), nullCpu(), inFlightPeaking($cache, 2), $published, threadCeiling: 8);
+    // The verified fixture: 6 busy, 1 queued, ceiling 8 → 7/8 = 87.5%. One queued
+    // request moves the reading by a thread's worth, not to a trip.
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::threads(6, 1)]), nullCpu(), inFlightPeaking($cache, 6), $published, threadCeiling: 8);
 
     $reporter->report();
 
-    expect($published)->toBe([75.0]);
+    expect($published)->toBe([87.5]);
 });
 
-it('publishes a tripping value while a request is queued for a thread, whatever the ratio', function (): void {
+it('lets a queue push classic saturation past 100', function (): void {
     $published = [];
     $cache = arrayCache();
-    // 2 of 8 is 25% — below even the emit floor — but a queued request is the burst
-    // condition outright, so it trips the alarm and sheds SSR.
+    // A full ceiling with two waiting: 10/8 = 125%. Uncapped, so the deeper overshoot
+    // keeps landing the bigger step.
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::threads(8, 2)]), nullCpu(), inFlightPeaking($cache, 8), $published, threadCeiling: 8);
+
+    $reporter->report();
+
+    expect($published)->toBe([125.0]);
+    expect($cache->get('yolo-burst:task-1:ssr-bypass'))->not->toBeNull();
+});
+
+it('does not trip on a queued request while the ceiling has room', function (): void {
+    $published = [];
+    $cache = arrayCache();
+    // 2 busy + 1 queued of 8 = 37.5%: below the emit floor, so nothing is published
+    // and no task is bought for a momentary queue.
     $reporter = burstReporter($cache, queuedScraper([ScrapeResult::threads(2, 1)]), nullCpu(), inFlightPeaking($cache, 2), $published, threadCeiling: 8);
 
     $reporter->report();
 
-    expect($published)->toBe([(float) WebBurstPolicy::QUEUED_SATURATION]);
-    expect(WebBurstPolicy::QUEUED_SATURATION)->toBeGreaterThan(WebBurstPolicy::ALARM_THRESHOLD);
-    expect($cache->get('yolo-burst:task-1:ssr-bypass'))->not->toBeNull();
-});
-
-it('keeps a classic ratio that already exceeds the queued value', function (): void {
-    $published = [];
-    $cache = arrayCache();
-    // A full ceiling with a queue reads 100 — the deeper overshoot keeps the bigger step.
-    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::threads(8, 1)]), nullCpu(), inFlightPeaking($cache, 8), $published, threadCeiling: 8);
-
-    $reporter->report();
-
-    expect($published)->toBe([100.0]);
+    expect($published)->toBe([]);
 });
 
 it('stays silent on a classic reading with no injected thread ceiling', function (): void {

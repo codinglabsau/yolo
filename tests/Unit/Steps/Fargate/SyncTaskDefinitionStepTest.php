@@ -304,3 +304,20 @@ it('keeps the burst-metrics env off the queue and scheduler task definitions', f
     expect(SyncTaskDefinitionStep::payload(ServerGroup::SCHEDULER)['containerDefinitions'][0])
         ->not->toHaveKey('environment');
 });
+
+it('keeps the thread ceiling off the queue and scheduler task definitions in classic mode', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['octane' => false], 'queue' => true, 'scheduler' => true],
+    ]);
+
+    bindMockIamClient([
+        'yolo-testing-my-app-ecs-task-role' => 'arn:aws:iam::111111111111:role/yolo-testing-my-app-ecs-task-role',
+        'yolo-testing-ecs-execution-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role',
+    ]);
+
+    expect(SyncTaskDefinitionStep::payload(ServerGroup::QUEUE)['containerDefinitions'][0])
+        ->not->toHaveKey('environment');
+    expect(SyncTaskDefinitionStep::payload(ServerGroup::SCHEDULER)['containerDefinitions'][0])
+        ->not->toHaveKey('environment');
+});

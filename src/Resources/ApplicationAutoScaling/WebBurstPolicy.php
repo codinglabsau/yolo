@@ -92,15 +92,6 @@ class WebBurstPolicy
     public const int ALARM_THRESHOLD = 70;
 
     /**
-     * The saturation a classic tier publishes while FrankenPHP reports a request
-     * queued for a thread — the burst condition outright, whatever busy ÷ ceiling
-     * says (the thread autoscaler may still be growing the pool toward it). Past the
-     * alarm's strict `>` threshold but inside the +1 step band, so one queued request
-     * earns one task; a deeper ratio still lands the bigger step on its own.
-     */
-    public const int QUEUED_SATURATION = 75;
-
-    /**
      * The reporter only publishes at or above this saturation %, so the metric (and its
      * cost) is near-zero when the service isn't hot. Below the alarm threshold so the
      * alarm is fed a not-breaching datapoint on the step just under the trip — for a

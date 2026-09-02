@@ -25,10 +25,12 @@ use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
  * is the `max_threads` YOLO pinned ({@see WebThreads}), injected as YOLO_BURST_THREADS:
  * the scraped `total_threads` gauge reports the floor the pool boots with, not what the
  * thread autoscaler has grown to, so `busy_threads` can exceed it. There the numerator
- * takes the larger of the in-flight peak and `busy_threads` — a thread is busy from the
- * moment it starts booting the framework, before any middleware can count the request
- * — and a non-zero `queue_depth` (a request waiting for a thread) is the burst
- * condition outright, so it publishes a tripping value whatever the ratio says.
+ * is `busy_threads + queue_depth` — the thread gauge is sampled while the sampling
+ * request's own thread is still busy, so it doesn't self-undercount the way the worker
+ * gauge does, and a request waiting for a thread is load the ceiling hasn't absorbed
+ * yet. Queueing pushes the value past 100 naturally rather than tripping a floor: a
+ * single momentarily-queued request must not buy a task that scale-in then holds for
+ * its fifteen-minute window.
  *
  * It's invoked from an after-response hook the {@see YoloServiceProvider} registers
  * ($app->terminating), so the work rides on a request that already holds a CPU slice
@@ -116,7 +118,7 @@ class WorkerSaturationReporter
 
         $saturation = $result->totalWorkers !== null
             ? $this->workerSaturation($result->totalWorkers, $peak)
-            : $this->threadSaturation($result, $peak);
+            : $this->threadSaturation($result);
 
         // Below the emit floor: near-zero cost at rest, nothing worth publishing.
         if ($saturation === null || $saturation < WebBurstPolicy::EMIT_FLOOR) {
@@ -145,21 +147,18 @@ class WorkerSaturationReporter
     }
 
     /**
-     * Classic mode: busy threads as a percentage of the pinned ceiling, lifted to a
-     * tripping value while FrankenPHP has a request queued for a thread. Null without
-     * an injected ceiling — there is nothing honest to divide by.
+     * Classic mode: busy plus queued requests as a percentage of the pinned ceiling.
+     * Uncapped, since a queue is real demand past the ceiling and the deeper reading
+     * earns the bigger step. Null without an injected ceiling — there is nothing
+     * honest to divide by.
      */
-    private function threadSaturation(ScrapeResult $result, int $peak): ?float
+    private function threadSaturation(ScrapeResult $result): ?float
     {
         if ($this->threadCeiling === null || $this->threadCeiling <= 0) {
             return null;
         }
 
-        $saturation = min(100.0, max($peak, $result->busyThreads) / $this->threadCeiling * 100);
-
-        return $result->queueDepth > 0
-            ? max($saturation, (float) WebBurstPolicy::QUEUED_SATURATION)
-            : $saturation;
+        return ($result->busyThreads + $result->queueDepth) / $this->threadCeiling * 100;
     }
 
     private function onFailure(?float $utilisation): void
