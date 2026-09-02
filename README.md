@@ -32,7 +32,7 @@ The docs are a VitePress site under [`docs/`](docs/) and deploy to GitHub Pages 
 ```json
 {
   "require": {
-    "codinglabsau/yolo": "dev-main"
+    "codinglabsau/yolo": "^1.0"
   }
 }
 ```
