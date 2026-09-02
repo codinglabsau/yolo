@@ -660,11 +660,48 @@ it('runs the classic-mode Caddyfile through frankenphp run, never php-server', f
         'tasks' => ['web' => ['octane' => false, 'autoscaling' => true]],
     ]);
 
-    // Autoscaling still bundles the emitter, but the web command stays at the default
-    // priority like the emitter itself.
+    // Autoscaling changes nothing about the launch: the metrics option rides in the
+    // same Caddyfile `run --config` already loads.
     expect(generatedSupervisorConfig())
         ->toContain('command=frankenphp run --config /app/docker/Caddyfile')
         ->not->toContain('php-server');
+});
+
+it('adds the metrics option to the classic-mode Caddyfile when the tier autoscales', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['octane' => false, 'autoscaling' => true]],
+    ]);
+
+    // No Octane stub involved: classic mode's own Caddyfile carries the option, so a
+    // classic app never needs laravel/octane installed to burst-scale.
+    unlink(Paths::base('vendor/laravel/octane/src/Commands/stubs/Caddyfile'));
+
+    generatedSupervisorConfig();
+
+    $caddyfile = (string) file_get_contents(Paths::build('docker/Caddyfile'));
+
+    // The top-level global option, alongside the thread bounds — not the per-server
+    // `servers { metrics }` form, which leaves FrankenPHP's gauges dark.
+    expect($caddyfile)
+        ->toMatch('/^\s*metrics\s*$/m')
+        ->toContain('num_threads 8')
+        ->toContain('max_threads 16')
+        ->not->toContain('servers {');
+    expect(preg_match_all('/^\s*metrics\s*$/m', $caddyfile))->toBe(1);
+});
+
+it('leaves metrics out of the classic-mode Caddyfile when the tier is not autoscaling', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['octane' => false, 'autoscaling' => false]],
+    ]);
+
+    generatedSupervisorConfig();
+
+    // Nothing reads the endpoint on a fixed tier, so it isn't exposed.
+    expect((string) file_get_contents(Paths::build('docker/Caddyfile')))
+        ->not->toMatch('/^\s*metrics\s*$/m');
 });
 
 it('hard-fails the build when the Octane Caddyfile stub is missing for an autoscaling app', function (): void {

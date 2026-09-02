@@ -41,10 +41,20 @@ class MetricsScraper implements Scraper
             return ScrapeResult::failure();
         }
 
-        $totalWorkers = WorkerPool::total($body);
+        // Worker mode exposes both gauge families (the thread gauges underlie the
+        // worker pool), so the worker gauges are checked first: only a body with no
+        // usable worker total is read as threads. An Octane tier caught mid
+        // worker-reload (a zero total) lands there too: the endpoint answered, so it
+        // primes the reporter's fallback, then stays silent for lack of a thread
+        // ceiling outside classic mode.
+        $totalWorkers = Gauges::totalWorkers($body);
 
-        return $totalWorkers === null
-            ? ScrapeResult::absent()
-            : ScrapeResult::reading($totalWorkers);
+        if ($totalWorkers !== null) {
+            return ScrapeResult::workers($totalWorkers);
+        }
+
+        return Gauges::hasThreads($body)
+            ? ScrapeResult::threads(Gauges::busyThreads($body), Gauges::queueDepth($body))
+            : ScrapeResult::absent();
     }
 }

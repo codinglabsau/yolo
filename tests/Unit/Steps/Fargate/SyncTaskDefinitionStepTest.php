@@ -280,8 +280,42 @@ it('injects the vCPU allocation as Fargate CPU units divided by 1024', function 
         ->toContain(['name' => 'YOLO_BURST_CPU', 'value' => '0.5']);
 });
 
+it('injects the pinned thread ceiling as the burst denominator in classic mode', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['octane' => false, 'cpu' => '512', 'memory' => '1024']],
+    ]);
+
+    bindMockIamClient([
+        'yolo-testing-my-app-ecs-task-role' => 'arn:aws:iam::111111111111:role/yolo-testing-my-app-ecs-task-role',
+        'yolo-testing-ecs-execution-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role',
+    ]);
+
+    // 0.5 vCPU → max_threads 16, the same ceiling the generated Caddyfile pins. It's
+    // injected because FrankenPHP's total_threads gauge reports the floor, not this.
+    expect(SyncTaskDefinitionStep::payload()['containerDefinitions'][0]['environment'])
+        ->toContain(['name' => 'YOLO_BURST_THREADS', 'value' => '16']);
+});
+
 it('keeps the burst-metrics env off the queue and scheduler task definitions', function (): void {
     // Only the web tier publishes saturation; the headless workers never carry the env.
+    expect(SyncTaskDefinitionStep::payload(ServerGroup::QUEUE)['containerDefinitions'][0])
+        ->not->toHaveKey('environment');
+    expect(SyncTaskDefinitionStep::payload(ServerGroup::SCHEDULER)['containerDefinitions'][0])
+        ->not->toHaveKey('environment');
+});
+
+it('keeps the thread ceiling off the queue and scheduler task definitions in classic mode', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['octane' => false], 'queue' => true, 'scheduler' => true],
+    ]);
+
+    bindMockIamClient([
+        'yolo-testing-my-app-ecs-task-role' => 'arn:aws:iam::111111111111:role/yolo-testing-my-app-ecs-task-role',
+        'yolo-testing-ecs-execution-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role',
+    ]);
+
     expect(SyncTaskDefinitionStep::payload(ServerGroup::QUEUE)['containerDefinitions'][0])
         ->not->toHaveKey('environment');
     expect(SyncTaskDefinitionStep::payload(ServerGroup::SCHEDULER)['containerDefinitions'][0])

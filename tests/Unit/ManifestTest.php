@@ -322,13 +322,13 @@ describe('metrics caddyfile', function (): void {
         expect(Manifest::usesMetricsCaddyfile())->toBeTrue();
     });
 
-    it('does not apply in classic mode, where worker metrics never exist', function (): void {
+    it('applies in classic mode too, where the thread gauges are the burst signal', function (): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             'tasks' => ['web' => ['octane' => false, 'autoscaling' => true]],
         ]);
 
-        expect(Manifest::usesMetricsCaddyfile())->toBeFalse();
+        expect(Manifest::usesMetricsCaddyfile())->toBeTrue();
     });
 
     it('applies by default for an Octane web tier (autoscaling on by default)', function (): void {

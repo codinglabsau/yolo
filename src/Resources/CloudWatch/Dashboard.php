@@ -189,10 +189,9 @@ class Dashboard implements Deletable
         return [
             'region' => Manifest::get('region'),
             'web' => $web,
-            // The burst worker-saturation metric only exists on an autoscaling
-            // Octane web tier (classic mode never emits it), so the Worker
-            // saturation panel — and its burst threshold line — is drawn only
-            // there. Same gate the runtime reporter and Caddyfile key off.
+            // The burst saturation metric only exists on an autoscaling web tier,
+            // so the Worker saturation panel — and its burst threshold line — is
+            // drawn only there. Same gate the runtime reporter and Caddyfile key off.
             'burst' => $web && Manifest::usesMetricsCaddyfile(),
             'clusterName' => $web ? (new EcsCluster())->name() : null,
             'serviceName' => $web ? (new EcsService())->name() : null,
@@ -547,7 +546,9 @@ class Dashboard implements Deletable
         // container emits itself, with the burst alarm's trip threshold drawn on it
         // — the one real-time web scaling trigger (the CPU `Scale` line below is the
         // slower target-tracking companion). Maximum matches the alarm, which trips
-        // on the most-saturated task. Only present on an autoscaling Octane tier.
+        // on the most-saturated task. Only present on an autoscaling tier. No y-axis
+        // ceiling: a classic tier reports queued requests past 100, and how far past is
+        // exactly what an operator reads here.
         if ($context['burst']) {
             $widgets[] = static::metric(0, $y, 12, 6, [
                 'title' => 'Worker saturation',
@@ -555,7 +556,7 @@ class Dashboard implements Deletable
                 'view' => 'timeSeries',
                 'stacked' => false,
                 'period' => WebBurstPolicy::COOLDOWN,
-                'yAxis' => ['left' => ['min' => 0, 'max' => 100]],
+                'yAxis' => ['left' => ['min' => 0]],
                 'metrics' => [
                     [WebBurstPolicy::METRIC_NAMESPACE, WebBurstPolicy::METRIC_NAME, WebBurstPolicy::METRIC_DIMENSION, $service, ['label' => 'Busiest task', 'stat' => 'Maximum', 'color' => static::ORANGE]],
                 ],

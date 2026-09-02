@@ -11,7 +11,9 @@ use Codinglabs\Yolo\Enums\ServerGroup;
  * can serve **concurrently** — and the single source of truth shared by the runtime
  * (the `octane:start --workers` pin in {@see ProcessCommands::web()}) and the
  * autoscaling concurrency target, which reaches it through {@see WebConcurrency}.
- * The classic-mode counterpart is {@see WebThreads}.
+ * The burst reporter reads the same pool back from FrankenPHP's total_workers gauge
+ * rather than taking it from here, since Octane owns the pool at runtime. The
+ * classic-mode counterpart is {@see WebThreads}.
  *
  * Why pin it at all: a FrankenPHP worker handles one request at a time and blocks
  * for that request's whole lifetime — including any wait on a downstream the worker

@@ -19,8 +19,8 @@ class ProcessCommands
     /**
      * The in-image path of the Caddyfile YOLO generates into the build context at
      * docker/Caddyfile (GenerateSupervisorConfigStep) and runs the web server against.
-     * Both modes use it for a different reason — Octane for the metrics global option,
-     * classic mode for the thread bounds — and never both at once, so one path serves
+     * Octane needs it for the metrics global option; classic mode always needs it for
+     * the thread bounds and carries the same option when autoscaling. One path serves
      * both. Absolute because supervisord's working directory is not contractual.
      */
     public const string CADDYFILE = '/app/docker/Caddyfile';
@@ -65,7 +65,8 @@ class ProcessCommands
         // a custom Caddyfile: GenerateSupervisorConfigStep writes the app's own Octane stub
         // with the top-level `metrics` global option added to docker/Caddyfile, and
         // --caddyfile runs it.
-        // Web autoscaling only; classic mode returned above and never reaches here.
+        // Web autoscaling only. Classic mode returned above: its generated Caddyfile
+        // carries the same option and is already the file `run --config` loads.
         if (Manifest::usesMetricsCaddyfile()) {
             $command .= ' --caddyfile=' . self::CADDYFILE;
         }

@@ -802,17 +802,18 @@ class Manifest
     }
 
     /**
-     * Whether the build ships YOLO's metrics-enabled Caddyfile and runs Octane against
-     * it (`octane:start --caddyfile`). True only for an autoscaling web tier on Octane
-     * (worker mode): FrankenPHP's worker gauges — the burst signal — exist only there,
-     * and `octane:start` overwrites the CADDY_GLOBAL_OPTIONS env var, so the metrics
-     * global option has to ride in a Caddyfile rather than the environment. The single
-     * gate the Caddyfile generation, the `--caddyfile` flag and the build preflight all
-     * key off, so they can't drift; classic mode never reaches it (burst is inert there).
+     * Whether the build ships a Caddyfile with FrankenPHP metrics enabled — the burst
+     * signal's source in either serving mode. True for any autoscaling web tier: Octane
+     * runs the app's own stub plus the `metrics` global option via `octane:start
+     * --caddyfile` (it overwrites the CADDY_GLOBAL_OPTIONS env var, so the option has to
+     * ride in a file), and classic mode adds the same option to the Caddyfile it already
+     * runs for its thread bounds. The single gate the Caddyfile generation, the burst
+     * env, the PutMetricData grant and the build preflight all key off, so they can't
+     * drift.
      */
     public static function usesMetricsCaddyfile(): bool
     {
-        return static::isAutoscaling() && static::usesOctane();
+        return static::isAutoscaling();
     }
 
     /**

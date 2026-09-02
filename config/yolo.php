@@ -20,12 +20,15 @@ return [
     | - cpu: the task's vCPU allocation — the denominator the CPU fallback divides
     |   usage by. It's injected rather than read locally because the Fargate microVM
     |   exposes more vCPUs than a fractional task is throttled to.
+    | - threads: a classic-mode tier's pinned thread ceiling (max_threads) — the
+    |   saturation denominator there. Unset on Octane.
     |
     */
 
     'burst' => [
         'service' => env('YOLO_BURST_SERVICE'),
         'cpu' => env('YOLO_BURST_CPU'),
+        'threads' => env('YOLO_BURST_THREADS'),
     ],
 
     /*
