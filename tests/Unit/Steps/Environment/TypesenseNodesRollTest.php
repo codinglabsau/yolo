@@ -9,6 +9,7 @@ use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
 use Aws\Exception\AwsException;
+use Codinglabs\Yolo\WaitReporter;
 use Codinglabs\Yolo\Enums\StepResult;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Handler\MockHandler as GuzzleMockHandler;
@@ -199,4 +200,59 @@ it('judges a task serving only when its own IP answers healthy in the target gro
         ->and(SyncTypesenseNodesStep::tasksAreServing([$task('10.0.0.5')], [$unhealthy('10.0.0.5'), $healthy('10.0.0.9')]))->toBeFalse()
         ->and(SyncTypesenseNodesStep::tasksAreServing([$task('10.0.0.5')], []))->toBeFalse()
         ->and(SyncTypesenseNodesStep::tasksAreServing([], [$healthy('10.0.0.5')]))->toBeFalse();
+});
+
+it('narrates each roll phase through the LongRunning heartbeat', function (): void {
+    $captured = [];
+    bindServiceLifecycleWorld([
+        'manifest' => ROLL_OFFER,
+        'claims' => ['my-app' => ['typesense']],
+        'clusters' => ['my-app' => true],
+        'sharedEnv' => "TYPESENSE_API_KEY=admin-key\n",
+    ], $captured);
+
+    $ecsCaptured = [];
+    bindRollEcsWorld(
+        revisionByDescribe: ['arn:td/old', 'arn:td/old', 'arn:td/new', 'arn:td/new', 'arn:td/new', 'arn:td/new'],
+        listTasksQueue: [['taskArns' => ['arn:aws:ecs:ap-southeast-2:111111111111:task/replacement']]],
+        captured: $ecsCaptured,
+    );
+
+    $elbCaptured = [];
+    bindRoutedElbV2Client([
+        'DescribeTargetGroups' => new Result(['TargetGroups' => [['TargetGroupName' => 'yolo-testing-search', 'TargetGroupArn' => 'arn:tg']]]),
+        'DescribeTargetHealth' => new Result(['TargetHealthDescriptions' => [
+            ['Target' => ['Id' => '10.0.0.5'], 'TargetHealth' => ['State' => 'healthy']],
+        ]]),
+    ], $elbCaptured);
+
+    $guzzle = new GuzzleMockHandler([
+        new Response(503, [], (string) json_encode(['ok' => false])),
+        ...array_fill(0, 12, new Response(200, [], (string) json_encode(['ok' => true]))),
+        new Response(200, [], (string) json_encode(['state' => 1, 'version' => '30.2'])),
+    ]);
+
+    // Stand in for the runner: every heartbeat tick captures the live line.
+    $lines = [];
+    WaitReporter::using(function () use (&$lines): void {
+        $lines[] = WaitReporter::message();
+    });
+
+    try {
+        expect((rollStepWithoutWaits($guzzle))([]))->toBe(StepResult::SYNCED);
+    } finally {
+        WaitReporter::clear();
+    }
+
+    $phases = array_values(array_unique($lines));
+    $prefix = 'Node 1 of 1 (yolo-testing-typesense-0)';
+
+    // ECS replacement → replacement serving (with its attempt budget) → the
+    // convergence run, counting clean samples up and the one 503 as a failed
+    // round — so the operator can see the gate advancing, not just a timer.
+    expect($phases[0])->toBe($prefix . ' · ECS replacing the task')
+        ->and($phases[1])->toBe($prefix . ' · waiting for the replacement to serve · attempt 1/60')
+        ->and($phases[2])->toBe($prefix . ' · serving · 0/12 clean /health samples')
+        ->and($phases[3])->toBe($prefix . ' · serving · 0/12 clean /health samples · 1 failed round')
+        ->and(end($phases))->toBe($prefix . ' · serving · 11/12 clean /health samples · 1 failed round');
 });
