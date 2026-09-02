@@ -28,9 +28,8 @@ class CloudWatchLogs
     }
 
     /**
-     * Recent log events for a group's stream prefix (web/queue/scheduler). A
-     * missing group reads as no events rather than throwing — the Logs tab shows
-     * an empty state until the first task logs.
+     * A missing group reads as no events — the Logs tab shows an empty state
+     * until the first task logs.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -52,10 +51,6 @@ class CloudWatchLogs
     }
 
     /**
-     * The account-level resource policy with the given name decoded to an array,
-     * or null when no such policy exists. Used to diff the EventBridge log-delivery
-     * grant before re-putting it.
-     *
      * @return array<string, mixed>|null
      */
     public static function resourcePolicy(string $name): ?array

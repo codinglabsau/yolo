@@ -6,15 +6,7 @@ use Codinglabs\Yolo\Tui\Panels\Panel;
 use Codinglabs\Yolo\Concerns\RendersServiceStatus;
 use Symfony\Component\Console\Output\OutputInterface;
 
-/**
- * The dashboard shell behind `yolo status` — a tab host over the live environment.
- * It owns the poll/redraw loop, the always-on global health bar, the tab bar, the
- * footer, and key routing; each Panel owns its own tab body. Navigation only — tabs
- * and scrolling; the dashboard is read-only, so a keypress never triggers an action.
- *
- * The chrome (global bar, tab bar, footer, frame, key routing) is pure and tested;
- * only the raw terminal loop is @codeCoverageIgnore.
- */
+/** Read-only tab host: a keypress only navigates, never triggers an action. */
 class Tui
 {
     use RendersServiceStatus;
@@ -34,12 +26,7 @@ class Tui
         protected bool $splash = true,
     ) {}
 
-    /**
-     * The live dashboard: enter the alternate screen + raw mode, optionally play
-     * the splash over the first gather, then poll/redraw and route keys until quit.
-     *
-     * @codeCoverageIgnore the live loop — raw terminal I/O + timing, verified by hand
-     */
+    /** @codeCoverageIgnore raw terminal I/O + timing, verified by hand */
     public function run(): int
     {
         $this->keyboard->rawMode();
@@ -62,8 +49,7 @@ class Tui
 
                 $deadline = microtime(true) + 3.0;
 
-                // Wait out the poll window, but repaint promptly after any key —
-                // a key may switch tabs or set quit (which the outer loop checks).
+                // Repaint promptly after any key rather than waiting out the poll window.
                 while (microtime(true) < $deadline) {
                     $key = $this->keyboard->read();
 
@@ -85,10 +71,7 @@ class Tui
     }
 
     /**
-     * Compose the whole frame, fitted to exactly $height rows: the global health
-     * bar + tab bar above, the active panel body in the remaining budget, and the
-     * footer pinned to the bottom row. The body gets only the rows left after the
-     * chrome, so a long panel (logs) clips/scrolls instead of overflowing.
+     * The body only gets the rows left after the chrome, so a long panel clips/scrolls instead of pushing the footer off.
      *
      * @param  array<int, array<string, mixed>>  $statuses
      * @return array<int, string>
@@ -114,11 +97,6 @@ class Tui
         return Layout::fit($top, $panel->render($width, $budget), $bottom, $height);
     }
 
-    /**
-     * Route a keypress: quit, tab navigation (arrows/tab), number and letter
-     * hotkeys jump tabs; anything else delegates to the active panel for in-place
-     * navigation (scrolling, group cycling). Read-only — never dispatches an action.
-     */
     public function handleKey(string $key): void
     {
         $count = count($this->panels);
@@ -169,9 +147,6 @@ class Tui
     }
 
     /**
-     * The always-on top line: brand + environment on the left, and either the
-     * live rollout banner (when deploying) or the per-group health dots.
-     *
      * @param  array<int, array<string, mixed>>  $statuses
      */
     public static function globalBar(string $environment, array $statuses): string
@@ -188,9 +163,6 @@ class Tui
     }
 
     /**
-     * One coloured dot per group — lime when healthy, red when down, gold when
-     * mid-roll, slate when idle at zero.
-     *
      * @param  array<int, array<string, mixed>>  $statuses
      */
     public static function healthDots(array $statuses): string
@@ -216,8 +188,6 @@ class Tui
     }
 
     /**
-     * The tab bar — the active tab gold + underlined, the rest slate.
-     *
      * @param  array<int, Panel>  $panels
      */
     public static function tabBar(array $panels, int $active): string
@@ -233,7 +203,6 @@ class Tui
         return '  ' . implode('   ', $tabs);
     }
 
-    /** The footer hints — the active panel's, then the global navigation keys. */
     public static function footer(Panel $panel, int $count): string
     {
         $hints = [...$panel->hints(), '◂ ▸ tabs', '1-' . $count . ' jump', 'q quit'];

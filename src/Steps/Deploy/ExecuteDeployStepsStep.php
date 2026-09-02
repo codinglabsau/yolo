@@ -15,13 +15,8 @@ use Codinglabs\Yolo\Resources\Ec2\EcsTaskSecurityGroup;
 class ExecuteDeployStepsStep implements LongRunning
 {
     /**
-     * Task-level CPU/memory the one-off deploy task runs with, overriding the
-     * deploy group's task definition. The deploy group is usually a standalone
-     * queue or scheduler (0.25 vCPU / 512 MiB) — too thin for migrations and
-     * other deploy hooks, which are a one-shot, latency-sensitive cost on every
-     * deploy. Bumping to 1 vCPU here speeds them up without growing the
-     * long-running service. Must stay a valid Fargate CPU/memory pair: 1024 CPU
-     * requires at least 2048 MiB.
+     * The deploy group is usually a thin queue/scheduler task (0.25 vCPU) — too
+     * slow for migrations. Must stay a valid Fargate pair: 1024 CPU needs ≥ 2048 MiB.
      */
     protected const string DEPLOY_TASK_CPU = '1024';
 
@@ -44,20 +39,15 @@ class ExecuteDeployStepsStep implements LongRunning
 
         $script = "set -e\n" . implode("\n", $commands);
 
-        // One-off deploy hooks run on the management-tier task def — a dedicated
-        // scheduler if extracted, else a standalone queue, else web (see
-        // Manifest::deployGroup). The container override's name MUST match that
-        // group's container name (the task def names its container after the
-        // group): ECS matches overrides by container name, so a mismatch silently
-        // drops the command override and the task boots the role's default process
-        // (e.g. supercronic) instead of the deploy script — never stopping.
+        // ECS matches container overrides by name: a mismatch silently drops the
+        // command override and the task boots the role's default process (e.g.
+        // supercronic) instead of the deploy script — never stopping.
         $group = Manifest::deployGroup();
 
         $cluster = (new EcsCluster())->name();
 
         $run = Aws::ecs()->runTask([
             'cluster' => $cluster,
-            // The task definition family is the service name for this group (see EcsService).
             'taskDefinition' => (new EcsService($group))->name(),
             'launchType' => 'FARGATE',
             'count' => 1,

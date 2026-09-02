@@ -15,11 +15,7 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * An SQS queue, addressed by its full name so the solo, tenant and landlord
- * steps share one resource. Messages are retained for 14 days; visibility
- * timeout comes from the manifest (`queue-visibility-timeout`) and is
- * reconciled onto existing queues, so raising it reaches every queue on the
- * next sync. App-scoped, so it carries the yolo:app owner tag for `yolo audit`.
+ * Addressed by full name so the solo, tenant and landlord steps share one resource.
  */
 class Queue implements Deletable, Resource, SynchronisesConfiguration
 {
@@ -73,10 +69,7 @@ class Queue implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * Reconcile the managed attributes on an existing queue. SQS reports every
-     * attribute as a string, so the desired map is string-valued and compared
-     * strictly. Reads only this queue's own live state, so the plan pass is safe
-     * before any sibling exists (the two-pass contract).
+     * SQS reports every attribute as a string, so the desired map is string-valued.
      *
      * @return array<int, Change>
      */
@@ -104,10 +97,8 @@ class Queue implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * The queue attributes YOLO owns, on create and on reconcile alike.
-     * Retention stays hardcoded (no consumer needs a knob); visibility is the
-     * manifest's, because it has to track the app's job runtime — a message
-     * re-delivered while its job is still running executes twice.
+     * Visibility is the manifest's because it must track the app's job runtime — a
+     * message re-delivered mid-job executes twice.
      *
      * @return array<string, string>
      */
@@ -119,11 +110,7 @@ class Queue implements Deletable, Resource, SynchronisesConfiguration
         ];
     }
 
-    /**
-     * Delete the queue. DeleteQueue purges any in-flight/retained messages as
-     * part of the same call, so there is nothing to drain first. A concurrent
-     * removal (NonExistentQueue) is tolerated — the desired end state is reached.
-     */
+    /** DeleteQueue purges retained messages itself, so there is nothing to drain first. */
     public function delete(): void
     {
         try {

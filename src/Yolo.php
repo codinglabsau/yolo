@@ -13,15 +13,14 @@ class Yolo
     protected array $commands = [
         Commands\InitCommand::class,
 
-        // Machine credentials (the developer-laptop half of onboarding)
+        // Machine credentials
         Commands\ConfigureCommand::class,
 
         // App env files
         Commands\EnvPullCommand::class,
         Commands\EnvPushCommand::class,
 
-        // Environment-shared artefacts (the env manifest + env-shared .env in
-        // the env config bucket)
+        // Environment-shared artefacts
         Commands\EnvironmentManifestPullCommand::class,
         Commands\EnvironmentManifestPushCommand::class,
         Commands\EnvironmentEnvPullCommand::class,
@@ -36,13 +35,12 @@ class Yolo
         // Rollback
         Commands\RollbackCommand::class,
 
-        // Destroy (teardown — the reverse of sync; app → environment → account)
+        // Destroy
         Commands\DestroyCommand::class,
         Commands\DestroyAppCommand::class,
         Commands\DestroyEnvironmentCommand::class,
 
-        // Status (scope-grouped: app-tier `status`/`status:app`, env-tier roll-up,
-        // and the incident read surfaces — logs / events / alarms)
+        // Status
         Commands\StatusCommand::class,
         Commands\StatusAppCommand::class,
         Commands\StatusEnvironmentCommand::class,
@@ -54,7 +52,7 @@ class Yolo
         // Exec
         Commands\RunCommand::class,
 
-        // Database operations (tunnel to localhost, in-place cutover, env-wide assignment map)
+        // Database
         Commands\DbTunnelCommand::class,
         Commands\DbCutoverCommand::class,
         Commands\DbStatusCommand::class,
@@ -63,19 +61,19 @@ class Yolo
         // Scale
         Commands\ScaleCommand::class,
 
-        // Access management (team RBAC — edits YOLO grant-group membership)
+        // Access management
         Commands\PermissionsCommand::class,
 
-        // Services (the env service gate)
+        // Services
         Commands\ServicesCommand::class,
 
-        // Sync (scope-grouped: account → environment → app, orchestrated by `sync`)
+        // Sync (account → environment → app)
         Commands\SyncCommand::class,
         Commands\SyncAccountCommand::class,
         Commands\SyncEnvironmentCommand::class,
         Commands\SyncAppCommand::class,
 
-        // Audit (scope-grouped: account → environment → app, orchestrated by `audit`)
+        // Audit (account → environment → app)
         Commands\AuditCommand::class,
         Commands\AuditEnvironmentCommand::class,
         Commands\AuditAppCommand::class,
@@ -87,9 +85,8 @@ class Yolo
 
         $this->app = new Application('YOLO, so deploy today 🚀', Helpers::version());
 
-        // Global break-glass flag: skip the per-command tier capping and run on the
-        // developer's full profile identity. Registered on the application so every
-        // command accepts it; only the tiered commands act on it (see Command).
+        // Break-glass: registered on the application so every command accepts it; only the
+        // tiered commands act on it (see Command).
         $this->app->getDefinition()->addOption(new InputOption(
             'dangerously-skip-permissions',
             null,

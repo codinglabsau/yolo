@@ -14,9 +14,7 @@ use Codinglabs\Yolo\Resources\Ec2\PrivateSubnet;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * RDS DB subnet group spanning the three private subnets — so a database
- * launched into the YOLO network lands in the tier with no public IPs and no
- * internet route, never in a public subnet.
+ * Spans the private subnets only, so a database never lands in a public subnet.
  */
 class RdsSubnet implements Deletable, Resource
 {
@@ -63,12 +61,7 @@ class RdsSubnet implements Deletable, Resource
         return Aws::synchroniseRdsTags($this->arn(), $this->tags(), $apply);
     }
 
-    /**
-     * Delete the DB subnet group by name. Assumes upstream teardown has already
-     * removed any database that used it — AWS refuses to delete a subnet group
-     * still referenced by a DB instance. A concurrent removal
-     * (DBSubnetGroupNotFoundFault) is tolerated.
-     */
+    /** AWS refuses to delete a subnet group still referenced by a DB instance. */
     public function delete(): void
     {
         try {

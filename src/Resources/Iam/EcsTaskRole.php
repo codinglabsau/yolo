@@ -14,13 +14,8 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * YOLO-managed IAM role assumed by this app's ECS tasks (web, queue and
- * scheduler all share the one app role). App-scoped so each app gets its own
- * role — additional permissions an app grants (via `task-role-policies`) can't
- * bleed into any other app. Trust policy lets ecs-tasks.amazonaws.com call
- * sts:AssumeRole. Permission policies are attached separately by
- * AttachEcsTaskRolePoliciesStep: the YOLO baseline task policy (ECS Exec + this
- * app's SQS/SES) plus any manifest-declared additions.
+ * The runtime identity of this app's tasks (web, queue, scheduler share it).
+ * App-scoped so `task-role-policies` additions can't bleed into another app.
  */
 class EcsTaskRole implements Deletable, Resource, SynchronisesConfiguration
 {
@@ -63,12 +58,7 @@ class EcsTaskRole implements Deletable, Resource, SynchronisesConfiguration
         ]);
     }
 
-    /**
-     * IAM Description fields enforce a restricted character set
-     * (tab/LF/CR + printable ASCII + Latin-1 Supplement) — no em dashes,
-     * smart quotes, or U+007F – U+00A0 control range. Validated by
-     * IamDescriptionsAreSafeTest.
-     */
+    /** IAM Description allows only printable ASCII + Latin-1 (no em dashes or smart quotes) — pinned by IamDescriptionsAreSafeTest. */
     public function description(): string
     {
         return 'YOLO managed ECS task role - the runtime identity for this app\'s containers';
@@ -79,13 +69,7 @@ class EcsTaskRole implements Deletable, Resource, SynchronisesConfiguration
         return Aws::synchroniseIamRoleTags($this->name(), $this->tags(), $apply);
     }
 
-    /**
-     * Teardown when the app is removed: IAM refuses to delete a role that still
-     * holds policy attachments, so the managed policies (the baseline EcsTaskPolicy
-     * plus any `task-role-policies` additions, attached by
-     * AttachEcsTaskRolePoliciesStep) detach and any inline policies delete before
-     * deleteRole. A concurrent delete that already removed the role is tolerated.
-     */
+    /** IAM refuses to delete a role that still holds policy attachments. */
     public function delete(): void
     {
         try {

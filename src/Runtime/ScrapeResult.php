@@ -4,10 +4,6 @@ declare(strict_types=1);
 
 namespace Codinglabs\Yolo\Runtime;
 
-/**
- * The outcome of one scrape, classified by {@see ScrapeOutcome} and carrying the
- * worker-pool size — the saturation denominator — only when a real reading was obtained.
- */
 final readonly class ScrapeResult
 {
     private function __construct(

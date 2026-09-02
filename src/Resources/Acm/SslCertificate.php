@@ -8,34 +8,23 @@ use Codinglabs\Yolo\Resources\Route53\HostedZone;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * A DNS-validated ACM certificate covering a domain and its wildcard
- * (`*.{domain}`), addressed by domain so the solo and tenant steps share it.
+ * DNS-validated ACM certificate for a domain + its wildcard, addressed by domain so
+ * the solo and tenant steps share it. Not a Resource: a certificate is a state
+ * machine (request → pending validation → issued) the step drives.
  *
- * Unlike the create-or-sync Resources, a certificate is a small state machine
- * (request → pending validation → issued), so it doesn't implement the Resource
- * contract — the step drives the states and this class owns the AWS calls,
- * including the DNS-validation record + the wait for issuance.
- *
- * It is deliberately NOT Deletable: a cert is domain-level (a sibling environment
- * serving the same domain may hold one too, and ACM keys only by domain name), so
- * YOLO never deletes one — teardown withdraws the app's listener association (the
- * destroy:app cert-detach step) and leaves the certificate standing, the same
- * treatment the hosted zone gets.
+ * Deliberately NOT Deletable: ACM keys only by domain name, so a sibling environment
+ * on the same domain may hold one too. Teardown withdraws the listener association
+ * and leaves the certificate standing, like the hosted zone.
  */
 class SslCertificate
 {
     /**
-     * @param  string  $domain  the name the certificate is issued for (it also covers `*.{domain}`)
-     * @param  string  $zone  the hosted zone the DNS validation record is written into — the
-     *                        domain's apex, which is NOT the domain itself when the certificate
-     *                        is issued for a subdomain (a wildcard-subdomain app)
+     * @param  string  $zone  the apex zone the validation record is written into — NOT the
+     *                        domain itself when the certificate is for a subdomain
      */
     public function __construct(protected string $domain, protected string $zone) {}
 
     /**
-     * The certificate summary (DomainName, Status, CertificateArn), or null when
-     * no certificate exists yet for the domain.
-     *
      * @return array<string, mixed>|null
      */
     public function find(): ?array
@@ -57,14 +46,9 @@ class SslCertificate
     }
 
     /**
-     * Publish the DNS validation record into the zone, then block until ACM
-     * reports the certificate ISSUED. The domain and its wildcard share one
-     * validation record, so the wildcard option is filtered out to avoid a
-     * redundant UPSERT.
-     *
-     * The record goes into the *apex* zone, not a zone named after the
-     * certificate's domain: a certificate issued for a subdomain resolves through
-     * its parent zone, and no zone of its own need exist.
+     * The domain and its wildcard share one validation record, so the wildcard option
+     * is filtered out. The record goes into the *apex* zone — a subdomain certificate
+     * resolves through its parent zone and needs no zone of its own.
      */
     public function validate(string $certificateArn): void
     {

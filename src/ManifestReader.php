@@ -10,9 +10,7 @@ use Codinglabs\Yolo\Enums\Service;
 use Symfony\Component\Yaml\Exception\ParseException;
 
 /**
- * The read-only manifest core shared by the CLI's static {@see Manifest} and
- * the runtime's `Yolo::manifest()`. Keys are dot-paths within the instance's
- * environment block.
+ * The read-only manifest core shared by the CLI's {@see Manifest} and the runtime's `Yolo::manifest()`.
  */
 class ManifestReader
 {

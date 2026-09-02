@@ -8,11 +8,6 @@ use Codinglabs\Yolo\Steps\Destroy\TeardownStep;
 use Codinglabs\Yolo\Resources\Iam\ObserversGroup;
 use Codinglabs\Yolo\Contracts\RunsOnBaseCredentials;
 
-/**
- * Tears down the env observers grant group (removes members + its assume-role
- * policy, then deletes the group). Part of the IAM-tier teardown, so it runs on
- * base credentials (see RunsOnBaseCredentials).
- */
 class TeardownObserversGroupStep extends TeardownStep implements RunsOnBaseCredentials
 {
     protected function resource(): ObserversGroup

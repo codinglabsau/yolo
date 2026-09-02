@@ -12,28 +12,12 @@ use Codinglabs\Yolo\Concerns\ConfirmsDestruction;
 use function Laravel\Prompts\error;
 
 /**
- * Tears down one app's resources in an environment — the reverse of `sync:app`.
- * Reuses the same plan → confirm → apply runner: a plan pass shows every
- * resource that WOULD DELETE, the confirm gate guards the irreversible apply,
- * and the apply pass deletes in declaration order, which here is reverse
- * dependency order (CDN → services → cluster → rules → target group → SGs →
- * IAM → buckets → ECR).
- *
- * App-scoped only. Env-shared resources the app attaches to are never deleted —
- * the RDS / cache security groups keep their group (only this app's ingress rule
- * is revoked) and the shared :443 listener keeps standing (only this app's rules
- * + SNI certs are removed). RDS, the BYO app data bucket, and env/account-scoped
- * infrastructure are out of scope by design.
- *
- * Multi-tenant apps tear down fully: each tenant's listener rules, SNI
- * attachment, queues and DNS records go alongside the app's own. What survives is
- * what YOLO never owned — a tenant's hosted zone and ACM certificate are that
- * tenant's domain-level infrastructure, so teardown withdraws YOLO's *use* of
- * them and leaves the domain intact.
- *
- * Configurations whose teardown isn't fully modelled yet are refused outright
- * rather than torn down partially (which would orphan resources) — see
- * {@see unsupportedReason()}.
+ * App-scoped only: env-shared resources the app attaches to are revoked-from /
+ * detached-from, never deleted. RDS and the BYO app data bucket are out of scope by
+ * design. A tenant's hosted zone and ACM certificate are that tenant's domain-level
+ * infrastructure, so teardown withdraws YOLO's use of them and leaves the domain
+ * intact. Shapes whose teardown isn't fully modelled are refused outright rather
+ * than torn down partially — see {@see unsupportedReason()}.
  */
 class DestroyAppCommand extends SyncSteppedCommand implements PlansSequentially
 {
@@ -59,18 +43,9 @@ class DestroyAppCommand extends SyncSteppedCommand implements PlansSequentially
     }
 
     /**
-     * Why this app can't be torn down by `destroy:app` yet, or null when it can.
-     * Each refusal is a deliberate safety stop: a partial teardown would leave
-     * orphaned resources behind (which `yolo audit` then flags), so an
-     * unsupported shape is refused rather than half-deleted.
-     *
-     * Services no longer refuse outright — destroy:app reverses each service's
-     * per-app resources (see {@see appServiceTeardownSteps()}). The only service
-     * stop left is the honest one: a service with per-app resources whose teardown
-     * isn't modelled yet would orphan them, so it's named and refused.
-     *
-     * Public so the {@see DestroyCommand} orchestrator can apply the same guard to
-     * the app it tears down before it touches the environment.
+     * A partial teardown would orphan resources, so an unsupported shape is refused
+     * rather than half-deleted. Public so {@see DestroyCommand} can apply the same
+     * guard before it touches the environment.
      */
     public function unsupportedReason(): ?string
     {
@@ -86,10 +61,8 @@ class DestroyAppCommand extends SyncSteppedCommand implements PlansSequentially
     }
 
     /**
-     * The services this app uses that create per-app resources (appSteps) but
-     * model no teardown for them — tearing the app down would orphan those, so
-     * they're refused. Empty for every service today; a new service with appSteps
-     * and no teardownAppSteps trips it until its reverse steps are written.
+     * A new service with appSteps and no teardownAppSteps trips this until its
+     * reverse steps are written.
      *
      * @return array<int, string>
      */
@@ -125,11 +98,8 @@ class DestroyAppCommand extends SyncSteppedCommand implements PlansSequentially
     }
 
     /**
-     * The teardown steps in reverse dependency order. Mirrors `sync:app`'s app
-     * scope, inverted: edge/compute first, then the network + identity it sat on,
-     * then storage. Env-shared resources are revoked-from / detached-from, never
-     * deleted. The conditional steps gate on the same manifest predicates their
-     * sync counterparts do, so a config only tears down what it created.
+     * Reverse dependency order, gated on the same manifest predicates the sync
+     * counterparts use so a config only tears down what it created.
      *
      * @return array<string, array<int, class-string>>
      */
@@ -140,8 +110,7 @@ class DestroyAppCommand extends SyncSteppedCommand implements PlansSequentially
                 Steps\Destroy\App\TeardownCloudWatchDashboardStep::class,
                 Steps\Destroy\App\TeardownWebAlertAlarmStep::class,
                 Steps\Destroy\App\TeardownCloudFrontAssetDistributionStep::class,
-                // Autoscaling before the service it scales: burst (policy + its
-                // standalone alarm), then the scalable target (cascades the rest).
+                // Autoscaling before the service it scales.
                 Steps\Destroy\App\DeregisterWebBurstStep::class,
                 Steps\Destroy\App\DeregisterWebAutoscalingStep::class,
                 Manifest::hasStandaloneQueue() ? Steps\Destroy\App\DeregisterQueueAutoscalingStep::class : null,
@@ -153,19 +122,14 @@ class DestroyAppCommand extends SyncSteppedCommand implements PlansSequentially
                 // Listener rules before the target group their action references.
                 Steps\Destroy\App\TeardownForwardRuleStep::class,
                 Steps\Destroy\App\TeardownRedirectRuleStep::class,
-                // Per-tenant rules alongside the app's own — each self-skips for a
-                // tenant the app's certificate already covers (which never had a
-                // rule of its own), so only genuine custom domains do work here.
                 Steps\Destroy\App\Tenant\TeardownForwardRuleStep::class,
                 Steps\Destroy\App\Tenant\TeardownRedirectRuleStep::class,
                 Steps\Destroy\App\TeardownTargetGroupStep::class,
                 Steps\Destroy\App\TeardownTaskLogGroupStep::class,
-                // Per-app service resources (e.g. the Typesense node-SG ingress this
-                // app added) before the task SG / task role they hang off — each
-                // service's reverse steps, self-gating on the app's own usage.
+                // Per-app service resources (e.g. a node-SG ingress) before the task
+                // SG / task role they hang off.
                 ...static::appServiceTeardownSteps(),
-                // Revoke shared-SG ingress before deleting the task SG those rules
-                // reference. The cache revoke self-skips when the app has no cache SG.
+                // Revoke shared-SG ingress before deleting the task SG those rules reference.
                 Steps\Destroy\App\RevokeCacheIngressStep::class,
                 Steps\Destroy\App\RevokeRdsIngressStep::class,
                 Steps\Destroy\App\RevokeExternalDatabaseIngressStep::class,
@@ -174,9 +138,7 @@ class DestroyAppCommand extends SyncSteppedCommand implements PlansSequentially
                 Steps\Destroy\App\TeardownEcsTaskPolicyStep::class,
                 Steps\Destroy\App\DetachSslCertificateStep::class,
                 Steps\Destroy\App\Tenant\DetachSslCertificateStep::class,
-                // Queues: the single-scope set (solo, landlord-only, or `shared`),
-                // plus the landlord + per-tenant sets a `dedicated` app fans out to.
-                // Each branch self-skips on the shape it isn't, so all three compose.
+                // Each queue branch self-skips on the shape it isn't, so all three compose.
                 Steps\Destroy\App\TeardownQueueStep::class,
                 Steps\Destroy\App\Landlord\TeardownQueueStep::class,
                 Steps\Destroy\App\Tenant\TeardownQueueStep::class,
@@ -189,25 +151,16 @@ class DestroyAppCommand extends SyncSteppedCommand implements PlansSequentially
                 Steps\Destroy\App\TeardownDeployerPolicyStep::class,
                 Steps\Destroy\App\TeardownAppObserverPolicyStep::class,
                 Steps\Destroy\App\UnpublishAppManifestStep::class,
-                // This app's per-app env file in the (env-shared) env config bucket —
-                // its build env channel, which also held any minted Typesense keys.
                 Steps\Destroy\App\RemoveAppEnvFileStep::class,
                 Steps\Destroy\App\TeardownS3AssetBucketStep::class,
                 Steps\Destroy\App\TeardownS3ConfigBucketStep::class,
                 Steps\Destroy\App\TeardownEcrRepositoryStep::class,
-                // Final act: stop yolo.yml advertising an environment whose resources
-                // are now gone — surgical, format-preserving, warns if it can't.
                 Steps\Destroy\Environment\RemoveEnvironmentFromManifestStep::class,
             ])),
         ];
     }
 
     /**
-     * Every used service's per-app teardown steps, composed from the definitions
-     * in enum order — the mirror of SyncAppCommand's app service composition. Each
-     * step self-gates, so composing them all is safe; a service the app never used
-     * tears nothing down.
-     *
      * @return array<int, class-string>
      */
     protected static function appServiceTeardownSteps(): array

@@ -17,15 +17,9 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * YOLO-managed IAM role a GitHub Actions workflow assumes (via OIDC) to deploy.
- * The trust policy federates to the account's GitHub OIDC provider and is scoped
- * to a single repository + ref (the environment's branch or tag), so only that
- * workflow can assume it — keyless. The deploy-time permission policy is provided
- * by DeployerPolicy and attached by AttachDeployerRolePoliciesStep.
- *
- * App + environment specific (yolo-{env}-{app}-deployer): both its trust (one
- * repo + ref) and its permissions (the app's ECR repo, buckets, cluster, service)
- * are app-specific, so unlike the shared ECS execution role it can't be shared.
+ * GitHub Actions deployer role, trusted via OIDC for one repository + ref so only that
+ * workflow can assume it — keyless. App + env specific: both its trust and its
+ * permissions are app-specific, so unlike the execution role it can't be shared.
  */
 class DeployerRole implements Deletable, Resource, SynchronisesConfiguration
 {
@@ -68,12 +62,7 @@ class DeployerRole implements Deletable, Resource, SynchronisesConfiguration
         ]);
     }
 
-    /**
-     * IAM Description fields enforce a restricted character set
-     * (tab/LF/CR + printable ASCII + Latin-1 Supplement) — no em dashes,
-     * smart quotes, or U+007F - U+00A0 control range. Validated by
-     * IamDescriptionsAreSafeTest.
-     */
+    /** IAM Description allows only printable ASCII + Latin-1 (no em dashes or smart quotes) — pinned by IamDescriptionsAreSafeTest. */
     public function description(): string
     {
         return 'YOLO managed GitHub Actions OIDC deployer role for this environment';
@@ -84,13 +73,7 @@ class DeployerRole implements Deletable, Resource, SynchronisesConfiguration
         return Aws::synchroniseIamRoleTags($this->name(), $this->tags(), $apply);
     }
 
-    /**
-     * Teardown when the app drops its deployer (no GitHub repository, or the app
-     * is being torn down): IAM refuses to delete a role that still holds policy
-     * attachments, so the managed-policy attachments (AttachDeployerRolePoliciesStep's
-     * work) detach and any inline policies delete before deleteRole. A concurrent
-     * delete that already removed the role is tolerated.
-     */
+    /** IAM refuses to delete a role that still holds policy attachments. */
     public function delete(): void
     {
         try {
@@ -132,8 +115,6 @@ class DeployerRole implements Deletable, Resource, SynchronisesConfiguration
             'Version' => '2012-10-17',
             'Statement' => [
                 [
-                    // CI deploys (the primary path): the GitHub OIDC provider,
-                    // scoped to one repo + ref — keyless and unchanged.
                     'Effect' => 'Allow',
                     'Principal' => ['Federated' => (new GithubOidcProvider())->arn()],
                     'Action' => 'sts:AssumeRoleWithWebIdentity',
@@ -147,15 +128,9 @@ class DeployerRole implements Deletable, Resource, SynchronisesConfiguration
                     ],
                 ],
                 [
-                    // Local deploys (the Deployer tier): same-account assumption,
-                    // so a developer running `yolo deploy` mints exactly this role's
-                    // deploy-time policy on top of their own identity — capped to
-                    // deploy, never their broader profile. The real gate is the
-                    // identity-based `sts:AssumeRole` grant on the assuming
-                    // principal (the same account-root model as the observer role).
-                    // MFA is required on every tier (see ObserverRole) — the human
-                    // path only; the OIDC statement above stays keyless, since a
-                    // federated CI run has no MFA context to present.
+                    // Local `yolo deploy`: same-account assumption caps a developer to
+                    // this role's deploy policy. MFA is required on every human tier;
+                    // the OIDC statement stays keyless since federated CI has no MFA.
                     'Effect' => 'Allow',
                     'Principal' => ['AWS' => sprintf('arn:aws:iam::%s:root', Aws::accountId())],
                     'Action' => 'sts:AssumeRole',
@@ -168,11 +143,8 @@ class DeployerRole implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * The `sub` claim the OIDC token must match — which GitHub ref may assume the
-     * role. Derived from the environment's source ref (a security boundary, so
-     * setting both branch and tag fails loudly); defaults to the main branch:
-     *   - branch: develop (default main)  → ref:refs/heads/develop  (push to branch, e.g. staging)
-     *   - tag: 'v*' (or true = *)         → ref:refs/tags/v*        (tag push, e.g. production)
+     * Which GitHub ref may assume the role. Branch and tag together is a security
+     * boundary error, so it fails loudly; `tag: true` means any tag.
      */
     protected function subjectClaim(): string
     {
@@ -191,14 +163,7 @@ class DeployerRole implements Deletable, Resource, SynchronisesConfiguration
         return sprintf('repo:%s:ref:refs/heads/%s', $repository, Manifest::get('branch', 'main'));
     }
 
-    /**
-     * The org/repo scoping the trust — inferred from the git origin (or an
-     * explicit manifest `repository`) via Helpers::githubRepository(). Fails
-     * loudly when it can't be resolved: a trust policy with a missing repo would
-     * be a silent security hole. (The Sync*Step gates skip provisioning entirely
-     * when no GitHub repo is resolvable, so in practice this only fires if called
-     * directly without a GitHub context.)
-     */
+    /** Fails loudly: a trust policy with a missing repo would be a silent security hole. */
     protected function repository(): string
     {
         return Helpers::githubRepository()

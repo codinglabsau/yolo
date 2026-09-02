@@ -8,13 +8,9 @@ use Codinglabs\Yolo\Resources\Iam\ObserverPolicy;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
 
 /**
- * Provisions the env-shared `yolo-{env}-observer` read-only policy. Unconditional
- * (not gated on a GitHub repo like the deployer steps): it's the inspection surface
- * every app's deployer role attaches to run the pre-deploy `sync --check`, and is
- * reusable by an operator/admin role too, so it stands up with the environment.
- *
- * Document drift (a YOLO upgrade that reads a new service) surfaces as a plan-time
- * Change via SynchronisesPolicyDocument, so the plan flags it and apply re-versions.
+ * Unconditional (not gated on a GitHub repo like the deployer steps): every
+ * app's deployer role attaches it for the pre-deploy `sync --check`, and an
+ * operator/admin role can reuse it.
  */
 class SyncObserverPolicyStep implements Step
 {

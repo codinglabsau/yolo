@@ -23,10 +23,6 @@ class ElastiCache
     }
 
     /**
-     * Describe a single ElastiCache resource by matching `$idKey` against `$value`
-     * in the `$listKey` array of the (unfiltered) describe response. ElastiCache
-     * describe calls all share this list-and-match shape.
-     *
      * @return array<string, mixed>
      */
     protected static function firstById(string $operation, string $listKey, string $idKey, string $value, string $message): array

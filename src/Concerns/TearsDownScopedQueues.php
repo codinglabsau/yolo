@@ -9,14 +9,9 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Resources\Sqs\Queue;
 
 /**
- * Tears down every SQS queue a scope owns — the mirror of
- * {@see ProvisionsScopedQueues}, reading the same Helpers::queueNames() so a
- * teardown removes exactly the set sync created. Shared by the single-scope,
- * landlord and per-tenant teardown steps.
- *
- * Reading the scoped names is what makes a tiered app tear down cleanly: a
- * `queues: [high, default]` block provisions `…-high` alongside the base queue, so
- * naming only the base name would strand the tier queues in the account.
+ * Mirror of {@see ProvisionsScopedQueues}, reading the same Helpers::queueNames()
+ * so teardown removes exactly the set sync created — naming only the base queue
+ * would strand the tier queues.
  */
 trait TearsDownScopedQueues
 {
@@ -29,8 +24,7 @@ trait TearsDownScopedQueues
             Helpers::queueNames($scope),
         );
 
-        // Surface the most significant outcome across the tiers, so one tier already
-        // gone can't mask another still standing and prune the step out of apply.
+        // One tier already gone must not mask another still standing and prune the step from apply.
         foreach ([StepResult::DELETED, StepResult::WOULD_DELETE] as $rank) {
             if (in_array($rank, $results, true)) {
                 return $rank;

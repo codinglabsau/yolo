@@ -10,10 +10,8 @@ use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Resources\CloudWatchLogs\IvsLogGroup;
 
 /**
- * Amazon IVS (live streaming). The app drives IVS itself at runtime; the
- * env-shared half is the event-logging pipeline (EventBridge rule + target +
- * log group) — env-shared because the `aws.ivs` event stream is account-wide,
- * so per-app pipelines would each capture every other app's events.
+ * The event-logging pipeline is env-shared because the `aws.ivs` event stream
+ * is account-wide — per-app pipelines would each capture every other app's events.
  */
 class Ivs extends ServiceDefinition
 {
@@ -38,12 +36,7 @@ class Ivs extends ServiceDefinition
         return true;
     }
 
-    /**
-     * The app drives IVS itself at runtime — channels, stream keys and streams
-     * are created on demand, so there are no stable resource ARNs to scope to
-     * and the grant is service-wide. The env-shared event-logging pipeline is
-     * the environment manifest's concern, not this role's.
-     */
+    /** Channels, stream keys and streams are created on demand — no stable ARNs to scope to, so the grant is service-wide. */
     public function taskRoleStatements(): array
     {
         return [
@@ -65,11 +58,7 @@ class Ivs extends ServiceDefinition
         ];
     }
 
-    /**
-     * Teardown order: the rule delete removes its own targets first (the target
-     * step is a create-only no-op), then the log group goes. Both Teardown
-     * branches of the sync steps.
-     */
+    /** The rule delete removes its own targets, so the target step needs no teardown. */
     #[\Override]
     public function teardownEnvironmentSteps(): array
     {

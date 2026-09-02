@@ -19,24 +19,15 @@ use Codinglabs\Yolo\Contracts\SkippedByDeployCheck;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Authorises this app's tasks to reach an EXTERNALLY-hosted database — the
- * peered-migration posture. The manifest `database:` is the only declaration;
- * everything else is discovered live: the database's VPC (in the env VPC the
- * managed path's SyncRdsSecurityGroupStep owns the rule instead), its port, and
- * its attached security group, which gets the same additive
- * port-from-task-SG rule the managed path writes (a same-region peered SG can
- * reference the task SG directly). Discovery can't go stale the way a declared
- * group id would. An Aurora cluster gets the rule on the cluster's security
- * group; its VPC is a per-member fact (the cluster record carries only the
- * subnet group's name), read off a member instance.
- *
- * Exactly one attached security group is required to write — two or more is an
- * ambiguous target, surfaced as a warning to wire by hand (the audit's
- * task-ingress probe independently verifies whichever rule exists).
+ * Authorises this app's tasks to reach an EXTERNALLY-hosted database (the
+ * peered-migration posture). Everything beyond the manifest `database:` is
+ * discovered live — VPC, port, attached security group — because discovery
+ * can't go stale the way a declared group id would; a same-region peered SG can
+ * reference the task SG directly. Two or more attached groups is an ambiguous
+ * target, surfaced as a warning to wire by hand.
  *
  * {@see SkippedByDeployCheck}: the deploy gate's tier may not hold the RDS +
- * foreign-SG reads this step needs, so `yolo sync` is its drift check — and an
- * externally-hosted database must never block a deploy.
+ * foreign-SG reads, and an externally-hosted database must never block a deploy.
  */
 class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
 {
@@ -48,8 +39,7 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
         try {
             $target = Rds::target();
         } catch (RdsException|ResourceDoesNotExistException) {
-            // Unreadable or matching nothing (the dashboard step hard-fails on
-            // that, and the audit's posture probe reports it) — sync moves on.
+            // The dashboard step hard-fails on this and the audit's posture probe reports it.
             return StepResult::SKIPPED;
         }
 
@@ -60,8 +50,7 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
         try {
             $discovered = $this->discover($target);
         } catch (RdsException) {
-            // Unreadable (not found, or denied under this tier) — the audit's
-            // posture probe owns reporting that; sync just moves on.
+            // The audit's posture probe owns reporting this.
             return StepResult::SKIPPED;
         }
 
@@ -79,12 +68,10 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
             return StepResult::SKIPPED;
         }
 
-        // A cross-VPC security-group reference is only valid over an ACTIVE
-        // peering, so an external database whose VPC is neither peered nor
-        // declared for peering gets a nudge, not a mid-apply AWS error. A
-        // declared-but-not-yet-active peer proceeds: the env tier activates it
-        // earlier in the same sync, so by the time this step's apply runs the
-        // reference is valid (and the plan pass reports the pending rule).
+        // A cross-VPC SG reference is only valid over an ACTIVE peering, so an
+        // unpeered, undeclared VPC gets a nudge rather than a mid-apply AWS error.
+        // A declared-but-not-yet-active peer proceeds: the env tier activates it
+        // earlier in the same sync.
         if ($databaseVpcId === null || ! $this->reachable($databaseVpcId)) {
             $this->recordWarning(sprintf(
                 'The database "%s" is externally hosted (%s) with no peering to its VPC — the %s was not written. Declare the VPC in the env manifest `peering` list to bridge it.',
@@ -107,9 +94,8 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
             return StepResult::SKIPPED;
         }
 
-        // No port on the record (an instance still being created) — there is
-        // nothing to authorise yet, and guessing one would leave a rule on a
-        // foreign group that YOLO can never revoke. The next sync writes it.
+        // No port yet (instance still creating): guessing one would leave a rule
+        // on a foreign group YOLO can never revoke.
         if ($port === null) {
             return StepResult::SKIPPED;
         }
@@ -124,10 +110,6 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
     }
 
     /**
-     * The database's VPC, attached security groups and port, read off the live
-     * record for whichever kind the manifest name classified as. Null when the
-     * record has gone missing between classification and here.
-     *
      * @param  array{identifier: string, cluster: bool}  $target
      * @return array{0: string|null, 1: Collection<int, string>, 2: int|null}|null
      */
@@ -153,11 +135,9 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
     }
 
     /**
-     * Whether the database already sits in the environment's VPC — then it's
-     * the managed posture and the shared RDS security group's rule (written by
-     * SyncRdsSecurityGroupStep) is the path, not this step. A greenfield plan
-     * pass (no env VPC yet) can't have an in-VPC database, so absence reads as
-     * external-or-unknown and the VPC comparison simply won't match.
+     * In the env VPC it's the managed posture — SyncRdsSecurityGroupStep's rule
+     * is the path. No env VPC yet (greenfield plan) can't hold an in-VPC
+     * database, so absence reads as external.
      */
     protected function inEnvironmentVpc(?string $databaseVpcId): bool
     {
@@ -169,10 +149,8 @@ class SyncExternalDatabaseIngressStep implements SkippedByDeployCheck, Step
     }
 
     /**
-     * Whether the database's VPC is reachable for a cross-VPC SG reference —
-     * an active peering already joins it to the env VPC (YOLO-owned or not),
-     * or the env manifest declares it, meaning this same sync's environment
-     * tier brings the peering active before this step's apply runs.
+     * An active peering (YOLO-owned or not), or a declared one — the env tier
+     * brings a declared peering active before this step's apply runs.
      */
     protected function reachable(string $databaseVpcId): bool
     {

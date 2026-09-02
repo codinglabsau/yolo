@@ -9,27 +9,18 @@ use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * A YOLO-managed AWS resource — desired-state definition, independent of the
- * step that orchestrates its lifecycle. The resource owns its identity (name,
- * tags, ARN lookup), its create payload, and its tag-sync behaviour. Steps
- * decide WHEN to create / sync; the resource decides WHAT a created or synced
- * version of itself looks like.
+ * Desired-state definition of one AWS resource. Steps decide WHEN to create or
+ * sync; the resource decides WHAT it looks like.
  */
 interface Resource
 {
     public function name(): string;
 
-    /**
-     * Ownership scope — the single source of truth (replacing the AppScoped
-     * marker + keyedResourceName(exclusive:) bool) for the resource's name
-     * exclusivity, its yolo:app tag, and which sync tier writes it.
-     */
     public function scope(): Scope;
 
     /**
-     * Associative {Key => Value} tag map. The `yolo:environment` baseline is
-     * added by `Aws::expectedTags()` at write time — implementations only
-     * declare the resource-specific tags (typically just `Name`).
+     * Resource-specific tags only; `Aws::expectedTags()` adds the
+     * `yolo:environment` baseline at write time.
      *
      * @return array<string, string>
      */
@@ -39,22 +30,15 @@ interface Resource
 
     /**
      * @throws ResourceDoesNotExistException
-     * @throws AwsException the live lookup itself can fail — e.g. the describe
-     *                      is denied under a read tier
+     * @throws AwsException when the live lookup itself fails, e.g. denied under a read tier
      */
     public function arn(): string;
 
     public function create(): void;
 
     /**
-     * Reconcile tags against the live resource. Reads current tags, computes
-     * the additive delta against the resource's `tags()` (plus the
-     * `yolo:environment` baseline), writes the delta when `$apply` is true,
-     * and returns the missing keys either way so callers (e.g. the sync
-     * orchestrator) can record them as plan-time changes.
-     *
-     * Mirrors `SynchronisesConfiguration::synchroniseConfiguration` so tag
-     * drift and config drift share one shape.
+     * Additive: writes the missing tags when `$apply`, and returns them either
+     * way so the plan pass can record them as changes.
      *
      * @return array<string, string> missing tag keys → expected values
      */

@@ -17,18 +17,9 @@ use Codinglabs\Yolo\Resources\ElastiCache\CacheCluster;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * The environment's "bad things are happening" alarms on the env SNS topic —
- * the signals that mean a human should look, kept deliberately separate from
- * the autoscaling alarms whose ALARM state is part of their control loop:
- *
- * - ALB-generated 5xx: the load balancer itself can't route (no healthy
- *   targets, a dead target group) — app-side errors have their own per-app
- *   rate alarm in sync:app.
- * - Valkey memory/evictions: the shared cache/session store under pressure —
- *   evictions mean sessions are being thrown away before anyone notices.
- * - Aurora CPU / memory / connections / buffer-cache (only when the manifest
- *   declares a `database`): saturation tells on the adopted cluster, watching
- *   the writer so the alarm follows a failover.
+ * The "a human should look" alarms on the env SNS topic, kept separate from the
+ * autoscaling alarms whose ALARM state is part of their control loop. Only the
+ * ALB's own 5xx lives here — app-side errors have their per-app alarm in sync:app.
  *
  * Thresholds live in {@see Alerts} — the CloudWatch dashboard draws its alarm
  * lines from the same values, so charts and alarms can't drift apart.
@@ -38,9 +29,8 @@ class SyncAlertAlarmsStep implements Step
     use SynchronisesResource;
 
     /**
-     * The full alert family this step can provision — the teardown step
-     * consumes the same list, so the two can never diverge and orphan an
-     * alarm past its topic.
+     * The teardown step consumes the same list, so the two can never diverge
+     * and orphan an alarm past its topic.
      *
      * @var array<int, string>
      */
@@ -66,9 +56,8 @@ class SyncAlertAlarmsStep implements Step
     }
 
     /**
-     * The ALB's own 5xx — needs the load balancer to exist (its CloudWatch
-     * dimension is an ARN suffix), so on a greenfield plan it reports pending
-     * and lands on the next sync.
+     * The dimension is the load balancer's ARN suffix, so on a greenfield plan
+     * it reports pending.
      *
      * @return array<int, AlertAlarm>
      */
@@ -124,10 +113,8 @@ class SyncAlertAlarmsStep implements Step
                 dimensions: $dimensions,
             ),
             // A sustained rate, not any-eviction: the node runs allkeys-lru by
-            // design, so background LRU churn on a full-but-healthy cache is
-            // normal — a >0 trigger would latch red permanently the day an
-            // env's working set fills the node. Heavy sustained eviction is
-            // the session-loss signal.
+            // design, so LRU churn on a full-but-healthy cache is normal and a >0
+            // trigger would latch red permanently once the working set fills the node.
             new AlertAlarm(
                 suffix: 'valkey-evictions',
                 description: 'Valkey is evicting heavily and sustained - sessions and cache entries are being thrown away; the node needs headroom',
@@ -145,15 +132,10 @@ class SyncAlertAlarmsStep implements Step
     }
 
     /**
-     * Saturation tells on the declared database cluster, dimensioned on the
-     * writer so the alarms follow a failover. Aurora clusters only — a plain
-     * RDS instance database has neither the WRITER role dimension nor the
-     * BufferCacheHitRatio metric, so the set doesn't exist there (the docs
-     * say so). The absolute thresholds (memory floor, connection ceiling)
-     * derive from the writer's instance class; a cluster whose writer can't
-     * be resolved yet reports pending rather than failing the plan, and a
-     * declared-but-nonexistent database keeps Rds::target()'s manifest-error
-     * throw, same as every other consumer.
+     * Dimensioned on the writer so the alarms follow a failover. Aurora only — a
+     * plain RDS instance has neither the WRITER role dimension nor the
+     * BufferCacheHitRatio metric. A writer that can't be resolved yet reports
+     * pending rather than failing the plan.
      *
      * @return array<int, AlertAlarm>
      */
@@ -191,10 +173,9 @@ class SyncAlertAlarmsStep implements Step
                 metricName: 'CPUUtilization',
                 dimensions: $dimensions,
             ),
-            // 6-of-8 rather than a straight run: the ratio legitimately dips
-            // while the buffer pool re-warms after a restart or failover, and
-            // that window can exceed a straight half-hour on a large working
-            // set — the alarm is for sustained degradation, not warm-up.
+            // 6-of-8 rather than a straight run: the ratio legitimately dips while
+            // the buffer pool re-warms after a restart or failover, which can
+            // exceed a straight half-hour on a large working set.
             new AlertAlarm(
                 suffix: 'database-buffer-cache',
                 description: 'Database buffer cache hit ratio below 85% sustained - the working set no longer fits in memory, reads are hitting storage',
@@ -209,9 +190,8 @@ class SyncAlertAlarmsStep implements Step
             ),
         ];
 
-        // Serverless v2 reports class "db.serverless" — capacity floats with
-        // the ACU range, so the static memory/connection thresholds have no
-        // basis there; the percentage-based pair above still holds.
+        // Serverless v2 reports "db.serverless" — capacity floats with the ACU
+        // range, so the static memory/connection thresholds have no basis there.
         if ($writerClass === 'db.serverless') {
             return $alarms;
         }
@@ -227,10 +207,8 @@ class SyncAlertAlarmsStep implements Step
 
         return [
             ...$alarms,
-            // 5%, not a rounder 10%: Aurora deliberately gives ~75% of class
-            // memory to the buffer pool, so a warm, healthy writer routinely
-            // idles with under 10% freeable — a higher floor latches in ALARM
-            // under normal operation.
+            // 5%, not 10%: Aurora gives ~75% of class memory to the buffer pool, so
+            // a warm, healthy writer routinely idles under 10% freeable.
             new AlertAlarm(
                 suffix: 'database-memory',
                 description: 'Database writer freeable memory below 5% of the instance - swap and restart territory',

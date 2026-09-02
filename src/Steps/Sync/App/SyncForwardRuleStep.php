@@ -25,15 +25,11 @@ class SyncForwardRuleStep implements ExecutesWebStep
         $listener = $this->httpsListener();
 
         if ($listener === null) {
-            // The `:443` listener is bootstrapped earlier in THIS apply
-            // (SyncHttpsListenerStep) but doesn't exist on the plan pass, which runs
-            // before anything is created. If it's going to be created (a certificate
-            // will be issued this run — including one requested by this very sync),
-            // report the rule as pending so the step survives to apply — a bare
-            // SKIPPED here is pruned from the apply pass (two-pass contract), so the
-            // rule never gets created, the target group is left unattached, and ECS
-            // CreateService rejects the web service. With no certificate reachable
-            // this run the listener won't exist either, so genuinely defer.
+            // The `:443` listener is bootstrapped earlier in THIS apply, so it's
+            // absent on the plan pass. If a certificate will be issued this run,
+            // report the rule pending — a bare SKIPPED would prune the step, leave
+            // the target group unattached, and ECS CreateService would reject the
+            // web service. With no certificate reachable, genuinely defer.
             if ((bool) Arr::get($options, 'dry-run') && $this->httpsListenerWillBeCreatedThisSync()) {
                 $this->recordChange(Change::make('forward rule', null, 'created'));
 

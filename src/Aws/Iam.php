@@ -9,9 +9,8 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 class Iam
 {
     /**
-     * The managed policies attached to a role, as [{PolicyName, PolicyArn}], or
-     * an empty list when the role does not yet exist (a dry-run can reach the
-     * attach step before the role's own create step has run).
+     * [] when the role doesn't exist yet — the plan pass reaches the attach step
+     * before the role's own create has run.
      *
      * @return array<int, array<string, string>>
      */
@@ -29,12 +28,9 @@ class Iam
     }
 
     /**
-     * Whether the service-linked role for an AWS service exists. SLRs live
-     * under the /aws-service-role/{service}/ path, so a path-scoped ListRoles
-     * pins the check to that single role without enumerating (or paginating)
-     * the account's whole role set — and ListRoles is a collection op the
-     * observer tier already grants account-wide, so no aws-service-role read
-     * grant is needed.
+     * A path-scoped ListRoles pins the check to the one role without paginating
+     * the account — and it's a collection op the observer tier already grants,
+     * so no aws-service-role read grant is needed.
      */
     public static function serviceLinkedRoleExists(string $serviceName): bool
     {
@@ -80,9 +76,8 @@ class Iam
     }
 
     /**
-     * Every version of a managed policy, as [{VersionId, IsDefaultVersion,
-     * CreateDate}]. A managed policy holds at most 5; the document reconciler
-     * prunes the oldest non-default version before pushing a new one.
+     * A managed policy holds at most 5 versions; the document reconciler prunes
+     * the oldest non-default one before pushing a new version.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -94,8 +89,7 @@ class Iam
     }
 
     /**
-     * OIDC providers are account-level singletons keyed by their full ARN
-     * (no name field) — match the list entry by ARN.
+     * OIDC providers have no name field — only the ARN identifies one.
      */
     public static function openIdConnectProvider(string $arn): array
     {
@@ -113,8 +107,8 @@ class Iam
     public static function group(string $name): array
     {
         try {
-            // GetGroup (scopeable to the group ARN) rather than listing every
-            // group — so the admin tier's group reads stay fenced to yolo-*.
+            // GetGroup is scopeable to the group ARN — keeps the admin tier's
+            // group reads fenced to yolo-*.
             return Aws::iam()->getGroup(['GroupName' => $name])['Group'];
         } catch (AwsException $e) {
             if ($e->getAwsErrorCode() === 'NoSuchEntity') {
@@ -126,10 +120,7 @@ class Iam
     }
 
     /**
-     * The decoded document of an inline group policy, or null when the group has
-     * no such inline policy yet (a partially-created group, or the first sync).
-     * AWS returns PolicyDocument url-encoded — decode it so callers diff a plain
-     * array against their desired document.
+     * AWS returns PolicyDocument url-encoded.
      *
      * @return array<string, mixed>|null
      */
@@ -152,9 +143,6 @@ class Iam
     }
 
     /**
-     * Every IAM user in the account, as [{UserName, Arn, …}] — the picker source
-     * for `yolo permissions`. A collection op with no resource-level form.
-     *
      * @return array<int, array<string, mixed>>
      */
     public static function users(): array
@@ -163,9 +151,6 @@ class Iam
     }
 
     /**
-     * The names of every group a user belongs to — the current grant set the
-     * `yolo permissions` checkboxes are seeded from.
-     *
      * @return array<int, string>
      */
     public static function groupsForUser(string $userName): array

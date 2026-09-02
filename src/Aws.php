@@ -46,10 +46,6 @@ class Aws
     }
 
     /**
-     * The Block Public Access configuration YOLO applies to every bucket it
-     * owns — all four protections on. A single source of truth for the config
-     * shape that the S3 resources otherwise repeat verbatim, mirroring tags().
-     *
      * @return array<string, bool>
      */
     public static function publicAccessBlockConfiguration(): array
@@ -62,20 +58,13 @@ class Aws
         ];
     }
 
-    /**
-     * ECS uses lower-case `key`/`value` tag pairs instead of the standard
-     * upper-case `Key`/`Value` shape returned by tags().
-     */
+    /** ECS is the lone service insisting on lower-case `key`/`value` tag pairs. */
     public static function ecsTags(array $tags = []): array
     {
         return static::lowerKeyValueTags(static::expectedTags($tags));
     }
 
-    /**
-     * Returns the subset of expected tags that are missing or stale on the
-     * resource. Synchronisation is additive — tags YOLO does not manage are
-     * left alone so manually-applied tags survive sync.
-     */
+    /** Additive — tags YOLO doesn't manage are left alone so manual tags survive sync. */
     public static function tagsRequiringSync(array $expected, array $current): array
     {
         return collect($expected)
@@ -83,11 +72,6 @@ class Aws
             ->all();
     }
 
-    /**
-     * Normalises a tag list returned by any AWS service ([{Key, Value}],
-     * [{key, value}] or associative {key: value}) into an associative
-     * array suitable for diffing.
-     */
     public static function flattenTags(array $tags): array
     {
         if (array_is_list($tags)) {
@@ -102,12 +86,8 @@ class Aws
     }
 
     /**
-     * The expected tag set for any resource at write time: the resource's own
-     * tags plus the `yolo:environment` baseline — *except* on account-scope
-     * resources, which are shared across every environment and so deliberately
-     * carry no `yolo:environment` label (it would be a false attribution and a
-     * teardown hazard). `yolo:scope=account` in the input is the marker for
-     * "skip the env baseline".
+     * Account-scope resources are shared across every environment, so they deliberately
+     * carry no `yolo:environment` label (a false attribution and a teardown hazard).
      *
      * @param  array<string, string>  $tags
      * @return array<string, string>
@@ -125,19 +105,14 @@ class Aws
     }
 
     /**
-     * Single source of truth for tag drift — every `synchroniseXxxTags` helper
-     * routes through here. `$read` returns whatever the service-specific
-     * ListTagsForResource / DescribeTags / GetBucketTagging gives back (any
-     * shape `flattenTags` can normalise); `$write` is invoked with the
-     * computed delta plus the (already-flattened) current map, so callers
-     * whose write API is a full-replace (S3 putBucketTagging) can merge
-     * without re-reading. Returns the missing tags so callers can record them
-     * as plan-time Changes and decide whether the step needs an apply.
+     * Single source of truth for tag drift. `$write` receives the current map too, so a
+     * full-replace write API (S3 putBucketTagging) can merge without re-reading. The missing
+     * tags are always returned so callers can record plan-time Changes.
      *
-     * @param  array<string, string>  $expected  tags the resource expects (Name, yolo:scope, yolo:app, …)
-     * @param  callable(): array  $read  closure returning the current tag list/map from AWS
-     * @param  callable(array<string, string>, array<string, string>): mixed  $write  closure invoked with ($missing, $current) on apply (its return is ignored)
-     * @return array<string, string> missing tag keys (always returned, also when apply=false)
+     * @param  array<string, string>  $expected
+     * @param  callable(): array  $read
+     * @param  callable(array<string, string>, array<string, string>): mixed  $write
+     * @return array<string, string>
      */
     public static function reconcileTags(array $expected, callable $read, callable $write, bool $apply): array
     {
@@ -152,8 +127,6 @@ class Aws
     }
 
     /**
-     * Synchronise tags on an ELBv2 resource (load balancer, target group, listener, listener rule).
-     *
      * @return array<string, string>
      */
     public static function synchroniseElbV2Tags(string $arn, array $tags, bool $apply): array
@@ -170,9 +143,6 @@ class Aws
     }
 
     /**
-     * Synchronise tags on an ECS resource (cluster, service, task definition).
-     * ECS uses lower-case key/value pairs.
-     *
      * @return array<string, string>
      */
     public static function synchroniseEcsTags(string $arn, array $tags, bool $apply): array
@@ -189,9 +159,6 @@ class Aws
     }
 
     /**
-     * Synchronise tags on an ECR resource. ECR uses upper-case Key/Value inside
-     * a `tags` (lower-case) wrap.
-     *
      * @return array<string, string>
      */
     public static function synchroniseEcrTags(string $arn, array $tags, bool $apply): array
@@ -208,9 +175,7 @@ class Aws
     }
 
     /**
-     * Synchronise tags on a CloudWatch Logs resource. DescribeLogGroups returns
-     * the ARN with a trailing `:*` (stream wildcard) — strip before calling.
-     * `tags` is associative on both read and write.
+     * DescribeLogGroups returns the ARN with a trailing `:*` the tagging API rejects.
      *
      * @return array<string, string>
      */
@@ -230,8 +195,6 @@ class Aws
     }
 
     /**
-     * Synchronise tags on an EC2 resource (security group, subnet, VPC, etc.) by ID.
-     *
      * @return array<string, string>
      */
     public static function synchroniseEc2Tags(string $resourceId, array $tags, bool $apply): array
@@ -250,8 +213,6 @@ class Aws
     }
 
     /**
-     * Synchronise tags on an SNS topic, addressed by its ARN.
-     *
      * @return array<string, string>
      */
     public static function synchroniseSnsTags(string $arn, array $tags, bool $apply): array
@@ -268,9 +229,6 @@ class Aws
     }
 
     /**
-     * Synchronise tags on an SQS queue, addressed by its URL (not ARN). SQS reads
-     * and writes tags as an associative map.
-     *
      * @return array<string, string>
      */
     public static function synchroniseSqsTags(string $url, array $tags, bool $apply): array
@@ -287,9 +245,6 @@ class Aws
     }
 
     /**
-     * Synchronise tags on an EventBridge rule, addressed by its ARN. EventBridge
-     * uses the `ResourceARN` key (capitalised ARN).
-     *
      * @return array<string, string>
      */
     public static function synchroniseEventBridgeTags(string $arn, array $tags, bool $apply): array
@@ -306,9 +261,6 @@ class Aws
     }
 
     /**
-     * Synchronise tags on a Cloud Map (Service Discovery) namespace or
-     * service, addressed by its ARN.
-     *
      * @return array<string, string>
      */
     public static function synchroniseServiceDiscoveryTags(string $arn, array $tags, bool $apply): array
@@ -325,9 +277,7 @@ class Aws
     }
 
     /**
-     * Synchronise tags on a Route 53 hosted zone. The zone Id comes back from
-     * listHostedZones prefixed (`/hostedzone/Z123`); the tagging API wants the
-     * bare id, and adds tags under `AddTags` rather than `Tags`.
+     * listHostedZones returns the id prefixed (`/hostedzone/Z123`); the tagging API wants it bare.
      *
      * @return array<string, string>
      */
@@ -351,9 +301,6 @@ class Aws
     }
 
     /**
-     * Synchronise tags on an RDS resource (e.g. a DB subnet group), addressed by
-     * its ARN. RDS reads via `TagList` and writes via `addTagsToResource`.
-     *
      * @return array<string, string>
      */
     public static function synchroniseRdsTags(string $arn, array $tags, bool $apply): array
@@ -370,10 +317,6 @@ class Aws
     }
 
     /**
-     * Synchronise tags on an ElastiCache resource (replication group, subnet
-     * group, parameter group), addressed by its ARN. Same Key/Value + ResourceName
-     * shape as RDS.
-     *
      * @return array<string, string>
      */
     public static function synchroniseElastiCacheTags(string $arn, array $tags, bool $apply): array
@@ -390,8 +333,6 @@ class Aws
     }
 
     /**
-     * Synchronise tags on a CloudWatch alarm, addressed by its ARN.
-     *
      * @return array<string, string>
      */
     public static function synchroniseCloudWatchTags(string $arn, array $tags, bool $apply): array
@@ -408,10 +349,7 @@ class Aws
     }
 
     /**
-     * Synchronise tags on an S3 bucket. S3's `putBucketTagging` is a full-replace
-     * operation, so a delta-only write isn't possible — we read once, diff, and
-     * (if there's a diff) put back the merged set (existing + missing) so
-     * manually-added tags survive sync. Empty diff → no write.
+     * `putBucketTagging` is a full replace, so the write puts back existing + missing.
      *
      * @return array<string, string>
      */
@@ -435,8 +373,6 @@ class Aws
     }
 
     /**
-     * Synchronise tags on an IAM policy, addressed by its ARN.
-     *
      * @return array<string, string>
      */
     public static function synchroniseIamPolicyTags(string $arn, array $tags, bool $apply): array
@@ -453,9 +389,6 @@ class Aws
     }
 
     /**
-     * Synchronise tags on an IAM role, addressed by its name (IAM tagging APIs
-     * key on name, not ARN).
-     *
      * @return array<string, string>
      */
     public static function synchroniseIamRoleTags(string $roleName, array $tags, bool $apply): array
@@ -472,8 +405,6 @@ class Aws
     }
 
     /**
-     * Synchronise tags on an IAM OIDC identity provider, addressed by its ARN.
-     *
      * @return array<string, string>
      */
     public static function synchroniseIamOidcProviderTags(string $arn, array $tags, bool $apply): array
@@ -490,8 +421,6 @@ class Aws
     }
 
     /**
-     * Synchronise tags on a CloudFront resource, addressed by its ARN.
-     *
      * @return array<string, string>
      */
     public static function synchroniseCloudFrontTags(string $arn, array $tags, bool $apply): array
@@ -508,9 +437,6 @@ class Aws
     }
 
     /**
-     * Synchronise tags on a WAFv2 resource (web ACL, IP set), addressed by its
-     * ARN. WAFv2 nests the live tags under TagInfoForResource.TagList.
-     *
      * @return array<string, string>
      */
     public static function synchroniseWafV2Tags(string $arn, array $tags, bool $apply): array
@@ -527,11 +453,8 @@ class Aws
     }
 
     /**
-     * The standard upper-case `[{Key, Value}]` tag-list shape most AWS tagging
-     * APIs accept on write, built from an associative {key => value} map. Public
-     * (the inverse of flattenTags()) so a resource doing its own single-read tag
-     * reconcile — e.g. HostedZone, which must inspect live ownership first — can
-     * format the write without a second AWS round-trip.
+     * Public so a resource doing its own single-read reconcile (HostedZone must inspect live
+     * ownership first) can format the write without a second round-trip.
      */
     public static function keyValueTags(array $tags): array
     {
@@ -541,10 +464,6 @@ class Aws
             ->all();
     }
 
-    /**
-     * The lower-case `[{key, value}]` variant — ECS is the lone AWS service that
-     * insists on lower-case tag keys on its tagging API.
-     */
     protected static function lowerKeyValueTags(array $tags): array
     {
         return collect($tags)
@@ -554,20 +473,10 @@ class Aws
     }
 
     /**
-     * Wait for an AWS waiter to reach its success state, with two things the
-     * raw SDK `waitUntil` doesn't give us:
-     *
-     *  - an explicit timeout. The SDK's per-waiter defaults are too tight for a
-     *    cold provision — `ReplicationGroupAvailable` caps at 10 minutes
-     *    (40 × 15s), but a fresh single-node Valkey cluster routinely takes
-     *    longer, so a slow-but-fine create would false-fail with a scary
-     *    "waiter failed after attempt #40". `$timeout` / `$interval` set the
-     *    ceiling per call instead.
-     *
-     *  - a heartbeat. A blocking waiter freezes the progress bar, so the
-     *    before-attempt callback pings WaitReporter every `$interval` seconds.
-     *    When the runner has registered a reporter (a LongRunning step), that
-     *    redraws the bar with elapsed time; otherwise it's a no-op.
+     * The SDK's per-waiter defaults are too tight for a cold provision (`ReplicationGroupAvailable`
+     * caps at 10 minutes; a fresh Valkey cluster routinely takes longer), so the ceiling is set
+     * per call. The before-attempt callback pings WaitReporter so a LongRunning step's progress
+     * bar keeps moving instead of freezing.
      *
      * @param  array<string, mixed>  $args
      */
@@ -594,18 +503,12 @@ class Aws
     }
 
     /**
-     * Assume an IAM role and return its temporary credentials. Used to mint a
-     * tier-scoped token (the assumed role's policy caps what YOLO can do) on top
-     * of the developer's own profile credentials — get-session-token creds can
-     * chain into AssumeRole, so the existing profile flow is unchanged.
+     * Mints a tier-scoped token on top of the developer's profile credentials
+     * (get-session-token creds can chain into AssumeRole). MFA serial + TOTP, when supplied,
+     * satisfy the admin tier's `aws:MultiFactorAuthPresent` trust condition — a per-assume
+     * human factor an agent can't supply.
      *
      * @return array<string, mixed> the Credentials sub-array (AccessKeyId, SecretAccessKey, SessionToken, Expiration)
-     */
-    /**
-     * Assume a role, optionally with MFA. When both an MFA device serial and a
-     * fresh TOTP are supplied they're passed to STS, which is how the admin tier
-     * satisfies the `aws:MultiFactorAuthPresent` condition on its trust policy —
-     * a per-assume human factor an agent can't supply.
      */
     public static function assumeRole(string $roleArn, string $sessionName = 'yolo', ?string $mfaSerial = null, ?string $mfaTokenCode = null): array
     {
@@ -623,10 +526,8 @@ class Aws
     }
 
     /**
-     * The ARN of the current AWS caller (`sts:GetCallerIdentity` — implicitly
-     * allowed for any principal, so it needs no grant). Lets YOLO detect when
-     * it's already running as a tier role (the CI/OIDC path) and skip a redundant
-     * self-assume.
+     * `sts:GetCallerIdentity` needs no grant. Lets YOLO skip a redundant self-assume when
+     * already running as a tier role (the CI/OIDC path).
      */
     public static function callerArn(): string
     {
@@ -634,10 +535,8 @@ class Aws
     }
 
     /**
-     * The MFA device serial of the calling IAM user, for the admin-tier assume —
-     * resolved from the caller's identity then their first attached device, or
-     * null when the caller isn't an IAM user or has no device (the operator then
-     * sets YOLO_{ENV}_MFA_SERIAL explicitly). Read-only; needs iam:ListMFADevices.
+     * Null when the caller isn't an IAM user or has no device — the operator then sets
+     * YOLO_{ENV}_MFA_SERIAL explicitly. Needs iam:ListMFADevices.
      */
     public static function callerMfaSerial(): ?string
     {
@@ -732,10 +631,7 @@ class Aws
         return Helpers::app('resourceGroupsTaggingApi');
     }
 
-    /**
-     * A Tagging API client pinned to us-east-1 — the only region that surfaces
-     * global-service resources (IAM, CloudFront, Route 53) to the audit.
-     */
+    /** us-east-1 is the only region that surfaces global-service resources (IAM, CloudFront, Route 53). */
     public static function resourceGroupsTaggingApiGlobal(): ResourceGroupsTaggingAPIClient
     {
         return Helpers::app('resourceGroupsTaggingApiGlobal');

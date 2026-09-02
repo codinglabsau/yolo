@@ -24,16 +24,12 @@ class SyncHttpsListenerStep implements ExecutesWebStep
         $certificate = $this->defaultCertificate();
 
         if ($certificate === null) {
-            // Nothing issued yet. On the plan pass — which runs before anything is
-            // created — that's the normal greenfield state: this app's certificate is
-            // requested AND validated to ISSUED earlier in the same apply, so the
-            // listener is creatable by the time apply reaches here. Report it pending
-            // so the step survives; a bare SKIPPED is pruned from the apply pass (two-
-            // pass contract), leaving no listener, no forward rule hanging off it, and
-            // an unattached target group that ECS CreateService then rejects.
+            // On a greenfield plan pass this app's certificate is requested AND
+            // validated to ISSUED earlier in the same apply — report pending so the
+            // step survives; a bare SKIPPED would leave no listener, no forward rule,
+            // and an unattached target group that ECS CreateService rejects.
             if ((bool) Arr::get($options, 'dry-run') && $this->certificateWillBeIssuedThisSync()) {
-                // The listener is env-scope: a sibling app may already have created it,
-                // in which case this app's certificate only needs attaching to it.
+                // The listener is env-scope — a sibling app may already have created it.
                 if ($this->httpsListener() !== null) {
                     $this->recordChange(Change::make('listener certificate', 'absent', 'attached'));
 
@@ -50,9 +46,8 @@ class SyncHttpsListenerStep implements ExecutesWebStep
 
         $listener = new HttpsListener($certificate);
 
-        // Cert-attachment is orchestration, not part of the resource's identity.
-        // Record the change before the dry-run guard so it shows in the plan and
-        // survives to apply.
+        // Cert-attachment is orchestration, not the resource's identity — record
+        // before the dry-run guard so it survives to apply.
         if ($listener->exists() && ! $this->listenerHasCertificate($listener->arn(), $certificate['CertificateArn'])) {
             $this->recordChange(Change::make('listener certificate', 'absent', 'attached'));
 
@@ -72,19 +67,11 @@ class SyncHttpsListenerStep implements ExecutesWebStep
     }
 
     /**
-     * The certificate the `:443` listener is created with. ALB requires exactly
-     * one *default* certificate, which only ever serves requests whose SNI matches
-     * nothing attached — every real host is matched by its own SNI certificate,
-     * added by this step or by the per-tenant attach step.
-     *
-     * The app's own domain wins when it has one. A tenanted app that doesn't
-     * (every tenant brings its own domain) falls back to its tenants, sorted so
-     * the choice is stable — picking by manifest order would silently re-create
-     * the listener under a different default when tenants are reordered.
-     *
-     * Null when nothing is issued yet: the listener can't be created without a
-     * certificate, and the steps that hang rules off it plan as pending until it
-     * can be ({@see ResolvesHttpsListener}).
+     * ALB requires exactly one *default* certificate, which only serves requests
+     * whose SNI matches nothing attached — every real host gets its own SNI cert.
+     * A tenanted app with no domain of its own falls back to its tenants, sorted
+     * so the choice is stable — manifest order would silently re-create the
+     * listener under a different default when tenants are reordered.
      *
      * @return array<string, mixed>|null
      */
@@ -106,10 +93,8 @@ class SyncHttpsListenerStep implements ExecutesWebStep
     }
 
     /**
-     * Whether any candidate certificate will be issued in time to be the
-     * listener's default — the plan-pass discriminator between "not issued YET"
-     * (the certificate steps run earlier in this same apply, so survive to apply)
-     * and "won't be issuable at all this run" (genuinely defer).
+     * The plan-pass discriminator between "not issued YET" (the certificate steps
+     * run earlier in this same apply) and "won't be issuable this run" (defer).
      */
     protected function certificateWillBeIssuedThisSync(): bool
     {
@@ -123,7 +108,7 @@ class SyncHttpsListenerStep implements ExecutesWebStep
     }
 
     /**
-     * Candidate domains for the default certificate, in preference order.
+     * In preference order.
      *
      * @return array<int, string>
      */

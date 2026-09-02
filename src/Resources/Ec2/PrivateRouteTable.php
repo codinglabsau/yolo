@@ -12,11 +12,9 @@ use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Shared private route table for the environment — the private subnets'
- * routing. It only ever carries the implicit VPC-local route: no default route
- * is added, so nothing in the private tier can reach (or be reached from) the
- * internet. When `private-subnets` are adopted their routing stays with their
- * owner and this table isn't created at all.
+ * Carries only the implicit VPC-local route — no default route, so nothing in the
+ * private tier can reach (or be reached from) the internet. Adopted `private-subnets`
+ * keep their owner's routing and this table isn't created at all.
  */
 class PrivateRouteTable implements Deletable, Resource
 {
@@ -64,12 +62,8 @@ class PrivateRouteTable implements Deletable, Resource
     }
 
     /**
-     * Delete the route table by id. The subnet associations go when the private
-     * subnets themselves are deleted (upstream teardown order) and the local
-     * route goes with the table, so a plain delete succeeds; AWS would
-     * otherwise refuse with DependencyViolation while a subnet is still
-     * associated. A concurrent removal (InvalidRouteTableID.NotFound) is
-     * tolerated.
+     * Subnet associations go with the subnets (upstream teardown order); AWS refuses
+     * with DependencyViolation while one is still associated.
      */
     public function delete(): void
     {

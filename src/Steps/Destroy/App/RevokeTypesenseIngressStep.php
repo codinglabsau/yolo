@@ -15,14 +15,8 @@ use Codinglabs\Yolo\Resources\Ec2\TypesenseSecurityGroup;
 use Codinglabs\Yolo\Steps\Sync\App\SyncTypesenseAppIngressStep;
 
 /**
- * Revokes this app's "8108 from the task SG" ingress rule from the env-shared
- * Typesense node security group — never the group itself, which the cluster and
- * the environment's other consumers keep. The teardown mirror of
- * {@see SyncTypesenseAppIngressStep}, and the
- * same RDS/cache revoke pattern: it must run before the task SG is deleted (AWS
- * refuses to delete a security group another group's rule still references).
- * Self-skips for an app that never consumed Typesense, or once the cluster's SG
- * is already gone.
+ * Mirror of {@see SyncTypesenseAppIngressStep}. Must run before the task SG is
+ * deleted (see RevokeRdsIngressStep).
  */
 class RevokeTypesenseIngressStep implements ExecutesWebStep
 {

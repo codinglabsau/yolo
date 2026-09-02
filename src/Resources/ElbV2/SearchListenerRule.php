@@ -7,11 +7,7 @@ use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Services\Typesense;
 
 /**
- * Routes the environment's search host (`search.{domain}`, from the env
- * manifest's domain) to the Typesense target group. Env-scoped — the search
- * service belongs to the environment, not any app — with the same stable
- * Name-tag identity as the app rules, so a domain change rewrites this rule
- * in place and never touches a sibling's.
+ * Env-scoped: the search service belongs to the environment, not any app.
  */
 class SearchListenerRule extends ListenerRule
 {

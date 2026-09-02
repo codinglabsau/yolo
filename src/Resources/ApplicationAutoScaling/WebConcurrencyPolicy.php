@@ -11,76 +11,36 @@ use Codinglabs\Yolo\Aws\ApplicationAutoScaling;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * The web service's **default** scaling policy: target-tracks in-flight request
- * **concurrency per task**, the leading signal for HTTP load. Scaling on the
- * requests a task is actively serving (`desired = ceil(active_requests /
- * workers_per_task)`) rather than trailing CPU means faster responses need fewer
- * tasks for the same traffic, and a spike is caught as it arrives instead of after
- * CPU has already climbed.
+ * The web service's default policy: target-tracks in-flight requests per task, the
+ * leading signal for HTTP load (a spike is caught as it arrives, not after CPU has
+ * climbed). The ALB doesn't publish concurrency, so it's derived by metric math from
+ * two metrics it does, dimensioned by this app's own target group so the signal stays
+ * per-app on the shared ALB.
  *
- * Concurrency isn't a metric the ALB publishes, so it's derived with CloudWatch
- * metric math from two that it does (Little's Law, L = λ × W):
+ * The target derives from the task's pinned concurrency ceiling ({@see WebConcurrency})
+ * rather than a load test, so the policy can't aim at a capacity the task doesn't run.
+ * It resolves through WebConcurrency rather than the Octane pool because a classic-mode
+ * tier has no resident workers — its ceiling is the thread maximum ({@see WebThreads}).
  *
- *     concurrency_per_task = (RequestCountPerTarget[Sum] / 60) × TargetResponseTime[Avg]
+ * Known dynamic: the signal includes latency, so a slow downstream dependency scales
+ * the web tier out even when more tasks won't help. `max` is the backstop — the CPU
+ * policy won't cap it, since CPU stays low when the stall is downstream.
  *
- * RequestCountPerTarget is the per-target request count over the 1-minute ALB
- * period (÷60 → arrival rate per second); TargetResponseTime is the average time a
- * task spends serving a request (including any wait for a free FrankenPHP worker).
- * Their product is the average number of requests in flight on each task. Both are
- * dimensioned by this app's own target group, so the signal is per-app even though
- * the ALB is shared across the environment.
- *
- * The target is **derived from the task's pinned concurrency ceiling**
- * ({@see WebConcurrency}), not hand-tuned from a load test: that ceiling held at 70%
- * utilisation, leaving headroom for the within-minute peak and the cold start of the
- * next task. A 1 vCPU Octane task → 16 workers → target ~11 concurrent. Sharing one
- * number with the runtime keeps the scale-out signal honest about the very capacity
- * it scales — the policy can't aim at a capacity the task doesn't actually run.
- *
- * Which number that is depends on the serving model, which is why it resolves through
- * {@see WebConcurrency} rather than reading the Octane pool directly: a classic-mode
- * tier has no resident workers at all, and its ceiling is the thread autoscaler's
- * maximum ({@see WebThreads}).
- *
- * Composes with the CPU {@see ScalingPolicy} (the safety net for a few heavy,
- * low-rate requests that saturate CPU without raising concurrency): Application
- * Auto Scaling takes the max desired across all policies, so scale-out always wins
- * and the two never fight.
- *
- * Known dynamic: because the signal includes latency, a slow downstream dependency
- * (a struggling database) raises concurrency and scales the web tier out even when
- * adding tasks won't help — an exposure inherent to any latency-bearing signal. The
- * `max` bound caps the blast radius; the CPU policy doesn't (CPU stays low when the
- * stall is downstream), so `max` is the backstop there.
- *
- * Like {@see ScalingPolicy} this is a constructor-configured upsert reconciler
- * (PutScalingPolicy has no create/update split) and is dry-run honest — it diffs
- * the live policy and only writes on drift. It needs the ALB + target group
- * resolved to build its metric dimensions, so SyncScalingPoliciesStep only
- * constructs it once they exist (deferring it to the next sync on a greenfield
- * first sync, never throwing in the plan pass).
+ * Needs the ALB + target group for its dimensions, so SyncScalingPoliciesStep only
+ * constructs it once they exist — deferring on a greenfield first sync rather than
+ * throwing in the plan pass.
  */
 class WebConcurrencyPolicy implements TargetTrackingPolicy
 {
-    /** Hold concurrency at 70% of the task's capacity, leaving headroom for the in-minute peak. */
+    /** Headroom for the within-minute peak and the next task's cold start. */
     private const float TARGET_UTILISATION = 0.7;
 
-    /**
-     * @param  string  $policyName  the App Auto Scaling policy name
-     * @param  string  $loadBalancerDimension  the `app/{name}/{id}` ALB dimension value
-     * @param  string  $targetGroupDimension  the `targetgroup/{name}/{id}` target-group dimension value
-     */
     public function __construct(
         protected string $policyName,
         protected string $loadBalancerDimension,
         protected string $targetGroupDimension,
     ) {}
 
-    /**
-     * The desired concurrency per task — the tier's pinned concurrency ceiling
-     * ({@see WebConcurrency}) at 70% utilisation, floored to a whole request and never
-     * below 1 (a tiny task still gets a meaningful target).
-     */
     public function targetValue(): float
     {
         return max(1.0, floor(WebConcurrency::ceiling() * self::TARGET_UTILISATION));
@@ -92,9 +52,6 @@ class WebConcurrencyPolicy implements TargetTrackingPolicy
     }
 
     /**
-     * Diff the live policy against the desired config and (only on drift, when
-     * applying) upsert it.
-     *
      * @return array<int, Change>
      */
     public function synchronise(bool $apply): array
@@ -118,10 +75,6 @@ class WebConcurrencyPolicy implements TargetTrackingPolicy
     }
 
     /**
-     * The desired TargetTrackingScalingPolicyConfiguration: a metric-math metric
-     * that turns this app's request rate and response time into per-task in-flight
-     * concurrency. Only the expression returns data; the two source metrics feed it.
-     *
      * @return array<string, mixed>
      */
     public function configuration(): array
@@ -161,27 +114,20 @@ class WebConcurrencyPolicy implements TargetTrackingPolicy
                     ],
                     [
                         'Id' => 'concurrency',
-                        // Little's Law: in-flight requests per task = arrival rate × latency.
-                        // requests is the per-target count over the 60s ALB period → ÷60 gives
-                        // requests/second; × the average service time gives concurrent requests.
+                        // Little's Law: (requests over the 60s ALB period ÷ 60) × avg service time = in-flight per task.
                         'Expression' => '(requests / 60) * latency',
                         'Label' => 'In-flight requests per task',
                         'ReturnData' => true,
                     ],
                 ],
             ],
-            // Shared with the CPU policy so one cooldown setting governs web scaling:
-            // fast out (60s), slow in (300s) to avoid flapping a cold-starting task.
+            // Shared with the CPU policy so one cooldown setting governs web scaling.
             'ScaleOutCooldown' => ScalingPolicy::scaleOutCooldown(),
             'ScaleInCooldown' => ScalingPolicy::scaleInCooldown(),
         ];
     }
 
     /**
-     * Diff the comparable fields of the live policy against the desired config. A
-     * null $live reports every field as a change, so a fresh policy shows as a full
-     * create.
-     *
      * @param  array<string, mixed>|null  $live
      * @return array<int, Change>
      */
@@ -199,10 +145,7 @@ class WebConcurrencyPolicy implements TargetTrackingPolicy
         $currentExpression = $this->expressionOf($current);
         $desiredExpression = $this->expressionOf($this->configuration());
 
-        // Compare whitespace-insensitively: AWS may reformat the metric-math
-        // expression on read-back (`(requests / 60) * latency` ⇄ `(requests/60)*latency`),
-        // which would otherwise re-put the policy on every sync and never report
-        // "Already in sync". Stripping whitespace still catches a real formula change.
+        // AWS may reformat the expression's whitespace on read-back, which would re-put on every sync.
         if ($this->normalise($currentExpression) !== $this->normalise($desiredExpression)) {
             $changes[] = Change::make("{$this->policyName} metric", $currentExpression, $desiredExpression);
         }
@@ -223,9 +166,8 @@ class WebConcurrencyPolicy implements TargetTrackingPolicy
     }
 
     /**
-     * The returning metric-math expression of a config, or null when absent — the
-     * one comparable signature of the customized metric (dimensions carry live ALB
-     * ids that aren't worth diffing field-by-field).
+     * The expression is the one comparable signature of the customized metric — the
+     * dimensions carry live ALB ids not worth diffing field-by-field.
      *
      * @param  array<string, mixed>  $config
      */
@@ -240,18 +182,12 @@ class WebConcurrencyPolicy implements TargetTrackingPolicy
         return null;
     }
 
-    /**
-     * Drop all whitespace so an expression compares equal regardless of how AWS
-     * spaced it on read-back. Null (no returning expression) stays null.
-     */
     protected function normalise(?string $expression): ?string
     {
         return $expression === null ? null : (string) preg_replace('/\s+/', '', $expression);
     }
 
     /**
-     * The live policy, or null when it isn't registered yet.
-     *
      * @return array<string, mixed>|null
      */
     public function current(): ?array

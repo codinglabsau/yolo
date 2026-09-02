@@ -14,11 +14,8 @@ use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\ScalableTarget;
 
 /**
- * Deregisters the web service's Application Auto Scaling scalable target.
  * Application Auto Scaling cascades the delete to every target-tracking policy
- * on it (CPU + request-count) and the alarms those policies created — so this
- * one call clears the bulk of web autoscaling. The burst step policy + its
- * standalone alarm are handled separately ({@see DeregisterWebBurstStep}).
+ * and their alarms; the burst path's standalone alarm is {@see DeregisterWebBurstStep}'s.
  */
 class DeregisterWebAutoscalingStep implements Step
 {

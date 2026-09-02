@@ -17,10 +17,9 @@ use Codinglabs\Yolo\Resources\ElbV2\SearchListenerRule;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * The :443 listener rule routing search.{domain} to the search target group.
- * On a greenfield plan the shared listener doesn't exist yet (it's
- * bootstrapped by the first app's cert), so the rule reports pending without
- * resolving it. Teardown deletes the rule by its stable Name tag.
+ * On a greenfield plan the shared :443 listener doesn't exist yet (the first
+ * app's cert bootstraps it, in the app tier that runs after this one), so the
+ * rule reports pending without resolving it.
  */
 class SyncSearchListenerRuleStep implements Step
 {
@@ -34,14 +33,11 @@ class SyncSearchListenerRuleStep implements Step
             $listenerArn = ElbV2::listenerOnPort((new LoadBalancer())->arn(), 443)['ListenerArn'];
         } catch (ResourceDoesNotExistException) {
             if ($state === ServiceState::Teardown) {
-                return StepResult::SKIPPED; // no listener, no rule to tear down
+                return StepResult::SKIPPED;
             }
 
             Typesense::requireSearchHost();
 
-            // The shared :443 listener is bootstrapped by the first app's cert
-            // (the app tier, which runs after this one) — report the pending
-            // rule on the plan and let the next sync create it.
             $this->recordChange(Change::make('search listener rule', null, 'created (:443 listener pending)'));
 
             return Arr::get($options, 'dry-run') ? StepResult::WOULD_CREATE : StepResult::SKIPPED;

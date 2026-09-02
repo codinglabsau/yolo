@@ -21,23 +21,15 @@ use function Laravel\Prompts\table;
 use function Laravel\Prompts\warning;
 
 /**
- * Shared scaffolding for the `audit`, `audit:environment` and `audit:app`
- * commands. The audit verbs are scope-grouped to mirror sync — bare `audit`
- * orchestrates everything, the scope-specific verbs narrow to one tier — so
- * the query (tag-key filter on `yolo:environment`), classification and table
- * render are identical across all three; only the row filter and the
- * empty-state message change.
+ * Query, classification and render are identical across the three audit verbs;
+ * only the row filter and the empty-state message change.
  */
 abstract class AbstractAuditCommand extends Command implements ReadOnlyCommand, ReadsEnvironment
 {
-    // Warnings reuse the step runner's deferred-warning buffer verbatim (record
-    // now, render in one block at the end) — a non-stepped command, same pattern.
     use RecordsWarnings;
 
     /**
-     * Health-check errors: anything that should fail the run (exit 1). Warnings
-     * (recordWarning, above) never affect the exit code. The split is the whole
-     * point of the audit-as-health-check exit contract.
+     * Errors fail the run (exit 1); warnings never affect the exit code.
      *
      * @var array<int, string>
      */
@@ -69,10 +61,6 @@ abstract class AbstractAuditCommand extends Command implements ReadOnlyCommand, 
             $this->renderInventory($report, $environment);
         }
 
-        // Bare `audit` overrides gatherHealth to add the drift + RDS probes; the
-        // scoped verbs (audit:environment / audit:app) keep inventory-only. Human
-        // runs render the probe tables inline; JSON gathers the same data silently
-        // for the payload. Either way the findings drive the exit code.
         $health = $this->gatherHealth($environment, render: ! $json);
 
         if ($json) {
@@ -83,12 +71,9 @@ abstract class AbstractAuditCommand extends Command implements ReadOnlyCommand, 
     }
 
     /**
-     * Health probes beyond the tag inventory. Returns a structured health block
-     * for the JSON payload (empty by default). No-op for the scoped audit verbs —
-     * they're focused inventory tools; {@see AuditCommand} overrides it to run the
-     * whole-stack drift check and the RDS deletion-protection probe. When $render
-     * is true the probes also print their human tables; when false (JSON) they
-     * stay silent and only the returned block and recorded findings carry through.
+     * Health probes beyond the tag inventory; the scoped verbs stay inventory-only
+     * and {@see AuditCommand} overrides. With $render false (JSON) the probes stay
+     * silent and only the returned block and recorded findings carry through.
      *
      * @return array<string, mixed>
      */
@@ -98,10 +83,8 @@ abstract class AbstractAuditCommand extends Command implements ReadOnlyCommand, 
     }
 
     /**
-     * Record any unexpected resources in this command's scope as an error finding
-     * — it fails the run regardless of --unexpected (which only narrows the table,
-     * never what counts against the health verdict). Scope-aware so audit:app fails
-     * on that app's strays, not the whole environment's.
+     * --unexpected only narrows the table, never what counts against the verdict;
+     * scope-aware so audit:app fails on that app's strays, not the environment's.
      *
      * @param  array{resources: array<int, array<string, mixed>>, liveApps: array<int, string>, okCount: int, unexpectedCount: int}  $report
      */
@@ -120,20 +103,13 @@ abstract class AbstractAuditCommand extends Command implements ReadOnlyCommand, 
         }
     }
 
-    /**
-     * Record a health-check error — a finding that fails the run (exit 1). Drift,
-     * unexpected resources and RDS deletion-protection-off are all errors.
-     */
     protected function recordError(string $error): void
     {
         $this->errors[] = $error;
     }
 
     /**
-     * Replay the buffered warnings and errors in one block (warnings then errors,
-     * so the most serious lands last and nearest the prompt), then resolve the
-     * exit code: FAILURE if anything errored, SUCCESS otherwise. Mirrors the step
-     * runner's renderDeferredWarnings, with errors driving the code.
+     * Warnings then errors, so the most serious lands nearest the prompt.
      */
     protected function concludeHealth(): int
     {
@@ -149,26 +125,15 @@ abstract class AbstractAuditCommand extends Command implements ReadOnlyCommand, 
     }
 
     /**
-     * Per-subcommand row filter. Return true to include the row in the table.
-     * Applied before the universal `--unexpected` filter, so subclasses don't
-     * need to know about `--unexpected` at all.
+     * Applied before the universal `--unexpected` filter, so subclasses never see it.
      *
      * @param  array<string, mixed>  $resource
      */
     abstract protected function includes(array $resource): bool;
 
-    /**
-     * Shown when the post-filter list is empty. Subclasses tailor the wording to
-     * their scope so `--unexpected` reads clearly when a scope happens to have
-     * nothing unexpected.
-     */
     abstract protected function emptyFilterMessage(string $environment): string;
 
     /**
-     * Apps with at least one running Fargate task — the authoritative "what's
-     * actually deployed" signal, shared with the service lifecycle's claim
-     * gating via Ecs::liveApps().
-     *
      * @return array<int, string>
      */
     protected function liveApps(string $environment): array
@@ -177,10 +142,6 @@ abstract class AbstractAuditCommand extends Command implements ReadOnlyCommand, 
     }
 
     /**
-     * Render the tag-inventory table (the unexpected-resource finding is recorded
-     * separately in flagUnexpected). Void — the exit code is resolved later in
-     * concludeHealth() from the accumulated findings, not from this render.
-     *
      * @param  array{resources: array<int, array<string, mixed>>, liveApps: array<int, string>, okCount: int, unexpectedCount: int}  $report
      */
     protected function renderInventory(array $report, string $environment): void
@@ -223,14 +184,8 @@ abstract class AbstractAuditCommand extends Command implements ReadOnlyCommand, 
     }
 
     /**
-     * The machine-readable form for `--json` consumers (the `/yolo` skill,
-     * scripts): the same scope-filtered + `--unexpected`-filtered rows the table
-     * would show, plus the environment, live apps and counts derived from those
-     * rows — so the payload is internally consistent (unlike the human note,
-     * which prints the env-wide totals alongside a filtered table). The `health`
-     * block carries the probe results (empty for the scoped verbs) and `findings`
-     * the same errors/warnings the human run prints, so a consumer sees exactly
-     * what drove the exit code.
+     * Counts derive from the filtered rows so the payload is internally consistent
+     * (the human note prints env-wide totals alongside a filtered table).
      *
      * @param  array{resources: array<int, array<string, mixed>>, liveApps: array<int, string>, okCount: int, unexpectedCount: int}  $report
      * @param  array<string, mixed>  $health
@@ -257,10 +212,6 @@ abstract class AbstractAuditCommand extends Command implements ReadOnlyCommand, 
     }
 
     /**
-     * Flatten audit resource rows to the clean machine shape (a stable subset of
-     * keys, `app`/`reason`/`arn` defaulting to null). Pure — unit-tested directly
-     * with hand-built rows, no AWS.
-     *
      * @param  array<int, array<string, mixed>>  $resources
      * @return array<int, array<string, mixed>>
      */
@@ -278,11 +229,6 @@ abstract class AbstractAuditCommand extends Command implements ReadOnlyCommand, 
     }
 
     /**
-     * Apply the subcommand's scope filter and the universal `--unexpected` flag,
-     * then order by scope (account → env → app, top to bottom), unexpected first
-     * within a scope, then by reason, app and name. Unexpected rows are still
-     * surfaced regardless of position — via the warning line and the label.
-     *
      * @param  array<int, array<string, mixed>>  $resources
      * @return Collection<int, array<string, mixed>>
      */
@@ -313,9 +259,8 @@ abstract class AbstractAuditCommand extends Command implements ReadOnlyCommand, 
     }
 
     /**
-     * The resource name, wrapped in an OSC 8 hyperlink to its AWS Console page
-     * when we can build one. Terminals that support hyperlinks (Ghostty, Warp,
-     * iTerm2) make the name clickable; the rest just show the text.
+     * OSC 8 hyperlink to the Console page; terminals without hyperlink support
+     * just show the text.
      *
      * @param  array<string, mixed>  $resource
      */

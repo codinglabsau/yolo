@@ -12,11 +12,8 @@ use Codinglabs\Yolo\Resources\CloudWatch\AlertAlarm;
 use Codinglabs\Yolo\Steps\Sync\Environment\SyncAlertAlarmsStep;
 
 /**
- * Tears down the env alert alarms. Deletion is by name only, so the alarms
- * are constructed bare — no live lookups of the load balancer, cache or
- * database they watched, which may already be gone by this point in the
- * destroy. Absent alarms (e.g. the database set on an env that never
- * declared one) skip for free.
+ * Constructed bare: deletion is by name only, and the resources they watched
+ * may already be gone.
  */
 class TeardownAlertAlarmsStep implements Step
 {

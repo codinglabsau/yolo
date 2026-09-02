@@ -5,10 +5,8 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo\Resources\WafV2;
 
 /**
- * The WAF block list — referenced by the Block rule just under the allow list, so
- * a banned IP is dropped before the managed groups even run. This is the lever an
- * operator reaches for to shut down an abusive source. Seeded empty; the operator
- * fills it.
+ * Evaluated before the managed groups — the operator's lever against an abusive
+ * source. Seeded empty; operator-managed.
  */
 class BlockIpSet extends IpSet
 {

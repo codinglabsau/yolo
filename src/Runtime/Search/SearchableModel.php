@@ -8,13 +8,10 @@ use Illuminate\Support\Collection;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * The slice of Scout's Searchable trait the runtime search tools call,
- * expressed as an interface purely for static analysis — a trait can't
- * appear in a type expression, so "a model using Searchable" is typed as
- * `Model&SearchableModel` in docblocks. No model ever implements this
- * (which is why it must never appear as a NATIVE parameter type); the
- * discovery layer ({@see SearchableModels}) is what guarantees at runtime
- * that every class it hands out actually carries the trait.
+ * Static-analysis only: a trait can't appear in a type expression, so "a model
+ * using Searchable" is typed `Model&SearchableModel` in docblocks. No model ever
+ * implements this, so it must never appear as a NATIVE parameter type;
+ * {@see SearchableModels} guarantees the trait at runtime.
  */
 interface SearchableModel
 {

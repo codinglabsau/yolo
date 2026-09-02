@@ -9,10 +9,8 @@ use Codinglabs\Yolo\Concerns\ProvisionsScopedQueues;
 use Codinglabs\Yolo\Contracts\ExecutesMultitenancyStep;
 
 /**
- * The queue set for a multi-tenant app on the `shared` strategy — one set at the
- * app's own name (`yolo-{env}-{app}[-tier]`), the same shape a solo app has, drained
- * by a single worker with the tenant carried in the job payload. Wired in place of
- * the per-tenant landlord + tenant queue steps when queue-isolation is `shared`.
+ * One queue set at the app's own name, drained by a single worker with the
+ * tenant carried in the job payload.
  */
 class SyncQueueStep implements ExecutesMultitenancyStep
 {

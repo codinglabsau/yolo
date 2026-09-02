@@ -12,21 +12,13 @@ use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\ConnectionException;
 
 /**
- * A thin Typesense HTTP client for the runtime search commands, built on the
- * app's own Scout wiring (`scout.typesense.client-settings`) — the same node
- * addresses and scoped server key the app indexes with, so everything this
- * client can touch is already inside the app's own `{prefix}*` collection
+ * Built on the app's own Scout wiring (`scout.typesense.client-settings`), so
+ * everything this client can touch is already inside the app's `{prefix}*`
  * scope. Deliberately not typesense-php: the app may not ship it (Scout only
  * suggests it), and Laravel's Http client keeps every call fakeable in tests.
  */
 class TypesenseClient
 {
-    /**
-     * A collection's live metadata, or null when it doesn't exist. A 401
-     * surfaces as an exception — the cluster no longer honours this app's
-     * key, which is a different failure than an absent collection and one
-     * only `yolo sync:app` can fix.
-     */
     public function collection(string $name): ?array
     {
         $response = $this->attempt(fn (PendingRequest $request) => $request->get("/collections/{$name}"));
@@ -55,10 +47,6 @@ class TypesenseClient
         }
     }
 
-    /**
-     * The collection an alias points at, or null when the name isn't an
-     * alias (a literal collection, or nothing at all).
-     */
     public function aliasTarget(string $name): ?string
     {
         $response = $this->attempt(fn (PendingRequest $request) => $request->get("/aliases/{$name}"));
@@ -71,8 +59,7 @@ class TypesenseClient
     }
 
     /**
-     * Point an alias at a collection — atomic on the cluster, so readers
-     * flip between fully-built collections and never see a partial index.
+     * Atomic on the cluster, so readers never see a partial index.
      */
     public function upsertAlias(string $name, string $collection): void
     {
@@ -80,10 +67,8 @@ class TypesenseClient
     }
 
     /**
-     * Bulk-upsert documents into an explicit collection (never an alias —
-     * the whole point is building beside the live index). JSONL in, JSONL
-     * of per-document results out; any failed line fails the import loudly,
-     * because a silently partial rebuild swapped live is worse than none.
+     * Any failed line fails the import loudly — a silently partial rebuild
+     * swapped live is worse than none.
      *
      * @param  array<int, array<string, mixed>>  $documents
      */
@@ -95,8 +80,7 @@ class TypesenseClient
 
         $body = implode("\n", array_map(fn (array $document): string => (string) json_encode($document), $documents));
 
-        // Bulk imports get a longer window than the point reads — a chunk of
-        // large documents on a busy node can legitimately outlast 30s.
+        // a chunk of large documents on a busy node can legitimately outlast 30s
         $response = $this->guard($this->attempt(fn (PendingRequest $request) => $request
             ->timeout(120)
             ->withBody($body, 'text/plain')
@@ -116,11 +100,9 @@ class TypesenseClient
     }
 
     /**
-     * Run one call with node failover: a recycling Fargate node is routine,
-     * so a connection-level failure moves to the next configured node rather
-     * than failing a heal or aborting a rebuild against a healthy quorum.
-     * HTTP-level answers (including errors) return immediately — only "could
-     * not reach this node at all" advances.
+     * Node failover: a recycling Fargate node is routine, so a connection-level
+     * failure moves to the next node rather than aborting against a healthy
+     * quorum. HTTP-level answers (including errors) return immediately.
      *
      * @param  Closure(PendingRequest): Response  $call
      */
@@ -142,9 +124,6 @@ class TypesenseClient
     }
 
     /**
-     * The configured nodes in preference order — the nearest node first when
-     * one is declared, then the full list.
-     *
      * @return array<int, array<string, mixed>>
      */
     protected function nodes(): array
@@ -183,9 +162,8 @@ class TypesenseClient
     }
 
     /**
-     * Fail loudly on anything unexpected. 401 gets its own message: the
-     * stored key is cluster data, so a replaced cluster stops honouring it —
-     * recoverable, but only by `yolo sync:app`, never from inside the app.
+     * 401 gets its own message: the stored key is cluster data, so a replaced
+     * cluster stops honouring it — recoverable only by `yolo sync:app`.
      */
     protected function guard(Response $response): Response
     {

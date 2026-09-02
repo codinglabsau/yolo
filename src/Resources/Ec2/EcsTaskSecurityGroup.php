@@ -10,11 +10,7 @@ use Codinglabs\Yolo\Enums\SecurityGroup;
 use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 
-/**
- * Models the security group identity + tags only. Ingress-rule management
- * (the load-balancer-to-task port-allow rule) lives in SyncTaskSecurityGroupStep
- * because it's a separate AWS concept with its own reconciliation surface.
- */
+/** Identity + tags only; the ALB→task ingress rule lives in SyncTaskSecurityGroupStep. */
 class EcsTaskSecurityGroup implements Deletable, Resource
 {
     use ResolvesSecurityGroup;
@@ -50,14 +46,7 @@ class EcsTaskSecurityGroup implements Deletable, Resource
         return Aws::synchroniseEc2Tags($this->arn(), $this->tags(), $apply);
     }
 
-    /**
-     * Delete the task security group. Upstream teardown revokes the sibling-SG
-     * ingress rules that reference it (the database's port, cache 6379, Typesense 8108) and
-     * stops the ECS tasks first — but a stopped Fargate task's ENI keeps holding
-     * the group for a minute or two while it detaches, so the delete is retried
-     * past that transient DependencyViolation until the ENIs clear (and a
-     * concurrent removal is tolerated). See Ec2::deleteSecurityGroupWhenDetached.
-     */
+    /** A stopped Fargate task's ENI holds the group for a minute or two while it detaches. */
     public function delete(): void
     {
         Ec2::deleteSecurityGroupWhenDetached($this->arn());

@@ -12,11 +12,9 @@ use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Resources\ElbV2\SearchTargetGroup;
 
 /**
- * The search target group — provisioned before the node services so they can
- * attach to it at create. Requires the env manifest's domain: a search host
- * is the whole point of the public path, so a declared typesense without a
- * domain is a hard error (requireSearchHost names the fix), never a
- * silently-private cluster.
+ * Provisioned before the node services so they can attach at create. A
+ * declared typesense without an env domain is a hard error (requireSearchHost
+ * names the fix), never a silently-private cluster.
  */
 class SyncSearchTargetGroupStep implements Step
 {

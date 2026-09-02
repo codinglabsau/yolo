@@ -16,47 +16,19 @@ use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\YoloServiceProvider;
 
 /**
- * Generates each container's supervisord.conf into the build context from the
- * manifest — the same way GenerateEntrypointScriptStep generates the entrypoint,
- * so the running processes can't drift from the manifest and the web port
- * is hardcoded to 8000 (the same value the target group health-checks).
- *
- * Which program runs where is derived from task presence (Manifest::queueHost /
- * schedulerHost), not flags. The web container always runs the web server (plus the SSR
- * renderer when tasks.web.ssr is on, and the queue worker / scheduler unless
- * they've been extracted). A standalone queue that also hosts the scheduler runs
- * two processes (queue:work + supercronic), so it gets its own supervisord.queue.conf; a
- * queue-only or scheduler-only standalone service runs a single process the
- * entrypoint exec's directly, with no supervisord config. The web config stays at
- * the path the scaffolded Dockerfile copies (docker/supervisord.conf) — a web-less
- * app writes a comment-only placeholder there to keep that COPY satisfied; the
- * queue config rides along under docker/ via the Dockerfile's `COPY . /app`.
- *
- * When background work (scheduler, queue) shares the web container, it's niced below
- * the request path so the kernel scheduler favours the request path under CPU
- * contention — a heavy job can't starve the web tier. Burst detection now rides the
- * web request itself ({@see YoloServiceProvider}), so web is the top priority; the
- * scheduler (a brief, time-sensitive cron tick) outranks the queue (heavy, backlog-
- * tolerant). nice only bites when CPU is saturated, so steady-state throughput is
- * unchanged:
- *
- *     web ≈ ssr (default)  >  scheduler (nice 10)  >  queue (nice 19)
- *
- * See config() / niceLevel() for the rendering.
+ * Generated from the manifest so the running processes can't drift from it; the
+ * web port is hardcoded to 8000, the value the target group health-checks.
+ * docker/supervisord.conf must always exist because the scaffolded Dockerfile
+ * COPYs it unconditionally — a web-less app writes a placeholder.
  */
 class GenerateSupervisorConfigStep implements Step
 {
     /**
-     * The nice each co-located background program launches at when it shares a
-     * container with the web server, so the kernel scheduler favours the request path
-     * under CPU contention. Burst detection now rides the web request itself, so web is
-     * the top priority (default, never niced); among the background tier the scheduler —
-     * a brief, time-sensitive cron tick — outranks the queue, which is heavy and
-     * backlog-tolerant (and has its own queue-depth scaling). The order is
-     * web > scheduler > queue. All values are positive (an unprivileged www-data can
-     * only nice *down*, so no CAP_SYS_NICE or task-def ulimit), and nice reallocates CPU
-     * under saturation rather than capping it — a burst still shows on the CloudWatch CPU
-     * metric, it just no longer hits web latency.
+     * Background programs sharing the web container are niced below the request
+     * path so a heavy job can't starve it under CPU contention — burst detection
+     * rides the web request itself ({@see YoloServiceProvider}). The scheduler (a
+     * brief, time-sensitive tick) outranks the backlog-tolerant queue. Values
+     * must stay positive — unprivileged www-data can only nice *down*.
      *
      * @var array<string, int>
      */
@@ -69,43 +41,29 @@ class GenerateSupervisorConfigStep implements Step
 
     public function __invoke(array $options = []): StepResult
     {
-        // The web container always runs supervisord (the web server + whatever it
-        // hosts). A web-less app has no container that runs this config, but the
-        // scaffolded Dockerfile unconditionally COPYs it to /etc/supervisord.conf,
-        // so a placeholder is written to keep that contract.
         Manifest::hasWeb()
             ? $this->writeConfig('docker/supervisord.conf', ServerGroup::WEB)
             : $this->writePlaceholderConfig('docker/supervisord.conf');
 
-        // The metrics Caddyfile additionally needs Octane (worker mode) — its worker
-        // gauges are the burst signal, and octane:start runs it via --caddyfile
-        // (ProcessCommands::web). The shared gate keeps generation, the flag and the
-        // build preflight (CheckMetricsRuntimeStep) in lock-step.
+        // The shared gate keeps generation and CheckMetricsRuntimeStep in lock-step.
         if (Manifest::usesMetricsCaddyfile()) {
             $this->writeCaddyfile();
         }
 
-        // Classic mode needs a Caddyfile for an unrelated reason: it is the only
-        // channel that can configure FrankenPHP's thread pool at all (see
-        // ProcessCommands::web). Mutually exclusive with the branch above, which
-        // needs Octane — so one generated path can serve both.
+        // Classic mode's Caddyfile is the only channel that can configure
+        // FrankenPHP's thread pool; mutually exclusive with the Octane branch
+        // above, so one path serves both.
         if (Manifest::hasWeb() && ! Manifest::usesOctane()) {
             $this->writeClassicCaddyfile();
         }
 
-        // A standalone queue needs supervisord when it runs more than one process:
-        // when it co-hosts the scheduler (queue:work + supercronic), OR when it fans
-        // queues out per tenant (one queue:work program per tenant + landlord — a
-        // single exec'd process can't fan out). A solo or shared-queue service runs a
-        // single exec'd worker (no config), dispatched directly by the entrypoint.
+        // A standalone queue only needs supervisord when it runs more than one
+        // process; otherwise the entrypoint exec's the worker directly.
         if (Manifest::schedulerHost() === ServerGroup::QUEUE
             || (Manifest::hasStandaloneQueue() && Manifest::fansQueuesPerTenant())) {
             $this->writeConfig('docker/supervisord.queue.conf', ServerGroup::QUEUE);
         }
 
-        // The crontab supercronic reads is generated wherever the scheduler runs —
-        // every app unless cron is switched off entirely (tasks.scheduler: false), where
-        // schedulerHost() is null and no container runs supercronic, so it's skipped.
         if (Manifest::schedulerHost() instanceof ServerGroup) {
             $this->writeCrontab();
         }
@@ -120,12 +78,6 @@ class GenerateSupervisorConfigStep implements Step
         $this->filesystem->put($path, $this->config($group, ShutdownTimings::programGraces($group)));
     }
 
-    /**
-     * A comment-only stand-in for the web supervisord config on a web-less app.
-     * No container ever runs it — a standalone queue/scheduler is a single exec'd
-     * process (or supervisord.queue.conf when the queue co-hosts the scheduler) —
-     * but the scaffolded Dockerfile COPYs this exact path, so it must exist.
-     */
     protected function writePlaceholderConfig(string $relativePath): void
     {
         $path = Paths::build($relativePath);
@@ -144,25 +96,12 @@ class GenerateSupervisorConfigStep implements Step
     {
         $blocks = [$this->header()];
 
-        // The web server's presence in this container is what makes it the request
-        // path — programGraces only emits a 'web' grace for the web group — so it is
-        // exactly the co-location trigger for nicing the background programs below.
+        // programGraces only emits a 'web' grace for the web group, so its
+        // presence is the co-location trigger for nicing background programs.
         $colocatesWebServer = isset($graces['web']);
 
-        // One block per program present in this container, in a stable order. Stop
-        // waits come from ShutdownTimings so a program's graceful-stop window matches
-        // the container stopTimeout derived from the same source.
-        //  - web       the web server — Octane (FrankenPHP worker mode) by default,
-        //              or FrankenPHP classic mode when tasks.web.octane is off
-        //              (ProcessCommands::web); web container only
-        //  - ssr       Inertia's Node renderer beside the web server; autorestart brings
-        //              it back if it crashes, and Inertia renders client-side while it's down
-        //  - scheduler supercronic firing an ephemeral schedule:run each minute (not a
-        //              schedule:work daemon — the trigger halts cleanly on shutdown)
-        //  - queue     queue:work, with a longer stop wait so an in-flight job can finish.
-        //              A multi-tenant app fans this into one program per scope
-        //              (landlord + each tenant), each draining that scope's queues —
-        //              see queuePrograms(); everything else is a single 'queue' block.
+        // Stop waits come from ShutdownTimings so each program's graceful-stop
+        // window matches the container stopTimeout derived from the same source.
         foreach (['web', 'ssr', 'scheduler', 'queue'] as $program) {
             if (! isset($graces[$program])) {
                 continue;
@@ -183,22 +122,16 @@ class GenerateSupervisorConfigStep implements Step
     }
 
     /**
-     * The queue-worker program(s) for this container, as `[program name => --queue
-     * chain]`. A solo app runs one `queue` program (bare, or a tier chain when it
-     * declares `queues:`); a multi-tenant app runs one program per scope —
-     * `queue_landlord` plus `queue_<tenant>` — each draining only that scope's
-     * queues, so a whale tenant's backlog can't starve the others (the fairness the
-     * naive `--queue=t1,t2,…` comma list would lose to strict priority). Each
-     * program's chain comes from Helpers::queueChain, the same source the SQS queues
-     * are provisioned from, so the worker never polls a queue that wasn't created.
+     * One program per scope rather than a `--queue=t1,t2,…` comma list: Laravel
+     * drains a comma list in strict priority, so a whale tenant's backlog would
+     * starve the others. Chains come from Helpers::queueChain — the same source
+     * the SQS queues are provisioned from — so a worker never polls a queue that
+     * wasn't created.
      *
      * @return array<string, string|null>
      */
     protected function queuePrograms(): array
     {
-        // Solo and shared-queue apps run a single program draining the app's own queue
-        // set (a bare worker, or a tier chain); only a dedicated multi-tenant app fans
-        // into one program per scope.
         if (! Manifest::fansQueuesPerTenant()) {
             return ['queue' => Helpers::queueChain()];
         }
@@ -213,10 +146,8 @@ class GenerateSupervisorConfigStep implements Step
     }
 
     /**
-     * A queue program's command line: `queue:work` (with the scope's `--queue`
-     * chain) niced into the background tier when it shares the web container. Every
-     * per-scope program niced the same — they're all the queue tier — so the lookup
-     * is keyed on 'queue', not the fanned-out program name.
+     * Nice is keyed on 'queue', not the fanned-out program name — every per-scope
+     * program is the same tier.
      */
     protected function queueCommand(?string $chain, bool $colocatesWebServer): string
     {
@@ -229,15 +160,10 @@ class GenerateSupervisorConfigStep implements Step
     }
 
     /**
-     * Write the web Caddyfile into the build context for an autoscaling Octane app.
-     * Burst scaling needs FrankenPHP's worker metrics, which Caddy only collects when
-     * its top-level `metrics` global option is set — and octane:start rebuilds the
-     * CADDY_GLOBAL_OPTIONS env var YOLO would use to inject it, so a task env var can't
-     * turn metrics on. The surviving channel is a custom Caddyfile passed to
-     * octane:start via --caddyfile (ProcessCommands::web). Rather than carry a full copy
-     * of Octane's stub (which would drift across Octane versions), this reads the app's
-     * OWN installed stub and adds only the one metrics line, so it stays in lock-step
-     * with whatever Octane the image ships.
+     * octane:start rebuilds CADDY_GLOBAL_OPTIONS, so a task env var can't turn
+     * metrics on — a custom Caddyfile via --caddyfile is the only channel. It's
+     * derived from the app's own installed Octane stub (not a vendored copy) so
+     * it can't drift across Octane versions.
      */
     protected function writeCaddyfile(): void
     {
@@ -259,14 +185,9 @@ class GenerateSupervisorConfigStep implements Step
     }
 
     /**
-     * The classic-mode (`tasks.web.octane: false`) Caddyfile: the same site the
-     * `php-server` command would have served, plus the one thing that command has no
-     * way to express — explicit `num_threads` / `max_threads` bounds ({@see WebThreads}).
-     *
-     * Written by YOLO rather than deferred to the base image's own Caddyfile so the
-     * config is the manifest's to own: the bounds are baked from the task's declared
-     * CPU/memory at build time, and an app on a custom base image (or a future one
-     * that moves the file) can't silently change how the tier serves.
+     * `php-server` has no way to express thread bounds ({@see WebThreads}), and
+     * YOLO writes the file itself so a custom base image can't silently change
+     * how the tier serves.
      */
     protected function writeClassicCaddyfile(): void
     {
@@ -276,10 +197,8 @@ class GenerateSupervisorConfigStep implements Step
     }
 
     /**
-     * The rendered classic-mode Caddyfile. Port 8000 matches the target group's health
-     * check the same way the supervisord config does; `auto_https off` is explicit
-     * because the ALB terminates TLS and the container must never try to provision a
-     * certificate of its own.
+     * `auto_https off` because the ALB terminates TLS — the container must never
+     * try to provision its own certificate.
      */
     protected function classicCaddyfile(): string
     {
@@ -314,15 +233,10 @@ class GenerateSupervisorConfigStep implements Step
     }
 
     /**
-     * Add Caddy's top-level `metrics` global option to a Caddyfile. This — not the
-     * per-server `servers { metrics }` form — is what registers FrankenPHP's worker
-     * gauges (frankenphp_busy_threads / _total_threads) into the global registry the
-     * `/metrics` endpoint serves; the per-server form only surfaces caddy_http_* and
-     * leaves the burst signal dark. A Caddyfile's global options block is its leading
-     * block — the only one whose opener is a bare `{` — so the directive is inserted just
-     * inside it. A stub that already enables metrics (a future Octane, or a re-run) is
-     * returned untouched; a stub with no global block hard-fails rather than silently
-     * shipping a metrics-less Caddyfile that would leave burst scaling dark.
+     * The top-level `metrics` global option — not the per-server `servers {
+     * metrics }` form, which only surfaces caddy_http_* and leaves the FrankenPHP
+     * worker gauges (the burst signal) dark. The global block is the only one
+     * opened by a bare `{`.
      */
     protected function injectMetrics(string $caddyfile): string
     {
@@ -345,7 +259,6 @@ class GenerateSupervisorConfigStep implements Step
     }
 
     /**
-     * The crontab supercronic reads (ProcessCommands::scheduler points at it).
      * Jobs inherit the container's environment and supercronic captures their
      * output itself, so the entry needs no PATH override or fd redirect.
      */
@@ -356,11 +269,8 @@ class GenerateSupervisorConfigStep implements Step
         $crontab = "# Auto-generated by YOLO. Fires the Laravel scheduler once a minute.\n"
             . "* * * * * cd /app && php artisan schedule:run\n";
 
-        // The scheduled logical backups ride the same supercronic, niced with
-        // the rest of the scheduler tier. CRON_TZ pins the schedule to the
-        // manifest timezone (the every-minute scheduler line above is
-        // unaffected), and everything the executor needs is baked in as
-        // arguments — no runtime config, nothing for the app to know about.
+        // CRON_TZ only affects lines below it — the every-minute line above is
+        // unaffected.
         if (Manifest::backsUpDatabases()) {
             $crontab .= "\n# Scheduled logical database backups — opted in via the manifest `backups` key.\n"
                 . 'CRON_TZ=' . Manifest::timezone() . "\n"
@@ -393,12 +303,6 @@ class GenerateSupervisorConfigStep implements Step
         ]);
     }
 
-    /**
-     * The shell command for a program's `command=` line, wrapped in `nice` to place
-     * it in the web group's priority order (see the class docblock). The container
-     * runs as www-data and every nice applied here is positive (lowering priority),
-     * which needs no privilege — so no CAP_SYS_NICE or task-def ulimit is involved.
-     */
     protected function command(string $program, bool $colocatesWebServer): string
     {
         $command = ProcessCommands::{$program}();
@@ -409,13 +313,6 @@ class GenerateSupervisorConfigStep implements Step
             : sprintf('nice -n %d %s', $nice, $command);
     }
 
-    /**
-     * The nice a program launches at, or null for the default priority. Only the
-     * background tier (scheduler, queue) is niced, and only when it shares a container
-     * with the web server, so a heavy job can't starve the request path — scheduler
-     * above queue (see {@see PROGRAM_NICE}). Everything else — web and ssr — runs at
-     * the default priority.
-     */
     protected function niceLevel(string $program, bool $colocatesWebServer): ?int
     {
         return $colocatesWebServer ? (self::PROGRAM_NICE[$program] ?? null) : null;

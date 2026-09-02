@@ -15,42 +15,23 @@ use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\ScalableTarget;
 
 /**
- * Registers and reconciles the web service's Application Auto Scaling scalable
- * target — the min/max desired-count bounds the policies move within. The
- * manifest is the source of truth (tasks.web.autoscaling.min/max), reconciled
- * to live on every sync. Wired into sync:app whenever the web task exists (not
- * only when autoscaling is on) so removing the block can tear the target down;
- * with no block and nothing registered it no-ops, leaving a fixed app's single
- * create-only task untouched.
+ * Wired into sync:app whenever the web task exists (not only when autoscaling
+ * is on) so removing the block can tear the target down. Deregistering cascades
+ * to every policy and alarm; the ECS service freezes at its current live count
+ * (deregister doesn't drop tasks) — lower it with `yolo scale`.
  *
- * Reductions are surfaced as Changes and gated by the normal plan → confirm flow,
- * EXCEPT under --force / non-interactive: there the step refuses to lower a live
- * bound (skips + warns) so a stale manifest can never quietly scale production
- * down. Lowering capacity must be a deliberate, attended act — an interactive
- * `yolo sync` (the operator sees the reduction in the plan and confirms) or
- * `yolo scale`. Raises always apply.
+ * Reductions are gated by the plan → confirm flow, EXCEPT under --force /
+ * non-interactive: there the step refuses to lower a live bound so a stale
+ * manifest can never quietly scale production down. Raises always apply.
  *
- * When the autoscaling block is removed from the manifest the step deregisters
- * the scalable target — Application Auto Scaling cascades the delete to every
- * scaling policy on it and the alarms those policies generated. The ECS service
- * reverts to a fixed task count, frozen at its current live count (deregister
- * doesn't drop tasks); lower it with `yolo scale` if needed.
- *
- * On a greenfield first sync the ECS service doesn't exist during the PLAN pass —
- * the step must still record its pending registration (two-pass contract: a bare
- * SKIPPED would prune it from the apply pass and leave a fresh app without
- * autoscaling until a second sync). It never gates on the service existing: the
- * apply pass runs in declaration order after SyncEcsServiceStep has ensured it.
+ * Never gates on the ECS service existing: it doesn't on a greenfield plan
+ * pass, and a bare SKIPPED would prune the registration from apply.
  */
 class SyncScalableTargetStep implements Step
 {
     use RecordsChanges;
     use RecordsWarnings;
 
-    /**
-     * The workload group this step scales — web here; SyncQueueScalableTargetStep
-     * overrides it for the queue.
-     */
     protected function group(): ServerGroup
     {
         return ServerGroup::WEB;
@@ -109,8 +90,6 @@ class SyncScalableTargetStep implements Step
     }
 
     /**
-     * Would reconciling the manifest bounds lower either live bound?
-     *
      * @param  array{min: int, max: int}|null  $live
      */
     protected static function wouldReduce(ScalableTarget $target, ?array $live): bool
@@ -119,9 +98,8 @@ class SyncScalableTargetStep implements Step
     }
 
     /**
-     * An unattended run is one with no human at the confirm gate — `--force` or a
-     * non-interactive terminal. (Input may be unbound in unit tests, which is
-     * treated as interactive so only an explicit --force trips the guard there.)
+     * Input may be unbound in unit tests — treated as interactive so only an
+     * explicit --force trips the guard there.
      *
      * @param  array<string, mixed>  $options
      */

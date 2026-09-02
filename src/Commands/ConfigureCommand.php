@@ -24,21 +24,16 @@ use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\warning;
 
 /**
- * Set this machine up to authenticate an environment — the developer-laptop
- * half of onboarding (the account half is an IAM user + `yolo permissions`).
- * Installs the yolo-credentials-1password helper, writes the AWS profile with a
- * credential_process line, wires YOLO_{ENV}_AWS_PROFILE into the app's .env,
- * and proves the whole chain with a live STS call. Every known way this setup
- * silently breaks — SSO remnants in the profile, a static-key section
- * shadowing credential_process — is detected and offered a fix, not left to
- * surface as a cryptic runtime error.
+ * The developer-laptop half of onboarding (the account half is an IAM user +
+ * `yolo permissions`). Every known way this setup silently breaks — SSO remnants
+ * in the profile, a static-key section shadowing credential_process — is detected
+ * and offered a fix rather than left to surface as a cryptic runtime error.
  */
 class ConfigureCommand extends Command implements RunsWithoutAws
 {
     /**
-     * Whether the verified 1Password item carries a TOTP field — null until
-     * (unless) the 1Password driver verified an item. Feeds the MFA posture
-     * report; the custom-process driver leaves it unknown.
+     * Null until the 1Password driver verified an item; the custom-process driver
+     * leaves it unknown.
      */
     protected ?bool $itemHasTotp = null;
 
@@ -57,10 +52,6 @@ class ConfigureCommand extends Command implements RunsWithoutAws
 
         $profile = $this->askProfileName();
 
-        // Already set up? Don't march the developer back through the driver +
-        // item + vault gauntlet just to re-run — verify the existing profile
-        // and finish. Reconfiguring is the opt-in (defaulted on only when the
-        // profile is visibly broken by SSO remnants).
         if ($this->awsConfigFile()->hasSection($profile) && ! $this->confirmReconfigure($profile)) {
             return $this->verify($profile) ? self::SUCCESS : self::FAILURE;
         }
@@ -100,11 +91,8 @@ class ConfigureCommand extends Command implements RunsWithoutAws
     }
 
     /**
-     * An already-configured profile shouldn't force a full reconfigure just to
-     * re-run configure. Offer to leave it in place and only verify; reconfigure
-     * is the opt-in — defaulted on only when the profile is visibly broken by
-     * SSO remnants (which steer resolution away from credential_process), whose
-     * names are surfaced so the choice is informed.
+     * Reconfigure defaults on only when SSO remnants are present — they steer
+     * resolution away from credential_process.
      */
     protected function confirmReconfigure(string $profile): bool
     {
@@ -150,10 +138,8 @@ class ConfigureCommand extends Command implements RunsWithoutAws
     }
 
     /**
-     * The AWS CLI runs the verification (and is what the developer uses
-     * day-to-day); the 1Password driver's helper additionally shells out to
-     * `op` and `jq`. Fail with the install one-liner rather than letting the
-     * first mint die mid-script.
+     * Fail with the install one-liner rather than letting the first mint die
+     * mid-script.
      */
     protected function ensureBinaries(CredentialsDriver $driver): bool
     {
@@ -176,12 +162,8 @@ class ConfigureCommand extends Command implements RunsWithoutAws
     }
 
     /**
-     * `yolo run` / `yolo db:tunnel` open a shell (or forward a port) into a
-     * running container via ECS Exec, which needs AWS's Session Manager plugin
-     * on this machine — a per-machine tool, same cadence as the binaries above,
-     * so it's set up here rather than at app scaffolding. Non-fatal: it's not
-     * needed for configure itself, only for those later commands, so a missing
-     * plugin offers an install and warns rather than aborting.
+     * A per-machine tool, so it's set up here rather than at app scaffolding.
+     * Non-fatal: only `yolo run` / `yolo db:tunnel` need it, not configure itself.
      */
     protected function ensureSessionManagerPlugin(): void
     {
@@ -205,11 +187,6 @@ class ConfigureCommand extends Command implements RunsWithoutAws
         warning('Install it before using `yolo run` / `yolo db:tunnel`: https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html');
     }
 
-    /**
-     * The batteries-included driver: install the bundled helper, collect the
-     * 1Password item, verify it up front, and build the credential_process
-     * line (the vault rides along only when it isn't the Employee default).
-     */
     protected function onePasswordCredentialProcess(): ?string
     {
         $helper = $this->installHelper();
@@ -233,10 +210,8 @@ class ConfigureCommand extends Command implements RunsWithoutAws
     }
 
     /**
-     * Install the bundled helper from the composer package to a stable path —
-     * ~/.aws/config outlives any one checkout, so the profile never points into
-     * vendor/. Always writes, so a `composer update` refresh reaches the
-     * installed copy on the next configure run.
+     * ~/.aws/config outlives any one checkout, so the profile must never point into
+     * vendor/. Always writes, so a `composer update` reaches the installed copy.
      */
     protected function installHelper(): string
     {
@@ -256,11 +231,6 @@ class ConfigureCommand extends Command implements RunsWithoutAws
         return $helper;
     }
 
-    /**
-     * The driver seam: any command that emits AWS credential JSON on stdout —
-     * another password manager's CLI wrapped in a script, a corporate vault,
-     * an adapted copy of yolo-credentials-1password.
-     */
     protected function customCredentialProcess(): ?string
     {
         return text(
@@ -272,9 +242,8 @@ class ConfigureCommand extends Command implements RunsWithoutAws
     }
 
     /**
-     * Check the item exists and carries the two key fields before anything is
-     * written, so a typo'd item name fails here with a named cause instead of
-     * as jq noise on the first mint.
+     * A typo'd item name fails here with a named cause instead of as jq noise on
+     * the first mint.
      */
     protected function verifyOnePasswordItem(string $item, string $vault): bool
     {
@@ -301,8 +270,7 @@ class ConfigureCommand extends Command implements RunsWithoutAws
             return false;
         }
 
-        // Remembered for the MFA posture report after verification — the helper
-        // can only forward MFA when the item carries a TOTP to forward.
+        // The helper can only forward MFA when the item carries a TOTP to forward.
         $this->itemHasTotp = $fields->contains(fn (array $field): bool => ($field['type'] ?? null) === 'OTP');
 
         info(sprintf("1Password item '%s' verified.", $item));
@@ -310,11 +278,6 @@ class ConfigureCommand extends Command implements RunsWithoutAws
         return true;
     }
 
-    /**
-     * Write the profile block — replaced in place when it exists, appended
-     * otherwise. The overwrite decision belongs to the caller
-     * (`confirmReconfigure`); by the time we're here it has been made.
-     */
     protected function writeProfile(string $profile, string $credentialProcess): void
     {
         $this->awsConfigFile()->putSection($profile, [
@@ -326,9 +289,8 @@ class ConfigureCommand extends Command implements RunsWithoutAws
     }
 
     /**
-     * A same-named section in ~/.aws/credentials wins over credential_process
-     * — the classic silent failure where static keys keep working and the
-     * short-lived-session setup does nothing. Offer to remove it.
+     * A same-named section in ~/.aws/credentials wins over credential_process —
+     * static keys keep working and the short-lived-session setup does nothing.
      */
     protected function ensureNoShadowingStaticKeys(string $profile): void
     {
@@ -351,10 +313,6 @@ class ConfigureCommand extends Command implements RunsWithoutAws
         }
     }
 
-    /**
-     * Point this app at the profile: YOLO_{ENV}_AWS_PROFILE in the local .env
-     * (replaced in place when present, appended otherwise).
-     */
     protected function writeEnvProfile(string $profile): void
     {
         $key = Helpers::keyedEnvName('AWS_PROFILE');
@@ -372,10 +330,8 @@ class ConfigureCommand extends Command implements RunsWithoutAws
     }
 
     /**
-     * Prove the whole chain — helper, item, profile, region — with a live STS
-     * call through the AWS CLI, exactly as every future command will use it,
-     * and hold the result against the manifest's account so a wrong-account
-     * key fails now instead of at the first sync.
+     * Through the AWS CLI, exactly as every future command will use the profile;
+     * a wrong-account key fails now instead of at the first sync.
      */
     protected function verify(string $profile): bool
     {
@@ -411,10 +367,7 @@ class ConfigureCommand extends Command implements RunsWithoutAws
     }
 
     /**
-     * Whether the IAM user behind the profile has an MFA device registered —
-     * null when the check itself fails (iam:ListMFADevices not granted). Uses
-     * the just-verified profile, so it exercises the same session every other
-     * command will.
+     * Null when iam:ListMFADevices isn't granted.
      */
     protected function userHasMfaDevice(string $profile): ?bool
     {
@@ -430,12 +383,10 @@ class ConfigureCommand extends Command implements RunsWithoutAws
     }
 
     /**
-     * MFA is invisible in a green verify — the helper warns on stderr when it
-     * mints without MFA, but a successful credential_process never surfaces
-     * that. And it's a hard requirement: every YOLO tier role's trust demands
-     * `aws:MultiFactorAuthPresent`, so a session minted without MFA can't
-     * assume anything. Fail here, at setup, with the missing half named —
-     * never at the first real command with an opaque AccessDenied.
+     * MFA is invisible in a green verify (a successful credential_process never
+     * surfaces the helper's stderr warning), yet every tier role's trust demands
+     * `aws:MultiFactorAuthPresent` — fail at setup with the missing half named,
+     * not at the first real command with an opaque AccessDenied.
      */
     protected function enforceMfaPosture(?bool $deviceRegistered, ?bool $itemHasTotp): bool
     {

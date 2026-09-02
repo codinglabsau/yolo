@@ -10,11 +10,7 @@ use Codinglabs\Yolo\Enums\SecurityGroup;
 use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 
-/**
- * Shared security group fronting the load balancer. Models identity + tags only;
- * the HTTP/HTTPS ingress rules are reconciled by SyncLoadBalancerSecurityGroupStep
- * (rules are a separate AWS concept with their own diff surface).
- */
+/** Identity + tags only; the HTTP/HTTPS ingress rules live in SyncLoadBalancerSecurityGroupStep. */
 class LoadBalancerSecurityGroup implements Deletable, Resource
 {
     use ResolvesSecurityGroup;
@@ -47,13 +43,7 @@ class LoadBalancerSecurityGroup implements Deletable, Resource
         return Aws::synchroniseEc2Tags($this->arn(), $this->tags(), $apply);
     }
 
-    /**
-     * Delete the security group. Upstream teardown removes the load balancer and
-     * revokes the task SG's ingress rule referencing it — but the ALB's ENIs
-     * detach asynchronously and keep holding the group for a short window, so the
-     * delete is retried past that transient DependencyViolation until they clear
-     * (and a concurrent removal is tolerated). See Ec2::deleteSecurityGroupWhenDetached.
-     */
+    /** The deleted ALB's ENIs detach asynchronously and hold the group for a short window. */
     public function delete(): void
     {
         Ec2::deleteSecurityGroupWhenDetached($this->arn());

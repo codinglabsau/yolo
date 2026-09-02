@@ -22,12 +22,9 @@ use Codinglabs\Yolo\Resources\CloudFront\AssetDistribution;
 class ConfigureEnvAndVersionStep implements Step
 {
     /**
-     * Every static key this step writes into the built env — enforced platform
-     * invariants plus the manifest-derived defaults below. InitCommand strips
-     * these (and anything AWS_*) from the starter env it scaffolds, so the file
-     * never carries a second copy of a value the build owns; keep this list in
-     * step with the keys written in __invoke(). Service buildValues() keys are
-     * dynamic and deliberately not listed.
+     * Every static key __invoke() writes — InitCommand strips these from the
+     * starter env so it never carries a second copy of a build-owned value.
+     * Service buildValues() keys are dynamic and deliberately not listed.
      */
     public const array INJECTED_KEYS = [
         'APP_VERSION',
@@ -67,79 +64,40 @@ class ConfigureEnvAndVersionStep implements Step
             'APP_VERSION' => $appVersion,
         ];
 
-        // Each consumed service contributes its build-time env values — the
-        // injection half of the service contract lives on the definition
-        // (ServiceDefinition::buildValues()), so a new service never edits
-        // this step.
         foreach (Manifest::services() as $service) {
             $values = [...$values, ...Service::from($service)->definition()->buildValues()];
         }
 
-        // YOLO's per-app env-side secret channel: any key sync minted into this
-        // app's environment-side `.env` (env/.env.{app} in the env config bucket)
-        // — currently the Typesense scoped TYPESENSE_API_KEY. Merged in like a
-        // buildValues entry so it's baked into the image. The file doesn't exist
-        // until the key is minted (the common case on a fresh app, and for apps
-        // with no env-side secret at all), so a not-found read is skipped
-        // silently — never a build failure.
         $values = [...$values, ...$this->envSideValues()];
 
-        // Assets always live in S3 behind the YOLO-provisioned CloudFront
-        // distribution. ASSET_URL points app-generated asset URLs at it,
-        // versioned per build so each deploy's hashed bundle sits under its
-        // own prefix and old builds keep resolving. VITE_ASSET_URL references
-        // it (the stock Laravel `VITE_APP_NAME="${APP_NAME}"` idiom) so the same
-        // prefix reaches Vite's import.meta.env — phpdotenv resolves the
-        // reference both in the build step's parse and at container runtime.
-        // A web-less app serves no assets and provisions no distribution, so
-        // resolving its domain here would crash the build — skip both keys and
-        // let asset() fall back to relative URLs.
+        // Versioned per build so old builds' hashed bundles keep resolving. A
+        // web-less app has no distribution — resolving its domain would crash
+        // the build, so asset() falls back to relative URLs.
         if (Manifest::hasWeb()) {
             $values['ASSET_URL'] = sprintf('https://%s/builds/%s', (new AssetDistribution())->domain(), $appVersion);
             $values['VITE_ASSET_URL'] = '${ASSET_URL}';
         }
 
-        // Platform invariants — values the YOLO image cannot run without — are
-        // SET unconditionally, and a conflicting explicit value in the app's .env
-        // hard-fails the build rather than shipping a silently-broken image:
-        //   LOG_CHANNEL=stderr  — awslogs only captures stdout/stderr; single/daily
-        //                         would write to a file nothing collects.
-        //   OCTANE_HTTPS=true   — the ALB terminates TLS, so without this Octane
-        //                         generates http:// URLs and redirect loops.
-        //   OCTANE_SERVER=frankenphp — the image is FrankenPHP; it won't boot otherwise.
+        // awslogs only captures stdout/stderr; the ALB terminates TLS (else
+        // http:// URLs and redirect loops); the image is FrankenPHP.
         $this->enforce($envPath, $values, 'LOG_CHANNEL', 'stderr');
         $this->enforce($envPath, $values, 'OCTANE_HTTPS', 'true');
         $this->enforce($envPath, $values, 'OCTANE_SERVER', 'frankenphp');
 
-        // Fargate-sane defaults injected only when the consumer's .env doesn't
-        // already set them — the app "just works" with zero config but can still
-        // override.
         $defaults = [
             'AWS_DEFAULT_REGION' => Manifest::get('region'),
             'APP_ENV' => $this->environment,
         ];
 
-        // QUEUE_CONNECTION is one value baked into the one image every task shares
-        // (web + queue + scheduler), so it follows WORKER presence, not web presence:
-        // wherever a queue:work runs — bundled in the web container, a standalone
-        // tasks.queue, or a headless worker — point the connection at the SQS queue
-        // YOLO provisions (it owns the name + URL so the app can't target the wrong
-        // one; the task role carries access), so producers (web requests, scheduled
-        // jobs) and the worker share one queue. Solo and shared-queue apps pin
-        // SQS_QUEUE; a dedicated multi-tenant app resolves the per-tenant queue at
-        // runtime, so it isn't pinned. With no worker anywhere (tasks.queue: false, or
-        // a worker-less app) jobs would pile into a queue nothing drains, so force
-        // `sync` (run inline at dispatch) — and ENFORCE it: a non-sync override would
-        // silently break, so hard-fail rather than ship.
+        // One image serves web + queue + scheduler, so QUEUE_CONNECTION follows
+        // worker presence, not web presence. With no worker anywhere, jobs would
+        // pile into a queue nothing drains — force `sync`.
         if (Manifest::queueHost() instanceof ServerGroup) {
             $defaults['QUEUE_CONNECTION'] = 'sqs';
             $defaults['SQS_PREFIX'] = sprintf('https://sqs.%s.amazonaws.com/%s', Manifest::get('region'), Aws::accountId());
 
             if (! Manifest::fansQueuesPerTenant()) {
-                // The default queue a producer's un-routed jobs land on — the app's
-                // (or a shared multi-tenant app's) base queue, or the higher tier a job
-                // explicitly ->onQueue()s. A dedicated multi-tenant app derives the
-                // per-tenant queue at runtime instead, so nothing is pinned there.
+                // A dedicated multi-tenant app derives its per-tenant queue at runtime.
                 $defaults['SQS_QUEUE'] = Helpers::defaultQueueName();
             }
         } else {
@@ -153,10 +111,6 @@ class ConfigureEnvAndVersionStep implements Step
             $defaults['FILESYSTEM_DISK'] = 's3';
         }
 
-        // Cache store: apps with tasks default to the shared Valkey (Manifest::cacheStore).
-        // Pin CACHE_STORE; when it's redis, point the driver at the YOLO-provisioned
-        // cluster (read live — synced before deploy) and isolate this app on the
-        // shared node with a per-app key prefix.
         if ($cacheStore = Manifest::cacheStore()) {
             $defaults['CACHE_STORE'] = $cacheStore;
 
@@ -164,29 +118,21 @@ class ConfigureEnvAndVersionStep implements Step
                 $defaults['REDIS_HOST'] = (new CacheCluster())->endpoint();
                 $defaults['REDIS_PORT'] = (string) CacheCluster::PORT;
 
-                // ENFORCED, not defaulted: every app in the environment shares one
-                // unauthenticated Valkey node on the same logical databases, so this
-                // prefix is the only thing keeping one app's keys off another's. Two
-                // apps each pinning the stock `laravel_database_` would silently share
-                // a keyspace, so a conflicting override hard-fails the build.
+                // Enforced, not defaulted: every app in the env shares one
+                // unauthenticated Valkey node, so this prefix is the only thing
+                // keeping one app's keys off another's.
                 $this->enforce($envPath, $values, 'REDIS_PREFIX', Helpers::keyedResourceName() . '_');
             }
         }
 
-        // Session driver: web apps default to redis (Manifest::sessionDriver).
-        // Pin SESSION_DRIVER only. For redis we deliberately leave SESSION_CONNECTION
-        // unset — a null connection routes Laravel's redis session handler to the
-        // stock `default` connection (DB 0), keeping sessions off the cache
-        // connection (DB 1). Same Valkey instance, separate keyspace. Other drivers
-        // (database/cookie/file) need no extra env here.
+        // SESSION_CONNECTION is deliberately left unset: null routes the redis
+        // session handler to the `default` connection (DB 0), keeping sessions
+        // off the cache connection (DB 1).
         if ($sessionDriver = Manifest::sessionDriver()) {
             $defaults['SESSION_DRIVER'] = $sessionDriver;
         }
 
-        // Inertia SSR: when the web container bundles the SSR Node process
-        // (tasks.web.ssr), turn Inertia's SSR on so PHP renders pages through it.
-        // The render URL defaults to 127.0.0.1:13714 in config/inertia.php, so only
-        // the enable flag is pinned — and only if the app hasn't set it already.
+        // The render URL already defaults to 127.0.0.1:13714 in config/inertia.php.
         if (Manifest::bundles('ssr')) {
             $defaults['INERTIA_SSR_ENABLED'] = 'true';
         }
@@ -203,11 +149,9 @@ class ConfigureEnvAndVersionStep implements Step
     }
 
     /**
-     * Parse this app's environment-side `.env` (env/.env.{app} in the env
-     * config bucket) into key=>value pairs to merge into the built env. Empty
-     * when the file doesn't exist yet (S3 not-found) — minting the key is what
-     * creates it, so its absence is the steady state until then and must never
-     * crash the build.
+     * The env-side `.env.{app}` only exists once sync has minted a secret into
+     * it (e.g. a scoped TYPESENSE_API_KEY), so not-found is the steady state
+     * for most apps and must never fail the build.
      *
      * @return array<string, string>
      */
@@ -239,12 +183,8 @@ class ConfigureEnvAndVersionStep implements Step
     }
 
     /**
-     * Hard-fail the build when no queue worker runs (tasks.queue: false, or a
-     * worker-less app) yet the app's own .env pins QUEUE_CONNECTION to anything but
-     * `sync`. With no worker, any other connection dispatches into a queue nothing
-     * drains; YOLO can't fix it by injecting `sync` (its default is skipped once the
-     * key is set, and phpdotenv is first-wins), so it would otherwise ship a silently
-     * broken build. The usual intent is a bundled worker — point the way out.
+     * YOLO can't fix a non-sync override by injecting `sync` — defaults are
+     * skipped once the key is set and phpdotenv is first-wins — so hard-fail.
      */
     protected function ensureSyncQueueConnection(string $envPath): void
     {
@@ -261,13 +201,6 @@ class ConfigureEnvAndVersionStep implements Step
         }
     }
 
-    /**
-     * Inject a platform-invariant env value, hard-failing if the app's own .env
-     * pins a conflicting value. These keys are non-negotiable on the YOLO image
-     * (the awslogs log channel, ALB TLS termination, the FrankenPHP server), so
-     * an explicit override would silently break the build — surface it loudly
-     * instead. When the app sets the required value (or nothing), inject it.
-     */
     protected function enforce(string $envPath, array &$values, string $key, string $required): void
     {
         $current = $this->envValue($envPath, $key);
@@ -284,11 +217,6 @@ class ConfigureEnvAndVersionStep implements Step
         $values[$key] = $required;
     }
 
-    /**
-     * The value the app's staged .env defines for $key, or null when the key is
-     * absent (or the file doesn't exist yet). Surrounding quotes and whitespace are
-     * stripped so the comparison is on the bare value.
-     */
     protected function envValue(string $path, string $key): ?string
     {
         if (! $this->filesystem->exists($path)) {

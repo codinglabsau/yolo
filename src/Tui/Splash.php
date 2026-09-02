@@ -2,16 +2,9 @@
 
 namespace Codinglabs\Yolo\Tui;
 
-/**
- * The launch splash. The rocket sits on the pad while the first fetch runs, then
- * lifts off — climbing a constant-height canvas with a growing flame/exhaust
- * trail — while the YOLO wordmark wipes in left-to-right (cyan→lime, the logo's
- * gradient) and the tagline lands as it settles. Any keypress skips it; the
- * caller gates it off for non-TTY / NO_COLOR shells.
- */
+/** Any keypress skips it; the caller gates it off for non-TTY / NO_COLOR shells. */
 class Splash
 {
-    /** How many rows the rocket climbs across the animation. */
     public const LIFT = 5;
 
     /** @var array<int, string> */
@@ -37,9 +30,7 @@ class Splash
     public const TAGLINE = 'deploy · observe · steer';
 
     /**
-     * The thrust + exhaust glyphs below the rocket, brightest first, fading down
-     * the trail. Index 0 is the always-lit base thrust; deeper rows appear as the
-     * rocket climbs.
+     * Index 0 is the always-lit base thrust; deeper rows appear as the rocket climbs.
      *
      * @var array<int, array{0: string, 1: Theme}>
      */
@@ -53,9 +44,8 @@ class Splash
     ];
 
     /**
-     * One animation frame at $progress (0 = on the pad, 1 = settled). The canvas
-     * is a constant height so the in-place repaint never jumps: as the rocket
-     * rises, the blank rows above it become exhaust-trail rows below it.
+     * The canvas is a constant height so the in-place repaint never jumps: as the
+     * rocket rises, the blank rows above it become trail rows below it.
      *
      * @return array<int, string>
      */
@@ -86,9 +76,7 @@ class Splash
             ? self::centre(Theme::Accent->fg(self::TAGLINE), mb_strlen(self::TAGLINE), $width)
             : '';
 
-        // A boot line for the pad-wait (the rocket holds here while the first
-        // fetch runs). Always a row — empty during the launch — so the height
-        // stays constant and the repaint never jumps.
+        // Always a row — empty during the launch — so the height stays constant.
         $rows[] = $status === ''
             ? ''
             : self::centre(Theme::Muted->fg('▸ ' . $status), mb_strlen('▸ ' . $status), $width);
@@ -97,9 +85,7 @@ class Splash
     }
 
     /**
-     * The wordmark wiped in left-to-right to $progress — the revealed run split
-     * cyan (left half) → lime (right half), echoing the logo. Each entry is
-     * [taggedVisible, fullLineLength] so centring stays fixed as it fills.
+     * Each entry is [taggedVisible, fullLineLength] so centring stays fixed as it fills.
      *
      * @return array<int, array{0: string, 1: int}>
      */
@@ -128,12 +114,7 @@ class Splash
         return str_repeat(' ', max(0, intdiv($width - $rawLength, 2))) . $tagged;
     }
 
-    /**
-     * Hold the rocket on the pad while $work (the first fetch) runs, then play the
-     * launch — progress 0→1 over ~1.2s — and settle briefly. Any keypress skips.
-     *
-     * @codeCoverageIgnore timing + terminal I/O — exercised by hand, not in CI.
-     */
+    /** @codeCoverageIgnore timing + terminal I/O — exercised by hand, not in CI. */
     public function play(Screen $screen, Keyboard $keyboard, callable $work, string $status = ''): void
     {
         $width = $screen->width();

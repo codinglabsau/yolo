@@ -10,15 +10,11 @@ use Codinglabs\Yolo\EnvironmentVersion;
 use Codinglabs\Yolo\Resources\Route53\HostedZone;
 
 /**
- * Writer of one app's resources within an environment. Blast radius: this app.
- * Mode-aware (solo vs multi-tenant) and `--tenant`-filterable for a single-tenant
- * cutover. Assumes the environment tier exists — depends on shared resources and
- * additively attaches (listener rule, SNI cert), never mutating them.
- *
- * Two env-shared resources are provisioned here by exception rather than in
- * sync:environment: the RDS security group (its real work is this app's task-SG
- * ingress) and the HTTPS listener (its creation needs this app's ACM cert).
- * Both are created-if-missing and never mutated, so single-writer still holds.
+ * Depends on the environment tier and additively attaches to it (listener rule, SNI
+ * cert), never mutating shared resources. Two env-shared resources are bootstrapped
+ * here by exception: the RDS security group (its real work is this app's task-SG
+ * ingress) and the HTTPS listener (its creation needs this app's ACM cert). Both are
+ * created-if-missing and never mutated, so single-writer still holds.
  */
 class SyncAppCommand extends SyncSteppedCommand
 {
@@ -32,17 +28,10 @@ class SyncAppCommand extends SyncSteppedCommand
     #[\Override]
     public function handle(): int
     {
-        // A claim on a service the env manifest doesn't offer is a hard error
-        // here, exactly as at build/deploy — the claim would publish cleanly
-        // and then provision nothing.
         if (! $this->ensureClaimedServicesOffered()) {
             return self::FAILURE;
         }
 
-        // A bring-your-own app data bucket must already exist on this account —
-        // refused here, before the plan, because YOLO can't create a bucket outside
-        // its own namespace and adopting one owned by another account would sync
-        // clean and then fail every runtime write.
         if (! $this->ensureAppBucketAdoptable()) {
             return self::FAILURE;
         }
@@ -62,11 +51,8 @@ class SyncAppCommand extends SyncSteppedCommand
     }
 
     /**
-     * A heads-up when this app's hosted zone is already owned by another
-     * environment — i.e. the same app is served on the one domain from more than
-     * one env (a trial alongside prod). It's not a gate: record writes are
-     * isolated (each env UPSERTs only its own subdomain) and the env ownership tag
-     * is first-writer-wins, so this only reminds the operator the zone is shared.
+     * Not a gate: record writes are isolated (each env UPSERTs only its own
+     * subdomain) and the env ownership tag is first-writer-wins.
      */
     public function hostedZoneOwnershipWarning(): ?string
     {
@@ -90,11 +76,8 @@ class SyncAppCommand extends SyncSteppedCommand
     }
 
     /**
-     * A loud warning when cron is switched off entirely (`tasks.scheduler: false`):
-     * the Laravel scheduler runs nowhere, so scheduled work and the framework/package
-     * maintenance that rides the scheduler (model pruning, auth:clear-resets,
-     * telescope/pulse pruning, …) silently stop firing. Rarely intended, so it's
-     * surfaced on every sync as a deliberate choice rather than a quiet default.
+     * Rarely intended — framework/package maintenance riding the scheduler silently
+     * stops firing — so it's surfaced on every sync.
      */
     public static function schedulerDisabledWarning(): ?string
     {
@@ -107,12 +90,8 @@ class SyncAppCommand extends SyncSteppedCommand
     }
 
     /**
-     * A soft, non-blocking nudge (not a guard) when the scheduler is bundled into a
-     * host that can run more than one task — the autoscaling web container, or the
-     * standalone queue (which always autoscales). Cron then fires on every replica,
-     * so every scheduled task must use ->onOneServer(). A dedicated tasks.scheduler
-     * service is a pinned singleton and needs no nudge; a disabled scheduler (null
-     * host) never fires at all, so it gets the separate warning above, not this one.
+     * A nudge, not a guard: cron fires on every replica of a multi-task host, so
+     * every scheduled task must use ->onOneServer().
      */
     public static function schedulerAdvisory(): ?string
     {
@@ -139,67 +118,46 @@ class SyncAppCommand extends SyncSteppedCommand
     {
         return [
             'app' => [
-                // storage
                 Steps\Sync\App\SyncS3ConfigBucketStep::class,
                 Steps\Sync\App\SyncS3BucketStep::class,
                 Steps\Sync\App\SyncS3AssetBucketStep::class,
-                // environment claim — publish `apps/{app}.yml` into the env
-                // config bucket so the env tier can flag idle services and
-                // guard service removal (deploy republishes it too)
+                // The env tier flags idle services and guards service removal off this
+                // published claim.
                 Steps\Sync\App\PublishAppManifestStep::class,
-                // per-service app resources — every service's app steps are
-                // always in the plan (each self-gates on the app's claim), so
-                // dropping a claim melts that service's per-app IAM on the
-                // same sync rather than orphaning it
+                // Always in the plan (each self-gates on the claim) so dropping a claim
+                // melts that service's per-app IAM on the same sync instead of orphaning it.
                 ...static::appServiceSteps(),
-                // app IAM — every policy is created before any attach, so the
-                // deployer attach can reference the per-app observer policy.
-                // The per-app observer (read tier scoped to one app, log content
-                // fenced to its log group) is always provisioned (no GitHub-repo
-                // gate) so a read grant can name a single app; it's also the read
-                // surface the deployer carries for the pre-deploy sync-check gate.
+                // Every policy before any attach — the deployer attach references the
+                // per-app observer policy. The observer is always provisioned (no
+                // GitHub-repo gate) so a read grant can name a single app; it's also
+                // the read surface the deployer carries for the pre-deploy sync-check.
                 Steps\Sync\App\SyncDeployerPolicyStep::class,
                 Steps\Sync\App\SyncAppObserverPolicyStep::class,
                 Steps\Sync\App\SyncDeployerRoleStep::class,
                 Steps\Sync\App\SyncAppObserverRoleStep::class,
                 Steps\Sync\App\AttachDeployerRolePoliciesStep::class,
                 Steps\Sync\App\AttachAppObserverRolePolicyStep::class,
-                // per-app grant groups: membership grants deploy / read
-                // on THIS app only. The deployers group is gated on a GitHub repo
-                // like the deployer role it points at; the observers group is always
-                // provisioned so a read grant can name a single app.
                 Steps\Sync\App\SyncDeployersGroupStep::class,
                 Steps\Sync\App\SyncAppObserversGroupStep::class,
-                // cert/DNS + queues — runs before Fargate so the SSL certificate
-                // exists before the HTTPS listener that needs it.
-                //
-                // The app's own zone + cert are provisioned whenever it declares a
-                // `domain`, tenanted or not: `tenants` is an orthogonal axis, so a
-                // tenanted app on its own domain (serving tenants as subdomains via
-                // `wildcard-subdomains`) gets the same app-level pair a solo app does.
+                // Before Fargate so the certificate exists before the HTTPS listener
+                // that needs it. `tenants` is an orthogonal axis: a tenanted app on
+                // its own domain gets the same app-level zone + cert a solo app does.
                 ...Manifest::hasDomain()
                     ? [
                         Steps\Sync\App\Solo\SyncHostedZoneStep::class,
                         Steps\Sync\App\Solo\SyncSslCertificateStep::class,
                     ]
                     : [],
-                // Per-tenant zone + cert, for tenants the app's own certificate
-                // doesn't already cover — i.e. genuine custom domains. A tenant
-                // sitting under the app's wildcard self-skips every one of these
-                // (Manifest::servesDomain), so declaring tenants for their queues
-                // costs no DNS/TLS resources.
+                // A tenant under the app's wildcard self-skips (Manifest::servesDomain),
+                // so declaring tenants for their queues costs no DNS/TLS resources.
                 ...Manifest::hasTenants()
                     ? [
                         Steps\Sync\App\Tenant\SyncHostedZoneStep::class,
                         Steps\Sync\App\Tenant\SyncSslCertificateStep::class,
                     ]
                     : [],
-                // A `dedicated` multi-tenant app fans queues out landlord +
-                // per-tenant; a `shared` one provisions a single queue set at the app
-                // name (the solo shape), matching the fansQueuesPerTenant() gate its
-                // worker programs key off. Gated on tenants, not the mode — with none
-                // declared there is one scope, so the solo branch (melt included) is
-                // the correct shape.
+                // Gated on tenants, not the mode — with none declared there is one
+                // scope, so the solo branch (melt included) is the correct shape.
                 ...Manifest::hasTenants()
                     ? (Manifest::fansQueuesPerTenant()
                         ? [
@@ -210,14 +168,10 @@ class SyncAppCommand extends SyncSteppedCommand
                             Steps\Sync\App\Shared\SyncQueueStep::class,
                         ])
                     : [
-                        // The SQS queue, always wired with a melt branch: with no
-                        // worker anywhere (tasks.queue: false, or a web-less app
-                        // with no standalone queue) jobs run inline
-                        // (QUEUE_CONNECTION=sync), so the queue is never published to
-                        // — tear it down instead of stranding an idle queue (mirrors
-                        // the standalone-service melt below).
-                        // (Multi-tenant queues stay unconditional — their per-tenant
-                        // teardown is the unbuilt destroy:app gap.)
+                        // With no worker anywhere jobs run inline (QUEUE_CONNECTION=sync)
+                        // and the queue is never published to — tear it down rather than
+                        // strand it. Multi-tenant queues stay unconditional: their
+                        // per-tenant teardown is the unbuilt destroy:app gap.
                         ...Manifest::queueHost() instanceof ServerGroup
                             ? [
                                 Steps\Sync\App\Solo\SyncQueueStep::class,
@@ -226,53 +180,34 @@ class SyncAppCommand extends SyncSteppedCommand
                                 Steps\Destroy\App\TeardownQueueStep::class,
                             ],
                     ],
-                // Fargate — shared by every service the app runs (web, standalone
-                // queue, standalone scheduler), so it's gated on "at least one ECS
-                // service exists", not on web. A manifest with a `tasks` block that
-                // yields no service is refused up front (ensureTasksRunnable).
+                // Gated on "at least one ECS service", not on web — the standalone
+                // queue/scheduler need Fargate too.
                 ...Manifest::serverGroups() !== []
                     ? [
                         Steps\Sync\App\SyncEcrRepositoryStep::class,
                         Steps\Sync\App\SyncEcsClusterStep::class,
-                        // Per-app ECS task role (the container runtime identity for
-                        // web/queue/scheduler) + its baseline policy + any
-                        // manifest-declared `task-role-policies` — created before the
-                        // task definition that references the role ARN.
+                        // Task role before the task definition that references its ARN.
                         Steps\Sync\App\SyncEcsTaskPolicyStep::class,
                         Steps\Sync\App\SyncEcsTaskRoleStep::class,
                         Steps\Sync\App\AttachEcsTaskRolePoliciesStep::class,
                         Steps\Sync\App\SyncTaskSecurityGroupStep::class,
                         Steps\Sync\App\SyncRdsSecurityGroupStep::class,
-                        // An externally-hosted (peered) database gets the same
-                        // additive database-port-from-task-SG rule on its own discovered
-                        // security group; skipped by the deploy gate (its tier
-                        // may not hold the RDS / foreign-SG reads).
+                        // Skipped by the deploy gate — its tier may not hold the RDS /
+                        // foreign-SG reads.
                         Steps\Sync\App\SyncExternalDatabaseIngressStep::class,
-                        // Valkey cache — env-owned, bootstrapped from sync:app (gated
-                        // on cache.store). The env infrastructure (subnet/parameter
-                        // groups, the SG, the cluster) lives in the Environment
-                        // namespace; this app then authorises its own 6379 ingress on
-                        // the shared SG below, mirroring Typesense's env-SG/app-ingress
-                        // split.
+                        // Valkey is env-owned but bootstrapped from sync:app (gated on
+                        // cache.store); the app then authorises its own 6379 ingress on
+                        // the shared SG, mirroring Typesense's env-SG/app-ingress split.
                         Steps\Sync\Environment\SyncCacheSubnetGroupStep::class,
                         Steps\Sync\Environment\SyncCacheParameterGroupStep::class,
                         Steps\Sync\Environment\SyncCacheSecurityGroupStep::class,
                         Steps\Sync\Environment\SyncCacheClusterStep::class,
                         Steps\Sync\App\AuthoriseCacheIngressStep::class,
                         Steps\Sync\App\SyncTaskLogGroupStep::class,
-                        // Standalone queue service (own task-def + service +
-                        // scale-to-zero autoscaling) — only when tasks.queue extracts
-                        // it from the web container. When it no longer does — the block
-                        // reverted to bundled, or was switched off with
-                        // `tasks.queue: false` — the melt branch tears any
-                        // previously-extracted service + autoscaling back down. Without
-                        // it, dropping the block would just prune the sync steps and
-                        // strand a live service the plan never mentions again (a running
-                        // service + a stale scalable target + the non-cascading
-                        // scale-to-zero alarm). These are the same teardown units
-                        // destroy:app runs; each no-ops when nothing's live, so a normal
-                        // bundled-queue app pays only two idempotent reads per sync —
-                        // the same always-wired-melt shape the web autoscaling steps use.
+                        // Always-wired melt: dropping the block would otherwise just prune
+                        // the sync steps and strand a live service the plan never mentions
+                        // again (running service + stale scalable target + non-cascading
+                        // scale-to-zero alarm). Each teardown no-ops when nothing's live.
                         ...Manifest::hasStandaloneQueue()
                             ? [
                                 Steps\Sync\App\SyncQueueTaskDefinitionStep::class,
@@ -282,17 +217,10 @@ class SyncAppCommand extends SyncSteppedCommand
                                 Steps\Sync\App\SyncQueueScaleToZeroAlarmStep::class,
                             ]
                             : [
-                                // Autoscaling first (scalable target + cascaded policies
-                                // + the standalone alarm), then the service — mirrors
-                                // destroy:app's teardown order.
+                                // Autoscaling before the service — mirrors destroy:app.
                                 Steps\Destroy\App\DeregisterQueueAutoscalingStep::class,
                                 Steps\Destroy\App\TeardownQueueServiceStep::class,
                             ],
-                        // Standalone scheduler service (pinned singleton) — only when
-                        // tasks.scheduler extracts it from the web container; otherwise
-                        // melt any previously-extracted scheduler service back down
-                        // (the scheduler never autoscales, so the service is all there
-                        // is to tear down).
                         ...Manifest::hasStandaloneScheduler()
                             ? [
                                 Steps\Sync\App\SyncSchedulerTaskDefinitionStep::class,
@@ -303,17 +231,15 @@ class SyncAppCommand extends SyncSteppedCommand
                             ],
                     ]
                     : [],
-                // Web ingress + the web service + CDN (web tasks only)
                 ...Manifest::hasWeb()
                     ? [
                         Steps\Sync\App\SyncTargetGroupStep::class,
                         Steps\Sync\App\SyncHttpsListenerStep::class,
                         Steps\Sync\App\SyncForwardRuleStep::class,
                         Steps\Sync\App\SyncRedirectRuleStep::class,
-                        // Per-tenant ingress, after the listener they attach to and
-                        // the target group they forward at. Each self-skips for a
-                        // tenant the app's own certificate already covers, so this
-                        // only does work for genuine custom domains.
+                        // After the listener they attach to and the target group they
+                        // forward at. Each self-skips for a tenant the app's own
+                        // certificate already covers.
                         ...Manifest::hasTenants()
                             ? [
                                 Steps\Sync\App\Tenant\AttachSslCertificateToLoadBalancerListenerStep::class,
@@ -323,22 +249,16 @@ class SyncAppCommand extends SyncSteppedCommand
                             : [],
                         Steps\Sync\App\SyncTaskDefinitionStep::class,
                         Steps\Sync\App\SyncEcsServiceStep::class,
-                        // Autoscaling (web only) — registered after the service it
-                        // scales. Wired whenever the web task exists, not just when
-                        // autoscaling is on, so removing the tasks.web.autoscaling
-                        // block tears the scalable target, policies and their alarms
-                        // back down. Both steps no-op when it was never enabled.
+                        // Wired whenever the web task exists, not just when autoscaling
+                        // is on, so removing the block tears the scalable target,
+                        // policies, burst policy and their alarms back down.
                         Steps\Sync\App\SyncScalableTargetStep::class,
                         Steps\Sync\App\SyncScalingPoliciesStep::class,
-                        // Burst scale-out: a high-res worker-saturation alarm + step policy
-                        // for ~10s spike detection — part of web autoscaling, not a setting.
-                        // Wired whenever the web task exists so a non-autoscaling web tier
-                        // prunes the policy + its self-authored alarm; no-ops when it doesn't apply.
                         Steps\Sync\App\SyncWebBurstStep::class,
                         Steps\Sync\App\SyncCloudFrontAssetDistributionStep::class,
                     ]
                     : [],
-                // observability — runs last so every resource it charts already exists
+                // Last so every resource it charts already exists.
                 Steps\Sync\App\SyncWebAlertAlarmStep::class,
                 Steps\Sync\App\SyncCloudWatchDashboardStep::class,
             ],
@@ -346,10 +266,6 @@ class SyncAppCommand extends SyncSteppedCommand
     }
 
     /**
-     * Every service's app-tier steps, composed from the definitions in enum
-     * order — the declared plan stays the same whatever the app claims; each
-     * step gates itself on the claim (sync when claimed, melt when dropped).
-     *
      * @return array<int, class-string>
      */
     protected static function appServiceSteps(): array

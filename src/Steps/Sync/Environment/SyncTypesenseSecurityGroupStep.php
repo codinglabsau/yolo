@@ -20,15 +20,10 @@ use Codinglabs\Yolo\Resources\Ec2\LoadBalancerSecurityGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * The node tasks' security group and its baseline ingress: the search API
- * (8108) from the env ALB's security group, plus node-to-node (self-referencing)
- * on BOTH the search API (8108) and Raft peering (8107) ports. The API port is
- * needed node-to-node as well as from the ALB — Typesense polls peers' /status
- * and forwards writes to the leader over 8108, so peering on 8107 alone leaves a
- * follower unable to hand a write (e.g. minting a key) to the leader, and the
- * cluster serves reads but silently fails writes. Rules are reconciled
- * additively, identified by content — consuming apps' task-SG 8108 ingress is
- * the app tier's to add, the RDS pattern.
+ * The API port is needed node-to-node as well as from the ALB — Typesense polls
+ * peers' /status and forwards writes to the leader over 8108, so peering on
+ * 8107 alone leaves a follower unable to hand a write to the leader: reads
+ * work, writes silently fail. Consuming apps' task-SG ingress is the app tier's to add.
  */
 class SyncTypesenseSecurityGroupStep implements LongRunning, Step
 {
@@ -36,10 +31,7 @@ class SyncTypesenseSecurityGroupStep implements LongRunning, Step
 
     /**
      * LongRunning for its teardown: deleting the node SG blocks while AWS detaches
-     * the load-balancer + node ENIs that still reference it, which the resource
-     * waits out (see TypesenseSecurityGroup::delete()) — up to a couple of minutes.
-     * Provisioning the group + its ingress is quick, so the patience line reflects
-     * whichever direction is running.
+     * the ENIs still referencing it (see TypesenseSecurityGroup::delete()).
      */
     public function patienceMessage(): string
     {
@@ -62,8 +54,8 @@ class SyncTypesenseSecurityGroupStep implements LongRunning, Step
         $result = $this->syncResource($group, $options);
 
         if (! $group->exists()) {
-            // Greenfield plan — the group's own create is pending, so both
-            // rules are too. Record them so the apply pass runs this step.
+            // Greenfield plan — the group's own create is pending; record the rules
+            // too so the apply pass runs this step.
             $this->recordChange(Change::make(sprintf('ingress %d/tcp from load balancer security group', Typesense::API_PORT), null, 'authorised'));
             $this->recordChange(Change::make(sprintf('ingress %d/tcp node-to-node', Typesense::API_PORT), null, 'authorised'));
             $this->recordChange(Change::make(sprintf('ingress %d/tcp node-to-node', Typesense::PEERING_PORT), null, 'authorised'));
@@ -108,9 +100,8 @@ class SyncTypesenseSecurityGroupStep implements LongRunning, Step
     }
 
     /**
-     * Additively ensure a "<port> from <source SG>" rule. A null source (the
-     * ALB SG missing on a greenfield plan) records the pending rule without
-     * resolving the sibling. Never revokes; identified by content.
+     * A null source (the ALB SG missing on a greenfield plan) records the pending
+     * rule without resolving the sibling. Never revokes.
      */
     protected function reconcileIngress(string $groupId, int $port, ?string $sourceGroupId, string $description, string $label, bool $dryRun): bool
     {

@@ -78,8 +78,7 @@ class EnvPushCommand extends Command implements DeployerCommand
                     'Key' => $filename,
                 ]);
         } catch (S3Exception $e) {
-            // On a fresh app the config bucket doesn't exist until the first
-            // sync — point at the fix instead of dumping the SDK exception.
+            // The config bucket doesn't exist until the first sync.
             if ($e->getAwsErrorCode() === 'NoSuchBucket') {
                 error(sprintf('The config bucket does not exist yet — run `yolo sync %s` to provision it, then push again.', $environment));
 

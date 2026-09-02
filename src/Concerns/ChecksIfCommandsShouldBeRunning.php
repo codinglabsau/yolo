@@ -18,22 +18,16 @@ trait ChecksIfCommandsShouldBeRunning
         return $this->skipReason($instance) === null;
     }
 
-    /**
-     * The human-readable reason this command/step is skipped, or null if it should run.
-     */
     public function skipReason(Command|Step $instance): ?string
     {
-        // The pre-deploy in-sync gate runs as the deployer tier, which is fenced
-        // from the admin-owned env-backed-service state these steps reconcile
-        // (the env-shared admin key, env log-group tags). `yolo sync <env>`
-        // verifies them; the gate skips them rather than 403.
+        // The deploy gate runs as the deployer tier, fenced from the admin-owned
+        // state these steps reconcile — skip rather than 403.
         if ($instance instanceof SkippedByDeployCheck && DeployCheck::active()) {
             return 'admin-owned reconciler — verified by `yolo sync`, not the deploy gate';
         }
 
-        // Keyed on tenants being declared, not on the mode: a landlord-only
-        // `multitenancy` block has one scope, so it wants the single-scope (solo)
-        // shape these contracts discriminate — nothing fans out over zero tenants.
+        // Keyed on tenants being declared, not the mode: a landlord-only
+        // `multitenancy` block has one scope, so it takes the solo shape.
         if ($instance instanceof ExecutesSoloStep && Manifest::hasTenants()) {
             return 'single-scope step in an app with tenants';
         }

@@ -18,18 +18,14 @@ use Codinglabs\Yolo\Services\TypesenseTaskDefinition;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * The single task-definition family every Typesense node runs
- * (yolo-{env}-typesense) — one family, three services, because the image
- * bakes the full peer list and each node identifies itself by matching a
- * local interface. Unlike app task definitions (where the image is deploy's
- * call), sync owns the image here: the desired revision pins the current
- * content tag, so a version bump or key rotation registers a new revision and
- * the nodes step rolls it through the cluster one node at a time — in the
- * same sync, which is why the nodes step shares TypesenseTaskDefinition's
- * desired-vs-live check rather than trusting the live latest alone.
+ * One family for every node: the image bakes the full peer list and each node
+ * identifies itself by matching a local interface. Unlike app task definitions
+ * (where the image is deploy's call), sync owns the image here — a version bump
+ * or key rotation registers a new revision that the nodes step rolls through
+ * the cluster in the same sync, which is why that step shares
+ * TypesenseTaskDefinition's desired-vs-live check rather than trusting the live latest.
  *
- * Teardown is a skip — task-definition revisions are registration history,
- * not standing infrastructure (the audit ignores them for the same reason).
+ * Teardown is a skip — revisions are registration history, not standing infrastructure.
  */
 class SyncTypesenseTaskDefinitionStep implements SkippedByDeployCheck, Step
 {
@@ -47,9 +43,8 @@ class SyncTypesenseTaskDefinitionStep implements SkippedByDeployCheck, Step
         try {
             $desired = TypesenseTaskDefinition::desired();
         } catch (ResourceDoesNotExistException) {
-            // The execution role / image tag aren't resolvable yet (a
-            // greenfield plan pass) — report pending; on apply the earlier
-            // steps have provisioned them, so a genuine miss is a hard fail.
+            // The execution role / image tag aren't resolvable on a greenfield plan
+            // pass — report pending; on apply they exist, so a genuine miss is a hard fail.
             if ($dryRun) {
                 $this->recordChange(Change::make('typesense task definition', 'absent', 'new revision'));
 

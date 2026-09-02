@@ -29,41 +29,22 @@ use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\warning;
 
 /**
- * In-place database endpoint cutover for a running app — the migration
- * endgame move. `DB_HOST` is baked into the image, so repointing a database
- * via env:push + deploy costs the full rolling-deploy duration as the write
- * window, with a mixed-fleet moment where old and new tasks write to
- * different hosts. This flips every running task in place instead:
- * maintenance page up → patch `.env` per container → rebuild the config
- * cache → `octane:reload` (web) / `queue:restart` (queue) → maintenance
- * page down — shrinking the window to the length of the loop — then proves
- * the result across independent layers, ending with a cross-container
- * `@@server_uuid` identity check that catches a straggler still on the old
- * database even when every hostname reads clean.
+ * `DB_HOST` is baked into the image, so repointing via env:push + deploy costs the
+ * full rolling-deploy duration as the write window, with a mixed-fleet moment where
+ * old and new tasks write to different hosts. Flipping every running task in place
+ * shrinks the window to the length of the loop.
  *
- * Admin tier: the flip rewrites the live runtime configuration of every
- * task in the fleet — beyond the deploy lifecycle — and the target picker
- * needs the RDS describe surface only the admin/observer read set carries.
- * Admin's MFA-per-run gate is the right friction for a database cutover.
- * The container execs themselves ride the same `aws ecs execute-command`
- * plumbing as `yolo run` (session-manager-plugin, ECS Exec enabled).
+ * Admin tier: the flip rewrites live runtime config fleet-wide (beyond the deploy
+ * lifecycle), the target picker needs the RDS describe surface, and the MFA-per-run
+ * gate is the right friction for a database cutover.
  *
- * THE FLIP IS TRANSIENT: env lives in the baked image, so any task the
- * scheduler replaces afterwards boots the OLD host. Follow promptly with
- * `yolo env:push` + a deploy (and repoint `database:` in the manifest) to
- * make it permanent.
+ * THE FLIP IS TRANSIENT: any task replaced afterwards boots the OLD host until
+ * `yolo env:push` + a deploy (and a repointed `database:`) make it permanent.
  */
 class DbCutoverCommand extends Command implements AdminCommand
 {
-    /**
-     * Task groups flipped, in execution order. The queue group also gets a
-     * `queue:restart` (workers hold a booted config in memory); web gets an
-     * `octane:reload` for the same reason; scheduler containers boot fresh
-     * per cron tick, so patch + optimize is enough there.
-     */
     protected const GROUPS = ['web', 'queue', 'scheduler'];
 
-    /** Manual-entry sentinel for the target picker. */
     protected const MANUAL_ENTRY = '__manual';
 
     protected function configure(): void
@@ -104,10 +85,8 @@ class DbCutoverCommand extends Command implements AdminCommand
             return $this->verifyFleet($cluster, $tasks, $target);
         }
 
-        // Read each container's live DB_HOST up front: it renders the plan's
-        // old → new column and powers the resumability skip — a task already
-        // on the target is a no-op, so a cutover that died mid-loop is safe
-        // to simply re-run.
+        // A task already on the target is skipped, so a cutover that died mid-loop
+        // is safe to simply re-run.
         foreach ($tasks as $index => $task) {
             $tasks[$index]['host'] = spin(
                 fn (): ?string => static::parseEnvHost($this->exec($cluster, $task['arn'], $task['group'], "grep '^DB_HOST=' .env")),
@@ -145,11 +124,9 @@ class DbCutoverCommand extends Command implements AdminCommand
     }
 
     /**
-     * The flip itself, phased exactly like the battle-tested loop: every
-     * pending task goes down first (one write-window, not one per task), then
-     * each is patched and its long-lived workers reloaded, then — only once
-     * every container proves it sees the new host — every task comes back up.
-     * Returns false on the first failed exec, leaving maintenance up so the
+     * Phased: every pending task down first (one write window, not one per task),
+     * then patch + reload, then up only once every container proves it sees the new
+     * host. Returns false on the first failed exec, leaving maintenance up so the
      * operator re-runs rather than serving split-brained.
      */
     protected function flip(string $cluster, array $tasks, array $pending, string $target): bool
@@ -191,9 +168,8 @@ class DbCutoverCommand extends Command implements AdminCommand
             }
         }
 
-        // The pre-up gate: no task serves traffic again until its container
-        // proves the patched host landed. A mismatch here means the sed or
-        // the optimize didn't take — stop with the page still up.
+        // A mismatch means the sed or the optimize didn't take — stop with the
+        // page still up.
         foreach ($pending as $task) {
             $seen = spin(
                 fn (): ?string => static::parseEnvHost($this->exec($cluster, $task['arn'], $task['group'], "grep '^DB_HOST=' .env")),
@@ -222,14 +198,8 @@ class DbCutoverCommand extends Command implements AdminCommand
     }
 
     /**
-     * The read-only verification pass — also the whole of `--verify`. Per
-     * container it proves independent layers: the `.env` line, the CACHED
-     * config value (what the booted app actually reads), a live query
-     * answering (and which server answered it), maintenance mode off, and
-     * running workers on queue tasks. Then the split-brain detector: every
-     * container must have reported the SAME `@@server_uuid` — one straggler
-     * still talking to the old database fails this even when every hostname
-     * reads clean. Exits non-zero on any failure so it can gate automation.
+     * Every container must report the SAME `@@server_uuid` — a straggler still on
+     * the old database fails this even when every hostname reads clean.
      */
     protected function verifyFleet(string $cluster, array $tasks, string $target): int
     {
@@ -281,11 +251,8 @@ class DbCutoverCommand extends Command implements AdminCommand
     }
 
     /**
-     * The target endpoint: `--host` (endpoint used as-is, or an instance
-     * identifier resolved with a describe) or an interactive picker over the
-     * account's DB instances, with a manual-entry escape hatch. Whatever the
-     * source, the value must look like a hostname — it's interpolated into a
-     * sed running inside the container, so anything else hard-fails here.
+     * The value is interpolated into a sed running inside the container, so
+     * anything that isn't a hostname hard-fails here.
      */
     protected function resolveTargetHost(): ?string
     {
@@ -342,8 +309,8 @@ class DbCutoverCommand extends Command implements AdminCommand
     }
 
     /**
-     * Every running task across the flip's groups, tagged with its group (the
-     * container name — the task-def names its container after the role).
+     * The group doubles as the container name — the task-def names its container
+     * after the role.
      *
      * @return array<int, array{group: string, arn: string, id: string}>
      */
@@ -361,10 +328,8 @@ class DbCutoverCommand extends Command implements AdminCommand
     }
 
     /**
-     * Run a shell line in a container over ECS Exec and return its cleaned
-     * output, or null when the session itself failed. ECS Exec doesn't
-     * propagate the remote exit code, so callers judge success by output
-     * shape (the verify patterns), never by code.
+     * Null only when the session itself failed: ECS Exec doesn't propagate the
+     * remote exit code, so callers judge success by output shape, never by code.
      */
     protected function exec(string $cluster, string $taskArn, string $container, string $shell): ?string
     {
@@ -374,9 +339,8 @@ class DbCutoverCommand extends Command implements AdminCommand
             timeout: 300,
         );
 
-        // Open stdin keeps the plugin's pump from a spurious EOF failure —
-        // see RunCommand::exec(); a non-zero plugin exit here would read as a
-        // failed session and null the output.
+        // Open stdin keeps the plugin's pump from a spurious EOF failure (see
+        // RunCommand::exec()) that would read here as a failed session.
         $process->setInput(new InputStream());
 
         return $process->run() === 0
@@ -385,10 +349,8 @@ class DbCutoverCommand extends Command implements AdminCommand
     }
 
     /**
-     * Wrap a shell line for the ECS Exec agent: the agent tokenises the
-     * command string shell-style, so the wire format is `/bin/sh -c "..."`
-     * with inner double quotes escaped — the exact shape the field-proven
-     * prototype used.
+     * The ECS Exec agent tokenises the command string shell-style, so the wire
+     * format is `/bin/sh -c "..."` with inner double quotes escaped.
      */
     public static function containerCommand(string $shell): string
     {
@@ -406,7 +368,7 @@ class DbCutoverCommand extends Command implements AdminCommand
         return implode("\n", $lines);
     }
 
-    /** The in-container patch: rewrite DB_HOST, then rebuild the cached config the booted app reads. */
+    /** `optimize` rebuilds the cached config the booted app actually reads. */
     public static function patchCommand(string $target): string
     {
         return sprintf("sed -i 's|^DB_HOST=.*|DB_HOST=%s|' .env && php artisan optimize", $target);
@@ -432,9 +394,6 @@ class DbCutoverCommand extends Command implements AdminCommand
     }
 
     /**
-     * The plan the operator confirms: every task, its current host, and what
-     * the flip will do to it.
-     *
      * @param  array<int, array{group: string, arn: string, id: string, host: ?string}>  $tasks
      * @return array<int, array<int, string>>
      */
@@ -449,10 +408,9 @@ class DbCutoverCommand extends Command implements AdminCommand
     }
 
     /**
-     * The verification layers per group: label => [in-container command,
-     * pass pattern]. Each layer is independent — the `.env` line can be right
-     * while the cached config is stale, and both can be right while the
-     * connection still resolves to the old server.
+     * Each layer is independent — the `.env` line can be right while the cached
+     * config is stale, and both can be right while the connection still resolves to
+     * the old server.
      *
      * @return array<string, array{0: string, 1: string}>
      */
@@ -472,7 +430,6 @@ class DbCutoverCommand extends Command implements AdminCommand
         return $checks;
     }
 
-    /** The site probe: the public URL's HTTP status code, or null when unreachable. */
     protected static function probeUrl(string $url): ?string
     {
         $process = new Process(['curl', '-s', '-o', '/dev/null', '-m', '15', '-w', '%{http_code}', $url]);

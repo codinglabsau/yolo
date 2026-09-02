@@ -17,11 +17,7 @@ class Helpers
             : Container::getInstance();
     }
 
-    /**
-     * The running CLI version — the *installed* `codinglabsau/yolo` version, not a
-     * hardcoded string, so the version-of-record fence compares what's actually
-     * deployed. A tag (e.g. `1.0.0-alpha.35`); a branch pin reports as `dev-*`.
-     */
+    /** The installed version, so the version-of-record fence compares what's actually deployed. */
     public static function version(): string
     {
         try {
@@ -32,10 +28,8 @@ class Helpers
     }
 
     /**
-     * Whether a version is a tagged release (including pre-releases like
-     * `1.0.0-alpha.5`) rather than a branch/dev pin (`dev-main`, `1.0.x-dev`).
-     * The environment and account tiers refuse to advance their version-of-record
-     * from a non-release pin — a moving branch can't be a monotonic version.
+     * Tagged releases only (pre-releases included) — a moving branch pin (`dev-main`,
+     * `1.0.x-dev`) can't be a monotonic version-of-record.
      */
     public static function isReleaseVersion(string $version): bool
     {
@@ -44,11 +38,6 @@ class Helpers
             && ! str_ends_with($version, '-dev');
     }
 
-    /**
-     * Render an elapsed-seconds count as a compact "45s" / "3m" / "12m 30s" so a
-     * long-running heartbeat or a deployment timer reads naturally past the minute
-     * mark. Shared by the stepped-command runner and the status dashboard.
-     */
     public static function humaniseElapsed(int $seconds): string
     {
         if ($seconds < 60) {
@@ -64,11 +53,8 @@ class Helpers
     }
 
     /**
-     * Clamp a string to a visible width for a fixed-height terminal row: strip raw
-     * ANSI/CSI escape sequences, fold every whitespace run (tabs, newlines) to a
-     * single space, and mb-truncate with an ellipsis when it overflows. Operates on
-     * raw text — call it on a log message *before* wrapping it in colour tags, so a
-     * cut never lands mid-tag. One log event in, exactly one row out.
+     * Call on raw text *before* wrapping in colour tags, so a cut never lands mid-tag.
+     * One log event in, exactly one row out.
      */
     public static function truncate(string $text, int $width): string
     {
@@ -108,25 +94,17 @@ class Helpers
         return implode('-', array_filter([
             'yolo',
             static::environment(),
-            // exclusive resources are specific to the current application
-            // (yolo-{env}-{app}[-{name}]); non-exclusive resources are shared
-            // across the environment (yolo-{env}[-{name}]).
+            // exclusive: yolo-{env}-{app}[-{name}]; shared: yolo-{env}[-{name}]
             $exclusive ? Manifest::name() : null,
             $name,
         ]));
     }
 
     /**
-     * Every SQS queue name for a scope, one per declared tier in priority order.
-     * Scope is null for a solo app, `'landlord'` or a tenant id for a multi-tenant
-     * one — the same discriminator the sync/dashboard/status paths already key
-     * queues by. With no `queues:` block the scope has a single un-suffixed queue
-     * (solo `yolo-{env}-{app}`, tenant `yolo-{env}-{app}-{id}`); a `queues: [high,
-     * default]` block fans each scope out to `…-{scope}-high` plus the naked `…-{scope}`
-     * (the `default` tier is Laravel's default queue, so it takes the base scope name).
-     *
-     * Provisioning (SyncQueueStep) and the worker's --queue chain (queueChain) both
-     * read this, so the queues created and the queues drained can never drift.
+     * Scope is null for a solo app, `'landlord'` or a tenant id for a multi-tenant one. The
+     * `default` tier takes the naked scope name (it's Laravel's default queue); other tiers
+     * suffix it. Provisioning and the worker's --queue chain both read this, so the queues
+     * created and drained can never drift.
      *
      * @return array<int, string>
      */
@@ -142,11 +120,8 @@ class Helpers
     }
 
     /**
-     * The worker's `--queue` value for a scope: every tier for that scope in
-     * priority order, comma-joined so `queue:work` drains them strict-priority (the
-     * comma list's one-queue-at-a-time semantics, high before default). A solo app
-     * with no declared tiers returns null — the bare worker, matching the
-     * pre-`queues:` behaviour (no `--queue` flag, drains the pinned SQS_QUEUE).
+     * Comma-joined so `queue:work` drains strict-priority. A solo app with no tiers returns
+     * null — the bare worker drains the pinned SQS_QUEUE.
      */
     public static function queueChain(?string $scope = null): ?string
     {
@@ -157,12 +132,7 @@ class Helpers
         return implode(',', static::queueNames($scope));
     }
 
-    /**
-     * The default queue a producer's un-routed jobs land on for a scope — the `default`
-     * tier, i.e. the naked scope name (a solo app's `yolo-{env}-{app}`, a tenant's
-     * `yolo-{env}-{app}-{id}`), or the single queue when no tiers are declared. This is
-     * what a solo app pins as SQS_QUEUE, and it never changes when tiers are added.
-     */
+    /** What a solo app pins as SQS_QUEUE; never changes when tiers are added. */
     public static function defaultQueueName(?string $scope = null): string
     {
         return static::queueName($scope, 'default');
@@ -170,21 +140,15 @@ class Helpers
 
     protected static function queueName(?string $scope, ?string $tier = null): string
     {
-        // The `default` tier is Laravel's default queue — it maps to the naked scope
-        // name (the queue an app dispatches un-routed jobs to); only the
-        // higher-priority lanes carry a `-{tier}` suffix (`…-{scope}-high`).
         $suffix = implode('-', array_filter([$scope, $tier === 'default' ? null : $tier]));
 
         return static::keyedResourceName($suffix !== '' ? $suffix : null);
     }
 
     /**
-     * S3 bucket names live in a single global namespace shared by every AWS
-     * account, so unlike other resource names they carry the account id as a
-     * discriminator — without it, whichever account creates yolo-{env}-… first
-     * owns the name globally and every other account 409s on CreateBucket.
-     * Exclusive → yolo-{account-id}-{env}-{app}[-{name}];
-     * shared → yolo-{account-id}-{env}[-{name}].
+     * Bucket names share one global namespace across every AWS account, so they carry the
+     * account id — without it the first account to create yolo-{env}-… owns the name and
+     * every other 409s on CreateBucket.
      */
     public static function keyedBucketName(string|BackedEnum|null $name = null, bool $exclusive = true): string
     {
@@ -221,15 +185,12 @@ class Helpers
     }
 
     /**
-     * The GitHub `owner/repo` for the deployer OIDC trust, inferred without
-     * manifest config: GITHUB_REPOSITORY when running inside Actions, otherwise
-     * the GitHub origin remote of the local checkout. Returns null when it can't
-     * be determined (no GitHub origin) — the caller decides whether that's fatal.
+     * For the deployer OIDC trust: an explicit manifest `repository` wins (monorepos, forks),
+     * then CI's GITHUB_REPOSITORY, then the GitHub origin remote. Null when undeterminable —
+     * the caller decides whether that's fatal.
      */
     public static function githubRepository(): ?string
     {
-        // An explicit manifest `repository` wins (monorepos, forks); otherwise
-        // infer from CI's GITHUB_REPOSITORY or the GitHub origin remote.
         if ($repository = Manifest::get('repository')) {
             return $repository;
         }
@@ -251,10 +212,6 @@ class Helpers
             : null;
     }
 
-    /**
-     * Extract the GitHub `owner/repo` from a remote URL (https or ssh form,
-     * with or without the trailing .git), or null if it isn't a github.com remote.
-     */
     public static function parseGithubRepository(?string $url): ?string
     {
         if ($url === null) {
@@ -281,10 +238,7 @@ class Helpers
         return $validated;
     }
 
-    /**
-     * A whole number ≥ 0 — for capacity floors that may legitimately be zero (a
-     * queue that scales to zero), where validatePositiveInt's 1-minimum is wrong.
-     */
+    /** For capacity floors that may legitimately be zero (a queue that scales to zero). */
     public static function validateNonNegativeInt(mixed $value, string $key): int
     {
         $validated = filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
@@ -316,10 +270,7 @@ class Helpers
     }
 
     /**
-     * Compare two policy / config documents for semantic equality, ignoring the
-     * key ordering AWS is free to reshuffle on read. Object keys are sorted
-     * recursively; list order is preserved (it can be meaningful). Either side
-     * may be null (no document present).
+     * Ignores the key ordering AWS reshuffles on read; list order is preserved (it can be meaningful).
      *
      * @param  array<mixed>|null  $a
      * @param  array<mixed>|null  $b
@@ -352,26 +303,19 @@ class Helpers
     public static function payloadHasDifferences(array $expected, array $actual): bool
     {
         foreach ($expected as $key => $value) {
-            // check if the key exists in the second array
             if (! array_key_exists($key, $actual)) {
-                // Key not found
                 return true;
             }
 
-            // if the value is an array, call the function recursively
             if (is_array($value)) {
                 if (! is_array($actual[$key]) || static::payloadHasDifferences($value, $actual[$key])) {
-                    // recursive comparison failed or not an array
                     return true;
                 }
             } elseif ($value !== $actual[$key]) {
-                // compare the values directly
-                // values do not match
                 return true;
             }
         }
 
-        // all keys and values matched
         return false;
     }
 }

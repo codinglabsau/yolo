@@ -17,11 +17,9 @@ use Codinglabs\Yolo\Resources\Ec2\PrivateRouteTable;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Associates the private subnets with the private route table — without this
- * they'd fall back to the VPC's main route table, whose routing YOLO doesn't
- * control. Mirrors the public association step: diff against the route table's
- * `Associations` block and only associate the subnets that aren't already
- * attached, so a clean environment reports no change.
+ * Without this the private subnets fall back to the VPC's main route table,
+ * whose routing YOLO doesn't control. Diffs against the `Associations` block so
+ * a clean environment reports no change.
  */
 class SyncPrivateSubnetsAssociationToRouteTableStep implements Step
 {
@@ -33,9 +31,8 @@ class SyncPrivateSubnetsAssociationToRouteTableStep implements Step
 
         $associatedSubnetIds = $this->associatedSubnetIds();
 
-        // Subnets not associated yet, keyed by index → [label, resolved id].
-        // An unresolved subnet (a greenfield plan pass) counts as missing so it's
-        // reported as pending; resolving it here also avoids a second lookup on apply.
+        // An unresolved subnet (greenfield plan pass) counts as missing so it
+        // reports pending; resolving it here avoids a second lookup on apply.
         $missing = [];
 
         foreach (PrivateSubnets::cases() as $index => $case) {
@@ -71,9 +68,8 @@ class SyncPrivateSubnetsAssociationToRouteTableStep implements Step
     }
 
     /**
-     * The subnet ids already associated with the private route table (the main
-     * association carries no SubnetId and is skipped). Empty when the route table
-     * isn't provisioned yet (a greenfield plan pass).
+     * The main association carries no SubnetId and is skipped. Empty when the
+     * route table isn't provisioned yet (greenfield plan pass).
      *
      * @return array<int, string>
      */

@@ -6,10 +6,6 @@ namespace Codinglabs\Yolo\Commands;
 
 use Codinglabs\Yolo\Steps;
 
-/**
- * Writer of account-global resources — one set per AWS account, shared by every
- * environment and app on it. Blast radius: the whole account.
- */
 class SyncAccountCommand extends SyncSteppedCommand
 {
     protected function configure(): void

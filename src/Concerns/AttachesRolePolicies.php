@@ -7,13 +7,6 @@ use Codinglabs\Yolo\Change;
 use Codinglabs\Yolo\Aws\Iam;
 use Codinglabs\Yolo\Enums\StepResult;
 
-/**
- * Diff a role's managed-policy attachments against the desired set and reconcile
- * additively — attaching only what's missing, recording each as a Change, and
- * writing nothing under --dry-run. Replaces the old blind attachRolePolicy (which
- * fired on every sync and always reported WOULD_SYNC) so an already-attached role
- * reports a clean SYNCED and a dry-run reports exactly which policies it'd attach.
- */
 trait AttachesRolePolicies
 {
     use RecordsChanges;
@@ -53,13 +46,9 @@ trait AttachesRolePolicies
     }
 
     /**
-     * Reconcile a role's managed-policy attachments to *exactly* the desired set —
-     * attaching what's missing and detaching what's attached but no longer desired,
-     * each recorded as a Change and writing nothing under --dry-run. Use this where
-     * YOLO owns the role outright (the per-app task role) so the attachment set is
-     * declarative: dropping an ARN from the manifest detaches it, no orphan left
-     * behind. (attachRolePolicies above is the additive variant for roles that
-     * carry a fixed AWS-managed policy that's never removed.)
+     * Exact reconcile (detaches extras too) — only for roles YOLO owns outright;
+     * attachRolePolicies() is the additive variant for roles carrying a fixed
+     * AWS-managed policy that's never removed.
      *
      * @param  array<int, string>  $desiredArns
      */
@@ -111,9 +100,8 @@ trait AttachesRolePolicies
     }
 
     /**
-     * The deterministic ARN of a customer-managed policy by name. Constructed
-     * rather than looked up so the diff works even on a dry-run where the policy's
-     * own create step hasn't run yet.
+     * Constructed rather than looked up so the diff works on a plan pass where the
+     * policy's own create step hasn't run yet.
      */
     protected function customerManagedPolicyArn(string $name): string
     {

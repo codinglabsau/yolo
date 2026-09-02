@@ -19,13 +19,11 @@ use Codinglabs\Yolo\Resources\CloudWatch\TypesenseAlarm;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * The cluster's health alarms on the env SNS topic: the quorum pair on the
- * search target group's healthy-host count (< 3 warns — a node is out; < 2 is
- * quorum lost, the cluster degrades to read-only) and a per-node memory alarm
- * (Typesense holds the whole index in memory, so sustained >80% means the
- * offer needs a resize). The healthy-host alarms need the target group and
- * ALB to exist (their CloudWatch dimensions are ARN suffixes), so on a
- * greenfield plan they report pending and land on the next sync.
+ * The quorum pair on the search target group's healthy-host count (below the
+ * node count a node is out; below the quorum floor the cluster degrades to
+ * read-only) plus per-node memory (Typesense holds the whole index in memory).
+ * The healthy-host dimensions are ARN suffixes, so on a greenfield plan they
+ * report pending.
  */
 class SyncTypesenseAlarmsStep implements Step
 {
@@ -43,8 +41,7 @@ class SyncTypesenseAlarmsStep implements Step
                 : $this->teardownResource($alarm, $options);
         }
 
-        // A node-count reduction leaves memory alarms for nodes that no
-        // longer exist — they go even while the service stays provisioned.
+        // A node-count reduction leaves memory alarms for nodes that no longer exist.
         foreach ($this->surplusMemoryAlarms() as $alarm) {
             $results[] = $this->teardownResource($alarm, $options);
         }
@@ -79,24 +76,13 @@ class SyncTypesenseAlarmsStep implements Step
     }
 
     /**
-     * The quorum pair — only when the TG/ALB dimensions resolve (teardown
-     * tolerates either being gone already; provision reports them pending via
-     * the step result on the next sync).
-     *
-     * @return array<int, TypesenseAlarm>
-     */
-    /**
-     * Memory alarms for node indexes above the declared count — only ever 3
-     * and 4, since the valid counts are 3 and 5. Absent alarms skip for free.
-     *
      * @return array<int, TypesenseAlarm>
      */
     protected function surplusMemoryAlarms(): array
     {
         $alarms = [];
 
-        // range() counts DOWN when from > to — at the maximum count there is
-        // no surplus, so bail before it manufactures one.
+        // range() counts DOWN when from > to, so bail at the maximum count before it manufactures a surplus.
         if (Typesense::nodes() >= max(Typesense::NODE_COUNTS)) {
             return [];
         }

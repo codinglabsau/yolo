@@ -10,11 +10,6 @@ use Symfony\Component\Console\Input\InputArgument;
 
 use function Laravel\Prompts\intro;
 
-/**
- * Recent CloudWatch logs per service group — the incident read surface for
- * "what is it saying right now". `--json` is the machine-readable form the
- * `/yolo` skill consumes.
- */
 class StatusLogsCommand extends Command implements ReadOnlyCommand
 {
     use RendersIncidentReads;

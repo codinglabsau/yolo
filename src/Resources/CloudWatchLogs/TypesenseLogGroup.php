@@ -14,9 +14,8 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Log group for the environment's Typesense nodes — one group, per-node
- * stream prefixes. Retention is hardcoded: node logs are operational
- * telemetry (Raft elections, slow queries), not a source of truth.
+ * One group for all nodes, per-node stream prefixes. Retention is hardcoded: node
+ * logs are operational telemetry, not a source of truth.
  */
 class TypesenseLogGroup implements Deletable, Resource, SynchronisesConfiguration
 {

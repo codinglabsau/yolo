@@ -15,12 +15,6 @@ class RegisterTaskDefinitionRevisionStep implements Step
 
     public function __construct(protected string $environment) {}
 
-    /**
-     * Mint a fresh, immutable task-definition revision (stamped with this deploy's
-     * image tag) for each targeted service group — every group the app runs by
-     * default, or the subset named by --group — so UpdateEcsServiceStep can roll
-     * each service onto it.
-     */
     public function __invoke(array $options): StepResult
     {
         foreach ($this->resolveServerGroups(Arr::get($options, 'group')) as $group) {

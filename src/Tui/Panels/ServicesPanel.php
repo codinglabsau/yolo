@@ -17,11 +17,8 @@ use Codinglabs\Yolo\Commands\ServicesCommand;
 use Codinglabs\Yolo\Resources\Ecs\ServicesCluster;
 
 /**
- * The service gate as a read-only tab — the same offered · used by · state table
- * the `yolo services` command shows, themed. When Typesense is offered it also
- * shows the cluster's live CPU / memory (the only env-backed service with its own
- * Fargate fleet). Managing the gate (add/edit/remove) is `yolo services`; here
- * it's status only.
+ * Status only — managing the gate is `yolo services`. Typesense gets live CPU /
+ * memory as the only env-backed service with its own Fargate fleet.
  */
 class ServicesPanel implements Panel
 {
@@ -90,9 +87,6 @@ class ServicesPanel implements Panel
     }
 
     /**
-     * The Typesense cluster detail (sizing from the env manifest) and its live
-     * CPU / memory charts. Pure — pinned in a test with hand-built data, no AWS.
-     *
      * @param  array{version: string|null, nodes: int, cpu: int, memory: int, quorum: int, cpuSeries: array<int, float>, memorySeries: array<int, float>, cluster: string}  $typesense
      * @return array<int, string>
      */
@@ -135,7 +129,6 @@ class ServicesPanel implements Panel
         };
     }
 
-    /** The accent colour for a lifecycle state in the table. */
     public static function stateTheme(string $state): Theme
     {
         return match ($state) {
@@ -147,7 +140,6 @@ class ServicesPanel implements Panel
         };
     }
 
-    /** Is Typesense currently offered in this environment? */
     protected function offersTypesense(): bool
     {
         foreach ($this->rows as $row) {
@@ -160,9 +152,6 @@ class ServicesPanel implements Panel
     }
 
     /**
-     * Typesense sizing from the env manifest plus the cluster's last-hour CPU /
-     * memory (the Fargate cluster aggregate; empty series when not yet provisioned).
-     *
      * @return array{version: string|null, nodes: int, cpu: int, memory: int, quorum: int, cpuSeries: array<int, float>, memorySeries: array<int, float>, cluster: string}
      */
     protected function gatherTypesense(): array
@@ -182,7 +171,6 @@ class ServicesPanel implements Panel
         ];
     }
 
-    /** A best-effort console link to the Typesense ECS cluster. */
     protected static function consoleUrl(string $cluster): string
     {
         $arn = sprintf('arn:aws:ecs:%s:%s:cluster/%s', (string) Manifest::get('region'), Aws::accountId(), $cluster);

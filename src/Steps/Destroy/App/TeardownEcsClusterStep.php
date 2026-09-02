@@ -9,10 +9,8 @@ use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
 use Codinglabs\Yolo\Steps\Destroy\TeardownStep;
 
 /**
- * Tears down this app's ECS cluster. LongRunning — the delete force-drains any
- * remaining service, then retries the cluster delete until the last task stops
- * over the graceful-drain window (AWS refuses DeleteCluster while tasks are
- * active, even once the service itself is gone).
+ * AWS refuses DeleteCluster while tasks are active, even once the service is
+ * gone, so the delete retries over the graceful-drain window.
  */
 class TeardownEcsClusterStep extends TeardownStep implements LongRunning
 {

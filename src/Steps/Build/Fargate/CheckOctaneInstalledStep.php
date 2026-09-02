@@ -10,26 +10,12 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
 
 /**
- * The web role runs `php artisan octane:start` (see ProcessCommands::web) — a
- * command that only exists when laravel/octane is installed. Without it the web
- * container crash-loops on boot and the deploy circuit breaker rolls back ~20min
- * later, so this preflight catches it before the image is even built. It's skipped
- * when `tasks.web.octane: false`, where the web tier runs FrankenPHP classic mode
- * and needs no octane package.
- *
- * It reads composer.lock's `packages` array — the production dependency set, i.e.
- * exactly what a `--no-dev` install ships into the image. That's deliberately not
- * a composer.json `require` scan: octane sitting in `require-dev` would pass that
- * check yet be stripped from the runtime image. Reading the lock also makes no
- * assumption about *where* composer install runs — the committed lock is there
- * whether the manifest builds host-side or an app-owned Dockerfile installs
- * vendor itself, so inspecting the build dir's `vendor/` would false-fail the
- * latter.
- *
- * Unlike the sibling SSR runtime check this is a hard fail, not a warn-and-confirm:
- * the lock is authoritative (no heuristic that can false-negative), so a missing
- * octane is a certainty rather than a guess — and a missing web server is fatal,
- * where missing SSR merely degrades to client-side rendering.
+ * Without octane the web container crash-loops and the circuit breaker only
+ * rolls back ~20min later. Reads composer.lock's `packages` (what `--no-dev`
+ * ships) rather than composer.json — octane in `require-dev` would pass a
+ * require scan yet be stripped — and not the build dir's `vendor/`, which an
+ * app-owned Dockerfile may install itself. Hard fail (not warn-and-confirm like
+ * SSR) because the lock is authoritative and a missing web server is fatal.
  */
 class CheckOctaneInstalledStep implements Step
 {
@@ -40,10 +26,6 @@ class CheckOctaneInstalledStep implements Step
 
     public function __invoke(array $options = []): StepResult
     {
-        // Only the web role launches octane:start, and only when it runs Octane: a
-        // worker-only app has no web role, and an app that opts out with
-        // `tasks.web.octane: false` runs FrankenPHP classic mode, which needs no
-        // octane package — so neither requires this check.
         if (! Manifest::hasWeb() || ! Manifest::usesOctane()) {
             return StepResult::SKIPPED;
         }

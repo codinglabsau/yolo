@@ -11,11 +11,8 @@ use Codinglabs\Yolo\Concerns\SyncsRecordSets;
 use Codinglabs\Yolo\Contracts\ExecutesWebStep;
 
 /**
- * UPSERTs the records for the app's *own* domain. Gated on having a domain rather
- * than on being solo: a tenanted app that declares a `domain` of its own (serving
- * its tenants as subdomains of it) needs these records exactly as a solo app does
- * — tenancy is an orthogonal axis. A tenant's own records are written by
- * {@see SyncMultitenancyRecordSetStep}.
+ * Gated on having a domain, not on being solo: a tenanted app with its own
+ * `domain` needs these records exactly as a solo app does.
  */
 class SyncSoloRecordSetStep implements ExecutesWebStep
 {

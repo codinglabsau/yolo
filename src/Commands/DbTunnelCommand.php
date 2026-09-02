@@ -23,15 +23,10 @@ use function Laravel\Prompts\note;
 use function Laravel\Prompts\error;
 
 /**
- * Opens a local port forward to the manifest-declared database through one of
- * the app's running tasks (web-first, else the standalone queue/scheduler) —
- * the laptop path to a database in the private subnet tier, which has no
- * public endpoint by design. The task is the SSM target
- * (`AWS-StartPortForwardingSessionToRemoteHost`), so the session rides the same
- * ECS Exec plumbing `yolo run` uses: `enableExecuteCommand` on the service and
- * the `ssmmessages` channels on the task role, both already provisioned.
- * Read-only convenience — nothing is created or changed; the session ends with
- * Ctrl-C.
+ * The laptop path to a database in the private subnet tier, which has no public
+ * endpoint by design. The task is the SSM target, so the session rides the same
+ * ECS Exec plumbing `yolo run` uses (`enableExecuteCommand` + the `ssmmessages`
+ * channels on the task role).
  */
 class DbTunnelCommand extends Command implements ReadOnlyCommand
 {
@@ -86,12 +81,8 @@ class DbTunnelCommand extends Command implements ReadOnlyCommand
     }
 
     /**
-     * The endpoint hostname and port to forward to, resolved with one describe
-     * from the bare name the manifest `database:` key declares. A cluster
-     * forwards to its cluster (writer) endpoint, so the tunnel follows
-     * failovers; an instance forwards to its instance endpoint. The port comes
-     * off the same record, so the tunnel reaches a Postgres database (or one on
-     * a non-default port) without being told.
+     * A cluster forwards to its writer endpoint so the tunnel follows failovers; the
+     * port comes off the same record so a non-default port needs no telling.
      *
      * @return array{0: string, 1: int}|null [host, port]
      */
@@ -145,10 +136,8 @@ class DbTunnelCommand extends Command implements ReadOnlyCommand
     }
 
     /**
-     * A running task to ride the tunnel through, probed across the app's service
-     * groups web-first (any of them shares the task security group's database
-     * grant, so a web-less worker app tunnels through its queue/scheduler task
-     * instead). Null when no group has a running task.
+     * Any group shares the task security group's database grant, so a web-less
+     * worker app tunnels through its queue/scheduler task.
      *
      * @return array{0: string, 1: string}|null [group, taskArn]
      */
@@ -166,9 +155,8 @@ class DbTunnelCommand extends Command implements ReadOnlyCommand
     }
 
     /**
-     * The SSM session target for a running task: `ecs:{cluster}_{taskId}_{runtimeId}`,
-     * where the runtime id is the group's container — SSM addresses the container
-     * agent, not the task.
+     * `ecs:{cluster}_{taskId}_{runtimeId}` — SSM addresses the container agent, not
+     * the task.
      */
     protected function sessionTarget(string $cluster, string $taskArn, string $group): ?string
     {
@@ -189,9 +177,6 @@ class DbTunnelCommand extends Command implements ReadOnlyCommand
     }
 
     /**
-     * The `aws ssm start-session` invocation: a port-forwarding session through
-     * the task to the database host on the port the database serves.
-     *
      * @return array<int, string>
      */
     public static function startSessionArgs(string $target, string $host, int $remotePort, string $localPort, string $region, ?string $profile): array

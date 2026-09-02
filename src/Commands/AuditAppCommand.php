@@ -5,11 +5,8 @@ namespace Codinglabs\Yolo\Commands;
 use Symfony\Component\Console\Input\InputArgument;
 
 /**
- * Audit one app's resources in an environment. Filters the env-wide audit
- * report to rows whose `yolo:app` tag matches the given app — so a resource
- * with no ownership marker never shows up here, only `ok` and `unexpected`
- * rows (a dead app's leftovers, or a service YOLO no longer provisions) for
- * that app.
+ * Filters on the `yolo:app` tag, so a resource with no ownership marker never
+ * shows up here.
  */
 class AuditAppCommand extends AbstractAuditCommand
 {

@@ -9,9 +9,9 @@ use Codinglabs\Yolo\Steps\Destroy\TeardownStep;
 use Codinglabs\Yolo\Contracts\RunsOnBaseCredentials;
 
 /**
- * Tears down the admin tier role, after its grant group is gone. Runs on base
- * credentials — this is the role the run assumed, so it can't be deleted under
- * the tier it's authenticated as (see RunsOnBaseCredentials).
+ * The IAM tier (groups, roles, policies) runs on base credentials: this is the
+ * role the run assumed, so it can't be deleted under the tier it's
+ * authenticated as.
  */
 class TeardownAdminRoleStep extends TeardownStep implements RunsOnBaseCredentials
 {

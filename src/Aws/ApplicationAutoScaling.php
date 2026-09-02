@@ -7,11 +7,8 @@ use Aws\Exception\AwsException;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Thin per-service wrapper around the Application Auto Scaling SDK client — the
- * service that scales an ECS service's desired count (this is NOT EC2 Auto
- * Scaling / autoscaling groups). Every lookup is scoped to the one namespace +
- * dimension YOLO ever scales, and translates the SDK's not-found / cold-account
- * errors to the project's standard signal.
+ * Application Auto Scaling scales an ECS service's desired count — NOT EC2 Auto
+ * Scaling. Every lookup is scoped to the one namespace + dimension YOLO scales.
  */
 class ApplicationAutoScaling
 {
@@ -20,10 +17,6 @@ class ApplicationAutoScaling
     public const SCALABLE_DIMENSION = 'ecs:service:DesiredCount';
 
     /**
-     * The scalable target registered for an ECS service resource id
-     * (service/{cluster}/{service}), or the standard not-found signal when none
-     * is registered.
-     *
      * @return array<string, mixed>
      */
     public static function scalableTarget(string $resourceId): array
@@ -46,9 +39,6 @@ class ApplicationAutoScaling
     }
 
     /**
-     * The named scaling policy on an ECS service resource id, or the standard
-     * not-found signal when it isn't registered.
-     *
      * @return array<string, mixed>
      */
     public static function scalingPolicy(string $resourceId, string $policyName): array
@@ -73,10 +63,6 @@ class ApplicationAutoScaling
     }
 
     /**
-     * Every scaling policy name registered on an ECS service resource id — an
-     * empty list when none are (or the target is gone). A sync step diffs this
-     * live set against the desired set to find policies to prune.
-     *
      * @return array<int, string>
      */
     public static function policyNames(string $resourceId): array
@@ -95,11 +81,6 @@ class ApplicationAutoScaling
     }
 
     /**
-     * Every scaling policy (full body) registered on an ECS service resource id —
-     * an empty list when none are (or the target is gone). `yolo status` reads
-     * these to summarise what each service scales on (CPU target, request count,
-     * queue backlog) in one describe.
-     *
      * @return array<int, array<string, mixed>>
      */
     public static function scalingPolicies(string $resourceId): array
@@ -116,9 +97,7 @@ class ApplicationAutoScaling
     }
 
     /**
-     * Delete a target-tracking scaling policy. Application Auto Scaling cascades
-     * the delete to the scale-out / scale-in CloudWatch alarms it generated for
-     * the policy, so this removes the policy and its alarms in one call.
+     * Cascades to the scale-out / scale-in CloudWatch alarms the policy generated.
      */
     public static function deleteScalingPolicy(string $resourceId, string $policyName): void
     {

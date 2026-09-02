@@ -18,12 +18,6 @@ use Codinglabs\Yolo\Concerns\RecordsChanges;
 use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-/**
- * The search host's Route 53 alias — search.{domain} → the shared ALB, in the
- * env domain's hosted zone. Diff-first (the live alias is read and compared)
- * so a converged record plans clean; teardown deletes the alias so the host
- * stops resolving once the cluster is gone.
- */
 class SyncSearchRecordSetStep implements Step
 {
     use RecordsChanges;
@@ -109,13 +103,10 @@ class SyncSearchRecordSetStep implements Step
     }
 
     /**
-     * Whether the live alias already targets the ALB. Route 53 returns the alias
-     * target as an FQDN with a trailing dot; the ELBv2 API returns the same name
-     * without one — so both are stripped before the case-insensitive compare.
-     * Without it a converged record reads as drift, re-UPSERTs on every sync
-     * (never planning clean) and permanently fails the deploy `sync --check` gate
-     * on any env running this record. Pure + static so the normalisation is
-     * pinned in a test without mocking Route 53 and the ALB.
+     * Route 53 returns the alias target with a trailing dot, ELBv2 without — both
+     * are stripped before the case-insensitive compare, else a converged record
+     * reads as drift, re-UPSERTs every sync and fails the deploy `sync --check`
+     * gate. Static so the normalisation is pinned in a test.
      */
     public static function aliasMatches(?string $live, string $albDnsName): bool
     {
@@ -156,10 +147,6 @@ class SyncSearchRecordSetStep implements Step
         return Route53::hostedZone((string) EnvManifest::get('domain'))['Id'];
     }
 
-    /**
-     * The live alias target's DNS name, or null when the record (or the zone)
-     * doesn't exist yet.
-     */
     protected function liveAlias(): ?string
     {
         return $this->liveRecord()['AliasTarget']['DNSName'] ?? null;

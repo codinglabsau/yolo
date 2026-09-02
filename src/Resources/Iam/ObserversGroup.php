@@ -8,11 +8,6 @@ use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 
-/**
- * Grant group for env-wide read: members may assume the {@see ObserverRole} and
- * read every app in the environment (`yolo-{env}-observers`). Add a user to grant
- * environment-wide read; remove to revoke.
- */
 class ObserversGroup extends AssumeRoleGroup
 {
     public function name(): string
@@ -31,13 +26,9 @@ class ObserversGroup extends AssumeRoleGroup
     }
 
     /**
-     * Env-wide read subsumes per-app read, and the grant must say so: app-scoped
-     * commands (status, db:tunnel) mint the narrower per-app observer role, so
-     * without these ARNs an env observer would paradoxically be refused on any
-     * single-app read. The wildcard covers every `yolo-{env}-{app}-observer-role`
-     * (present and future — that's the point of env-wide) and cannot match the
-     * plain env role or any non-observer role; it's built from env only, never
-     * the current app, so the document stays deterministic across app checkouts.
+     * App-scoped commands (status, db:tunnel) mint the per-app observer role, so
+     * without the wildcard an env observer would be refused on any single-app read.
+     * Env-built, never the current app, so the document stays deterministic.
      *
      * @return array<int, string>
      */

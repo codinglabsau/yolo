@@ -7,21 +7,10 @@ use Codinglabs\Yolo\Change;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 
 /**
- * Shared document-drift reconciliation for the YOLO-managed customer-managed IAM
- * policies (DeployerPolicy, EcsTaskPolicy, ObserverPolicy, AdminPolicy). IAM has no
- * in-place document update — a changed policy document is pushed by creating a new
- * version and setting it as default.
- *
- * This is wired through SynchronisesConfiguration — NOT a bespoke side-effect the
- * sync step calls under `! dry-run` — on purpose. SyncSteppedCommand computes a
- * plan pass (compute-only, apply=false) and then applies only the steps the plan
- * flagged as having work. A document change computed only at apply time is
- * invisible to that plan, so the step reports clean, gets dropped before apply,
- * and the new version never lands — which silently froze both policies at their
- * create-time version. Returning the drift as a plan-time Change keeps the step
- * on the apply side of the "only-pending-steps" filter.
- *
- * Requires the using Resource to provide name() and document().
+ * Document drift for YOLO's customer-managed policies. IAM has no in-place update —
+ * a new version is created and set default. Wired through SynchronisesConfiguration
+ * (not a side-effect under `! dry-run`) because sync applies only the steps the plan
+ * flagged; a change computed at apply time is invisible to the plan and never lands.
  */
 trait SynchronisesPolicyDocument
 {
@@ -38,11 +27,9 @@ trait SynchronisesPolicyDocument
         $currentVersion = IamClient::policyVersion($policy['Arn'], $policy['DefaultVersionId']);
         $live = json_decode(urldecode((string) $currentVersion['Document']), associative: true);
 
-        // Canonical compare, not a naive json_encode string match: IAM round-trips
-        // the document with reordered keys/statements and collapses single-element
-        // Action/Condition lists to scalars, which a string compare reads as drift —
-        // re-versioning on every sync and burning the 5-version cap. Shared
-        // with SynchronisesAssumeRolePolicy via CanonicalisesPolicyDocuments.
+        // Canonical compare: IAM round-trips with reordered keys and single-element
+        // lists collapsed, which a string compare reads as drift — re-versioning
+        // every sync and burning the 5-version cap.
         if ($this->policyDocumentsMatch($live, $desired)) {
             return [];
         }
@@ -61,11 +48,9 @@ trait SynchronisesPolicyDocument
     }
 
     /**
-     * A managed policy holds at most 5 versions and createPolicyVersion does not
-     * overwrite — once five exist every push hard-fails with LimitExceeded, which
-     * is exactly how a long-lived deployer policy stops accepting updates. Delete
-     * the oldest non-default version(s) so the create has room to land (and stay
-     * default). The default version is never a prune candidate.
+     * A managed policy holds at most 5 versions and createPolicyVersion never
+     * overwrites — at five every push fails LimitExceeded. The default version is
+     * never pruned.
      */
     protected function pruneOldestVersionToMakeRoom(string $policyArn): void
     {

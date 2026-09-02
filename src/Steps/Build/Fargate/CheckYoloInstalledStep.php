@@ -9,30 +9,12 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
 
 /**
- * YOLO must ship inside the runtime image as a production dependency, not just sit
- * on the deploy runner as a dev tool. Its Laravel service provider is auto-discovered
- * and boots with the app:
- *
- * - on the autoscaling web tier it publishes FrankenPHP worker saturation for burst
- *   scaling via `PutMetricData` from an after-response hook — yolo depends on
- *   `aws/aws-sdk-php`, so a prod-required yolo guarantees the SDK transitively (this is
- *   why there's no separate SDK preflight);
- * - the same provider backs yolo's runtime API — a facade abstracting the AWS work
- *   (e.g. adding/removing WAF IP-set entries) rather than shelling out to the CLI.
- *
- * A dev-only package is stripped by `--no-dev`, so the provider would never load.
- *
- * The CLI itself is inert in the container — nothing runs `yolo` there; the package
- * earns its place purely as a bootable runtime library. Like
- * {@see CheckOctaneInstalledStep} this reads composer.lock's `packages` array — the
- * `--no-dev` production set the image actually ships — not composer.json, so a yolo
- * sitting only in `require-dev` is correctly caught: it would pass a `require` scan
- * yet be stripped from the runtime image. Reading the committed lock also makes no
- * assumption about where `composer install` runs.
- *
- * Ungated and run first, before any build effort: every Fargate app the manifest
- * declares tasks for must carry yolo at runtime, so a misconfigured app fails
- * immediately rather than after composer install and asset compilation.
+ * YOLO's service provider must boot inside the image (burst metrics reporter,
+ * runtime API), so it has to survive `--no-dev`. A prod-required yolo also
+ * guarantees `aws/aws-sdk-php` transitively — that's why there's no separate
+ * SDK preflight. Reads composer.lock's `packages` for the reasons given on
+ * {@see CheckOctaneInstalledStep}. Ungated and first so a misconfigured app
+ * fails before composer install and asset compilation.
  */
 class CheckYoloInstalledStep implements Step
 {

@@ -14,18 +14,13 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * EventBridge rule that matches IVS state-change events and routes them to the
- * IvsLogGroup (via IvsEventBridgeTargetStep). Env-shared: the `source: aws.ivs`
- * pattern matches every IVS event in the account/region, so the rule belongs to
- * the environment — one pipeline, declared via the env manifest's
- * `services.ivs`. putRule is an upsert, so rule config is reconciled through
- * synchroniseConfiguration on every existing sync.
+ * Env-shared: the `source: aws.ivs` pattern matches every IVS event in the
+ * account/region, so the rule belongs to the environment. putRule is an upsert.
  */
 class IvsEventBridgeRule implements Deletable, Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
 
-    /** The rule's single target id — the IVS log group delivery. */
     public const string TARGET_ID = 'ivs-cloudwatch-logs';
 
     public function name(): string
@@ -61,10 +56,8 @@ class IvsEventBridgeRule implements Deletable, Resource, SynchronisesConfigurati
     }
 
     /**
-     * Teardown removes the rule and its log-group target in one atomic act —
-     * AWS refuses to delete a rule that still has targets, and the target is
-     * meaningless without the rule (the target step delegates its teardown
-     * here for the same reason).
+     * AWS refuses to delete a rule that still has targets, so the target goes first
+     * (the target step delegates its teardown here for the same reason).
      */
     public function delete(): void
     {
@@ -83,11 +76,6 @@ class IvsEventBridgeRule implements Deletable, Resource, SynchronisesConfigurati
         return Aws::synchroniseEventBridgeTags($this->arn(), $this->tags(), $apply);
     }
 
-    /**
-     * Reconcile the rule's event pattern, state and description, read-compared
-     * against the live rule so a clean sync makes no write and a dry-run reports
-     * the drift. Returns the drifted attributes as Change[].
-     */
     public function synchroniseConfiguration(bool $apply = true): array
     {
         $live = EventBridge::rule($this->name());

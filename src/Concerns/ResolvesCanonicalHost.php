@@ -5,29 +5,17 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo\Concerns;
 
 /**
- * The canonical host is whatever `domain` resolves to — the single host an app
- * is served on. When that host is one half of the apex/`www` pair (it is exactly
- * the apex, or exactly `www.{apex}`), the other half is its sibling and should
- * 301-redirect to the canonical host. A host that is any other subdomain has no
- * sibling and is served alone.
- *
- * This is the single source of truth shared by the ALB rules (a forward rule for
- * the canonical host, a redirect rule for the sibling) and the Route 53 records
- * (both halves resolve to the ALB so the redirect rule can catch the sibling).
+ * When `domain` is one half of the apex/`www` pair the other half is its sibling
+ * and 301-redirects to it; any other subdomain has no sibling. Single source of
+ * truth for the ALB rules (forward + redirect) and the Route 53 records, so both
+ * halves resolve to the ALB for the redirect rule to catch.
  */
 trait ResolvesCanonicalHost
 {
     /**
-     * Every host YOLO writes an A-alias for — the canonical host, its `www`
-     * sibling when it has one, and the wildcard when that domain serves its own
-     * subdomains. Shared by the record sync and by teardown, so a withdrawal
-     * removes exactly what sync wrote and nothing else.
-     *
-     * `$wildcardHost` is required, and null means "this domain has no wildcard".
-     * It used to default to `Manifest::wildcardHost()`, which silently wrote the
-     * *app's* wildcard into a non-wildcarded tenant's own hosted zone — a
-     * wildcard only ever covers its own domain, so the caller has to say which
-     * one it is resolving.
+     * Shared by the record sync and by teardown, so a withdrawal removes exactly
+     * what sync wrote. `$wildcardHost` has no default: a wildcard only ever covers
+     * its own domain, so the caller must say which one it is resolving.
      *
      * @return array<int, string>
      */

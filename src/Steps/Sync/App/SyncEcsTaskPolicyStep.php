@@ -13,10 +13,6 @@ class SyncEcsTaskPolicyStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        // Policy-document drift (e.g. a new statement added by a YOLO upgrade)
-        // flows through syncResource as a plan-time Change via
-        // SynchronisesPolicyDocument, so the plan flags it and apply re-versions
-        // the policy — alongside the usual tag sync.
         return $this->syncResource(new EcsTaskPolicy(), $options);
     }
 }

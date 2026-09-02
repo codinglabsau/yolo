@@ -16,9 +16,7 @@ use Codinglabs\Yolo\Resources\ElbV2\TenantRedirectListenerRule;
 use Codinglabs\Yolo\Steps\Sync\App\Tenant\SyncRedirectRuleStep;
 
 /**
- * Removes one tenant's apex/`www` redirect rule — the teardown twin of
- * {@see SyncRedirectRuleStep}, gated on the
- * same conditions so a tenant that never had a redirect rule never reports one.
+ * Twin of {@see SyncRedirectRuleStep}, gated on the same conditions.
  */
 class TeardownRedirectRuleStep extends TenantStep
 {

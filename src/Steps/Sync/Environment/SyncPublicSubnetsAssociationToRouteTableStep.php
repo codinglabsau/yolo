@@ -15,11 +15,10 @@ use Codinglabs\Yolo\Resources\Ec2\PublicSubnet;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Associates the public subnets with the public route table. AWS exposes no direct
- * lookup for an association, but the route table's `Associations` block lists them,
- * so we diff against that and only associate the subnets that aren't already
- * attached — instead of re-associating all three on every sync, which recorded no
- * Change and so kept tripping the confirm gate even on a clean account.
+ * AWS exposes no direct lookup for an association, so diff against the route
+ * table's `Associations` block and only associate the missing subnets —
+ * re-associating all three every sync recorded no Change and kept tripping the
+ * confirm gate on a clean account.
  */
 class SyncPublicSubnetsAssociationToRouteTableStep implements Step
 {
@@ -31,9 +30,8 @@ class SyncPublicSubnetsAssociationToRouteTableStep implements Step
 
         $associatedSubnetIds = $this->associatedSubnetIds();
 
-        // Subnets not associated yet, keyed by index → [label, resolved id].
-        // An unresolved subnet (a greenfield plan pass) counts as missing so it's
-        // reported as pending; resolving it here also avoids a second lookup on apply.
+        // An unresolved subnet (greenfield plan pass) counts as missing so it
+        // reports pending; resolving it here avoids a second lookup on apply.
         $missing = [];
 
         foreach (PublicSubnets::cases() as $index => $case) {
@@ -69,9 +67,8 @@ class SyncPublicSubnetsAssociationToRouteTableStep implements Step
     }
 
     /**
-     * The subnet ids already associated with the public route table (the main
-     * association carries no SubnetId and is skipped). Empty when the route table
-     * isn't provisioned yet (a greenfield plan pass).
+     * The main association carries no SubnetId and is skipped. Empty when the
+     * route table isn't provisioned yet (greenfield plan pass).
      *
      * @return array<int, string>
      */

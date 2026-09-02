@@ -30,11 +30,9 @@ class SyncRedirectRuleStep implements ExecutesWebStep
         $listener = $this->httpsListener();
 
         if ($listener === null) {
-            // Same greenfield deferral as the forward rule: the `:443` listener is
-            // bootstrapped earlier in this apply but is absent on the plan pass, so
-            // report the rule as pending (rather than a self-pruning SKIPPED) when it
-            // will be created this run, else defer. Only a redirecting apex/www app
-            // has a rule to plan — a bare subdomain has nothing to redirect.
+            // Same greenfield deferral as the forward rule: report pending when the
+            // listener will be created this run, else defer. Only a redirecting
+            // apex/www app has a rule to plan.
             if ((bool) Arr::get($options, 'dry-run') && $hasWwwSibling && $this->httpsListenerWillBeCreatedThisSync()) {
                 $this->recordChange(Change::make('redirect rule', null, 'created'));
 
@@ -46,9 +44,8 @@ class SyncRedirectRuleStep implements ExecutesWebStep
 
         $rule = new RedirectListenerRule($listener['ListenerArn']);
 
-        // A bare subdomain has no apex/www sibling to redirect. Tear down this
-        // app's own redirect rule if an earlier apex/www config left one — it's
-        // found by its Name tag, so no other host's rule is touched.
+        // A bare subdomain has nothing to redirect — tear down a rule an earlier
+        // apex/www config left. Found by its Name tag, so no other host's rule is touched.
         if (! $hasWwwSibling) {
             return $this->tearDown($rule, $options);
         }

@@ -9,13 +9,9 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Concerns\ResolvesCanonicalHost;
 
 /**
- * 301-redirects the apex/`www` sibling of the canonical host to the canonical
- * host, preserving path and query. The redirect is issued by the ALB before the
- * request reaches a container — the cert already covers both halves (apex +
- * `*.apex` wildcard), so the sibling is TLS-valid ahead of the redirect.
- *
- * Only meaningful when the canonical host has a sibling (it is the apex or
- * `www.{apex}`); the step that drives this rule gates on that.
+ * The ALB issues the redirect before any container: the cert covers both apex
+ * and `*.apex`, so the sibling is TLS-valid ahead of it. Only meaningful when the
+ * canonical host has an apex/`www` sibling — the driving step gates on that.
  */
 class RedirectListenerRule extends ListenerRule
 {
@@ -31,12 +27,6 @@ class RedirectListenerRule extends ListenerRule
         return [$this->wwwSibling(Manifest::apex(), $this->canonicalHost())];
     }
 
-    /**
-     * The redirect outranks every forward rule. On a wildcard-subdomain app the
-     * forward rule's `*.{apex}` also matches the `www` sibling, so without a fixed
-     * ordering the sibling would be served instead of 301-redirected whenever the
-     * forward rule happened to hash lower.
-     */
     #[\Override]
     protected function band(): string
     {

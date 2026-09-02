@@ -16,16 +16,9 @@ use Codinglabs\Yolo\Aws\ResourceGroupsTaggingApi;
 use Codinglabs\Yolo\Resources\Iam\GithubOidcProvider;
 
 /**
- * Reclaims the account-shared GitHub OIDC provider — but only when no other
- * environment remains. The provider is account-scoped (one per account, federated
- * by every environment's deployer roles), so it's deleted only as the very last
- * act of tearing down the final environment. While any resource tagged
- * yolo:environment=<other> still exists, it's deliberately kept and named in the
- * teardown's refusal summary, never deleted.
- *
- * It fails safe: if the "are there other environments?" tag scan can't be
- * completed, the provider is kept, never deleted on a guess — an account-shared
- * resource is only reclaimed when its emptiness is positively confirmed.
+ * The provider is account-shared (every environment's deployer roles federate
+ * through it), so it goes only with the last environment — and never on a
+ * guess: if the tag scan can't prove the account is empty, it's kept.
  */
 class TeardownGithubOidcProviderStep implements Step
 {
@@ -43,8 +36,6 @@ class TeardownGithubOidcProviderStep implements Step
         try {
             $others = $this->otherEnvironments();
         } catch (\Throwable $exception) {
-            // Fail safe: can't prove this is the last environment ⇒ keep the
-            // account-shared provider rather than risk pulling it from a live env.
             $this->recordWarning(sprintf(
                 'Kept the account-shared GitHub OIDC provider — could not verify whether other environments exist (%s). It is reclaimed only once that is confirmed.',
                 $exception->getMessage(),
@@ -74,9 +65,6 @@ class TeardownGithubOidcProviderStep implements Step
     }
 
     /**
-     * Every environment other than this one that still has tagged resources,
-     * derived from the live yolo:environment tags across the account.
-     *
      * @return array<int, string>
      */
     protected function otherEnvironments(): array

@@ -19,7 +19,6 @@ class SyncPrivateSubnetAStep implements Step
         $subnet = new PrivateSubnet(0);
 
         if (! $subnet->exists()) {
-            // Surface the /24 in the plan before it's created.
             $this->recordChange(Change::make('cidr block', 'absent', $subnet->availableCidrBlock()));
         }
 

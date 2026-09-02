@@ -15,29 +15,20 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 use Codinglabs\Yolo\Resources\ServiceDiscovery\TypesenseDiscoveryService;
 
 /**
- * One Typesense node — a single-task ECS service on the env services cluster.
- * Three of these (typesense-0/1/2) form the Raft cluster; each is pinned to
- * one public subnet so the trio is AZ-spread by construction, and each
- * registers its task with its own Cloud Map service so peers address it by a
- * stable DNS name.
- *
- * Deploys stop-then-start (min 0 / max 100): a node's replacement must never
- * run beside it — two tasks behind one DNS name would split the Raft
- * identity — and a single node going away briefly is exactly what the quorum
- * exists to absorb. Deleted by the cluster's cascading teardown, never
- * individually.
+ * One Raft node: pinned to one public subnet (so the trio is AZ-spread by
+ * construction) and registered with its own Cloud Map service so peers address it
+ * by a stable DNS name. Deploys stop-then-start: two tasks behind one DNS name
+ * would split the Raft identity, and a node briefly going away is exactly what the
+ * quorum absorbs. Deleted by the cluster's cascading teardown, never individually.
  */
 class TypesenseService implements Resource
 {
     use ResolvesTags;
 
     /**
-     * How long ECS ignores target-group health after a task starts. The check
-     * itself is liveness (answers as soon as the API is up), but a replacement
-     * node's port stays closed through its whole entrypoint boot gate — DNS
-     * for itself and a peer to join — so the window covers a worst-case gate
-     * plus image pull with room to spare. Generous is free here: the moment
-     * the API answers 401s the check passes and the grace stops mattering.
+     * A replacement node's port stays closed through its whole entrypoint boot gate
+     * (DNS for itself and a peer to join), so the window covers a worst-case gate
+     * plus image pull. Generous is free: the moment the API answers the check passes.
      */
     public const int HEALTH_CHECK_GRACE_SECONDS = 600;
 
@@ -87,9 +78,7 @@ class TypesenseService implements Resource
         Aws::ecs()->createService([
             'cluster' => (new ServicesCluster())->name(),
             'serviceName' => $this->name(),
-            // One task-definition family is shared by all three nodes — the
-            // image bakes the peer list and each node identifies itself by
-            // matching a local interface against it.
+            // One family for all nodes — each identifies itself by matching a local interface against the baked peer list.
             'taskDefinition' => $this->taskDefinitionFamily(),
             'desiredCount' => 1,
             'launchType' => 'FARGATE',
@@ -102,19 +91,15 @@ class TypesenseService implements Resource
                 'awsvpcConfiguration' => [
                     'subnets' => [$this->subnetId()],
                     'securityGroups' => [(new TypesenseSecurityGroup())->arn()],
-                    // Public IP for the image pull — the env VPC routes through
-                    // an internet gateway, not NAT. The SG admits nothing the
-                    // rules don't open.
+                    // For the image pull — the env VPC routes through an internet gateway, not NAT.
                     'assignPublicIp' => 'ENABLED',
                 ],
             ],
             'serviceRegistries' => [
                 ['registryArn' => (new TypesenseDiscoveryService($this->node))->arn()],
             ],
-            // All the nodes register into the one search target group; its
-            // health check is process liveness (see SearchTargetGroup), so a
-            // replacement counts as healthy once its API answers, quorum or
-            // not — readiness is the node sync step's roll gate.
+            // The target group's health check is liveness (see SearchTargetGroup), so a
+            // replacement is healthy once its API answers — readiness is the node sync step's roll gate.
             'loadBalancers' => [
                 [
                     'targetGroupArn' => (new SearchTargetGroup())->arn(),
@@ -129,11 +114,8 @@ class TypesenseService implements Resource
     }
 
     /**
-     * Adopt the family's latest task-definition revision — how a version bump
-     * or key rotation rolls a node. The caller sequences nodes and waits for
-     * stability between them. The grace period rides along so a service
-     * created under an older, tighter window picks the current one up on its
-     * next roll.
+     * The caller sequences nodes and waits for stability between them. The grace
+     * period rides along so a service created under an older window picks up the current one.
      */
     public function adoptLatestRevision(): void
     {
@@ -155,10 +137,7 @@ class TypesenseService implements Resource
         return $this->keyedName('typesense');
     }
 
-    /**
-     * Node n lives in subnet n — with the three public subnets in distinct
-     * AZs, the quorum is AZ-spread deterministically.
-     */
+    /** Node n lives in subnet n, so the quorum is AZ-spread deterministically. */
     protected function subnetId(): string
     {
         $subnetIds = PublicSubnet::ids();

@@ -79,10 +79,8 @@ class CloudFront
     }
 
     /**
-     * Whether the distribution's real-time additional metrics (cache hit rate,
-     * origin latency, error rate by status) are switched on. A distribution
-     * with no monitoring subscription answers `NoSuchMonitoringSubscription` —
-     * read as "off"; any other error is re-thrown rather than masked as off.
+     * No monitoring subscription answers `NoSuchMonitoringSubscription` — read as
+     * off; any other error is re-thrown rather than masked as off.
      */
     public static function additionalMetricsEnabled(string $distributionId): bool
     {
@@ -99,7 +97,6 @@ class CloudFront
         return Arr::get($response->toArray(), 'MonitoringSubscription.RealtimeMetricsSubscriptionConfig.RealtimeMetricsSubscriptionStatus') === 'Enabled';
     }
 
-    /** Switch the distribution's real-time additional metrics on. */
     public static function enableAdditionalMetrics(string $distributionId): void
     {
         Aws::cloudFront()->createMonitoringSubscription([

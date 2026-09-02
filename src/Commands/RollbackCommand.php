@@ -24,23 +24,14 @@ use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\warning;
 
 /**
- * Roll an environment back to a previously-deployed app version — re-deploy an
- * image that already exists in ECR, skipping the build.
+ * Re-deploys an image already in ECR: the deploy tail with no build and no asset
+ * push. Code and assets revert cleanly; the database does not — `migrate` in the
+ * hooks is forward-only and never reverts the schema.
  *
- * Reuses the deploy tail (register a task-definition revision pinned to the
- * chosen version, re-run the deploy hooks, roll each service onto it, wait for
- * healthy, re-UPSERT DNS) but runs no build and re-pushes no assets — the image
- * and its asset tree already exist. Code and assets revert cleanly; the database
- * does not — `migrate` in the hooks is forward-only, so it applies nothing new
- * and never reverts the schema, which the confirm gate calls out before anything
- * changes.
- *
- * The picker lists the last deployments by **app version** (parsed from the
- * image ref), newest first — never by ECS task-def revision, which is just
- * AWS's per-family registration counter and says nothing about which version a
- * revision runs (sync-registered revisions even pin the moving `:latest` tag,
- * so they're filtered out as targets). `--app-version` skips the picker for CI;
- * `--force` skips the confirm.
+ * Targets are listed by app version (parsed from the image ref), never by ECS
+ * task-def revision — that's just AWS's per-family registration counter and says
+ * nothing about which version a revision runs (sync-registered revisions even pin
+ * the moving `:latest` tag).
  *
  *   yolo rollback production                                        # interactive picker
  *   yolo rollback production --app-version=26.24.2.0945 --force     # non-interactive / CI
@@ -50,12 +41,8 @@ class RollbackCommand extends SteppedCommand implements DeployerCommand
     use RendersServiceStatus;
 
     /**
-     * The deploy tail, minus only the build-time work: the image and its assets
-     * already exist, so no build and no PushAssetsToS3Step. The deploy hooks DO
-     * re-run via ExecuteDeployStepsStep — they're what makes a version live
-     * (cache rebuilds, migrate, etc.) and they run against the rolled-back
-     * image. `migrate` is forward-only, so it applies nothing new and never
-     * reverts the schema (hence the database warning on the confirm gate).
+     * The deploy hooks DO re-run — they're what makes a version live (cache
+     * rebuilds, migrate, etc.).
      *
      * @var array<int, class-string>
      */
@@ -69,12 +56,10 @@ class RollbackCommand extends SteppedCommand implements DeployerCommand
     ];
 
     /**
-     * Tags that are never a rollback target — moving pointers that re-resolve
-     * at launch, not a stable point-in-time image.
+     * Moving pointers that re-resolve at launch — never a stable rollback target.
      */
     public const RESERVED_TAGS = ['latest', 'buildcache'];
 
-    /** How many versions the picker shows per page. */
     public const PAGE_SIZE = 10;
 
     protected function configure(): void
@@ -104,9 +89,8 @@ class RollbackCommand extends SteppedCommand implements DeployerCommand
             return self::SUCCESS;
         }
 
-        // The deploy tail reads the image tag from the `app-version` option —
-        // the same lever a tagged deploy pulls — so injecting the chosen
-        // version pins RegisterTaskDefinitionRevisionStep's revision to it.
+        // The deploy tail reads the image tag from `app-version` — the same lever a
+        // tagged deploy pulls.
         $this->input->setOption('app-version', $version);
 
         $result = parent::handle();
@@ -118,12 +102,6 @@ class RollbackCommand extends SteppedCommand implements DeployerCommand
         return $result;
     }
 
-    /**
-     * Resolve the version to roll back to: an explicit `--app-version`
-     * (validated against ECR) or the interactive picker. Returns null when
-     * there's nothing to do — bad version, no candidates, or already on it —
-     * with the reason surfaced to the operator.
-     */
     protected function resolveTargetVersion(): ?string
     {
         $repository = (new EcrRepository())->name();
@@ -155,10 +133,6 @@ class RollbackCommand extends SteppedCommand implements DeployerCommand
         return $this->unlessAlreadyRunning($this->pickVersion($targets));
     }
 
-    /**
-     * Guard against rolling back to the version that's already running — that's
-     * a no-op, so say so and stop rather than churn a pointless revision.
-     */
     protected function unlessAlreadyRunning(string $version): ?string
     {
         if ($version === $this->currentVersion()) {
@@ -171,10 +145,6 @@ class RollbackCommand extends SteppedCommand implements DeployerCommand
     }
 
     /**
-     * Page through the rollback targets and let the operator pick one. The
-     * first page holds the 10 most recent; "Show older versions →" walks back
-     * through the rest (ECR keeps the last 30), newest always first.
-     *
      * @param  array<int, array{version: string, pushedAt: int}>  $targets
      */
     protected function pickVersion(array $targets): string
@@ -221,11 +191,6 @@ class RollbackCommand extends SteppedCommand implements DeployerCommand
     }
 
     /**
-     * Reduce raw ECR image details to selectable rollback targets: one entry
-     * per image carrying an explicit version tag (a stable, pinnable
-     * point-in-time image), newest first. Images tagged only
-     * `latest`/`buildcache` are dropped — moving pointers, never a safe pin.
-     *
      * @param  array<int, array<string, mixed>>  $images
      * @return array<int, array{version: string, pushedAt: int}>
      */
@@ -253,9 +218,6 @@ class RollbackCommand extends SteppedCommand implements DeployerCommand
     }
 
     /**
-     * The picker label for a target — version, how long ago it was pushed, and
-     * a "(current)" marker on the version that's running now.
-     *
      * @param  array{version: string, pushedAt: int}  $target
      */
     public static function targetLabel(array $target, ?string $current): string
@@ -269,10 +231,6 @@ class RollbackCommand extends SteppedCommand implements DeployerCommand
         return $target['version'] === $current ? $label . '  (current)' : $label;
     }
 
-    /**
-     * The app version currently running, read from the live service's primary
-     * task definition. Null when nothing is deployed yet.
-     */
     protected function currentVersion(): ?string
     {
         $groups = Manifest::serverGroups();
@@ -302,13 +260,6 @@ class RollbackCommand extends SteppedCommand implements DeployerCommand
         return static::versionFromImage($taskDefinition['containerDefinitions'][0]['image'] ?? '');
     }
 
-    /**
-     * Spell out the database boundary, then gate. Code and assets are versioned
-     * and immutable so they revert cleanly; the database does not — a rollback
-     * past a destructive migration can break against the old code. The confirm
-     * defaults to "no" and `--force` skips it (for CI, alongside
-     * `--app-version`).
-     */
     protected function confirmRollback(string $version): bool
     {
         $this->output->writeln('');
@@ -327,11 +278,6 @@ class RollbackCommand extends SteppedCommand implements DeployerCommand
         );
     }
 
-    /**
-     * Recap what's now running once the rollback has settled — the same summary
-     * table and dashboard link `yolo status` and a deploy show, minus the live
-     * deployment/load panels.
-     */
     protected function renderRollbackSummary(string $version): void
     {
         intro(sprintf('Rolled back to %s', $version));

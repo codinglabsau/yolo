@@ -21,12 +21,8 @@ use Codinglabs\Yolo\Resources\CloudWatchLogs\TaskLogGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Registers the web service's task definition. Standalone queue/scheduler
- * services register their own via SyncQueueTaskDefinitionStep /
- * SyncSchedulerTaskDefinitionStep — all three share payload(), which is
- * group-aware: the family, container name, role command, sizing and stop timeout
- * all follow the group. The one shared image runs every role; the ECS container
- * `command` passes the role (web|queue|scheduler) for the entrypoint to dispatch.
+ * The queue/scheduler subclasses share the group-aware payload(). One image runs
+ * every role; the ECS container `command` passes the role for the entrypoint to dispatch.
  */
 class SyncTaskDefinitionStep implements Step
 {
@@ -40,10 +36,9 @@ class SyncTaskDefinitionStep implements Step
         try {
             $desired = static::payload($this->group());
         } catch (ResourceDoesNotExistException $e) {
-            // The roles / ECR the payload resolves aren't provisioned yet (a
-            // greenfield plan pass) — so the task definition can't exist either.
-            // Report it pending on the plan; on apply the deps exist (registered
-            // earlier in scope order) so a genuine miss is a hard fail.
+            // The roles / ECR the payload resolves aren't provisioned on a greenfield
+            // plan pass — report pending; on apply they exist (registered earlier in
+            // scope order), so a genuine miss is a hard fail.
             if ($dryRun) {
                 $this->recordChange(Change::make('task definition', 'absent', 'new revision'));
 
@@ -53,20 +48,15 @@ class SyncTaskDefinitionStep implements Step
             throw $e;
         }
 
-        // Which image runs is `yolo deploy`'s call, not sync's. Deploy pins the app
-        // version (repo:<version>); sync would otherwise render repo:latest and so
-        // re-register a throwaway revision on every run after a deploy (the image
-        // tag is the only field that differs) — and that revision, if ever adopted,
-        // would swap the running image to :latest. So preserve the live revision's
-        // image: a no-op deploy→sync renders an identical document, and a genuine
-        // infra-field change still re-registers carrying the deployed image.
+        // Which image runs is `yolo deploy`'s call: sync would render repo:latest and
+        // re-register a throwaway revision after every deploy — one that, if adopted,
+        // would swap the running image to :latest. Preserving the live image keeps a
+        // no-op deploy→sync identical while a genuine infra change still re-registers
+        // carrying the deployed image.
         if ($live !== null && isset($live['containerDefinitions'][0]['image'])) {
             $desired['containerDefinitions'][0]['image'] = $live['containerDefinitions'][0]['image'];
         }
 
-        // The registered revision already renders the desired payload — nothing to
-        // do, so the step is pruned before apply and a clean app reports "Already
-        // in sync" instead of registering a no-op revision every time.
         if ($live !== null && $this->matchesDesired(Arr::except($desired, ['tags']), $live)) {
             return StepResult::SYNCED;
         }
@@ -87,9 +77,6 @@ class SyncTaskDefinitionStep implements Step
     }
 
     /**
-     * The latest active revision of the family, or null when none is registered
-     * yet (a first sync).
-     *
      * @return array<string, mixed>|null
      */
     protected function liveTaskDefinition(string $family): ?array
@@ -102,11 +89,9 @@ class SyncTaskDefinitionStep implements Step
     }
 
     /**
-     * Whether every attribute YOLO sets in the desired payload is present and equal
-     * in the live revision. A subset check (not equality) because AWS enriches a
-     * registered task definition with derived fields (revision, status, ARNs,
-     * container defaults) we don't manage — comparing the whole document would read
-     * all of that as phantom drift and re-register on every sync.
+     * A subset check, not equality: AWS enriches a registered task definition with
+     * derived fields (revision, status, ARNs, container defaults) that would read
+     * as phantom drift and re-register on every sync.
      *
      * @param  array<string, mixed>  $desired
      * @param  array<string, mixed>  $live
@@ -130,11 +115,6 @@ class SyncTaskDefinitionStep implements Step
         return true;
     }
 
-    /**
-     * The workload group this step registers a task definition for — web here;
-     * the queue/scheduler subclasses override it. Standalone queue/scheduler steps
-     * are only wired into sync:app when their block is present.
-     */
     protected function group(): ServerGroup
     {
         return ServerGroup::WEB;
@@ -149,14 +129,11 @@ class SyncTaskDefinitionStep implements Step
         $image = (new EcrRepository())->uri() . ':' . ($imageTag ?? 'latest');
 
         // The family is the service name — EcsService points its `taskDefinition`
-        // at the same value, so they stay in lockstep. The task definition isn't
-        // modelled as a Resource (no taggable ARN to own); SyncTaskDefinitionStep
-        // reconciles it diff-first against the latest registered revision.
+        // at the same value, so they stay in lockstep.
         $family = (new EcsService($group))->name();
 
-        // ECS's SIGTERM-to-SIGKILL ceiling. Derived from the same source as the
-        // entrypoint drain and supervisord's stop waits so a long drain or queue
-        // job isn't cut short by SIGKILL mid-shutdown.
+        // Derived from the same source as the entrypoint drain and supervisord's
+        // stop waits, so a long drain or queue job isn't SIGKILLed mid-shutdown.
         $stopTimeout = ShutdownTimings::stopTimeoutFor($group);
 
         return [
@@ -172,15 +149,11 @@ class SyncTaskDefinitionStep implements Step
                     'name' => $group->value,
                     'image' => $image,
                     'essential' => true,
-                    // The container command is the role — the entrypoint dispatches
-                    // on it (web → supervisord, queue → worker, scheduler → cron).
                     'command' => [$group->value],
                     'stopTimeout' => $stopTimeout,
                     'linuxParameters' => [
                         'initProcessEnabled' => true,
                     ],
-                    // Only the web container is reached over the network (the ALB);
-                    // queue and scheduler are headless and map no port.
                     ...$group->attachesToLoadBalancer() ? [
                         'portMappings' => [
                             [
@@ -206,13 +179,9 @@ class SyncTaskDefinitionStep implements Step
     }
 
     /**
-     * The two values the runtime {@see YoloServiceProvider} can't derive: the ECS service
-     * name the burst metric is dimensioned by (the alarm filters on it), and the task's
-     * vCPU allocation the CPU fallback divides by. Injected on the autoscaling web tier
-     * only — YOLO_BURST_SERVICE's presence is what tells the provider to publish, so burst
-     * needs no separate "enabled" flag. Same gate as the metrics Caddyfile and the
-     * PutMetricData grant, so they can't drift; everything else the reporter needs is a
-     * WebBurstPolicy constant it reads directly.
+     * The values the runtime {@see YoloServiceProvider} can't derive. YOLO_BURST_SERVICE's
+     * presence is what tells it to publish, so burst needs no separate "enabled" flag;
+     * same gate as the metrics Caddyfile and the PutMetricData grant, so they can't drift.
      *
      * @return array<string, array<int, array<string, string>>>
      */
@@ -227,10 +196,8 @@ class SyncTaskDefinitionStep implements Step
         return [
             'environment' => [
                 ['name' => 'YOLO_BURST_SERVICE', 'value' => (new EcsService($group))->name()],
-                // The task's vCPU allocation (Fargate CPU units ÷ 1024) — the denominator
-                // the CPU fallback divides usage by. Injected because the Fargate microVM
-                // exposes more vCPUs than a fractional task is throttled to, so the
-                // allocation can't be read back from cgroup/proc reliably.
+                // The Fargate microVM exposes more vCPUs than a fractional task is
+                // throttled to, so the allocation can't be read back from cgroup/proc.
                 ['name' => 'YOLO_BURST_CPU', 'value' => (string) ($cpuUnits / 1024)],
             ],
         ];

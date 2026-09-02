@@ -13,13 +13,10 @@ use Codinglabs\Yolo\Concerns\RecordsChanges;
 use Codinglabs\Yolo\Resources\Ec2\VpcPeeringConnection;
 
 /**
- * Enables DNS resolution over each declared peering — deliberately the LAST
- * peering act, ordered after the routes step. DNS resolution is the switch
- * that makes workloads resolve the peer's private hostnames (an RDS endpoint)
- * to private IPs and start sending traffic across the bridge; flip it before
- * every route exists and each new connection black-holes until the routes
- * land. The connection create/accept therefore leaves DNS off, and this step
- * turns it on only once both directions can route.
+ * Deliberately the LAST peering act: DNS resolution makes workloads resolve the
+ * peer's private hostnames and start sending traffic across the bridge — flip
+ * it before every route exists and each new connection black-holes until the
+ * routes land. Create/accept therefore leaves DNS off.
  */
 class SyncVpcPeeringDnsStep implements Step
 {
@@ -37,11 +34,9 @@ class SyncVpcPeeringDnsStep implements Step
 
         foreach ($declared as $peerVpcId) {
             if (! (new VpcPeeringConnection($peerVpcId))->dnsResolutionEnabled()) {
-                // Recorded before the dry-run guard so the plan and apply
-                // passes agree. On a greenfield plan pass the connection
-                // doesn't exist yet — the change is pending, and by the time
-                // this step's apply runs the connection and routes steps above
-                // have brought everything up.
+                // Recorded before the dry-run guard; on a greenfield plan pass the
+                // connection doesn't exist yet, and by apply the connection and
+                // routes steps have brought it up.
                 $this->recordChange(Change::make("DNS resolution over peering ({$peerVpcId})", false, true));
                 $pendingPeerVpcIds[] = $peerVpcId;
             }

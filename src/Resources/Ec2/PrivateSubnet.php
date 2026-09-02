@@ -15,29 +15,19 @@ use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * One of the three private subnets (one per availability zone), addressed by AZ
- * index 0-2 — the database tier. No public IPs and no internet route: their
- * route table carries only the VPC-local route, so nothing in them is ever
- * reachable from outside the VPC. Each gets a /24 carved deterministically from
- * the VPC's /16 (`10.N.{10 + index}.0/24` — offset past the public tier's
- * 10.N.0-2 with room for it to grow).
+ * The database tier, one per AZ: no public IPs and no internet route, so nothing in
+ * them is ever reachable from outside the VPC.
  */
 class PrivateSubnet implements Deletable, Resource
 {
     use ResolvesTags;
 
-    /**
-     * Where the private tier's /24s start inside the VPC's /16 — the public
-     * tier owns 10.N.0-2, so starting at .10 leaves it room to grow.
-     */
+    /** The public tier owns 10.N.0-2; starting at .10 leaves it room to grow. */
     protected const int CIDR_OFFSET = 10;
 
     public function __construct(protected int $index) {}
 
     /**
-     * Subnet IDs for all three private subnets, in AZ order — the shape the RDS
-     * DB subnet group expects.
-     *
      * @return array<int, string>
      */
     public static function ids(): array
@@ -89,11 +79,9 @@ class PrivateSubnet implements Deletable, Resource
     }
 
     /**
-     * The /24 this subnet would occupy — best-effort at plan time (surfaced as
-     * a Change by the sync step), re-resolved authoritatively at create. On a
-     * greenfield plan pass the VPC doesn't exist yet either, so the carve
-     * falls back to the /16 the VPC sync will claim — the plan must survive
-     * "nothing exists", never throw (the two-pass contract).
+     * Best-effort at plan time, re-resolved at create. On a greenfield plan pass the
+     * VPC doesn't exist yet, so the carve falls back to the /16 the VPC sync will
+     * claim rather than throwing.
      */
     public function availableCidrBlock(): string
     {
@@ -110,11 +98,8 @@ class PrivateSubnet implements Deletable, Resource
     }
 
     /**
-     * Delete this subnet by id. Assumes upstream teardown has already removed
-     * everything in it — the database was never YOLO's to delete and blocks the
-     * whole network reclaim while it lives, so by the time this runs the subnet
-     * is empty and the route-table association goes with it. A concurrent
-     * removal (InvalidSubnetID.NotFound) is tolerated.
+     * The database was never YOLO's to delete and blocks the whole network reclaim
+     * while it lives, so by the time this runs the subnet is empty.
      */
     public function delete(): void
     {
@@ -129,10 +114,7 @@ class PrivateSubnet implements Deletable, Resource
         }
     }
 
-    /**
-     * Carve this subnet's /24 from the VPC's /16 — YOLO owns the network, so
-     * every VPC holds a `10.N.0.0/16` and the carve is always deterministic.
-     */
+    /** YOLO owns the network, so every VPC holds a `10.N.0.0/16` and the carve is deterministic. */
     protected function carveFrom(string $vpcCidrBlock): string
     {
         $block = Str::before($vpcCidrBlock, '.0.0/16');

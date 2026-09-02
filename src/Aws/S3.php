@@ -17,13 +17,10 @@ class S3
     }
 
     /**
-     * Whether THIS account owns the bucket — the only question S3 answers
-     * unambiguously. HeadBucket can't: because the bucket namespace is global, a
-     * 403 means both "another account owns this name" and "yours, but the calling
-     * tier may not read it", and adopting the former looks like a clean sync that
-     * then fails every runtime write. ListBuckets returns only our own buckets, so
-     * absence from it is a definitive no. `s3:ListAllMyBuckets` is granted to the
-     * read tier, so every command can ask.
+     * HeadBucket can't answer this: the bucket namespace is global, so a 403 means
+     * both "another account owns this name" and "ours, but this tier can't read
+     * it" — and adopting the former looks like a clean sync that then fails every
+     * runtime write. ListBuckets returns only our own buckets.
      */
     public static function accountOwnsBucket(string $name): bool
     {
@@ -31,8 +28,6 @@ class S3
     }
 
     /**
-     * Every bucket name in this account.
-     *
      * @return array<int, string>
      */
     public static function ownedBucketNames(): array
@@ -45,12 +40,10 @@ class S3
     }
 
     /**
-     * Whether the name is taken anywhere in S3's global namespace. Used only to
-     * tell "free" from "owned by someone else" once {@see accountOwnsBucket} has
-     * established it isn't ours, so the operator gets the real reason. Exists and
-     * unreadable (403) and exists in another region (PermanentRedirect) both count
-     * as taken; only a 404 is free. An unexpected failure reads as taken — it makes
-     * the wording of an error we are already emitting more cautious, never less.
+     * Only tells "free" from "owned by someone else" once {@see accountOwnsBucket}
+     * has said it isn't ours. 403 and PermanentRedirect both count as taken; only
+     * a 404 is free. An unexpected failure reads as taken — it makes the wording
+     * of an error already being emitted more cautious, never less.
      */
     public static function bucketTaken(string $name): bool
     {
@@ -62,11 +55,8 @@ class S3
     }
 
     /**
-     * Whether S3 would accept the name at CreateBucket time, checked up front so a
-     * typo fails manifest validation instead of surfacing as a mid-apply
-     * InvalidBucketName. Covers the general-purpose bucket rules: 3-63 characters
-     * of lowercase alphanumerics, dots and hyphens, starting and ending
-     * alphanumeric, no adjacent dots, and not shaped like an IP address.
+     * Checked up front so a typo fails manifest validation instead of surfacing
+     * as a mid-apply InvalidBucketName.
      */
     public static function isValidBucketName(string $name): bool
     {
@@ -82,12 +72,9 @@ class S3
     }
 
     /**
-     * Delete a bucket — the single chokepoint every YOLO bucket teardown routes
-     * through, guarded so the bring-your-own application data bucket (AWS_BUCKET)
-     * can NEVER be deleted: it holds user data and is not YOLO's to remove. A name
-     * match against the configured app data bucket is a hard integrity failure, the
-     * runtime last line of defence behind {@see S3Bucket}
-     * being non-deletable. (Config / asset / logs buckets are regeneratable and pass.)
+     * The single chokepoint for every bucket teardown: the bring-your-own app
+     * data bucket holds user data and is never YOLO's to remove — the runtime
+     * last line of defence behind {@see S3Bucket} being non-deletable.
      */
     public static function deleteBucket(string $name): void
     {
@@ -102,11 +89,9 @@ class S3
     }
 
     /**
-     * Whether an S3 failure means the object/bucket genuinely doesn't exist —
-     * NoSuchKey / NoSuchBucket, or a bare 404 (HeadObject carries no error
-     * code in its response body). AccessDenied, throttling and transient
-     * faults are NOT absence and must never be read as it: callers treating
-     * this as "nothing there" rethrow everything else.
+     * A bare 404 counts because HeadObject carries no error code in its body.
+     * AccessDenied, throttling and transient faults are NOT absence — callers
+     * rethrow everything else.
      */
     public static function isNotFound(S3Exception $e): bool
     {
@@ -115,9 +100,6 @@ class S3
     }
 
     /**
-     * The bucket's Block Public Access configuration, or null when none is set
-     * (a fresh bucket has none — AWS throws NoSuchPublicAccessBlockConfiguration).
-     *
      * @return array<string, bool>|null
      */
     public static function publicAccessBlock(string $bucket): ?array
@@ -133,19 +115,12 @@ class S3
         }
     }
 
-    /**
-     * The bucket's versioning status ('Enabled' / 'Suspended'), or null when
-     * versioning was never configured (the result simply omits Status).
-     */
     public static function bucketVersioning(string $bucket): ?string
     {
         return Aws::s3()->getBucketVersioning(['Bucket' => $bucket])['Status'] ?? null;
     }
 
     /**
-     * The bucket's CORS rules, or null when none are configured (AWS throws
-     * NoSuchCORSConfiguration).
-     *
      * @return array<int, array<string, mixed>>|null
      */
     public static function bucketCors(string $bucket): ?array
@@ -162,9 +137,6 @@ class S3
     }
 
     /**
-     * The bucket's lifecycle rules, or null when none are configured (AWS
-     * throws NoSuchLifecycleConfiguration).
-     *
      * @return array<int, array<string, mixed>>|null
      */
     public static function lifecycleRules(string $bucket): ?array
@@ -181,13 +153,9 @@ class S3
     }
 
     /**
-     * The bucket's resource policy decoded to an array, or null when none is
-     * attached (AWS throws NoSuchBucketPolicy) — or when the bucket itself
-     * doesn't exist yet (NoSuchBucket): the plan pass may read the policy of
-     * a sibling bucket the apply pass hasn't created yet (e.g. the asset
-     * distribution reading a renamed asset bucket on a migration's first
-     * sync), and a missing bucket means a missing policy. If the bucket
-     * genuinely never appears, the apply-phase put fails loudly.
+     * NoSuchBucket is also null: the plan pass may read a sibling bucket's policy
+     * before the apply pass has created it. If the bucket never appears, the
+     * apply-phase put fails loudly.
      *
      * @return array<string, mixed>|null
      */

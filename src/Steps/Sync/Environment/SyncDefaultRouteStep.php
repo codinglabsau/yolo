@@ -14,12 +14,9 @@ use Codinglabs\Yolo\Resources\Ec2\InternetGateway;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * The 0.0.0.0/0 → internet gateway default route on the public route table.
- * AWS exposes no direct lookup for a single route, but the route table's `Routes`
- * block lists them, so we diff against that and only call createRoute when the
- * default route is absent — instead of re-stamping it (idempotently) on every
- * sync, which recorded no Change and so kept tripping the confirm gate even on a
- * clean account.
+ * AWS exposes no direct lookup for a single route, so diff against the route
+ * table's `Routes` block and only createRoute when absent — re-stamping it every
+ * sync recorded no Change and kept tripping the confirm gate on a clean account.
  */
 class SyncDefaultRouteStep implements Step
 {
@@ -29,8 +26,6 @@ class SyncDefaultRouteStep implements Step
     {
         $dryRun = (bool) Arr::get($options, 'dry-run');
 
-        // Already routed → nothing to do, so the step is pruned before apply and a
-        // clean environment reports "Already in sync".
         if ($this->hasDefaultRoute()) {
             return StepResult::SYNCED;
         }
@@ -50,11 +45,7 @@ class SyncDefaultRouteStep implements Step
         return StepResult::SYNCED;
     }
 
-    /**
-     * Whether the public route table already carries a 0.0.0.0/0 route to an
-     * internet gateway. False when the route table isn't provisioned yet (a
-     * greenfield plan pass), so the missing route is reported as pending.
-     */
+    /** False when the route table isn't provisioned yet (greenfield plan pass), so the route reports pending. */
     protected function hasDefaultRoute(): bool
     {
         try {

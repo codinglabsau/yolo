@@ -17,8 +17,7 @@ class SyncVpcStep implements Step
         $vpc = new Vpc();
 
         if (! $vpc->exists()) {
-            // Surface the auto-selected /16 in the plan before it's created — so
-            // the operator sees which range this environment lands in.
+            // Surface the auto-selected /16 so the operator sees which range the environment lands in.
             $this->recordChange(Change::make('cidr block', 'absent', $vpc->availableCidrBlock()));
         }
 

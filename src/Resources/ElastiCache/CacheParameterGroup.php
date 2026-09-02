@@ -13,11 +13,8 @@ use Codinglabs\Yolo\Enums\ElastiCache as ElastiCacheEnum;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Custom cache parameter group pinning `maxmemory-policy=allkeys-lru` so the
- * shared cache never refuses a write under memory pressure (it evicts the
- * least-recently-used key instead) — the right general-purpose default for an
- * app cache. The parameter-group family is coupled to the engine major, so it is
- * pinned alongside CacheCluster::ENGINE_VERSION.
+ * Pins `maxmemory-policy=allkeys-lru` so the shared cache evicts rather than refuses
+ * writes under memory pressure. The family is pinned alongside CacheCluster::ENGINE_VERSION.
  */
 class CacheParameterGroup implements Deletable, Resource
 {
@@ -71,10 +68,6 @@ class CacheParameterGroup implements Deletable, Resource
         return Aws::synchroniseElastiCacheTags($this->arn(), $this->tags(), $apply);
     }
 
-    /**
-     * Teardown: delete the parameter group, after the cache that used it is gone.
-     * A concurrent not-found is tolerated.
-     */
     public function delete(): void
     {
         try {

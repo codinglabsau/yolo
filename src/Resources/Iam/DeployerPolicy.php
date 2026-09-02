@@ -22,18 +22,10 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * YOLO-managed customer-managed IAM policy granting exactly the AWS permissions
- * `yolo deploy` exercises — co-located with the deploy steps so that when a new
- * deploy step calls a new AWS API, the deployer's permission is bumped in the
- * same place and CI never drifts into AccessDenied. Attached to the deployer
- * role by AttachDeployerRolePoliciesStep.
- *
- * All resource ARNs are constructed deterministically from the manifest
- * (region, account id, app name), so the document is pure — no live AWS calls,
- * and no coupling to resources later sync phases provision.
- *
- * Document drift is reconciled as a plan-visible Change via the shared
- * SynchronisesPolicyDocument trait (createPolicyVersion + 5-version pruning).
+ * Exactly the permissions `yolo deploy` exercises, co-located so a new deploy
+ * step bumps the deployer's grant in the same place and CI never drifts into
+ * AccessDenied. Every ARN is manifest-derived — no live AWS calls, no coupling
+ * to resources later sync phases provision.
  */
 class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
 {
@@ -76,12 +68,7 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
         ]);
     }
 
-    /**
-     * IAM Description fields enforce a restricted character set
-     * (tab/LF/CR + printable ASCII + Latin-1 Supplement) — no em dashes,
-     * smart quotes, or U+007F - U+00A0 control range. Validated by
-     * IamDescriptionsAreSafeTest.
-     */
+    /** IAM Description allows only printable ASCII + Latin-1 (no em dashes or smart quotes) — pinned by IamDescriptionsAreSafeTest. */
     public function description(): string
     {
         return 'YOLO managed deploy-time permissions for the GitHub Actions deployer role';
@@ -93,12 +80,8 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * Teardown when the app drops its deployer: IAM refuses to delete a
-     * customer-managed policy while it is still attached to any entity or while
-     * it carries non-default versions, so detach it from every role/group/user it
-     * is attached to (the SynchronisesPolicyDocument trait may have rolled several
-     * versions) and prune every non-default version before deletePolicy. A
-     * concurrent delete that already removed the policy is tolerated.
+     * IAM refuses to delete a policy that is still attached anywhere or carries
+     * non-default versions, so detach and prune before deletePolicy.
      */
     public function delete(): void
     {
@@ -147,8 +130,7 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
                 throw $e;
             }
         } catch (ResourceDoesNotExistException) {
-            // arn() resolves the policy by listing; a concurrent delete that
-            // removed it between exists() and here leaves nothing to do.
+            // Removed between exists() and here — nothing left to do.
         }
     }
 
@@ -161,9 +143,7 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
 
         $cluster = (new EcsCluster())->name();
 
-        // Each service group (web + any standalone queue/scheduler) gets its own
-        // service + task-definition family (the family is the service name), so the
-        // deployer needs UpdateService/RegisterTaskDefinition scoped to all of them.
+        // The task-definition family is the service name.
         $serviceArns = [];
         $taskDefinitionArns = [];
 
@@ -179,10 +159,8 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
 
         $statements = [
             [
-                // Operations AWS does not support resource-level permissions for,
-                // so they must be granted on "*". Read-only, except
-                // RegisterTaskDefinition which only mints an immutable revision
-                // that the scoped UpdateService below then adopts.
+                // Unscopeable ops. Read-only except RegisterTaskDefinition, which only
+                // mints an immutable revision the scoped UpdateService below adopts.
                 'Effect' => 'Allow',
                 'Resource' => '*',
                 'Action' => [
@@ -196,18 +174,15 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
                     'ec2:DescribeVpcs',
                     'ec2:DescribeSubnets',
                     'ec2:DescribeSecurityGroups',
-                    // Build resolves the asset distribution by scanning the
-                    // account list (CloudFront has no name-based lookup) to bake
-                    // ASSET_URL before `npm run build`.
+                    // CloudFront has no name-based lookup; build scans the account list
+                    // to bake ASSET_URL.
                     'cloudfront:ListDistributions',
-                    // The task-definition payload resolves the task + execution
-                    // role ARNs by scanning the account role list.
+                    // The task-def payload resolves role ARNs by scanning the role list.
                     'iam:ListRoles',
                     'sts:GetCallerIdentity',
                 ],
             ],
             [
-                // Push the application image to this app's ECR repository.
                 'Effect' => 'Allow',
                 'Resource' => $ecrRepositoryArn,
                 'Action' => [
@@ -223,10 +198,8 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
                 ],
             ],
             [
-                // Roll the new revision onto this app's services and run the one-off
-                // deploy task (migrations) on its cluster. ExecuteCommand backs the
-                // `yolo run` ECS Exec session — the same app-plane execution the
-                // deploy hooks already grant via RunTask, scoped to the same tasks.
+                // ExecuteCommand backs the `yolo run` ECS Exec session — the same
+                // app-plane execution RunTask already grants, on the same tasks.
                 'Effect' => 'Allow',
                 'Resource' => [
                     sprintf('arn:aws:ecs:%s:%s:cluster/%s', $region, $accountId, $cluster),
@@ -244,13 +217,9 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
                 ],
             ],
             [
-                // ECS runs a separate ecs:TagResource authorization check when
-                // RegisterTaskDefinition is called with tags, and the task-def
-                // payload always stamps yolo:environment + Name. RegisterTaskDefinition
-                // itself is unscopeable (granted on * above), so the create-action
-                // condition — not a resource ARN — is the fence: the deployer can
-                // tag only as part of registering a task definition, never retag
-                // arbitrary ECS resources.
+                // RegisterTaskDefinition with tags triggers a separate ecs:TagResource
+                // check. The action is unscopeable, so the create-action condition is
+                // the fence: tag only while registering a task definition.
                 'Effect' => 'Allow',
                 'Resource' => '*',
                 'Action' => ['ecs:TagResource'],
@@ -261,9 +230,6 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
                 ],
             ],
             [
-                // Hand the task + execution roles to ECS when registering the task
-                // definition — scoped to exactly the two roles YOLO manages, and
-                // only to the ECS tasks service.
                 'Effect' => 'Allow',
                 'Resource' => [
                     $this->taskRoleArn(),
@@ -277,14 +243,9 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
                 ],
             ],
             [
-                // Push the public asset tree (deploy) — write-only on the per-deploy
-                // builds/{version}/ prefix. s3:PutObject authorises the whole
-                // multipart chain (CreateMultipartUpload / UploadPart /
-                // CompleteMultipartUpload) plus the immutable CacheControl;
-                // abort + list-parts cover a Transfer-manager retry. No read, no
-                // ListBucket, no GetBucketLocation: PushAssetsToS3Step streams local
-                // files up through a region-pinned client and never reads or lists
-                // the destination.
+                // Write-only on the per-deploy prefix. s3:PutObject covers the multipart
+                // chain; abort + list-parts cover a Transfer-manager retry. No read or
+                // ListBucket: PushAssetsToS3Step never reads or lists the destination.
                 'Effect' => 'Allow',
                 'Resource' => sprintf('%s/builds/*', $assetBucketArn),
                 'Action' => [
@@ -294,25 +255,17 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
                 ],
             ],
             [
-                // The app's env file: read on the build pull (RetrieveEnvFileStep)
-                // and write for `env:push` — both run under this tier, scoped to
-                // exactly this app's env-file object, never a list or the bucket.
-                // Without the write here the only role-model path to author an
-                // app `.env` would be rewriting the bucket policy via the admin
-                // tier's s3:PutBucket* — a scoped object grant on the tier that
-                // owns the app's lifecycle beats an escalation lever.
+                // The app's env file: read on the build pull, write for `env:push`.
+                // Without the write, the only path to author an app `.env` would be
+                // rewriting the bucket policy via the admin tier — an escalation lever.
                 'Effect' => 'Allow',
                 'Resource' => sprintf('%s/%s', $configBucketArn, Paths::s3AppEnvKey()),
                 'Action' => ['s3:GetObject', 's3:PutObject'],
             ],
             [
-                // Publish this app's claim file into the env config bucket on
-                // every deploy (PublishAppManifestStep reads then writes it).
-                // Scoped to exactly this app's `apps/{app}.yml` object — never
-                // the bucket root, so the deployer can't reach the env-shared
-                // `.env` or env manifest that share the bucket. Read of those is
-                // the permission that gates env-secret control; app deploys must
-                // not hold it.
+                // The claim file only — never the bucket root, so the deployer can't
+                // reach the env-shared `.env` or env manifest in the same bucket
+                // (reading those is what gates env-secret control).
                 'Effect' => 'Allow',
                 'Resource' => $appManifestArn,
                 'Action' => [
@@ -321,43 +274,30 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
                 ],
             ],
             [
-                // Read this app's environment-side `.env` (env/.env.{app}) in the
-                // env config bucket, carrying its YOLO-minted Typesense scoped key
-                // — ConfigureEnvAndVersionStep merges it into the built env. Scoped
-                // to exactly this app's object — never the env-shared `.env` (the
-                // cluster admin key) or any other app's env-side file.
+                // This app's env-side `.env` (its YOLO-minted Typesense key) — never the
+                // env-shared `.env` (cluster admin key) or another app's.
                 'Effect' => 'Allow',
                 'Resource' => sprintf('%s/%s', (new EnvConfigBucket())->arn(), Paths::s3EnvAppEnvKey()),
                 'Action' => ['s3:GetObject'],
             ],
             [
-                // Bucket-name discovery for the pre-deploy `sync --check` gate, which
-                // verifies that a bring-your-own app data bucket still exists on this
-                // account before a deploy points AWS_BUCKET at it. Ownership can only
-                // be established by listing the account's own buckets — a probe of the
-                // bucket itself answers 403 for both "someone else owns this name" and
-                // "yours, unreadable by this tier". A collection operation, so it takes
-                // no resource-level scoping; it returns bucket names only, never any
-                // object or bucket configuration.
+                // The pre-deploy `sync --check` gate verifies a BYO data bucket still
+                // exists on this account; a probe of the bucket answers 403 for both
+                // "someone else's" and "yours, unreadable", so only listing works.
+                // Returns names only.
                 'Effect' => 'Allow',
                 'Resource' => '*',
                 'Action' => ['s3:ListAllMyBuckets'],
             ],
         ];
 
-        // The apex/www DNS cutover only runs for apps with a public domain. Scope
-        // the record change to the app's hosted zone; the change-status poll
-        // can't be scoped (change ids aren't known ahead of time).
         if (Manifest::hasDomain()) {
             $statements = [...$statements, ...$this->route53Statements()];
         }
 
-        // When the app uses the shared Valkey cache (`cache.store: redis`, the
-        // default for any app with tasks), the build bakes REDIS_HOST by reading the cluster's
-        // primary endpoint (ConfigureEnvAndVersionStep -> CacheCluster::endpoint()).
-        // DescribeReplicationGroups has no resource-level scoping, so it's granted
-        // on "*". Apps that opt out (file/database/array) never read the cluster
-        // and so get no elasticache permission.
+        // Build bakes REDIS_HOST from the cluster's primary endpoint;
+        // DescribeReplicationGroups is unscopeable. Apps that opt out never read
+        // the cluster.
         if (Manifest::cacheStore() === 'redis') {
             $statements[] = [
                 'Effect' => 'Allow',
@@ -366,11 +306,9 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
             ];
         }
 
-        // Autoscaling deliberately gets no statement here: `yolo deploy` never
-        // touches the scalable target or its policies (a deploy rolls a task-def
-        // revision and UpdateService without desiredCount — App Auto Scaling keeps
-        // owning capacity straight through). The scaling APIs are exercised only by
-        // `yolo sync` / `yolo scale`, which run with admin creds, not this role.
+        // No autoscaling statement on purpose: deploy rolls a revision via
+        // UpdateService without desiredCount, so App Auto Scaling keeps owning
+        // capacity; scaling APIs belong to sync/scale under admin creds.
 
         return [
             'Version' => '2012-10-17',
@@ -401,13 +339,10 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
                 'Action' => ['route53:ListHostedZones'],
             ],
             [
-                // Scoped to the hosted-zone resource type rather than one resolved
-                // zone id. The id isn't derivable from the domain, and resolving it
-                // live here would couple the IAM sync phase to the hosted zone that
-                // the later Solo phase creates — wedging the first `yolo sync` on a
-                // green-field account. The OIDC repo/branch trust boundary is the
-                // real fence; a single deploy role changing records in its own
-                // account is an acceptable scope.
+                // Hosted-zone type, not one zone id: the id isn't derivable from the
+                // domain, and resolving it live would couple the IAM phase to the zone
+                // the later Solo phase creates — wedging a green-field first sync. The
+                // OIDC repo/branch trust is the real fence.
                 'Effect' => 'Allow',
                 'Resource' => 'arn:aws:route53:::hostedzone/*',
                 'Action' => ['route53:ChangeResourceRecordSets'],

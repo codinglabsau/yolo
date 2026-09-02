@@ -11,14 +11,8 @@ use Codinglabs\Yolo\Concerns\RecordsChanges;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\QueueBacklogPolicy;
 
 /**
- * Reconciles the queue service's backlog-per-task target-tracking policy onto its
- * scalable target — the policy that scales the queue 1→N on
- * messages-per-running-task. Wired into sync:app only when tasks.queue is set.
- *
- * Never gates on the queue service existing — on a greenfield PLAN pass nothing
- * exists yet, and a bare SKIPPED there would prune the step from the apply pass
- * (two-pass contract); the apply runs after the queue service and its scalable
- * target have been created earlier in the same pass.
+ * Never gates on the queue service existing — a bare SKIPPED on the greenfield
+ * plan pass would prune the step from apply.
  */
 class SyncQueueScalingPolicyStep implements Step
 {
@@ -26,8 +20,7 @@ class SyncQueueScalingPolicyStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        // Off when the queue runs a fixed single task (autoscaling: false) — the
-        // scalable target's deregistration cascades this policy away, so just skip.
+        // The scalable target's deregistration cascades this policy away.
         if (! Manifest::autoscales(ServerGroup::QUEUE)) {
             return StepResult::SKIPPED;
         }

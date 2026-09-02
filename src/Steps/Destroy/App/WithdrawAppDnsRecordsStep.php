@@ -13,14 +13,9 @@ use Codinglabs\Yolo\Concerns\RecordsChanges;
 use Codinglabs\Yolo\Resources\Route53\HostedZone;
 
 /**
- * Withdraws this app's DNS records — and ONLY its records. The hosted zone itself
- * is never deleted: it's domain-level infrastructure (the registrar's NS delegation
- * points at it, and the domain's email / verification DNS and any sibling
- * environment's records all live in it), so it outlives any single app. Tearing the
- * app down removes the A/AAAA records YOLO inserted for it and leaves the zone — and
- * everything else in it — standing. Mirrors how `destroy:app` treats every other
- * shared resource: withdraw this app's slice, never delete the shared thing. See
- * {@see HostedZone::removeAppRecords()}.
+ * The hosted zone is never deleted — the registrar's NS delegation, the domain's
+ * email/verification DNS and sibling environments' records all live in it. Only
+ * the A/AAAA records YOLO inserted for this app go.
  */
 class WithdrawAppDnsRecordsStep implements Step
 {
@@ -28,8 +23,7 @@ class WithdrawAppDnsRecordsStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        // No domain of its own means no app-level records to withdraw — a tenanted
-        // app's per-tenant records are withdrawn by the per-tenant teardown.
+        // Per-tenant records are withdrawn by the per-tenant teardown.
         if (! Manifest::hasDomain()) {
             return StepResult::SKIPPED;
         }
@@ -46,10 +40,6 @@ class WithdrawAppDnsRecordsStep implements Step
             return StepResult::SKIPPED;
         }
 
-        // Name each record withdrawn — type + host (e.g. `A www.example.com`). Only
-        // this app's own A/AAAA alias records go; the shared, domain-level hosted
-        // zone and everything else in it (MX, NS, sibling envs) stays. The step is
-        // a withdrawal, never a zone delete — see {@see HostedZone}.
         foreach ($records as $record) {
             $this->recordChange(Change::make(sprintf('%s %s', $record['Type'], $record['Name']), 'present', null));
         }

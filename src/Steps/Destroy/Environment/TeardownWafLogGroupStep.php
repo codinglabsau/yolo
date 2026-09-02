@@ -8,9 +8,8 @@ use Codinglabs\Yolo\Steps\Destroy\TeardownStep;
 use Codinglabs\Yolo\Resources\CloudWatchLogs\WafLogGroup;
 
 /**
- * Tears down the env WAF request-log group. Runs after TeardownWebAclStep —
- * deleting the web ACL removes its logging configuration, leaving the group
- * unreferenced.
+ * Runs after TeardownWebAclStep — deleting the web ACL is what removes the
+ * logging configuration that references this group.
  */
 class TeardownWafLogGroupStep extends TeardownStep
 {

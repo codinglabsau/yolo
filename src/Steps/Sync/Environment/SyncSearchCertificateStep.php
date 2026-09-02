@@ -20,22 +20,15 @@ use Codinglabs\Yolo\Resources\ElbV2\HttpsListener;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * The certificate for the environment's search host plus the shared :443
- * listener it rides. An env-backed service owns its own public ingress — it may
- * run on a domain no app shares — so it can't wait on an app to bring up HTTPS:
+ * An env-backed service owns its own public ingress — it may run on a domain no
+ * app shares — so it can't wait on an app to bring up HTTPS: it asserts an apex
+ * + wildcard cert on the env domain and bootstraps the shared :443 listener
+ * from it when no app has yet (create-if-missing keeps a single writer; an app
+ * that later needs :443 only SNI-attaches). Attachment is diffed against
+ * DescribeListenerCertificates — DescribeListeners shows the default cert only.
  *
- *  - it asserts an apex + wildcard cert on the env domain ({domain} + *.{domain},
- *    which covers search.{domain}), reusing an app's existing cert when the
- *    domain is shared and minting one when the domain is new; then
- *  - it guarantees the shared :443 listener exists, bootstrapping it from this
- *    cert when no app has yet (create-if-missing keeps a single writer: an app
- *    that later needs :443 finds it and only SNI-attaches its own cert); and
- *  - it makes sure this cert is on the listener — as the listener default when it
- *    bootstraps, or via SNI (diff-first against DescribeListenerCertificates, the
- *    default-cert-only DescribeListeners trap) when an app got there first.
- *
- * Teardown deliberately leaves the certificate and listener: both may serve an
- * app sharing the domain, and an idle SNI attachment costs nothing.
+ * Teardown leaves the certificate and listener: both may serve an app sharing
+ * the domain, and an idle SNI attachment costs nothing.
  */
 class SyncSearchCertificateStep implements Step
 {
@@ -80,14 +73,6 @@ class SyncSearchCertificateStep implements Step
         return $this->ensureHttpsListener($summary['CertificateArn'], $dryRun);
     }
 
-    /**
-     * Guarantee the issued cert serves the shared :443 listener, bootstrapping
-     * the listener itself when no app has. Three states: the ALB isn't up yet
-     * (provisioned later in the env sync) -> report the pending listener and let
-     * the next sync converge; no :443 listener -> create it from this cert; the
-     * listener exists -> ensure this cert rides it via SNI (diff-first, so an
-     * already-attached cert reports clean).
-     */
     protected function ensureHttpsListener(string $certificateArn, bool $dryRun): StepResult
     {
         try {
@@ -101,8 +86,6 @@ class SyncSearchCertificateStep implements Step
         try {
             $listenerArn = ElbV2::listenerOnPort($loadBalancerArn, 443)['ListenerArn'];
         } catch (ResourceDoesNotExistException) {
-            // No :443 listener yet — the service brings it up from its own
-            // (apex + wildcard) cert rather than waiting on an app.
             $this->recordChange(Change::make('search :443 listener', 'absent', 'created'));
 
             if (! $dryRun) {

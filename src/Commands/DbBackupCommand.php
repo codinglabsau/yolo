@@ -21,28 +21,21 @@ use function Laravel\Prompts\error;
 use function Laravel\Prompts\intro;
 
 /**
- * Run the database backup on demand: launch the same in-container executor the
- * generated crontab schedules (ProcessCommands::databaseBackup — identical
- * invocation, so the two can't drift) as a one-off Fargate task, and stream
- * its output back until it stops. The dump must execute inside the VPC — only
- * a task has network locality to the database — so this command's job is
- * launching and watching, never dumping.
+ * Launches the exact invocation the generated crontab schedules
+ * (ProcessCommands::databaseBackup, so the two can't drift) as a one-off task: the
+ * dump must execute inside the VPC, so this command launches and watches, never dumps.
  */
 class DbBackupCommand extends Command implements DeployerCommand
 {
     /**
-     * Task-level CPU/memory for the one-off backup task, overriding the deploy
-     * group's task definition — the same bump the deploy hooks get, for the
-     * same reason: `zstd -T0` is CPU-hungry and a dedicated short-lived task
-     * shouldn't inherit a thin scheduler/queue sizing. Must stay a valid
-     * Fargate pair.
+     * `zstd -T0` is CPU-hungry and a short-lived task shouldn't inherit a thin
+     * scheduler/queue sizing. Must stay a valid Fargate pair.
      */
     protected const string BACKUP_TASK_CPU = '1024';
 
     protected const string BACKUP_TASK_MEMORY = '2048';
 
-    /** How long to watch a run before giving up — the task itself keeps
-     * running; this only bounds the tail. */
+    /** Bounds only the tail — the task itself keeps running. */
     protected const int WATCH_TIMEOUT_SECONDS = 2 * 3600;
 
     protected function configure(): void
@@ -61,10 +54,8 @@ class DbBackupCommand extends Command implements DeployerCommand
             return self::FAILURE;
         }
 
-        // The same placement rules as the one-off deploy hooks: the management
-        // tier's task definition, with the container override matched by the
-        // group's container name (a mismatched name would silently boot the
-        // role's default process instead of the backup).
+        // Same placement as the deploy hooks; a mismatched container name would
+        // silently boot the role's default process instead of the backup.
         $group = Manifest::deployGroup();
         $cluster = (new EcsCluster())->name();
 
@@ -122,10 +113,7 @@ class DbBackupCommand extends Command implements DeployerCommand
     }
 
     /**
-     * Poll the task until it stops, printing each new log line as it lands —
-     * the awslogs stream is named {group}/{group}/{taskId}. Returns the
-     * container's exit code (null when ECS reports none, e.g. a task that
-     * never started its container).
+     * Null when ECS reports no exit code (a task that never started its container).
      */
     protected function watch(string $cluster, string $taskArn, string $containerName, string $taskId): ?int
     {

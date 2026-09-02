@@ -8,9 +8,6 @@ use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Steps\Destroy\TeardownStep;
 
-/**
- * Tears down this app's scheduler ECS service.
- */
 class TeardownSchedulerServiceStep extends TeardownStep
 {
     protected function resource(): EcsService

@@ -15,25 +15,20 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Shared VPC for the environment (not per-app). On create it claims the lowest
- * `10.N.0.0/16` (from 10.1) that overlaps no VPC already in the region, so two
- * environments on the one account never share a range — they stay peerable and
- * there's no "which env is this 10.1 address?" confusion. 10.0 is skipped (a
- * co-located Vapor stack's block); a fresh account still lands on 10.1, the
- * previous fixed default. The CIDR is chosen once at create (the VPC is keyed by
- * Name, so sync never re-picks); the subnets carve their /24s from whatever block
- * it lands in.
+ * Env-shared. On create it claims the lowest `10.N.0.0/16` (from 10.1) overlapping
+ * no VPC in the region, so two environments on one account never share a range and
+ * stay peerable. 10.0 is skipped (a co-located Vapor stack's block). Chosen once —
+ * the VPC is keyed by Name, so sync never re-picks; subnets carve from whatever it
+ * lands in.
  */
 class Vpc implements Deletable, Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
 
     /**
-     * The VPC attributes a Route 53 private hosted zone needs set to true to
-     * resolve inside the VPC. A created VPC defaults enableDnsSupport on but
-     * enableDnsHostnames OFF — and a private hosted zone (so Cloud Map private
-     * DNS, the backing of ECS service discovery) requires BOTH. Keys are the
-     * `modifyVpcAttribute` parameter names.
+     * A created VPC defaults enableDnsHostnames OFF, but a Route 53 private hosted
+     * zone (Cloud Map private DNS, backing ECS service discovery) needs BOTH on.
+     * Keys are the `modifyVpcAttribute` parameter names.
      */
     protected const array DNS_ATTRIBUTES = ['EnableDnsSupport', 'EnableDnsHostnames'];
 
@@ -72,23 +67,13 @@ class Vpc implements Deletable, Resource, SynchronisesConfiguration
             ],
         ])['Vpc']['VpcId'];
 
-        // A created VPC defaults enableDnsHostnames OFF, which leaves any
-        // Route 53 private hosted zone — and therefore Cloud Map private DNS,
-        // the backing of ECS service discovery (e.g. Typesense's Raft peer
-        // addresses) — unresolvable inside it. Turn both DNS attributes on at
-        // create; synchroniseConfiguration() keeps them true thereafter.
         foreach (self::DNS_ATTRIBUTES as $attribute) {
             $this->enableDnsAttribute($vpcId, $attribute);
         }
     }
 
     /**
-     * Reconcile the VPC's DNS attributes back to true. Both must be on for a
-     * Route 53 private hosted zone to resolve inside the VPC, so Cloud Map
-     * private DNS (ECS service discovery — e.g. the Typesense Raft peer list)
-     * stays dark until they are. This also heals any VPC created before they
-     * were set at create time. Reads regardless of $apply (so a dry-run reports
-     * the drift) and writes only the attributes that are off.
+     * Also heals any VPC created before the DNS attributes were set at create.
      *
      * @return array<int, Change>
      */
@@ -112,10 +97,7 @@ class Vpc implements Deletable, Resource, SynchronisesConfiguration
         return $changes;
     }
 
-    /**
-     * Set one boolean VPC DNS attribute to true — `modifyVpcAttribute` takes a
-     * single attribute per call, so create and reconcile both funnel here.
-     */
+    /** `modifyVpcAttribute` takes a single attribute per call. */
     protected function enableDnsAttribute(string $vpcId, string $attribute): void
     {
         Aws::ec2()->modifyVpcAttribute([
@@ -124,11 +106,7 @@ class Vpc implements Deletable, Resource, SynchronisesConfiguration
         ]);
     }
 
-    /**
-     * The lowest `10.N.0.0/16` (N from 1) that overlaps no VPC currently in the
-     * region. Best-effort at plan time (re-resolved authoritatively here at
-     * create); a fresh account with nothing in 10.x returns 10.1.0.0/16.
-     */
+    /** Best-effort at plan time; re-resolved authoritatively at create. */
     public function availableCidrBlock(): string
     {
         $inUse = Ec2::cidrBlocksInUse();
@@ -149,13 +127,7 @@ class Vpc implements Deletable, Resource, SynchronisesConfiguration
         return Aws::synchroniseEc2Tags($this->arn(), $this->tags(), $apply);
     }
 
-    /**
-     * Delete the VPC by id. The network shell inside it — subnets, route table,
-     * internet gateway, security groups — has been torn down by the earlier
-     * destroy steps, so a plain delete succeeds; AWS would otherwise refuse with
-     * DependencyViolation. A concurrent removal (InvalidVpcID.NotFound) is
-     * tolerated.
-     */
+    /** Earlier destroy steps have emptied the network shell; AWS refuses with DependencyViolation otherwise. */
     public function delete(): void
     {
         try {
@@ -169,11 +141,7 @@ class Vpc implements Deletable, Resource, SynchronisesConfiguration
         }
     }
 
-    /**
-     * Whether two IPv4 CIDR blocks share any address, compared as integer ranges.
-     * ip2long is masked to 32 bits so a high existing block can't sign-flip the
-     * arithmetic; the candidate 10.x blocks are always well inside positive range.
-     */
+    /** ip2long is masked to 32 bits so a high existing block can't sign-flip the arithmetic. */
     protected static function cidrsOverlap(string $a, string $b): bool
     {
         [$startA, $endA] = static::cidrRange($a);
@@ -183,8 +151,6 @@ class Vpc implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * The inclusive [start, end] integer address range of a CIDR block.
-     *
      * @return array{0: int, 1: int}
      */
     protected static function cidrRange(string $cidr): array

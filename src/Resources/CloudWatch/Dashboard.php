@@ -29,54 +29,29 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
 
 /**
- * A per-app CloudWatch dashboard giving at-a-glance visibility across every
- * service YOLO provisions for the app — each ECS service (web, plus any extracted
- * queue/scheduler, charted in their own compute sections), the ALB it sits behind,
- * its SQS queues, the asset CloudFront distribution, its S3 buckets and its log
- * groups — plus the RDS database it connects to (declared by the manifest
- * `database:` key; see {@see Rds::target()}).
- *
- * A standalone reconciler, NOT a Resource: a dashboard carries no meaningful tags
- * (CloudWatch only tags alarms / Contributor Insights rules) and PutDashboard is a
- * pure upsert with no create/update split. It is dry-run honest — it reads the
- * live body, diffs it against the desired body (key-order-independent) and only
- * writes on drift, so `sync --dry-run` reports exactly when the dashboard would
- * change.
- *
- * The widget body is built from a resolved context: names are derived (ECS, SQS,
- * S3, log groups), the RDS identifier comes from the manifest, and the three
- * AWS-assigned identifiers (the ALB and target-group ARN suffixes and the
- * CloudFront distribution id) are looked up live and their widget groups omitted
- * if the backing resource doesn't exist yet — so on a greenfield first sync those
- * panels land on the next sync once their resources are provisioned.
+ * Not a Resource: a dashboard carries no meaningful tags (CloudWatch only tags
+ * alarms) and PutDashboard is a pure upsert. The body is built purely from a
+ * resolved context; the AWS-assigned ids (ALB/target-group suffixes, distribution
+ * id) are looked up live and their widget groups omitted until the resource exists,
+ * so a greenfield first sync lands those panels on the next sync.
  */
 class Dashboard implements Deletable
 {
-    // Sensible default annotation thresholds. CPU bands stay hardcoded until the
-    // web-scaling config lands with autoscaling, at which point the scale line
-    // reads from it.
     protected const CPU_SCALE_THRESHOLD = 60;
 
     protected const CPU_CRITICAL_THRESHOLD = 80;
 
     protected const RESPONSE_TIME_TARGET = 0.25;
 
-    // Response-time SLO ceiling (seconds), a visual reference line only — there is
-    // no CloudWatch alarm on TargetResponseTime, so nothing fires when it's
-    // breached. The only real web-scaling trigger is the burst worker-saturation
-    // alarm (see WebBurstPolicy), drawn on the Worker saturation panel below.
+    // A reference line only — nothing alarms on TargetResponseTime.
     protected const RESPONSE_TIME_SLO = 1.5;
 
-    // The ALB should always have at least one task in rotation; anything below
-    // this floor means the service is degraded or fully out of rotation.
     protected const EXPECTED_HEALTHY_HOSTS = 1;
 
-    // 5xx SLO line (% of requests) — the aspiration, drawn alongside the alert
-    // alarm's threshold (Alerts::WEB_5XX_RATE_PERCENT), which is what pages.
+    // The aspiration; Alerts::WEB_5XX_RATE_PERCENT is what pages.
     protected const ERROR_RATE_SLO = 1;
 
-    // Public: service definitions reference the palette when composing their
-    // own `# Services` widgets (ServiceDefinition::servicesWidgets()).
+    // Public: service definitions reference the palette in their own `# Services` widgets.
     public const BLUE = '#1f77b4';
 
     public const GREEN = '#2ca02c';
@@ -92,11 +67,6 @@ class Dashboard implements Deletable
         return Helpers::keyedResourceName('dashboard');
     }
 
-    /**
-     * Best-effort AWS Console deep link to this dashboard, from its name + the
-     * env region. `yolo status` surfaces it so an operator can jump from the
-     * terminal summary to the full graphed dashboard; null when no region is set.
-     */
     public function consoleUrl(): ?string
     {
         $region = (string) Manifest::get('region');
@@ -124,7 +94,7 @@ class Dashboard implements Deletable
         }
     }
 
-    /** Delete the dashboard; deleteDashboards is idempotent on a missing dashboard. */
+    /** deleteDashboards is idempotent on a missing dashboard. */
     public function delete(): void
     {
         Aws::cloudWatch()->deleteDashboards([
@@ -133,11 +103,6 @@ class Dashboard implements Deletable
     }
 
     /**
-     * Build the desired body, diff it against the live dashboard, and (only when
-     * $apply and something drifted) push it. Returns the drift as Change[] so the
-     * step reports WOULD_SYNC / SYNCED and the apply pass survives the
-     * only-pending-steps filter.
-     *
      * @return array<int, Change>
      */
     public function synchronise(bool $apply): array
@@ -176,10 +141,6 @@ class Dashboard implements Deletable
     }
 
     /**
-     * Resolve every value the body needs. Names are derived; the RDS identifier
-     * comes from the manifest; the three AWS-assigned identifiers are looked up live
-     * and left null (→ widget omitted) when their resource doesn't exist yet.
-     *
      * @return array<string, mixed>
      */
     public function resolveContext(): array
@@ -189,50 +150,35 @@ class Dashboard implements Deletable
         return [
             'region' => Manifest::get('region'),
             'web' => $web,
-            // The burst worker-saturation metric only exists on an autoscaling
-            // Octane web tier (classic mode never emits it), so the Worker
-            // saturation panel — and its burst threshold line — is drawn only
-            // there. Same gate the runtime reporter and Caddyfile key off.
+            // Only an autoscaling Octane tier emits the saturation metric — the same
+            // gate the runtime reporter and Caddyfile key off.
             'burst' => $web && Manifest::usesMetricsCaddyfile(),
             'clusterName' => $web ? (new EcsCluster())->name() : null,
             'serviceName' => $web ? (new EcsService())->name() : null,
-            // Per-group compute is charted only for a group that runs as its own
-            // ECS service (a bundled queue/scheduler rides web's section; a disabled
-            // one runs nowhere). The cluster only exists with web, so gate on it too.
+            // A bundled queue/scheduler rides web's section; the cluster only exists with web.
             'queueService' => $web && Manifest::hasStandaloneQueue() ? (new EcsService(ServerGroup::QUEUE))->name() : null,
             'schedulerService' => $web && Manifest::hasStandaloneScheduler() ? (new EcsService(ServerGroup::SCHEDULER))->name() : null,
             'albSuffix' => $web ? static::tryResolve(fn (): string => static::loadBalancerDimension((new LoadBalancer())->arn())) : null,
-            // The WAF is env-shared (one ACL fronts the ALB), so it's looked up live
-            // rather than derived from this app's manifest — the panel shows for any
-            // app behind the ALB, and is omitted until the ACL exists.
+            // Env-shared, so looked up live rather than derived from this app's manifest.
             'wafWebAcl' => $web ? static::tryResolve(fn (): string => WafV2::webAcl((new WebAcl())->name())['Name']) : null,
             'targetGroupSuffix' => $web ? static::tryResolve(fn (): string => static::targetGroupDimension((new TargetGroup())->arn())) : null,
             'distributionId' => $web ? static::tryResolve(fn () => CloudFront::distributionByComment((new AssetDistribution())->name())['Id']) : null,
             'queuePrefix' => Helpers::keyedResourceName() . '-',
             'queues' => static::queueNames(),
-            // `tasks.queue: false` runs jobs inline (QUEUE_CONNECTION=sync) and YOLO
-            // melts the SQS queue, so there's nothing to chart — omit the section.
+            // `tasks.queue: false` runs jobs inline and YOLO melts the SQS queue.
             'queueDisabled' => Manifest::queueDisabled(),
-            // Deliberately NOT wrapped in tryResolve: a declared database that
-            // resolves to nothing is a manifest error, and failing the sync is
-            // how it surfaces. Omitting the panel instead would let a mistyped
-            // identifier — or a manifest declared ahead of the database — read as
-            // a clean sync. Declare the key only once the database exists.
+            // Deliberately NOT tryResolve: a declared database that resolves to nothing
+            // is a manifest error, and failing the sync is how it surfaces — omitting
+            // the panel would let a mistyped identifier read as a clean sync.
             'rds' => Rds::target(),
-            // The writer's instance class feeds the capacity-derived alarm
-            // lines (connection ceiling, memory floor) — null while the writer
-            // isn't resolvable, which just omits the lines.
+            // null just omits the capacity-derived alarm lines.
             'databaseWriterClass' => ($target = Rds::target()) !== null && $target['cluster']
                 ? Alerts::writerClass($target['identifier'])
                 : null,
-            // The env-shared Valkey node, like the WAF: shown for any app
-            // behind it, omitted until the cluster exists.
             'cacheNodeId' => (new CacheCluster())->exists() ? (new CacheCluster())->name() . '-001' : null,
             'buckets' => static::bucketNames(),
             'taskLogGroup' => $web ? (new TaskLogGroup())->name() : null,
-            // Each service definition contributes its own context entries —
-            // always returning its keys (null/false when the app doesn't
-            // consume the service) so the body builder can rely on them.
+            // Each definition always returns its keys (null/false when unused) so the body builder can rely on them.
             ...static::servicesContext(),
         ];
     }
@@ -264,11 +210,6 @@ class Dashboard implements Deletable
     }
 
     /**
-     * The app's SQS queue names, matching the queue steps: one for a solo app, or
-     * the landlord queue plus one per tenant for a multi-tenant app — each fanned
-     * across every declared `queues:` tier so the dashboard graphs every queue the
-     * app actually provisions, not just its base queue.
-     *
      * @return array<int, string>
      */
     protected static function queueNames(): array
@@ -283,9 +224,6 @@ class Dashboard implements Deletable
     }
 
     /**
-     * The S3 buckets YOLO owns for the app: config and assets always, plus the
-     * optional application data bucket when bucket is configured.
-     *
      * @return array<int, string>
      */
     protected static function bucketNames(): array
@@ -297,10 +235,6 @@ class Dashboard implements Deletable
         ])->filter()->values()->all();
     }
 
-    /**
-     * The CloudWatch `LoadBalancer` dimension value (`app/{name}/{id}`) parsed
-     * out of a full ALB ARN.
-     */
     public static function loadBalancerDimension(string $arn): string
     {
         $position = strpos($arn, ':loadbalancer/');
@@ -308,10 +242,6 @@ class Dashboard implements Deletable
         return $position === false ? $arn : substr($arn, $position + strlen(':loadbalancer/'));
     }
 
-    /**
-     * The CloudWatch `TargetGroup` dimension value (`targetgroup/{name}/{id}`)
-     * parsed out of a full target-group ARN.
-     */
     public static function targetGroupDimension(string $arn): string
     {
         $position = strpos($arn, ':targetgroup/');
@@ -320,12 +250,9 @@ class Dashboard implements Deletable
     }
 
     /**
-     * The dimension pair that scopes a front-end ALB metric to THIS app. The ALB
-     * is shared across every app in the environment, so the bare `LoadBalancer`
-     * dimension sums all of them — pairing it with the app's `TargetGroup` narrows
-     * a metric (RequestCount, TargetResponseTime, the target HTTP codes) to the
-     * requests this app actually served. Falls back to the load balancer alone
-     * before the target group has resolved (first sync), the only signal then.
+     * The ALB is shared across the env, so the bare `LoadBalancer` dimension sums
+     * every app; pairing it with the `TargetGroup` narrows to this app. Falls back to
+     * the ALB alone before the target group exists (first sync).
      *
      * @return array<int, string>
      */
@@ -337,8 +264,7 @@ class Dashboard implements Deletable
     }
 
     /**
-     * The full dashboard document, assembled purely from a resolved context so it
-     * can be asserted in tests without touching AWS.
+     * Assembled purely from a resolved context so tests can assert it without AWS.
      *
      * @param  array<string, mixed>  $context
      * @return array{widgets: array<int, array<string, mixed>>}
@@ -353,14 +279,10 @@ class Dashboard implements Deletable
             $widgets = [...$widgets, ...$section];
         }
 
-        // The queue sits directly below web: one `# Queue` section folding the
-        // worker's own ECS compute (only when extracted to its own service) in
-        // with its SQS backlog. Self-omits when the queue is disabled + bundled.
         [$section, $y] = static::queueSection($context, $y);
         $widgets = [...$widgets, ...$section];
 
-        // The scheduler's own ECS compute, only when it runs as its own service
-        // (a bundled scheduler rides web's compute).
+        // A bundled scheduler rides web's compute.
         if ($context['schedulerService'] !== null) {
             [$section, $y] = static::groupComputeSection('# Scheduler', $context['clusterName'], $context['schedulerService'], $context['region'], $y);
             $widgets = [...$widgets, ...$section];
@@ -376,8 +298,6 @@ class Dashboard implements Deletable
             $widgets = [...$widgets, ...$section];
         }
 
-        // The env-shared Valkey node — like the WAF, shown for any app behind
-        // it and omitted until the cluster exists.
         if ($context['cacheNodeId'] !== null) {
             [$section, $y] = static::cacheSection($context, $y);
             $widgets = [...$widgets, ...$section];
@@ -400,10 +320,6 @@ class Dashboard implements Deletable
     }
 
     /**
-     * The web service section: its ALB request / latency / error panels (when the
-     * ALB is attached) in front of its ECS compute charts. Any bundled queue &
-     * scheduler ride this service; an extracted one gets its own compute section.
-     *
      * @param  array<string, mixed>  $context
      * @return array{0: array<int, array<string, mixed>>, 1: int}
      */
@@ -419,9 +335,8 @@ class Dashboard implements Deletable
         $y++;
 
         if ($alb !== null) {
-            // Availability & SLO headline: a task can be "running" in ECS while the
-            // ALB has pulled it out of rotation, so target health is the truest
-            // availability signal; the 5xx rate is the user-facing SLO.
+            // A task can be "running" in ECS while the ALB has pulled it from rotation,
+            // so target health is the truest availability signal.
             $errorRateX = 0;
 
             if ($targetGroup !== null) {
@@ -453,10 +368,8 @@ class Dashboard implements Deletable
                 'stat' => 'Sum',
                 'yAxis' => ['left' => ['min' => 0, 'showUnits' => false]],
                 'metrics' => [
-                    // Target 5xx over this app's own request volume. ELB-generated 5xx
-                    // (no healthy target, etc.) isn't target-group attributable, so it
-                    // can't go in a per-app rate — it surfaces on Target health and the
-                    // HTTP errors panel instead.
+                    // ELB-generated 5xx isn't target-group attributable, so it can't go in
+                    // a per-app rate — it surfaces on Target health and HTTP errors instead.
                     [['expression' => 'm1 / m2 * 100', 'label' => '5xx %', 'id' => 'e1', 'color' => static::RED]],
                     ['AWS/ApplicationELB', 'HTTPCode_Target_5XX_Count', ...static::appAlbDimensions($targetGroup, $alb), ['id' => 'm1', 'visible' => false]],
                     ['AWS/ApplicationELB', 'RequestCount', ...static::appAlbDimensions($targetGroup, $alb), ['id' => 'm2', 'visible' => false]],
@@ -519,9 +432,8 @@ class Dashboard implements Deletable
                 ],
             ]);
 
-            // 5-minute period so the ELB 5xx alarm line is honest: the alarm
-            // evaluates a 5-minute Sum, and a per-minute chart would overstate
-            // the threshold fivefold.
+            // 5-minute period: the ELB 5xx alarm evaluates a 5-minute Sum, so a
+            // per-minute chart would overstate its threshold fivefold.
             $widgets[] = static::metric(12, $y, 12, 6, [
                 'title' => 'HTTP errors',
                 'region' => $region,
@@ -532,8 +444,7 @@ class Dashboard implements Deletable
                 'metrics' => [
                     ['AWS/ApplicationELB', 'HTTPCode_Target_4XX_Count', ...static::appAlbDimensions($targetGroup, $alb), ['label' => '4xx', 'color' => static::ORANGE]],
                     ['AWS/ApplicationELB', 'HTTPCode_Target_5XX_Count', ...static::appAlbDimensions($targetGroup, $alb), ['label' => 'Target 5xx', 'color' => static::RED]],
-                    // ELB-generated 5xx is emitted at the load balancer only — not attributable
-                    // to a target group, so this one line stays env-wide (labelled as such).
+                    // ELB-generated 5xx has no target-group dimension, so this line is env-wide.
                     ['AWS/ApplicationELB', 'HTTPCode_ELB_5XX_Count', 'LoadBalancer', $alb, ['label' => 'ELB 5xx (LB-wide)', 'color' => static::PURPLE]],
                 ],
                 'annotations' => ['horizontal' => [
@@ -543,11 +454,7 @@ class Dashboard implements Deletable
             $y += 6;
         }
 
-        // The burst scale-out signal: the FrankenPHP worker-saturation metric the
-        // container emits itself, with the burst alarm's trip threshold drawn on it
-        // — the one real-time web scaling trigger (the CPU `Scale` line below is the
-        // slower target-tracking companion). Maximum matches the alarm, which trips
-        // on the most-saturated task. Only present on an autoscaling Octane tier.
+        // Maximum matches the burst alarm, which trips on the most-saturated task.
         if ($context['burst']) {
             $widgets[] = static::metric(0, $y, 12, 6, [
                 'title' => 'Worker saturation',
@@ -561,29 +468,22 @@ class Dashboard implements Deletable
                 ],
                 'annotations' => ['horizontal' => [
                     ['color' => static::ORANGE, 'label' => 'Burst', 'value' => WebBurstPolicy::ALARM_THRESHOLD],
-                    // The reporter only publishes at or above this floor, so the line
-                    // explains the metric's absence below it (not a gap in coverage).
+                    // Explains the metric's absence below the floor (not a gap in coverage).
                     ['color' => static::BLUE, 'label' => 'Emit floor', 'value' => WebBurstPolicy::EMIT_FLOOR],
                 ]],
             ]);
             $y += 6;
         }
 
-        // Web is the only group that scales on CPU, so it gets the `Scale` line.
         [$compute, $y] = static::computeWidgets($region, $cluster, $service, $y, cpuScaled: true);
 
         return [[...$widgets, ...$compute], $y];
     }
 
     /**
-     * The shared ECS compute charts for one service — CPU, memory, task counts and
-     * network in/out. Used by the web section (after its ALB panels) and by each
-     * extracted worker's compute section. Pure.
-     *
-     * $cpuScaled draws the CPU `Scale` threshold line — only the web group scales
-     * on CPU. The queue scales on backlog-per-task and the scheduler is a pinned
-     * singleton, so a `Scale` line on their CPU panels would imply a trigger that
-     * doesn't exist; they keep only the generic `Critical` high-CPU marker.
+     * $cpuScaled draws the CPU `Scale` line — only web scales on CPU. The queue
+     * scales on backlog-per-task and the scheduler is a pinned singleton, so the
+     * line would imply a trigger that doesn't exist.
      *
      * @return array{0: array<int, array<string, mixed>>, 1: int}
      */
@@ -655,10 +555,6 @@ class Dashboard implements Deletable
     }
 
     /**
-     * An extracted scheduler's compute section — a header plus the shared compute
-     * charts. No ALB panels; only web sits behind the load balancer. (The queue
-     * folds its compute into queueSection so its backlog rides alongside.) Pure.
-     *
      * @return array{0: array<int, array<string, mixed>>, 1: int}
      */
     protected static function groupComputeSection(string $title, string $cluster, string $service, string $region, int $y): array
@@ -672,12 +568,8 @@ class Dashboard implements Deletable
     }
 
     /**
-     * The WAF panels: overall allow/block/count posture, a per-rule blocked
-     * breakdown showing where blocks come from, and any per-service WAF panels
-     * (e.g. the Typesense search rate limit) so everything WAF lands in one
-     * group. The disposition panel's Counted series picks up anything left in
-     * Count (the Core Rule Set's body-size carve-out). WebACL metrics are
-     * env-shared, dimensioned on ACL + region + rule.
+     * WebACL metrics are env-shared, dimensioned on ACL + region + rule. The Counted
+     * series picks up anything left in Count (the Core Rule Set's body-size carve-out).
      *
      * @param  array<string, mixed>  $context
      * @return array{0: array<int, array<string, mixed>>, 1: int}
@@ -708,8 +600,7 @@ class Dashboard implements Deletable
             ],
         ]);
 
-        // Rule names mirror WebAcl's skeleton — every group blocks, so each is
-        // charted as BlockedRequests showing where blocks originate.
+        // Rule names mirror WebAcl's skeleton.
         $widgets[] = static::metric(12, $y, 12, 6, [
             'title' => 'Blocked by rule',
             'region' => $region,
@@ -730,8 +621,6 @@ class Dashboard implements Deletable
         ]);
         $y += 6;
 
-        // Per-service WAF panels (e.g. the Typesense search rate limit), packed
-        // two per row beneath the core posture panels.
         $servicePanels = static::serviceWafPanels($context);
 
         foreach ($servicePanels as $index => $properties) {
@@ -750,9 +639,6 @@ class Dashboard implements Deletable
     }
 
     /**
-     * The `# WAF` panels each consumed service's definition contributes, in
-     * enum order — a service that owns a WebACL rule charts its blocks here.
-     *
      * @param  array<string, mixed>  $context
      * @return array<int, array<string, mixed>>
      */
@@ -768,19 +654,15 @@ class Dashboard implements Deletable
     }
 
     /**
-     * The queue section, directly below web: a single `# Queue` header folding
-     * the worker's own ECS compute (only when the queue is EXTRACTED to its own
-     * service — a bundled worker rides web's compute) together with its SQS
-     * backlog. Returns nothing when the queue is disabled and bundled (no
-     * service, no SQS), so the whole section vanishes.
+     * Self-omits when the queue is disabled and bundled (no service, no SQS).
      *
      * @param  array<string, mixed>  $context
      * @return array{0: array<int, array<string, mixed>>, 1: int}
      */
     protected static function queueSection(array $context, int $y): array
     {
-        $service = $context['queueService'];        // the extracted worker's ECS service, or null when bundled
-        $hasBacklog = ! $context['queueDisabled'];  // a live SQS queue exists unless the worker is switched off
+        $service = $context['queueService'];
+        $hasBacklog = ! $context['queueDisabled'];
 
         if ($service === null && ! $hasBacklog) {
             return [[], $y];
@@ -803,10 +685,6 @@ class Dashboard implements Deletable
     }
 
     /**
-     * SQS depth, throughput and oldest-message age across the app's queues — the
-     * backlog half of the queue section (headerless; queueSection owns the
-     * `# Queue` header).
-     *
      * @param  array<string, mixed>  $context
      * @return array{0: array<int, array<string, mixed>>, 1: int}
      */
@@ -819,9 +697,7 @@ class Dashboard implements Deletable
             ->map(fn (string $queue): array => ['AWS/SQS', $metric, 'QueueName', $queue, ['label' => static::queueLabel($queue, $context['queuePrefix'])]])
             ->all();
 
-        // No dedicated dead-letter-queue depth panel: the Queue resource provisions
-        // a plain SQS queue with no RedrivePolicy, so there is no DLQ to chart. If a
-        // DLQ is ever added, a ">0 = silent job failures" panel belongs right here.
+        // No DLQ panel: the Queue resource sets no RedrivePolicy, so there is no DLQ to chart.
         $widgets = [];
 
         $widgets[] = static::metric(0, $y, 12, 6, [
@@ -860,12 +736,9 @@ class Dashboard implements Deletable
     }
 
     /**
-     * RDS health for the database the app connects to (an Aurora cluster or a
-     * plain instance), declared by the manifest `database:` key. A cluster is
-     * charted through the static Role dimensions — the writer series follows
-     * failovers, and the READER series aggregates whatever readers exist — so
-     * the body never depends on enumerating members (a dynamic set that would
-     * make the plan drift run-to-run).
+     * A cluster is charted through the static Role dimensions (WRITER follows
+     * failovers, READER aggregates whatever readers exist) so the body never
+     * enumerates members — a dynamic set would make the plan drift run-to-run.
      *
      * @param  array<string, mixed>  $context
      * @return array{0: array<int, array<string, mixed>>, 1: int}
@@ -881,9 +754,8 @@ class Dashboard implements Deletable
         $widgets = [static::header($y, '# Database')];
         $y++;
 
-        // The alert alarms only exist for a cluster (they dimension on the
-        // WRITER role), so the alarm lines draw only there — and the capacity
-        // pair only when the writer's class is tabulated (not Serverless v2).
+        // Alert alarms exist only for a cluster (WRITER role); the capacity pair only
+        // when the writer's class is tabulated (not Serverless v2).
         $capacityClass = $context['databaseWriterClass'] !== null
             && $context['databaseWriterClass'] !== 'db.serverless'
             && array_key_exists($context['databaseWriterClass'], Alerts::AURORA_CLASSES)
@@ -935,12 +807,9 @@ class Dashboard implements Deletable
             ]]] : [],
         ]);
 
-        // SelectThroughput/Insert/Update/Delete are Aurora-only metrics — a plain
-        // RDS instance never emits them, so it'd chart a permanently empty panel.
-        // Aurora gets the DML breakdown; a plain instance gets read/write IOPS,
-        // which every RDS engine publishes. Cluster-ness is the memoised live
-        // classification of the manifest name (see Rds::target()) — a stable
-        // fact every tier resolves identically, so the body stays deterministic.
+        // The *Throughput metrics are Aurora-only; a plain instance gets IOPS instead.
+        // Cluster-ness is Rds::target()'s memoised classification — stable across
+        // tiers, so the body stays deterministic.
         $widgets[] = $rds['cluster']
             ? static::metric(12, $y, 12, 6, [
                 'title' => 'RDS throughput',
@@ -971,8 +840,7 @@ class Dashboard implements Deletable
             ]);
         $y += 6;
 
-        // Read/write latency is the earliest DB-degradation tell — it climbs well
-        // before CPU or connections saturate. Seconds, p90 alongside the average.
+        // Latency climbs well before CPU or connections saturate.
         $widgets[] = static::metric(0, $y, 12, 6, [
             'title' => 'RDS read/write latency',
             'region' => $region,
@@ -989,10 +857,7 @@ class Dashboard implements Deletable
             ],
         ]);
 
-        // Replica lag is the reader-side health signal: a reader serving stale
-        // reads shows here long before it errors. Milliseconds; charted through
-        // the aggregate READER role, so it needs no member enumeration and is
-        // simply empty while the cluster runs writer-only.
+        // Aggregate READER role: no member enumeration; empty while writer-only.
         if ($rds['cluster']) {
             $widgets[] = static::metric(12, $y, 12, 6, [
                 'title' => 'Aurora replica lag',
@@ -1010,8 +875,7 @@ class Dashboard implements Deletable
         }
         $y += 6;
 
-        // The buffer-cache hit ratio backs the database-buffer-cache alert —
-        // Aurora-only, like the alarm.
+        // Aurora-only, like the buffer-cache alarm it backs.
         if ($rds['cluster']) {
             $widgets[] = static::metric(0, $y, 12, 6, [
                 'title' => 'Aurora buffer cache hit ratio',
@@ -1033,9 +897,7 @@ class Dashboard implements Deletable
     }
 
     /**
-     * The env-shared Valkey node: memory pressure and evictions, each with its
-     * alert alarm's threshold drawn on — evictions at the alarm's 5-minute
-     * period so the line means what the alarm means.
+     * Evictions at the alarm's 5-minute period so the line means what the alarm means.
      *
      * @param  array<string, mixed>  $context
      * @return array{0: array<int, array<string, mixed>>, 1: int}
@@ -1096,9 +958,6 @@ class Dashboard implements Deletable
     }
 
     /**
-     * The asset CloudFront distribution (omitted until it exists) and the app's
-     * S3 buckets.
-     *
      * @param  array<string, mixed>  $context
      * @return array{0: array<int, array<string, mixed>>, 1: int}
      */
@@ -1141,8 +1000,6 @@ class Dashboard implements Deletable
             ]);
             $y += 6;
 
-            // A low cache hit rate means the CDN is passing traffic through to the
-            // origin — more origin load, higher latency and higher transfer cost.
             $widgets[] = static::metric(0, $y, 12, 6, [
                 'title' => 'Asset CDN — cache hit rate',
                 'region' => 'us-east-1',
@@ -1187,19 +1044,6 @@ class Dashboard implements Deletable
     }
 
     /**
-     * One panel per consumed service with chartable CloudWatch metrics. Both
-     * are account-level by nature (MediaConvert jobs share the account default
-     * queue; Rekognition metrics carry only an Operation dimension), charted on
-     * the consumer's dashboard because that's where the person debugging looks.
-     *
-     * @param  array<string, mixed>  $context
-     * @return array{0: array<int, array<string, mixed>>, 1: int}
-     */
-    /**
-     * The `# Services` widget property maps every consumed service's
-     * definition contributes, in enum order. Each renders as a half-width
-     * panel; servicesSection packs them two per row.
-     *
      * @param  array<string, mixed>  $context
      * @return array<int, array<string, mixed>>
      */
@@ -1231,7 +1075,6 @@ class Dashboard implements Deletable
             }
         }
 
-        // An odd final panel still occupies its row.
         if (count($serviceWidgets) % 2 === 1) {
             $y += 6;
         }
@@ -1240,9 +1083,6 @@ class Dashboard implements Deletable
     }
 
     /**
-     * Logs Insights panels over the app's task log group plus whatever panels
-     * each consumed service's definition contributes (e.g. the IVS log group).
-     *
      * @param  array<string, mixed>  $context
      * @return array{0: array<int, array<string, mixed>>, 1: int}
      */

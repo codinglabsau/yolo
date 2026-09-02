@@ -25,16 +25,9 @@ use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\warning;
 
 /**
- * The two-key service gate, made visible and editable. A table of every service
- * — whether the environment offers it (`services.{name}` in the env manifest),
- * which running apps claim it, and the resulting lifecycle state — with add /
- * edit / remove driven generically off each service's offerKeys()/validateOffer()
- * (no per-service code here). Editing writes the env manifest and uploads it; the
- * next `yolo sync:environment` reconciles AWS to it.
- *
- * Add/edit/remove guard the same invariant `environment:manifest:push` does — a
- * service can't be withdrawn while a running app still claims it. App-side-only
- * services (rekognition, mediaconvert) are listed but not offerable.
+ * Driven generically off each service's offerKeys()/validateOffer() — no
+ * per-service code here. Guards the same invariant `environment:manifest:push`
+ * does: a service can't be withdrawn while a running app still claims it.
  *
  *   yolo services production                                   # interactive
  *   yolo services production --json                            # read state (agents/CI)
@@ -77,10 +70,8 @@ class ServicesCommand extends Command implements AdminCommand
     }
 
     /**
-     * The full service state — the data behind both the table and `--json`, and
-     * reused by the Services dashboard tab. Reads the env manifest (offered) and the
-     * published-claim registry (used by); the display state is derived so the
-     * manual-edit "conflict" case surfaces as a row rather than throwing.
+     * The display state is derived here so the manual-edit "conflict" case surfaces
+     * as a row rather than throwing.
      *
      * @return array<int, array{service: string, description: string, envBacked: bool, offered: bool, offer: array<string, mixed>|null, offerKeys: array<int, string>, usedBy: array<int, string>, usesApp: bool, state: string}>
      */
@@ -109,9 +100,8 @@ class ServicesCommand extends Command implements AdminCommand
     }
 
     /**
-     * The lifecycle verdict for the table: the two-key gate, plus the safe-to-show
-     * variants for app-side-only services and the offer-removed-while-used conflict
-     * (which Lifecycle::state() throws on — here it's just a flag).
+     * The offer-removed-while-used conflict Lifecycle::state() throws on is just a
+     * flag here.
      */
     public static function displayState(bool $envBacked, bool $offered, bool $used, bool $unpublished): string
     {
@@ -125,9 +115,6 @@ class ServicesCommand extends Command implements AdminCommand
     }
 
     /**
-     * One-line summary of an offer for the table — `version=29.0 nodes=2`, or a
-     * tick for an offer that carries no fields.
-     *
      * @param  array<string, mixed>|null  $offer
      */
     public static function offerSummary(?array $offer): string
@@ -156,7 +143,6 @@ class ServicesCommand extends Command implements AdminCommand
                 $choices[$row['service']] = $row['service'];
             }
 
-            // Cancel sits last, like a normal menu (not a leading "Quit").
             $choices['__cancel__'] = 'Cancel';
 
             $pick = select(label: 'Manage which service?', options: $choices, scroll: 10);
@@ -173,8 +159,7 @@ class ServicesCommand extends Command implements AdminCommand
     {
         $enabled = Manifest::usesService($service);
 
-        // App-side services (mediaconvert / rekognition) are a plain app claim —
-        // enabling adds them to yolo.yml, a per-app IAM grant on the next sync.
+        // App-side services are a plain app claim — a per-app IAM grant on the next sync.
         if (! $service->definition()->envBacked()) {
             $action = select(label: $service->value, options: [
                 'toggle' => $enabled ? 'Disable for this app' : 'Enable for this app',
@@ -188,8 +173,6 @@ class ServicesCommand extends Command implements AdminCommand
             return;
         }
 
-        // Env-backed services (typesense / ivs) carry an env-shared offer (sizing)
-        // in the environment manifest alongside the per-app claim.
         $action = select(label: $service->value, options: array_filter([
             'enable' => $enabled ? null : 'Enable for this app',
             'configure' => $enabled ? 'Reconfigure the environment offer (CPU / RAM / nodes)' : null,
@@ -205,10 +188,6 @@ class ServicesCommand extends Command implements AdminCommand
         };
     }
 
-    /**
-     * Enable or disable a service for THIS app — write its claim into the app's
-     * yolo.yml services list, then offer to sync the change to AWS straight away.
-     */
     protected function toggleClaim(Service $service, bool $enabled): void
     {
         $services = Manifest::services();
@@ -233,7 +212,6 @@ class ServicesCommand extends Command implements AdminCommand
         $this->offerToSync();
     }
 
-    /** Tell the operator to sync — and, if they want, run it right now. */
     protected function offerToSync(): void
     {
         $environment = $this->argument('environment');
@@ -250,10 +228,6 @@ class ServicesCommand extends Command implements AdminCommand
         );
     }
 
-    /**
-     * Enable an env-backed service for THIS app: claim it in yolo.yml, then walk
-     * the operator through its environment offer (sizing) and how to apply it.
-     */
     protected function enableEnvBacked(Service $service): void
     {
         $next = array_values(array_unique([...Manifest::services(), $service->value]));
@@ -275,11 +249,8 @@ class ServicesCommand extends Command implements AdminCommand
     }
 
     /**
-     * Configure an env-backed service's offer (its env-shared sizing) on a LOCAL
-     * copy of the environment manifest — pulled fresh from the bucket when one
-     * isn't already on disk. The result is written locally, never straight to the
-     * bucket, so the operator reviews it and applies it explicitly via
-     * environment:manifest:push + sync (or lets us run those now).
+     * Written to the LOCAL env manifest, never straight to the bucket, so the
+     * operator reviews it and applies it explicitly.
      */
     protected function configureOffer(Service $service): void
     {
@@ -338,9 +309,7 @@ class ServicesCommand extends Command implements AdminCommand
     }
 
     /**
-     * Spell out how to apply an environment-manifest change — and offer to run
-     * those steps now. Defaults to no: pushing + syncing provisions real, billed
-     * infrastructure, so it stays an explicit opt-in.
+     * Defaults to no: pushing + syncing provisions real, billed infrastructure.
      */
     protected function offerToApply(): void
     {
@@ -405,9 +374,7 @@ class ServicesCommand extends Command implements AdminCommand
             return self::FAILURE;
         }
 
-        // Mirror environment:manifest:push — a service can't be withdrawn while a
-        // running app still claims it, and can't be safely judged while an app
-        // hasn't published what it uses.
+        // Mirrors environment:manifest:push.
         if (($using = Lifecycle::liveAppsUsing($service)) !== []) {
             error(sprintf('%s still %s the %s service — remove it from each app\'s yolo.yml and deploy first.', implode(', ', $using), count($using) === 1 ? 'uses' : 'use', $service->value));
 
@@ -434,9 +401,6 @@ class ServicesCommand extends Command implements AdminCommand
     }
 
     /**
-     * Write a service offer into the env manifest and upload it. A null offer
-     * removes the service. Validation + upload live in uploadEnvManifest().
-     *
      * @param  array<string, mixed>|null  $offer
      */
     protected function writeOffer(Service $service, ?array $offer): void
@@ -453,10 +417,6 @@ class ServicesCommand extends Command implements AdminCommand
         $this->uploadEnvManifest($manifest);
     }
 
-    /**
-     * Resolve a service name to an env-offerable Service, or surface why it isn't
-     * one (unknown, or app-side-only) and return null.
-     */
     protected function envBackedService(string $name): ?Service
     {
         $service = Service::tryFrom($name);
@@ -477,9 +437,7 @@ class ServicesCommand extends Command implements AdminCommand
     }
 
     /**
-     * Coerce a pure-integer offer value to int (so counts like nodes=3 store
-     * unquoted), leaving everything else — including dotted version tags like
-     * 29.0 — as a string.
+     * Only pure integers coerce, so dotted version tags like 29.0 stay strings.
      */
     protected static function coerce(string $value): int|string
     {

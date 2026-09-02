@@ -14,10 +14,8 @@ use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Resources\Ec2\LoadBalancerSecurityGroup;
 
 /**
- * Provisions the load balancer security group (identity + tags via the
- * LoadBalancerSecurityGroup resource) and reconciles its public HTTP/HTTPS
- * ingress rules. Rules are a separate AWS concept with their own diff surface,
- * so they live here rather than on the resource.
+ * Ingress rules are a separate AWS concept with their own diff surface, so
+ * they live here rather than on the resource.
  */
 class SyncLoadBalancerSecurityGroupStep implements Step
 {
@@ -42,10 +40,8 @@ class SyncLoadBalancerSecurityGroupStep implements Step
             return StepResult::CREATED;
         }
 
-        // Surface tag drift (e.g. the yolo:scope marker) the way
-        // SynchronisesResource does: compute it regardless of --dry-run so the
-        // plan lists it and the apply pass isn't dropped by the
-        // only-pending-steps filter; the write happens only when applying.
+        // Tag drift is computed regardless of --dry-run so the plan lists it and
+        // the apply pass isn't pruned; the write happens only when applying.
         $drifted = false;
 
         foreach ($this->synchroniseOwnedTags($securityGroup, $dryRun) as $key => $value) {
@@ -103,8 +99,7 @@ class SyncLoadBalancerSecurityGroupStep implements Step
     }
 
     /**
-     * The desired ingress rules, keyed by their `yolo:rule-type` marker so each
-     * can be looked up and diffed independently.
+     * Keyed by their `yolo:rule-type` marker so each can be diffed independently.
      *
      * @return array<string, callable(string): array<string, mixed>>
      */

@@ -11,18 +11,9 @@ use Symfony\Component\Process\Process;
 use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
 
 /**
- * The base image activates no php.ini, so a container with no app ini runs PHP's
- * compile defaults — 2M uploads, 8M POST bodies, opcache stat'ing an immutable
- * filesystem on every request — and nothing else in the stack imposes a
- * request-body limit, so the misconfig ships green and only surfaces when a
- * user's upload dies. GeneratePhpIniStep supplies docker/php.ini in every build
- * (YOLO's baseline, or the app's published copy), so the file always exists;
- * what can still go wrong is the Dockerfile — a lost or altered COPY line means
- * PHP never loads it. This probes the freshly-built image and hard-fails the
- * build — before the push — when PHP hasn't loaded the fragment. Probing php's
- * own scanned-file list (matching the other runtime checks' docker-run pattern)
- * sees every way the fragment can land, whatever $PHP_INI_DIR resolves to in
- * the base image.
+ * GeneratePhpIniStep guarantees docker/php.ini exists; what can still go wrong
+ * is a lost Dockerfile COPY line, which ships green (nothing else imposes a
+ * request-body limit) and only surfaces when a user's upload dies.
  */
 class CheckPhpIniRuntimeStep implements Step
 {
@@ -48,9 +39,8 @@ class CheckPhpIniRuntimeStep implements Step
     }
 
     /**
-     * The `docker run` probe. `--entrypoint php` bypasses YOLO's role-dispatch
-     * entrypoint; php_ini_scanned_files() reports the fragments the runtime
-     * actually loaded, so the check can't disagree with the PHP that serves.
+     * php_ini_scanned_files() reports what the runtime actually loaded, whatever
+     * $PHP_INI_DIR resolves to in the base image.
      *
      * @return array<int, string>
      */

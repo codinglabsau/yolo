@@ -16,13 +16,9 @@ use Codinglabs\Yolo\Concerns\RecordsChanges;
 use Codinglabs\Yolo\Steps\Sync\App\PublishAppManifestStep;
 
 /**
- * Removes this app's claim file (`apps/{app}.yml`) from the env config bucket —
- * the reverse of {@see PublishAppManifestStep}.
- * The env tier reads published claims to flag idle services and guard against
- * removing a service apps still consume, so unpublishing drops this app from
- * those checks. It does NOT tear any env service down — env services follow the
- * env-manifest declaration, not consumption. The env config bucket itself is
- * env-scoped and survives.
+ * Reverse of {@see PublishAppManifestStep}: drops this app from the env tier's
+ * idle-service / still-consumed checks. Tears no env service down — those
+ * follow the env-manifest declaration, not consumption.
  */
 class UnpublishAppManifestStep implements Step
 {

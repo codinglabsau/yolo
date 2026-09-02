@@ -13,21 +13,9 @@ use Symfony\Component\Process\Process;
 use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
 
 /**
- * The scheduler runs somewhere in almost every app (Manifest::schedulerHost),
- * driven by supercronic (ProcessCommands::scheduler). This probes the freshly-built
- * image for the supercronic binary and hard-fails the build — before the push — if
- * it can't find one. Skipped only when cron is switched off entirely
- * (tasks.scheduler: false → a null host), where no container runs supercronic.
- *
- * The hard fail earns its place because the failure it prevents is silent:
- * busybox crond, the cron the base image ships for free, can't run as a non-root
- * supervisord program — it ignores crontabs not owned by root without logging a
- * word, and its forked job children die on a setgroups EPERM before exec — so an
- * image with no working cron deploys green, stays healthy on `/up`, and simply
- * never fires a scheduled job. Probing the actual image (`docker run … command -v
- * supercronic`, matching CheckSsrRuntimeStep) sees every way the binary can land
- * — the resolved base image, a multi-stage `COPY --from`, a script install — with
- * no false negatives.
+ * busybox crond can't run as a non-root supervisord program — it silently
+ * ignores crontabs not owned by root and its job children die on a setgroups
+ * EPERM — so an image without supercronic deploys green and never fires a job.
  */
 class CheckSchedulerRuntimeStep implements Step
 {
@@ -38,8 +26,6 @@ class CheckSchedulerRuntimeStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        // No host runs the scheduler (tasks.scheduler: false) → the image needn't carry
-        // supercronic, so there's nothing to probe.
         if (! Manifest::schedulerHost() instanceof ServerGroup) {
             return StepResult::SKIPPED;
         }
@@ -59,11 +45,6 @@ class CheckSchedulerRuntimeStep implements Step
     }
 
     /**
-     * The `docker run` probe. `--entrypoint sh` bypasses YOLO's role-dispatch
-     * entrypoint; `command -v` is a POSIX-sh builtin resolving against the same
-     * PATH the running container sees, so it needs nothing but a shell and exits
-     * non-zero when `supercronic` isn't on it.
-     *
      * @return array<int, string>
      */
     public static function command(string $image): array

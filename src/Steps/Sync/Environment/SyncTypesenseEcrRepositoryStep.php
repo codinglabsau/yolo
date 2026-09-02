@@ -11,9 +11,8 @@ use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Resources\Ecr\TypesenseRepository;
 
 /**
- * The env-scoped repository holding the environment's Typesense image.
  * Teardown force-deletes it, images included — the image is rebuildable from
- * the manifest's version + the env .env's key whenever the offer returns.
+ * the manifest's version + the env .env's key.
  */
 class SyncTypesenseEcrRepositoryStep implements Step
 {

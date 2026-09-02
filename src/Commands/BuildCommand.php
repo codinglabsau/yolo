@@ -64,16 +64,14 @@ class BuildCommand extends SteppedCommand implements DeployerCommand
 
         $this->input->setOption('app-version', $appVersion);
 
-        // Claim-without-offer fails before any build effort is spent (deploy
-        // inherits this gate by running build first).
+        // Before any build effort is spent; deploy inherits this gate by running build first.
         if (! $this->ensureClaimedServicesOffered()) {
             return self::FAILURE;
         }
 
         if (Manifest::has('tasks')) {
-            // Fail fast: the yolo-as-production-dependency preflight only reads the
-            // committed composer.lock, so it runs before any build effort (purge,
-            // env staging, composer install, asset compilation) is spent.
+            // The preflight only reads the committed composer.lock, so it runs before
+            // any build effort is spent.
             $this->steps = [
                 Steps\Build\Fargate\CheckYoloInstalledStep::class,
                 ...$this->steps,

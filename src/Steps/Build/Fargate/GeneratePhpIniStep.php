@@ -8,16 +8,10 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Illuminate\Filesystem\Filesystem;
 
 /**
- * The base image activates no php.ini, so a container with no app ini runs
- * PHP's compile defaults — 2M uploads, 8M POST bodies, opcache stat'ing an
- * immutable filesystem on every request. Rather than making every app publish
- * a file, the baseline is YOLO's: this step bakes stubs/php.ini.stub into the
- * build context as docker/php.ini, so every app behaves the same by default
- * and baseline improvements arrive with the package. An app that wants its own
- * values publishes docker/php.ini (starting from the stub) — a published copy
- * is the app's to own and ships untouched. Either way the scaffolded
- * Dockerfile COPYs docker/php.ini into conf.d, and CheckPhpIniRuntimeStep
- * proves the built image actually loaded it.
+ * The base image activates no php.ini, so without this a container runs PHP's
+ * compile defaults (2M uploads, 8M POST bodies, opcache stat'ing an immutable
+ * filesystem). An app that publishes its own docker/php.ini owns it and it
+ * ships untouched; CheckPhpIniRuntimeStep proves the image actually loaded it.
  */
 class GeneratePhpIniStep implements Step
 {
@@ -30,8 +24,6 @@ class GeneratePhpIniStep implements Step
     {
         $path = Paths::build('docker/php.ini');
 
-        // The app's published copy arrived with CopyApplicationStep — it owns
-        // the values, so the baseline stays out of its way.
         if ($this->filesystem->exists($path)) {
             return StepResult::SKIPPED;
         }

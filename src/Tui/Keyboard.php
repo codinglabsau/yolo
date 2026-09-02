@@ -5,11 +5,8 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo\Tui;
 
 /**
- * Non-blocking keyboard reader for the TUI loop. Puts the terminal into raw,
- * no-echo mode so single keypresses arrive immediately (no Enter), reads
- * whatever is waiting each poll, and decodes the common escape sequences (the
- * arrow keys) into stable names. Always restore() on the way out — raw mode
- * outlives the process otherwise.
+ * Raw, no-echo mode so single keypresses arrive without Enter. Always restore()
+ * on the way out — raw mode outlives the process otherwise.
  */
 class Keyboard
 {
@@ -37,9 +34,6 @@ class Keyboard
     }
 
     /**
-     * Read whatever keypress is waiting, or null if none. Impure — each poll may
-     * return a different key (or nothing), so callers can poll it in a loop.
-     *
      * @phpstan-impure
      *
      * @codeCoverageIgnore raw terminal I/O
@@ -55,10 +49,6 @@ class Keyboard
         return static::decode($bytes);
     }
 
-    /**
-     * Map a raw byte sequence to a stable key name — arrows to up/down/left/right,
-     * the control keys by name, printable keys through unchanged.
-     */
     public static function decode(string $bytes): string
     {
         return match ($bytes) {

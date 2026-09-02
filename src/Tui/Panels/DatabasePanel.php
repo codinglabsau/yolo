@@ -18,12 +18,9 @@ use Codinglabs\Yolo\Aws\CloudWatch;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * The app's database at a glance — the RDS instance/cluster declared by the
- * manifest `database:` key, with CPU, connections, freeable memory and read
- * latency over the last hour. YOLO doesn't manage the database; it reads the
- * identifier from the manifest — never the app's secret `.env`, which the observer
- * tier this panel runs under can't read anyway — so the tab is empty until a
- * database is declared. Read-only.
+ * The identifier comes from the manifest `database:` key — never the app's
+ * secret `.env`, which the observer tier this panel runs under can't read — so
+ * the tab is empty until a database is declared.
  */
 class DatabasePanel implements Panel
 {
@@ -37,7 +34,6 @@ class DatabasePanel implements Panel
     /** @var array{identifier: string, cluster: bool}|null */
     protected ?array $target = null;
 
-    /** Why the declared database couldn't be classified, when it couldn't. */
     protected ?string $unresolvable = null;
 
     /** @var array{cpu: array<int, float>, connections: array<int, float>, memory: array<int, float>, readLatency: array<int, float>, writeLatency: array<int, float>} */
@@ -113,8 +109,6 @@ class DatabasePanel implements Panel
     }
 
     /**
-     * The identifier / kind summary. Pure.
-     *
      * @param  array{identifier: string, cluster: bool}  $target
      * @return array<int, string>
      */
@@ -127,10 +121,6 @@ class DatabasePanel implements Panel
     }
 
     /**
-     * The four metric charts (CPU, connections, freeable memory, read latency),
-     * converting bytes→MB and seconds→ms. Pure — pinned in a test with hand-built
-     * series, no AWS.
-     *
      * @param  array{cpu: array<int, float>, connections: array<int, float>, memory: array<int, float>, readLatency: array<int, float>, writeLatency: array<int, float>}  $series
      * @return array<int, string>
      */
@@ -164,8 +154,7 @@ class DatabasePanel implements Panel
     }
 
     /**
-     * A best-effort RDS console link, built from the resolved identifier (YOLO has
-     * no RDS ARN of its own — it doesn't provision the database).
+     * Built from the identifier — YOLO doesn't provision the database, so it holds no RDS ARN.
      *
      * @param  array{identifier: string, cluster: bool}  $target
      */

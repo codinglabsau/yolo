@@ -16,8 +16,8 @@ class CreateTemporaryEnvStep implements Step
 
     public function __invoke(array $options = []): StepResult
     {
-        // Rename the AWS .env file temporarily to prevent composer and artisan
-        // commands using values within commands. This could lead to bad things.
+        // Hidden while the build hooks run so composer/artisan can't pick up the
+        // deployed environment's values.
         $this->filesystem->move(
             Paths::build(".env.$this->environment"),
             Paths::build(".env.$this->environment.tmp"),

@@ -17,18 +17,6 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Resources\Ec2\LoadBalancerSecurityGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-/**
- * The application load balancer fronting the app's web tasks. Env-scoped, so
- * shared by default (auto-named yolo-{env}) — multiple apps in an environment
- * route off the one ALB via host-based listener rules — or pinned to a specific
- * name with `alb`.
- *
- * Beyond identity + tags, this resource also owns the ALB's hardened attribute
- * defaults (deletion protection, access logs, dropped invalid headers, idle
- * timeout, HTTP/2) and reconciles them onto an existing ALB via
- * SynchronisesConfiguration so a changed default reaches an already-provisioned
- * load balancer.
- */
 class LoadBalancer implements Deletable, Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
@@ -73,22 +61,15 @@ class LoadBalancer implements Deletable, Resource, SynchronisesConfiguration
             ...Aws::tags($this->tags()),
         ])['LoadBalancers'][0]['LoadBalancerArn'];
 
-        // A fresh ALB sits in `provisioning` for a minute or two before it reaches
-        // `active`. Later env-scope steps reference it the moment it exists — most
-        // sharply SyncWafAssociationStep, whose associateWebACL throws
-        // WAFUnavailableEntityException against a not-yet-active load balancer (a
-        // bounded retry can't outwait a multi-minute provision). Block until it's
-        // available so everything downstream sees a usable ALB; the LongRunning
-        // sync step heartbeats the progress bar meanwhile.
+        // A fresh ALB sits in `provisioning` for a minute or two; downstream env
+        // steps need it `active` (SyncWafAssociationStep's associateWebACL throws
+        // WAFUnavailableEntityException otherwise, and a bounded retry can't outwait it).
         Aws::waitFor(Aws::elasticLoadBalancingV2(), 'LoadBalancerAvailable', [
             'LoadBalancerArns' => [$arn],
         ]);
 
-        // A fresh ALB starts on AWS defaults (no deletion protection, access logs
-        // off, invalid headers passed through); bring our hardened attributes onto
-        // it. The env logs bucket (S3LogsBucket) is provisioned earlier in the
-        // same scope, so enabling access logs validates against the log-delivery
-        // bucket policy that already exists.
+        // Enabling access logs validates against the logs bucket's delivery policy,
+        // which S3LogsBucket provisions earlier in the same scope.
         $this->reconcileAttributes($arn, current: [], apply: true);
     }
 
@@ -98,10 +79,8 @@ class LoadBalancer implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * Teardown when the environment is torn down: delete the load balancer (its
-     * listeners go with it). `desiredAttributes` pins deletion_protection on, so
-     * lift it first — AWS rejects deleteLoadBalancer with OperationNotPermitted
-     * while it's enabled. A concurrent not-found is tolerated.
+     * Deletion protection is pinned on by `desiredAttributes`; AWS rejects
+     * deleteLoadBalancer with OperationNotPermitted until it's lifted.
      */
     public function delete(): void
     {
@@ -127,12 +106,6 @@ class LoadBalancer implements Deletable, Resource, SynchronisesConfiguration
         }
     }
 
-    /**
-     * Push the hardened attribute defaults onto an existing ALB. Tag sync doesn't
-     * cover load-balancer attributes, so without this a changed default would never
-     * reach an already-provisioned load balancer. Diffs first so a clean sync makes
-     * no needless write, and returns the drifted attributes so sync can report them.
-     */
     public function synchroniseConfiguration(bool $apply = true): array
     {
         $arn = $this->arn();
@@ -141,10 +114,6 @@ class LoadBalancer implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * Batch every drifted attribute into a single modifyLoadBalancerAttributes
-     * call (only when something drifted and $apply is set), and return the diff
-     * as Change[] so the operator sees each current → desired comparison.
-     *
      * @param  array<string, string>  $current  live attributes (empty on create)
      * @return array<int, Change>
      */
@@ -188,16 +157,10 @@ class LoadBalancer implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * The full set of ALB attributes YOLO manages, as the string key/value pairs
-     * the ELBv2 API expects. One source of truth shared by create and sync so the
-     * two paths can't drift apart.
-     *
-     * These are hardcoded sensible defaults, deliberately not manifest-configurable:
-     * deletion protection is always on (a future destroy command lifts it
-     * deterministically before deleting); access logs and dropped invalid headers
-     * are always-correct hardening; HTTP/2 and the 60s idle timeout are pinned to
-     * AWS's own defaults so they can't silently drift. Anything that turns out to
-     * need tuning can earn a manifest knob in a later release.
+     * Deliberately not manifest-configurable: deletion protection is always on
+     * (teardown lifts it deterministically), access logs and dropped invalid
+     * headers are always-correct hardening, and HTTP/2 + the 60s idle timeout are
+     * pinned to AWS's own defaults so they can't silently drift.
      *
      * @return array<string, string>
      */
@@ -215,11 +178,8 @@ class LoadBalancer implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * Access logs land under alb/{name}/ in the env logs bucket — `alb/` is
-     * the ALB log class's namespace (the delivery policy is scoped to it),
-     * and the ALB name beneath keeps multiple ALBs (e.g. one shared, one
-     * app-specific) cleanly separated. AWS appends /AWSLogs/{account}/...
-     * beneath it.
+     * `alb/` is the namespace the logs bucket's delivery policy is scoped to; the
+     * ALB name beneath keeps multiple ALBs apart. AWS appends /AWSLogs/{account}/….
      */
     public function accessLogsPrefix(): string
     {

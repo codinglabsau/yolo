@@ -17,10 +17,8 @@ class UpdateEcsServiceStep implements Step
     public function __construct(protected string $environment) {}
 
     /**
-     * Roll each targeted service group (every group the app runs, or the --group
-     * subset) onto the revision RegisterTaskDefinitionRevisionStep just minted.
-     * Each service's task-definition family is its own name (see EcsService), so
-     * pointing the service at its family adopts that group's newest revision.
+     * Each service's task-definition family is its own name, so pointing the
+     * service at its family adopts the revision just registered.
      */
     public function __invoke(array $options): StepResult
     {

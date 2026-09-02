@@ -11,10 +11,8 @@ use Codinglabs\Yolo\Concerns\TearsDownScopedQueues;
 use Codinglabs\Yolo\Steps\Sync\App\Tenant\SyncQueueStep;
 
 /**
- * Tears down one tenant's queue set — the teardown twin of
- * {@see SyncQueueStep}, gated on the same
- * fansQueuesPerTenant() predicate so a `shared` app never reports per-tenant
- * queues it never provisioned.
+ * Twin of {@see SyncQueueStep}, gated on the same predicate so a `shared` app
+ * never reports per-tenant queues it never provisioned.
  */
 class TeardownQueueStep extends TenantStep
 {

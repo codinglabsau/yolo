@@ -5,10 +5,8 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo\Resources\WafV2;
 
 /**
- * The WAF allow list — referenced by the top-priority Allow rule so anything in
- * it bypasses the managed groups below (the place to put known-good crawler
- * ranges that a managed group might otherwise false-positive). Seeded empty;
- * the operator fills it.
+ * Bypasses the managed groups — the place for known-good crawler ranges a
+ * managed group would false-positive. Seeded empty; operator-managed.
  */
 class AllowIpSet extends IpSet
 {

@@ -16,53 +16,25 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * YOLO-managed customer-managed IAM policy granting the **write** surface `yolo
- * sync` and `yolo scale` exercise — the Admin tier's mutation half. It is attached
- * to {@see AdminRole} alongside {@see ObserverPolicy} (the read half), so the role
- * = "read everything YOLO touches, write everything YOLO provisions". An operator
- * who assumes it can run sync/scale but can never escalate to general AWS admin.
+ * The Admin tier's write half, attached to {@see AdminRole} beside {@see ObserverPolicy}:
+ * an operator can run sync/scale but never escalate to general AWS admin.
  *
- * THREAT MODEL — read before widening:
- *  - It bounds blast radius to YOLO's **service set**: a capped run can create /
- *    modify / delete within ec2, ecs, ecr, elbv2, autoscaling, elasticache, rds,
- *    sqs, sns, cloudfront, route53, acm, cloudwatch, logs, events, wafv2 and
- *    servicediscovery, but cannot touch services YOLO doesn't use (Lambda,
- *    DynamoDB, IAM *users*, Organizations, billing, …). Many of those write APIs
- *    (CreateVpc, RegisterTaskDefinition, …) have no resource-level scoping, so
- *    within a granted service the write is account-wide — the tier narrows *which
- *    services*, not *which resources*, for unscopeable ops.
- *  - IAM is the escalation surface and is fenced hard: every role/policy/OIDC
- *    action is scoped to `yolo-*`, and AttachRolePolicy is conditioned so only a
- *    `yolo-*` customer-managed policy can be attached — the holder can NOT attach
- *    AWS-managed AdministratorAccess to a role and assume it.
- *  - RESIDUAL (open decision for review): the cap is not airtight against a
- *    determined holder of the tier. Two self-escalation levers remain, both
- *    intrinsic to what sync must legitimately do within `yolo-*`:
- *      (1) sync reconciles its own `yolo-*` policies, so the tier can rewrite a
- *          `yolo-*` policy document and re-attach it; and
- *      (2) sync manages `yolo-*` bucket policies (the asset bucket's CloudFront
- *          OAC policy needs `s3:PutBucketPolicy`), so the same grant lets the tier
- *          rewrite a per-app config bucket's policy to grant itself `s3:GetObject`
- *          on the per-app developer `.env` it otherwise can't read (admin reads
- *          only YOLO's own minted env-tier secrets, not the developer `.env`).
- *          For a human admin this lever buys little: the admins grant group
- *          separately includes every per-app deployer role, whose policy carries
- *          a scoped get+put on its own app's `.env` (`env:pull`/`env:push`) — the
- *          sanctioned path. The lever matters for a principal holding the admin
- *          ROLE alone, without the group's deployer-assume grants.
- *    Closing either fully needs a permissions boundary on every YOLO-created role
- *    (so nothing YOLO mints can exceed the boundary) — deliberately NOT built here.
- *    Whether the blast-radius cap above suffices or the boundary is warranted is a
- *    deployment decision; see the PR.
+ * Threat model — read before widening:
+ *  - Blast radius is bounded to YOLO's service set. Most write APIs (CreateVpc,
+ *    RegisterTaskDefinition, …) have no resource-level scoping, so within a granted
+ *    service the write is account-wide — the tier narrows *which services*, not
+ *    *which resources*.
+ *  - IAM is the escalation surface: every role/policy/OIDC action is scoped to
+ *    `yolo-*`, and AttachRolePolicy is conditioned to `yolo-*` customer-managed
+ *    policies so AdministratorAccess can never be attached.
+ *  - Residual: the tier can rewrite its own `yolo-*` policy documents, and its
+ *    `s3:PutBucketPolicy` grant could re-open a per-app config bucket to read the
+ *    developer `.env` it is otherwise denied. Closing either needs a permissions
+ *    boundary on every YOLO-created role — deliberately not built.
  *
- * Per-service write *wildcards* (`ecs:Create*`, `ecs:Delete*`, …) mirror
- * ObserverPolicy's read-wildcard discipline: a new sync write within a service
- * YOLO already manages can't AccessDenied-abort a sync; only adding a brand-new
- * AWS service needs a line here. The exception is verbs that don't fit a write
- * wildcard — ECR's image-push chain (`GetAuthorizationToken` + the layer-upload
- * APIs) is enumerated explicitly because sync now builds + pushes the env
- * Typesense image. The document is pure (manifest-derived, no live AWS calls)
- * and drift-reconciled via SynchronisesPolicyDocument.
+ * Write wildcards per service mirror ObserverPolicy's read wildcards, so a new sync
+ * write within an existing service can't AccessDenied-abort a sync. The document is
+ * manifest-derived (no live AWS calls) and reconciled via SynchronisesPolicyDocument.
  */
 class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
 {
@@ -105,12 +77,7 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
         ]);
     }
 
-    /**
-     * IAM Description fields enforce a restricted character set
-     * (tab/LF/CR + printable ASCII + Latin-1 Supplement) — no em dashes,
-     * smart quotes, or U+007F - U+00A0 control range. Validated by
-     * IamDescriptionsAreSafeTest.
-     */
+    /** IAM Description allows only printable ASCII + Latin-1 (no em dashes or smart quotes) — pinned by IamDescriptionsAreSafeTest. */
     public function description(): string
     {
         return 'YOLO managed write surface for yolo sync and scale, scoped to the services YOLO provisions with IAM fenced to yolo-* against escalation';
@@ -122,12 +89,8 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * Teardown when the environment is torn down: IAM refuses to delete a
-     * customer-managed policy while it is still attached to any entity or while
-     * it carries non-default versions, so detach it from every role/group/user it
-     * is attached to (it rides on the admin role) and prune every non-default
-     * version before deletePolicy. A concurrent delete that already removed the
-     * policy is tolerated.
+     * IAM refuses to delete a policy that is still attached anywhere or carries
+     * non-default versions, so detach and prune before deletePolicy.
      */
     public function delete(): void
     {
@@ -176,20 +139,14 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                 throw $e;
             }
         } catch (ResourceDoesNotExistException) {
-            // arn() resolves the policy by listing; a concurrent delete that
-            // removed it between exists() and here leaves nothing to do.
+            // Removed between exists() and here — nothing left to do.
         }
     }
 
     /**
-     * The YOLO buckets teardown is allowed to remove, addressed by the type suffix
-     * every keyed bucket name ends in — the per-app and env config buckets, the app's
-     * asset bucket and the env logs bucket. All four are regeneratable from a
-     * subsequent sync.
-     *
-     * The app data bucket is deliberately absent: it holds user data, YOLO never
-     * deletes it, and in its YOLO-owned form it is `yolo-*`-named, so a namespace-wide
-     * delete grant would silently take it in.
+     * The buckets teardown may remove, addressed by type suffix. The app data bucket
+     * is deliberately absent: it holds user data and is `yolo-*`-named, so a
+     * namespace-wide delete grant would silently take it in.
      *
      * @return array<int, string>
      */
@@ -210,10 +167,8 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
             'Version' => '2012-10-17',
             'Statement' => [
                 [
-                    // Mutations across YOLO's service set. These create/modify/delete/
-                    // tag APIs are overwhelmingly unscopeable (no resource-level
-                    // permissions), so they sit on "*" — but only for the services
-                    // YOLO actually provisions, never the whole AWS surface.
+                    // Mostly unscopeable create/modify/delete/tag APIs, so "*" — but
+                    // only for the services YOLO provisions.
                     'Effect' => 'Allow',
                     'Resource' => '*',
                     'Action' => [
@@ -225,21 +180,14 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                         'ecs:Create*', 'ecs:Update*', 'ecs:Delete*',
                         'ecs:Register*', 'ecs:Deregister*',
                         'ecs:Put*', 'ecs:Tag*', 'ecs:Untag*',
-                        // Container execs (`db:cutover` rides the same ECS Exec
-                        // session `yolo run` uses) — Execute* fits none of the
-                        // management wildcards above.
+                        // ECS Exec (`yolo run`, `db:cutover`) fits none of the wildcards above.
                         'ecs:ExecuteCommand',
                         'ecr:Create*', 'ecr:Delete*', 'ecr:Put*',
                         'ecr:Set*', 'ecr:Tag*', 'ecr:Untag*',
-                        // Image push — sync builds + pushes the env Typesense image
-                        // (BuildTypesenseImageStep), so the admin tier needs the same
-                        // login + layer-upload chain the deployer uses. These verbs
-                        // don't fit the management wildcards above; GetAuthorizationToken
-                        // is account-level (unscopeable) and PutImage is already in Put*.
-                        // BatchGetImage is a READ but part of the push handshake: docker
-                        // HEADs the manifest by digest before PutImage, and that HEAD
-                        // maps to BatchGetImage — not covered by the observer's Describe*/
-                        // List*, so a push 403s on the manifest check without it.
+                        // Image push (sync builds the env Typesense image). BatchGetImage
+                        // is a read but part of the push handshake — docker HEADs the
+                        // manifest by digest before PutImage, and Describe*/List* don't
+                        // cover it, so a push 403s without it.
                         'ecr:GetAuthorizationToken',
                         'ecr:BatchCheckLayerAvailability',
                         'ecr:BatchGetImage',
@@ -259,12 +207,8 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                         // data / cache / queues
                         'elasticache:Create*', 'elasticache:Modify*',
                         'elasticache:Delete*', 'elasticache:Add*', 'elasticache:Remove*',
-                        // RDS stays wildcard-free so the tier can NEVER touch a
-                        // database. The one exception is the DB *subnet group* — YOLO's
-                        // own network resource: sync creates it, destroy:environment
-                        // reclaims it. Never the instance/cluster/snapshot. (Bootstrap
-                        // syncs run --dangerously-skip-permissions, which is why create
-                        // never needed this until a capped teardown deletes it.) See
+                        // RDS stays wildcard-free so the tier can never touch a database;
+                        // the subnet group is YOLO's own network resource. See
                         // NeverDeletesDatabaseTest.
                         'rds:CreateDBSubnetGroup', 'rds:DeleteDBSubnetGroup',
                         'rds:AddTagsToResource', 'rds:RemoveTagsFromResource',
@@ -287,14 +231,10 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                         'logs:CreateLogGroup', 'logs:DeleteLogGroup',
                         'logs:PutRetentionPolicy', 'logs:DeleteRetentionPolicy',
                         'logs:TagResource', 'logs:UntagResource',
-                        // Vended log delivery — wafv2:PutLoggingConfiguration provisions
-                        // the WAF->log-group delivery on the caller's behalf, so AWS
-                        // requires the caller (not the service) to hold the delivery
-                        // lifecycle plus the log-group resource-policy write. Delivery
-                        // APIs are unscopeable; the reads the flow also needs
-                        // (DescribeLogGroups, DescribeResourcePolicies, GetLogDelivery)
-                        // come from the observer half, but ListLogDeliveries fits none
-                        // of its read wildcards so it rides here with its family.
+                        // wafv2:PutLoggingConfiguration provisions the WAF->log-group
+                        // delivery on the caller's behalf, so the caller must hold the
+                        // (unscopeable) delivery lifecycle + the log-group resource-policy
+                        // write. ListLogDeliveries fits none of the observer's read wildcards.
                         'logs:CreateLogDelivery', 'logs:UpdateLogDelivery',
                         'logs:DeleteLogDelivery', 'logs:ListLogDeliveries',
                         'logs:PutResourcePolicy',
@@ -311,19 +251,10 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                     ],
                 ],
                 [
-                    // S3 bucket lifecycle + configuration, scoped to YOLO-named
-                    // buckets. CreateBucket/Put* on the bucket ARN; object contents
-                    // are NOT granted here. The only secrets admin can read/write are
-                    // YOLO's own env-tier minted keys (the env-shared + env-side
-                    // `.env` channels in the env config bucket) — granted as scoped
-                    // object actions below, never the per-app developer `.env`.
-                    //
-                    // Creation and hardening cover the whole yolo-* namespace because
-                    // that includes the app data bucket in its YOLO-owned form
-                    // (`bucket: true` → yolo-{account}-{env}-{app}-data), which needs
-                    // CreateBucket plus the Block Public Access / CORS / tagging
-                    // writes. Destructive verbs deliberately do NOT follow — see the
-                    // next statement.
+                    // Bucket lifecycle + configuration on YOLO-named buckets; no object
+                    // contents. Covers the whole yolo-* namespace because the YOLO-owned
+                    // app data bucket needs CreateBucket + hardening writes — destructive
+                    // verbs deliberately do NOT follow (next statement).
                     'Effect' => 'Allow',
                     'Resource' => 'arn:aws:s3:::yolo-*',
                     'Action' => [
@@ -336,17 +267,10 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                     ],
                 ],
                 [
-                    // Teardown removes the REGENERATABLE buckets only, named by their
-                    // type suffix rather than the whole yolo-* namespace. The app data
-                    // bucket holds user data and YOLO never deletes it, so it must not
-                    // sit inside a delete grant merely for being YOLO-named — which
-                    // it now can be. Suffix-scoping keeps it inside the create fence
-                    // above and outside this one, so the IAM boundary and
-                    // S3::deleteBucket's name guard agree instead of the code being
-                    // the only thing standing between the tier and user data.
-                    //
-                    // ListBucketVersions is for the versioned config buckets' version
-                    // sweep (plain ListBucket comes from the observer read tier).
+                    // Delete only the regeneratable buckets, by type suffix: the app data
+                    // bucket must not sit inside a delete grant merely for being
+                    // YOLO-named, so the IAM boundary and S3::deleteBucket's name guard
+                    // agree. ListBucketVersions drives the versioned buckets' sweep.
                     'Effect' => 'Allow',
                     'Resource' => static::regeneratableBucketArns(),
                     'Action' => [
@@ -355,27 +279,17 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                     ],
                 ],
                 [
-                    // Teardown object deletes — emptying the per-app asset + config
-                    // buckets (asset keys are arbitrary builds/* paths, so this can't
-                    // be key-scoped) and removing the env-config claim/env files
-                    // (destroy:app) and env-shared channels (destroy:environment).
-                    // Delete-only — never GetObject — so the tier can clear a bucket
-                    // without ever reading the per-app developer `.env` (or anything
-                    // else) it isn't already granted. Scoped to the same regeneratable
-                    // buckets, so no grant here can reach a single user object.
+                    // Teardown object deletes (asset keys are arbitrary builds/* paths, so
+                    // not key-scopeable). Delete-only — never GetObject — so the tier can
+                    // empty a bucket without reading the per-app developer `.env`.
                     'Effect' => 'Allow',
                     'Resource' => static::regeneratableBucketArns(objects: true),
                     'Action' => ['s3:DeleteObject', 's3:DeleteObjectVersion'],
                 ],
                 [
-                    // The two objects sync writes into the env config bucket: the
-                    // env manifest (SeedEnvManifestStep) and each app's claim file
-                    // (PublishAppManifestStep writes `apps/{app}.yml` on every
-                    // sync:app — env-scoped admin syncs every app, so the whole
-                    // `apps/*` prefix). Scoped to exactly these keys. The
-                    // env-shared/env-side secret channels are granted in the next
-                    // statement; the per-app DEVELOPER `.env` (in the per-app
-                    // config bucket) is still never granted here.
+                    // The env manifest and every app's claim file (`apps/*` — env-scoped
+                    // admin syncs every app). The per-app developer `.env` lives in the
+                    // per-app config bucket and is never granted here.
                     'Effect' => 'Allow',
                     'Resource' => [
                         sprintf('arn:aws:s3:::%s/%s', $envConfigBucket, EnvManifest::filename()),
@@ -384,14 +298,9 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                     'Action' => ['s3:PutObject'],
                 ],
                 [
-                    // YOLO's env-tier secret channels in the env config bucket: the
-                    // env-shared .env (.env.environment.{env}) holding the Typesense
-                    // cluster admin key (SyncTypesenseAdminKeyStep), and each app's
-                    // environment-side .env (env/.env.{app}) holding its YOLO-minted
-                    // scoped search key (SyncTypesenseKeyStep). Get+put: sync reads
-                    // what's already minted, appends new keys. These are YOLO's OWN
-                    // minted secrets — the per-app developer .env (in the per-app
-                    // config bucket) is still never granted here.
+                    // YOLO's own minted env-tier secrets: the env-shared .env (Typesense
+                    // admin key) and each app's env-side .env (scoped search key). Get+put
+                    // because sync reads what's minted and appends.
                     'Effect' => 'Allow',
                     'Resource' => [
                         sprintf('arn:aws:s3:::%s/%s', $envConfigBucket, Paths::s3SharedEnvKey()),
@@ -400,9 +309,8 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                     'Action' => ['s3:GetObject', 's3:PutObject'],
                 ],
                 [
-                    // IAM lifecycle for YOLO's own roles, policies and the OIDC
-                    // provider — scoped to yolo-* so the tier can reconcile the stack
-                    // it owns and nothing else. No iam:*User, no account-wide IAM.
+                    // Lifecycle of YOLO's own roles, policies and OIDC provider — scoped
+                    // to yolo-*; no iam:*User, no account-wide IAM.
                     'Effect' => 'Allow',
                     'Resource' => [
                         sprintf('arn:aws:iam::%s:role/yolo-*', $accountId),
@@ -425,11 +333,9 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                     ],
                 ],
                 [
-                    // Attach is the escalation chokepoint: scoped to yolo-* roles
-                    // AND conditioned so ONLY a yolo-* customer-managed policy can
-                    // be attached. AWS-managed policies (AdministratorAccess, …)
-                    // live under account "aws" and never match — so the tier cannot
-                    // grant itself broad access by attaching a managed policy.
+                    // The escalation chokepoint: only a yolo-* customer-managed policy may
+                    // be attached. AWS-managed policies live under account "aws" and never
+                    // match, so the tier can't attach AdministratorAccess to itself.
                     'Effect' => 'Allow',
                     'Resource' => sprintf('arn:aws:iam::%s:role/yolo-*', $accountId),
                     'Action' => ['iam:AttachRolePolicy'],
@@ -440,25 +346,18 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                     ],
                 ],
                 [
-                    // Detach carries NO policy-ARN condition: removing a policy can
-                    // only ever reduce a role's access, never escalate it, so the
-                    // chokepoint that fences Attach buys nothing here. It must stay
-                    // unconditioned so the tier can clean up an AWS-managed policy an
-                    // older YOLO once attached — e.g. dropping AmazonRekognitionReadOnlyAccess
-                    // when a service grant moves into the app's own yolo-* policy.
-                    // Still fenced to yolo-* roles so it can't touch a foreign role.
+                    // Detach carries no policy-ARN condition: removing a policy can only
+                    // reduce access, and it must stay able to drop an AWS-managed policy an
+                    // older YOLO attached. Still fenced to yolo-* roles.
                     'Effect' => 'Allow',
                     'Resource' => sprintf('arn:aws:iam::%s:role/yolo-*', $accountId),
                     'Action' => ['iam:DetachRolePolicy'],
                 ],
                 [
-                    // Grant groups: sync provisions and reconciles the
-                    // YOLO grant groups + their inline assume-role policy, and an
-                    // admin manages their membership via `yolo permissions`. Scoped
-                    // to yolo-* groups — the tier can never touch a non-YOLO group.
-                    // AddUserToGroup authorises on the group, so a member of
-                    // yolo-{env}-admins can grant access to others, including admin
-                    // (a deliberate property for a small senior team).
+                    // Grant groups + their inline assume policy; membership via `yolo
+                    // permissions`. AddUserToGroup authorises on the group, so an admin
+                    // member can grant access to others, including admin — deliberate for
+                    // a small senior team.
                     'Effect' => 'Allow',
                     'Resource' => sprintf('arn:aws:iam::%s:group/yolo-*', $accountId),
                     'Action' => [
@@ -469,10 +368,8 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                     ],
                 ],
                 [
-                    // The picker reads for `yolo permissions`: list IAM users and a
-                    // user's current groups. Unscopeable collection ops with no
-                    // resource-level form, so they sit on "*" — read-only, never a
-                    // write, the one IAM exception to the yolo-* fence.
+                    // `yolo permissions` picker reads — unscopeable collection ops, the
+                    // one read-only IAM exception to the yolo-* fence.
                     'Effect' => 'Allow',
                     'Resource' => '*',
                     'Action' => [
@@ -481,11 +378,8 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                     ],
                 ],
                 [
-                    // Hand YOLO's task + execution roles to ECS when sync creates a
-                    // service / registers a task definition. Env-scoped admin syncs
-                    // every app in the environment, so it's the yolo-* role set (the
-                    // per-app task roles + the shared execution role) — fenced by the
-                    // PassedToService condition to the ECS tasks service only.
+                    // PassRole for the per-app task roles + shared execution role, fenced
+                    // to the ECS tasks service.
                     'Effect' => 'Allow',
                     'Resource' => sprintf('arn:aws:iam::%s:role/yolo-*', $accountId),
                     'Action' => ['iam:PassRole'],
@@ -496,13 +390,9 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                     ],
                 ],
                 [
-                    // Service-linked roles AWS requires the first time ECS / App Auto
-                    // Scaling / ElastiCache are used in an account — creatable only
-                    // for those specific services, never an arbitrary SLR. App Auto
-                    // Scaling mints one SLR per service namespace, so it's the
-                    // ECS-suffixed service name (the generic
-                    // application-autoscaling.amazonaws.com is not a valid SLR
-                    // service and would never match a real create).
+                    // Service-linked roles for the specific services only. App Auto Scaling
+                    // mints one SLR per namespace, so it's the ECS-suffixed name — the
+                    // generic application-autoscaling.amazonaws.com never matches a create.
                     'Effect' => 'Allow',
                     'Resource' => sprintf('arn:aws:iam::%s:role/aws-service-role/*', $accountId),
                     'Action' => ['iam:CreateServiceLinkedRole'],

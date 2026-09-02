@@ -10,11 +10,6 @@ use Symfony\Component\Console\Input\InputArgument;
 
 use function Laravel\Prompts\intro;
 
-/**
- * Recent ECS service events per group — the deploy/placement narrative ECS
- * keeps (capacity, health-check, steady-state messages). `--json` is the
- * machine-readable form the `/yolo` skill consumes.
- */
 class StatusEventsCommand extends Command implements ReadOnlyCommand
 {
     use RendersIncidentReads;

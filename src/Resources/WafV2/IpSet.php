@@ -11,15 +11,10 @@ use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * An env-shared WAF IP set referenced by the WebAcl's allow/block rules.
- *
- * Deliberately NOT a SynchronisesConfiguration: the addresses are the high-churn,
- * human-owned surface (the IPs you block at 2am, the crawler ranges you allow), so
- * sync only ever creates the set and reconciles its tags — it never rewrites the
- * contents. An operator can edit the list in the console mid-incident and the next
- * `sync` leaves it untouched. YOLO owns that the set *exists* and that a rule wires
- * it into the ACL; the operator owns what's *in* it. The set is seeded empty (an
- * empty IP-set rule matches nothing, so it's inert until populated).
+ * Deliberately NOT a SynchronisesConfiguration: the addresses are the human-owned
+ * surface (IPs blocked mid-incident, crawler ranges allowed), so sync only ever
+ * creates the set and reconciles its tags — an operator's console edits survive
+ * every sync. Seeded empty: an empty IP-set rule matches nothing.
  */
 abstract class IpSet implements Deletable, Resource
 {
@@ -68,12 +63,8 @@ abstract class IpSet implements Deletable, Resource
     }
 
     /**
-     * Teardown when the environment is torn down: delete the IP set. WAFv2 needs
-     * the current LockToken (optimistic concurrency) and the Id, both read from
-     * the live summary. The destroy step deletes the WebAcl that references this
-     * set first — WAFv2 refuses to delete an IP set still referenced by a rule —
-     * so by the time we get here a plain deleteIPSet succeeds. A concurrent
-     * removal (the summary lookup already 404s) is tolerated.
+     * WAFv2 refuses to delete an IP set a rule still references; the destroy
+     * order deletes the WebAcl first, so a plain deleteIPSet succeeds here.
      */
     public function delete(): void
     {

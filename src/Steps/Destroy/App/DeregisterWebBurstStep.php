@@ -11,10 +11,8 @@ use Codinglabs\Yolo\Concerns\RecordsChanges;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
 
 /**
- * Tears down the web burst scale-out path — the high-res worker-saturation alarm
- * and its step-scaling policy. The step policy cascades when the scalable target
- * is deregistered, but the alarm is standalone, so {@see WebBurstPolicy::teardown()}
- * removes both. Run before the scalable target is deregistered.
+ * The step policy would cascade with the scalable target, but its alarm is
+ * standalone. Runs before the scalable target is deregistered.
  */
 class DeregisterWebBurstStep implements Step
 {

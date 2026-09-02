@@ -13,21 +13,11 @@ use Codinglabs\Yolo\Aws\ApplicationAutoScaling;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Breaks the queue's 0→1 deadlock. {@see QueueBacklogPolicy} scales on
- * messages-per-running-task, which is undefined at zero running tasks (division
- * by zero → no data), so target tracking can never lift a scaled-to-zero queue
- * off the floor. This pairs a step-scaling policy with a CloudWatch alarm on the
- * queue's visible-message count: the instant a message lands while at zero, the
- * alarm sets desired count to exactly one, and target tracking owns it from
- * there.
- *
- * ExactCapacity 1 (not +1) is deliberate — App Auto Scaling takes the max desired
- * across policies, so asserting "at least one while there's backlog" never fights
- * the backlog policy's higher number and never ratchets up on a long backlog.
- *
- * Only provisioned when the queue's floor is zero (`tasks.queue.autoscaling.min: 0`); a queue
- * with a standing floor never sits at zero, so it needs no bootstrap. Both the
- * policy and the alarm are pure upserts, so this is a reconciler, not a Resource.
+ * Breaks the queue's 0→1 deadlock: {@see QueueBacklogPolicy} divides by running
+ * tasks, so it has no data at zero. A step-scaling policy on a visible-messages
+ * alarm sets desired count to ExactCapacity 1 — not +1, so it never fights the
+ * backlog policy's higher number or ratchets up on a long backlog. Only needed
+ * when `tasks.queue.autoscaling.min` is 0.
  */
 class QueueScaleToZeroBootstrap
 {
@@ -49,9 +39,7 @@ class QueueScaleToZeroBootstrap
     }
 
     /**
-     * Provision (or confirm) the step policy + its alarm. The config is static, so
-     * drift is simply "either piece is missing"; reported as a Change so the sync
-     * step renders WOULD_CREATE / CREATED and survives the only-pending filter.
+     * The config is static, so drift is simply "either piece is missing".
      *
      * @return array<int, Change>
      */
@@ -104,9 +92,7 @@ class QueueScaleToZeroBootstrap
             ...Aws::tags($this->tags()),
         ]);
 
-        // PutMetricAlarm ignores Tags when updating an existing alarm, so reconcile
-        // the ownership markers explicitly (TagResource works on an existing alarm) —
-        // so the alarm reads as `ok` in yolo audit rather than `rogue`.
+        // PutMetricAlarm ignores Tags on an existing alarm; without this audit reads it as rogue.
         Aws::synchroniseCloudWatchTags(
             CloudWatch::alarm($this->alarmName())['AlarmArn'],
             $this->tags(),
@@ -139,8 +125,7 @@ class QueueScaleToZeroBootstrap
     }
 
     /**
-     * App-scoped ownership tags, matching what a Resource's ResolvesTags would
-     * stamp. The yolo:environment baseline is added at write time by Aws::tags().
+     * Mirrors ResolvesTags; yolo:environment is added at write time by Aws::tags().
      *
      * @return array<string, string>
      */

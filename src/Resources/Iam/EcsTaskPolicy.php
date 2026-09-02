@@ -21,19 +21,8 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
 
 /**
- * YOLO-managed customer-managed IAM policy granting this app's ECS task role its
- * baseline runtime permissions: the four ssmmessages permissions ECS Exec needs,
- * SQS access scoped to this app's own queues, SES send, and read on the env WAF
- * request-log group — plus read+write on
- * the application data bucket when the manifest declares one (`bucket`). App-scoped
- * so the grants are this app's alone and never reach another app's role — attached
- * to the app task role by AttachEcsTaskRolePoliciesStep.
- *
- * IAM doesn't have a per-resource "tagResource" API that mirrors the other
- * services — tags are written via `createPolicy` at create time and synced
- * via `tagPolicy`. Policy *document* drift is reconciled as a plan-visible
- * Change via the shared SynchronisesPolicyDocument trait (createPolicyVersion
- * + 5-version pruning).
+ * The app task role's baseline runtime grants. App-scoped so nothing here reaches
+ * another app's role.
  */
 class EcsTaskPolicy implements Deletable, Resource, SynchronisesConfiguration
 {
@@ -76,12 +65,7 @@ class EcsTaskPolicy implements Deletable, Resource, SynchronisesConfiguration
         ]);
     }
 
-    /**
-     * IAM Description fields enforce a restricted character set
-     * (tab/LF/CR + printable ASCII + Latin-1 Supplement) — no em dashes,
-     * smart quotes, or U+007F – U+00A0 control range. Validated by
-     * IamDescriptionsAreSafeTest.
-     */
+    /** IAM Description allows only printable ASCII + Latin-1 (no em dashes or smart quotes) — pinned by IamDescriptionsAreSafeTest. */
     public function description(): string
     {
         return 'YOLO managed baseline policy granting ECS Exec session channels, SQS queue access, and SES send to this app\'s task role';
@@ -93,13 +77,8 @@ class EcsTaskPolicy implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * Teardown when the app is removed: IAM refuses to delete a customer-managed
-     * policy while it is still attached to any entity or while it carries
-     * non-default versions, so detach it from every role/group/user it is attached
-     * to (the task role, here) and prune every non-default version (the
-     * SynchronisesPolicyDocument trait may have rolled several) before
-     * deletePolicy. A concurrent delete that already removed the policy is
-     * tolerated.
+     * IAM refuses to delete a policy that is still attached anywhere or carries
+     * non-default versions, so detach and prune before deletePolicy.
      */
     public function delete(): void
     {
@@ -148,8 +127,7 @@ class EcsTaskPolicy implements Deletable, Resource, SynchronisesConfiguration
                 throw $e;
             }
         } catch (ResourceDoesNotExistException) {
-            // arn() resolves the policy by listing; a concurrent delete that
-            // removed it between exists() and here leaves nothing to do.
+            // Removed between exists() and here — nothing left to do.
         }
     }
 
@@ -167,10 +145,7 @@ class EcsTaskPolicy implements Deletable, Resource, SynchronisesConfiguration
                 ],
             ],
             [
-                // Lets the container dispatch to and work the YOLO-provisioned
-                // SQS queues via the task role. Per-app policy → scoped to this
-                // app's own queues only (solo `yolo-{env}-{app}` + landlord/
-                // per-tenant variants), never another app's.
+                // This app's own queues only (solo + landlord/per-tenant variants).
                 'Effect' => 'Allow',
                 'Resource' => $this->queueArnPatterns(),
                 'Action' => [
@@ -185,10 +160,7 @@ class EcsTaskPolicy implements Deletable, Resource, SynchronisesConfiguration
                 ],
             ],
             [
-                // Lets the container send mail via SES through the task role.
-                // Send-only, scoped to this region's verified identities —
-                // covers the v1 (SendRawEmail) and v2 (SendEmail) Laravel SES
-                // transports.
+                // Send-only; covers both the v1 (SendRawEmail) and v2 (SendEmail) SES transports.
                 'Effect' => 'Allow',
                 'Resource' => $this->sesIdentityArnPattern(),
                 'Action' => [
@@ -197,13 +169,9 @@ class EcsTaskPolicy implements Deletable, Resource, SynchronisesConfiguration
                 ],
             ],
             [
-                // Read on the env WAF's request logs (blocked/counted requests,
-                // rule-attributed) so the app can answer "is this IP tripping a
-                // rule" and feed ban decisions. Content-ARN (':*') form — the
-                // read actions address streams, not the group. Env-shared like
-                // the WAF itself, so the stream spans every app behind the ALB.
-                // Insights (GetQueryResults) deliberately omitted: results are
-                // unscopeable, and FilterLogEvents covers the lookup shape.
+                // Env WAF request logs so the app can attribute blocks to rules for
+                // ban decisions. Content (':*') form — the read actions address
+                // streams. Insights omitted: results are unscopeable.
                 'Effect' => 'Allow',
                 'Resource' => (new WafLogGroup())->arn() . ':*',
                 'Action' => [
@@ -215,12 +183,9 @@ class EcsTaskPolicy implements Deletable, Resource, SynchronisesConfiguration
             ],
         ];
 
-        // When web autoscaling burst is on, the runtime worker-saturation reporter
-        // publishes the real-time WorkerSaturation metric via PutMetricData. That action
-        // has no resource-level scoping, so it's narrowed by a namespace condition to
-        // YOLO's own metrics — the task role can publish nothing else. Gated on the same
-        // signal that ships the reporter and metrics Caddyfile, so the grant and the
-        // reporter using it can't drift.
+        // PutMetricData is unscopeable, so a namespace condition narrows it to YOLO's
+        // own metrics. Gated on the same signal that ships the reporter so the grant
+        // and its user can't drift.
         if (Manifest::usesMetricsCaddyfile()) {
             $statements[] = [
                 'Effect' => 'Allow',
@@ -232,19 +197,13 @@ class EcsTaskPolicy implements Deletable, Resource, SynchronisesConfiguration
             ];
         }
 
-        // When the manifest declares an application data bucket, grant this app's
-        // task role read+write to that bucket. Scoped to the one declared bucket —
-        // the per-app role means this can't reach another app's bucket.
         if (Manifest::has('bucket')) {
             $statements = [...$statements, ...$this->bucketStatements()];
         }
 
-        // Scheduled database dumps upload to this app's own prefix of the env
-        // backups bucket. Write-only by design — the producer verifies the
-        // archive locally before uploading, so the container never needs read,
-        // and a compromised task can't exfiltrate its own dump history (or any
-        // sibling app's). AbortMultipartUpload keeps a failed large upload
-        // from stranding parts the lifecycle would otherwise hold for 7 days.
+        // Write-only: the producer verifies the archive locally, so a compromised
+        // task can't exfiltrate its own dump history (or a sibling's). Abort keeps a
+        // failed multipart from stranding parts.
         if (Manifest::backsUpDatabases()) {
             $statements[] = [
                 'Effect' => 'Allow',
@@ -256,10 +215,7 @@ class EcsTaskPolicy implements Deletable, Resource, SynchronisesConfiguration
             ];
         }
 
-        // Each consumed service yields the statements its consumption grants —
-        // the app-side half of the service contract lives on the service's
-        // definition (ServiceDefinition::taskRoleStatements()), so a new
-        // service never edits this class.
+        // The app-side half of a service contract lives on its definition, not here.
         foreach (Manifest::services() as $service) {
             $statements = [...$statements, ...Service::from($service)->definition()->taskRoleStatements()];
         }
@@ -271,10 +227,6 @@ class EcsTaskPolicy implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * Read+write on the declared application data bucket: object get/put/delete
-     * and ACL get/set (plus multipart for large uploads) on `…/*`, and
-     * bucket-level listing + location on the bucket itself.
-     *
      * @return array<int, array<string, mixed>>
      */
     protected function bucketStatements(): array
@@ -317,10 +269,8 @@ class EcsTaskPolicy implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * The ARNs of this app's SQS queues: the solo queue is named exactly
-     * `yolo-{env}-{app}`, and the landlord/per-tenant queues are
-     * `yolo-{env}-{app}-*`. Two ARNs (not one `…-{app}*` glob) so the grant
-     * can't reach a sibling app whose name shares this app's prefix.
+     * Two ARNs (not one `…-{app}*` glob) so the grant can't reach a sibling app
+     * whose name shares this app's prefix.
      *
      * @return array<int, string>
      */

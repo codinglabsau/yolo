@@ -15,12 +15,8 @@ use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 
 /**
- * Env-scoped config bucket holding the environment's declaration: the env
- * manifest (`yolo-environment-{environment}.yml`) and the env-shared `.env`. The env-tier sibling of
- * the per-app config buckets — same secrets posture (Block Public Access and
- * versioning reconciled on every sync, no external write principals, no expiry
- * lifecycle). S3 read on this bucket is what gates env-secret control; app
- * deploys never need it.
+ * Holds the env manifest and the env-shared `.env`. Read access on this bucket
+ * is what gates env-secret control — app deploys never need it.
  */
 class EnvConfigBucket implements Deletable, Resource, SynchronisesConfiguration
 {
@@ -67,11 +63,6 @@ class EnvConfigBucket implements Deletable, Resource, SynchronisesConfiguration
         return Aws::synchroniseS3Tags($this->name(), $this->tags(), $apply);
     }
 
-    /**
-     * Reconcile Block Public Access and versioning, each read-compared-then-
-     * written so a clean sync is a no-op and a dry-run reports exactly what
-     * would change. Returns the drifted attributes as Change[].
-     */
     public function synchroniseConfiguration(bool $apply = true): array
     {
         return [
@@ -80,14 +71,6 @@ class EnvConfigBucket implements Deletable, Resource, SynchronisesConfiguration
         ];
     }
 
-    /**
-     * Empty then delete the bucket. S3 refuses DeleteBucket on a non-empty
-     * bucket. This bucket is versioned (create() reconciles versioning to
-     * Enabled), so emptying must clear every object version AND every delete
-     * marker — a plain object sweep would leave noncurrent versions behind and
-     * the delete would fail. A concurrent removal (NoSuchBucket / 404) is
-     * tolerated.
-     */
     public function delete(): void
     {
         try {

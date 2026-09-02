@@ -15,14 +15,12 @@ class SyncMediaConvertRoleStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        // Dropping the claim melts the per-app service IAM in the same pass —
-        // the role (and its policy attachments, detached inside delete()) goes
-        // when the app stops consuming mediaconvert. Never-claimed apps skip.
+        // Dropping the claim melts the per-app service IAM in the same pass — the
+        // role and its attachments go when the app stops consuming mediaconvert.
         if (! Manifest::usesService(Service::MEDIA_CONVERT)) {
             return $this->teardownResource(new MediaConvertRole(), $options);
         }
 
-        // Trust-policy drift rides through SynchronisesConfiguration on the role.
         return $this->syncResource(new MediaConvertRole(), $options);
     }
 }

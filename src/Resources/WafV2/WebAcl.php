@@ -19,36 +19,23 @@ use Codinglabs\Yolo\Resources\CloudWatchLogs\WafLogGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * The env-shared regional WAF web ACL associated with the environment ALB — one
- * ACL fronts every app sharing the load balancer. It owns the *policy skeleton*:
- * the default action, the allow/block IP-set rules, the AWS managed rule groups
- * and the per-IP rate limit. The high-churn list *contents* live in AllowIpSet /
- * BlockIpSet (create-only); this resource only wires those sets in by reference.
- *
- * As a SynchronisesConfiguration it reconciles that skeleton onto an existing ACL,
- * but only over the rules it owns (matched by Name): a rule an operator adds by
- * hand is preserved through every sync, mirroring the listener-rule ownership
- * model. The managed groups are referenced *unversioned* so AWS's signature and
- * IP-reputation updates roll in on their own — the noisy groups (CRS, SQLi) ship
- * in Count so a new AWS signature can't start blocking live traffic unannounced;
- * the low-false-positive groups block outright.
- *
- * It also owns request logging: every evaluated request streams into the env's
- * WafLogGroup, wired on create and reconciled thereafter (see reconcileLogging).
+ * One regional ACL fronts every app on the environment ALB. It owns the policy
+ * skeleton (default action, allow/block IP-set rules, managed groups, rate
+ * limits); the high-churn list contents live in the create-only IP sets.
+ * Reconciliation covers only the rules it owns (matched by Name), so a rule an
+ * operator adds by hand survives every sync. Managed groups are referenced
+ * unversioned so AWS's signature updates roll in on their own.
  */
 class WebAcl implements Deletable, Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
 
-    /** Per-IP request ceiling, evaluated over a rolling 1-minute window. */
     private const int RATE_LIMIT = 200;
 
     private const int RATE_WINDOW_SECONDS = 60;
 
     /**
-     * High-risk geographies blocked by default — a hardcoded starting point an
-     * operator fine-tunes per app. Seeded once on create and then operator-owned
-     * (see seededRules()), so edits survive every sync.
+     * Seeded once on create, then operator-owned (see seededRules()).
      *
      * @var array<int, string>
      */
@@ -65,11 +52,9 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
     private const string COUNTRY_RULE = 'yolo-banned-countries';
 
     /**
-     * The search host's own rate rule (public: the Typesense dashboard widget
-     * charts its blocks). Keystroke-as-you-type search + CGNAT aggregation
-     * make the general per-IP ceiling a guaranteed false positive, so the
-     * search host is carved out of yolo-rate-limit and given its own budget —
-     * roomy enough for ~30-50 simultaneously active searchers behind one IP.
+     * Public: the Typesense dashboard widget charts its blocks. Keystroke search
+     * behind CGNAT makes the general per-IP ceiling a guaranteed false positive,
+     * so the search host gets its own budget (~30-50 active searchers per IP).
      */
     public const string SEARCH_RATE_RULE = 'yolo-search-rate-limit';
 
@@ -103,8 +88,7 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
 
     public function create(): void
     {
-        // Retry on eventual consistency: the rules reference the allow/block IP
-        // sets created moments earlier, which WAFv2 may not yet have propagated.
+        // The rules reference IP sets created moments earlier, which WAFv2 may not yet have propagated.
         $result = WafV2::retryWhileUnavailable(fn () => Aws::wafV2()->createWebACL([
             'Name' => $this->name(),
             'Scope' => WafV2::SCOPE,
@@ -119,10 +103,8 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * The full rule set written at create time, priority-ordered: the reconciled
-     * skeleton plus the seed-only rules (the country block) that are operator-owned
-     * thereafter. Reconcile (synchroniseConfiguration) only ever touches
-     * desiredRules(), so the seeds are laid down once and then left alone.
+     * Skeleton plus seed-only rules; reconcile only ever touches desiredRules(),
+     * so the seeds are laid down once and left alone.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -135,10 +117,8 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * Rules YOLO seeds once on create and never reconciles — a hardcoded starting
-     * point the operator then owns (like the empty allow/block IP sets, but for a
-     * rule whose content can't live in a separate resource). The country block
-     * lives here so an operator can re-scope it without sync reverting them.
+     * A hardcoded starting point the operator then owns — like the empty IP sets,
+     * but for a rule whose content can't live in a separate resource.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -153,13 +133,9 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * Teardown when the environment is torn down: delete the web ACL. WAFv2
-     * needs the current LockToken (optimistic concurrency) and the Id, both read
-     * from the live summary. The destroy step disassociates the ACL from the ALB a
-     * few steps earlier — WAFv2 refuses to delete an ACL still associated with a
-     * resource — but that disassociation is eventually consistent, so the delete is
-     * retried past the transient WAFAssociatedItemException until it lands. A
-     * concurrent removal (the summary lookup already 404s) is tolerated.
+     * The destroy step disassociates the ACL from the ALB earlier, but that is
+     * eventually consistent — so the delete retries past the transient
+     * WAFAssociatedItemException.
      */
     public function delete(): void
     {
@@ -178,11 +154,9 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * Reconcile the policy skeleton onto the live ACL. Drift is computed over the
-     * default action and the YOLO-owned rules only (by Name) — a hand-added rule
-     * is invisible to the diff and survives the write. On drift the whole rule set
-     * is rewritten as (preserved human rules + desired YOLO rules), which is the
-     * only update shape WAFv2 offers.
+     * Drift is computed over the default action and YOLO-owned rules only; on
+     * drift the whole set is rewritten as preserved human rules + desired rules,
+     * the only update shape WAFv2 offers.
      *
      * @return array<int, Change>
      */
@@ -204,9 +178,8 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
             $changes[] = Change::make('default-action', $liveDefault, 'Allow');
         }
 
-        // Loose `!=` on purpose: both sides are name-keyed maps of scalar
-        // signatures, so this compares key/value pairs regardless of order (a
-        // strict `!==` would false-flag drift on mere ordering differences).
+        // Loose `!=` on purpose: name-keyed maps of scalars compared regardless of
+        // order — a strict `!==` would false-flag mere ordering differences.
         if ($this->ownedSignatures($liveRules) != $this->desiredSignatures()) {
             $changes[] = Change::make('rules', 'drift', 'reconciled (allow/block, managed groups, rate limit)');
         }
@@ -227,12 +200,9 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * Reconcile request logging into the env's `aws-waf-logs-` log group:
-     * destination and filter both diffed, one put repairs either. WAF writes
-     * the log-delivery resource policy onto the group itself on put, so
-     * enabling logging is this one call. No RedactedFields — the kept slice is
-     * the evidence stream, and redacting it would blunt exactly the forensics
-     * it exists for.
+     * WAF writes the log-delivery resource policy onto the group itself on put,
+     * so enabling logging is this one call. No RedactedFields — the kept slice is
+     * the evidence stream.
      *
      * @return array<int, Change>
      */
@@ -261,13 +231,10 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * Keep blocked and counted requests only. Allowed traffic would be the
-     * overwhelming bulk of the stream and is already recorded per-request by
-     * the ALB's own access logs (including WAF rejections); the block/count
-     * slice is the part only WAF can explain — which rule matched, and what a
-     * Count-mode rule *would* have blocked. COUNT and EXCLUDED_AS_COUNT are
-     * both kept: managed-group action overrides surface under either name
-     * depending on the override mechanism.
+     * Allowed traffic is the bulk of the stream and already in the ALB access
+     * logs; the block/count slice is what only WAF can explain. COUNT and
+     * EXCLUDED_AS_COUNT are both kept — managed-group overrides surface under
+     * either name.
      *
      * @return array<string, mixed>
      */
@@ -296,9 +263,6 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * The complete desired rule set, in priority order: the operator allow list,
-     * the operator block list, the AWS managed groups, then the rate limit.
-     *
      * @return array<int, array<string, mixed>>
      */
     public function desiredRules(): array
@@ -316,11 +280,8 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * The environment's search host, when its rate handling is active: the
-     * env manifest declares a domain AND the typesense service is on
-     * (the typesense service is declared in the env manifest). While inactive
-     * the general rate rule covers
-     * everything and no search rule exists.
+     * Non-null only while the typesense service is provisioned; otherwise the
+     * general rate rule covers everything and no search rule exists.
      */
     protected function searchHost(): ?string
     {
@@ -334,12 +295,9 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * AWS managed rule groups, referenced unversioned so they track the latest
-     * signatures. Every group blocks (override None — the group's own Block actions
-     * apply), with one carve-out: the Core Rule Set's SizeRestrictions_BODY sub-rule
-     * is dropped to Count, because its 8 KB request-body cap would block legitimate
-     * large POSTs that don't go direct-to-S3 — a universal false-positive we'd
-     * rather observe than enforce. Per-sub-rule action overrides are declared here.
+     * The Core Rule Set's SizeRestrictions_BODY sub-rule is dropped to Count: its
+     * 8 KB request-body cap would block legitimate large POSTs that don't go
+     * direct-to-S3 — a universal false-positive better observed than enforced.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -369,9 +327,6 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * Translate a [sub-rule => action] map into the WAFv2 RuleActionOverrides shape.
-     * Empty when a group has no carve-outs (dropped by array_filter on the caller).
-     *
      * @param  array<string, string>  $overrides
      * @return array<int, array<string, mixed>>
      */
@@ -413,9 +368,7 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
                     'Limit' => self::RATE_LIMIT,
                     'AggregateKeyType' => 'IP',
                     'EvaluationWindowSec' => self::RATE_WINDOW_SECONDS,
-                    // The search host is carved out — it has its own roomier
-                    // rule below, so keystroke search never trips the general
-                    // per-IP ceiling.
+                    // Carved out: the search host has its own roomier rule below.
                     ...$this->searchHost() !== null ? [
                         'ScopeDownStatement' => [
                             'NotStatement' => ['Statement' => $this->searchHostStatement()],
@@ -428,8 +381,6 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * The search host's own per-IP rate rule, scoped to host == search.{domain}.
-     *
      * @return array<string, mixed>
      */
     protected function searchRateLimitRule(): array
@@ -451,8 +402,6 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * host-header == the search host, lowercased exact match.
-     *
      * @return array<string, mixed>
      */
     protected function searchHostStatement(): array
@@ -468,10 +417,6 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * The default country block (seed-only — see seededRules()). Action Block, a
-     * geo-match on the hardcoded high-risk list; the operator re-scopes the
-     * countries afterwards and sync never reverts them.
-     *
      * @return array<string, mixed>
      */
     protected function bannedCountriesRule(): array
@@ -488,9 +433,6 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * Live rules YOLO doesn't own (matched by Name) — preserved verbatim through
-     * an update so an operator's hand-rolled rules are never clobbered.
-     *
      * @param  array<int, array<string, mixed>>  $liveRules
      * @return array<int, array<string, mixed>>
      */
@@ -505,8 +447,6 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * The Names of every rule YOLO manages.
-     *
      * @return array<int, string>
      */
     protected function ownedRuleNames(): array
@@ -515,9 +455,6 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * A stable, echo-back-proof projection of the desired YOLO rules, keyed by
-     * Name — used to detect drift without tripping over fields AWS adds on read.
-     *
      * @return array<string, array<string, mixed>>
      */
     protected function desiredSignatures(): array
@@ -526,8 +463,6 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * The same projection over the live rules YOLO owns (others are ignored).
-     *
      * @param  array<int, array<string, mixed>>  $liveRules
      * @return array<string, array<string, mixed>>
      */
@@ -542,6 +477,9 @@ class WebAcl implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
+     * A projection that survives echo-back, so drift detection doesn't trip over
+     * fields AWS adds on read.
+     *
      * @param  array<int, array<string, mixed>>  $rules
      * @return array<string, array<string, mixed>>
      */

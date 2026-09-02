@@ -13,14 +13,10 @@ use Codinglabs\Yolo\Concerns\RevokesTaskIngress;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Revokes this app's database ingress rules from an externally-hosted database's
- * security group (the peered posture) — the mirror of
- * SyncExternalDatabaseIngressStep. Without it, the foreign rule still references
- * the task SG and AWS refuses to delete the group. Every attached SG is swept,
- * and on each one every port referencing this app's task SG (the port is a
- * derived fact, so a stale one must not wedge the teardown); a rule is matched
- * by content, so a sibling app's is never touched. An unreadable database just
- * skips — nothing referenced.
+ * Must run before the task SG is deleted (see RevokeRdsIngressStep). Every
+ * attached SG is swept, and on each every port referencing the task SG — the
+ * port is derived, so a stale one must not wedge the teardown; rules are matched
+ * by content, so a sibling app's is never touched.
  */
 class RevokeExternalDatabaseIngressStep implements ExecutesWebStep
 {
@@ -31,8 +27,7 @@ class RevokeExternalDatabaseIngressStep implements ExecutesWebStep
         try {
             $target = Rds::target();
         } catch (RdsException|ResourceDoesNotExistException) {
-            // A declared database that no longer resolves (already deleted, or
-            // unreadable) referenced nothing — teardown must not wedge on it.
+            // A database that no longer resolves referenced nothing — don't wedge on it.
             return StepResult::SKIPPED;
         }
 

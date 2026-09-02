@@ -12,42 +12,29 @@ use Illuminate\Support\Facades\Cache;
 use Symfony\Component\Process\Process;
 
 /**
- * The in-container backup executor: `mysqldump` each database, compress with
- * zstd, verify the archive, and upload it to the env backups bucket. Nothing to
- * schedule and no runtime config — the crontab YOLO generates for the
- * scheduler host carries the daily entry with every argument baked from the
- * manifest at build time (ProcessCommands::databaseBackup), and
- * `yolo backup:database` runs the same invocation on demand as a one-off
- * task with its output streamed back.
+ * Every argument is baked into the generated crontab from the manifest at build
+ * time (ProcessCommands::databaseBackup); `yolo backup:database` runs the same
+ * invocation on demand.
  *
- * Verification happens at the producer, before upload, so a bad dump can
- * never ship — let alone replicate offsite looking healthy:
+ * Verification happens at the producer, before upload, so a bad dump can never
+ * ship looking healthy: `zstd -t` catches a torn archive (killed pipe, full
+ * disk), and the `Dump completed` trailer proves mysqldump finished — the server
+ * writes it only at the end of a successful dump, and checking it instead of the
+ * pipeline's exit status sidesteps `pipefail`, which the images' shells don't
+ * agree on.
  *
- *  - `zstd -t` proves the archive is intact (a killed pipe or full disk
- *    leaves a torn file this catches);
- *  - the `Dump completed` trailer proves mysqldump finished — the server
- *    writes it only at the end of a successful dump, so its absence catches
- *    a dropped connection or mid-stream error whatever the exit codes did.
- *    Checking the trailer instead of the pipeline's exit status also
- *    sidesteps `pipefail`, which the images' default shells don't agree on.
+ * Timestamped keys mean every run keeps its own object at any cadence; retention
+ * is lifecycle expiry on the bucket, and versioning stays on purely as tamper
+ * armour (a write-only producer cannot destroy an existing object). A failed
+ * database is reported and the run moves on — one broken tenant must not cost
+ * the rest their backup — but the command exits non-zero.
  *
- * Uploads land on timestamped keys — `{app}/{database}/{Y-m-d-Hi}.sql.zst` —
- * so every run keeps its own object at any schedule cadence, the history is
- * browsable (ISO timestamps sort lexically), and retention is plain lifecycle
- * expiry on the bucket; versioning stays on purely as tamper armour (a
- * write-only producer cannot destroy an existing object). The upload uses the task role's write-only grant; the archive
- * is deleted locally either way. A failed database is reported and the run moves on to
- * the next — one broken tenant must not cost the rest their backup — but the
- * command exits non-zero so the failure is loud in the scheduler's logs.
- *
- * Run-once is the command's own property: it takes a cache lock, so a
- * combined-services app whose scheduler ticks on every web task still dumps
- * once, and a manual run can't race the scheduled one.
+ * The cache lock is the command's own: a combined-services app's scheduler ticks
+ * on every web task, and a manual run must not race the scheduled one.
  */
 class DatabaseBackupCommand extends Command
 {
-    /** Bounds a wedged run: a second run may start once this lock expires,
-     * roomy enough that a large multi-database dump finishes well inside it. */
+    /** Bounds a wedged run; roomy enough for a large multi-database dump. */
     protected const int LOCK_TTL_SECONDS = 6 * 3600;
 
     protected $signature = 'yolo:backup-database
@@ -62,8 +49,7 @@ class DatabaseBackupCommand extends Command
         $destination = (string) $this->option('destination');
 
         if ($destination === '' || (string) $this->option('region') === '') {
-            // The generated crontab and `yolo backup:database` always pass
-            // both — a bare manual run is missing its target, not opting out.
+            // a bare manual run is missing its target, not opting out
             $this->error('Both --destination and --region are required (copy them from docker/crontab).');
 
             return self::FAILURE;
@@ -71,8 +57,7 @@ class DatabaseBackupCommand extends Command
 
         $databases = $this->databases();
 
-        // A destination with nothing to dump is a misconfiguration, not a quiet
-        // success — succeeding here would read as "backed up" forever.
+        // succeeding here would read as "backed up" forever
         if ($databases === []) {
             $this->error('A backup destination is configured but no database is — nothing was backed up.');
 
@@ -109,9 +94,8 @@ class DatabaseBackupCommand extends Command
     }
 
     /**
-     * The default connection's database plus any tenant databases passed in.
-     * Tenant ids are the database names (the same contract the per-tenant
-     * queue fan-out relies on), so the list needs no tenancy package.
+     * Tenant ids are the database names (the same contract the per-tenant queue
+     * fan-out relies on), so no tenancy package is needed.
      *
      * @return array<int, string>
      */
@@ -160,11 +144,10 @@ class DatabaseBackupCommand extends Command
     }
 
     /**
-     * Dump straight through zstd so local disk only ever holds the compressed
-     * archive — an uncompressed dump can exceed the task's ephemeral storage.
-     * Connection details ride environment variables into a fixed shell
-     * template, so no value is ever interpolated into the command line
-     * (`MYSQL_PWD` also keeps the password out of the process list).
+     * Piped straight through zstd — an uncompressed dump can exceed the task's
+     * ephemeral storage. Connection details ride env vars into a fixed shell
+     * template so nothing is interpolated into the command line (`MYSQL_PWD`
+     * also keeps the password out of the process list).
      */
     protected function dump(string $database, string $archive): bool
     {
@@ -193,10 +176,6 @@ class DatabaseBackupCommand extends Command
         return $this->runProcess($process) === 0;
     }
 
-    /**
-     * Integrity then completeness — see the class docblock for why the
-     * trailer stands in for the dump's exit status.
-     */
     protected function verify(string $archive): bool
     {
         if ($this->runProcess(new Process(['zstd', '-t', '-q', $archive], timeout: null)) !== 0) {
@@ -207,8 +186,7 @@ class DatabaseBackupCommand extends Command
     }
 
     /**
-     * The last bytes of the decompressed dump — streamed, so a large archive
-     * never lands on disk or in memory during verification.
+     * Streamed, so a large archive never lands on disk or in memory.
      */
     protected function archiveTail(string $archive): string
     {
@@ -225,9 +203,8 @@ class DatabaseBackupCommand extends Command
     {
         [$bucket, $key] = explode('/', $path, 2);
 
-        // ObjectUploader switches to multipart above its threshold, so a dump
-        // larger than a single PUT allows still lands (the task role grants
-        // PutObject + AbortMultipartUpload on this prefix).
+        // ObjectUploader goes multipart above its threshold — the task role grants
+        // PutObject + AbortMultipartUpload on this prefix for that.
         (new ObjectUploader($this->s3(), $bucket, $key, fopen($archive, 'r')))->upload();
     }
 

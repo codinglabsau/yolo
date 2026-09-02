@@ -27,19 +27,14 @@ class WaitForDeploymentHealthyStep implements LongRunning
     }
 
     /**
-     * Wait until the NEW deployment's tasks are healthy in the load balancer —
-     * i.e. the new version is actually serving — rather than for full "steady
-     * state", which also waits out the old task's drain + stop (~90s of pure
-     * cleanup that happens after users are already on the new code). A deploy
-     * that returns before the new task is healthy can mask a crash-looping image,
-     * so we still block here; we just stop once the new version is live.
+     * Waits for the new tasks to be healthy in the ALB rather than ECS "steady
+     * state", which also waits out the old tasks' drain (~90s of cleanup after
+     * users are already on the new code).
      */
     public function __invoke(array $options): StepResult
     {
-        // The health gate is ALB-based, so it only applies to the web service. A
-        // deploy that targets only the queue/scheduler (--group) has no ALB rollout
-        // to wait on — the ECS circuit breaker still auto-rolls-back a broken
-        // headless deploy — so skip the wait entirely.
+        // ALB-based, so web only; the ECS circuit breaker still rolls back a
+        // broken headless deploy.
         if (! in_array(ServerGroup::WEB, $this->resolveServerGroups(Arr::get($options, 'group')), true)) {
             return StepResult::SKIPPED;
         }
@@ -48,12 +43,9 @@ class WaitForDeploymentHealthyStep implements LongRunning
         $service = (new EcsService())->name();
         $targetGroupArn = (new TargetGroup())->arn();
 
-        // The revision THIS deploy just registered — the family's latest ACTIVE
-        // revision. Resolving it directly, rather than reading whatever's currently
-        // PRIMARY, sidesteps the eventual-consistency lag where describeServices keeps
-        // listing the OLD deployment as PRIMARY for a beat after updateService. Trusting
-        // PRIMARY there matched the old, already-healthy task and declared success before
-        // the new task even existed (the 0s "deploy" that masked a crash-looping image).
+        // Resolved directly rather than from the PRIMARY deployment: describeServices
+        // keeps listing the OLD deployment as PRIMARY for a beat after updateService,
+        // which would match the already-healthy old task and declare success early.
         $revision = Ecs::taskDefinition($service)['taskDefinitionArn'];
 
         $deadline = time() + 600;
@@ -81,9 +73,7 @@ class WaitForDeploymentHealthyStep implements LongRunning
                 return StepResult::SUCCESS;
             }
 
-            // This is a hand-rolled poll loop, not an Aws::waitFor waiter, so the
-            // LongRunning heartbeat won't tick on its own — ping the reporter each
-            // pass so the elapsed-time hint keeps moving while we wait.
+            // Not an Aws::waitFor waiter, so the LongRunning heartbeat needs a manual tick.
             WaitReporter::poll();
 
             sleep(10);
@@ -93,10 +83,6 @@ class WaitForDeploymentHealthyStep implements LongRunning
     }
 
     /**
-     * Pure check: every running task on the new revision has a healthy target in
-     * the load balancer. Old (draining) tasks are ignored — they're on the
-     * previous revision — so this is true exactly when the new version is serving.
-     *
      * @param  array<int, array<string, mixed>>  $tasks
      * @param  array<int, array<string, mixed>>  $targetHealth
      */

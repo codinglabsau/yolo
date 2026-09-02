@@ -20,14 +20,6 @@ use Symfony\Component\Console\Input\InputArgument;
 
 use function Laravel\Prompts\intro;
 
-/**
- * The environment status surface. In a real terminal `yolo status <env>` opens the
- * live, tabbed read-only dashboard — Overview, a per-group tab (web/queue/scheduler)
- * for each group the app runs, Deployments, Database, Cache and the service gate,
- * polled and redrawn until you quit. `--snapshot` (and any non-interactive shell)
- * renders a single one-shot frame instead; `--json` is the machine-readable contract
- * the `/yolo` skill and scripts consume.
- */
 class StatusCommand extends Command implements ReadOnlyCommand
 {
     use RendersServiceStatus;
@@ -44,8 +36,6 @@ class StatusCommand extends Command implements ReadOnlyCommand
 
     public function handle(): int
     {
-        // In a real terminal the live dashboard is the default; --snapshot, --json
-        // and any non-interactive shell fall through to the one-shot frame below.
         if ($this->wantsDashboard()) {
             return $this->dashboard();
         }
@@ -53,8 +43,6 @@ class StatusCommand extends Command implements ReadOnlyCommand
         $statuses = static::gatherServiceStatuses();
         $queues = static::gatherQueueBacklogs();
 
-        // `--json` is the machine-readable contract: emit the structured payload
-        // and exit non-zero if a deploy is failed so it stays scriptable.
         if ($this->option('json')) {
             $this->output->writeln((string) json_encode([
                 'app' => Manifest::current()['name'] ?? null,
@@ -72,8 +60,7 @@ class StatusCommand extends Command implements ReadOnlyCommand
             $this->output->writeln($line);
         }
 
-        // Exit non-zero when a deployment is currently failed, so a one-off
-        // `yolo status --snapshot` stays usable as a lightweight CI/health probe.
+        // Non-zero on a failed deployment so --snapshot works as a CI/health probe.
         return static::anyDeploymentFailed($statuses) ? 1 : 0;
     }
 
@@ -88,20 +75,13 @@ class StatusCommand extends Command implements ReadOnlyCommand
     }
 
     /**
-     * The dispatch decision, pure so it can be pinned without a live terminal: the
-     * dashboard wins only in a real terminal — interactive stdin and a decorated
-     * output — and never when the caller asked for a single frame (`--snapshot`) or
-     * JSON. Everything else falls through to the one-shot snapshot frame.
+     * Pure so it can be pinned without a live terminal.
      */
     public static function shouldRenderDashboard(bool $json, bool $snapshot, bool $interactive, bool $decorated): bool
     {
         return ! $json && ! $snapshot && $interactive && $decorated;
     }
 
-    /**
-     * Open the tabbed read-only dashboard over the environment and block until the
-     * user quits. Navigation only — every tab is a live view, nothing mutates.
-     */
     protected function dashboard(): int
     {
         $environment = (string) $this->argument('environment');

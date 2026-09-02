@@ -21,10 +21,8 @@ class ExecuteBuildCommandStep implements ExecutesCommandStep, LongRunning, RunsO
 
     public function __invoke(array $options = []): StepResult
     {
-        // parse the AWS .env version, extracting some env values and overloading
-        // and VITE_* keys so 'vite build' works as expected. This is preferred
-        // to loading the entire .env because we don't want to accidentally
-        // call important services from our build pipeline.
+        // Only an allowlist of the deployed env reaches build hooks, so the build
+        // pipeline can't accidentally call real services.
         $dotenv = Dotenv::parse($this->filesystem->get(Paths::build(".env.$this->environment.tmp")));
 
         $process = new Process(

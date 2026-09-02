@@ -13,11 +13,8 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 use Codinglabs\Yolo\Aws\ServiceDiscovery as ServiceDiscoveryApi;
 
 /**
- * The environment's private Cloud Map DNS namespace ({env}.internal) —
- * stable in-VPC addresses for env-shared service tasks, so Raft peers (and
- * later any private service endpoint) survive task replacement. Creation is
- * asynchronous on AWS's side; create() blocks on the operation so the next
- * step can resolve the namespace id.
+ * Stable in-VPC addresses for env-shared service tasks, so Raft peers survive task
+ * replacement. Namespace mutations are asynchronous; create() blocks on the operation.
  */
 class PrivateDnsNamespace implements Deletable, Resource
 {
@@ -71,12 +68,9 @@ class PrivateDnsNamespace implements Deletable, Resource
     }
 
     /**
-     * Teardown cascades: AWS refuses to delete a namespace with services in it, so
-     * every discovery service is deleted first. The node services' ECS-registered
-     * instances deregister when the cluster teardown (earlier in the declared
-     * order) stops the tasks — but that deregistration is eventual, so each service
-     * delete is retried past the transient ResourceInUse until its instances clear
-     * (see deleteServiceWhenDrained).
+     * AWS refuses to delete a namespace with services in it. The node instances
+     * deregister eventually after the cluster teardown stops the tasks, so each
+     * service delete is retried past the transient ResourceInUse.
      */
     public function delete(): void
     {

@@ -16,10 +16,8 @@ use Codinglabs\Yolo\Concerns\RecordsChanges;
 use Codinglabs\Yolo\Resources\Ecs\EcsService;
 
 /**
- * Deregisters every ACTIVE task-definition revision in this app's families (web,
- * plus the standalone queue / scheduler families when extracted). A task-def
- * family is the service name. Run after the services are deleted: live revisions
- * left behind would otherwise surface in `yolo audit` once the cluster is gone.
+ * Runs after the services are deleted: live revisions left behind would surface
+ * in `yolo audit` once the cluster is gone.
  */
 class DeregisterTaskDefinitionsStep implements Step
 {
@@ -27,9 +25,7 @@ class DeregisterTaskDefinitionsStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        // Keyed by family (the service name) so each family's revision count is
-        // reported on its own line — "which task definitions, how many" — rather
-        // than a single opaque total across every family.
+        // Keyed by family so each family's revision count reports on its own line.
         $revisionsByFamily = $this->families()
             ->mapWithKeys(fn (string $family): array => [$family => $this->activeRevisions($family)])
             ->filter(fn (array $arns): bool => $arns !== []);

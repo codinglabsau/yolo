@@ -7,18 +7,11 @@ namespace Codinglabs\Yolo\Resources\S3;
 use Codinglabs\Yolo\Aws;
 
 /**
- * Empties a versioned bucket so DeleteBucket can succeed. Shared by every
- * deletable config/logs bucket, all of which reconcile versioning to Enabled on
- * create — so a plain object sweep would leave noncurrent versions and delete
- * markers behind and the delete would fail.
+ * A versioned bucket can't be deleted after a plain object sweep — noncurrent
+ * versions and delete markers remain, so every version must go.
  */
 trait EmptiesBucket
 {
-    /**
-     * Delete every object version and delete marker in the bucket, paginating
-     * the listing and batching deletes up to S3's per-request limit of 1000
-     * entries.
-     */
     protected function emptyVersions(): void
     {
         $keyMarker = null;

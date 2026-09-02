@@ -13,14 +13,9 @@ use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Resources\Ec2\VpcPeeringConnection;
 
 /**
- * Tears down every live YOLO-owned peering connection in the environment —
- * whatever the env manifest declared, discovered by tag so a connection whose
- * declaration was already removed still comes down with the environment. Runs
- * before the VPC teardown (a peered VPC can't be deleted). Each delete
- * reclaims the whole bridge in reverse bring-up order — DNS resolution off,
- * the yolo-side routes, the return routes sync wrote into the peer's tables,
- * then the connection ({@see VpcPeeringConnection::delete}); the foreign
- * route reclaims are named in the plan.
+ * Discovered by tag rather than from the env manifest, so a connection whose
+ * declaration was already removed still comes down. Runs before the VPC
+ * teardown — a peered VPC can't be deleted.
  */
 class TeardownVpcPeeringConnectionsStep implements Step
 {

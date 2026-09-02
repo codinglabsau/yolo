@@ -83,11 +83,9 @@ class ElbV2
     }
 
     /**
-     * The listener rule carrying the given `Name` tag, or null. Rules have no
-     * native name, so identity lives in the Name tag — read here in tag-batches of
-     * 20 (the DescribeTags ARN limit). Matching by Name (not by the hosts a rule
-     * routes) is what keeps a domain change scoped to this app's own rule and
-     * never a sibling host's.
+     * Rules have no native name, so identity lives in the Name tag — read in
+     * batches of 20 (the DescribeTags ARN limit). Matching by Name rather than
+     * routed hosts keeps a domain change scoped to this app's own rule.
      *
      * @return array<string, mixed>|null
      */

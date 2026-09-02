@@ -17,38 +17,25 @@ use function Laravel\Prompts\note;
 use function Laravel\Prompts\table;
 use function Laravel\Prompts\confirm;
 
-/**
- * Shared plumbing for the environment:* file commands — moving the
- * environment's own artefacts (the env manifest, the env-shared .env) between
- * the env config bucket and gitignored local working copies, with a key-level
- * diff and confirmation before every upload.
- */
 trait ManagesEnvironmentFiles
 {
     /**
-     * The env-shared .env's name — identical in the bucket and on disk (the
-     * env manifest's same-name-both-sides rule), with the environment in the
-     * filename so a pulled copy can never be pushed at the wrong environment.
+     * Same name in the bucket and on disk, with the environment in it so a pulled
+     * copy can never be pushed at the wrong environment.
      */
     protected function sharedEnvFilename(): string
     {
         return Paths::s3SharedEnvKey();
     }
 
-    /**
-     * The local working copy of the env-shared .env — gitignored via
-     * .env.environment.*.
-     */
     protected function sharedEnvLocalPath(): string
     {
         return Paths::base($this->sharedEnvFilename());
     }
 
     /**
-     * Download one object from the env config bucket. The body reaches
-     * $saveAs only on success — a failed read must never touch an existing
-     * working copy, which may hold unpushed operator edits. Absence reads as
-     * false; every other failure throws.
+     * The body reaches $saveAs only on success — a failed read must never touch
+     * an existing working copy, which may hold unpushed operator edits.
      */
     protected function download(string $key, string $saveAs): bool
     {
@@ -79,11 +66,7 @@ trait ManagesEnvironmentFiles
     }
 
     /**
-     * Validate a mutated env manifest and upload it to the env config bucket, then
-     * drop the memoised copy. The whole document is re-validated (running each
-     * service's validateOffer) before it leaves the machine, so a misshapen edit
-     * can never reach the bucket — the one place an env-manifest write is defined
-     * (the services gate).
+     * Re-validated before it leaves the machine so a misshapen edit can never reach the bucket.
      *
      * @param  array<string, mixed>  $manifest
      */
@@ -112,10 +95,8 @@ trait ManagesEnvironmentFiles
     }
 
     /**
-     * Offer to delete the local working copy after a successful push —
-     * defaulting to yes. The bucket is the source of truth the moment the
-     * upload lands; a copy left on disk only invites staleness, and for env
-     * files it's secrets sitting around for anything on the machine to read.
+     * Defaults to yes: a copy left on disk invites staleness, and for env files
+     * it's secrets sitting around for anything on the machine to read.
      */
     protected function confirmDeleteLocal(string $path, string $label): void
     {
@@ -131,8 +112,6 @@ trait ManagesEnvironmentFiles
     }
 
     /**
-     * Show a key-level current → new diff and ask before uploading.
-     *
      * @param  array<string, mixed>  $current
      * @param  array<string, mixed>  $new
      */
@@ -166,9 +145,7 @@ trait ManagesEnvironmentFiles
     }
 
     /**
-     * Flatten a parsed manifest to dot-keyed scalar strings for diffing —
-     * json_encode keeps array leaves (e.g. an empty services map) comparable
-     * and printable.
+     * json_encode keeps array leaves (e.g. an empty services map) comparable and printable.
      *
      * @param  array<string, mixed>  $manifest
      * @return array<string, string>

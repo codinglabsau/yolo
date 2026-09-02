@@ -8,11 +8,7 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Resources\ElastiCache\CacheSubnetGroup;
 
-/**
- * Provisions the ElastiCache subnet group when the app opts into the shared
- * Valkey cache (`cache.store: redis`). Env-scoped resource bootstrapped from
- * sync:app, created-if-missing and never mutated — mirrors the RDS-SG exception.
- */
+/** Env-scoped but bootstrapped from sync:app, created-if-missing and never mutated. */
 class SyncCacheSubnetGroupStep implements Step
 {
     use SynchronisesResource;

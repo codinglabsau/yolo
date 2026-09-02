@@ -15,24 +15,16 @@ use Codinglabs\Yolo\Runtime\Search\ZeroDowntimeReimport;
 use function Laravel\Prompts\multiselect;
 
 /**
- * The deliberate rebuild: `scout:import --fresh` without the blackout.
- * Each model's collection is rebuilt beside the live one and swapped in via
- * a Typesense alias ({@see ZeroDowntimeReimport}) — exact mirror, current
- * schema applied, searches served throughout. Use it for schema changes,
- * drift repair, or anything that used to reach for `--fresh`. (The name
- * follows scout-extended's command for the same temp-index pattern.)
+ * `scout:import --fresh` without the blackout ({@see ZeroDowntimeReimport}); the
+ * name follows scout-extended's command for the same pattern. A non-interactive
+ * run requires an explicit model or `--all`, so a fat-fingered scheduler entry
+ * can't rebuild the world by accident.
  *
- * With no models given, an interactive run offers a picker over the app's
- * discovered searchable models; a non-interactive run requires an explicit
- * model or `--all`, so a fat-fingered scheduler entry can't rebuild the
- * world by accident.
- *
- * Models run sequentially, smallest collection first: during each swap the
- * old and new collections coexist, so peak node memory grows by one
- * collection's index — sequencing bounds the spike, and doing the biggest
- * last means it runs with the most already-settled headroom. Typesense
- * holds indexes in RAM (~2-3× raw size); rebuilding a large collection on
- * tightly-sized nodes may need `services.typesense.memory` bumped first.
+ * Models run sequentially, smallest first: during each swap the old and new
+ * collections coexist, so peak node memory grows by one collection's index —
+ * doing the biggest last gives it the most settled headroom. Typesense holds
+ * indexes in RAM (~2-3× raw size); a large collection on tightly-sized nodes may
+ * need `services.typesense.memory` bumped first.
  */
 class ScoutReimportCommand extends Command
 {
@@ -64,9 +56,8 @@ class ScoutReimportCommand extends Command
             try {
                 $result = $reimport->reimport($modelClass, fn (string $message) => $this->line("  {$message}"));
             } catch (Throwable $e) {
-                // The live index is untouched until the alias swap, so a failed
-                // build leaves search serving — report and stop rather than
-                // carry on rebuilding siblings against a struggling cluster.
+                // Search is still serving off the old index; stop rather than
+                // rebuild siblings against a struggling cluster.
                 $this->components->error(sprintf('%s: %s', $modelClass, $e->getMessage()));
 
                 return self::FAILURE;
@@ -82,11 +73,6 @@ class ScoutReimportCommand extends Command
     }
 
     /**
-     * The models to rebuild: the given classes; else every searchable model
-     * under `--all`; else (interactively) a picker — never an implicit
-     * everything. The full set runs smallest collection first, so the
-     * per-swap memory spike peaks last, when everything else has settled.
-     *
      * @return array<int, class-string<Model&SearchableModel>>
      */
     protected function targets(): array
@@ -125,11 +111,9 @@ class ScoutReimportCommand extends Command
                 return [];
             }
 
-            // Nothing pre-selected, on purpose: a pre-selected-everything
-            // default turns a bare Enter — or a prompt that can't actually
-            // interact (a shell without a real TTY silently resolves the
-            // DEFAULT) — into a full rebuild of every collection. Selecting
-            // is the deliberate act; --all is the explicit everything.
+            // Nothing pre-selected on purpose: a shell without a real TTY silently
+            // resolves the DEFAULT, so a pre-selected-everything default would
+            // rebuild every collection. --all is the explicit everything.
             $discovered = array_values(multiselect(
                 label: 'Which models should be rebuilt?',
                 options: $discovered,

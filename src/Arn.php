@@ -2,11 +2,7 @@
 
 namespace Codinglabs\Yolo;
 
-/**
- * A parsed AWS ARN — service, region, account, and the type/id split of the
- * resource segment. A general-purpose parser; `parse()` returns null for a
- * string that isn't a well-formed ARN.
- */
+/** `parse()` returns null for a string that isn't a well-formed ARN. */
 class Arn
 {
     private function __construct(
@@ -30,8 +26,7 @@ class Arn
 
         [, , $service, $region, $accountId, $resource] = $parts;
 
-        // The resource segment is `type/id`, `type:id`, or a bare id. Split on the
-        // first '/' or ':' to peel off the type; a bare id has no type.
+        // `type/id`, `type:id`, or a bare id (no type).
         $split = preg_split('#[/:]#', $resource, 2);
 
         return new self(

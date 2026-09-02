@@ -24,8 +24,7 @@ class SyncTaskSecurityGroupStep implements Step
 
         $result = $this->syncResource($securityGroup, $options);
 
-        // Only a web task sits behind the ALB — a web-less app's tasks (standalone
-        // queue/scheduler) accept no inbound traffic, so no ingress rule at all.
+        // A web-less app's tasks (standalone queue/scheduler) accept no inbound traffic.
         if (Manifest::hasWeb() && $securityGroup->exists()) {
             $this->ensureLoadBalancerIngressRule($securityGroup->arn(), (bool) Arr::get($options, 'dry-run'));
         }
@@ -43,10 +42,9 @@ class SyncTaskSecurityGroupStep implements Step
 
         $port = 8000;
 
-        // Record the missing rule before the dry-run guard (mirroring AuthorisesTaskIngress)
-        // so the plan pass flags this step pending. Without it a SG that exists but lacks
-        // the rule — e.g. a create interrupted mid-flight — records no change, gets pruned
-        // before apply, and can never be self-healed by a later sync.
+        // Recorded before the dry-run guard so the plan flags this step pending;
+        // otherwise a SG that exists but lacks the rule (a create interrupted
+        // mid-flight) records no change, gets pruned and never self-heals.
         $this->recordChange(Change::make("ingress {$port}/tcp from load balancer security group", null, 'authorised'));
 
         if ($dryRun) {

@@ -18,24 +18,15 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * CloudFront distribution dedicated to the application's build assets. It has a
- * single S3 origin (the private asset bucket, via Origin Access Control) and
- * default-routes everything to it; it's reached on its own `*.cloudfront.net`
- * domain, which ASSET_URL points at. The app's own DNS stays on the ALB.
+ * Assets-only distribution: a single OAC S3 origin on its own `*.cloudfront.net`
+ * domain (ASSET_URL). Page caching, if it ever lands, gets its OWN distribution —
+ * one that path-splits `builds/*` → S3 and the rest → ALB would hijack any app with
+ * its own `/builds` route. The keyed name is stamped into the Comment (and the OAC's
+ * Name) for lookup.
  *
- * Assets-only by design. Page caching, if it ever lands, gets its OWN
- * distribution fronting the app — a single distribution path-splitting
- * `builds/*` -> S3 and everything-else -> ALB would hijack any app that has its
- * own `/builds` route. The keyed name is stamped into the distribution's
- * Comment (and the OAC's Name) for lookup, and surfaced as the `Name` tag.
- *
- * CORS for cross-origin module imports (the app is on the ALB domain, assets on
- * this distribution) is owned entirely by a response-headers policy that stamps
- * a static `Access-Control-Allow-Origin: *` on every response. The cache key
- * carries no request headers, so there is one cache entry per object for every
- * viewer — no Vary: Origin split, and a transient origin 5xx is never cached
- * (ErrorCachingMinTTL 0) against the immutable, content-hashed paths it would
- * otherwise poison until the next deploy. See the constants below.
+ * CORS is owned entirely by a response-headers policy stamping a static
+ * `Access-Control-Allow-Origin: *`; the cache key carries no request headers, so
+ * there is one cache entry per object and no Vary: Origin split. See the constants.
  */
 class AssetDistribution implements Deletable, Resource, SynchronisesConfiguration
 {
@@ -43,39 +34,24 @@ class AssetDistribution implements Deletable, Resource, SynchronisesConfiguratio
 
     protected const ORIGIN_ID = 'asset-bucket';
 
-    // AWS managed "CachingOptimized". No request headers in the cache key (gzip
-    // /brotli only), so there is a single cache entry per object regardless of
-    // the viewer's Origin. The previous custom "Origin in the key" policy split
-    // the cache into with-CORS / without-CORS variants; the browser-only variant
-    // was sparsely warmed and a transient origin 503 cached against it broke
-    // every cross-origin import() until the next deploy. One entry can't drift
-    // apart like that. Same TTLs as the old custom policy (1 / 86400 / 31536000).
+    // AWS managed "CachingOptimized": no request headers in the cache key, so one
+    // entry per object regardless of viewer Origin. Keying on Origin split the cache
+    // into with-/without-CORS variants; a transient 503 cached against the sparsely
+    // warmed one broke every cross-origin import() until the next deploy.
     protected const CACHE_POLICY_ID = '658327ea-f89d-4fab-a63d-7e88639e58f6';
 
-    // No origin-request policy: the viewer Origin header is no longer forwarded
-    // to S3, so S3 never runs its bucket CORS and never emits its own
-    // Access-Control-Allow-Origin. CORS is owned solely by the response-headers
-    // policy below — one unconditional header, no second source to double up,
-    // and nothing Origin-dependent reaching the origin to force a Vary.
+    // No origin-request policy: Origin is never forwarded, so S3 never emits its own
+    // CORS headers — the response-headers policy is the single source.
     protected const ORIGIN_REQUEST_POLICY_ID = '';
 
-    // Custom response-headers policy that stamps a static
-    // `Access-Control-Allow-Origin: *` on every response, via the policy's
-    // dedicated CorsConfig with OriginOverride: true. AWS rejects ACAO/ACAM/etc.
-    // as CustomHeadersConfig entries ("cannot be set as custom header") — those
-    // headers belong in CorsConfig, where CloudFront documents the policy's
-    // headers as "added to every response that CloudFront sends" for the
-    // matched cache behaviour. OriginOverride: true means the policy values
-    // win even when the origin's response includes its own CORS headers, so
-    // there's no Origin-dependent variance reaching the cached object.
-    // Account-scoped and generic, so every YOLO asset distribution shares the
-    // one policy — looked up by name like the OAC.
+    // AWS rejects ACAO/ACAM as CustomHeadersConfig entries ("cannot be set as custom
+    // header") — they belong in CorsConfig, with OriginOverride so the policy wins
+    // over any origin CORS header. Account-scoped and generic: every asset
+    // distribution shares it, looked up by name like the OAC.
     protected const RESPONSE_HEADERS_POLICY_NAME = 'yolo-asset-headers';
 
-    // Build assets live under a per-deploy `builds/{version}/` prefix (ASSET_URL
-    // carries the version), so every object is immutable — a new deploy is a new
-    // URL, never an overwrite. A transient origin 5xx must therefore never be
-    // cached against these paths: the poisoned entry would never self-bust.
+    // Every object under `builds/{version}/` is immutable, so a cached transient
+    // 5xx would never self-bust.
     protected const ERROR_CODES_NOT_CACHED = [500, 502, 503, 504];
 
     public function name(): string
@@ -127,24 +103,17 @@ class AssetDistribution implements Deletable, Resource, SynchronisesConfiguratio
             ],
         ])['Distribution'];
 
-        // Grant the new distribution (and only it) read access to the bucket.
         $this->grantBucketAccess($bucket, $distribution['ARN']);
 
-        // Additional metrics are part of the desired state (the dashboard's CDN
-        // cache-hit panel charts them), so enable them at create — leaving it to
-        // synchroniseConfiguration() would make every first sync self-drift and
-        // trip the next deploy's drift gate.
+        // Enable at create — left to synchroniseConfiguration() every first sync
+        // would self-drift and trip the next deploy's drift gate.
         CloudFront::enableAdditionalMetrics($distribution['Id']);
     }
 
     /**
-     * Tear the distribution down. CloudFront refuses to delete an enabled
-     * distribution, and the disable is an edge redeploy (~15 min) that must
-     * finish before the delete — so: disable (only if still enabled, so a retry
-     * after a half-done teardown skips straight to the wait), block on the
-     * DistributionDeployed waiter, then delete with a freshly-read ETag. The
-     * asset bucket's OAC read policy dies with the bucket (a separate App
-     * resource), so nothing else to unwind here. Already gone ⇒ no-op.
+     * CloudFront refuses to delete an enabled distribution, and the disable is a
+     * ~15 min edge redeploy: disable only if still enabled (so a retry after a
+     * half-done teardown skips to the wait), wait, then delete with a fresh ETag.
      */
     public function delete(): void
     {
@@ -167,10 +136,7 @@ class AssetDistribution implements Deletable, Resource, SynchronisesConfiguratio
             ]);
         }
 
-        // The disable must reach every edge (Deployed) before CloudFront will
-        // delete it — a full propagation routinely runs 15+ minutes, so the
-        // waiter timeout is raised well past the 600s default to match (a too-low
-        // timeout would throw and abort the teardown on a routine slow deploy).
+        // Full propagation routinely runs 15+ min; the 600s default would abort a routine teardown.
         Aws::waitFor(Aws::cloudFront(), 'DistributionDeployed', ['Id' => $id], timeout: 1800);
 
         Aws::cloudFront()->deleteDistribution([
@@ -185,22 +151,12 @@ class AssetDistribution implements Deletable, Resource, SynchronisesConfiguratio
     }
 
     /**
-     * Push managed config onto an existing distribution. Tags alone don't cover
-     * config changes, so sync reconciles the fields we own: the cache-behaviour
-     * policy IDs (swapping a distribution off the old Origin-keyed cache policy
-     * onto CachingOptimized + the static-CORS response-headers policy), the
-     * 5xx error-caching rules, the S3 origin — so a renamed asset bucket
-     * converges through sync instead of leaving the distribution serving from
-     * the orphaned old one — and the OAC read grant on the asset bucket,
-     * reconciled declaratively so a policy deleted out-of-band (or a sync that
-     * died between the policy write and the distribution update) self-heals on
-     * the next run instead of 403ing every asset while the plan reads clean.
-     * The grant is written *before* the distribution update so the origin is
-     * readable by the time any edge flips. CloudFront updates trigger a full
-     * edge redeploy (~15 min), so updateDistribution only fires when a
-     * distribution field has drifted, and the drifted fields are returned so
-     * sync can report each current → desired comparison. A dry-run ($apply
-     * false) never creates the response-headers policy and never writes.
+     * Reconciles the origin (so a renamed asset bucket converges) and the OAC bucket
+     * grant (so a policy deleted out-of-band self-heals instead of 403ing every asset
+     * while the plan reads clean) alongside the cache-behaviour fields. The grant is
+     * written before the distribution update so the origin is readable when an edge
+     * flips. An update is a ~15 min edge redeploy, so updateDistribution fires only
+     * on distribution-field drift. A dry-run never creates the response-headers policy.
      */
     public function synchroniseConfiguration(bool $apply = true): array
     {
@@ -225,9 +181,7 @@ class AssetDistribution implements Deletable, Resource, SynchronisesConfiguratio
 
         $policyChange = $this->bucketPolicyDrift($bucket, $distribution['ARN']);
 
-        // Additional CloudWatch metrics (cache hit rate, origin latency, error
-        // rate by status) are off by default and cost cents/month — YOLO always
-        // turns them on so the dashboard's CDN cache-hit panel has data to chart.
+        // Off by default; the dashboard's CDN cache-hit panel charts them.
         $metricsChange = CloudFront::additionalMetricsEnabled($distribution['Id'])
             ? null
             : Change::make('cdn-additional-metrics', 'disabled', 'enabled');
@@ -265,10 +219,6 @@ class AssetDistribution implements Deletable, Resource, SynchronisesConfiguratio
         return $changes;
     }
 
-    /**
-     * Drift check for the asset bucket's OAC read grant — the bucket policy
-     * must be exactly the single read statement for this distribution.
-     */
     protected function bucketPolicyDrift(AssetBucket $bucket, string $distributionArn): ?Change
     {
         $current = S3::bucketPolicy($bucket->name());
@@ -279,11 +229,6 @@ class AssetDistribution implements Deletable, Resource, SynchronisesConfiguratio
             : Change::make('asset-bucket-policy', $current === null ? null : 'present', 'cloudfront-oac-read');
     }
 
-    /**
-     * The origin must point at the current asset bucket's regional endpoint;
-     * anything else (e.g. a distribution still on a pre-rename bucket name)
-     * is drift.
-     */
     public static function originDrift(array $origins): ?Change
     {
         $current = (string) ($origins['Items'][0]['DomainName'] ?? '');
@@ -294,20 +239,15 @@ class AssetDistribution implements Deletable, Resource, SynchronisesConfiguratio
             : Change::make('origin', $current, $desired);
     }
 
-    /**
-     * The regional S3 endpoint (required for OAC outside us-east-1) of the
-     * asset bucket.
-     */
+    /** The regional endpoint is required for OAC outside us-east-1. */
     public static function desiredOriginDomain(): string
     {
         return sprintf('%s.s3.%s.amazonaws.com', (new AssetBucket())->name(), Manifest::get('region'));
     }
 
     /**
-     * The cache-behaviour fields sync keeps current on an existing distribution.
-     * Scalars only — the policy IDs are the realistic drift surface; nested
-     * blocks like AllowedMethods are set once at create and comparing them risks
-     * a false "drift" from key ordering, which would force a needless redeploy.
+     * Scalars only — nested blocks like AllowedMethods risk false drift from key
+     * ordering, which would force a needless redeploy.
      *
      * @return array<string, mixed>
      */
@@ -323,15 +263,9 @@ class AssetDistribution implements Deletable, Resource, SynchronisesConfiguratio
     }
 
     /**
-     * The 5xx error-caching rules. ErrorCachingMinTTL 0 means a transient origin
-     * blip is never cached, so the next request retries the origin and self-heals
-     * rather than pinning a broken entry against an immutable asset path.
-     *
-     * `ResponsePagePath` and `ResponseCode` must be sent as empty strings even
-     * when we don't want a custom error page — AWS rejects UpdateDistribution
-     * with "The specified list of custom error responses does not exist or is
-     * not valid" if they're omitted. CloudFront stores them as `''` in the
-     * default-no-custom-page case, matching what DescribeDistribution returns.
+     * `ResponsePagePath` and `ResponseCode` must be sent as empty strings even with
+     * no custom error page — AWS rejects UpdateDistribution ("custom error responses
+     * does not exist or is not valid") if they're omitted.
      *
      * @return array{Quantity: int, Items: array<int, array{ErrorCode: int, ResponsePagePath: string, ResponseCode: string, ErrorCachingMinTTL: int}>}
      */
@@ -349,11 +283,8 @@ class AssetDistribution implements Deletable, Resource, SynchronisesConfiguratio
     }
 
     /**
-     * Drifted reconcilable-behaviour fields between live and desired. Treats an
-     * absent live value as equivalent to a desired empty string — CloudFront
-     * returns an unset OriginRequestPolicyId as absent on read but accepts ''
-     * on UpdateDistribution write, so the value `'' → absent` round-trips and
-     * would otherwise read as permanent drift on every plan after apply.
+     * Absent live == desired '': CloudFront accepts '' for OriginRequestPolicyId on
+     * write but returns it absent on read, which would otherwise read as permanent drift.
      *
      * @param  array<string, mixed>  $behaviour
      * @param  array<string, mixed>  $desired
@@ -369,11 +300,8 @@ class AssetDistribution implements Deletable, Resource, SynchronisesConfiguratio
     }
 
     /**
-     * Whether the live CustomErrorResponses already pin every tracked 5xx to a
-     * 0s cache TTL. Compared by code → TTL only (not the whole block) so AWS's
-     * default ResponseCode/ResponsePagePath fields and item ordering can't read
-     * as false drift and force a needless redeploy. Returns null when already in
-     * sync, otherwise a Change with a semantic label rather than a JSON dump.
+     * Compared by code → TTL only, so AWS's default fields and item ordering can't
+     * read as drift and force a needless redeploy.
      */
     public static function errorCachingDrift(array $live): ?Change
     {
@@ -394,13 +322,7 @@ class AssetDistribution implements Deletable, Resource, SynchronisesConfiguratio
         );
     }
 
-    /**
-     * The response-headers policy id for diffing. An existing distribution was
-     * created with the policy already in place, so the lookup all but always
-     * resolves; the dry-run fallback ('(pending …)') only shows if it were
-     * somehow missing, and never creates the policy as a side effect of a
-     * read-only --dry-run.
-     */
+    /** Never creates the policy as a side effect of a read-only plan. */
     protected function resolveResponseHeadersPolicyId(bool $apply): string
     {
         try {
@@ -410,11 +332,6 @@ class AssetDistribution implements Deletable, Resource, SynchronisesConfiguratio
         }
     }
 
-    /**
-     * Resolve the custom response-headers policy (static ACAO), creating it once
-     * if absent. Account-scoped and generic, so every YOLO asset distribution
-     * shares the one policy — looked up by name like the OAC.
-     */
     protected function ensureResponseHeadersPolicy(): string
     {
         try {
@@ -425,16 +342,12 @@ class AssetDistribution implements Deletable, Resource, SynchronisesConfiguratio
                     'Name' => static::RESPONSE_HEADERS_POLICY_NAME,
                     'Comment' => 'YOLO build assets — static Access-Control-Allow-Origin: * on every response',
                     'CorsConfig' => [
-                        // `*` matches every cross-origin caller — the asset bucket
-                        // is public-by-design (immutable, content-hashed build
-                        // artefacts) so there's no caller to discriminate against.
+                        // Assets are public-by-design (immutable, content-hashed), so
+                        // there's no caller to discriminate against.
                         'AccessControlAllowOrigins' => [
                             'Quantity' => 1,
                             'Items' => ['*'],
                         ],
-                        // Browsers only fetch static assets with GET/HEAD plus the
-                        // OPTIONS preflight; anything else against the asset
-                        // distribution would already be wrong.
                         'AccessControlAllowMethods' => [
                             'Quantity' => 3,
                             'Items' => ['GET', 'HEAD', 'OPTIONS'],
@@ -443,13 +356,9 @@ class AssetDistribution implements Deletable, Resource, SynchronisesConfiguratio
                             'Quantity' => 1,
                             'Items' => ['*'],
                         ],
-                        // ACAO: * is incompatible with credentials, so this MUST
-                        // be false — AWS would reject the combination otherwise.
+                        // AWS rejects ACAO * combined with credentials.
                         'AccessControlAllowCredentials' => false,
-                        // The asset bucket no longer sees Origin (no origin-request
-                        // policy), so it never sends its own CORS headers — but
-                        // setting OriginOverride: true makes the policy's values
-                        // win regardless, even if S3 ever surfaces one.
+                        // Policy values win even if S3 ever surfaces its own CORS header.
                         'OriginOverride' => true,
                     ],
                 ],
@@ -516,9 +425,6 @@ class AssetDistribution implements Deletable, Resource, SynchronisesConfiguratio
     }
 
     /**
-     * Grant the distribution (and only it) read access to the bucket — the
-     * OAC service principal scoped to this distribution's ARN.
-     *
      * @return array<string, mixed>
      */
     protected static function oacReadPolicy(AssetBucket $bucket, string $distributionArn): array

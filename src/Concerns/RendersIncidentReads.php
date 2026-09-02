@@ -14,17 +14,12 @@ use Codinglabs\Yolo\Resources\CloudWatchLogs\TaskLogGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * The incident read surfaces behind `status:logs` / `status:events` /
- * `status:alarms` — thin, app-tier reads of CloudWatch Logs, ECS service events
- * and CloudWatch alarm state, with matching `--json` and display renderers. Every
- * read is defensive (a missing log group / service / alarm yields an empty list,
- * never a crash) so the surface works on a half-provisioned or cold app.
+ * Every read is defensive (a missing log group / service / alarm yields an empty
+ * list, never a crash) so the surface works on a half-provisioned or cold app.
  */
 trait RendersIncidentReads
 {
     /**
-     * Recent log events per server group, oldest → newest.
-     *
      * @return array<int, array{group: string, events: array<int, array{timestamp: int, message: string}>}>
      */
     protected static function gatherLogs(int $limit = 60): array
@@ -44,9 +39,6 @@ trait RendersIncidentReads
     }
 
     /**
-     * Recent ECS service events per server group (the deploy/placement narrative
-     * ECS keeps), newest first.
-     *
      * @return array<int, array{group: string, events: array<int, array{createdAt: ?string, message: string}>}>
      */
     protected static function gatherServiceEvents(int $limit = 10): array
@@ -73,8 +65,6 @@ trait RendersIncidentReads
     }
 
     /**
-     * The app's CloudWatch alarms and their current state.
-     *
      * @return array<int, array{name: string, state: ?string, reason: ?string}>
      */
     protected static function gatherAlarms(): array
@@ -83,8 +73,7 @@ trait RendersIncidentReads
     }
 
     /**
-     * An AWS timestamp (the SDK's DateTimeResult, or an int/string) as an ISO-8601
-     * string for the JSON contract, or null.
+     * AWS timestamps arrive as the SDK's DateTimeResult, not scalars.
      */
     protected static function eventTimestamp(mixed $value): ?string
     {
@@ -98,8 +87,6 @@ trait RendersIncidentReads
 
         return is_string($value) && $value !== '' ? $value : null;
     }
-
-    // --- Rendering (instance — uses $this->output) --------------------------
 
     /**
      * @param  array<int, array{group: string, events: array<int, array{timestamp: int, message: string}>}>  $groups
@@ -165,9 +152,6 @@ trait RendersIncidentReads
         ), $alarms);
     }
 
-    /**
-     * `OK` (green), `ALARM` (red), `INSUFFICIENT_DATA`/unknown (gray). Pure.
-     */
     public static function formatAlarmState(?string $state): string
     {
         return match ($state) {
@@ -178,8 +162,7 @@ trait RendersIncidentReads
     }
 
     /**
-     * True when any alarm is in ALARM — the non-zero exit signal for the incident
-     * read commands, so they double as health probes.
+     * The non-zero exit signal for the incident read commands, so they double as health probes.
      *
      * @param  array<int, array{name: string, state: ?string, reason: ?string}>  $alarms
      */

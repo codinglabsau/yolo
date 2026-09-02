@@ -14,25 +14,20 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
 
 /**
- * Creates the service-linked roles the AWS services YOLO provisions require
- * before their first resource can exist in an account. AWS documents these as
- * implicitly created on first use (e.g. by ecs:CreateCluster), but on an
- * account with no prior usage of the service the implicit path can fail with
- * "Unable to assume the service linked role" — so sync creates them
- * explicitly, ahead of every cluster, scalable target and cache cluster step.
+ * AWS documents SLRs as implicitly created on first use, but on an account with
+ * no prior usage of the service the implicit path can fail with "Unable to
+ * assume the service linked role" — so sync creates them explicitly first.
  *
- * SLRs are account-wide singletons owned by AWS, not YOLO: they can't be
- * tagged at creation, legitimately pre-exist on most accounts, and are shared
- * by every consumer in the account — so they are never reconciled beyond
- * existence and must never be torn down.
+ * SLRs are account-wide singletons owned by AWS: they can't be tagged at
+ * creation, legitimately pre-exist, and are shared by every consumer — never
+ * reconciled beyond existence, never torn down.
  */
 class SyncServiceLinkedRolesStep implements Step
 {
     use RecordsChanges;
 
     /**
-     * Application Auto Scaling mints one SLR per service namespace, so it's
-     * the ECS-suffixed service name here — the generic
+     * Application Auto Scaling mints one SLR per service namespace — the generic
      * application-autoscaling.amazonaws.com is not a valid SLR service.
      */
     public const SERVICES = [
@@ -74,9 +69,8 @@ class SyncServiceLinkedRolesStep implements Step
                 'AWSServiceName' => $service,
             ]);
         } catch (IamException $e) {
-            // Another principal (or an AWS implicit create) winning the race
-            // reports InvalidInput "has been taken" — the desired end state
-            // is reached either way.
+            // Another principal (or an implicit create) winning the race reports
+            // InvalidInput "has been taken" — the end state is reached either way.
             if ($e->getAwsErrorCode() === 'InvalidInput' && str_contains($e->getMessage(), 'has been taken')) {
                 return;
             }

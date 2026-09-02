@@ -14,14 +14,9 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * YOLO-managed IAM role the ECS agent assumes at task launch to pull the image
- * from ECR and write container logs to CloudWatch. Distinct from the task role
- * (which the running container's app code uses). Trust policy lets
- * ecs-tasks.amazonaws.com call sts:AssumeRole; the AWS-managed
- * AmazonECSTaskExecutionRolePolicy is attached by AttachEcsExecutionRolePoliciesStep.
- *
- * Replaces the previous reliance on the AWS-convention `ecsTaskExecutionRole`,
- * which AWS does not auto-create — green-field accounts never had it.
+ * The role the ECS agent assumes at task launch to pull images and write logs —
+ * distinct from the task role the app code uses. Env-shared; the AWS-managed
+ * execution policy is attached by AttachEcsExecutionRolePoliciesStep.
  */
 class EcsExecutionRole implements Deletable, Resource, SynchronisesConfiguration
 {
@@ -64,12 +59,7 @@ class EcsExecutionRole implements Deletable, Resource, SynchronisesConfiguration
         ]);
     }
 
-    /**
-     * IAM Description fields enforce a restricted character set
-     * (tab/LF/CR + printable ASCII + Latin-1 Supplement) — no em dashes,
-     * smart quotes, or U+007F - U+00A0 control range. Validated by
-     * IamDescriptionsAreSafeTest.
-     */
+    /** IAM Description allows only printable ASCII + Latin-1 (no em dashes or smart quotes) — pinned by IamDescriptionsAreSafeTest. */
     public function description(): string
     {
         return 'YOLO managed ECS execution role - pulls images and writes logs for all apps in this environment';
@@ -80,13 +70,7 @@ class EcsExecutionRole implements Deletable, Resource, SynchronisesConfiguration
         return Aws::synchroniseIamRoleTags($this->name(), $this->tags(), $apply);
     }
 
-    /**
-     * Teardown when the environment is torn down (no app shares this role any
-     * longer): IAM refuses to delete a role that still holds policy attachments,
-     * so the AWS-managed AmazonECSTaskExecutionRolePolicy attachment and any
-     * inline policies detach/delete before deleteRole. A concurrent delete that
-     * already removed the role is tolerated.
-     */
+    /** IAM refuses to delete a role that still holds policy attachments. */
     public function delete(): void
     {
         try {

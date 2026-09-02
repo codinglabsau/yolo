@@ -15,11 +15,8 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
 
 /**
- * Deletes this app's per-app env file (env/.env.{app}) from the env config
- * bucket — the build's per-app environment channel, which also carries any
- * Typesense keys sync:app minted. One object per app, so removing it touches
- * only this app and never the env-shared .env beside it; the env config bucket
- * itself is env-shared and left standing.
+ * One object per app, so this never touches the env-shared .env beside it; the
+ * bucket itself is env-shared and left standing.
  */
 class RemoveAppEnvFileStep implements Step
 {

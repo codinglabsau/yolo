@@ -11,11 +11,8 @@ use Codinglabs\Yolo\Resources\Iam\ObserverPolicy;
 use Codinglabs\Yolo\Concerns\AttachesRolePolicies;
 
 /**
- * Attaches both halves of the Admin tier to the {@see AdminRole}: the read-only
- * {@see ObserverPolicy} (reuse — admin reads exactly what the observer reads) and
- * the {@see AdminPolicy} write surface. An operator assuming the role can read the
- * whole stack and write everything YOLO provisions — and nothing beyond. Runs
- * after the role and both policies exist; the attach reconciles idempotently.
+ * The {@see ObserverPolicy} is reused rather than duplicated: admin reads
+ * exactly what the observer reads.
  */
 class AttachAdminRolePolicyStep implements Step
 {
