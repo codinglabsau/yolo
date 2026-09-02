@@ -14,14 +14,10 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * CloudWatch log group receiving the env web ACL's request logs (wired up by
- * WebAcl's logging reconcile). WAFv2 refuses any destination whose name doesn't
- * start with `aws-waf-logs-`, so this is the one YOLO log group that can't lead
- * with the `yolo-{env}-…` convention — the keyed name rides behind the mandated
- * prefix instead, and it still carries YOLO's tags and reconciled retention.
- * Env-shared like the web ACL itself. WAF writes the log-delivery resource
- * policy onto the group itself when logging is enabled, so unlike the IVS
- * pipeline there is no resource policy to reconcile here.
+ * WAFv2 refuses any log destination not prefixed `aws-waf-logs-`, so this is the
+ * one YOLO log group that can't lead with the `yolo-{env}-…` convention. WAF writes
+ * the log-delivery resource policy onto the group itself when logging is enabled,
+ * so unlike the IVS pipeline there is no resource policy to reconcile.
  */
 class WafLogGroup implements Deletable, Resource, SynchronisesConfiguration
 {
@@ -68,10 +64,6 @@ class WafLogGroup implements Deletable, Resource, SynchronisesConfiguration
         $this->synchroniseConfiguration();
     }
 
-    /**
-     * Teardown removes the log group and its retained events — blocked/counted
-     * request logs are observability telemetry, not a source of truth.
-     */
     public function delete(): void
     {
         Aws::cloudWatchLogs()->deleteLogGroup([
@@ -90,9 +82,8 @@ class WafLogGroup implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * Hardcoded — long enough that a blocked-request pattern is still on hand
-     * when an incident is investigated weeks later, and comfortably more than
-     * the IPSet-sync consumer needs (it only ever reads the recent window).
+     * Long enough that a blocked-request pattern is still on hand weeks later; the
+     * IPSet-sync consumer only reads the recent window.
      */
     public function retentionDays(): int
     {

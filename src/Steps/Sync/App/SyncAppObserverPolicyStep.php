@@ -13,10 +13,6 @@ class SyncAppObserverPolicyStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        // Policy-document drift (a YOLO upgrade that changed the read surface, or
-        // a changed log-group name) flows through syncResource as a plan-time
-        // Change via SynchronisesPolicyDocument, so the plan flags it and apply
-        // re-versions the policy.
         return $this->syncResource(new AppObserverPolicy(), $options);
     }
 }

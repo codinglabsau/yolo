@@ -18,30 +18,15 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * YOLO-managed customer-managed IAM policy granting **read-only** access to exactly
- * the AWS surface YOLO inspects: the services a `sync`/`audit` plan pass reads to
- * compute drift, plus the operator-facing `status` reads (the Logs tab tails
- * CloudWatch Logs; `status:budget` reads month-to-date spend from Cost Explorer).
- * Deliberately NOT AWS's managed ReadOnlyAccess: that grants read on the entire AWS
- * surface (~300 services) and `s3:GetObject` on every bucket; this grants read on
- * YOLO's finite service set only, with object reads scoped to non-secret config.
+ * Read-only access to exactly the surface YOLO inspects (the sync/audit plan pass,
+ * `status` log tailing, `status:budget` Cost Explorer). Deliberately NOT AWS's
+ * ReadOnlyAccess, which grants ~300 services and `s3:GetObject` on every bucket.
  *
- * Env-scoped and shared: one `yolo-{env}-observer` per environment, attached to
- * every app's deployer role (AttachDeployerRolePoliciesStep) so the deploy-time
- * `sync --check` gate can read the whole stack under the deploy role without a new
- * direct grant — and reusable by an operator/admin role that needs read across the
- * environment. The reads themselves are environment-agnostic (Describe/List are
- * mostly unscopeable account-wide ops); env scope just bounds the shared lifecycle
- * and the object-read carve-out to this environment's config bucket.
- *
- * Per-service read *wildcards* (`ecs:Describe*`, …) rather than enumerated actions,
- * so a new sync read within a service YOLO already touches can't AccessDenied-abort
- * a deploy — only adding a brand-new AWS service to YOLO needs a line here. Same
- * co-location discipline as DeployerPolicy: bump the surface in one place.
- *
- * All resource ARNs are constructed deterministically from the manifest (account
- * id, environment), so the document is pure — no live AWS calls. Document drift is
- * reconciled as a plan-visible Change via SynchronisesPolicyDocument.
+ * One `yolo-{env}-observer` per environment, attached to every app's deployer role
+ * so the deploy-time `sync --check` gate can read the whole stack. Per-service read
+ * wildcards (`ecs:Describe*`, …) so a new read within a service YOLO already touches
+ * can't AccessDenied-abort a deploy — only a brand-new service needs a line here.
+ * The document is manifest-derived (no live AWS calls).
  */
 class ObserverPolicy implements Deletable, Resource, SynchronisesConfiguration
 {
@@ -84,12 +69,7 @@ class ObserverPolicy implements Deletable, Resource, SynchronisesConfiguration
         ]);
     }
 
-    /**
-     * IAM Description fields enforce a restricted character set
-     * (tab/LF/CR + printable ASCII + Latin-1 Supplement) — no em dashes,
-     * smart quotes, or U+007F - U+00A0 control range. Validated by
-     * IamDescriptionsAreSafeTest.
-     */
+    /** IAM Description allows only printable ASCII + Latin-1 (no em dashes or smart quotes) — pinned by IamDescriptionsAreSafeTest. */
     public function description(): string
     {
         return 'YOLO managed read-only inspection of the services YOLO provisions - the drift-check surface for sync and the pre-deploy gate';
@@ -101,12 +81,8 @@ class ObserverPolicy implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * Teardown when the environment is torn down: IAM refuses to delete a
-     * customer-managed policy while it is still attached to any entity or while
-     * it carries non-default versions, so detach it from every role/group/user it
-     * is attached to (it rides on every app's deployer role plus the observer and
-     * admin roles) and prune every non-default version before deletePolicy. A
-     * concurrent delete that already removed the policy is tolerated.
+     * IAM refuses to delete a policy that is still attached anywhere or carries
+     * non-default versions, so detach and prune before deletePolicy.
      */
     public function delete(): void
     {
@@ -155,8 +131,7 @@ class ObserverPolicy implements Deletable, Resource, SynchronisesConfiguration
                 throw $e;
             }
         } catch (ResourceDoesNotExistException) {
-            // arn() resolves the policy by listing; a concurrent delete that
-            // removed it between exists() and here leaves nothing to do.
+            // Removed between exists() and here — nothing left to do.
         }
     }
 
@@ -169,10 +144,8 @@ class ObserverPolicy implements Deletable, Resource, SynchronisesConfiguration
             'Version' => '2012-10-17',
             'Statement' => [
                 [
-                    // Read-only inspection of every service YOLO provisions. Describe/
-                    // List/Get are overwhelmingly collection or metadata ops AWS does
-                    // not support resource-level permissions for, so they sit on "*" —
-                    // but only for YOLO's services, never the whole AWS surface.
+                    // Describe/List/Get are mostly unscopeable collection ops, so "*" —
+                    // but only for YOLO's services.
                     'Effect' => 'Allow',
                     'Resource' => '*',
                     'Action' => [
@@ -200,18 +173,14 @@ class ObserverPolicy implements Deletable, Resource, SynchronisesConfiguration
                         'route53:List*',
                         'acm:Describe*',
                         'acm:List*',
-                        // observability — CloudWatch metrics + EventBridge. The
-                        // CloudWatch Logs reads live in logsStatements() (their own
-                        // statement) so the per-app observer variant can fence log
-                        // content to one app's group.
+                        // observability — Logs reads live in logsStatements() so the
+                        // per-app variant can fence log content to one app.
                         'cloudwatch:Describe*',
                         'cloudwatch:Get*',
                         'cloudwatch:List*',
                         'events:Describe*',
                         'events:List*',
-                        // cost — month-to-date spend by app for the budget read
-                        // (status:budget). Cost Explorer has no resource-level
-                        // permissions, so its reads sit on "*" like the rest.
+                        // cost — status:budget; Cost Explorer has no resource-level permissions.
                         'ce:Describe*',
                         'ce:Get*',
                         'ce:List*',
@@ -222,19 +191,16 @@ class ObserverPolicy implements Deletable, Resource, SynchronisesConfiguration
                         'servicediscovery:List*',
                         'tag:Get*',
                         'sts:GetCallerIdentity',
-                        // IAM collection ops can't be resource-scoped (they list the
-                        // account); document + metadata reads are scoped below.
+                        // IAM collection ops can't be resource-scoped; document reads are scoped below.
                         'iam:ListRoles',
                         'iam:ListPolicies',
                         'iam:ListOpenIDConnectProviders',
-                        // S3 bucket discovery (collection op, unscopeable).
+                        // collection op, unscopeable
                         's3:ListAllMyBuckets',
                     ],
                 ],
                 [
-                    // IAM document + metadata reads, scoped to YOLO-managed roles,
-                    // policies and the GitHub OIDC provider — the plan reads its own
-                    // identities' trust/attachments/versions, never anyone else's.
+                    // Document + metadata reads on YOLO's own identities only.
                     'Effect' => 'Allow',
                     'Resource' => [
                         sprintf('arn:aws:iam::%s:role/yolo-*', $accountId),
@@ -247,11 +213,8 @@ class ObserverPolicy implements Deletable, Resource, SynchronisesConfiguration
                         'iam:GetPolicyVersion',
                         'iam:ListPolicyVersions',
                         'iam:ListAttachedRolePolicies',
-                        // destroy:app runs under the admin tier (this is its read
-                        // surface): the role-teardown path enumerates a role's inline
-                        // policies, and the policy-teardown path enumerates a policy's
-                        // attachments, to detach + delete them before the role/policy
-                        // delete. Reads beyond the sync surface, so granted here.
+                        // destroy:app (admin tier) enumerates inline policies and
+                        // attachments to detach before deleting.
                         'iam:ListRolePolicies',
                         'iam:ListEntitiesForPolicy',
                         'iam:ListRoleTags',
@@ -261,27 +224,21 @@ class ObserverPolicy implements Deletable, Resource, SynchronisesConfiguration
                     ],
                 ],
                 [
-                    // Grant-group reads, scoped to yolo-* groups. The deploy-time
-                    // `sync --check` gate runs every sync step's plan pass under
-                    // this read tier (the deployer role carries this policy),
-                    // including the group steps — so the read tier must inspect the
-                    // groups + their inline assume policy without an AccessDenied.
+                    // The deploy-time `sync --check` gate plans the group steps under
+                    // this tier, so it must read groups + their inline policy.
                     'Effect' => 'Allow',
                     'Resource' => sprintf('arn:aws:iam::%s:group/yolo-*', $accountId),
                     'Action' => [
                         'iam:GetGroup',
                         'iam:GetGroupPolicy',
                         'iam:ListGroupPolicies',
-                        // destroy:app (admin tier) enumerates a group's managed-policy
-                        // attachments to detach them before deleting the group.
+                        // destroy:app detaches managed policies before deleting the group.
                         'iam:ListAttachedGroupPolicies',
                     ],
                 ],
                 [
-                    // Bucket-level configuration reads (tagging, versioning, policy,
-                    // CORS, lifecycle, public-access-block, …) the plan diffs — scoped
-                    // to YOLO-named buckets by the bucket ARN, which excludes object
-                    // contents (those need the object ARN, granted narrowly below).
+                    // Bucket-level configuration reads; the bucket ARN excludes object
+                    // contents (granted narrowly below).
                     'Effect' => 'Allow',
                     'Resource' => 'arn:aws:s3:::yolo-*',
                     'Action' => [
@@ -293,10 +250,8 @@ class ObserverPolicy implements Deletable, Resource, SynchronisesConfiguration
                     ],
                 ],
                 [
-                    // S3 object reads, scoped to the env-shared *config* the plan and
-                    // claim gate read — the env manifest and the app claim files. The
-                    // env-shared `.env` (and every other secret) is deliberately NOT
-                    // granted, so the observer can never read secrets.
+                    // Object reads on the env manifest and app claim files only — the
+                    // env-shared `.env` and every other secret are deliberately absent.
                     'Effect' => 'Allow',
                     'Resource' => [
                         sprintf('arn:aws:s3:::%s/%s', $envConfigBucket, EnvManifest::filename()),
@@ -313,14 +268,10 @@ class ObserverPolicy implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * The client half of the SSM port-forwarding session `db:tunnel` opens (the
-     * task-side `ssmmessages` channels live on the task role): StartSession is
-     * authorised against BOTH the target task and the session document, so the
-     * grant pins the document to the port-forward — an observer can tunnel, but
-     * can never open an interactive shell (that's a different document, and
-     * `yolo run` runs it under the deployer/admin tiers via ecs:ExecuteCommand).
-     * Isolated in their own statement(s) so the per-app variant can fence the
-     * task target to its own cluster.
+     * Client half of the `db:tunnel` SSM port-forward (task-side ssmmessages live on
+     * the task role). StartSession authorises against BOTH the task and the session
+     * document, so pinning the document means an observer can tunnel but never open
+     * a shell. Own statement(s) so the per-app variant can fence the task target.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -339,11 +290,8 @@ class ObserverPolicy implements Deletable, Resource, SynchronisesConfiguration
                 'Action' => ['ssm:StartSession'],
             ],
             [
-                // Session lifecycle: the CLI terminates the session on Ctrl-C and
-                // resumes over a dropped data channel. Session ARNs embed a
-                // caller-derived id with no reliable per-user form for assumed
-                // roles, so this sits on the account's sessions — the write it
-                // permits is ending a transport session, nothing more.
+                // Session ARNs embed a caller-derived id with no reliable per-user form
+                // for assumed roles, so account-wide; the write is only ending a session.
                 'Effect' => 'Allow',
                 'Resource' => sprintf('arn:aws:ssm:%s:%s:session/*', $region, Aws::accountId()),
                 'Action' => ['ssm:TerminateSession', 'ssm:ResumeSession'],
@@ -352,12 +300,8 @@ class ObserverPolicy implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * CloudWatch Logs reads, isolated in their own statement(s) so the per-app
-     * variant can override them. The env observer reads log content across the
-     * whole account-wide log surface (Describe/Get/Filter on "*", since
-     * DescribeLogGroups has no resource-level form); {@see AppObserverPolicy}
-     * overrides this to fence the *content* reads to one app's log group — the
-     * only observer read AWS lets you scope to a resource.
+     * Own statement(s) so {@see AppObserverPolicy} can fence log *content* to one
+     * app's group — the only observer read AWS lets you scope to a resource.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -370,8 +314,7 @@ class ObserverPolicy implements Deletable, Resource, SynchronisesConfiguration
                 'Action' => [
                     'logs:Describe*',
                     'logs:Get*',
-                    // FilterLogEvents is NOT a Get* action — the Logs tab
-                    // (status:logs) tails a group's streams through it.
+                    // FilterLogEvents is NOT a Get* action (status:logs tails through it).
                     'logs:Filter*',
                     'logs:ListTagsForResource',
                 ],

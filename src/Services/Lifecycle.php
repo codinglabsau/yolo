@@ -18,22 +18,12 @@ use Codinglabs\Yolo\Enums\ServiceState;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 /**
- * Decides whether an env-backed service should exist. The single deciding fact
- * is whether the environment declares it — `services.{name}` in the env
- * manifest, the environment's catalogue of what it runs. Declaration is the
- * operator's deliberate, billed decision; the service stands up on declaration
- * alone, independent of any consuming app, and is torn down only when the entry
- * is removed. Removing it is an operator act (`environment:manifest:push`,
- * which refuses to remove a service apps still use), never an inference from a
- * consumer being down.
- *
- * Consumption no longer gates provisioning — it only informs warnings: a
- * declared service with no live consumer is surfaced as idle (you're paying for
- * it), via SyncEnvironmentCommand. Liveness reads the services each app
- * publishes (`apps/{app}.yml` in the env config bucket), counting only apps
- * with running tasks; both are read once per process so the plan and apply
- * passes see the same world, and a greenfield env (no config bucket) reads as
- * nothing published rather than erroring.
+ * An env-backed service exists iff the env manifest declares it. Declaration is
+ * the operator's deliberate, billed decision — never inferred from a consumer
+ * being up or down; consumption only informs the idle warning. Liveness reads
+ * the services each app publishes (`apps/{app}.yml`), counting only apps with
+ * running tasks. Both reads are memoised so the plan and apply passes see the
+ * same world, and a greenfield env (no config bucket) reads as nothing published.
  */
 class Lifecycle
 {
@@ -53,10 +43,9 @@ class Lifecycle
             return ServiceState::Provision;
         }
 
-        // Not declared, so the service tears down — but if a running app still
-        // uses it, the manifest was edited outside environment:manifest:push
-        // (which refuses to remove a service apps still use). Surface the
-        // contradiction instead of tearing infrastructure out from under them.
+        // A running app still using an undeclared service means the manifest was
+        // edited outside environment:manifest:push (which refuses that removal) —
+        // surface the contradiction rather than tear infrastructure out from under it.
         $using = static::liveAppsUsing($service);
 
         if ($using !== []) {
@@ -75,8 +64,7 @@ class Lifecycle
     }
 
     /**
-     * The running apps whose published services include this one. A dead app
-     * can't keep a service alive — only apps with running tasks count.
+     * A dead app can't keep a service alive — only apps with running tasks count.
      *
      * @return array<int, string>
      */
@@ -93,10 +81,8 @@ class Lifecycle
     }
 
     /**
-     * Every app still claiming this environment — one that has published a claim
-     * file (apps/{app}.yml) or has running tasks. destroy:environment refuses
-     * while any remain; they must be torn down with destroy:app first, so the
-     * env-shared resources never go out from under a live app.
+     * Published a claim file or has running tasks. destroy:environment refuses
+     * while any remain so env-shared resources never go out from under a live app.
      *
      * @return array<int, string>
      */
@@ -113,10 +99,8 @@ class Lifecycle
     }
 
     /**
-     * Running apps that haven't published their services yet — apps deployed
-     * by a YOLO that predates the registry. The environment doesn't know what
-     * they use, so they block teardown (and env-manifest removal) until their
-     * next deploy/sync:app.
+     * The environment doesn't know what an unpublished app uses, so it blocks
+     * teardown (and env-manifest removal) until its next deploy/sync:app.
      *
      * @return array<int, string>
      */
@@ -132,9 +116,7 @@ class Lifecycle
         return $unpublished;
     }
 
-    /**
-     * Forget the memoised registry — tests bind fresh AWS mocks per case.
-     */
+    /** Tests bind fresh AWS mocks per case. */
     public static function reset(): void
     {
         static::$published = null;
@@ -142,10 +124,8 @@ class Lifecycle
     }
 
     /**
-     * Every published services file under apps/ in the env config bucket,
-     * parsed to app name => the services it uses. A missing bucket (a
-     * greenfield plan pass) reads as nothing published; a file we can't read
-     * is a hard error — unreadable is not the same as "uses nothing".
+     * A missing bucket (greenfield plan pass) reads as nothing published; an
+     * unreadable file is a hard error — unreadable is not "uses nothing".
      *
      * @return array<string, array<int, string>>
      */
@@ -202,8 +182,7 @@ class Lifecycle
         $name = is_array($file) ? ($file['name'] ?? null) : null;
         $services = is_array($file) ? ($file['services'] ?? null) : null;
 
-        // PublishAppManifestStep dumps an empty services list as a YAML map,
-        // so `services: {}` parses back to [] — both shapes are a valid list.
+        // An empty services list dumps as `services: {}`, which parses back to [] — still a valid list.
         if (! is_string($name) || $name === '' || ! is_array($services) || ! array_is_list($services)) {
             throw new IntegrityCheckException(sprintf(
                 'Could not read s3://%s/%s — expected the app\'s name and its services list. A fresh `yolo deploy` or `yolo sync:app` from that app rewrites it.',

@@ -11,11 +11,7 @@ use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-/**
- * Shared internet gateway for the environment. Attaching it to the VPC and
- * routing 0.0.0.0/0 through it are separate relationship actions
- * (SyncInternetGatewayAttachmentStep, SyncDefaultRouteStep).
- */
+/** Attachment and the 0.0.0.0/0 route are separate steps (SyncInternetGatewayAttachmentStep, SyncDefaultRouteStep). */
 class InternetGateway implements Deletable, Resource
 {
     use ResolvesTags;
@@ -61,12 +57,8 @@ class InternetGateway implements Deletable, Resource
     }
 
     /**
-     * Detach the gateway from the VPC, then delete it — AWS refuses to delete an
-     * internet gateway that is still attached. The detach is the inverse of
-     * SyncInternetGatewayAttachmentStep's attach. A detach against an
-     * already-detached gateway (Gateway.NotAttached) is tolerated so we still
-     * proceed to delete; a concurrent removal (InvalidInternetGatewayID.NotFound)
-     * on either call is tolerated as already-gone.
+     * AWS refuses to delete an attached gateway, so detach first; Gateway.NotAttached
+     * is tolerated so a half-done teardown still proceeds to the delete.
      */
     public function delete(): void
     {

@@ -15,12 +15,9 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 use Codinglabs\Yolo\Resources\EventBridge\IvsEventBridgeRule;
 
 /**
- * Points the env-shared IVS state-change rule at the env-shared IVS log group
- * while the environment declares the ivs service. Teardown is
- * deliberately a skip: AWS refuses to delete a rule that still has targets,
- * so IvsEventBridgeRule::delete() removes the rule and this target in one
- * atomic act — a separate target-removal here would leave the plan's rule
- * deletion racing its own prerequisite across two steps.
+ * Teardown is a skip: AWS refuses to delete a rule that still has targets, so
+ * IvsEventBridgeRule::delete() removes the rule and this target in one act — a
+ * separate removal here would race its own prerequisite across two steps.
  */
 class SyncIvsEventBridgeTargetStep implements Step
 {

@@ -11,11 +11,8 @@ use Symfony\Component\Console\Input\InputArgument;
 use function Laravel\Prompts\intro;
 
 /**
- * Month-to-date spend for the app against its declared budget — the cost read
- * surface. YOLO never enforces a budget (it never acts); this reports spend, the
- * declared cap and the `budget.strategy`, and the `/yolo` skill weights its
- * recommendations by them. Spend comes from Cost Explorer via the `yolo:app`
- * cost-allocation tag, so it shows "—" until that tag is activated in Billing.
+ * YOLO never enforces a budget. Spend comes via the `yolo:app` cost-allocation
+ * tag, so it shows "—" until that tag is activated in Billing.
  */
 class StatusBudgetCommand extends Command implements ReadOnlyCommand
 {
@@ -54,11 +51,6 @@ class StatusBudgetCommand extends Command implements ReadOnlyCommand
         return self::SUCCESS;
     }
 
-    /**
-     * `$42.10 / $100.00 · 42% · strategy: balanced`, or `… · no budget set …`
-     * when no cap is declared, or a `—` spend when Cost Explorer has no data.
-     * Pure — unit-tested directly.
-     */
     public static function formatBudget(?float $spend, ?float $amount, string $strategy): string
     {
         $spendLabel = $spend === null ? '<fg=gray>—</>' : '$' . number_format($spend, 2);

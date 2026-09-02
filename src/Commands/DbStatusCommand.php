@@ -20,13 +20,9 @@ use function Laravel\Prompts\intro;
 use function Laravel\Prompts\table;
 
 /**
- * The environment's database assignment map: every app that has published a
- * claim file (`apps/{app}.yml` in the env config bucket) and the `database:`
- * its manifest declares. The fleet-level answer to "who is on which
- * database?" during a migration — read the declared truth here, prove the
- * live truth per app with `db:cutover --verify`. Read-only over S3 alone;
- * an app that has never synced or deployed since claims began carrying the
- * full manifest shows `—` until it republishes.
+ * The declared truth from the published claim files — prove the live truth per app
+ * with `db:cutover --verify`. An app whose claim predates full-manifest publishing
+ * shows `—` until it republishes.
  */
 class DbStatusCommand extends Command implements ReadOnlyCommand, ReadsEnvironment
 {
@@ -70,11 +66,7 @@ class DbStatusCommand extends Command implements ReadOnlyCommand, ReadsEnvironme
     }
 
     /**
-     * app => declared database (endpoint or instance identifier), from every
-     * claim under apps/ in the env config bucket. Null when the claim
-     * predates full-manifest publishing or the app declares no database. A
-     * missing bucket reads as an unprovisioned environment (no rows), not an
-     * error — this is a status surface.
+     * A missing bucket reads as an unprovisioned environment, not an error.
      *
      * @return array<string, string|null>
      */

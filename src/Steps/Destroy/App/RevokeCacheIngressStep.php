@@ -11,10 +11,8 @@ use Codinglabs\Yolo\Concerns\RevokesTaskIngress;
 use Codinglabs\Yolo\Resources\Ec2\CacheSecurityGroup;
 
 /**
- * Revokes this app's "6379 from the task SG" ingress rule from the shared Valkey
- * cache security group — leaving the group (and the cache) for the environment's
- * other apps. Like the RDS revoke, this must run before the task SG is deleted.
- * Only wired into the plan when the app declares a cache store.
+ * Only this app's rule goes — the group stays for the other apps. Must run
+ * before the task SG is deleted (see RevokeRdsIngressStep).
  */
 class RevokeCacheIngressStep implements ExecutesWebStep
 {

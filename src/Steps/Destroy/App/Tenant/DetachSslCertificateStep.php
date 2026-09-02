@@ -18,15 +18,9 @@ use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Detaches one tenant's certificate from this environment's `:443` listener SNI
- * set — the per-tenant twin of
- * {@see \Codinglabs\Yolo\Steps\Destroy\App\DetachSslCertificateStep}.
- *
- * The ACM certificate itself is never deleted, and neither is the tenant's hosted
- * zone: both are domain-level infrastructure belonging to the tenant, not to this
- * app's deployment of it. Tearing the app down withdraws YOLO's *use* of them and
- * leaves the tenant's domain intact — which is what makes absorbing a
- * pre-existing custom domain safe to undo.
+ * Per-tenant twin of {@see \Codinglabs\Yolo\Steps\Destroy\App\DetachSslCertificateStep}.
+ * The ACM certificate is the tenant's domain-level infrastructure and is never
+ * deleted — that's what makes absorbing a pre-existing custom domain safe to undo.
  */
 class DetachSslCertificateStep extends TenantStep
 {
@@ -66,9 +60,7 @@ class DetachSslCertificateStep extends TenantStep
                 'Certificates' => [['CertificateArn' => $summary['CertificateArn']]],
             ]);
         } catch (AwsException) {
-            // The listener's default certificate can't be removed this way (AWS
-            // rejects it) and an already-detached one is a no-op — both are fine,
-            // since the certificate is kept regardless.
+            // Default cert (AWS rejects removing it) or already detached — both tolerated.
         }
 
         return StepResult::DELETED;

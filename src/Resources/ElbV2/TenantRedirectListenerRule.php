@@ -4,17 +4,6 @@ declare(strict_types=1);
 
 namespace Codinglabs\Yolo\Resources\ElbV2;
 
-/**
- * A tenant's apex/`www` redirect — 301s the sibling half of that tenant's
- * canonical host to it, the per-tenant twin of {@see RedirectListenerRule}.
- *
- * Both halves resolve to the ALB (the deploy-time record sync writes the pair),
- * and the tenant's certificate covers the apex plus its `*.{apex}` wildcard, so
- * the sibling is TLS-valid before the redirect fires.
- *
- * Only meaningful when the tenant's domain is the apex or `www.{apex}`; the step
- * driving this rule gates on that.
- */
 class TenantRedirectListenerRule extends RedirectListenerRule
 {
     public function __construct(

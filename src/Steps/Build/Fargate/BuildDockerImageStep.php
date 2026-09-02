@@ -4,7 +4,6 @@ namespace Codinglabs\Yolo\Steps\Build\Fargate;
 
 use Codinglabs\Yolo\Paths;
 use Illuminate\Support\Arr;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\StepResult;
 use Symfony\Component\Process\Process;
 use Codinglabs\Yolo\Concerns\RunsProcess;
@@ -21,8 +20,7 @@ class BuildDockerImageStep implements LongRunning
     {
         $process = new Process(
             command: static::command(Arr::get($options, 'app-version'), (new EcrRepository())->uri()),
-            // BuildKit is required for --cache-to; it's the default on Docker 23+
-            // but force it so older daemons don't choke on the flag.
+            // --cache-to needs BuildKit; forced so pre-23 daemons don't choke on the flag.
             env: ['DOCKER_BUILDKIT' => '1'],
             timeout: null,
         );
@@ -38,12 +36,9 @@ class BuildDockerImageStep implements LongRunning
     }
 
     /**
-     * Seed the build from the last pushed image's inline cache so a cold builder
-     * (CI, or after a local BuildKit GC) pulls the compiled layers — chiefly the
-     * ~2-minute install-php-extensions layer — instead of rebuilding them. The
-     * cache rides inside the image we already push (type=inline), so it lives in
-     * the app's own ECR repo with no extra infrastructure. A missing :latest on
-     * the first build is a no-op, not an error.
+     * The inline cache rides in the pushed image, so a cold builder (CI) pulls
+     * the compiled layers instead of rebuilding them; a missing :latest on the
+     * first build is a no-op, not an error.
      *
      * @return array<int, string>
      */
@@ -51,7 +46,7 @@ class BuildDockerImageStep implements LongRunning
     {
         return [
             'docker', 'build',
-            '--platform', Manifest::get('tasks.web.platform', 'linux/amd64'),
+            '--platform', 'linux/amd64',
             '--file', Paths::build('Dockerfile'),
             '--cache-from', "$repository:latest",
             '--cache-to', 'type=inline',

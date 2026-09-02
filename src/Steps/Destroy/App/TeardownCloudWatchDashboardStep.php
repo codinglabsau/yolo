@@ -12,9 +12,8 @@ use Codinglabs\Yolo\Concerns\RecordsChanges;
 use Codinglabs\Yolo\Resources\CloudWatch\Dashboard;
 
 /**
- * Tears down this app's CloudWatch dashboard. The dashboard is Deletable but not
- * a full Resource (it carries no tags / ARN), so this drives its delete directly
- * rather than through the generic teardownResource() path.
+ * The dashboard is Deletable but not a full Resource (no tags / ARN), so it
+ * can't go through teardownResource().
  */
 class TeardownCloudWatchDashboardStep implements Step
 {

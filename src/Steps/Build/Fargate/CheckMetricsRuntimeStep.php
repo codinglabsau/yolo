@@ -12,24 +12,12 @@ use Symfony\Component\Process\Process;
 use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
 
 /**
- * Burst autoscaling needs FrankenPHP's pool gauges — the worker gauges under Octane,
- * the thread gauges in classic mode — which Caddy only collects when its top-level
- * `metrics` global option is set. octane:start rebuilds the CADDY_GLOBAL_OPTIONS env
- * var, so YOLO ships a custom Caddyfile carrying that option in both modes
- * (GenerateSupervisorConfigStep) and runs it via --caddyfile or `frankenphp run
- * --config` (ProcessCommands::web). This probes the freshly-built image for that baked
- * Caddyfile and hard-fails the build — before the push — if it's missing or has no
- * metrics directive.
- *
- * The hard fail earns its place because the failure it prevents is silent: with metrics
- * off FrankenPHP registers no gauges, the runtime reporter reads nothing and publishes
- * no datapoint, the burst alarm sits in INSUFFICIENT_DATA, and the deploy still goes green on the
- * target-tracking policies — burst is simply, invisibly, dark (exactly how it shipped
- * broken). Probing the actual image (`docker run … grep`, matching
- * CheckSsrRuntimeStep / CheckSchedulerRuntimeStep) catches both a Caddyfile that never
- * got generated and a Dockerfile that doesn't copy the build context into the image.
- *
- * Only autoscaling apps run this: a non-autoscaling app has no burst path.
+ * Burst autoscaling reads FrankenPHP's pool gauges — worker gauges under Octane, thread
+ * gauges in classic mode — which Caddy only collects with the `metrics` global option,
+ * carried by YOLO's generated Caddyfile in both modes. With it missing nothing errors: no
+ * gauges, no datapoints, the burst alarm sits in INSUFFICIENT_DATA and the deploy goes
+ * green. Probing the image (not the build dir) also catches a Dockerfile that doesn't
+ * copy the build context.
  */
 class CheckMetricsRuntimeStep implements Step
 {
@@ -59,10 +47,6 @@ class CheckMetricsRuntimeStep implements Step
     }
 
     /**
-     * The `docker run` probe. `--entrypoint sh` bypasses YOLO's role-dispatch
-     * entrypoint; `grep` exits non-zero when the `metrics` directive (or the Caddyfile
-     * itself) is absent, so it needs nothing but a shell.
-     *
      * @return array<int, string>
      */
     public static function command(string $image): array

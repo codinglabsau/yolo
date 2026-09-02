@@ -12,35 +12,13 @@ use Illuminate\Filesystem\Filesystem;
 use Codinglabs\Yolo\Enums\ServerGroup;
 
 /**
- * Generates the container entrypoint into the build context. One image serves
- * every workload — the ECS task definition passes the role (web | queue |
- * scheduler) as the container command, and the entrypoint dispatches on it:
- *
- *  - web       → supervisord (the web server + any bundled queue/scheduler/ssr),
- *                drained behind the ALB so a deploy doesn't 502. The default role
- *                when a web tier exists; a web-less app emits no web branch and
- *                defaults to its least request-facing service instead.
- *  - queue     → the standalone queue worker. The generic supervise-and-forward
- *                is the whole drain: queue:work finishes its in-flight job on
- *                SIGTERM, and when the queue co-hosts the scheduler (no dedicated
- *                scheduler service) it runs supervisord instead (queue:work +
- *                supercronic), which signals both at once — supercronic stops
- *                launching ticks immediately and waits out the in-flight run.
- *  - scheduler → supercronic alone; the forwarded SIGTERM is the whole drain for
- *                the same reason, bounded by the task's stopTimeout.
- *  - anything  → exec'd directly, replacing the shell (no supervise, no drain).
- *    else        This is the path a one-off ecs:RunTask command override takes —
- *                e.g. the deploy step's `sh -c "php artisan migrate --force"` —
- *                since ECS can override a container's command but not its
- *                entrypoint, so the override arrives here as arguments. The exec'd
- *                command's exit status becomes the task's, so a failed migrate
- *                fails the deploy.
- *
- * The queue and scheduler branches are emitted only when the app extracts them
- * into their own service (a top-level tasks.queue / tasks.scheduler block), so a
- * plain web app's entrypoint mentions neither — it bundles all three roles into
- * the one web container. deploy-all: hooks run on every container start regardless
- * of role, before the dispatch.
+ * One image serves every workload; the task definition passes the role as the
+ * container command and the entrypoint dispatches on it. Only web holds the
+ * SIGTERM forward back (the ALB drain window) — for every other role the
+ * forwarded SIGTERM is the whole drain. Anything that isn't a role is exec'd
+ * directly: ECS can override a container's command but not its entrypoint, so a
+ * one-off RunTask (e.g. migrate) arrives here as arguments, and its exit status
+ * must become the task's so a failed migrate fails the deploy.
  */
 class GenerateEntrypointScriptStep implements Step
 {
@@ -110,23 +88,14 @@ SH,
     }
 
     /**
-     * The role the entrypoint assumes when the container runs with no command —
-     * web when the app has a web tier; otherwise the least request-facing service
-     * the app runs (the same tier a one-off deploy task templates on). Every ECS
-     * task definition passes its role explicitly, so this only decides what a bare
-     * `docker run` does.
+     * Every task definition passes its role explicitly, so this only decides
+     * what a bare `docker run` does.
      */
     protected function defaultRole(): string
     {
         return Manifest::hasWeb() ? ServerGroup::WEB->value : Manifest::deployGroup()->value;
     }
 
-    /**
-     * The drain dispatch inside the SIGTERM trap. Only the web role holds the
-     * forward back (the ALB drain window — see webDrainBody), so a web-less app
-     * emits no case at all: the immediate SIGTERM forward is the whole drain for
-     * every role it runs.
-     */
     protected function drainCase(): string
     {
         if (! Manifest::hasWeb()) {
@@ -140,12 +109,6 @@ SH,
             . "esac\n";
     }
 
-    /**
-     * The cmd dispatch branches for the roles this app runs as services: web
-     * (supervisord) when a web tier exists, plus each role extracted into its own
-     * service. A standalone queue that also hosts the scheduler runs supervisord
-     * (queue:work + supercronic); a queue-only service runs the worker directly.
-     */
     protected function commandCases(): string
     {
         $cases = '';
@@ -155,11 +118,7 @@ SH,
         }
 
         if (Manifest::hasStandaloneQueue()) {
-            // supervisord when the queue task runs more than one process: co-hosting
-            // the scheduler (queue:work + supercronic), or fanning queues out per
-            // tenant (one worker program per tenant + landlord). A solo or shared-queue
-            // task is a single exec'd worker — the supervise-and-forward wrapper is its
-            // whole drain.
+            // supervisord only when the queue task runs more than one process.
             $cmd = Manifest::schedulerHost() === ServerGroup::QUEUE || Manifest::fansQueuesPerTenant()
                 ? 'supervisord -c /app/docker/supervisord.queue.conf -n'
                 : ProcessCommands::queue();
@@ -175,21 +134,12 @@ SH,
     }
 
     /**
-     * The web role's drain, run before the stop is forwarded to supervisord. ECS
-     * sends SIGTERM the moment it deregisters the task, but the ALB takes a few
-     * seconds to stop routing to a draining target, so we keep serving for the
-     * drain window first. When the web container hosts the scheduler, supercronic
-     * is signalled before the window so no new schedule:run launches while we
-     * keep serving — backgrounded, so its stop (supercronic waits out the
-     * in-flight run under its own stopwaitsecs) overlaps the window and the other
-     * programs' stops instead of delaying the forward (the budget in
-     * ShutdownTimings::stopTimeoutFor counts on that overlap). Stopping via
-     * supervisorctl, never a direct signal, so supervisord doesn't autorestart it.
-     *
-     * Web is the only role that needs this: everywhere else (headless web, a
-     * queue co-hosting the scheduler, a standalone scheduler) there's no ALB
-     * window holding the forward back, so the immediate SIGTERM forward reaches
-     * supervisord — or supercronic itself — at once and is the whole drain.
+     * ECS sends SIGTERM the moment it deregisters the task, but the ALB keeps
+     * routing to a draining target for a few seconds — so keep serving first.
+     * A co-hosted scheduler is stopped before the window so no new tick launches
+     * while we serve; backgrounded so its stopwaitsecs overlaps the window
+     * (ShutdownTimings::stopTimeoutFor budgets on that), and via supervisorctl
+     * rather than a direct signal so supervisord doesn't autorestart it.
      */
     protected function webDrainBody(): string
     {
@@ -206,10 +156,6 @@ SH,
         return $body . "sleep $drain\n";
     }
 
-    /**
-     * Indent every non-empty line of a generated block by $spaces, so the drain
-     * bodies sit at the right depth inside the entrypoint's case statement.
-     */
     protected function indent(string $block, int $spaces): string
     {
         if ($block === '') {

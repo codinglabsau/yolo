@@ -11,12 +11,10 @@ use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * The environment's shared services cluster (`yolo-{env}-services`) — home of
- * every env-shared service task (the Typesense nodes today), kept apart from
- * the per-app clusters so app liveness derivation (`yolo-{env}-{app}`) never
- * mistakes shared-service tasks for an app. `services` is a reserved app name
- * for the same reason. FARGATE only — no Spot: the occupants are stateful
- * quorum members, not interruptible workers.
+ * Kept apart from the per-app clusters so app liveness derivation
+ * (`yolo-{env}-{app}`) never mistakes shared-service tasks for an app; `services`
+ * is a reserved app name for the same reason. FARGATE only — the occupants are
+ * stateful quorum members, not interruptible workers.
  */
 class ServicesCluster implements Deletable, Resource
 {
@@ -69,14 +67,8 @@ class ServicesCluster implements Deletable, Resource
     }
 
     /**
-     * Teardown cascades: AWS refuses to delete a cluster with active services OR a
-     * non-STOPPED task, so every service is drained (desired 0) and force-deleted
-     * first. But force-delete drains the node tasks asynchronously — they keep
-     * stopping over the graceful-drain window — so the cluster delete is retried
-     * past the transient ClusterContainsTasksException until the drain completes,
-     * exactly as the per-app EcsCluster does (the same race, the same helper). The
-     * node-services step defers its own teardown here for the same reason the IVS
-     * target defers to its rule — one atomic act, no cross-step ordering.
+     * Same drain race as EcsCluster::delete(). The node-services step defers its own
+     * teardown here so it's one atomic act with no cross-step ordering.
      */
     public function delete(): void
     {

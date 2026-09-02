@@ -19,9 +19,8 @@ use function Laravel\Prompts\confirm;
 class InitCommand extends Command
 {
     /**
-     * The commercial AWS regions, keyed by region code. Curated rather than
-     * fetched — the SSM region listing needs credentials this command runs
-     * without, and new regions appear rarely enough that a release keeps pace.
+     * Curated rather than fetched — the SSM region listing needs credentials this
+     * command runs without.
      */
     protected const array AWS_REGIONS = [
         'af-south-1' => 'af-south-1 — Cape Town',
@@ -82,8 +81,7 @@ class InitCommand extends Command
         $this->appName = text('What is the name of this app?', placeholder: 'eg. codinglabs');
         $this->environment = text('Which environment do you want to add?', placeholder: 'eg. production', required: true);
 
-        // Everything below writes under the chosen environment — the manifest block,
-        // the starter env file, the gitignore entry — so bind it before they run.
+        // Everything below writes under the chosen environment.
         Helpers::app()->instance('environment', $this->environment);
 
         $this->gitIgnoreFilesAndDirectories();
@@ -98,12 +96,8 @@ class InitCommand extends Command
     }
 
     /**
-     * The natural next step after scaffolding is authenticating the machine, so
-     * offer `configure` inline — same pattern as the Session Manager plugin
-     * offer. Init and configure stay separate commands because their cadences
-     * differ (once per app vs once per machine per account): a dev joining an
-     * existing app runs configure without ever running init, and an
-     * already-configured machine scaffolding a second app declines here.
+     * Init and configure stay separate commands because their cadences differ (once
+     * per app vs once per machine per account).
      */
     protected function offerCredentialsSetup(): void
     {
@@ -155,27 +149,18 @@ class InitCommand extends Command
             )
         );
 
+        // Every write below is surgical so the stub's comments survive into the
+        // scaffolded file; a structural put would re-dump and strip them all.
         if (confirm('Is the app multi-tenant?', default: false)) {
-            // The landlord's own host, wildcarded, is the cheapest tenancy to start
-            // on: tenants are served beneath it with no per-tenant infrastructure.
-            // A tenant graduates to its own domain later by gaining a `domain` key.
-            Manifest::put('multitenancy', [
-                'landlord' => [
-                    'domain' => text('What is the landlord domain?', placeholder: 'eg. app.example.com'),
-                    'wildcard-subdomains' => true,
-                ],
-                'tenants' => [
-                    'tenant-id' => null,
-                ],
-            ]);
+            // Each put splices in as the first child of its parent, so the writes run
+            // bottom-up to land the block in reading order.
+            Manifest::put('multitenancy.tenants.tenant-id', null);
+            Manifest::put('multitenancy.landlord.wildcard-subdomains', true);
+            Manifest::put('multitenancy.landlord.domain', text('What is the landlord domain?', placeholder: 'eg. app.example.com'));
 
-            Manifest::put('deploy', $this->multitenantDeploySteps());
+            Manifest::setList('deploy', $this->multitenantDeploySteps());
         } else {
             Manifest::put('domain', text('What is the domain?', placeholder: 'eg. example.com'));
-
-            Manifest::put('deploy', [
-                'php artisan migrate --force',
-            ]);
         }
         $s3Bucket = text('What is the name of the S3 bucket used for app storage?', placeholder: 'Leave blank to skip');
 
@@ -185,16 +170,10 @@ class InitCommand extends Command
     }
 
     /**
-     * How an app stores its tenants decides what `deploy` has to run, and the
-     * migration layout gives it away. A database-per-tenant app keeps its
-     * migrations split (`landlord/` holds the tenant registry, `tenant/` the
-     * per-tenant schema) and has to run both — the second over every tenant
-     * connection. A single-database app scoping rows by a `tenant_id` column
-     * has one flat set and one `migrate`, exactly like a solo app.
-     *
-     * Scaffolding the split form unconditionally left the flat majority with a
-     * deploy hook that fails on the first run: no such path, no such command.
-     * Assume the layout on disk, and say which was assumed.
+     * The migration layout gives the tenancy model away: a database-per-tenant app
+     * splits `landlord/` and `tenant/` and must migrate both; a single-database app
+     * has one flat set. Scaffolding the split form for a flat app would leave a
+     * deploy hook that fails on first run.
      *
      * @return array<int, string>
      */
@@ -243,16 +222,12 @@ class InitCommand extends Command
             return;
         }
 
-        // The chosen environment's .env file plus the common ones, deduped so a
-        // `production`/`staging` environment doesn't list its pattern twice.
         $entries = collect([
             '.yolo',
             '.env.staging',
             '.env.production',
             '.env.' . $this->environment,
             '.env.environment.*',
-            // env-manifest working copies (yolo-environment-production.yml
-            // etc.) — never matches the app manifest yolo.yml
             'yolo-environment-*.yml',
         ])->unique()->implode(PHP_EOL);
 
@@ -284,14 +259,9 @@ class InitCommand extends Command
     }
 
     /**
-     * The starter env is the app's own .env.example corrected for the target
-     * environment: APP_ENV, APP_DEBUG=false, a freshly minted APP_KEY (the same
-     * base64 32-byte key `artisan key:generate` produces), and APP_URL when the
-     * manifest declares a domain. Every AWS_* key and every platform-injected
-     * key is stripped — ConfigureEnvAndVersionStep writes those from the
-     * manifest at build time, so a copy here is drift at best and a build
-     * failure at worst (the stock example's LOG_CHANNEL=stack conflicts with
-     * the enforced stderr).
+     * AWS_* and platform-injected keys are stripped — ConfigureEnvAndVersionStep
+     * writes those at build time, so a copy here is drift at best and a build
+     * failure at worst (the stock LOG_CHANNEL=stack conflicts with the enforced stderr).
      */
     protected function starterEnvContents(): string
     {

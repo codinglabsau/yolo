@@ -12,8 +12,7 @@ class Sqs
     {
         foreach (Aws::sqs()->listQueues()['QueueUrls'] ?? [] as $queueUrl) {
             if (Str::afterLast($queueUrl, '/') === $name) {
-                // listQueues returns URLs only, so pull the attributes the
-                // caller needs (QueueArn etc.) and keep the URL alongside them.
+                // listQueues returns URLs only
                 return [
                     'QueueUrl' => $queueUrl,
                     ...Aws::sqs()->getQueueAttributes([
@@ -28,9 +27,8 @@ class Sqs
     }
 
     /**
-     * The visible-message backlog for a queue — its `ApproximateNumberOfMessages`
-     * attribute — or null when the queue doesn't exist, so `yolo status` shows a
-     * backlog without a hard error on a not-yet-provisioned queue.
+     * Null when the queue doesn't exist, so `yolo status` degrades on a
+     * not-yet-provisioned queue instead of hard-erroring.
      */
     public static function approximateMessages(string $name): ?int
     {

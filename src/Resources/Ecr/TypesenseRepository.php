@@ -12,11 +12,8 @@ use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Env-scoped repository for the environment's Typesense image — the pinned
- * upstream base plus the baked-in admin key config, content-tagged by
- * version + key fingerprint so an unchanged pair never rebuilds. Env-scoped
- * (unlike the per-app repos named after the app) because the image is the
- * environment's, shared by all three nodes.
+ * Content-tagged by version + key fingerprint so an unchanged pair never rebuilds;
+ * env-scoped because the image is shared by every node.
  */
 class TypesenseRepository implements Deletable, Resource
 {
@@ -86,10 +83,7 @@ class TypesenseRepository implements Deletable, Resource
         ]);
     }
 
-    /**
-     * Content tags are immutable and few (one per version/key pair) — keep a
-     * short tail for rollback and let anything older expire.
-     */
+    /** Content tags are immutable and few — a short tail for rollback. */
     public function lifecyclePolicy(): string
     {
         return json_encode([

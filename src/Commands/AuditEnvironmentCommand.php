@@ -7,11 +7,8 @@ namespace Codinglabs\Yolo\Commands;
 use Codinglabs\Yolo\Audit\Audit;
 
 /**
- * Audit the env-shared (environment-tier) resources for one environment —
- * VPC, ALB, subnets, RDS SG, SNS topic and the like. Env-scope resources
- * never carry `yolo:app`, but they can still be `unexpected` — an untagged
- * resource sitting in the env namespace, or a leftover of a service YOLO no
- * longer provisions — so `--unexpected` is meaningful here.
+ * Env-scope resources never carry `yolo:app` but can still be `unexpected`, so
+ * `--unexpected` is meaningful here.
  */
 class AuditEnvironmentCommand extends AbstractAuditCommand
 {

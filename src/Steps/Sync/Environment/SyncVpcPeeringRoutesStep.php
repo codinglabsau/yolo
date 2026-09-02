@@ -20,19 +20,12 @@ use Codinglabs\Yolo\Resources\Ec2\VpcPeeringConnection;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Reconciles the routes each declared peering rides on, both directions.
- * Outbound, the peer VPC's CIDR goes into EVERY yolo-managed route table — the
- * public table (the Fargate tasks) and the private table (the database tier),
- * so a resource in either tier can dial across the peer. Return, the
- * environment's CIDR goes into every peer-VPC route table that actually
- * governs a subnet (has at least one subnet association), falling back to the
- * peer's main table only when nothing in that VPC is associated — a route
- * written into an unassociated main table steers no subnet, and every reply
- * black-holes. The writes into the peer's tables are foreign, so the plan
- * names each target table and marks it not yolo-managed. Also prunes blackhole
- * peering routes from the yolo-managed tables — the debris an interrupted
- * teardown leaves behind. Diffs against the live `Routes` blocks so a clean
- * environment reports no change.
+ * Outbound, the peer CIDR goes into EVERY yolo-managed route table so both the
+ * task and database tiers can dial across. Return, the env CIDR goes into every
+ * peer-VPC table that governs a subnet, falling back to the peer's main table
+ * only when nothing is associated — a route in an unassociated main table
+ * steers no subnet, and every reply black-holes. Also prunes blackhole peering
+ * routes from the yolo-managed tables (debris of an interrupted teardown).
  */
 class SyncVpcPeeringRoutesStep implements Step
 {
@@ -44,19 +37,16 @@ class SyncVpcPeeringRoutesStep implements Step
 
         $environmentCidrBlock = $this->environmentCidrBlock();
 
-        // The yolo-managed tables — each may be null on a greenfield plan pass
-        // (the table steps above create them), so a missing route is reported
-        // as pending and the table id resolves at apply time instead.
+        // Each may be null on a greenfield plan pass, so a missing route is
+        // reported pending and the table id resolves at apply time.
         $environmentRouteTables = [
             [new RouteTable(), $this->liveRouteTableOrNull(new RouteTable())],
             [new PrivateRouteTable(), $this->liveRouteTableOrNull(new PrivateRouteTable())],
         ];
 
-        // Route entries to write, resolved as far as live state allows —
         // [routeTableId|null, env table resource for late resolution|null,
         // destination CIDR, peer vpc id, plan attribute]. Unresolvable parts
-        // (a greenfield plan pass, a peer VPC that doesn't exist yet) are
-        // reported as pending, never thrown on.
+        // (greenfield plan pass, peer VPC not yet visible) report pending, never throw.
         $missingRoutes = [];
 
         foreach (EnvManifest::peering() as $peerVpcId) {
@@ -101,8 +91,7 @@ class SyncVpcPeeringRoutesStep implements Step
 
         if ($missingRoutes === [] && $blackholeRoutes === []) {
             // A declared peer VPC that doesn't exist recorded a change above —
-            // that's genuine drift (fix or remove the manifest entry), so the
-            // plan must say so even though there's nothing to write.
+            // genuine drift, so the plan must say so even with nothing to write.
             return $this->changes() === [] || ! $dryRun ? StepResult::SYNCED : StepResult::WOULD_SYNC;
         }
 
@@ -137,9 +126,7 @@ class SyncVpcPeeringRoutesStep implements Step
     }
 
     /**
-     * Whether a route table already carries an active peering route for the
-     * destination. A null table (not provisioned yet — greenfield plan pass)
-     * has no routes, so the missing route is reported as pending.
+     * A null table (greenfield plan pass) has no routes, so the route reports pending.
      *
      * @param  array<string, mixed>|null  $routeTable
      */
@@ -153,9 +140,7 @@ class SyncVpcPeeringRoutesStep implements Step
     }
 
     /**
-     * Peering routes in the yolo-managed tables whose connection is gone — an
-     * interrupted teardown leaves its routes in blackhole state; sync reclaims
-     * them so each table stays exactly what the manifest declares.
+     * An interrupted teardown leaves its routes in blackhole state.
      *
      * @param  array<int, array{0: RouteTable|PrivateRouteTable, 1: array<string, mixed>|null}>  $environmentRouteTables
      * @return array<int, array{0: string, 1: array<string, mixed>}>

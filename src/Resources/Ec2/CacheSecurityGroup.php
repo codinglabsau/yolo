@@ -10,11 +10,7 @@ use Codinglabs\Yolo\Enums\SecurityGroup;
 use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 
-/**
- * Shared security group attached to the Valkey cache. Models identity + tags
- * only; the 6379-from-task-SG ingress rule is reconciled additively by
- * SyncCacheSecurityGroupStep. Mirrors RdsSecurityGroup.
- */
+/** Identity + tags only; the 6379 ingress is reconciled additively by SyncCacheSecurityGroupStep. */
 class CacheSecurityGroup implements Deletable, Resource
 {
     use ResolvesSecurityGroup;
@@ -47,13 +43,6 @@ class CacheSecurityGroup implements Deletable, Resource
         return Aws::synchroniseEc2Tags($this->arn(), $this->tags(), $apply);
     }
 
-    /**
-     * Teardown: delete the security group, after the cache that used it is gone
-     * and apps have revoked their 6379 ingress. A detaching ENI can still hold the
-     * group briefly, so the delete is retried past that transient
-     * DependencyViolation (and a concurrent not-found is tolerated).
-     * See Ec2::deleteSecurityGroupWhenDetached.
-     */
     public function delete(): void
     {
         Ec2::deleteSecurityGroupWhenDetached($this->arn());

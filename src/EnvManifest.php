@@ -12,39 +12,22 @@ use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 /**
- * The environment manifest — env-shared desired state, one
- * yolo-environment-{environment}.yml per environment, stored in the env config
- * bucket rather than any app's repo. The app manifest (yolo.yml) declares what
- * one app needs; this declares what the environment provides (shared-service
- * ingress domain, env services and their sizing). The environment is in the
- * filename, so a pulled copy can never be pushed at the wrong environment.
- *
- * Every sync pulls it fresh from S3 and reconciles toward it, so syncs from
- * any app repo converge on the environment's own declared truth — within the
- * schema each release knows: a manifest carrying keys from a newer release
- * hard-fails older binaries (upgrade before pushing new keys). Reads are
- * memoised per process run; there is no local working copy at runtime (the
- * pull/push commands manage one for edits).
+ * Env-shared desired state, one yolo-environment-{environment}.yml per environment in the env
+ * config bucket: yolo.yml declares what one app needs, this declares what the environment
+ * provides. The environment is in the filename so a pulled copy can never be pushed at the
+ * wrong environment. Every sync pulls it fresh and reconciles toward it; a manifest carrying
+ * keys from a newer release hard-fails older binaries.
  */
 class EnvManifest
 {
-    /**
-     * The manifest's name in the bucket and on disk —
-     * yolo-environment-{environment}.yml (yolo.yml = the app,
-     * yolo-environment-production.yml = the production environment).
-     */
     public static function filename(): string
     {
         return sprintf('yolo-environment-%s.yml', Helpers::environment());
     }
 
     /**
-     * The complete set of valid env-manifest keys as dot-paths, mirroring the
-     * app manifest's allow-list discipline. `services` is the extension point:
-     * each env-backed service contributes its own `services.{name}` key plus
-     * whatever offer keys its definition declares (version/cpu/memory and the
-     * like), so adding a service never edits this class — the definition
-     * already knows the shape of its env-shared half.
+     * `services` is the extension point: each env-backed service contributes its own key plus
+     * its declared offer keys, so adding a service never edits this class.
      *
      * @return array<int, string>
      */
@@ -70,12 +53,8 @@ class EnvManifest
     }
 
     /**
-     * The VPCs this environment declares peering connections to — the bridge to
-     * infrastructure outside the YOLO network (typically a database mid-
-     * migration; see the Databases guide). Env-shared by nature (peering is
-     * VPC-to-VPC), so it lives here rather than in any app's manifest. Each
-     * entry must be a VPC id; anything else hard-fails rather than silently
-     * provisioning nothing.
+     * Env-shared because peering is VPC-to-VPC (typically a database mid-migration). A
+     * non-VPC-id entry hard-fails rather than silently provisioning nothing.
      *
      * @return array<int, string>
      */
@@ -83,8 +62,7 @@ class EnvManifest
     {
         $peering = static::get('peering', []);
 
-        // A bare `peering:` key with every entry removed parses as null — the
-        // same "nothing declared" as an absent key, not a shape error.
+        // A bare `peering:` with every entry removed parses as null — nothing declared, not a shape error.
         if ($peering === null) {
             return [];
         }
@@ -119,12 +97,9 @@ class EnvManifest
     }
 
     /**
-     * The parsed manifest, pulled fresh from S3 once per run. A missing
-     * object (or missing bucket, on a greenfield plan pass) reads as an empty
-     * manifest — nothing declared — rather than an error, so consumers can
-     * skip cleanly before the first sync seeds the file. Only the genuine
-     * not-found set reads as absence: AccessDenied or a transient fault must
-     * fail the sync, never silently report the environment as undeclared.
+     * A missing object or bucket (greenfield plan pass) reads as an empty manifest, so
+     * consumers skip cleanly before the first sync seeds the file. Only the genuine not-found
+     * set reads as absence — AccessDenied or a transient fault must fail the sync.
      *
      * @return array<string, mixed>
      */
@@ -150,17 +125,14 @@ class EnvManifest
         try {
             return static::$loaded = static::parse($body);
         } catch (IntegrityCheckException $e) {
-            // The bucket copy outlives any one release — a key this binary
-            // doesn't know usually means the manifest was pushed by a newer
-            // YOLO, not that the file is broken.
+            // The bucket copy outlives any one release — an unknown key usually means a
+            // newer YOLO pushed it, not that the file is broken.
             throw new IntegrityCheckException($e->getMessage() . ' The bucket manifest may have been written by a newer YOLO release — update codinglabsau/yolo and retry.', $e->getCode(), $e);
         }
     }
 
     /**
-     * Parse and validate manifest contents. Shared by current() (the S3 read)
-     * and environment:manifest:push (which validates the local working copy before
-     * uploading, so a misshapen manifest can't reach the bucket at all).
+     * Shared with environment:manifest:push so a misshapen manifest can't reach the bucket.
      *
      * @return array<string, mixed>
      */
@@ -172,9 +144,8 @@ class EnvManifest
             throw new IntegrityCheckException(sprintf('%s must be a YAML map.', static::filename()));
         }
 
-        // The app manifest's `services: [ivs]` list shape flattens to the bare
-        // (allowed) `services` path, so without this gate it would validate
-        // clean and then provision nothing — same key, opposite shapes.
+        // The app manifest's `services: [ivs]` list flattens to the bare (allowed) `services`
+        // path and would validate clean, then provision nothing — same key, opposite shapes.
         if (isset($manifest['services']) && is_array($manifest['services']) && array_is_list($manifest['services']) && $manifest['services'] !== []) {
             throw new IntegrityCheckException(sprintf(
                 'services in %s must be a map of service => config (services: { ivs: {} }) — the list form belongs to the app manifest (yolo.yml).',
@@ -193,10 +164,8 @@ class EnvManifest
             ));
         }
 
-        // Each declared offer is validated by its service's definition — the
-        // allow-list above catches unknown keys, this catches a misshapen
-        // offer (a scalar/list where a map belongs, a missing required key)
-        // before it can become the environment's declared truth.
+        // The allow-list catches unknown keys; this catches a misshapen offer before it
+        // becomes the environment's declared truth.
         foreach (Service::cases() as $service) {
             $path = $service->envManifestKey();
 
@@ -209,9 +178,6 @@ class EnvManifest
     }
 
     /**
-     * Keys present in the manifest that aren't in the schema. Empty array
-     * means the shape is valid.
-     *
      * @param  array<string, mixed>  $manifest
      * @return array<int, string>
      */
@@ -223,11 +189,7 @@ class EnvManifest
         ));
     }
 
-    /**
-     * Whether the manifest object exists in the env config bucket — distinct
-     * from current(), which treats absence as an empty manifest. The seed step
-     * uses this to create the file exactly once and never touch it again.
-     */
+    /** Distinct from current(), which reads absence as empty — the seed step must create the file exactly once. */
     public static function remoteExists(): bool
     {
         try {
@@ -238,9 +200,8 @@ class EnvManifest
 
             return true;
         } catch (S3Exception $e) {
-            // Absence only — a denied or failed read must not report the
-            // manifest missing, or the seed step would overwrite the
-            // operator's file with the stub.
+            // A denied or failed read must not report the manifest missing, or the seed
+            // step would overwrite the operator's file with the stub.
             if (S3::isNotFound($e)) {
                 return false;
             }
@@ -249,29 +210,19 @@ class EnvManifest
         }
     }
 
-    /**
-     * The default manifest the first sync seeds — seed-only, so operator edits
-     * always stick (the WAF IP-set semantics).
-     */
+    /** Seed-only, so operator edits always stick. */
     public static function seedContents(): string
     {
         return (string) file_get_contents(Paths::stubs('yolo-environment.yml.stub'));
     }
 
-    /**
-     * The local working-copy path the pull/push commands edit through — the
-     * same yolo-environment-{environment}.yml name as the bucket key
-     * (gitignored via yolo-environment-*.yml, which never matches the app
-     * manifest yolo.yml).
-     */
+    /** Gitignored via yolo-environment-*.yml, which never matches yolo.yml. */
     public static function localPath(): string
     {
         return Paths::base(static::filename());
     }
 
-    /**
-     * Forget the memoised manifest — tests bind fresh S3 mocks per case.
-     */
+    /** Tests bind fresh S3 mocks per case. */
     public static function reset(): void
     {
         static::$loaded = null;

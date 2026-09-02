@@ -14,10 +14,8 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
 
 /**
- * Seeds the env manifest into the env config bucket on the environment's first
- * sync — and never touches it again. The file is the operator's: every later
- * edit arrives via `environment:manifest:push`, so sync creating it once (seed-only,
- * the WAF IP-set semantics) is what keeps a single writer on each side.
+ * Seed-only: the file is the operator's — every later edit arrives via
+ * `environment:manifest:push`, so sync creating it once keeps a single writer on each side.
  */
 class SeedEnvManifestStep implements Step
 {
@@ -25,9 +23,8 @@ class SeedEnvManifestStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        // remoteExists() also reads false when the bucket itself doesn't exist
-        // yet (a greenfield plan pass) — the seed is correctly reported pending
-        // and the bucket step, ordered before this one, creates it on apply.
+        // remoteExists() also reads false when the bucket itself doesn't exist yet
+        // (greenfield plan pass) — the seed reports pending and the bucket step creates it on apply.
         if (EnvManifest::remoteExists()) {
             return StepResult::SYNCED;
         }

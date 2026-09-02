@@ -11,12 +11,7 @@ use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Contracts\SkippedByDeployCheck;
 use Codinglabs\Yolo\Resources\CloudWatchLogs\IvsLogGroup;
 
-/**
- * The env-shared IVS event log group, gated on the service lifecycle:
- * provisioned while the environment manifest declares `services.ivs`, torn down
- * when the declaration is removed. One pipeline per environment — the `aws.ivs`
- * event stream is account-wide, so this was never a per-app resource.
- */
+/** One pipeline per environment — the `aws.ivs` event stream is account-wide, never per-app. */
 class SyncIvsCloudWatchLogGroupStep implements SkippedByDeployCheck, Step
 {
     use SynchronisesResource;

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServerGroup;
@@ -773,4 +774,36 @@ describe('mysql backups', function (): void {
 
         expect(Manifest::unknownKeys())->toBe([]);
     });
+});
+
+describe('nested task keys', function (): void {
+    it('accepts every documented nested key under autoscaling, health-check and ssr', function (): void {
+        writeManifest([
+            'tasks' => [
+                'web' => [
+                    'autoscaling' => ['min' => 1, 'max' => 5, 'cpu-utilization' => 65, 'scale-out-cooldown' => 60, 'scale-in-cooldown' => 300],
+                    'health-check' => ['path' => '/up', 'interval' => 10, 'timeout' => 5, 'healthy-threshold' => 2, 'unhealthy-threshold' => 5, 'grace-period' => 60],
+                    'ssr' => ['shutdown-grace-period' => 20],
+                ],
+                'queue' => [
+                    'autoscaling' => ['min' => 0, 'max' => 5, 'backlog-per-task' => 100],
+                ],
+            ],
+        ]);
+
+        expect(Manifest::unknownKeys())->toBe([]);
+    });
+
+    it('rejects a misspelt key inside a nested object instead of silently keeping the default', function (string $path): void {
+        $manifest = [];
+        Arr::set($manifest, $path, 1);
+        writeManifest($manifest);
+
+        expect(Manifest::unknownKeys())->toBe(['environments.testing.' . $path]);
+    })->with([
+        'tasks.web.autoscaling.mim',
+        'tasks.web.health-check.grace',
+        'tasks.web.ssr.grace-period',
+        'tasks.queue.autoscaling.backlog',
+    ]);
 });

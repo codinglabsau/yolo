@@ -18,61 +18,29 @@ use Codinglabs\Yolo\Runtime\WorkerSaturationReporter;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * The **burst** scale-out path for the web service: a real-time companion to the
- * {@see WebConcurrencyPolicy} default, for the sudden spike the ~60s CloudWatch
- * metric floor can't catch in time. Not a knob — like the concurrency and CPU
- * policies it's just part of the scaling machinery, provisioned wherever web
- * autoscaling is, in either serving mode. Nothing to switch on.
+ * Real-time burst scale-out beside {@see WebConcurrencyPolicy}: target tracking rides
+ * 1-minute ALB metrics, so this pairs a step-scaling policy with a 10s high-res alarm
+ * on a saturation metric each web task emits itself — in-flight requests over the
+ * Octane worker pool, or busy threads over the classic thread ceiling (requests queue
+ * before latency climbs). Scale-out only — scale-in stays with target tracking, so this
+ * can only add capacity faster, never fight them. Provisioned wherever web autoscaling
+ * is, in either serving mode; not a knob.
  *
- * The target-tracking policies scale on ALB metrics, which are 1-minute resolution
- * — a good signal, but ~1 min behind. This pairs a **step-scaling policy** with a
- * **high-resolution CloudWatch alarm** on a worker-saturation metric the container
- * emits itself: each web task reports how full its request pool is — in-flight
- * requests over the Octane worker pool, or busy threads over the classic thread
- * ceiling (an *earlier* signal than the ALB — requests queue before latency even
- * climbs) — as a high-res metric, only while it's hot. The alarm evaluates the
- * most-saturated task every 10s and steps the desired count out. Detection drops from
- * ~60s to ~10–15s.
+ * {@see WorkerSaturationReporter} publishes synchronously via PutMetricData from an
+ * after-response hook, only while hot (grant in {@see EcsTaskPolicy}). Not EMF via
+ * logs: the awslogs driver's flush cadence isn't tunable and extraction is async, so an
+ * EMF datapoint would surface on a cadence we don't control. FrankenPHP's metrics
+ * endpoint is enabled by a YOLO-generated Caddyfile — Octane overwrites
+ * `CADDY_GLOBAL_OPTIONS`, so a task env var can't switch it on.
  *
- * The metric is published in real time via PutMetricData — the runtime worker-
- * saturation reporter ({@see WorkerSaturationReporter}),
- * driven from an after-response hook so it rides a request that already holds a CPU
- * slice, reads FrankenPHP's worker gauges and puts a high-res datapoint, but only
- * while it's at or above the emit floor and only as often as a scale can act (it holds
- * the window at the cooldown after a tripping datapoint — one breach already steps the
- * count out). So CloudWatch is touched only during a spike: near-zero cost, and the
- * datapoint lands synchronously — no riding the logs pipeline, whose flush cadence the
- * ECS awslogs driver won't let you tune (AWS recommends ≤5s for high-res EMF alarms)
- * and whose extraction is async, so an EMF datapoint surfaces on a cadence you don't
- * control. The task role carries a single namespace-scoped `cloudwatch:PutMetricData`
- * grant ({@see EcsTaskPolicy}). FrankenPHP's metrics
- * endpoint is enabled by a Caddyfile YOLO generates with the top-level `metrics`
- * global option — the app's Octane stub run via `octane:start --caddyfile` (Octane
- * overwrites `CADDY_GLOBAL_OPTIONS`, so a task env var can't switch it on), or the
- * classic-mode Caddyfile YOLO already writes for the thread bounds. Built only for an
- * autoscaling web tier.
- *
- * Scale-*in* is left entirely to the target-tracking policies (slow, safe) — this
- * is scale-out only, so it can only ever add capacity faster, never fight them.
- * Like {@see QueueScaleToZeroBootstrap} both the policy and its alarm are pure
- * upserts, so this is a reconciler, not a Resource. The alarm can be put before the
- * metric has ever been emitted — it simply sits in INSUFFICIENT_DATA (treated as
- * not-breaching) until the first hot datapoint, so there's no first-sync ordering
- * trap.
- *
- * Note: burst complements, never replaces, warm capacity. Even instant detection
- * still waits ~55s for the new task to boot and pass ALB health, so sub-1-min
- * scale-out needs `min ≥ N`; this just makes the spike that exceeds the warm
- * headroom land faster. And the in-request publish is best-effort: when a scrape of
- * the metrics endpoint fails under load, the reporter corroborates with a cheap local
- * cgroup CPU read and breaches on a high reading — but a single hard-pinned task where
- * no request completes can still go dark, so the target-tracking policies and
- * `min ≥ 2` / more task CPU are the guarantees; burst only sharpens the light-pin /
- * multi-task case.
+ * Burst complements warm capacity, never replaces it: a new task still needs ~55s to
+ * boot and pass ALB health. The in-request publish is best-effort — a hard-pinned task
+ * where no request completes goes dark — so target tracking and `min ≥ 2` remain the
+ * guarantees.
  */
 class WebBurstPolicy
 {
-    /** Namespace + metric the runtime reporter publishes and this alarm reads — the contract between them. */
+    /** The contract between the runtime reporter and this alarm. */
     public const string METRIC_NAMESPACE = 'YOLO/Autoscaling';
 
     public const string METRIC_NAME = 'WorkerSaturation';
@@ -80,41 +48,30 @@ class WebBurstPolicy
     public const string METRIC_DIMENSION = 'ServiceName';
 
     /**
-     * Worker-saturation % at which the alarm trips and the burst steps out. Set so a
-     * small worker pool can actually reach it: saturation quantises to busy/total, so a
-     * 4-worker task only ever reads 0/25/50/75/100 % — a threshold of 80 (the old value)
-     * needed a sustained 4/4 = 100 %, which a real pool rarely holds, so burst never
-     * tripped. With the strict `>` comparator, 70 trips at 3/4 = 75 % yet stays under a
-     * larger pool's higher steps. yolo doesn't know the app's real FrankenPHP worker
-     * count (it's auto-detected at runtime, not a manifest value), so this is a fixed
-     * default that holds across the realistic 4–16 worker range rather than a derived one.
+     * Saturation quantises to busy/total, so a 4-worker task only reads 0/25/50/75/100 %;
+     * with the strict `>` comparator, 70 trips at 3/4 yet stays under a larger pool's
+     * higher steps. The worker count is auto-detected at runtime, not a manifest value,
+     * so this is fixed across the realistic 4–16 range rather than derived.
      */
     public const int ALARM_THRESHOLD = 70;
 
     /**
-     * The reporter only publishes at or above this saturation %, so the metric (and its
-     * cost) is near-zero when the service isn't hot. Below the alarm threshold so the
-     * alarm is fed a not-breaching datapoint on the step just under the trip — for a
-     * 4-worker pool that's the 50 % (2/4) reading, so the floor sits at 50.
+     * The reporter publishes only at/above this, so the metric costs nothing when cold.
+     * One quantised step (2/4 = 50 %) under the trip, so the alarm sees a not-breaching
+     * datapoint first.
      */
     public const int EMIT_FLOOR = 50;
 
-    /** High-resolution alarm: a 10s period is the fast end of CloudWatch's range. */
+    /** 10s is the fast end of CloudWatch's high-resolution range. */
     private const int PERIOD = 10;
 
     /**
-     * Step-scaling cooldown — also the reporter's window hold after a tripping
-     * datapoint: one breach already steps the desired count out, so it pauses for that
-     * scale to land rather than putting more datapoints the cooldown would ignore anyway.
+     * Also the reporter's window hold after a tripping datapoint: one breach already
+     * steps the count out, so further datapoints would be ignored by the cooldown anyway.
      */
     public const int COOLDOWN = 60;
 
-    /**
-     * The reporter's debounce window — at most one scrape + put per this many seconds
-     * across the web tier's workers within a task, no matter the request rate. A cheap
-     * localhost read; the only AWS call is the put, and only when saturation is at/over
-     * the floor.
-     */
+    /** Reporter debounce: at most one scrape + put per this many seconds per task. */
     public const int POLL_INTERVAL = 5;
 
     public function policyName(): string
@@ -127,7 +84,6 @@ class WebBurstPolicy
         return Helpers::keyedResourceName('web-worker-saturation');
     }
 
-    /** The web service name the metric is dimensioned by — passed to the reporter too. */
     public static function serviceName(): string
     {
         return (new EcsService(ServerGroup::WEB))->name();
@@ -139,15 +95,11 @@ class WebBurstPolicy
     }
 
     /**
-     * Provision the step policy + its high-res alarm, and reconcile their config when
-     * either drifts. Drift is "a piece is missing" OR "an existing piece's owned
-     * config differs from the desired" — the latter matters because the alarm
-     * threshold and the policy's step config are code constants that change between
-     * yolo versions, and an existing alarm is never recreated. Without a config diff a
-     * lowered threshold (e.g. 80 → 70) would never reach a provisioned environment:
-     * the alarm exists, so the old existence-only check reported no drift and the put
-     * never ran. Every drift is reported as a Change (built regardless of $apply, so
-     * the plan and apply passes agree) and the matching put fires only on apply.
+     * Drift is "missing" OR "owned config differs": the threshold and step config are
+     * code constants that change between yolo versions and an existing alarm is never
+     * recreated, so an existence-only check would never push a new value to a
+     * provisioned environment. Changes are built regardless of $apply so the plan and
+     * apply passes agree.
      *
      * @return array<int, Change>
      */
@@ -170,9 +122,7 @@ class WebBurstPolicy
             return $changes;
         }
 
-        // The alarm's action is the policy ARN, which is stable per policy name — so
-        // when only the alarm drifted we reuse the existing policy's ARN rather than
-        // re-putting an unchanged policy.
+        // The policy ARN is stable per name, so an alarm-only drift needn't re-put the policy.
         $policyArn = $policyChanges === []
             ? $livePolicy['PolicyARN']
             : Aws::applicationAutoScaling()->putScalingPolicy($this->policyDefinition())['PolicyARN'];
@@ -180,9 +130,7 @@ class WebBurstPolicy
         if ($alarmChanges !== []) {
             Aws::cloudWatch()->putMetricAlarm($this->alarmDefinition($policyArn));
 
-            // PutMetricAlarm ignores Tags when updating an existing alarm, so reconcile
-            // the ownership markers explicitly (TagResource works on an existing alarm) —
-            // so the alarm reads as `ok` in yolo audit rather than rogue.
+            // PutMetricAlarm ignores Tags on an existing alarm; without this audit reads it as rogue.
             Aws::synchroniseCloudWatchTags(
                 CloudWatch::alarm($this->alarmName())['AlarmArn'],
                 $this->tags(),
@@ -194,10 +142,8 @@ class WebBurstPolicy
     }
 
     /**
-     * Owned-config drift on an existing alarm — the scalar fields that decide *when*
-     * it fires, each reported as its own Change so the plan shows "threshold: 80 → 70"
-     * rather than an opaque blob. CloudWatch echoes numeric fields back as floats
-     * (Threshold 70 → 70.0), so numerics are compared by value and strings exactly.
+     * Per-field Changes so the plan reads "Threshold: 80 → 70". CloudWatch echoes
+     * numerics back as floats, so those compare by value.
      *
      * @param  array<string, mixed>  $live
      * @return array<int, Change>
@@ -222,10 +168,8 @@ class WebBurstPolicy
     }
 
     /**
-     * Owned-config drift on an existing step policy. The whole scaling behaviour is
-     * compared as one normalised unit (AWS returns step bounds as floats and omits an
-     * absent upper bound) and reported as a single Change — it's internal plumbing
-     * that rarely moves, unlike the operator-facing alarm threshold.
+     * Compared as one normalised unit: AWS returns step bounds as floats and omits an
+     * absent upper bound.
      *
      * @param  array<string, mixed>  $live
      * @return array<int, Change>
@@ -243,9 +187,7 @@ class WebBurstPolicy
     }
 
     /**
-     * The alarm's firing behaviour — the subset of the put payload that defines the
-     * trip condition, shared by {@see alarmDefinition()} and {@see alarmDrift()} so
-     * there is one source of truth for both writing and drift detection.
+     * Shared by {@see alarmDefinition()} and {@see alarmDrift()} so write and drift agree.
      *
      * @return array<string, int|string>
      */
@@ -261,10 +203,6 @@ class WebBurstPolicy
     }
 
     /**
-     * Reduce a StepScalingPolicyConfiguration to a comparable shape — coercing AWS's
-     * float bounds and normalising the absent final upper bound to null — so an equal
-     * config never reads as drift.
-     *
      * @param  array<string, mixed>  $config
      * @return array<string, mixed>
      */
@@ -283,9 +221,8 @@ class WebBurstPolicy
     }
 
     /**
-     * Desired step-scaling policy. Bounds are relative to the alarm threshold (70):
-     * ≥70 → +1, ≥80 → +2. Saturation can't meaningfully clip (it's a %), so the deeper
-     * overshoot gets the bigger step — a 4-worker task reads 75 → +1, a pinned 100 → +2.
+     * Step bounds are relative to the alarm threshold: ≥70 → +1, ≥80 → +2, so a pinned
+     * task (100 %) gets the bigger step.
      *
      * @return array<string, mixed>
      */
@@ -310,10 +247,6 @@ class WebBurstPolicy
     }
 
     /**
-     * Desired high-resolution alarm: the saturation metric, this app's web service
-     * dimension, the {@see alarmBehaviour()} trip condition, and the step policy as
-     * its action.
-     *
      * @return array<string, mixed>
      */
     private function alarmDefinition(string $policyArn): array
@@ -333,11 +266,8 @@ class WebBurstPolicy
     }
 
     /**
-     * Tear the burst policy + alarm down — used when burst is switched off (or
-     * autoscaling removed entirely). Deregistering the scalable target cascades the
-     * step policy, but the self-authored alarm is standalone and must be deleted
-     * explicitly, so this removes both and is safe to call when either is already
-     * gone.
+     * Deregistering the scalable target cascades the policy, but the alarm is standalone
+     * and must be deleted explicitly.
      *
      * @return array<int, Change>
      */
@@ -375,8 +305,7 @@ class WebBurstPolicy
     }
 
     /**
-     * The live step policy, or null when it doesn't exist yet — never throws, so it's
-     * safe on a first sync where nothing has been created (the two-pass plan contract).
+     * Never throws — the plan pass runs before anything exists.
      *
      * @return array<string, mixed>|null
      */
@@ -390,9 +319,6 @@ class WebBurstPolicy
     }
 
     /**
-     * The live alarm, or null when it doesn't exist yet — never throws, so it's safe
-     * on a first sync where nothing has been created (the two-pass plan contract).
-     *
      * @return array<string, mixed>|null
      */
     private function liveAlarm(): ?array
@@ -405,8 +331,7 @@ class WebBurstPolicy
     }
 
     /**
-     * App-scoped ownership tags, matching what a Resource's ResolvesTags would
-     * stamp. The yolo:environment baseline is added at write time by Aws::tags().
+     * Mirrors ResolvesTags; yolo:environment is added at write time by Aws::tags().
      *
      * @return array<string, string>
      */

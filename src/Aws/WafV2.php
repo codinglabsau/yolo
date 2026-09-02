@@ -7,30 +7,17 @@ use Aws\Exception\AwsException;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Thin wrapper over the WAFv2 control plane. Every YOLO WAF resource is
- * `REGIONAL` (the scope that protects an Application Load Balancer — `CLOUDFRONT`
- * scope lives only in us-east-1 and isn't used here), so the scope is baked in
- * rather than threaded through every call.
- *
- * WAFv2 has no get-by-name: you list the summaries (which already carry the Id,
- * ARN and LockToken needed for reads, updates and tagging) and match on Name.
- * Both lookups page through NextMarker and throw when the name is absent, so
- * callers get the same exists()/arn() shape every other `src/Aws/*` wrapper has.
+ * Every YOLO WAF resource is `REGIONAL` (the ALB scope — `CLOUDFRONT` lives only
+ * in us-east-1), so the scope is baked in. WAFv2 has no get-by-name: list the
+ * summaries (which carry the Id, ARN and LockToken) and match on Name.
  */
 class WafV2
 {
     public const SCOPE = 'REGIONAL';
 
     /**
-     * Run a WAFv2 mutation that references another WAF entity (a web ACL that
-     * references freshly-created IP sets, an association onto a freshly-created
-     * web ACL), retrying on WAFUnavailableEntityException.
-     *
      * WAFv2 is eventually consistent: a just-created IP set or web ACL isn't
-     * immediately referenceable, so the first call can fail with "couldn't
-     * retrieve the resource" even though everything is correct. AWS's documented
-     * remedy is to retry; the entity becomes referenceable within a few seconds.
-     * Any other error (or exhausting the attempts) propagates unchanged.
+     * immediately referenceable. AWS's documented remedy is to retry.
      *
      * @template T
      *
@@ -43,12 +30,8 @@ class WafV2
     }
 
     /**
-     * Run a WAFv2 deletion that follows a disassociation, retrying on
-     * WAFAssociatedItemException. The destroy disassociates the web ACL from the
-     * ALB a few steps before deleting it, but WAFv2 association state is eventually
-     * consistent — a delete racing the propagation reports the ACL still associated.
-     * Retry until the disassociation lands. Any other error (or exhausting the
-     * attempts) propagates unchanged.
+     * Association state is eventually consistent — a delete racing the
+     * disassociation a few steps earlier reports the ACL still associated.
      *
      * @template T
      *
@@ -61,12 +44,9 @@ class WafV2
     }
 
     /**
-     * Run the logging-configuration put, retrying on WAFUnavailableEntityException
-     * (the web ACL not yet referenceable) and AccessDeniedException. Retrying a
-     * denial normally masks a real permission gap — the carve-out exists because
-     * sync grants its own logging permissions: the admin policy step widens the
-     * tier's document earlier in the same apply pass, and IAM propagation to
-     * WAF's authorisation layer can lag that write by seconds, so the very first
+     * Retrying AccessDenied normally masks a real permission gap — the carve-out
+     * exists because sync widens its own tier's policy earlier in the same apply
+     * pass, and IAM propagation to WAF can lag that write by seconds, so the first
      * sync to enable logging races its own grant. A real gap still fails, just
      * after the bounded window.
      *
@@ -81,10 +61,6 @@ class WafV2
     }
 
     /**
-     * The shared bounded-retry loop: run $operation, retrying only while it throws
-     * one of the given eventually-consistent WAFv2 error codes, then let anything
-     * else (or exhaustion) propagate.
-     *
      * @template T
      *
      * @param  callable(): T  $operation
@@ -111,8 +87,6 @@ class WafV2
     }
 
     /**
-     * The WebACL summary {Name, Id, ARN, LockToken} for the given name.
-     *
      * @return array<string, string>
      */
     public static function webAcl(string $name): array
@@ -122,9 +96,7 @@ class WafV2
     }
 
     /**
-     * The web ACL's logging configuration, or null when logging has never been
-     * enabled — WAFv2 models "no logging" as a nonexistent item, not an empty
-     * configuration.
+     * WAFv2 models "no logging" as a nonexistent item, not an empty configuration.
      *
      * @return array<string, mixed>|null
      */
@@ -144,8 +116,6 @@ class WafV2
     }
 
     /**
-     * The IPSet summary {Name, Id, ARN, LockToken} for the given name.
-     *
      * @return array<string, string>
      */
     public static function ipSet(string $name): array
@@ -155,10 +125,6 @@ class WafV2
     }
 
     /**
-     * Page through a WAFv2 list operation and return the first summary whose
-     * Name matches, or null. WAFv2 list pages are capped, so NextMarker is
-     * followed to completion.
-     *
      * @return array<string, string>|null
      */
     protected static function findByName(string $operation, string $key, string $name): ?array

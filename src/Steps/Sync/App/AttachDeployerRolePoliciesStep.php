@@ -21,19 +21,12 @@ class AttachDeployerRolePoliciesStep implements Step
             return StepResult::SKIPPED;
         }
 
-        // DeployerPolicy = the deploy-time write/read grants. AppObserverPolicy =
-        // the read surface the pre-deploy `sync --check` gate (EnsureInSyncStep)
-        // needs: the gate plans account → environment → THIS app, so it reads
-        // env-level resources + this app's, never a sibling app's. The per-app
-        // observer policy gives exactly that — the same unscopeable env-wide
-        // describes (AWS won't scope those) but with log *content* fenced to this
-        // app's group, so a deploy grant can't read another app's logs. The gate
-        // does read the task log group's TAGS to plan tag drift (granted on the
-        // bare log-group ARN, see AppObserverPolicy), but never its content.
-        //
-        // Reconciled, not additive: swapping off the old env-wide ObserverPolicy
-        // detaches it on the next sync, so an adopted deployer role converges to
-        // exactly these two — no orphaned broad-read grant left behind.
+        // The pre-deploy `sync --check` gate plans account → environment → THIS
+        // app, so the deployer gets the per-app observer policy: the same
+        // unscopeable env-wide describes but with log *content* fenced to this
+        // app's group, so a deploy grant can't read another app's logs (tags on
+        // the bare log-group ARN stay readable for drift). Reconciled, not
+        // additive, so an adopted role converges to exactly these two.
         return $this->reconcileRolePolicies(
             (new DeployerRole())->name(),
             [

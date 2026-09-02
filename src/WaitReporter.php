@@ -3,22 +3,11 @@
 namespace Codinglabs\Yolo;
 
 /**
- * Ambient channel the stepped-command runner uses to surface progress from
- * deep inside a blocking AWS waiter.
- *
- * Resources own their `waitUntil` call and stay UI-agnostic, and a waiter
- * blocks the main thread so the runner can't tick the progress bar on its own.
- * The waiter's before-attempt callback is the only code that runs during the
- * wait, so `Aws::waitFor()` pings `poll()` on each attempt and the runner
- * registers a reporter (`using()`) around a LongRunning step to turn those
- * pings into a redraw — then clears it afterwards. No reporter registered makes
- * `poll()` a no-op, so non-LongRunning waiters are unaffected.
- *
- * A shell-out step (docker build, npm/composer install) has no AWS waiter, so
- * `RunsProcess` drives the same channel from its read loop: it pumps `line()`
- * with the child's latest output and `poll()` to redraw. The runner's heartbeat
- * prefers the live line over the static patience message, so the bar shows what
- * the build is actually doing instead of freezing for ~2 minutes.
+ * Ambient channel for surfacing progress from inside a blocking AWS waiter or a shell-out
+ * step. Resources own their `waitUntil` and stay UI-agnostic, and the waiter's before-attempt
+ * callback is the only code that runs during the wait — so `Aws::waitFor()` pings `poll()`
+ * and the runner registers a reporter around a LongRunning step. `RunsProcess` pumps `line()`
+ * from its read loop so a docker/npm build shows its live output instead of freezing.
  */
 class WaitReporter
 {
@@ -39,11 +28,7 @@ class WaitReporter
         }
     }
 
-    /**
-     * The latest line of progress from inside the running step — a child
-     * process's stdout/stderr. Blank lines are ignored so the last meaningful
-     * line stays on screen through a quiet stretch.
-     */
+    /** Blank lines are ignored so the last meaningful line stays on screen through a quiet stretch. */
     public static function line(string $line): void
     {
         $line = trim($line);

@@ -20,22 +20,15 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\ScalableTarget;
 
 /**
- * Builds the live `yolo status` picture for each of an app's service groups and
- * renders it as display lines. Shared by StatusCommand (the one-shot snapshot),
- * the dashboard's Overview tab (the live, polling cockpit) and DeployCommand (the
- * end-of-deploy recap).
- *
- * Every external read is defensive — a missing service, scalable target or
- * metric yields a null/"—" cell rather than crashing the dashboard, so a
- * half-provisioned or cold app still renders.
+ * Every external read is defensive — a missing service, scalable target or metric
+ * yields a null/"—" cell rather than crashing, so a half-provisioned or cold app
+ * still renders.
  */
 trait RendersServiceStatus
 {
     /**
-     * Gather a status row for every group the app runs. Pure-ish: only live AWS
-     * reads (all wrapped), no output. `withLoad` is off for the end-of-deploy
-     * recap, which doesn't show load — so it skips the CloudWatch round-trips that
-     * would only add latency to every deploy for data it never renders.
+     * `withLoad` is off for the end-of-deploy recap, which never renders load — it
+     * skips CloudWatch round-trips that would only add latency to every deploy.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -86,8 +79,7 @@ trait RendersServiceStatus
         $row['cpuTarget'] = static::cpuTargetFrom($row['scaling']);
 
         if ($withLoad) {
-            // A 15-minute window (vs the live reading's last minute) gives the
-            // inline braille sparkline ~15 datapoints to draw a readable trend.
+            // 15-minute window so the inline sparkline has ~15 datapoints.
             $row['load'] = static::gatherLoad($group, $cluster, $serviceName, 900);
         }
 
@@ -95,11 +87,6 @@ trait RendersServiceStatus
     }
 
     /**
-     * Map a live ECS service to the status fields shared by the per-group status
-     * and the per-app env roll-up: task counts, launch type, the primary
-     * deployment + its rollout state/revision, and the spec/version read from the
-     * task definition (a missing task def leaves those null, never throws).
-     *
      * @param  array<string, mixed>  $service
      * @return array<string, mixed>
      */
@@ -138,19 +125,14 @@ trait RendersServiceStatus
             $core['memory'] = $taskDefinition['memory'] ?? null;
             $core['version'] = static::versionFromImage($taskDefinition['containerDefinitions'][0]['image'] ?? '');
         } catch (ResourceDoesNotExistException) {
-            // leave the task-def-derived fields null
         }
 
         return $core;
     }
 
     /**
-     * A compact health row per app in an environment — the env-tier roll-up
-     * behind `status:environment`. Each app's most request-facing service is the
-     * headline (task counts, rollout, version) — web when it exists, else the
-     * standalone queue, else the scheduler (a web-less worker app); apps are
-     * discovered from live ECS clusters, and cluster/service names follow the
-     * `yolo-{env}-{app}` convention so no per-app manifest is needed.
+     * Apps are discovered from live ECS clusters via the `yolo-{env}-{app}` naming
+     * convention, so no per-app manifest is needed.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -186,9 +168,8 @@ trait RendersServiceStatus
         ];
 
         try {
-            // Probe web → queue → scheduler in one describeServices call: the most
-            // request-facing service that exists is the headline, so a web-less
-            // worker app rolls up its queue/scheduler instead of "does not exist".
+            // The most request-facing service that exists is the headline, so a
+            // web-less worker app rolls up its queue/scheduler instead of "does not exist".
             $service = Ecs::firstService($cluster, array_map(
                 fn (ServerGroup $group): string => "{$cluster}-{$group->value}",
                 ServerGroup::cases(),
@@ -201,8 +182,7 @@ trait RendersServiceStatus
     }
 
     /**
-     * The live scalable target bounds + a compact view of each scaling policy, or
-     * null when the group has no scalable target (a fixed-count service).
+     * Null when the group has no scalable target (a fixed-count service).
      *
      * @return array{min: int, max: int, policies: array<int, array{metric: string, target: float}>}|null
      */
@@ -219,19 +199,14 @@ trait RendersServiceStatus
             ApplicationAutoScaling::scalingPolicies(ScalableTarget::resourceId($group)),
         )));
 
-        // DescribeScalingPolicies returns policies in no guaranteed order, so pin a
-        // canonical one — otherwise the overview reshuffles cpu/concurrency/burst
-        // between redraws.
+        // DescribeScalingPolicies returns no guaranteed order; without a canonical
+        // one the overview reshuffles cpu/concurrency/burst between redraws.
         usort($policies, static fn (array $a, array $b): int => static::policyRank($a['metric']) <=> static::policyRank($b['metric']));
 
         return [...$bounds, 'policies' => $policies];
     }
 
     /**
-     * Reduce a scaling policy to its metric + target value. Target-tracking
-     * policies carry a PredefinedMetricType; a step-scaling queue-backlog policy
-     * has no target value, so it's surfaced as a metric-only entry.
-     *
      * @param  array<string, mixed>  $policy
      * @return array{metric: string, target: float}|null
      */
@@ -240,26 +215,20 @@ trait RendersServiceStatus
         $config = $policy['TargetTrackingScalingPolicyConfiguration'] ?? null;
 
         if ($config === null) {
-            // Step scaling has no single target value — name it by the policy YOLO
-            // runs: the web burst policy, else the queue scale-to-zero bootstrap.
+            // Step scaling has no single target value — name it by the policy YOLO runs.
             $metric = str_contains($policy['PolicyName'] ?? '', 'burst') ? 'burst' : 'backlog';
 
             return ['metric' => $metric, 'target' => 0.0];
         }
 
         // A customized-metric target-tracking policy carries no PredefinedMetricType;
-        // the web concurrency policy is the one YOLO runs, recognised by its name
-        // (SyncScalingPoliciesStep::CONCURRENCY_POLICY → '…-concurrency-scaling-policy').
+        // the web concurrency policy is recognised by its name instead.
         $metric = $config['PredefinedMetricSpecification']['PredefinedMetricType']
             ?? (str_contains($policy['PolicyName'] ?? '', 'concurrency') ? 'concurrency' : 'custom');
 
         return ['metric' => $metric, 'target' => (float) ($config['TargetValue'] ?? 0)];
     }
 
-    /**
-     * The display position of a scaling policy in the overview: cpu, then
-     * concurrency, then burst/backlog, then anything unrecognised.
-     */
     protected static function policyRank(string $metric): int
     {
         return match ($metric) {
@@ -283,12 +252,9 @@ trait RendersServiceStatus
     }
 
     /**
-     * Current load for a service: ECS CPU/memory utilisation and — for the web
-     * service only — ALB request rate and response time. Each metric is read as a
-     * 1-minute series over the last $lookback seconds (5 min by default; the
-     * Metrics dashboard tab passes a longer window): the last point is the live
-     * reading, the series feeds the sparkline / braille charts and the `/yolo`
-     * skill's trend view (so it's one CloudWatch round-trip per metric, not two).
+     * Each metric is read once as a 1-minute series: the last point is the live
+     * reading and the series feeds the sparklines — one CloudWatch round-trip per
+     * metric, not two.
      *
      * @return array{cpu: ?float, memory: ?float, requests: ?float, response: ?float, series: array{cpu: array<int, float>, memory: array<int, float>, requests: array<int, float>, response: array<int, float>}}
      */
@@ -316,7 +282,6 @@ trait RendersServiceStatus
 
         if ($targetGroup !== null) {
             $albDimensions = [['Name' => 'TargetGroup', 'Value' => $targetGroup]];
-            // RequestCountPerTarget summed per minute → a per-minute request rate.
             $requests = CloudWatch::metricSeries('AWS/ApplicationELB', 'RequestCountPerTarget', $albDimensions, 'Sum', 60, $lookback);
             $response = CloudWatch::metricSeries('AWS/ApplicationELB', 'TargetResponseTime', $albDimensions, 'Average', 60, $lookback);
 
@@ -330,12 +295,8 @@ trait RendersServiceStatus
     }
 
     /**
-     * Wide metric series for the Metrics dashboard tab — the same ECS CPU/Memory
-     * (and, for web, ALB request/response) reads as gatherLoad, but over a longer
-     * window so the braille charts have enough datapoints to show a trend: one
-     * 1-minute series per metric over the last $minutes, oldest→newest. A cold or
-     * missing service yields empty series (CloudWatch returns no datapoints), which
-     * the chart renders as a "no data" frame rather than crashing.
+     * A cold or missing service yields empty series (CloudWatch returns no
+     * datapoints), which the chart renders as a "no data" frame rather than crashing.
      *
      * @return array<int, array{group: ServerGroup, load: array{cpu: ?float, memory: ?float, requests: ?float, response: ?float, series: array{cpu: array<int, float>, memory: array<int, float>, requests: array<int, float>, response: array<int, float>}}}>
      */
@@ -350,8 +311,8 @@ trait RendersServiceStatus
     }
 
     /**
-     * The zero-value load shape, so every row (even a cold service) carries the
-     * same keys and the `--json` contract is stable.
+     * Every row (even a cold service) carries the same keys so the `--json`
+     * contract is stable.
      *
      * @return array{cpu: ?float, memory: ?float, requests: ?float, response: ?float, series: array{cpu: array<int, float>, memory: array<int, float>, requests: array<int, float>, response: array<int, float>}}
      */
@@ -367,9 +328,6 @@ trait RendersServiceStatus
     }
 
     /**
-     * The live reading from a metric series: its last (newest) point, or null when
-     * the series is empty.
-     *
      * @param  array<int, float>  $series
      */
     protected static function latestOf(array $series): ?float
@@ -378,11 +336,8 @@ trait RendersServiceStatus
     }
 
     /**
-     * Each of the app's SQS queues and its current backlog (visible messages). A
-     * solo app has one queue; a multi-tenant app has the landlord queue plus one
-     * per tenant. Surfaced app-level (not per ECS group) so the backlog shows even
-     * when the queue worker is bundled into the web container. A queue that isn't
-     * provisioned yet is skipped.
+     * Surfaced app-level (not per ECS group) so the backlog shows even when the
+     * queue worker is bundled into the web container.
      *
      * @return array<int, array{label: string, name: string, backlog: int}>
      */
@@ -402,11 +357,6 @@ trait RendersServiceStatus
     }
 
     /**
-     * The app's queue names, keyed by a short label: `queue` for a solo app, or
-     * `landlord` plus each tenant id for a multi-tenant one. When a `queues:` block
-     * declares priority tiers each scope's label carries the tier suffix
-     * (`landlord-high`, `landlord-default`, …) so the status table lists every queue.
-     *
      * @return array<string, string>
      */
     protected static function queueNames(): array
@@ -434,8 +384,7 @@ trait RendersServiceStatus
     }
 
     /**
-     * The `targetgroup/{name}/{id}` dimension value for the web target group, or
-     * null when the app has none (headless, or not yet synced).
+     * Null when the app has no web target group (headless, or not yet synced).
      */
     protected static function targetGroupDimension(): ?string
     {
@@ -450,14 +399,9 @@ trait RendersServiceStatus
         return $position === false ? null : substr($arn, $position + 1);
     }
 
-    // --- Pure formatters (unit-tested directly) -----------------------------
-
     /**
-     * The machine-readable form of the gathered status rows — a clean,
-     * JSON-serialisable shape for `--json` consumers (the `/yolo` skill and
-     * scripts). Pure: it flattens the gathered rows (a `ServerGroup` enum plus
-     * nested arrays) and drops the raw `primary` deployment blob, which carries
-     * DateTimeInterface timestamps that don't belong in the contract.
+     * Drops the raw `primary` deployment blob — its DateTimeInterface timestamps
+     * don't belong in the `--json` contract.
      *
      * @param  array<int, array<string, mixed>>  $statuses
      * @return array<int, array<string, mixed>>
@@ -499,10 +443,6 @@ trait RendersServiceStatus
     }
 
     /**
-     * The machine-readable env roll-up — one compact entry per app for
-     * `status:environment --json`. Pure: flattens the gathered app rows and drops
-     * the raw `primary` deployment blob (DateTimeInterface timestamps).
-     *
      * @param  array<int, array<string, mixed>>  $rows
      * @return array<int, array<string, mixed>>
      */
@@ -526,8 +466,6 @@ trait RendersServiceStatus
     }
 
     /**
-     * FARGATE / SPOT from a service's launch type or capacity-provider strategy.
-     *
      * @param  array<string, mixed>  $service
      */
     public static function launchType(array $service): string
@@ -546,8 +484,7 @@ trait RendersServiceStatus
     }
 
     /**
-     * `yolo-prod-app-web:42` → `web:42`. The task-definition ARN's resource part
-     * is `task-definition/{family}:{revision}`; we keep the group + revision.
+     * `yolo-prod-app-web:42` → `web:42`.
      */
     public static function revisionLabel(?string $taskDefinitionArn): ?string
     {
@@ -568,8 +505,7 @@ trait RendersServiceStatus
     }
 
     /**
-     * The deployed app version, parsed from the container image tag. A digest
-     * reference (`repo@sha256:…`) has no human version, so it returns null.
+     * A digest reference (`repo@sha256:…`) has no human version, so null.
      */
     public static function versionFromImage(string $image): ?string
     {
@@ -579,8 +515,7 @@ trait RendersServiceStatus
 
         $colon = strrpos($image, ':');
 
-        // No colon, or the only colon is a registry host:port (no '/' after it) →
-        // an untagged reference, so no version to show.
+        // The only colon may be a registry host:port — still an untagged reference.
         if ($colon === false || str_contains(substr($image, $colon), '/')) {
             return null;
         }
@@ -588,9 +523,6 @@ trait RendersServiceStatus
         return substr($image, $colon + 1);
     }
 
-    /**
-     * `512` CPU units / `1024` MiB → `0.5 vCPU · 1 GB`. Null spec → "—".
-     */
     public static function formatSpec(?string $cpu, ?string $memory, string $launch): string
     {
         if ($cpu === null || $memory === null) {
@@ -603,10 +535,6 @@ trait RendersServiceStatus
         return sprintf('%s vCPU · %s GB · %s', $vcpu, $gb, $launch);
     }
 
-    /**
-     * `2/2` running/desired, coloured: green when at/above desired, red when zero
-     * but wanted, yellow while converging, gray when deliberately at zero.
-     */
     public static function formatTasks(int $running, int $desired, int $pending): string
     {
         $label = sprintf('%d/%d', $running, $desired);
@@ -627,9 +555,6 @@ trait RendersServiceStatus
     }
 
     /**
-     * `1–4 auto (cpu 65%, req 1200)`, or `fixed` / `singleton` when there's no
-     * scalable target.
-     *
      * @param  array{min: int, max: int, policies: array<int, array{metric: string, target: float}>}|null  $scaling
      */
     public static function formatScaling(?array $scaling, ServerGroup $group): string
@@ -660,11 +585,6 @@ trait RendersServiceStatus
     }
 
     /**
-     * `cpu 43%/65% ⢀⡠⠔ · mem 38% ⠒⠒⠒ · 410 rpm ⡠⠔⠊ · 126 ms`. Missing metrics
-     * render "—"; request rate / response time only apply to the web service. Each
-     * metric trails a braille sparkline of its recent series when one is present (it
-     * isn't in the pure-formatter tests, which pass plain readings).
-     *
      * @param  array{cpu: ?float, memory: ?float, requests: ?float, response: ?float, series?: array<string, array<int, float>>}  $load
      */
     public static function formatLoad(array $load, ?float $cpuTarget, ServerGroup $group): string
@@ -697,9 +617,6 @@ trait RendersServiceStatus
     }
 
     /**
-     * A space-prefixed gray sparkline for trailing a load reading, or an empty
-     * string when there's no series — so a missing trend adds nothing.
-     *
      * @param  array<int, float>  $series
      */
     protected static function sparkSuffix(array $series): string
@@ -710,12 +627,8 @@ trait RendersServiceStatus
     }
 
     /**
-     * A compact single-row braille sparkline of a numeric series, scaled to its own
-     * min/max — two datapoints per character (four vertical levels), so a 15-point
-     * series reads in ~8 characters: denser than one block per point and narrow
-     * enough to sit inline beside the other load metrics. Empty series → empty
-     * string; a flat series draws a low baseline rather than going blank. Pure —
-     * unit-tested directly.
+     * Two datapoints per character, so a 15-point series fits in ~8 characters
+     * beside the other load metrics.
      *
      * @param  array<int, float>  $series
      */
@@ -728,14 +641,13 @@ trait RendersServiceStatus
         $min = min($series);
         $max = max($series);
 
-        // A flat series has no range; nudge the ceiling up so it renders along the
-        // bottom (Chart::plot blanks a zero-range series) rather than disappearing.
+        // Chart::plot blanks a zero-range series; nudge the ceiling so a flat series
+        // draws a baseline instead.
         return Chart::plot($series, (int) ceil(count($series) / 2), 1, $min, $max === $min ? $min + 1 : $max)[0];
     }
 
     /**
-     * `empty` (gray) for a drained queue, else `N pending`. Backlog alone can't
-     * say "healthy" without knowing throughput, so it's reported, not alarmed.
+     * Backlog alone can't say "healthy" without throughput, so it's reported, not alarmed.
      */
     public static function formatBacklog(int $backlog): string
     {
@@ -744,9 +656,6 @@ trait RendersServiceStatus
             : sprintf('%s pending', number_format($backlog));
     }
 
-    /**
-     * A `███████░░░░░` bar of the new revision's running/desired ratio.
-     */
     public static function progressBar(int $running, int $desired, int $width = 12): string
     {
         $ratio = $desired > 0 ? min(1.0, $running / $desired) : 1.0;
@@ -767,9 +676,6 @@ trait RendersServiceStatus
     }
 
     /**
-     * Seconds a deployment has been running: now − created while in progress, or
-     * its completed span (updated − created) once settled.
-     *
      * @param  array<string, mixed>  $deployment
      */
     public static function runningTime(array $deployment, int $now): int
@@ -790,8 +696,6 @@ trait RendersServiceStatus
     }
 
     /**
-     * The status rows whose primary deployment is mid-rollout.
-     *
      * @param  array<int, array<string, mixed>>  $statuses
      * @return array<int, array<string, mixed>>
      */
@@ -804,8 +708,6 @@ trait RendersServiceStatus
     }
 
     /**
-     * Any deployment failed — used for the one-shot status exit code.
-     *
      * @param  array<int, array<string, mixed>>  $statuses
      */
     public static function anyDeploymentFailed(array $statuses): bool
@@ -825,8 +727,7 @@ trait RendersServiceStatus
     }
 
     /**
-     * AWS timestamps come back as DateTimeInterface (the SDK's DateTimeResult);
-     * normalise to a unix int, tolerating an int/string too.
+     * AWS timestamps arrive as the SDK's DateTimeResult, not scalars.
      */
     protected static function timestamp(mixed $value): ?int
     {
@@ -845,14 +746,7 @@ trait RendersServiceStatus
         return null;
     }
 
-    // --- Rendering (instance — uses $this->output) --------------------------
-
     /**
-     * The full set of display lines for a status frame. `deployments` puts the
-     * in-progress rollout bars on top; `load` adds the per-group load panel;
-     * `$queues` (when passed) adds the queue-backlog panel. The end-of-deploy
-     * recap turns deployments/load off and shows just the summary + link.
-     *
      * @param  array<int, array<string, mixed>>  $statuses
      * @param  array<int, array{label: string, name: string, backlog: int}>  $queues
      * @return array<int, string>
@@ -958,9 +852,6 @@ trait RendersServiceStatus
     }
 
     /**
-     * The env roll-up table — one row per app (its web service's task health,
-     * rollout state and version), for `status:environment`.
-     *
      * @param  array<int, array<string, mixed>>  $rows
      * @return array<int, string>
      */
@@ -1028,10 +919,6 @@ trait RendersServiceStatus
     }
 
     /**
-     * The queue-backlog panel — one row per SQS queue (solo: one; multi-tenant:
-     * landlord + per tenant), shown regardless of whether the worker is its own
-     * service or bundled into web. Empty when the app has no readable queue.
-     *
      * @param  array<int, array{label: string, name: string, backlog: int}>  $queues
      * @return array<int, string>
      */

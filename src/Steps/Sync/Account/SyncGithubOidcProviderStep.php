@@ -12,15 +12,13 @@ class SyncGithubOidcProviderStep implements Step
 {
     public function __invoke(array $options): StepResult
     {
-        // Only provision GitHub OIDC infra when this app is actually on GitHub.
         if (Helpers::githubRepository() === null) {
             return StepResult::SKIPPED;
         }
 
         $provider = new GithubOidcProvider();
 
-        // Account-level singleton: shared across every environment and app, so it
-        // is never re-tagged or reconciled — if it already exists it is done.
+        // Account-level singleton shared across every environment and app, so never re-tagged or reconciled.
         if ($provider->exists()) {
             return StepResult::SYNCED;
         }

@@ -16,10 +16,9 @@ use Codinglabs\Yolo\Resources\ApplicationAutoScaling\ScalableTarget;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\QueueScaleToZeroBootstrap;
 
 /**
- * Deregisters the standalone queue's scalable target — cascading its backlog
- * target-tracking policy and the scale-to-zero bootstrap step policy — and then
- * deletes the scale-to-zero bootstrap's standalone "queue has messages" alarm,
- * which Application Auto Scaling does not own and so won't cascade.
+ * Deregistering the scalable target cascades its policies, but the scale-to-zero
+ * bootstrap's "queue has messages" alarm isn't owned by Application Auto Scaling
+ * and must be deleted separately.
  */
 class DeregisterQueueAutoscalingStep implements Step
 {

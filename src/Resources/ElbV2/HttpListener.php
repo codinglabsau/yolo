@@ -69,12 +69,6 @@ class HttpListener implements Deletable, Resource
         return Aws::synchroniseElbV2Tags($this->arn(), $this->tags(), $apply);
     }
 
-    /**
-     * Teardown when the environment is torn down: delete the listener. YOLO's
-     * teardown order deletes the load balancer's listener rules first, so by the
-     * time we get here the listener is unreferenced and a plain deleteListener is
-     * correct. A concurrent not-found is tolerated.
-     */
     public function delete(): void
     {
         try {

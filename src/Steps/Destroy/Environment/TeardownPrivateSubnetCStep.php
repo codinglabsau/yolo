@@ -7,10 +7,6 @@ namespace Codinglabs\Yolo\Steps\Destroy\Environment;
 use Codinglabs\Yolo\Steps\Destroy\TeardownStep;
 use Codinglabs\Yolo\Resources\Ec2\PrivateSubnet;
 
-/**
- * Tears down the third private subnet (AZ index 2), only ever reached once no
- * database remains in the VPC (the network reclaim gate).
- */
 class TeardownPrivateSubnetCStep extends TeardownStep
 {
     protected function resource(): PrivateSubnet

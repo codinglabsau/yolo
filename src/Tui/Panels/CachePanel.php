@@ -16,12 +16,7 @@ use Codinglabs\Yolo\Aws\ElastiCache;
 use Codinglabs\Yolo\Resources\ElastiCache\CacheCluster;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-/**
- * The environment's shared Valkey cache — engine CPU, memory usage, connections
- * and evictions over the last hour, plus its live status and endpoint. The cache
- * is env-shared and optional (apps with tasks default to it), so the tab shows an empty
- * state when the environment has none. Read-only.
- */
+/** The cache is env-shared and optional, so the tab shows an empty state when the environment has none. */
 class CachePanel implements Panel
 {
     public const WINDOW_MINUTES = 60;
@@ -64,9 +59,7 @@ class CachePanel implements Panel
         try {
             $group = ElastiCache::replicationGroup((new CacheCluster())->name());
         } catch (ResourceDoesNotExistException|AwsException) {
-            // Not provisioned, or a transient AWS error — show the empty state
-            // rather than crashing the live poll loop. The metric reads below
-            // already swallow AwsException; this keeps the describe call in step.
+            // Not provisioned, or a transient AWS error — show the empty state rather than crash the poll loop.
             return;
         }
 
@@ -104,8 +97,6 @@ class CachePanel implements Panel
     }
 
     /**
-     * The status / endpoint / engine / node-type summary. Pure.
-     *
      * @return array<int, string>
      */
     public static function details(string $status, string $endpoint): array
@@ -120,9 +111,6 @@ class CachePanel implements Panel
     }
 
     /**
-     * The four cache charts (engine CPU, memory usage, connections, evictions).
-     * Pure — pinned in a test with hand-built series, no AWS.
-     *
      * @param  array{cpu: array<int, float>, memory: array<int, float>, connections: array<int, float>, evictions: array<int, float>}  $series
      * @return array<int, string>
      */

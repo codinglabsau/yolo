@@ -22,15 +22,9 @@ use function Laravel\Prompts\table;
 use function Laravel\Prompts\confirm;
 
 /**
- * Adjust a service's capacity out of band — no build, no task-definition
- * revision. Mirrors env:push's compare-then-confirm UX: read live state, show a
- * current → new table, gate on a confirm, bail with the chick.
- *
- * The manifest is the source of truth, so the autoscaled path writes the new
- * bounds back to yolo.yml (surgically, preserving formatting) and registers them
- * — sync then reconciles to the same values rather than clobbering them. The
- * fixed path (a web service with no scalable target) sets the ECS desired count
- * directly, since there are no bounds to manage.
+ * The manifest is the source of truth, so the autoscaled path writes the new bounds
+ * back to yolo.yml — sync then reconciles to the same values rather than clobbering
+ * them. The fixed path sets the ECS desired count directly.
  *
  *   yolo scale production --web --min=3 --max=10     # web autoscaling bounds
  *   yolo scale production --web 3                     # fixed web desired count
@@ -79,11 +73,8 @@ class ScaleCommand extends Command implements AdminCommand
             return;
         }
 
-        // A service the manifest autoscales — or one with a registered target — is
-        // autoscaling-managed: a fixed desired count there is futile (the policies
-        // override it), so redirect to the bounds form rather than quietly no-op.
-        // Only a truly fixed service (autoscaling: false, no live target — web or
-        // queue) falls through to desired count.
+        // A fixed desired count on an autoscaling-managed service is futile — the
+        // policies override it.
         if (Manifest::autoscales($group) || $live !== null) {
             error('This service is autoscaling-managed — use --min/--max to change its bounds, not a desired count.');
 
@@ -93,11 +84,6 @@ class ScaleCommand extends Command implements AdminCommand
         $this->scaleDesiredCount($cluster, $serviceName, (int) $service['desiredCount'], (int) $service['runningCount']);
     }
 
-    /**
-     * Resolve the target group from the flags. The scheduler is a singleton and
-     * can never be scaled; web is the default. Returns null when the command
-     * should stop (error already surfaced).
-     */
     protected function resolveGroup(): ?ServerGroup
     {
         if ($this->option('scheduler')) {
@@ -114,8 +100,7 @@ class ScaleCommand extends Command implements AdminCommand
         $newMin = $this->option('min') !== null ? (int) $this->option('min') : ($live['min'] ?? $target->min());
         $newMax = $this->option('max') !== null ? (int) $this->option('max') : ($live['max'] ?? $target->max());
 
-        // The queue may floor at zero (scale to zero); the web tier must keep at
-        // least one task serving.
+        // The queue may scale to zero; the web tier must keep one task serving.
         $floor = $group === ServerGroup::QUEUE ? 0 : 1;
 
         if ($newMin < $floor) {
@@ -146,9 +131,6 @@ class ScaleCommand extends Command implements AdminCommand
             return;
         }
 
-        // Manifest is the source of truth — write the bounds back (surgically, so
-        // comments/formatting survive) so the next sync reconciles to these values
-        // rather than clobbering them.
         [$minKey, $maxKey] = static::boundsKeys($group);
 
         Manifest::put($minKey, $newMin);
@@ -189,9 +171,6 @@ class ScaleCommand extends Command implements AdminCommand
     }
 
     /**
-     * The manifest min/max key paths for a group — both groups' autoscaling bounds
-     * live under `tasks.{group}.autoscaling.{min,max}`.
-     *
      * @return array{0: string, 1: string}
      */
     public static function boundsKeys(ServerGroup $group): array
@@ -202,8 +181,6 @@ class ScaleCommand extends Command implements AdminCommand
     }
 
     /**
-     * Bounds comparison rows for the autoscaled path (current → new min/max).
-     *
      * @param  array{min: int, max: int}|null  $live
      * @return array<int, array<int, string>>
      */
@@ -217,8 +194,6 @@ class ScaleCommand extends Command implements AdminCommand
     }
 
     /**
-     * Desired-count comparison rows for the fixed (non-autoscaled) path.
-     *
      * @return array<int, array<int, string>>
      */
     public static function desiredCountRows(int $currentDesired, int $running, int $new): array

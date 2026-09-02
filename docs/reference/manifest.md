@@ -32,6 +32,8 @@ environments:
 
 Every key YOLO understands, each value showing its default where one exists. This is a reference skeleton, not a valid manifest — some keys are mutually exclusive (a root `domain` is refused alongside `multitenancy`; `branch` and `tag` are alternatives) — so jump to a key's section below for its semantics before copying it.
 
+The manifest is validated against this exact shape: every key, at exactly this nesting, and nothing else. A misspelt or misplaced key — `autoscaling.mim`, a `health-check` threshold with the wrong name, a tenant `apex` — fails every command up front rather than being silently ignored while the default stays in force.
+
 ```yaml
 name: my-app
 timezone: UTC
@@ -92,10 +94,8 @@ environments:
         octane: true
         cpu: '512'
         memory: '1024'
-        platform: linux/amd64
         shutdown-grace-period: 15
         enable-execute-command: true
-        log-retention: 30
         ssr: false
         health-check:
           path: /up
@@ -135,7 +135,8 @@ environments:
 | Area | Keys |
 |---|---|
 | App | [`name`](#name), [`timezone`](#timezone), [`environments`](#environments) |
-| Routing | [`domain`](#domain), [`wildcard-subdomains`](#wildcard-subdomains), [`multitenancy`](#multitenancy), [`branch` / `tag` / `repository`](#branch-tag-repository) |
+| Routing | [`domain`](#domain), [`wildcard-subdomains`](#wildcard-subdomains), [`multitenancy`](#multitenancy) |
+| CI trust | [`branch` / `tag` / `repository`](#branch-tag-repository) |
 | Infrastructure | [`account-id`](#account-id), [`region`](#region), [`bucket`](#bucket), [`services`](#services), [`task-role-policies`](#task-role-policies), [`queues`](#queues), [`queue-visibility-timeout`](#queue-visibility-timeout), [`database`](#database), [`backups`](#backups), [`cache.store`](#cache), [`session.driver`](#session), [`budget`](#budget) |
 | Tasks | [`tasks.web`](#tasks-web), [`tasks.web.autoscaling`](#tasks-web-autoscaling), [`tasks.web.health-check`](#tasks-web-health-check), [`tasks.queue`](#tasks-queue), [`tasks.scheduler`](#tasks-scheduler) |
 | Hooks | [`build`](#build), [`deploy`](#deploy), [`deploy-all`](#deploy-all) |
@@ -156,7 +157,7 @@ Every command except `init` fails fast unless these three are present:
 
 ### `timezone`
 
-The timezone used to compute the `year.week` prefix for build versions. Defaults to `UTC`. Set it to your team's timezone so a release cut near a week boundary doesn't trip [app-version validation](/guide/building-and-deploying#app-version).
+The app's timezone. Defaults to `UTC`. It computes the `year.week` prefix for build versions — set it to your team's timezone so a release cut near a week boundary doesn't trip [app-version validation](/guide/building-and-deploying#app-version) — and pins the generated crontab's `CRON_TZ`, so a [`backups.schedule`](#backups) fires at the declared local hour.
 
 ### `environments`
 
@@ -208,16 +209,7 @@ multitenancy:
       wildcard-subdomains: true
 ```
 
-Every key is validated explicitly — there is no free-form subtree, so a misremembered or hand-written key (`apex`, say, which is always derived) fails the manifest check rather than being silently accepted and ignored.
-
-Four keys moved here and are refused where they used to sit, each naming its new path:
-
-| Was | Now |
-| --- | --- |
-| `domain` | `multitenancy.landlord.domain` |
-| `wildcard-subdomains` | `multitenancy.landlord.wildcard-subdomains`, or per tenant |
-| `tenants` | `multitenancy.tenants` |
-| `queue-isolation` | `multitenancy.queue-isolation` |
+Every key is validated explicitly — there is no free-form subtree, so a misremembered or hand-written key (`apex`, say, which is always derived) fails the manifest check rather than being silently accepted and ignored. A root [`domain`](#domain) or [`wildcard-subdomains`](#wildcard-subdomains) alongside the block is refused with a message naming where it belongs (`multitenancy.landlord.domain`; the flag onto the landlord or the tenant whose domain it wildcards).
 
 #### `multitenancy.landlord`
 
@@ -488,10 +480,8 @@ The last three rows are **web-less worker apps**: a pure queue consumer, a sched
 | `tasks.web.octane` | `true` | Run the web tier on Octane (FrankenPHP **worker mode**) via `octane:start`. Set `false` to run FrankenPHP in **classic mode** — per-request boot, no resident app — for an app that isn't Octane-safe yet. Same image and port either way; only the launch command differs, and the build's [Octane preflight](/guide/building-and-deploying) is skipped (classic mode needs no `laravel/octane`). YOLO sizes the classic thread pool from this task's `cpu`/`memory` — see [what the ceiling is](/guide/scaling#what-the-ceiling-is-and-why-yolo-pins-it). |
 | `tasks.web.cpu` | `'512'` | Fargate CPU units. |
 | `tasks.web.memory` | `'1024'` | Fargate memory (MB). |
-| `tasks.web.platform` | `linux/amd64` | Docker build platform. |
 | `tasks.web.shutdown-grace-period` | `15` | Seconds the web process gets on `SIGTERM` before `SIGKILL`. It's also the ALB drain window and the container `stopTimeout`. See [graceful shutdown](/guide/images#graceful-shutdown). |
 | `tasks.web.enable-execute-command` | `true` | Enable ECS Exec so [`yolo run`](/reference/commands#yolo-run) can attach. Access is gated by MFA on the admin IAM tier; set `false` to disable it for this group. |
-| `tasks.web.log-retention` | `30` | CloudWatch Logs retention (days). Must be a valid CloudWatch retention value. |
 | `tasks.web.ssr` | `false` | Run Inertia's SSR renderer (`inertia:start-ssr`, a Node process on `127.0.0.1:13714`) **bundled** in the web container, so PHP server-renders your Vue pages. `true`, or an object to override its `shutdown-grace-period`. SSR is always bundled — never its own service. Needs a Node runtime in your Dockerfile and an SSR bundle from `npm run build`; YOLO injects `INERTIA_SSR_ENABLED=true` unless your `.env` sets it. See [Inertia SSR](/guide/images#inertia-ssr). |
 | `tasks.web.health-check` | *(defaults)* | ALB health-check tuning — see [`tasks.web.health-check.*`](#tasks-web-health-check). |
 
@@ -622,15 +612,20 @@ The mode is the **domain axis** — whether and how the app is exposed. The `tas
 ```yaml
 domain: example.com.au   # the env's canonical domain for shared-service ingress
 services: {}             # env-shared services — the extension point for what sync:environment provisions
+# budget:                # advisory monthly cap for the whole environment (every app + shared infra)
+#   amount: 500
+#   strategy: balanced
 # peering:               # VPC peering to infrastructure outside the YOLO network (e.g. a database mid-migration)
 #   - vpc-0abc123
 ```
 
 | Key | Purpose |
 |---|---|
-| `domain` | The environment's canonical domain for shared-service hostnames (e.g. `search.{domain}`). Distinct from any app's `domain` — shared services are served on the *environment's* name, reachable from every app regardless of their own domains. |
+| `domain` | The environment's canonical domain for shared-service hostnames (e.g. `search.{domain}`). Distinct from any app's `domain` — shared services are served on the *environment's* name, reachable from every app regardless of their own domains. Required once the environment declares a service with a public host (`services.typesense`). |
+| `budget` | The env-tier half of the [two-tier budget](#budget): the same `amount` / `strategy` shape as the app key, capping the whole environment (every app + shared infra, attributed via the `yolo:environment` tag) and reported by [`status:environment`](/reference/commands#yolo-status-environment). Advisory — never enforced. |
 | `peering` | A list of VPC ids this environment peers with — the declared bridge to infrastructure outside the YOLO network, typically an [externally-hosted database mid-migration](/guide/databases). For each entry, `sync:environment` reconciles the bridge in a strict order: the peering connection created and accepted (same-account); routes both ways — the peer's CIDR into **every** yolo-managed route table (the public and private tiers), the env's CIDR into every peer-VPC route table with at least one subnet association (the peer's main table only as a fallback when nothing in that VPC is associated — a route in an unassociated main table steers no subnet); and DNS resolution over the peering **last**, only once every route exists, so nothing resolves across a bridge that can't route yet. The bridge makes exactly two writes into resources YOLO doesn't own — the return routes in the peer's tables, and the database-port ingress rule on an external database's security group — and the plan names each and marks it `not yolo-managed`. Entries must be VPC ids (`vpc-…`); anything else hard-fails. **Removing an entry tears the whole bridge down** on the next sync, in reverse: DNS resolution off, the yolo-side routes, the return routes YOLO wrote into the peer's tables (matched strictly by destination and connection — nothing else in the foreign tables is ever touched), then the connection. Environment-scoped on purpose: peering is VPC-to-VPC, so it can never live in an app's manifest. |
 | `services` | The env-shared services this environment runs — a map of service ⇒ config (`services.ivs: {}`). The declaration is the whole trigger of [the service lifecycle](/guide/services#the-service-lifecycle): `sync:environment` provisions a declared service (independent of any consumer) and plans its teardown once the entry is removed; a declared service no running app uses is flagged as **idle** (a plan warning), not torn down. `environment:manifest:push` refuses to remove a service apps still use. Each entry is a map (never a scalar or list); its allowed keys come from the service's definition. |
+| `services.ivs` | The environment's [IVS event-logging pipeline](/guide/services#ivs-live-video) — one `/aws/ivs/yolo-{env}` log group + EventBridge rule per environment, because the `aws.ivs` event stream is account-wide. Takes no config: `services: { ivs: {} }` is the complete entry. |
 | `services.typesense` | The environment's [Typesense search cluster](/guide/services#typesense-the-environment-s-search-cluster). `version` (the `typesense/typesense` image tag) is required — an environment never runs an implicit search engine version. `nodes`, `cpu` and `memory` follow the [`tasks.*` conventions](#tasks-web): optional, defaulting to `3` nodes at `'256'`/`'1024'` each. `nodes` accepts `3` or `5` — five spreads read load wider and survives two losses; an even count pays for an extra node without gaining the ability to lose another one, and a single node would lose its search data whenever the task is replaced, so neither is offered. `services: { typesense: { version: "30.2" } }` is a complete entry. A version bump or resize is a manifest edit + `sync:environment` — the nodes roll one at a time. |
 
 Like `yolo.yml`, the file is validated against a strict allow-list — an unrecognised key hard-fails both `environment:manifest:push` (before upload) and any sync that reads it. The allow-list is compiled into each release, so adding a new env-manifest key means updating `codinglabsau/yolo` in the environment's app repos **before** pushing the key — an older binary hard-fails (with an upgrade hint) rather than silently ignoring declarations it doesn't know. See [The environment declaration](/guide/provisioning#the-environment-declaration) for the model.

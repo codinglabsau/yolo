@@ -42,12 +42,8 @@ class Paths
     }
 
     /**
-     * The application data bucket (AWS_BUCKET). `bucket: true` derives a name in
-     * YOLO's own keyed namespace — account, environment and app — so it is
-     * globally unique by construction and two environments can never collide on
-     * one bucket. Any other value is a bucket name taken verbatim: a
-     * bring-your-own bucket YOLO adopts and never creates (see
-     * {@see S3Bucket}).
+     * `bucket: true` derives a name in YOLO's keyed namespace (globally unique by construction);
+     * any other value is a bring-your-own bucket taken verbatim (see {@see S3Bucket}).
      */
     public static function s3AppBucket(): string
     {
@@ -62,15 +58,10 @@ class Paths
     }
 
     /**
-     * Env-scoped bucket holding expiring telemetry, one prefix per log
-     * class — the shared ALB's access logs under `alb/` today; future log
-     * types (e.g. WAF) join as sibling prefixes rather than new buckets.
-     * Kept separate from the config buckets so secrets never share a bucket
-     * with an external write principal or an expiry lifecycle. It lives in
-     * the env scope because its first occupant does: the shared ALB writes
-     * its `access_logs.s3.bucket` attribute during the env sync, and the ELB
-     * log-delivery bucket policy must already exist at that point — sync's
-     * account → environment → app ordering guarantees it.
+     * Expiring telemetry, one prefix per log class (`alb/` today). Separate from the config
+     * buckets so secrets never share a bucket with an external write principal or an expiry
+     * lifecycle. Env-scoped because the shared ALB writes its access-log attribute during the
+     * env sync, and the ELB log-delivery bucket policy must already exist by then.
      */
     public static function s3LogsBucket(): string
     {
@@ -78,13 +69,9 @@ class Paths
     }
 
     /**
-     * Env-scoped bucket holding the apps' logical database dumps, one prefix
-     * per app. Env-scoped like the logs bucket (dumps are shared operational
-     * output, not app data), but never with it: dumps are full database
-     * content, and the logs bucket carries an external write principal and a
-     * bucket-wide expiry — both of which database content must never sit
-     * next to. Each app's task role can write only its own `{app}/` prefix,
-     * and can't read any.
+     * Env-scoped like the logs bucket, but never shared with it: dumps are full database
+     * content and must never sit next to an external write principal or a bucket-wide expiry.
+     * Each app's task role can write only its own `{app}/` prefix, and read none.
      */
     public static function s3BackupsBucket(): string
     {
@@ -92,59 +79,37 @@ class Paths
     }
 
     /**
-     * Env-scoped config bucket holding the environment's declaration — the env
-     * manifest (yolo-environment-{environment}.yml) and the env-shared `.env`. The env-tier sibling
-     * of the per-app config buckets, carrying the same secrets posture:
-     * no external write principals, no expiry lifecycle. Read access to this
-     * bucket is the permission that gates env-secret control — app deploys
-     * never need it.
+     * The env manifest and env-shared `.env`, with the same secrets posture as the per-app
+     * config buckets. Read access here gates env-secret control — app deploys never need it.
      */
     public static function s3EnvConfigBucket(): string
     {
         return Helpers::keyedBucketName('config', exclusive: false);
     }
 
-    /**
-     * This app's env file in its config bucket — .env.{environment}, the file
-     * env:pull/push move and the build stages into the image.
-     */
     public static function s3AppEnvKey(): string
     {
         return sprintf('.env.%s', Helpers::environment());
     }
 
-    /**
-     * The env-shared .env — generated service secrets, the environment-tier
-     * sibling of each app's env file. The same .env.environment.{environment}
-     * name in the bucket and on disk, with the environment in the filename so
-     * a pulled copy can never be pushed at the wrong environment.
-     */
+    /** The environment is in the filename so a pulled copy can never be pushed at the wrong environment. */
     public static function s3SharedEnvKey(): string
     {
         return sprintf('.env.environment.%s', Helpers::environment());
     }
 
     /**
-     * This app's environment-side .env in the env config bucket
-     * (env/.env.{app}) — YOLO-owned per-app secrets minted at sync time (the
-     * Typesense scoped key), kept beside the env manifest and the per-app
-     * claim files rather than in the app's developer `.env` (the per-app
-     * config bucket, which the admin tier is fenced from) or the env-shared
-     * `.env` (which carries the cluster admin key the build must never read).
-     * One object per app under `env/`, so each app's build reads only its own
-     * file — never the admin key, never a sibling's.
+     * YOLO-minted per-app secrets (the Typesense scoped key), kept beside the env manifest
+     * rather than in the app's developer `.env` (fenced from the admin tier) or the env-shared
+     * `.env` (which carries the cluster admin key the build must never read). One object per
+     * app, so each build reads only its own file.
      */
     public static function s3EnvAppEnvKey(?string $app = null): string
     {
         return sprintf('env/.env.%s', $app ?? Manifest::name());
     }
 
-    /**
-     * This app's claim file inside the env config bucket — the published
-     * record of which YOLO-provisioned services the app consumes. One object
-     * per app under `apps/`, so the env tier can list the prefix and evaluate
-     * the union of every app's claims.
-     */
+    /** One object per app under `apps/`, so the env tier can list the prefix and union every app's claims. */
     public static function s3AppManifestKey(): string
     {
         return sprintf('apps/%s.yml', Manifest::name());

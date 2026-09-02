@@ -12,11 +12,7 @@ use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Resources\CloudWatch\Dashboard;
 
-/**
- * AWS Elemental MediaConvert (video transcoding). App-side only: a per-app
- * IAM role for MediaConvert to assume, jobs on the account default queue —
- * there is nothing to declare env-side.
- */
+/** App-side only: a per-app role for MediaConvert to assume; jobs run on the account default queue. */
 class MediaConvert extends ServiceDefinition
 {
     public function service(): Service
@@ -35,10 +31,8 @@ class MediaConvert extends ServiceDefinition
     }
 
     /**
-     * The app submits MediaConvert jobs at runtime. Job operations carry no
-     * stable resource ARNs to scope to; the real boundary is iam:PassRole —
-     * locked to this app's own MediaConvert role, and only into the
-     * MediaConvert service itself.
+     * Job operations carry no stable ARNs to scope to; the real boundary is
+     * iam:PassRole — locked to this app's own role, and only into MediaConvert itself.
      */
     public function taskRoleStatements(): array
     {
@@ -73,11 +67,7 @@ class MediaConvert extends ServiceDefinition
         ];
     }
 
-    /**
-     * Tear down the per-app role MediaConvert assumes — the mirror of
-     * SyncMediaConvertRoleStep. Its delete() detaches the policies first, so the
-     * one step reverses both appSteps.
-     */
+    /** The role's delete() detaches its policies first, so one step reverses both appSteps. */
     #[\Override]
     public function teardownAppSteps(): array
     {
@@ -86,11 +76,7 @@ class MediaConvert extends ServiceDefinition
         ];
     }
 
-    /**
-     * Consuming mediaconvert provisions a per-app role for MediaConvert to
-     * assume; the app passes it on every CreateJob, so the computed ARN is
-     * baked in at build.
-     */
+    /** The app passes the role on every CreateJob. */
     #[\Override]
     public function buildValues(): array
     {
@@ -102,9 +88,7 @@ class MediaConvert extends ServiceDefinition
     #[\Override]
     public function dashboardContext(): array
     {
-        // MediaConvert jobs run on the account default queue, so the panel is
-        // account-level by nature — still worth charting on the consumer's
-        // dashboard, since that's where someone debugging a stuck job looks.
+        // Account-level by nature, but charted on the consumer's dashboard — that's where someone debugging a stuck job looks.
         return [
             'mediaConvertQueueArn' => Manifest::usesService(Service::MEDIA_CONVERT)
                 ? sprintf('arn:aws:mediaconvert:%s:%s:queues/Default', Manifest::get('region'), Aws::accountId())

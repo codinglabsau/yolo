@@ -39,17 +39,9 @@ trait RunsSteppedCommands
     use ChecksIfCommandsShouldBeRunning;
 
     /**
-     * Collate, plan, confirm and apply a set of scope-grouped steps as a single flow.
-     *
-     * The flow is **approve-before-apply**. A plan pass with `dry-run` injected runs
-     * each reconciler in compute-only mode and collects its status + attribute-level
-     * changes; the runner renders the full "Pending changes" diff and the "Skipping"
-     * summary, gates the confirm, *then* runs the apply pass with the original
-     * options — but only over the steps the plan flagged as pending (WOULD_CREATE /
-     * WOULD_SYNC, or anything that recorded a change). Clean steps — already-synced
-     * resources with no drift — are dropped after plan, so apply doesn't repeat
-     * their `exists()` / Describe* round-trips or re-tag them, and the post-apply
-     * results table only lists what actually changed.
+     * Approve-before-apply: a dry-run plan pass, the confirm gate, then apply over
+     * only the steps the plan flagged as pending. Clean steps are dropped after
+     * plan so apply doesn't repeat their Describe* round-trips or re-tag them.
      *
      * @param  array<string, array<int, class-string>>  $scopes  ordered label => step class names
      */
@@ -67,16 +59,13 @@ trait RunsSteppedCommands
 
         intro(sprintf('Planning %s for %s', $this->getName(), $environment));
 
-        // PLAN PASS — compute-only. dry-run injection means SynchronisesResource
-        // and any bespoke reconcilers diff against live state without writing.
         $plan = $this->executePlan($planned, time(), apply: false);
 
         $this->printPlan($plan, $skipped);
 
         $pending = $plan->filter(fn (array $entry): bool => static::planEntryHasWork($entry))->values();
 
-        // --check is a CI gate: plan only, never apply, and exit non-zero when
-        // the environment has drifted so a pipeline can fail on unsynced infra.
+        // --check is a CI gate: exit non-zero on drift so a pipeline can fail on unsynced infra.
         if ($this->option('check')) {
             if ($pending->isNotEmpty()) {
                 warning(sprintf('Drift detected — %s has %d pending change(s).', $environment, $pending->count()));
@@ -101,16 +90,12 @@ trait RunsSteppedCommands
             return SymfonyCommand::SUCCESS;
         }
 
-        // Apply pass only over the pending entries — the plan-clean steps are
-        // already verified in sync and don't need a second Describe* + tag re-put.
         $applyPlan = $pending->map(fn (array $entry): array => [
             'scope' => $entry['scope'],
             'step' => $entry['step'],
         ])->values();
 
-        // Step instances are reused across passes; clear the changes and warnings
-        // the plan pass recorded so RecordsChanges/RecordsWarnings start fresh
-        // under apply.
+        // Step instances are reused across passes.
         $this->resetRecordedState($applyPlan);
 
         $now = time();
@@ -125,12 +110,6 @@ trait RunsSteppedCommands
     }
 
     /**
-     * Did the plan pass flag this step as having work for apply to do?
-     *
-     * A step has pending work when it would create, sync or delete a resource, or
-     * when it recorded an attribute-level Change. Everything else — clean SYNCED,
-     * SKIPPED — is dropped before apply.
-     *
      * @param  array{status: StepResult|string, changes: array<int, Change>}  $entry
      */
     protected static function planEntryHasWork(array $entry): bool
@@ -140,8 +119,6 @@ trait RunsSteppedCommands
     }
 
     /**
-     * Expand and partition every scope's steps into a runnable plan and a skipped ledger.
-     *
      * @param  array<string, array<int, class-string>>  $scopes
      * @return array{0: Collection<int, array{scope: string, step: Step}>, 1: Collection<int, array{scope: string, step: Step, reason: string}>}
      */
@@ -168,11 +145,6 @@ trait RunsSteppedCommands
     }
 
     /**
-     * Render the plan: scope counts, a Will create list of brand-new resources,
-     * the per-attribute Pending changes diff for drift on existing resources,
-     * and a single Skipping section grouped by scope + reason. With `-v`, the
-     * skipped section expands to list every resource under each concept group.
-     *
      * @param  Collection<int, array{index: int, scope: string, step: Step, status: StepResult|string, elapsed: int, changes: array<int, Change>, warnings: array<int, string>}>  $plan
      * @param  Collection<int, array{scope: string, step: Step, reason: string}>  $skipped
      */
@@ -198,9 +170,7 @@ trait RunsSteppedCommands
     }
 
     /**
-     * Command-level advisories rendered under the plan's Warnings heading —
-     * soft nudges (not gates) the operator should read before confirming.
-     * Commands override this; the default plan carries no warnings.
+     * Command-level advisories shown above the confirm gate — soft nudges, not gates.
      *
      * @return array<int, string>
      */
@@ -209,10 +179,6 @@ trait RunsSteppedCommands
         return [];
     }
 
-    /**
-     * Print the Warnings section — rendered last so the advisories sit right
-     * above the confirm gate.
-     */
     protected function renderWarnings(): void
     {
         $warnings = $this->warnings();
@@ -241,50 +207,30 @@ trait RunsSteppedCommands
     }
 
     /**
-     * The bold heading above the plan tally. Sync says "Will sync"; a teardown
-     * command overrides this (and {@see confirmQuestion()} / {@see completionVerb()})
-     * so the whole flow reads as a destroy without duplicating the runner.
+     * A teardown command overrides this, {@see confirmQuestion()} and
+     * {@see completionVerb()} so the flow reads as a destroy without duplicating the runner.
      */
     protected function planHeading(): string
     {
         return 'Will sync';
     }
 
-    /**
-     * The confirm-gate question. Sync asks to apply changes; a teardown command
-     * overrides this with an irreversible-delete warning.
-     */
     protected function confirmQuestion(string $environment): string
     {
         return sprintf('Apply these changes to %s?', $environment);
     }
 
-    /**
-     * The past-tense verb in the post-apply completion line ("Synced testing in
-     * 3s."). A teardown command overrides it with "Destroyed".
-     */
     protected function completionVerb(): string
     {
         return 'Synced';
     }
 
     /**
-     * Invoke every planned step once. Under `apply: false` (the plan pass)
-     * `dry-run` is injected into the options so reconcilers compute their diff
-     * without writing; under `apply: true` the original input options flow
-     * through unchanged.
-     *
-     * The plan pass fans out across forked workers when it can: the two-pass
-     * contract already makes every step's plan read-only and independent of
-     * its siblings (each must survive nothing-exists-yet, so none may depend
-     * on another having run), which is exactly the order-independence
-     * concurrent execution needs. Apply always runs sequentially — once
-     * writes start, declaration order IS the dependency order.
-     *
-     * A command marked {@see PlansSequentially} (teardown) opts out of the
-     * fan-out and plans in-process: the speed-up is irrelevant for a rare
-     * interactive teardown, and its steps make fork-unsafe AWS calls that can
-     * deadlock a worker. The plan output is identical either way.
+     * The plan pass may fan out across forked workers because every step's plan
+     * must already survive nothing-exists-yet, so none depends on a sibling having
+     * run. Apply always runs sequentially — once writes start, declaration order
+     * IS the dependency order. {@see PlansSequentially} opts out of the fan-out
+     * because its steps make fork-unsafe AWS calls that can deadlock a worker.
      *
      * @param  Collection<int, array{scope: string, step: Step}>  $plan
      * @return Collection<int, array{index: int, scope: string, step: Step, status: StepResult|string, elapsed: int, changes: array<int, Change>, warnings: array<int, string>}>
@@ -328,11 +274,9 @@ trait RunsSteppedCommands
     }
 
     /**
-     * How many processes the plan pass may fan out across, capped so a wide
-     * plan can't burst-throttle the AWS Describe APIs. One means "run
-     * sequentially": forking needs pcntl (absent on Windows builds), and the
-     * test suite pins YOLO_PLAN_SEQUENTIAL because MockHandler queues and
-     * captured-call references can't cross a process boundary.
+     * Capped so a wide plan can't burst-throttle the AWS Describe APIs. The test
+     * suite pins YOLO_PLAN_SEQUENTIAL because MockHandler queues can't cross a
+     * process boundary.
      */
     protected static function planWorkers(int $steps): int
     {
@@ -348,15 +292,10 @@ trait RunsSteppedCommands
     }
 
     /**
-     * Fan the plan pass out across forked worker processes, one per step.
-     *
-     * Each child first releases the AWS clients it inherited (a forked copy
-     * of a live client shares the parent's open sockets), runs its step with
-     * the dry-run options, and ships back plain values only — the StepResult,
-     * the elapsed seconds and the recorded Changes. Failures are gathered
-     * rather than fail-fast, so a broken first sync surfaces every crashing
-     * step in one pass. Results are reassembled in declaration order, so the
-     * rendered plan is byte-identical to a sequential pass.
+     * Each child first releases the AWS clients it inherited (a forked copy of a
+     * live client shares the parent's open sockets) and ships back plain values
+     * only. Failures are gathered rather than fail-fast so a broken first sync
+     * surfaces every crashing step in one pass.
      *
      * @param  Collection<int, array{scope: string, step: Step}>  $plan
      * @param  array<string, mixed>  $options
@@ -427,11 +366,8 @@ trait RunsSteppedCommands
     }
 
     /**
-     * Surface every plan worker failure at once, then abort before the
-     * confirm gate. A worker reports an error when its step threw; one that
-     * died without reporting at all (a crash before the step ran, an OOM
-     * kill) comes back as a non-array. Gathering beats fail-fast here — a
-     * broken first sync names every crashing step in a single run.
+     * A worker that died without reporting (a crash before the step ran, an OOM
+     * kill) comes back as a non-array.
      *
      * @param  Collection<int, array{scope: string, step: Step}>  $entries
      * @param  array<int, mixed>  $results
@@ -466,9 +402,6 @@ trait RunsSteppedCommands
     }
 
     /**
-     * Clear the changes and warnings recorded by a previous pass so the next
-     * pass starts clean.
-     *
      * @param  Collection<int, array{scope: string, step: Step}>  $planned
      */
     protected function resetRecordedState(Collection $planned): void
@@ -485,8 +418,6 @@ trait RunsSteppedCommands
     }
 
     /**
-     * Render the progress frame for a step, invoke it, and time it.
-     *
      * @param  array<string, mixed>  $options
      * @return array{status: StepResult|string, elapsed: int, changes: array<int, Change>, warnings: array<int, string>}
      */
@@ -494,25 +425,17 @@ trait RunsSteppedCommands
     {
         $started = time();
 
-        // A step that must run on the operator's base identity rather than the tier
-        // cap (the IAM-tier teardown deletes the very role the run assumed) drops the
-        // assumed credentials before it executes. Apply only — `dry-run` means the
-        // plan pass, which reads fine under the cap, so it never touches credentials.
+        // Apply only — the plan pass reads fine under the tier cap.
         if ($step instanceof RunsOnBaseCredentials && empty($options['dry-run'])) {
             $this->ensureBaseCredentials();
         }
 
-        // A LongRunning step blocks inside an AWS waiter, so its progress frame
-        // would freeze at "0 seconds elapsed" and read as hung. Show the patience
-        // message up front and tick an elapsed-time heartbeat on every waiter
-        // poll (the one moment control returns to us mid-wait) so the bar keeps
-        // moving. Plain steps keep the original elapsed-since-start hint.
+        // A LongRunning step blocks inside an AWS waiter, so without a heartbeat on
+        // every waiter poll its progress frame would freeze and read as hung.
         if ($step instanceof LongRunning && $progress instanceof Progress) {
             $progress->label($label)->hint($step->patienceMessage())->render();
 
-            // A live line from a shell-out step (RunsProcess) is more useful than
-            // the static patience message, so prefer it when present and fall back
-            // to the patience message during a quiet stretch or for AWS waiters.
+            // Prefer a live line from a shell-out step (RunsProcess) over the static patience message.
             WaitReporter::using(fn () => $progress->label($label)
                 ->hint(sprintf(
                     '%s · %s elapsed',
@@ -537,21 +460,13 @@ trait RunsSteppedCommands
         return [
             'status' => $status,
             'elapsed' => time() - $started,
-            // Steps that reconcile config (directly, or via SynchronisesResource)
-            // record the attributes they changed so the Changes report can surface
-            // each current → desired comparison.
             'changes' => method_exists($step, 'changes') ? $step->changes() : [],
-            // Steps buffer operator warnings (RecordsWarnings) instead of printing
-            // them inline — a warning written mid-run lands in the live progress
-            // bar's repaint region. The runner replays them after the results table.
             'warnings' => method_exists($step, 'recordedWarnings') ? $step->recordedWarnings() : [],
         ];
     }
 
     /**
-     * Render the post-apply results: per-step table + completion line. The
-     * attribute diffs were already shown pre-confirm in the plan's "Pending
-     * changes" section, and the skip ledger was rendered there too — neither
+     * Attribute diffs and the skip ledger were already shown pre-confirm; neither
      * is repeated here.
      *
      * @param  Collection<int, array{index: int, scope: string, step: Step, status: StepResult|string, elapsed: int}>  $ran
@@ -590,12 +505,9 @@ trait RunsSteppedCommands
     }
 
     /**
-     * Replay the warnings steps recorded during the apply pass, as one block
-     * below the results table. Steps buffer warnings (RecordsWarnings) rather
-     * than printing them inline, because a warning written mid-run lands inside
-     * the live progress bar's repaint region — doubling its box and scrolling
-     * the message off-screen before it can be read. Rendered last so it's the
-     * final thing on screen, where a skip-with-a-reason can't be missed.
+     * Steps buffer warnings (RecordsWarnings) rather than printing inline: a
+     * warning written mid-run lands inside the live progress bar's repaint region
+     * and scrolls off-screen before it can be read.
      *
      * @param  Collection<int, array{warnings?: array<int, string>}>  $ran
      */
@@ -616,12 +528,8 @@ trait RunsSteppedCommands
     }
 
     /**
-     * Print the Will create section: every resource the plan would stand up
-     * fresh (status WOULD_CREATE). Creation records no attribute-level Change —
-     * there's no "before" to diff — so without an explicit list a new resource
-     * is folded silently into the scope tally and never named. Standing up new
-     * (billable, least-reversible) infra is the most consequential thing apply
-     * does, so the plan names it before the per-attribute drift diff.
+     * Creation records no attribute-level Change (no "before" to diff), so without
+     * this list a new resource would fold silently into the scope tally.
      *
      * @param  Collection<int, array{scope: string, step: Step, status: StepResult|string, changes: array<int, Change>}>  $plan
      */
@@ -642,12 +550,6 @@ trait RunsSteppedCommands
     }
 
     /**
-     * Print the per-attribute Pending changes section: which attributes each
-     * step would reconcile on an *existing* resource, as a current → desired
-     * comparison. Brand-new resources are listed by renderWillCreate(), not
-     * here. Steps that recorded nothing are omitted, so a clean plan stays
-     * quiet and drift stands out.
-     *
      * @param  Collection<int, array{scope: string, step: Step, changes: array<int, Change>}>  $plan
      */
     protected function renderPendingChanges(Collection $plan, bool $multiScope): void
@@ -676,9 +578,6 @@ trait RunsSteppedCommands
     }
 
     /**
-     * The scope-qualified label for a plan entry — "app · Cache cluster" when a
-     * multi-scope sync is in play, just "Cache cluster" for a single scope.
-     *
      * @param  array{scope: string, step: Step}  $entry
      */
     protected static function planEntryLabel(array $entry, bool $multiScope): string
@@ -689,10 +588,6 @@ trait RunsSteppedCommands
     }
 
     /**
-     * Print the Skipping section: one concept summary per scope + reason
-     * (always, regardless of verbosity), with the individual resource names
-     * listed under each summary when `-v` is set.
-     *
      * @param  Collection<int, array{scope: string, step: Step, reason: string}>  $skipped
      */
     protected function renderSkipping(Collection $skipped): void
@@ -786,8 +681,6 @@ trait RunsSteppedCommands
     }
 
     /**
-     * Expand a step into its concrete runnable instances (sub-steps and per-tenant clones).
-     *
      * @return array<int, Step>
      */
     protected function expandStep(Step $step, string $environment): array
@@ -820,10 +713,6 @@ trait RunsSteppedCommands
     }
 
     /**
-     * The tenants per-tenant steps fan out over — every manifest tenant, narrowed
-     * to one when the command exposes `--tenant` and it's set (a single-tenant
-     * cutover). Commands without the option (start/build) get the full set.
-     *
      * @return array<string, array<string, mixed>>
      */
     protected function tenantsToExpand(): array
@@ -878,10 +767,8 @@ trait RunsSteppedCommands
                 ->headline()
                 ->lower()
                 ->ucfirst()
-                // The env-backed services (Typesense/IVS) tear down by reusing their
-                // Sync steps' Teardown branch, so a destroy run would otherwise show
-                // "Sync typesense security group" while it's deleting it. Relabel the
-                // verb to match what's happening while an environment is being destroyed.
+                // Env-backed services tear down via their Sync steps' Teardown branch, so
+                // a destroy run would otherwise read "Sync …" while deleting.
                 ->when(Destroying::active(), fn (Stringable $string) => $string->replaceFirst('Sync ', 'Teardown '))
                 ->when($step instanceof ExecutesTenantStep, fn (Stringable $string) => $string->prepend($tenantPrefix))
                 ->when($bold && ! $step instanceof ExecutesTenantStep, fn (Stringable $string) => $string->wrap(before: '<options=bold>', after: '</>'))

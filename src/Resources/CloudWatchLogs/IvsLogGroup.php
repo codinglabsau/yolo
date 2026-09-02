@@ -15,14 +15,10 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * CloudWatch log group that receives IVS state-change events (delivered by the
- * IvsEventBridgeRule). Env-shared, because the event stream is: the rule's
- * `source: aws.ivs` pattern matches every IVS event in the account/region —
- * channels are created by apps at runtime, so there's nothing stable to filter
- * per app, and per-app pipelines would each capture every other app's events.
- * One pipeline per environment is the honest shape. The /aws/ivs/ prefix
- * follows the AWS convention for service log groups. Retention and the
- * EventBridge-delivery resource policy are reconciled on every sync.
+ * Env-shared because the event stream is: `source: aws.ivs` matches every IVS event
+ * in the account/region and channels are created at runtime, so per-app pipelines
+ * would each capture every other app's events. `/aws/ivs/` follows the AWS
+ * convention for service log groups.
  */
 class IvsLogGroup implements Deletable, Resource, SynchronisesConfiguration
 {
@@ -69,12 +65,7 @@ class IvsLogGroup implements Deletable, Resource, SynchronisesConfiguration
         $this->synchroniseConfiguration();
     }
 
-    /**
-     * Teardown removes the log group (and its retained events — IVS events are
-     * rebuildable debugging telemetry, not a source of truth) plus the
-     * account-level EventBridge-delivery resource policy only this pipeline
-     * uses.
-     */
+    /** Also removes the account-level EventBridge resource policy only this pipeline uses. */
     public function delete(): void
     {
         Aws::cloudWatchLogs()->deleteLogGroup([
@@ -101,10 +92,7 @@ class IvsLogGroup implements Deletable, Resource, SynchronisesConfiguration
         ];
     }
 
-    /**
-     * Hardcoded — IVS events are debugging telemetry, and service opt-ins are
-     * bare capability names (`services: [ivs]`) with no per-app knobs.
-     */
+    /** Hardcoded — service opt-ins are bare capability names with no per-app knobs. */
     public function retentionDays(): int
     {
         return 14;
@@ -133,10 +121,6 @@ class IvsLogGroup implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * Grant EventBridge permission to deliver IVS events into any /aws/ivs/ log
-     * group. Diffs the live resource policy against the desired document first, so
-     * a clean sync makes no write and a dry-run reports the change.
-     *
      * @return array<int, Change>
      */
     protected function reconcileEventBridgeResourcePolicy(bool $apply): array

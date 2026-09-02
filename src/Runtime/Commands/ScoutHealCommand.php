@@ -16,43 +16,25 @@ use Codinglabs\Yolo\Runtime\Search\ReimportSearchModel;
 use Codinglabs\Yolo\Runtime\Search\ZeroDowntimeReimport;
 
 /**
- * The self-heal for the app's search collections: detect a wiped or emptied
- * index and refill it. The search index is a rebuildable projection of the
- * database, so persistence is a recovery loop, not a disk — a full cluster
- * loss costs one heal interval plus a refill, unattended.
+ * The search index is a rebuildable projection of the database, so persistence
+ * is a recovery loop, not a disk. YOLO's provider schedules this every five
+ * minutes itself (`yolo.search.heal` / YOLO_SEARCH_HEAL is the opt-out).
  *
- * Nothing to schedule: YOLO's provider registers this every five minutes
- * itself whenever the app is wired for the Typesense Scout driver
- * (`yolo.search.heal` / YOLO_SEARCH_HEAL is the opt-out).
+ * Only the wipe signature is healed — collection gone, or empty while the
+ * database plainly isn't. Partial drift is deliberately not: live churn makes
+ * count-matching a false-alarm machine, and `scout:reimport` exists for the
+ * deliberate rebuild. There is nothing to serve during a heal, so the
+ * zero-downtime machinery would buy nothing.
  *
- * A model is unhealthy when its collection (or alias) is gone, or when the
- * index sits empty while the database plainly isn't — the wipe signature.
- * The refill is Scout's own machinery: `scout:queue-import` fans ID-range
- * jobs across the queue workers (Scout's engine recreates the collection
- * with the declared schema on the first batch); a model whose key isn't
- * numeric — which scout:queue-import refuses — falls back to a single
- * queued rebuild through the alias-swap engine instead. There is nothing
- * to serve during a heal, so the zero-downtime machinery would buy nothing.
- *
- * Anything subtler than the wipe signature (partial drift) is deliberately
- * not auto-healed: live churn makes count-matching a false-alarm machine,
- * and `scout:reimport` exists for the deliberate rebuild.
- *
- * Run-once is the command's own property — it takes a cache lock itself, so
- * no `onOneServer()`/`withoutOverlapping()` decorations are needed (on
- * combined-services apps the scheduler fires on every web task, and the
- * lock also covers a manual run racing the scheduled one). A per-model
- * dispatch marker stops the next ticks re-queueing a refill that's still
- * chewing through the queue. Detection failures (cluster unreachable, key
- * no longer honoured) are reported and skipped — the cluster's own alarms
- * page for node health, and a key the cluster stopped honouring is `yolo
- * sync:app`'s to fix, not ours.
+ * The cache lock is the command's own (on combined-services apps the scheduler
+ * fires on every web task, and a manual run must not race the scheduled one).
+ * Detection failures are reported and skipped — the cluster's own alarms page
+ * for node health, and a key the cluster stopped honouring is `yolo sync:app`'s
+ * to fix.
  */
 class ScoutHealCommand extends Command
 {
-    /** How long a dispatched refill suppresses re-dispatch — roomy enough
-     * for a large refill to land, short enough that a genuinely stuck one
-     * gets another push within the hour. */
+    /** Roomy enough for a large refill to land; short enough that a stuck one gets another push. */
     protected const int DISPATCHED_TTL_SECONDS = 3600;
 
     protected $signature = 'scout:heal
@@ -88,9 +70,7 @@ class ScoutHealCommand extends Command
         $failures = 0;
 
         foreach (SearchableModels::all() as $modelClass) {
-            // A model with no resolvable schema can't be rebuilt — refilling
-            // anyway would fail on every attempt, every tick, forever. Warn
-            // instead; declaring the schema is the fix.
+            // Refilling with no resolvable schema would fail every tick, forever.
             if (! $this->rebuildable($modelClass)) {
                 $this->components->warn(sprintf('%s is searchable but declares no Typesense schema (scout.typesense.model-settings collection-schema, or a typesenseCollectionSchema() method) — it cannot be auto-rebuilt.', $modelClass));
 
@@ -119,10 +99,8 @@ class ScoutHealCommand extends Command
     }
 
     /**
-     * Refill one wiped model — inline when asked, otherwise onto the queue,
-     * with a marker so the next ticks don't re-queue a refill that's still
-     * landing (Scout's range jobs aren't unique; re-dispatching them is
-     * harmless upserts but a pointless doubling of the queue).
+     * The marker stops the next ticks re-queueing a refill that's still landing —
+     * Scout's range jobs aren't unique, so re-dispatch doubles the queue.
      *
      * @param  class-string<Model&SearchableModel>  $modelClass
      */
@@ -142,9 +120,7 @@ class ScoutHealCommand extends Command
             return;
         }
 
-        // Scout's queue-import fans ID-range jobs across the workers — but it
-        // refuses non-numeric keys, which instead take the single queued
-        // rebuild through the alias-swap engine.
+        // scout:queue-import refuses non-numeric keys
         if ($this->numericKey($modelClass)) {
             Artisan::call('scout:queue-import', ['model' => $modelClass]);
         } else {
@@ -170,9 +146,7 @@ class ScoutHealCommand extends Command
     }
 
     /**
-     * Whether a rebuild could actually resolve a schema for this model —
-     * mirrors {@see ZeroDowntimeReimport::schema()} and the engine's own
-     * collection-creation lookup.
+     * Mirrors {@see ZeroDowntimeReimport::schema()} and the engine's own lookup.
      */
     protected function rebuildable(string $modelClass): bool
     {
@@ -186,9 +160,8 @@ class ScoutHealCommand extends Command
     }
 
     /**
-     * Healthy = the searchable name resolves to a live collection that isn't
-     * empty while the database has rows. The database COUNT only runs when
-     * the index reads empty, so the steady-state cost is one GET per model.
+     * The database COUNT only runs when the index reads empty, so the
+     * steady-state cost is one GET per model.
      *
      * @param  class-string<Model&SearchableModel>  $modelClass
      */

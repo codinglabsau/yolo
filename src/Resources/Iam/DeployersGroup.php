@@ -10,11 +10,9 @@ use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\Deletable;
 
 /**
- * Grant group for per-app deploy: members may assume this app's
- * {@see DeployerRole} and deploy ONE app (`yolo-{env}-{app}-deployers`). The
- * effective per-app grant — deploy mutations DO scope to the app's resources, so
- * membership of this group genuinely confines a developer to deploying this app.
- * Provisioned only when the app has a deployer role (a GitHub repository).
+ * Deploy mutations DO scope to the app's resources, so membership genuinely confines
+ * a developer to deploying this one app. Provisioned only when the app has a
+ * deployer role (a GitHub repository).
  */
 class DeployersGroup extends AssumeRoleGroup implements Deletable
 {
@@ -33,13 +31,7 @@ class DeployersGroup extends AssumeRoleGroup implements Deletable
         return new DeployerRole();
     }
 
-    /**
-     * Teardown when the app drops its deployer: IAM refuses to delete a group
-     * that still has members, attached managed policies, or inline policies, so
-     * remove every user from the group, detach every managed policy, and delete
-     * the inline assume-role policy (AssumeRoleGroup's create() put) before
-     * deleteGroup. A concurrent delete that already removed the group is tolerated.
-     */
+    /** IAM refuses to delete a group that still has members, attached or inline policies. */
     #[\Override]
     public function delete(): void
     {

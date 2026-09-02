@@ -12,9 +12,7 @@ use function Laravel\Prompts\info;
 use function Laravel\Prompts\intro;
 
 /**
- * The app's CloudWatch alarms and their state — the incident read surface for
- * "is anything actually firing". Exits non-zero when any alarm is in ALARM, so
- * it doubles as a health probe; `--json` is the form the `/yolo` skill consumes.
+ * Exits non-zero when any alarm is in ALARM, so it doubles as a health probe.
  */
 class StatusAlarmsCommand extends Command implements ReadOnlyCommand
 {

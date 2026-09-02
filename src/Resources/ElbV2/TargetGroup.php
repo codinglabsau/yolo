@@ -59,17 +59,12 @@ class TargetGroup implements Deletable, Resource, SynchronisesConfiguration
             ...Aws::tags($this->tags()),
         ])['TargetGroups'][0]['TargetGroupArn'];
 
-        // A fresh target group defaults to 300s deregistration; bring it to ours.
         $this->reconcileDeregistrationDelay($arn, apply: true);
     }
 
     /**
-     * Teardown removes the target group itself — its health-check and
-     * deregistration-delay attributes go with it, nothing else owns them. AWS
-     * refuses to delete a target group still referenced by a listener-rule
-     * forward action, but YOLO's teardown order deletes this app's listener rule
-     * first, so by the time we get here the group is unreferenced and a plain
-     * deleteTargetGroup is correct. A concurrent not-found is tolerated.
+     * AWS refuses to delete a target group a listener rule still references;
+     * teardown deletes this app's rule first, so a plain delete is correct here.
      */
     public function delete(): void
     {
@@ -93,15 +88,6 @@ class TargetGroup implements Deletable, Resource, SynchronisesConfiguration
         return Aws::synchroniseElbV2Tags($this->arn(), $this->tags(), $apply);
     }
 
-    /**
-     * Push managed config onto an existing target group — health-check fields
-     * and the deregistration delay. Create sets these once; without this a
-     * changed default or manifest override would never reach an already-deployed
-     * app, since tag sync doesn't cover them. Each reconcile diffs first so a
-     * clean sync makes no needless write, and returns the drifted attributes so
-     * sync can report each current → desired comparison. (The service grace
-     * period is a separate, service-level setting reconciled by EcsService.)
-     */
     public function synchroniseConfiguration(bool $apply = true): array
     {
         $live = ElbV2::targetGroup($this->name());
@@ -158,11 +144,9 @@ class TargetGroup implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * Cap connection draining at a sane window (default 10s) rather than the AWS
-     * default 300s, so a deploy isn't held draining the old task far longer than
-     * any real request needs. Bump tasks.web.shutdown-grace-period for apps with genuinely
-     * long in-flight requests (uploads, exports, SSE) — anything still in flight
-     * when the timer elapses has its connection closed.
+     * AWS defaults deregistration to 300s, which would hold every deploy draining
+     * the old task far longer than any real request needs; anything still in
+     * flight when the window elapses has its connection closed.
      *
      * @return array<int, Change>
      */
@@ -194,25 +178,16 @@ class TargetGroup implements Deletable, Resource, SynchronisesConfiguration
 
     public function deregistrationDelay(): int
     {
-        // The ALB drains for exactly as long as the web process keeps serving on
-        // shutdown — one knob (tasks.web.shutdown-grace-period), no separate delay to tune.
+        // One knob: the ALB drains exactly as long as the web process keeps serving on shutdown.
         return ShutdownTimings::webGrace();
     }
 
     /**
-     * The health-check fields create sets and sync keeps current — one source
-     * of truth so the two paths can't drift apart. Timeout must stay below the
-     * interval (an AWS constraint on ModifyTargetGroup).
-     *
-     * Defaults are tuned to avoid false-positive failures on a Laravel/Octane
-     * app under CPU load: when the FrankenPHP worker pool is saturated the
-     * /up probe queues behind in-flight requests and answers slowly (6-7s)
-     * rather than failing, so an 8s timeout (still below the 10s interval) keeps
-     * a slow-but-alive task in service, and the roomier unhealthy threshold (5)
-     * adds cushion. A real deadlock (no response / 30s+) still trips within ~a
-     * minute. Capacity is autoscaling's signal, not the health check's. Each
-     * field is overridable per app via tasks.web.health-check.* for the rare app
-     * that needs a different path or timing.
+     * Timeout must stay below the interval (an AWS constraint on ModifyTargetGroup).
+     * Defaults are tuned so a saturated FrankenPHP worker pool — where /up queues
+     * behind in-flight requests and answers slowly rather than failing — stays in
+     * service: capacity is autoscaling's signal, not the health check's. A real
+     * deadlock still trips within about a minute.
      *
      * @return array<string, mixed>
      */

@@ -40,20 +40,15 @@ class RunCommand extends Command implements DeployerCommand
         $cluster = (new EcsCluster())->name();
         $command = $this->option('command');
 
-        // An explicit --group fans out across every listed group; the default is
-        // an ordered fallback — scheduler → queue → web — so a one-off lands on
-        // the first group that has a running task. Each group is its own ECS
-        // service now, so a lookup that misses just falls through to the next.
+        // An explicit --group fans out across every listed group; the default is an
+        // ordered fallback so a one-off lands on the first group with a running task.
         $groups = ($group = $this->option('group'))
             ? array_map(trim(...), explode(',', (string) $group))
             : ['scheduler', 'queue', 'web'];
 
         $fanOut = (bool) $group;
 
-        // Interactive shell attaches to one task. With several groups running and
-        // no explicit --group, let the operator pick which container to drop into;
-        // otherwise take the first running group in order. The container name is the
-        // group (the task-def names its container after the role).
+        // The container name is the group — the task-def names its container after the role.
         if (! $command) {
             $running = [];
 
@@ -76,8 +71,6 @@ class RunCommand extends Command implements DeployerCommand
             return $this->exec($cluster, $running[$group], '/bin/sh', $group, interactive: true);
         }
 
-        // One-off command: fan out across all tasks when --group was given,
-        // otherwise run on the first group that has a running task (fallback).
         $ran = 0;
 
         foreach ($groups as $group) {
@@ -95,10 +88,7 @@ class RunCommand extends Command implements DeployerCommand
         }
 
         if ($ran === 0) {
-            // A one-off that lands on no task ran nowhere — fail loudly so a
-            // scripted `yolo run … --command "php artisan migrate --force"` can't
-            // report success (exit 0) having done nothing. Mirrors the interactive
-            // path above, which already fails when there's no task to attach to.
+            // Fail loudly so a scripted one-off can't report success having done nothing.
             error(sprintf('No running tasks in: %s', implode(', ', $groups)));
 
             return self::FAILURE;
@@ -109,9 +99,8 @@ class RunCommand extends Command implements DeployerCommand
 
     protected function exec(string $cluster, string $task, string $command, string $container, bool $interactive): int
     {
-        // The exec session runs on the minted tier credentials, never the base
-        // profile — ecs:ExecuteCommand lives on the deployer role, not the
-        // operator's own identity. See Command::subprocessEnv().
+        // ecs:ExecuteCommand lives on the deployer role, not the operator's own
+        // identity — see Command::subprocessEnv().
         $process = new Process(
             static::executeCommandArgs(
                 $cluster,
@@ -128,11 +117,9 @@ class RunCommand extends Command implements DeployerCommand
         if ($interactive && Process::isTtySupported()) {
             $process->setTty(true);
         } else {
-            // The exec API is interactive-only, so the plugin always runs a
-            // stdin pump; a closed stdin surfaces as a spurious "Cannot perform
-            // start session: EOF" after the one-off's output. An open, never-
-            // written input stream keeps the pump quiet — the plugin exits on
-            // its own once the remote command ends.
+            // The exec API is interactive-only, so the plugin always runs a stdin
+            // pump; a closed stdin surfaces as a spurious "Cannot perform start
+            // session: EOF". An open, never-written stream keeps it quiet.
             $process->setInput(new InputStream());
         }
 
@@ -140,24 +127,12 @@ class RunCommand extends Command implements DeployerCommand
     }
 
     /**
-     * The SSM agent does NOT run a one-off `--command` through a shell. It
-     * shellwords-splits the string (quotes grouped, unquoted backslashes
-     * consumed — which is what used to mangle a namespaced one-liner's
-     * `\App\Foo` into `AppFoo`) and then execs argv directly. Two consequences
-     * drive this format:
-     *
-     *  1. Shell syntax in the string is inert — a bare `echo <b64> | base64 -d
-     *     | sh` runs `echo` with six literal arguments, prints them, and exits
-     *     0: a silent no-op. The command must therefore be handed to the agent
-     *     as an explicit `sh -c <script>` argv so a real shell exists to run it.
-     *  2. The operator's command can't ride inside that `sh -c` script raw —
-     *     its own quotes and backslashes would collide with the agent's
-     *     tokeniser. Base64-encoding it keeps the payload pure
-     *     `[A-Za-z0-9+/=]`, inert to both the tokeniser and the inner shell,
-     *     decoded back to the exact original bytes only where it finally runs.
-     *
-     * Never applied to the interactive `/bin/sh` shell — its stdin has to stay
-     * wired to the operator's terminal, not a decode pipeline.
+     * The SSM agent does NOT run `--command` through a shell: it shellwords-splits
+     * the string (quotes grouped, unquoted backslashes consumed) and execs argv
+     * directly, so shell syntax is inert — a bare `echo <b64> | base64 -d | sh`
+     * prints six literal arguments and exits 0. Hence an explicit `sh -c` argv, and
+     * base64 so the operator's own quotes and backslashes never meet the tokeniser.
+     * Never applied to the interactive shell — its stdin must stay the terminal.
      */
     public static function encodeCommand(string $command): string
     {
@@ -165,10 +140,7 @@ class RunCommand extends Command implements DeployerCommand
     }
 
     /**
-     * The `aws ecs execute-command` invocation. Always `--interactive` (the API
-     * requires it); the command is `/bin/sh` for a shell or the one-off command.
-     * The container is the service group (web/queue/scheduler) — the task-def
-     * names its container after the role.
+     * Always `--interactive` — the API requires it.
      *
      * @return array<int, string>
      */

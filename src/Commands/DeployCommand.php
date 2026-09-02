@@ -17,10 +17,7 @@ class DeployCommand extends SteppedCommand implements DeployerCommand
     use RendersServiceStatus;
 
     protected array $steps = [
-        // Republish the app's claim file first — claims must lead the code that
-        // consumes a service. (A deploy against an unsynced environment is already
-        // refused up front by the EnsureInSyncStep gate in handle(); this step's
-        // job here is the republish itself, not the fail-fast.)
+        // Claims must lead the code that consumes a service.
         Steps\Sync\App\PublishAppManifestStep::class,
         Steps\Deploy\PushAssetsToS3Step::class,
         Steps\Deploy\RegisterTaskDefinitionRevisionStep::class,
@@ -44,12 +41,9 @@ class DeployCommand extends SteppedCommand implements DeployerCommand
     }
 
     /**
-     * A deploy runs under the least-privilege Deployer tier by default. `--admin`
-     * caps it up to the Admin tier instead (minted MFA-gated up front, like `sync`),
-     * so the in-sync gate can reconcile a drifted environment inline rather than
-     * refusing — the deployer tier can't write the shared foundation drift touches.
-     * Guarded against input not yet bound (direct unit invocation), mirroring
-     * skipsPermissions().
+     * `--admin` lets the in-sync gate reconcile drift inline rather than refusing —
+     * the deployer tier can't write the shared foundation drift touches. Input may
+     * not be bound yet under direct unit invocation.
      */
     #[\Override]
     protected function awsTier(): ?Iam
@@ -64,10 +58,7 @@ class DeployCommand extends SteppedCommand implements DeployerCommand
     #[\Override]
     public function handle(): int
     {
-        // Refuse to deploy into an environment that has drifted from its declared
-        // state — runs the full `sync --check` plan before the build, so a drifted
-        // environment fails fast without burning one. Under `--admin` the gate
-        // reconciles the drift inline (admin holds the writes); otherwise it throws.
+        // Before the build, so a drifted environment fails fast without burning one.
         (new Steps\Deploy\EnsureInSyncStep(admin: (bool) $this->option('admin')))([]);
 
         $build = (new BuildCommand())->execute($this->input, $this->output);
@@ -87,12 +78,6 @@ class DeployCommand extends SteppedCommand implements DeployerCommand
         return $result;
     }
 
-    /**
-     * Recap what's now running once the rollout has settled — the same summary
-     * table and CloudWatch dashboard link `yolo status` shows, minus the live
-     * deployment/load panels (the deploy just finished, so there's nothing in
-     * flight and load hasn't built up yet).
-     */
     protected function renderDeploymentSummary(): void
     {
         intro('Deployment summary');
@@ -107,17 +92,12 @@ class DeployCommand extends SteppedCommand implements DeployerCommand
     }
 
     /**
-     * The freshly deployed app's public URL(s) — the "go visit it" link the
-     * summary ends on. The app's own domain (a solo app's, or a multi-tenant app's
-     * landlord) plus every tenant served on a domain of its own. Headless apps (no
-     * domain anywhere) get no line.
-     *
      * @return array<int, string>
      */
     protected function appUrlLines(): array
     {
-        // Raw tenant config, not Manifest::tenants() — that derives each apex via
-        // the Route 53 suffix walk, and printing URLs needs no AWS reads.
+        // Not Manifest::tenants() — that derives each apex via a Route 53 suffix
+        // walk, and printing URLs needs no AWS reads.
         $domains = array_values(array_unique([
             ...array_filter([Manifest::domain()]),
             ...Manifest::tenantDomains(),

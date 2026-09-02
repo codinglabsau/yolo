@@ -14,24 +14,12 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * YOLO-managed IAM role an operator or an automated agent assumes for
- * **read-only** inspection of the environment — the `*-readonly` profile target.
- * It carries the env-shared {@see ObserverPolicy} policy (attached by
- * AttachObserverRolePolicyStep), so a profile assuming it can `describe`/`list`/
- * `get` exactly the services YOLO touches and **nothing mutating** — safe by
- * construction, not by convention.
+ * The read-only tier: carries {@see ObserverPolicy}, so a profile assuming it can
+ * inspect exactly YOLO's services and nothing mutating — safe by construction.
  *
- * Env-scoped + shared: one `yolo-{env}-observer-role` per environment (the reads
- * are environment-agnostic; env scope just bounds the lifecycle and the policy's
- * object-read carve-out to this environment's config bucket).
- *
- * Trust: the account principal (`arn:aws:iam::{account}:root`) — i.e. any IAM
- * identity in the account that is itself granted `sts:AssumeRole` on this role may
- * assume it, so the real gate is that grant (the same model AWS recommends for
- * same-account role assumption). Wire your `YOLO_<ENV>_AWS_PROFILE` (or a dedicated
- * `*-readonly` profile) to assume this role via the existing 1Password
- * `credential_process` source. TODO(review): tighten the trust to the specific
- * operator/agent principal once that identity is settled.
+ * Trust is the account root — any identity itself granted `sts:AssumeRole` may
+ * assume it, so that grant is the real gate. TODO(review): tighten to the specific
+ * operator/agent principal once settled.
  */
 class ObserverRole implements Deletable, Resource, SynchronisesConfiguration
 {
@@ -74,12 +62,7 @@ class ObserverRole implements Deletable, Resource, SynchronisesConfiguration
         ]);
     }
 
-    /**
-     * IAM Description fields enforce a restricted character set
-     * (tab/LF/CR + printable ASCII + Latin-1 Supplement) — no em dashes,
-     * smart quotes, or U+007F - U+00A0 control range. Validated by
-     * IamDescriptionsAreSafeTest.
-     */
+    /** IAM Description allows only printable ASCII + Latin-1 (no em dashes or smart quotes) — pinned by IamDescriptionsAreSafeTest. */
     public function description(): string
     {
         return 'YOLO managed read-only role for safe operator/agent inspection of this environment';
@@ -90,12 +73,7 @@ class ObserverRole implements Deletable, Resource, SynchronisesConfiguration
         return Aws::synchroniseIamRoleTags($this->name(), $this->tags(), $apply);
     }
 
-    /**
-     * Teardown when the environment is torn down: IAM refuses to delete a role
-     * that still holds policy attachments, so the env-shared {@see ObserverPolicy}
-     * attachment and any inline policies detach/delete before deleteRole. A
-     * concurrent delete that already removed the role is tolerated.
-     */
+    /** IAM refuses to delete a role that still holds policy attachments. */
     public function delete(): void
     {
         try {
@@ -140,11 +118,9 @@ class ObserverRole implements Deletable, Resource, SynchronisesConfiguration
                     'Effect' => 'Allow',
                     'Principal' => ['AWS' => sprintf('arn:aws:iam::%s:root', Aws::accountId())],
                     'Action' => 'sts:AssumeRole',
-                    // Every YOLO tier requires MFA — even read-only. The tier cap
-                    // limits what YOLO does, not what the underlying key pair could
-                    // do elsewhere, so the weakest credential on the team is still
-                    // an MFA'd one. A yolo-credentials-1password session carries the MFA
-                    // context automatically; bare static keys are denied.
+                    // MFA even for read-only: the tier caps what YOLO does, not what the
+                    // key pair could do elsewhere. yolo-credentials-1password sessions
+                    // carry the MFA context; bare static keys are denied.
                     'Condition' => [
                         'Bool' => ['aws:MultiFactorAuthPresent' => 'true'],
                     ],

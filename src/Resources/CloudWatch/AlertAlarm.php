@@ -14,17 +14,10 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * One "bad things are happening" alarm, firing to the env SNS topic —
- * parameterised so the alert steps compose the whole family (ALB 5xx, cache
- * pressure, database saturation, per-app error rate) from one resource. The
- * `alert-` name segment marks the family: these are the alarms that mean a
- * human should look, distinct from the autoscaling alarms that live in ALARM
- * as part of their control loop. Missing data is not breaching by default —
- * an absent metric stream (idle env, torn-down source) must not page.
- *
- * Takes either a plain metric (namespace/metric/statistic) or a `metrics`
- * math array (e.g. an error *rate* over two metrics); putMetricAlarm is a
- * pure upsert either way, so drift re-puts the whole payload.
+ * Parameterised so the alert steps compose the whole family from one resource. The
+ * `alert-` segment marks alarms that mean a human should look, distinct from the
+ * autoscaling alarms that live in ALARM as part of their control loop. Missing data
+ * is not breaching: an absent metric stream (idle env, torn-down source) must not page.
  */
 class AlertAlarm implements Deletable, Resource, SynchronisesConfiguration
 {
@@ -50,10 +43,7 @@ class AlertAlarm implements Deletable, Resource, SynchronisesConfiguration
         protected array $metrics = [],
     ) {}
 
-    /**
-     * Name-only construction for the delete path — teardown addresses alarms
-     * purely by name, so the metric fields are irrelevant there.
-     */
+    /** Teardown addresses alarms purely by name, so the metric fields are irrelevant. */
     public static function bare(string $suffix, Scope $alarmScope): self
     {
         return new self(
@@ -108,8 +98,7 @@ class AlertAlarm implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * Reconcile the alarm's managed fields — putMetricAlarm is a pure upsert,
-     * so drift re-puts the whole payload.
+     * putMetricAlarm is a pure upsert, so drift re-puts the whole payload.
      *
      * @return array<int, Change>
      */
@@ -131,11 +120,9 @@ class AlertAlarm implements Deletable, Resource, SynchronisesConfiguration
             }
         }
 
-        // The measurement itself is drift too: the dimensions carry ALB/target
-        // group ARN suffixes that change when those are recreated while the
-        // alarm's name survives — left unreconciled, the alarm points at a dead
-        // metric and notBreaching keeps it green forever. For metric-math
-        // alarms the whole semantics (expression, traffic floor) live here.
+        // Dimensions carry ALB/target-group ARN suffixes that change when those are
+        // recreated under the same alarm name — unreconciled, the alarm points at a
+        // dead metric and notBreaching keeps it green forever.
         if ($this->metrics === []) {
             foreach ([
                 'Dimensions' => $this->dimensions,
@@ -150,13 +137,10 @@ class AlertAlarm implements Deletable, Resource, SynchronisesConfiguration
             $changes[] = Change::make('Metrics', 'drift', 'reconciled (metric math)');
         }
 
-        // Re-point the alarm after a topic rename: an alarm keeps firing to
-        // whatever ARN it was created with, so AlarmActions is drift like any
-        // other field. Resolving the desired ARN needs the topic to exist —
-        // on the plan pass of the very sync that creates it (greenfield, or a
-        // rename), absence itself proves the re-point is pending, so record
-        // the change without resolving; the apply pass runs after the topic
-        // step and resolves it (the two-pass contract).
+        // An alarm keeps firing to the ARN it was created with, so AlarmActions is
+        // drift too. On the plan pass of the sync that creates the topic it doesn't
+        // exist yet — absence proves the re-point is pending, so record the change
+        // without resolving; the apply pass runs after the topic step.
         try {
             $desiredActions = [(new SnsAlarmTopic())->arn()];
 
@@ -175,9 +159,7 @@ class AlertAlarm implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * A stable, echo-back-proof projection of a Metrics array, keyed by Id —
-     * only the authored fields are compared, so keys AWS adds on read can't
-     * fake drift and keep the sync --check gate deterministic.
+     * Only authored fields are compared, so keys AWS adds on read can't fake drift.
      *
      * @param  array<int, array<string, mixed>>  $metrics
      * @return array<string, array<string, mixed>>

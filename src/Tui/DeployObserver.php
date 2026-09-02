@@ -5,16 +5,12 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo\Tui;
 
 /**
- * Reads in-flight rollouts straight from the gathered ECS service statuses, so a
- * deploy shows up in the dashboard whoever triggered it — `yolo deploy` in another
- * shell, CI, even a raw update-service. The global bar uses banner() to flag a
- * rollout; the Deployments tab uses active() to switch to the live rollout view.
+ * Reads rollouts from the gathered ECS statuses, so a deploy shows up whoever
+ * triggered it — another shell, CI, even a raw update-service.
  */
 class DeployObserver
 {
     /**
-     * The service groups whose primary deployment is mid-rollout.
-     *
      * @param  array<int, array<string, mixed>>  $statuses
      * @return array<int, array<string, mixed>>
      */
@@ -27,8 +23,6 @@ class DeployObserver
     }
 
     /**
-     * Is any group mid-rollout right now?
-     *
      * @param  array<int, array<string, mixed>>  $statuses
      */
     public static function active(array $statuses): bool
@@ -37,9 +31,6 @@ class DeployObserver
     }
 
     /**
-     * A compact one-line rollout summary for the global bar (`deploying web 2/3`),
-     * or null when nothing is rolling.
-     *
      * @param  array<int, array<string, mixed>>  $statuses
      */
     public static function banner(array $statuses): ?string

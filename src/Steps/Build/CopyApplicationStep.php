@@ -28,12 +28,10 @@ class CopyApplicationStep implements LongRunning
         $this->ensureBuildDirectoryExists();
 
         $include = [
-            // files
             ".env.$this->environment",
         ];
 
         $exclude = [
-            // directories
             '.git',
             '.github',
             '.phpunit.cache',
@@ -51,7 +49,6 @@ class CopyApplicationStep implements LongRunning
             'storage/logs/*.log',
             'tests',
 
-            // files
             '*.DS_Store',
             '.env.*',
             '.php-cs-fixer.cache',

@@ -6,13 +6,8 @@ use Codinglabs\Yolo\Arn;
 use Codinglabs\Yolo\Aws;
 
 /**
- * Pure classification for `yolo audit`. Given the resources tagged for an
- * environment (from the Resource Groups Tagging API) and the set of apps that
- * are currently live (those with a running Fargate cluster), it attributes each
- * resource to an app and flags the ones that can't be accounted for.
- *
- * No AWS calls here — the command does the I/O and feeds the data in, so this is
- * all unit-testable in isolation.
+ * Pure classification for `yolo audit` — no AWS calls; the command does the I/O
+ * and feeds the data in, so this stays unit-testable in isolation.
  */
 class Audit
 {
@@ -27,11 +22,9 @@ class Audit
     public const STATUS_UNEXPECTED = 'unexpected';
 
     /**
-     * Why an `unexpected` resource isn't accounted for — surfaced in the audit's
-     * Reason column. Audit only inspects tags, the ARN service and whether the
-     * owning app's cluster is live; it never compares a resource's configuration
-     * against the manifest (that's `sync`'s job), so none of these is a config
-     * concern — each is an ownership/inventory fact.
+     * Audit inspects tags, the ARN service and cluster liveness only — never a
+     * resource's configuration against the manifest (that's `sync`'s job), so
+     * every reason here is an ownership/inventory fact, not a config concern.
      */
     public const REASON_DEAD_APP = 'app cluster gone';
 
@@ -46,19 +39,10 @@ class Audit
     public const SCOPE_APP = 'app';
 
     /**
-     * The AWS services YOLO provisions, keyed by their `src/Resources/{group}`
-     * directory. A YOLO-owned resource (one carrying a `yolo:app` or
-     * `yolo:scope` marker) whose ARN service is *not* one of these is an
-     * `orphan` — YOLO created it once but no longer has a Resource class for
-     * that service, so it would never appear in a sync plan. The DynamoDB
-     * sessions table left behind when DynamoDB support was removed is the
-     * canonical case.
-     *
-     * Keys mirror the `src/Resources/*` directories one-for-one (enforced by
-     * ManagedServicesTest), so this stays correct by construction: dropping a
-     * service directory automatically surfaces its leftover resources as
-     * orphans, and adding one fails the test until it is catalogued here —
-     * which stops a newly-supported service from being false-flagged.
+     * Keys mirror the `src/Resources/*` directories one-for-one (test-enforced),
+     * so dropping a service directory automatically surfaces its leftover
+     * resources as unmanaged, and adding one fails until catalogued here — a
+     * newly-supported service is never false-flagged.
      *
      * @var array<string, string>
      */
@@ -85,9 +69,6 @@ class Audit
     ];
 
     /**
-     * The ARN service strings YOLO provisions — the values of the
-     * resource-group catalogue above.
-     *
      * @return array<int, string>
      */
     public static function managedServices(): array
@@ -96,10 +77,8 @@ class Audit
     }
 
     /**
-     * Deploy ephemera the audit ignores: ECS task definitions (immutable
-     * revisions pile up on every deploy and old ones can never be re-tagged) and
-     * tasks (ephemeral runtime). They're versioned/runtime artefacts, not standing
-     * infrastructure you'd leave behind, so auditing them is pure noise.
+     * Task definitions pile up as immutable revisions that can never be re-tagged
+     * and tasks are ephemeral runtime — auditing either is pure noise.
      *
      * @var array<string, array<int, string>>
      */
@@ -108,22 +87,13 @@ class Audit
     ];
 
     /**
-     * The cluster suffix that is NOT an app: yolo-{env}-services hosts the
-     * environment's shared service tasks (Typesense nodes), so deriving an app
-     * named "services" from it would corrupt liveness — the claims registry
-     * would wait forever for an app that can never publish. The name is
-     * reserved at the manifest gate (Command::ensureNameNotReserved) so a real
-     * app can never collide with it.
+     * yolo-{env}-services hosts the environment's shared service tasks, not an
+     * app; deriving an app from it would corrupt liveness. Reserved at the
+     * manifest gate (Command::ensureNameNotReserved) so a real app can't collide.
      */
     public const RESERVED_APP_NAME = 'services';
 
     /**
-     * App names that have a live ECS cluster for this environment, derived from
-     * cluster ARNs by the yolo-{env}-{app} naming convention. The bare yolo-{env}
-     * cluster (none exists, but defensively), the env services cluster
-     * (yolo-{env}-services — shared service tasks, not an app) and non-YOLO
-     * clusters are ignored.
-     *
      * @param  array<int, string>  $clusterArns
      * @return array<int, string>
      */
@@ -142,32 +112,10 @@ class Audit
     }
 
     /**
-     * Classify every tagged resource against the live AWS inventory. Audit is an
-     * ownership/inventory check, not a configuration check — it reads tags, the
-     * ARN service and whether the owning app's cluster is live, and never
-     * compares a resource's attributes against the manifest (that is `sync`'s
-     * job). So there are just two statuses:
-     *
-     *   - `ok`         — accounted for. App-scope with a `yolo:app` pointing at a
-     *                    live app, or env/account-scope shared infra YOLO owns.
-     *   - `unexpected` — found in the environment's tag namespace but not
-     *                    accounted for. The `reason` says why:
-     *                      • REASON_NO_OWNER — no YOLO ownership marker at all
-     *                        (`yolo:app`/`yolo:scope`); hand-rolled, or alpha-era
-     *                        debris from before ownership tags.
-     *                      • REASON_UNMANAGED_SERVICE — YOLO-owned, but of a
-     *                        service YOLO no longer provisions (no `Resources/`
-     *                        class), so a sync would never recreate it. The
-     *                        DynamoDB sessions table left behind after DynamoDB
-     *                        support was removed is the canonical case: still
-     *                        tagged `yolo:app=<live app>`, so the ownership test
-     *                        alone would read it `ok`, but it's dead weight.
-     *                      • REASON_DEAD_APP — YOLO-owned, managed service, but
-     *                        `yolo:app` points at an app whose cluster is gone.
-     *
-     * The reasons are evaluated most-specific first: no-owner before unmanaged
-     * service before dead-app. A managed-service resource owned by a live app
-     * (or env/account shared infra) is never flagged.
+     * Reasons are evaluated most-specific first. The unmanaged-service check must
+     * precede the ownership pass: a leftover of a service YOLO no longer
+     * provisions can still carry `yolo:app=<live app>` and would otherwise read
+     * `ok` even though no sync would ever recreate it.
      *
      * @param  array<int, array{ResourceARN: string, Tags?: array<int, array{Key: string, Value: string}>}>  $taggedResources
      * @param  array<int, string>  $liveApps
@@ -216,11 +164,8 @@ class Audit
     }
 
     /**
-     * Ownership scope of a resource — account / env / app — read straight from
-     * the `yolo:scope` tag that sync stamps on everything it creates (via
-     * `ResolvesTags`, for every scope including the account-global OIDC provider).
-     * A resource with no `yolo:scope` tag isn't YOLO-scoped — it's an unexpected,
-     * unowned resource — so it's bucketed under `env` for display.
+     * A resource with no `yolo:scope` tag is unowned; it's bucketed under `env`
+     * for display only.
      *
      * @param  array<string, string>  $tags
      */
@@ -234,10 +179,7 @@ class Audit
     }
 
     /**
-     * A single composite sort key for the audit table: scope (account → env → app,
-     * top to bottom), then status (unexpected before ok within a scope), then the
-     * reason (so unexpected rows cluster by cause), then app and name.
-     * Returned as one string so a single-closure `sortBy` orders the whole table —
+     * One composite string so a single-closure `sortBy` orders the whole table —
      * the multi-closure `sortBy([...])` form silently ignores closure keys on
      * current illuminate/collections.
      *
@@ -258,11 +200,6 @@ class Audit
         );
     }
 
-    /**
-     * A readable resource type from the ARN — service, plus the resource-type
-     * segment when there is one (e.g. ecs/service, elasticloadbalancing/targetgroup,
-     * s3). Display only; no behaviour keys off it.
-     */
     protected static function isIgnored(?Arn $arn): bool
     {
         return $arn instanceof Arn && in_array($arn->resourceType, self::IGNORED_TYPES[$arn->service] ?? [], true);

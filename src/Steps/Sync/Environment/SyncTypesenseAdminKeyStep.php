@@ -20,14 +20,11 @@ use Codinglabs\Yolo\Concerns\RecordsChanges;
 use Codinglabs\Yolo\Contracts\SkippedByDeployCheck;
 
 /**
- * Seed-generates the cluster's admin API key into the env-shared .env in the
- * env config bucket. Generated exactly once and never rotated by sync — a
- * rotation is an operator act (edit the value via environment:env:pull/push;
- * the new fingerprint re-tags the image and rolls the nodes). The key never
- * leaves the env tier: it's baked into the env-scoped image, and app builds
- * never read this bucket. Teardown leaves the key in place — it's a line in
- * the operator's secrets channel, not infrastructure, and a re-offer reuses
- * it.
+ * Generated exactly once and never rotated by sync — rotation is an operator
+ * act (edit the value via environment:env:pull/push; the new fingerprint
+ * re-tags the image and rolls the nodes). The key never leaves the env tier:
+ * app builds never read this bucket. Teardown leaves it in place — a line in
+ * the operator's secrets channel, not infrastructure; a re-offer reuses it.
  */
 class SyncTypesenseAdminKeyStep implements SkippedByDeployCheck, Step
 {
@@ -55,18 +52,12 @@ class SyncTypesenseAdminKeyStep implements SkippedByDeployCheck, Step
             'Body' => $this->bodyWithKey(),
         ]);
 
-        // Later steps in this same pass (the image build, the task definition)
-        // read the key through the memoised accessor — reset so they see it.
+        // Later steps in this pass read the key through the memoised accessor — reset so they see it.
         Typesense::reset();
 
         return StepResult::CREATED;
     }
 
-    /**
-     * The current env-shared .env with the generated key appended — absent
-     * file reads as empty, so the first service to need the channel creates
-     * it. Existing content is preserved byte-for-byte.
-     */
     protected function bodyWithKey(): string
     {
         $current = $this->currentBody();

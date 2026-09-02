@@ -13,12 +13,9 @@ use Codinglabs\Yolo\Resources\Ec2\TypesenseSecurityGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * This app's private path to the search cluster: an additive 8108-from-task-SG
- * ingress rule on the Typesense security group — the RDS pattern, so
- * Scout indexing rides the VPC (Cloud Map node addresses) and never meets the
- * ALB, the WAF or its rate budget. Skips with instructions while the cluster's
- * SG doesn't exist yet (claim published → env sync provisions → this step
- * authorises on the next pass).
+ * Additive task-SG ingress on the Typesense security group, so Scout indexing
+ * rides the VPC (Cloud Map node addresses) and never meets the ALB, the WAF or
+ * its rate budget.
  */
 class SyncTypesenseAppIngressStep implements Step
 {
@@ -33,8 +30,7 @@ class SyncTypesenseAppIngressStep implements Step
         try {
             $groupId = (new TypesenseSecurityGroup())->arn();
         } catch (ResourceDoesNotExistException) {
-            // The cluster isn't provisioned yet — the env tier owns that; the
-            // rule lands on the sync after it exists.
+            // The env tier owns the cluster — the rule lands on the sync after it exists.
             return StepResult::SKIPPED;
         }
 

@@ -13,22 +13,14 @@ use Illuminate\Filesystem\Filesystem;
 use Codinglabs\Yolo\Resources\S3\AssetBucket;
 
 /**
- * Uploads the `public/` tree (minus dotfiles and source maps — see
- * uploadableFiles) to the private asset bucket under `builds/{version}/`, served
- * via CloudFront. The baked ASSET_URL (`{cloudfront}/builds/{version}`) prefixes
- * *every* `asset()` URL, not just Vite's — so all of public/ must reach the CDN:
- * Vite's `build/assets/*` plus static files like `svg/`, `favicon.ico` and `pwa/`
- * icons. Uploading only `public/build` left those 403ing (ORB-blocked in the
- * browser). No public-read ACLs — the bucket is reachable only via the
- * distribution (OAC); the Transfer manager sets per-file Content-Type from the
- * extension, and `applyCacheControl` stamps the immutable Cache-Control.
+ * All of public/ goes up, not just Vite's build dir: the baked ASSET_URL
+ * prefixes *every* `asset()` URL, so static files (svg/, favicon.ico, pwa/)
+ * would otherwise 403.
  */
 class PushAssetsToS3Step implements Step
 {
-    // Objects live under a per-deploy `builds/{version}/` prefix (ASSET_URL
-    // carries the version), so every upload is a brand-new immutable URL — a
-    // year-long immutable cache-control is always safe and keeps the CDN + the
-    // browser hot, shrinking the cold-miss window the distribution has to ride.
+    // Every object lives under a per-deploy `builds/{version}/` prefix, so an
+    // immutable year-long cache is always safe.
     public const CACHE_CONTROL = 'public, max-age=31536000, immutable';
 
     public function __construct(
@@ -38,8 +30,6 @@ class PushAssetsToS3Step implements Step
 
     public function __invoke(array $options = []): StepResult
     {
-        // A web-less app has no CloudFront distribution (and no baked ASSET_URL)
-        // to serve these from — uploading would just accrue orphaned objects.
         if (! Manifest::hasWeb()) {
             return StepResult::SKIPPED;
         }
@@ -51,20 +41,13 @@ class PushAssetsToS3Step implements Step
             client: Aws::s3(),
             source: static::uploadableFiles($public),
             dest: sprintf('s3://%s/builds/%s', (new AssetBucket())->name(), $appVersion),
-            // The asset tree is many small files (Vite chunks, icons, svgs), so
-            // it's latency-bound, not bandwidth-bound — lift the upload concurrency
-            // well above the SDK's conservative default of 5 to shrink the push.
+            // Many small files: latency-bound, so lift the SDK's default concurrency of 5.
             options: ['base_dir' => $public, 'concurrency' => 25, 'before' => static::applyCacheControl(...)],
         ))->transfer();
 
         return StepResult::SUCCESS;
     }
 
-    /**
-     * Transfer `before` hook: stamp the immutable Cache-Control onto each object
-     * as it's uploaded. Guarded to the upload commands so it's a no-op if the
-     * Transfer manager ever issues anything else.
-     */
     public static function applyCacheControl(CommandInterface $command): void
     {
         if (in_array($command->getName(), ['PutObject', 'CreateMultipartUpload'], true)) {
@@ -73,12 +56,8 @@ class PushAssetsToS3Step implements Step
     }
 
     /**
-     * Everything under public/ is fair game for the CDN *except* things that have
-     * no business on a world-readable origin: dotfiles and anything inside a
-     * dot-directory (.env, .git/, .htaccess, .DS_Store) and JS/CSS source maps
-     * (which hand out the original source). Yields absolute path strings — the
-     * shape Transfer's iterator source expects — and base_dir is stripped from
-     * each to form the S3 key.
+     * Dotfiles/dot-directories (.env, .git/, .htaccess) and source maps have no
+     * business on a world-readable origin.
      *
      * @return \Generator<string>
      */

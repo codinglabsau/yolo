@@ -10,11 +10,9 @@ use Codinglabs\Yolo\Resources\Ec2\CacheSecurityGroup;
 use Codinglabs\Yolo\Steps\Sync\App\AuthoriseCacheIngressStep;
 
 /**
- * Provisions the env-owned Valkey cache security group — the group itself only.
- * Each consuming app authorises its own task-SG ingress on 6379 separately
- * ({@see AuthoriseCacheIngressStep}), the same
- * env-SG / app-ingress split Typesense uses. Bootstrapped from sync:app, gated on
- * the app opting into the cache (`cache.store: redis`); created-if-missing.
+ * The group only — each consuming app authorises its own task-SG ingress
+ * ({@see AuthoriseCacheIngressStep}). Env-scoped but bootstrapped from
+ * sync:app, created-if-missing and never mutated.
  */
 class SyncCacheSecurityGroupStep implements Step
 {

@@ -12,25 +12,13 @@ use Codinglabs\Yolo\Aws\ApplicationAutoScaling;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * The web service's CPU target-tracking scaling policy
- * (ECSServiceAverageCPUUtilization) — the safety net composed alongside the
- * default {@see WebConcurrencyPolicy}: it catches a few heavy, low-rate requests
- * that peg the CPU without raising request concurrency. A constructor-configured
- * reconciler around a predefined metric — PutScalingPolicy is a pure upsert, so
- * there's no create/update split. Dry-run honest: it reads the live policy, diffs
- * the comparable fields and only writes on drift.
- *
- * Both policies attach to the same {@see ScalableTarget}. Application Auto Scaling
- * takes the max desired count across every policy, so scale-out always wins and
- * the two metrics compose rather than fight.
+ * Web CPU target-tracking policy — the safety net beside {@see WebConcurrencyPolicy}:
+ * catches a few heavy, low-rate requests that peg the CPU without raising request
+ * concurrency. Both attach to the same {@see ScalableTarget}; App Auto Scaling takes
+ * the max desired count across policies, so the two compose rather than fight.
  */
 class ScalingPolicy implements TargetTrackingPolicy
 {
-    /**
-     * @param  string  $policyName  the App Auto Scaling policy name
-     * @param  string  $metricType  a predefined metric type (ECSServiceAverageCPUUtilization)
-     * @param  float  $targetValue  the value target tracking holds the metric at
-     */
     public function __construct(
         protected string $policyName,
         protected string $metricType,
@@ -43,9 +31,6 @@ class ScalingPolicy implements TargetTrackingPolicy
     }
 
     /**
-     * Diff the live policy against the desired config and (only on drift, when
-     * applying) upsert it. Returns the drift as Change[].
-     *
      * @return array<int, Change>
      */
     public function synchronise(bool $apply): array
@@ -69,8 +54,6 @@ class ScalingPolicy implements TargetTrackingPolicy
     }
 
     /**
-     * The desired TargetTrackingScalingPolicyConfiguration.
-     *
      * @return array<string, mixed>
      */
     public function configuration(): array
@@ -86,10 +69,6 @@ class ScalingPolicy implements TargetTrackingPolicy
     }
 
     /**
-     * Diff the comparable fields of the live policy against the desired config. A
-     * null $live (policy absent) reports every field as a change, so a fresh
-     * policy shows up in the plan as a full create.
-     *
      * @param  array<string, mixed>|null  $live
      * @return array<int, Change>
      */
@@ -126,8 +105,6 @@ class ScalingPolicy implements TargetTrackingPolicy
     }
 
     /**
-     * The live policy, or null when it isn't registered yet.
-     *
      * @return array<string, mixed>|null
      */
     public function current(): ?array

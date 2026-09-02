@@ -29,8 +29,7 @@ class Ec2
     }
 
     /**
-     * Availability zones for a region, in AWS's returned order. Subnets are
-     * placed one-per-zone by index.
+     * In AWS's returned order — subnets are placed one-per-zone by index.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -48,10 +47,8 @@ class Ec2
     }
 
     /**
-     * Every IPv4 CIDR block in use by a VPC in this region — across all
-     * associations, YOLO-owned or not (the default VPC, a co-located Vapor
-     * stack, anything) — so a new environment's VPC can be placed in a /16 that
-     * overlaps nothing already on the account. Returns [] on a fresh account.
+     * Every CIDR across all associations, YOLO-owned or not, so a new env VPC's
+     * /16 overlaps nothing already on the account. [] on a fresh account.
      *
      * @return array<int, string>
      */
@@ -69,8 +66,6 @@ class Ec2
     }
 
     /**
-     * Every subnet in a VPC (used to build the RDS DB subnet group).
-     *
      * @return array<int, array<string, mixed>>
      */
     public static function vpcSubnets(string $vpcId): array
@@ -87,12 +82,10 @@ class Ec2
     }
 
     /**
-     * The two DNS attributes a Route 53 private hosted zone needs set to true
-     * to resolve inside a VPC — and therefore what Cloud Map private DNS (the
-     * backing of ECS service discovery, e.g. Typesense's Raft peer addresses)
-     * needs too. `describeVpcAttribute` returns a single attribute per call;
-     * the keys match the `modifyVpcAttribute` parameter names so a drifted key
-     * can be fed straight back in.
+     * Both must be true for a private hosted zone (and so Cloud Map service
+     * discovery) to resolve inside the VPC. `describeVpcAttribute` returns one
+     * attribute per call; the keys match the `modifyVpcAttribute` parameter names
+     * so a drifted key feeds straight back in.
      *
      * @return array{EnableDnsSupport: bool, EnableDnsHostnames: bool}
      */
@@ -111,18 +104,12 @@ class Ec2
     }
 
     /**
-     * The statuses in which a peering connection is "live" for YOLO's purposes.
-     * Deleted/failed/expired connections linger in describe results for hours,
-     * so every lookup must filter to these or a torn-down connection reads as
-     * still existing.
+     * Deleted/failed/expired connections linger in describe results for hours —
+     * every lookup must filter to these or a torn-down connection reads as live.
      */
     public const array LIVE_PEERING_STATUSES = ['initiating-request', 'pending-acceptance', 'provisioning', 'active'];
 
     /**
-     * A live VPC peering connection by its `Name` tag, or null when none is in
-     * a live status (a deleted connection lingering in the describe is absence,
-     * not presence).
-     *
      * @return array<string, mixed>|null
      */
     public static function livePeeringConnection(string $name): ?array
@@ -136,9 +123,6 @@ class Ec2
     }
 
     /**
-     * Every live YOLO-owned peering connection in this environment's tag
-     * namespace — the set sync reconciles the declared `peering` list against.
-     *
      * @return array<int, array<string, mixed>>
      */
     public static function livePeeringConnections(string $environment): array
@@ -152,9 +136,8 @@ class Ec2
     }
 
     /**
-     * Whether an ACTIVE peering connection joins the two VPCs, either
-     * orientation, YOLO-owned or not — a security group in one VPC can only
-     * reference a group in the other once this is true.
+     * Either orientation, YOLO-owned or not — a security group in one VPC can
+     * only reference a group in the other once this is true.
      */
     public static function activePeeringBetween(string $vpcId, string $otherVpcId): bool
     {
@@ -170,8 +153,8 @@ class Ec2
     }
 
     /**
-     * A VPC by its id, or null when it doesn't exist — a declared peer VPC is
-     * operator input, so absence is reported as pending drift, never a crash.
+     * Null when missing — a declared peer VPC is operator input, so absence is
+     * pending drift, never a crash.
      *
      * @return array<string, mixed>|null
      */
@@ -189,8 +172,7 @@ class Ec2
     }
 
     /**
-     * Every route table in a VPC, sorted by id so callers plan and reclaim
-     * deterministically. Empty when the VPC has none (it's gone).
+     * Sorted by id so callers plan and reclaim deterministically.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -206,12 +188,10 @@ class Ec2
     }
 
     /**
-     * The route tables that actually govern traffic in a VPC — those with at
-     * least one subnet association. A route written anywhere else steers
-     * nothing: a VPC built by another tool routinely leaves its main table
-     * with zero subnet associations, so the main table is only the fallback
-     * when NO table in the VPC has any (then every subnet uses it
-     * implicitly). Sorted by id (see vpcRouteTables).
+     * A route written to a table with no subnet association steers nothing, and
+     * a VPC built by another tool routinely leaves its main table with none —
+     * so the main table is only the fallback when NO table has any (every subnet
+     * then uses it implicitly).
      *
      * @return array<int, array<string, mixed>>
      */
@@ -238,12 +218,9 @@ class Ec2
 
     public static function securityGroup(string $name, string $vpcId): array
     {
-        // Group names are only unique per VPC — a name-only lookup can match a
-        // same-named group in another VPC (another deployment generation
-        // co-located on the account) and leak its id into creates against this
-        // environment's VPC, which AWS rejects as an invalid security group.
-        // The vpc-id filter scopes the lookup; the client-side re-check keeps
-        // mock-backed tests honest about the name match.
+        // Group names are only unique per VPC — a name-only lookup can leak a
+        // same-named group's id from another VPC into creates here, which AWS
+        // rejects. The client-side re-check keeps mock-backed tests honest.
         $securityGroups = Aws::ec2()->describeSecurityGroups([
             'Filters' => [
                 ['Name' => 'group-name', 'Values' => [$name]],
@@ -261,10 +238,6 @@ class Ec2
     }
 
     /**
-     * Describe a single EC2 resource by its `Name` tag. The describe* calls all
-     * share the `Filters` + `{ResourceType}` envelope shape, so one helper covers
-     * VPCs, subnets, internet gateways and route tables.
-     *
      * @return array<string, mixed>
      */
     protected static function firstByNameTag(string $operation, string $key, string $name, string $message): array
@@ -281,10 +254,6 @@ class Ec2
     }
 
     /**
-     * Lists ingress/egress rules for a security group, optionally filtered by a
-     * `yolo:rule-type` tag value so callers can find their specific rule among
-     * any custom ones.
-     *
      * @return array<int, array<string, mixed>>
      */
     public static function securityGroupRules(string $groupId, ?string $ruleType = null): array
@@ -301,15 +270,10 @@ class Ec2
     }
 
     /**
-     * Delete a security group, retrying while AWS still reports a dependent
-     * object. A security group can't be deleted while anything references it —
-     * most often a still-detaching ENI from a just-stopped Fargate task (ENI
-     * cleanup lags task stop by a minute or two over the graceful-drain window),
-     * or a sibling SG's ingress rule mid-revoke. Everything that references the
-     * group is torn down ahead of this, so the dependency is transient — retry
-     * against AWS's own check until it clears, rather than asserting it's already
-     * gone. A group already removed (InvalidGroup.NotFound) is the goal state and
-     * returns cleanly. Any other error (or exhausting the attempts) propagates.
+     * DependencyViolation here is transient — everything referencing the group
+     * is torn down ahead of this, but ENI detach lags a stopped Fargate task by a
+     * minute or two — so retry against AWS's own check rather than asserting.
+     * InvalidGroup.NotFound is the goal state.
      */
     public static function deleteSecurityGroupWhenDetached(string $groupId, int $maxAttempts = 24, int $sleepSeconds = 10): void
     {

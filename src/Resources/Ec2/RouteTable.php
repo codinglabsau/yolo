@@ -11,10 +11,7 @@ use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-/**
- * Shared public route table for the environment. The default 0.0.0.0/0 route
- * and the subnet associations are separate relationship actions.
- */
+/** The public route table; the 0.0.0.0/0 route and subnet associations are separate steps. */
 class RouteTable implements Deletable, Resource
 {
     use ResolvesTags;
@@ -61,11 +58,8 @@ class RouteTable implements Deletable, Resource
     }
 
     /**
-     * Delete the route table by id. The subnet associations go when the subnets
-     * themselves are deleted (upstream teardown order) and the default 0.0.0.0/0
-     * route goes with the table, so a plain delete succeeds; AWS would otherwise
-     * refuse with DependencyViolation while a subnet is still associated. A
-     * concurrent removal (InvalidRouteTableID.NotFound) is tolerated.
+     * Subnet associations go with the subnets (upstream teardown order); AWS refuses
+     * with DependencyViolation while one is still associated.
      */
     public function delete(): void
     {

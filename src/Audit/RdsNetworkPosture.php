@@ -14,29 +14,14 @@ use Codinglabs\Yolo\Resources\Ec2\EcsTaskSecurityGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Classifies where the manifest-declared database actually lives relative to
- * the YOLO network — the audit-only companion to {@see RdsInspection}. It never
- * feeds sync drift: an externally-hosted database is a valid (transitional)
- * posture and must not block deploys, so the deploy gate's `sync --check`
- * never sees any of this.
+ * Where the manifest-declared database lives relative to the YOLO network:
+ * exposed (publicly accessible — a warning), managed (env VPC + private subnet
+ * group + YOLO RDS SG) or external (anything else — valid, informational).
+ * Audit-only, never sync drift: an externally-hosted database must not block
+ * deploys.
  *
- *  - **exposed** — `PubliclyAccessible` is on: the database has a public
- *    endpoint regardless of which VPC it's in. Warning.
- *  - **managed** — the end-state: env VPC, the private DB subnet group, the
- *    YOLO RDS security group. Informational.
- *  - **external** — anything else (a different VPC, or hand-wired networking
- *    inside the env VPC): externally-managed, valid, informational. The
- *    transitional peered pattern lands here.
- *
- * Separately from the classification, the task-security-group reachability
- * check warns when no attached security group carries an ingress rule for the
- * database's own port from the app's task SG — the one rule that lets Fargate
- * tasks reach the database (a peered SG can reference it too, so the check
- * applies to external databases as well).
- *
- * Every cross-service read degrades to null (unknown) when it's denied or the
- * resource doesn't exist — the audit may run under a tier that can't see EC2,
- * and an unknown fact is never a warning.
+ * Every cross-service read degrades to null when denied or missing — the audit
+ * may run under a tier that can't see EC2, and an unknown fact is never a warning.
  */
 final readonly class RdsNetworkPosture
 {
@@ -53,11 +38,6 @@ final readonly class RdsNetworkPosture
         public ?bool $taskIngress,
     ) {}
 
-    /**
-     * Evaluate the posture of a readable inspection, or null when the database
-     * couldn't be read at all — there is nothing to classify (the unreadable
-     * warning already covers it).
-     */
     public static function evaluate(RdsInspection $inspection): ?self
     {
         if (! $inspection->readable) {
@@ -78,8 +58,7 @@ final readonly class RdsNetworkPosture
             return self::EXPOSED;
         }
 
-        // No VPC on the DB record, or the env VPC can't be seen under this tier
-        // → unknown, not a verdict — never guess a database into "external".
+        // Unknown VPC on either side is not a verdict — never guess "external".
         if ($inspection->vpcId === null) {
             return null;
         }
@@ -100,18 +79,15 @@ final readonly class RdsNetworkPosture
     }
 
     /**
-     * Whether any attached security group carries the port-from-task-SG ingress
-     * rule ({@see AuthorisesTaskIngress} writes it on
-     * the managed path). Null when it can't be determined — the task SG doesn't
-     * exist yet, or the rule describes are denied under this tier.
+     * {@see AuthorisesTaskIngress} writes the rule on the managed path. Null when
+     * it can't be determined — the task SG doesn't exist yet, or the rule
+     * describes are denied under this tier.
      *
      * @param  array<int, string>  $securityGroupIds
      */
     protected static function taskIngress(array $securityGroupIds, ?int $port): ?bool
     {
-        // No port means the database's own record didn't report one (it's still
-        // being created) — there is no rule to look for, so the answer is
-        // unknown, never "none found".
+        // No port (instance still creating) means unknown, never "none found".
         if ($securityGroupIds === [] || $port === null) {
             return null;
         }
@@ -120,10 +96,8 @@ final readonly class RdsNetworkPosture
             $taskSecurityGroupId = (new EcsTaskSecurityGroup())->arn();
 
             foreach ($securityGroupIds as $securityGroupId) {
-                // YOLO's own rule is exactly tcp on the database's port, but a
-                // hand-written rule on a peered database may be all-traffic (-1)
-                // or a tcp range — any of those reaches the port, so none of them
-                // should warn.
+                // A hand-written rule on a peered database may be all-traffic (-1)
+                // or a tcp range — either reaches the port, so neither should warn.
                 if (collect(Ec2::securityGroupRules($securityGroupId))->contains(
                     fn (array $rule): bool => ! ($rule['IsEgress'] ?? false)
                         && (($rule['IpProtocol'] ?? null) === '-1'

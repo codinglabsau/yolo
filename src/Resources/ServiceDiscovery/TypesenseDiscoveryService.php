@@ -6,19 +6,14 @@ use Codinglabs\Yolo\Aws;
 use Aws\Exception\AwsException;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
-use Codinglabs\Yolo\Services\Typesense;
 use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 use Codinglabs\Yolo\Aws\ServiceDiscovery as ServiceDiscoveryApi;
 
 /**
- * One node's stable DNS name — typesense-{n}.{env}.internal. A Cloud Map
- * service per node (not one service for the cluster) because Raft peers must
- * address each node individually; the ECS node service registers its task's
- * ENI here, so a replaced task re-resolves within the record's 10s TTL.
- * Deleted by the namespace's cascading teardown on a full removal, or
- * individually when a node-count reduction retires its node.
+ * One Cloud Map service per node (not one for the cluster) because Raft peers must
+ * address each node individually; a replaced task re-resolves within the 10s TTL.
  */
 class TypesenseDiscoveryService implements Deletable, Resource
 {
@@ -52,10 +47,7 @@ class TypesenseDiscoveryService implements Deletable, Resource
         return $this->current()['Arn'];
     }
 
-    /**
-     * CreateService is synchronous (unlike namespace mutations) — the service
-     * is queryable immediately.
-     */
+    /** CreateService is synchronous (unlike namespace mutations). */
     public function create(): void
     {
         Aws::serviceDiscovery()->createService([
@@ -63,12 +55,10 @@ class TypesenseDiscoveryService implements Deletable, Resource
             'NamespaceId' => (new PrivateDnsNamespace())->id(),
             'DnsConfig' => [
                 'RoutingPolicy' => 'MULTIVALUE',
-                // 10s TTL: a replaced node's peers re-resolve quickly without
-                // hammering the resolver — Raft tolerates the gap.
+                // Peers re-resolve a replaced node quickly; Raft tolerates the gap.
                 'DnsRecords' => [['Type' => 'A', 'TTL' => 10]],
             ],
-            // ECS owns instance health via its own lifecycle — a custom health
-            // config (rather than Route 53 checks, which can't see private IPs).
+            // ECS owns instance health; Route 53 checks can't see private IPs.
             'HealthCheckCustomConfig' => ['FailureThreshold' => 1],
             ...Aws::tags($this->tags()),
         ]);
@@ -80,9 +70,8 @@ class TypesenseDiscoveryService implements Deletable, Resource
     }
 
     /**
-     * Cloud Map refuses to delete a service while its ECS-registered instance
-     * is still deregistering (the node's task was just stopped), so the
-     * delete waits that window out before a genuine failure propagates.
+     * Cloud Map refuses to delete a service while its ECS instance is still
+     * deregistering, so wait that window out.
      */
     public function delete(): void
     {

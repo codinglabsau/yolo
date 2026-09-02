@@ -16,19 +16,11 @@ class Rds
     protected static array $ports = [];
 
     /**
-     * The RDS target the manifest `database:` key declares — the bare human name
-     * of a plain instance or an Aurora cluster — classified live: a name that
-     * describes as a cluster is a cluster, otherwise a plain instance. Null when
-     * no database is declared; a name matching neither throws — a declared
-     * database that doesn't exist is a manifest error to surface, not an empty
-     * dashboard panel to puzzle over.
-     *
-     * Memoised per process: which kind a name is is a stable fact (a name can't
-     * flip cluster↔instance run-to-run), and every RBAC tier holds the
-     * `rds:Describe*` read (ObserverPolicy — inherited by the deployer's
-     * AppObserverPolicy and attached to the admin role), so the plan and apply
-     * passes and every tier resolve the same classification. The dashboard
-     * body's tier-parity contract leans on this.
+     * Classified live (cluster if it describes as one, else instance). A declared
+     * name matching neither throws — a manifest error to surface, not an empty
+     * dashboard panel. Memoised: the kind is stable and every RBAC tier holds
+     * `rds:Describe*`, so plan/apply and every tier resolve the same
+     * classification — the dashboard body's tier-parity contract leans on this.
      *
      * @return array{identifier: string, cluster: bool}|null
      */
@@ -44,29 +36,14 @@ class Rds
     }
 
     /**
-     * The port the declared database actually listens on — MySQL's 3306,
-     * Postgres's 5432, or whatever non-default port it was created with. Every
-     * ingress rule, revoke and tunnel derives from this, so a Postgres app
-     * needs no configuration: the database itself is the source of truth, which
-     * can't go stale the way a manifest key or an engine→port table could.
-     *
-     * Null means "no port to authorise", and there are three ways to get it: no
-     * `database:` is declared (the app doesn't use one, or the database hasn't
-     * been created yet — the caller writes no ingress rule); the describe failed
-     * for a reason that isn't the database's absence (a fenced read tier, a
-     * throttle), which must never masquerade as a manifest error so it degrades
-     * rather than throwing — a permissions hiccup can't be allowed to fail a
-     * deploy gate; or the record carries no port yet (an instance still being
-     * created). No caller ever substitutes a default: a port YOLO guessed would
-     * put a rule on a shared, long-lived group that sync can never revoke.
-     *
-     * A DECLARED database that resolves to nothing throws
-     * ({@see self::target()}) — that's a manifest error, not a state to tolerate.
-     * Guessing a port and writing a speculative rule for it would let a mistyped
-     * identifier, or a manifest edited ahead of the database, look like a clean
-     * sync.
-     *
-     * Memoised per identifier alongside the classification it rides on.
+     * The database itself is the source of truth for its port — a manifest key
+     * or engine→port table could go stale. Null means "no port to authorise":
+     * nothing declared, a describe that failed for a reason other than absence
+     * (a fenced read tier or throttle must degrade, never fail a deploy gate), or
+     * a record with no port yet. Callers never substitute a default — a guessed
+     * port would put a rule on a shared, long-lived group that sync can never
+     * revoke. A declared database that resolves to nothing still throws via
+     * {@see self::target()}.
      */
     public static function port(): ?int
     {
@@ -84,10 +61,8 @@ class Rds
     }
 
     /**
-     * The port carried by a live instance or cluster record the caller already
-     * holds — no second describe. A cluster reports its port at the top level;
-     * an instance hangs it off the endpoint, which is absent while the instance
-     * is still being created — hence null, never an assumed default.
+     * An instance's endpoint is absent while it's still being created — hence
+     * null, never an assumed default.
      *
      * @param  array<string, mixed>  $record
      */
@@ -178,12 +153,6 @@ class Rds
     }
 
     /**
-     * The live record for a plain (non-Aurora) DB instance, or null when the
-     * describe returns nothing. Read-only — surfaces deletion protection, the
-     * instance class/size, engine and Multi-AZ to the audit health probe. An
-     * unknown identifier throws RdsException (DBInstanceNotFound) straight through
-     * for the caller to classify (the probe degrades it to a warning).
-     *
      * @return array<string, mixed>|null
      */
     public static function instance(string $identifier): ?array
@@ -194,11 +163,6 @@ class Rds
     }
 
     /**
-     * The live record for an Aurora DB cluster, including its member list (writer
-     * + readers via DBClusterMembers), or null when the describe returns nothing.
-     * Read-only. An unknown identifier throws RdsException (DBClusterNotFound)
-     * straight through for the caller to classify.
-     *
      * @return array<string, mixed>|null
      */
     public static function cluster(string $identifier): ?array
@@ -209,12 +173,6 @@ class Rds
     }
 
     /**
-     * The full instance record for each member of an Aurora cluster — the audit
-     * derives the writer's and readers' sizes plus the network posture facts the
-     * cluster describe doesn't carry (the subnet group's VPC, public
-     * accessibility). A single describe filtered to the cluster; read-only.
-     * Best-effort detail, so the probe tolerates an empty result.
-     *
      * @return array<int, array<string, mixed>>
      */
     public static function clusterInstances(string $clusterIdentifier): array
@@ -237,11 +195,6 @@ class Rds
     }
 
     /**
-     * Every DB instance in the account that has an endpoint, as
-     * identifier => endpoint address — the candidate list for the cutover
-     * target picker. Instances still creating (no endpoint yet) are omitted;
-     * read-only.
-     *
      * @return array<string, string>
      */
     public static function instanceEndpoints(): array
@@ -265,10 +218,8 @@ class Rds
     }
 
     /**
-     * The identifiers of every live DB instance whose subnet group sits in the
-     * given VPC. A network-shell teardown refuses while this isn't empty — the
-     * database lives in the VPC's private subnets and pins the whole network, and
-     * YOLO never deletes a database it doesn't own.
+     * A network-shell teardown refuses while this isn't empty — YOLO never
+     * deletes a database it doesn't own.
      *
      * @return array<int, string>
      */

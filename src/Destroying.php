@@ -5,11 +5,9 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo;
 
 /**
- * Ambient flag: true only while `destroy:environment` is tearing an environment
- * down. `Lifecycle::state()` consults it to force every env-backed service to
- * Teardown regardless of whether the env manifest still declares it, so a full
- * environment teardown removes the service stacks too. A normal `sync` never sets
- * it.
+ * Ambient flag: true only while `destroy:environment` runs. `Lifecycle::state()` consults it to
+ * force every env-backed service to Teardown regardless of what the env manifest still
+ * declares. A normal `sync` never sets it.
  */
 final class Destroying
 {
@@ -21,9 +19,7 @@ final class Destroying
     }
 
     /**
-     * Run $callback with the deploy-check flag set, restoring the prior value
-     * afterwards (restore, not hard-reset, so the gate's two check passes — pre-
-     * and post-reconcile — nest cleanly).
+     * Restores the prior value rather than hard-resetting, so nested runs unwind cleanly.
      *
      * @template TReturn
      *

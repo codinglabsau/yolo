@@ -12,11 +12,8 @@ use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Shared SNS topic that CloudWatch alarms (e.g. queue backlogs) publish to.
- * Suffixed `alarms` (not the bare env name) so the name says what it carries
- * and can't collide with a bare-keyed resource from another deployment
- * generation sharing the account. Topic subscriptions are not YOLO-managed —
- * subscribe endpoints by hand after the topic is created.
+ * Suffixed `alarms` so the name can't collide with a bare-keyed resource from another
+ * deployment generation. Subscriptions are not YOLO-managed.
  */
 class SnsAlarmTopic implements Deletable, Resource
 {
@@ -61,19 +58,12 @@ class SnsAlarmTopic implements Deletable, Resource
         return Aws::synchroniseSnsTags($this->arn(), $this->tags(), $apply);
     }
 
-    /**
-     * Teardown when the environment is torn down: delete the topic. Its alarm
-     * subscriptions go with it, and DeleteTopic is idempotent on an
-     * already-removed topic, but a concurrent removal (NotFound) is tolerated
-     * defensively all the same.
-     */
     public function delete(): void
     {
         try {
             Aws::sns()->deleteTopic(['TopicArn' => $this->arn()]);
         } catch (ResourceDoesNotExistException) {
-            // arn() resolves the topic by listing; a concurrent delete that
-            // removed it between exists() and here leaves nothing to do.
+            // Removed between exists() and here — nothing left to do.
         } catch (SnsException $e) {
             if ($e->getAwsErrorCode() === 'NotFound') {
                 return;

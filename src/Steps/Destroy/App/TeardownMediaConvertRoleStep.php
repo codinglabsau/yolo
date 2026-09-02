@@ -9,11 +9,8 @@ use Codinglabs\Yolo\Resources\Iam\MediaConvertRole;
 use Codinglabs\Yolo\Steps\Sync\App\SyncMediaConvertRoleStep;
 
 /**
- * Tears down the per-app IAM role MediaConvert assumes — the mirror of
- * {@see SyncMediaConvertRoleStep}. Its delete()
- * detaches the attached policies first, so this one step reverses both of the
- * service's appSteps. Self-skips via exists() for an app that never consumed
- * MediaConvert.
+ * Mirror of {@see SyncMediaConvertRoleStep}. The role's delete() detaches its
+ * policies first, so this one step reverses both of the service's appSteps.
  */
 class TeardownMediaConvertRoleStep extends TeardownStep
 {

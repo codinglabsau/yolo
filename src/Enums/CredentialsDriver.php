@@ -4,12 +4,6 @@ declare(strict_types=1);
 
 namespace Codinglabs\Yolo\Enums;
 
-/**
- * Where `yolo configure` points a profile's credential_process. 1Password is
- * the batteries-included driver (the bundled yolo-credentials-1password helper); Process
- * accepts any command that emits credential JSON on stdout, so another
- * password manager or a bespoke script slots in without YOLO caring.
- */
 enum CredentialsDriver: string
 {
     case OnePassword = '1password';

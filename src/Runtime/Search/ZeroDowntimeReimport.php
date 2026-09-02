@@ -13,32 +13,17 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 
 /**
- * Rebuild one model's search collection with zero blackout — the temporary
- * index pattern, which Typesense supports natively through collection
- * aliases (an alias name is accepted anywhere a collection name is):
- *
- *  1. build a timestamped collection beside the live one, from the model's
- *     declared schema;
- *  2. import every searchable record into it directly — the live index keeps
- *     serving untouched the whole time;
- *  3. swap the alias onto the new collection (atomic on the cluster) and
- *     delete the old one;
- *  4. replay records that changed during the build window through Scout's
- *     normal path — the database is the source of truth, so "how do we catch
- *     up" is always answered by `updated_at >= started`.
+ * The temporary-index pattern over Typesense aliases: build a timestamped
+ * collection beside the live one, swap the alias (atomic on the cluster), delete
+ * the old one, then replay `updated_at >= started` through Scout's normal path.
  *
  * The first run per model migrates the layout: Scout created a LITERAL
- * collection under the model's searchable name, and Typesense won't alias
- * over an existing collection name — so that one time, the literal
- * collection is deleted immediately before the alias lands (a sub-second
- * gap). Every run after that is a pure alias flip.
+ * collection under the searchable name, and Typesense won't alias over an
+ * existing collection name — so that one time the literal collection is deleted
+ * immediately before the alias lands (a sub-second gap).
  *
- * This replaces `scout:import --fresh` wholesale: exact mirror (orphans die
- * with the old collection), schema changes applied (the new collection is
- * built from the current schema), and no index blackout. Deletions during
- * the build window are the one thing the replay can't see — a record
- * deleted mid-build lingers until the next reimport, the same gap the
- * temporary-index pattern has everywhere.
+ * Deletions during the build window are the one thing the replay can't see — a
+ * record deleted mid-build lingers until the next reimport.
  */
 class ZeroDowntimeReimport
 {
@@ -59,10 +44,8 @@ class ZeroDowntimeReimport
         $alias = $model->searchableAs();
         $started = Carbon::now();
 
-        // Where does the live index actually live? Under an alias (steady
-        // state), as a literal collection (pre-migration Scout layout), or
-        // nowhere (a wiped cluster — the degenerate case, where there is
-        // nothing to keep serving and nothing to delete).
+        // The live index is under an alias (steady state), a literal collection
+        // (pre-migration Scout layout), or nowhere (wiped cluster).
         $previous = $this->typesense->aliasTarget($alias);
         $literal = $previous === null && $this->typesense->collection($alias) !== null;
 
@@ -73,22 +56,17 @@ class ZeroDowntimeReimport
         try {
             $documents = $this->import($model, $collection, $report);
 
-            // The one-time layout migration: an alias can't share a name with
-            // a live collection, so the literal one goes first — the only
-            // serving gap this command ever creates, sub-second, once per
-            // model ever.
+            // An alias can't share a name with a live collection — the one-time
+            // sub-second serving gap.
             if ($literal) {
                 $this->typesense->deleteCollection($alias);
             }
 
             $this->typesense->upsertAlias($alias, $collection);
         } catch (\Throwable $e) {
-            // A failed build must not orphan the half-built collection: the
-            // heal loop retries a persistently-failing rebuild every few
-            // minutes, and on a memory-bound cluster accumulating partials
-            // is itself a cluster-killer. Best-effort — if the cluster is
-            // unreachable the delete fails too, and the original failure is
-            // the one worth surfacing.
+            // Don't orphan the half-built collection: the heal loop retries a
+            // failing rebuild every few minutes, and accumulating partials on a
+            // memory-bound cluster is itself a cluster-killer. Best-effort.
             try {
                 $this->typesense->deleteCollection($collection);
             } catch (\Throwable) {
@@ -110,9 +88,8 @@ class ZeroDowntimeReimport
     }
 
     /**
-     * The collection schema, resolved exactly as Scout's Typesense engine
-     * does — the model's own method first, then `model-settings` — so the
-     * rebuilt collection is the one the engine would have created.
+     * Resolved exactly as Scout's Typesense engine does — model method first,
+     * then `model-settings` — so the rebuilt collection matches the engine's.
      *
      * @return array<string, mixed>
      */
@@ -135,11 +112,8 @@ class ZeroDowntimeReimport
     }
 
     /**
-     * Chunk every searchable record into the temporary collection, shaping
-     * each document exactly as the engine's update() does (searchable array
-     * + scout metadata, soft-delete metadata when configured, empties
-     * skipped) — so the rebuilt index is byte-for-byte what Scout would
-     * have written.
+     * Documents are shaped exactly as the engine's update() does, so the rebuilt
+     * index is byte-for-byte what Scout would have written.
      *
      * @param  Model&SearchableModel  $model
      */
@@ -150,9 +124,8 @@ class ZeroDowntimeReimport
         $this->searchableQuery($model)->chunkById(self::CHUNK, function ($models) use ($collection, &$imported, $report): void {
             $softDelete = in_array(SoftDeletes::class, class_uses_recursive($models->first()), true) && config('scout.soft_delete', false);
 
-            // The per-batch hook Scout's own write path runs before every
-            // engine update — apps use it for batch eager-loading, so
-            // skipping it would rebuild correctly but one lazy load at a time.
+            // Scout's per-batch hook — apps use it for batch eager-loading, so
+            // skipping it rebuilds correctly but one lazy load at a time.
             $models = $models->first()->makeSearchableUsing($models);
 
             $documents = $models
@@ -181,12 +154,10 @@ class ZeroDowntimeReimport
     }
 
     /**
-     * The same base query Scout's own import walks: trashed rows included
-     * when Scout indexes soft deletes (they carry `__soft_deleted` metadata,
-     * so dropping them would diverge from the index Scout maintains), and
-     * the model's `makeAllSearchableUsing` scope applied (eager loads etc.) —
-     * protected on the trait, so reflection invokes it (visibility-blind
-     * since PHP 8.1).
+     * The same base query Scout's own import walks: trashed rows included when
+     * Scout indexes soft deletes (dropping them would diverge from the index
+     * Scout maintains); `makeAllSearchableUsing` is protected on the trait, so
+     * reflection invokes it.
      *
      * @param  Model&SearchableModel  $model
      * @return EloquentBuilder<Model&SearchableModel>
@@ -209,12 +180,9 @@ class ZeroDowntimeReimport
     }
 
     /**
-     * Replay the build window: anything that changed while the temporary
-     * collection was importing went to the OLD collection and died with it,
-     * so push those rows again through Scout's normal path (its own
-     * queue-or-sync decision) — which now lands on the new collection via
-     * the alias. Models without timestamps can't be windowed; the next
-     * reimport is their catch-up.
+     * Anything that changed during the import went to the OLD collection and
+     * died with it — push it through Scout's normal path, which now lands on the
+     * new collection via the alias. Models without timestamps can't be windowed.
      *
      * @param  Model&SearchableModel  $model
      */
@@ -226,10 +194,8 @@ class ZeroDowntimeReimport
 
         $replayed = 0;
 
-        // A minute's buffer under the build start absorbs writer clock skew
-        // and transactions that committed (with an earlier updated_at) after
-        // the import chunk had already passed their id — replay is an
-        // idempotent upsert, so the overlap costs nothing.
+        // A minute's buffer absorbs writer clock skew and transactions that
+        // committed after the chunk passed their id; replay is an idempotent upsert.
         $this->searchableQuery($model)
             ->where($model->qualifyColumn($model->getUpdatedAtColumn()), '>=', $started->copy()->subMinute())
             ->chunkById(self::CHUNK, function ($models) use ($model, &$replayed): void {

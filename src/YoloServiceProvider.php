@@ -22,16 +22,11 @@ use Illuminate\Foundation\Http\Kernel as FoundationHttpKernel;
 use Codinglabs\Yolo\Steps\Build\Fargate\CheckYoloInstalledStep;
 
 /**
- * YOLO's runtime service provider — auto-discovered, it boots with the deployed app
- * ({@see CheckYoloInstalledStep} guarantees
- * YOLO ships as a production dependency). Its job today: on the autoscaling web
- * tier, publish FrankenPHP pool saturation for burst step-scaling from an
- * after-response hook ($app->terminating), in either serving mode.
- *
- * It is inert everywhere else. The YOLO_BURST_* environment is set only on the web
- * task definition ({@see SyncTaskDefinitionStep}),
- * so queue/scheduler containers and local/dev apps register nothing — the gate
- * matches the one that ships the metrics Caddyfile and grants PutMetricData.
+ * Auto-discovered runtime provider ({@see CheckYoloInstalledStep} guarantees YOLO ships as a
+ * production dependency). On the autoscaling web tier it publishes FrankenPHP pool saturation
+ * for burst step-scaling from an after-response hook, in either serving mode; inert everywhere
+ * else, since the YOLO_BURST_* environment is set only on the web task definition
+ * ({@see SyncTaskDefinitionStep}).
  */
 class YoloServiceProvider extends ServiceProvider
 {
@@ -92,11 +87,8 @@ class YoloServiceProvider extends ServiceProvider
                 });
             }
 
-            // The backup executor lives in YOLO's own `yolo:` namespace, so it
-            // shadows nothing and registers unconditionally. Nothing schedules
-            // it here — the generated crontab carries the schedule (see
-            // GenerateSupervisorConfigStep), and `yolo backup:database` runs
-            // it on demand.
+            // Own `yolo:` namespace, so it shadows nothing. The generated crontab carries
+            // the schedule; nothing is scheduled here.
             $this->commands([
                 Runtime\Commands\DatabaseBackupCommand::class,
             ]);
@@ -106,23 +98,17 @@ class YoloServiceProvider extends ServiceProvider
             return;
         }
 
-        // Publish worker saturation after the response is sent — so the work rides on a
-        // request that already holds a CPU slice, not a separate loop fighting for one
-        // on a pinned box. The app `terminating` hook fires per response under both
-        // FPM and Octane (boot-registered callbacks ride Octane's post-boot snapshot
-        // into every request), and the reporter debounces internally so this is cheap
-        // on every request. Harmless in a console/queue boot of the same image —
-        // terminating only runs at the end of a handled request.
+        // After the response, so the publish rides a request that already holds a CPU slice
+        // rather than a separate loop fighting for one. `terminating` fires per response under
+        // both FPM and Octane; the reporter debounces internally.
         $this->app->terminating(function (): void {
             $this->app->make(WorkerSaturationReporter::class)->report();
         });
 
-        // Bracket every web request so the reporter scales on real in-flight concurrency
-        // rather than the worker gauge that under-reports under a pin. Octane only: a
-        // classic tier reads its thread gauges instead and never consumes the peak, so it
-        // shouldn't pay the per-request cache round-trips. Pushed once the app has booted
-        // (the HTTP kernel is resolvable by then); pushMiddleware is idempotent, so
-        // re-running on each Octane worker boot adds it at most once.
+        // Real in-flight concurrency, not the worker gauge that under-reports under a pin.
+        // Octane only: a classic tier reads its thread gauges and never consumes the peak, so
+        // it shouldn't pay the per-request cache round-trips. pushMiddleware is idempotent, so
+        // each Octane worker boot adds it at most once.
         if ($this->burstThreads() === null) {
             $this->app->booted(function (): void {
                 $kernel = $this->app->make(HttpKernelContract::class);
@@ -133,12 +119,9 @@ class YoloServiceProvider extends ServiceProvider
             });
         }
 
-        // On an Inertia app, swap the SSR gateway for one that bounds each render and sheds
-        // to CSR while the burst reporter has flagged this task hot. It talks the stable
-        // inertia.ssr config/protocol (not Inertia internals), so it's agnostic to the
-        // app's Inertia major (v2 or v3, whose HttpGateway internals differ). Bound in
-        // boot() so it wins over Inertia's own register()-time binding; guarded on the
-        // package being installed so non-Inertia apps are untouched.
+        // Bounds each SSR render and sheds to CSR while this task is flagged hot. Talks the
+        // stable inertia.ssr config/protocol, so it's agnostic to the app's Inertia major;
+        // bound in boot() to win over Inertia's own register()-time binding.
         if (interface_exists(Gateway::class)) {
             $this->app->bind(Gateway::class, fn (): Gateway => new SaturationAwareSsrGateway(
                 cache: Cache::store(),
@@ -147,21 +130,15 @@ class YoloServiceProvider extends ServiceProvider
         }
     }
 
-    /**
-     * The CLI's BASE_PATH constant doesn't exist in-app; overridable so
-     * tests can point at a fixture.
-     */
+    /** Overridable so tests can point at a fixture. */
     protected function manifestPath(): string
     {
         return $this->app->basePath(Helpers::manifestName());
     }
 
     /**
-     * Burst is baked in, not a user toggle — so there's no "enabled" flag. The one
-     * thing the runtime can't derive is the ECS service name the metric is dimensioned
-     * by (the alarm filters on it), so YOLO injects that on the autoscaling web
-     * task-def only; its presence is the gate. Sourced from the package config
-     * (`config/yolo.php`), which reads the injected env var so `config:cache` bakes it.
+     * Burst is baked in, not a toggle: the injected ECS service name (the metric dimension the
+     * alarm filters on) is the gate. Read via config so `config:cache` bakes it.
      */
     private function burstService(): string
     {
@@ -174,11 +151,9 @@ class YoloServiceProvider extends ServiceProvider
     }
 
     /**
-     * The task's vCPU allocation, injected on the web task-def alongside the service
-     * name (see SyncTaskDefinitionStep). The CPU fallback divides usage by it; the
-     * Fargate microVM exposes more vCPUs than a fractional task is throttled to, so this
-     * injected value is the only trustworthy denominator. 0.0 (unset) lets CgroupCpu fall
-     * back to the cgroup CFS quota.
+     * The Fargate microVM exposes more vCPUs than a fractional task is throttled to, so the
+     * injected allocation is the only trustworthy denominator. 0.0 (unset) falls back to the
+     * cgroup CFS quota.
      */
     private function burstCpu(): float
     {
@@ -204,10 +179,8 @@ class YoloServiceProvider extends ServiceProvider
 
     private function taskId(): string
     {
-        // Under ECS awsvpc the container hostname is the task ID — stable for the
-        // task's life and unique per task, so the per-task debounce key never
-        // collides across tasks (each publishes its own datapoint; the alarm takes
-        // Maximum across them).
+        // Under ECS awsvpc the hostname is the task ID — unique per task, so the per-task
+        // debounce key never collides.
         return gethostname() ?: 'unknown';
     }
 }

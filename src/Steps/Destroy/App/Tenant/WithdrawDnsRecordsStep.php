@@ -15,17 +15,10 @@ use Codinglabs\Yolo\Steps\Deploy\SyncMultitenancyRecordSetStep;
 use Codinglabs\Yolo\Steps\Destroy\App\WithdrawAppDnsRecordsStep;
 
 /**
- * Withdraws one tenant's DNS records from that tenant's own hosted zone — the
- * per-tenant twin of {@see WithdrawAppDnsRecordsStep},
- * and the teardown of what {@see SyncMultitenancyRecordSetStep}
- * writes at deploy.
- *
- * The zone is addressed through {@see HostedZone::forTenant()} so the withdrawal
- * is keyed to that tenant's own hosts (its domain, its apex/`www` sibling, its
- * wildcard) — never the app's and never a sibling tenant's. As everywhere else,
- * the zone itself is never deleted: it is the tenant's domain-level
- * infrastructure, which is exactly what makes absorbing a pre-existing custom
- * domain safe to undo.
+ * Per-tenant twin of {@see WithdrawAppDnsRecordsStep}; the teardown of what
+ * {@see SyncMultitenancyRecordSetStep} writes at deploy. The tenant's zone is
+ * never deleted — that's what makes absorbing a pre-existing custom domain safe
+ * to undo.
  */
 class WithdrawDnsRecordsStep extends TenantStep
 {
@@ -33,9 +26,8 @@ class WithdrawDnsRecordsStep extends TenantStep
 
     public function __invoke(array $options): StepResult
     {
-        // A tenant served under the app's own wildcard has no zone and no records
-        // of its own — the app's `*.{domain}` alias already resolved it, and that
-        // record is withdrawn by the app-level step.
+        // A tenant under the app's own wildcard has no zone of its own; the app's
+        // `*.{domain}` alias is withdrawn by the app-level step.
         if (! isset($this->config['domain']) || Manifest::servesDomain($this->config['domain'])) {
             return StepResult::SKIPPED;
         }

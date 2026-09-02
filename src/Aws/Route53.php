@@ -15,10 +15,6 @@ class Route53
     }
 
     /**
-     * The hosted zone for a domain, or null when none exists — the non-throwing
-     * counterpart to {@see hostedZone()}, used by apex derivation to probe a
-     * candidate suffix without exploding on a miss.
-     *
      * @return array<string, mixed>|null
      */
     public static function findHostedZone(string $domain): ?array
@@ -33,9 +29,7 @@ class Route53
     }
 
     /**
-     * Every hosted-zone name in the account, trailing dot stripped
-     * (`example.com.` → `example.com`), so apex derivation can match a domain's
-     * label-suffixes against the live zones in a single list call.
+     * Trailing dot stripped (`example.com.` → `example.com`).
      *
      * @return array<int, string>
      */

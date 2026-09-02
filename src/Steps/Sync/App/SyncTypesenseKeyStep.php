@@ -24,41 +24,23 @@ use Codinglabs\Yolo\Concerns\RecordsWarnings;
 use Codinglabs\Yolo\Contracts\SkippedByDeployCheck;
 
 /**
- * Mints this app its two Typesense keys, both scoped to its own `{prefix}*`
- * collections (the Algolia secured-key model: a leaked key reaches that app's
- * collections only) and written into the app's environment-side per-app `.env`
- * (env/.env.{app} in the env config bucket), where the next build merges them
- * in like any other env value:
+ * Mints the app's server-side and search-only Typesense keys, scoped to its own
+ * `{prefix}*` collections, into the env-side per-app `.env` — kept out of the
+ * developer `.env` (which the admin tier is fenced from) and apart from the
+ * env-shared `.env` (which carries the cluster admin key), so a build reads
+ * only its own keys, never the admin key or a sibling's.
  *
- * - a server-side key (all actions) the app indexes and queries with from PHP;
- * - a search-only key (documents:search) safe to embed in the page, which the
- *   browser carries when it queries the public search host directly.
+ * The stored keys are the VALUE truth (sync never rotates them; rotation =
+ * delete the lines, run sync:app again) but the cluster is the HONOUR truth:
+ * minted keys are raft-replicated cluster data on ephemeral disks, so a full
+ * node replacement forgets them while apps keep the baked values — every
+ * search 401s behind a green /health. So "already minted" is verified with a
+ * scoped probe, and a dead pair is re-created with the SAME values (POST /keys
+ * accepts an explicit `value`), so existing builds work again without a rebuild.
  *
- * Kept out of the app's developer `.env` (which the admin tier running sync is
- * fenced from) and apart from the env-shared `.env` (which carries the cluster
- * admin key), so each app's build reads only its own minted keys — never the
- * admin key, never a sibling's. Minted exactly once, the pair together — the
- * keys already in the env-side file are the VALUE truth, so sync never rotates
- * them (rotation = delete the lines, run sync:app again). But the cluster is
- * the HONOUR truth: minted keys are cluster data (raft-replicated, ephemeral
- * disks), so a full node replacement boots a cluster that no longer recognises
- * them while apps keep serving the baked values — every search 401s behind a
- * green /health. So "already minted" is verified with a scoped probe, and a
- * dead pair is re-created with the SAME stored values (POST /keys accepts an
- * explicit `value`): the keys baked into every existing build work again the
- * moment sync applies — no rebuild, no release.
- *
- * The mint talks to the cluster's data plane over the public search host with
- * the admin key — the one place YOLO does — so while the cluster or its
- * ingress isn't up yet (first sync ordering: claim published → env tier
- * provisions → this step), it skips with instructions rather than failing the
- * sync.
- *
- * Its once-minted idempotency check reads the app's per-app `.env` (env/.env.{app},
- * which carries the minted keys) — a secret the Observer tier is deliberately fenced
- * from. So like its env-backed-service siblings it is {@see SkippedByDeployCheck}:
- * the deploy gate and the `audit` health check (both read tiers) skip it rather than
- * 403 on that read; `yolo sync` (admin) remains its drift check.
+ * The idempotency check reads the per-app `.env`, a secret the Observer tier
+ * is fenced from — hence {@see SkippedByDeployCheck}: the read tiers skip it
+ * rather than 403; `yolo sync` (admin) remains its drift check.
  */
 class SyncTypesenseKeyStep implements LongRunning, SkippedByDeployCheck
 {
@@ -66,9 +48,8 @@ class SyncTypesenseKeyStep implements LongRunning, SkippedByDeployCheck
     use RecordsWarnings;
 
     /**
-     * Bounded wait for the public search host to answer /health before minting —
-     * 5s polls up to ~5 minutes. Enough for node boot + target registration +
-     * DNS/cert settling on a first sync; instant on a re-sync where it's already up.
+     * ~5 minutes: enough for node boot + target registration + DNS/cert settling
+     * on a first sync; instant on a re-sync.
      */
     protected const int HEALTH_POLL_INTERVAL_SECONDS = 5;
 
@@ -109,12 +90,10 @@ class SyncTypesenseKeyStep implements LongRunning, SkippedByDeployCheck
             return StepResult::SKIPPED;
         }
 
-        // The env tier provisions the cluster moments before this step on a first
-        // sync, so the public search host is usually still settling — node boot,
-        // target registration, DNS/cert propagation. Wait a bounded spell for
-        // /health to answer rather than skipping and forcing a second sync; if it
-        // never comes up, fall back to the skip so an unhealthy cluster can't hang
-        // the run.
+        // On a first sync the env tier provisioned the cluster moments ago, so the
+        // public host is usually still settling — wait a bounded spell rather than
+        // force a second sync, but fall back to the skip so an unhealthy cluster
+        // can't hang the run.
         if (! $this->awaitHealthy($searchHost)) {
             $this->recordWarning(sprintf('Typesense key not minted — https://%s did not answer /health within %ds (DNS/cert/health still settling, or the cluster is unhealthy). Run `yolo sync:app` again once it is up.', $searchHost, self::HEALTH_POLL_ATTEMPTS * self::HEALTH_POLL_INTERVAL_SECONDS));
 
@@ -143,13 +122,10 @@ class SyncTypesenseKeyStep implements LongRunning, SkippedByDeployCheck
     }
 
     /**
-     * The already-minted path: verify the cluster still honours the stored pair,
-     * and re-create it with the SAME values when it doesn't. The probe runs on
-     * the plan pass too (a bounded read of live state, like any reconciler), so
-     * drift is recorded before the dry-run guard and the step survives to apply.
-     * An unverifiable probe (connection error, ALB 5xx — the cluster saying
-     * nothing about the key) reads as honoured with a warning: node health has
-     * its own alarms, and a down cluster must not wedge every sync.
+     * The probe runs on the plan pass too, so drift is recorded before the
+     * dry-run guard and the step survives to apply. An unverifiable probe
+     * (connection error, ALB 5xx) reads as honoured with a warning: node health
+     * has its own alarms, and a down cluster must not wedge every sync.
      */
     protected function reconcileStoredKeys(string $serverKey, array $options): StepResult
     {
@@ -205,12 +181,10 @@ class SyncTypesenseKeyStep implements LongRunning, SkippedByDeployCheck
     }
 
     /**
-     * Whether the cluster still recognises the stored search key: a scoped
-     * probe search against a collection name inside the key's own prefix. 401
-     * is the one answer that means the key is dead; any other status the
-     * cluster itself answers (404 collection-not-found is the usual) proves
-     * auth passed. A connection error or an ALB 5xx says nothing about the
-     * key — null, for the caller to fail open on.
+     * 401 is the one answer that means the key is dead; any other status the
+     * cluster itself answers (404 collection-not-found is the usual) proves auth
+     * passed. A connection error or ALB 5xx says nothing about the key — null,
+     * for the caller to fail open on.
      */
     protected function clusterHonours(string $searchHost, string $searchKey): ?bool
     {
@@ -232,11 +206,6 @@ class SyncTypesenseKeyStep implements LongRunning, SkippedByDeployCheck
         return $response->getStatusCode() !== 401;
     }
 
-    /**
-     * Poll the public search host's /health until it answers or the bounded
-     * attempts are spent — wraps the pure {@see pollHealthy} loop with the real
-     * probe, the heartbeat, and the sleep.
-     */
     protected function awaitHealthy(string $searchHost): bool
     {
         return static::pollHealthy(
@@ -250,12 +219,6 @@ class SyncTypesenseKeyStep implements LongRunning, SkippedByDeployCheck
     }
 
     /**
-     * Poll $isHealthy up to $attempts times, running $betweenAttempts (the
-     * heartbeat + sleep in production) after each failed attempt except the last.
-     * Returns true on the first healthy check, false once the attempts are spent —
-     * it never blocks beyond the bound, so a cluster that never comes up falls
-     * through to the caller's skip rather than hanging the sync.
-     *
      * @param  callable(): bool  $isHealthy
      * @param  callable(): void  $betweenAttempts
      */
@@ -277,10 +240,8 @@ class SyncTypesenseKeyStep implements LongRunning, SkippedByDeployCheck
     }
 
     /**
-     * GET the search host's unauthenticated /health. A 200 means the whole public
-     * chain is ready at once — nodes healthy, target registered, DNS resolved,
-     * cert valid — exactly what the mint's POST /keys then needs. A non-200 or a
-     * connection error (DNS/cert not ready) reads as not-yet-healthy.
+     * A 200 means the whole public chain is ready at once — nodes healthy, target
+     * registered, DNS resolved, cert valid — exactly what the mint's POST /keys needs.
      */
     protected function isHealthy(string $searchHost): bool
     {
@@ -297,11 +258,8 @@ class SyncTypesenseKeyStep implements LongRunning, SkippedByDeployCheck
     }
 
     /**
-     * POST /keys with the given actions on this app's own collection prefix
-     * only. `role` names the key in its Typesense description so the two are
-     * told apart on the cluster. An explicit `$value` re-creates a key
-     * deterministically — same value, so every build that baked it keeps
-     * working — instead of letting the cluster generate one.
+     * An explicit `$value` re-creates a key deterministically so every build
+     * that baked it keeps working.
      *
      * @param  array<int, string>  $actions
      */
@@ -328,10 +286,6 @@ class SyncTypesenseKeyStep implements LongRunning, SkippedByDeployCheck
     }
 
     /**
-     * The current env-side per-app `.env` with the minted keys appended — absent
-     * file reads as empty, so the first mint creates it. Existing content is
-     * preserved byte-for-byte.
-     *
      * @param  array<string, string>  $values
      */
     protected function bodyWithKeys(array $values): string
@@ -366,9 +320,8 @@ class SyncTypesenseKeyStep implements LongRunning, SkippedByDeployCheck
     }
 
     /**
-     * The app's collection prefix — regex-anchored in the key's collections
-     * scope so `myapp_products` matches and a sibling's `myapp2_products`
-     * never can.
+     * Regex-anchored in the key's collections scope so `myapp_products` matches
+     * and a sibling's `myapp2_products` never can.
      */
     protected function prefix(): string
     {

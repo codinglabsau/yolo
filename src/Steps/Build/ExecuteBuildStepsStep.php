@@ -11,15 +11,13 @@ class ExecuteBuildStepsStep implements HasSubSteps, RunsOnBuild
 {
     public function subSteps(): array
     {
-        // `build:` is optional — coalesce to [] so an app with no build hooks
-        // expands to zero sub-steps rather than fataling array_map() in expandStep().
+        // `build:` is optional — a missing key would fatal array_map() in expandStep().
         return Manifest::get('build', []);
     }
 
     public function __invoke(array $options = []): StepResult
     {
-        // The work is the sub-steps this step expands into (subSteps()); running
-        // the parent itself is a no-op that just renders the group header.
+        // The parent only renders the group header; the sub-steps do the work.
         return StepResult::SUCCESS;
     }
 }

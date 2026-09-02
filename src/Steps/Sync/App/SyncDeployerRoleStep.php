@@ -18,9 +18,6 @@ class SyncDeployerRoleStep implements Step
             return StepResult::SKIPPED;
         }
 
-        // Trust-policy drift (the manifest repository/branch/tag changed) rides
-        // through SynchronisesConfiguration on the role, so it's recorded in the
-        // plan pass and survives the only-pending-steps filter into apply.
         return $this->syncResource(new DeployerRole(), $options);
     }
 }

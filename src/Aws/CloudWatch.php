@@ -9,10 +9,9 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 class CloudWatch
 {
     /**
-     * Targeted by name — DescribeAlarms unfiltered returns one 50-record page,
-     * so a full-region scan false-negatives once an account holds more alarms
-     * than a page (exists() would report WOULD_CREATE forever and fail the
-     * deploy drift gate). AlarmNames makes it a single exact lookup.
+     * Unfiltered DescribeAlarms returns one 50-record page, so a full-region scan
+     * false-negatives once an account holds more alarms than a page (WOULD_CREATE
+     * forever, failing the deploy drift gate). AlarmNames makes it exact.
      */
     public static function alarm(string $name): array
     {
@@ -26,11 +25,8 @@ class CloudWatch
     }
 
     /**
-     * Every alarm whose name starts with the given prefix, reduced to
-     * {name, state, reason} — the app's alarms for `yolo status:alarms`. Empty
-     * when the read fails or none match, so the caller degrades gracefully.
-     * Server-side prefix filter + pagination, for the same page-limit reason
-     * as alarm().
+     * Server-side prefix filter + pagination, for the same page-limit reason as
+     * alarm(). [] when the read fails so the caller degrades gracefully.
      *
      * @return array<int, array{name: string, state: ?string, reason: ?string}>
      */
@@ -65,10 +61,6 @@ class CloudWatch
     }
 
     /**
-     * The decoded body of a dashboard, addressed by name. Returns the parsed
-     * `{ "widgets": [...] }` document so callers diff an array, not a JSON string.
-     * Translates the SDK's not-found error to the project's standard signal.
-     *
      * @return array<string, mixed>
      */
     public static function dashboard(string $name): array
@@ -83,14 +75,8 @@ class CloudWatch
     }
 
     /**
-     * The ordered series of datapoints for one metric/statistic over a lookback
-     * window, oldest → newest — used by `yolo status` to read current load (ECS
-     * CPU/memory, ALB request rate / response time): the last value is the live
-     * reading, the whole series renders a sparkline and gives the `/yolo` skill a
-     * trend rather than a lone number. Missing periods are dropped, so the array
-     * holds only real datapoints. Empty when the metric has no data in the window
-     * (a brand-new or idle service) or the read fails, so the caller degrades to a
-     * "—" / no sparkline rather than a hard error.
+     * Oldest → newest, missing periods dropped. [] when the metric has no data or
+     * the read fails, so the caller degrades to "—" rather than a hard error.
      *
      * @param  array<int, array{Name: string, Value: string}>  $dimensions
      * @return array<int, float>

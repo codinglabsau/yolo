@@ -14,17 +14,9 @@ use Codinglabs\Yolo\Concerns\RecordsChanges;
 use Codinglabs\Yolo\Concerns\RecordsWarnings;
 
 /**
- * The final act of an environment teardown — destroy:app (the last app retires
- * its environment), destroy:environment, and the destroy orchestrator all end
- * here: drop this environment's entire block from the local yolo.yml, so the
- * manifest stops advertising a deployment target whose resources have just been
- * torn down. It runs dead last because the teardown ahead of it still reads the
- * environment's account/region out of the block. A local-file change, not an AWS
- * one — the reverse of declaring the environment to deploy to it. Surgical and
- * format-preserving (see {@see Manifest::removeEnvironment()}); if the block's
- * layout can't be edited safely it writes nothing and warns the operator to
- * remove it by hand rather than risk corrupting the file. A standalone
- * destroy:environment whose block was already removed simply SKIPs.
+ * Runs dead last because the teardown ahead of it still reads the environment's
+ * account/region out of the block. If the block can't be edited safely it
+ * writes nothing and warns rather than risk corrupting the file.
  */
 class RemoveEnvironmentFromManifestStep implements Step
 {

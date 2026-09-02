@@ -13,12 +13,10 @@ use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Resources\Ecs\ServicesCluster;
 
 /**
- * The env services cluster. Typesense is its first (and so far only)
- * occupant, so the typesense lifecycle drives it — when a second env-shared
- * service lands on the cluster, this step moves to the env tier's base list
- * and gates on any occupant being provisioned. Teardown cascades the node
- * services (see ServicesCluster::delete()), which is why the node step's own
- * teardown is a deliberate skip.
+ * Typesense is the cluster's only occupant, so its lifecycle drives this step —
+ * a second env-shared service moves it to the env tier's base list, gated on
+ * any occupant. Teardown cascades the node services (see
+ * ServicesCluster::delete()), which is why the node step's own teardown skips.
  */
 class SyncServicesClusterStep implements LongRunning, Step
 {
@@ -26,10 +24,7 @@ class SyncServicesClusterStep implements LongRunning, Step
 
     /**
      * LongRunning for its teardown: deleting the cluster drains the node services
-     * first and waits for their tasks to stop before the cluster delete is accepted
-     * (see ServicesCluster::delete() → Ecs::deleteClusterWhenDrained()), which can
-     * take a few minutes. Creating the cluster is immediate, so the patience line
-     * reflects whichever direction is running.
+     * and waits for their tasks to stop (see ServicesCluster::delete()).
      */
     public function patienceMessage(): string
     {

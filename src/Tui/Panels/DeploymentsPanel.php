@@ -13,12 +13,6 @@ use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
 use Codinglabs\Yolo\Concerns\RendersServiceStatus;
 use Symfony\Component\Console\Output\OutputInterface;
 
-/**
- * Deploy history. When a rollout is in flight (whoever triggered it) the tab shows
- * the live progress; otherwise it lists the deployments from ECR (newest first, the
- * running one marked) in a scrollable viewport. Read-only — rolling back is `yolo
- * rollback`.
- */
 class DeploymentsPanel implements Panel
 {
     use RendersServiceStatus;
@@ -29,7 +23,6 @@ class DeploymentsPanel implements Panel
     /** @var array<int, array<string, mixed>> */
     protected array $statuses = [];
 
-    /** Rows the history body occupied last render — drives PgUp/PgDn paging. */
     protected int $bodyHeight = 0;
 
     // History reads newest-first, so the viewport opens at the top, not the tail.
@@ -78,10 +71,6 @@ class DeploymentsPanel implements Panel
     }
 
     /**
-     * The deploy-history rows — version, when it was pushed, and a marker on the
-     * version that's running now. The full set (the viewport scrolls it); an empty
-     * ECR returns a single empty-state line instead.
-     *
      * @param  array<int, array{version: string, pushedAt: int}>  $targets
      * @return array<int, string>
      */

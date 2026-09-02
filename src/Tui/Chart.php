@@ -5,22 +5,15 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo\Tui;
 
 /**
- * A compact braille line chart — the wide, taller replacement for the inline
- * `▁▂▃▅▇` sparkline on the Metrics / Database / Cache dashboard tabs. Each
- * character cell packs a 2×4 dot grid (U+2800–U+28FF), so a chart W cells wide ×
- * H tall draws at 2·W × 4·H resolution: enough to read a real trend, not just a
- * vague wiggle.
- *
- * Pure and self-contained: a numeric series in, themed lines out. plot() does the
- * raw rasterising (no colour, no axis) and is the easiest thing to pin in a test;
- * render() wraps it with a header, a left y-axis gutter and a caption.
+ * Braille line chart: each cell packs a 2×4 dot grid (U+2800–U+28FF), so W×H
+ * cells draw at 2·W × 4·H resolution. plot() rasterises raw; render() adds the
+ * header, y-axis gutter and caption.
  */
 class Chart
 {
     /**
-     * Braille dot bit per [subRow 0..3 top→bottom][subCol 0..1 left,right].
-     * The low six dots are the classic 2×3 ordering; the bottom row (0x40/0x80)
-     * was bolted on when Unicode extended braille to 2×4.
+     * Dot bit per [subRow 0..3 top→bottom][subCol 0..1]. The low six follow the
+     * classic 2×3 ordering; 0x40/0x80 are Unicode's bolted-on fourth row.
      */
     private const array DOTS = [
         [0x01, 0x08],
@@ -30,11 +23,8 @@ class Chart
     ];
 
     /**
-     * A labelled chart block: a `<label> · now <current>` header, a $height-row
-     * braille plot with a left y-axis gutter (top tick = $max, bottom = $min), and
-     * a muted caption (`<caption> · min … · max …`). Values scale to [$min,$max]
-     * and clamp; an empty series renders the header + a "no data" line so the tab's
-     * layout stays put. The plotted line is drawn in $colour.
+     * Values scale to [$min,$max] and clamp; an empty series still renders the
+     * header plus a "no data" line so the tab's layout stays put.
      *
      * @param  array<int, float|null>  $series  oldest→newest
      * @return array<int, string>
@@ -88,11 +78,9 @@ class Chart
     }
 
     /**
-     * Rasterise $series into a $rows×$cols braille grid (2·cols × 4·rows pixels),
-     * connecting consecutive points vertically so it reads as a continuous line
-     * rather than disconnected dots on steep slopes. Returns exactly $rows strings,
-     * each $cols braille characters wide; an empty or flat ($max ≤ $min) series
-     * yields blank (U+2800) rows so the caller's layout is unchanged.
+     * Consecutive points are joined vertically so steep slopes read as a line,
+     * not scattered dots. Always exactly $rows strings of $cols cells; an empty
+     * or flat ($max ≤ $min) series yields blank U+2800 rows so layout is unchanged.
      *
      * @param  array<int, float>  $series  oldest→newest
      * @return array<int, string>
@@ -133,8 +121,7 @@ class Chart
     }
 
     /**
-     * Light one braille dot. $x is a pixel column (0 at the left); $y is a pixel
-     * row measured from the bottom (0 = lowest), so a larger value sits higher.
+     * $y is a pixel row measured from the bottom (0 = lowest).
      *
      * @param  array<int, array<int, int>>  $grid
      */
@@ -153,9 +140,7 @@ class Chart
     }
 
     /**
-     * A sensible upper bound for an unbounded metric (requests, connections,
-     * latency, memory): the series max rounded up, floored at 1 so an all-zero or
-     * empty series still scales rather than collapsing to a zero range.
+     * Floored at 1 so an all-zero or empty series still scales instead of collapsing to a zero range.
      *
      * @param  array<int, float>  $series
      */
@@ -164,13 +149,11 @@ class Chart
         return $series === [] ? 1.0 : max(1.0, ceil(max($series)));
     }
 
-    /** A right-aligned y-axis tick, padded to the gutter width. */
     private static function pad(string $label, int $width): string
     {
         return str_pad($label, $width, ' ', STR_PAD_LEFT);
     }
 
-    /** Format a tick / reading: whole numbers above 100, one decimal below, + unit. */
     private static function tick(float $value, string $unit): string
     {
         $rounded = $value >= 100 ? (string) (int) round($value) : (string) round($value, 1);

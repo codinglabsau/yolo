@@ -17,14 +17,8 @@ use function Laravel\Prompts\note;
 use function Laravel\Prompts\table;
 
 /**
- * Top-level audit verb — the environment health check. It shows every
- * YOLO-tagged resource grouped by ownership scope (account → env → app) and,
- * unlike the scoped verbs, also runs the deeper probes: a whole-stack drift
- * check (`sync --check`) and the RDS deletion-protection / topology probe. Any
- * error finding — an unexpected resource, drift, or a database with deletion
- * protection off — exits non-zero; warnings never do. Mirrors how bare `sync`
- * orchestrates all three tiers; use `audit:environment` / `audit:app` to narrow
- * to one tier's inventory (no health probes).
+ * The environment health check: unlike the scoped verbs it also runs the
+ * whole-stack drift check and the RDS deletion-protection / topology probe.
  */
 class AuditCommand extends AbstractAuditCommand
 {
@@ -53,11 +47,6 @@ class AuditCommand extends AbstractAuditCommand
     }
 
     /**
-     * The health probes that make bare `audit` a health check rather than a plain
-     * inventory: the RDS deletion-protection / topology snapshot and the
-     * whole-stack drift verdict. Both record findings (errors fail the run); both
-     * return structured data for the JSON payload.
-     *
      * @return array<string, mixed>
      */
     #[\Override]
@@ -70,15 +59,10 @@ class AuditCommand extends AbstractAuditCommand
     }
 
     /**
-     * Probe the manifest-declared database (instance or Aurora cluster). Deletion
-     * protection OFF is an error — a single fat-fingered console delete could take
-     * the app's data with it. An unreadable target is only a warning: we can't
-     * assert protection is off, just that we couldn't confirm it's on. The network
-     * posture warns on a publicly accessible endpoint and on a missing
-     * task-SG ingress; the managed/external classification itself is
-     * informational (an externally-hosted database is a valid posture). Topology
-     * basics are informational. Returns the structured snapshot for `--json`, or
-     * null when no `database:` is declared (nothing to check).
+     * Deletion protection OFF is an error; an unreadable target is only a warning
+     * (we can't assert protection is off, just that we couldn't confirm it's on).
+     * The managed/external classification is informational — an externally-hosted
+     * database is a valid posture.
      *
      * @return array<string, mixed>|null
      */
@@ -154,14 +138,12 @@ class AuditCommand extends AbstractAuditCommand
 
     protected function renderRds(RdsInspection $rds, ?RdsNetworkPosture $posture): void
     {
-        // An unreadable snapshot may not know its kind — "Database: Database"
-        // reads doubled, so drop the kind and let the identifier speak.
+        // An unreadable snapshot may not know its kind — "Database: Database" reads doubled.
         note($rds->readable
             ? sprintf('Database: %s "%s"', ucfirst($rds->kind()), $rds->identifier)
             : sprintf('Database: "%s"', $rds->identifier));
 
         if (! $rds->readable) {
-            // The recorded warning carries the why; nothing to tabulate.
             return;
         }
 
@@ -194,10 +176,6 @@ class AuditCommand extends AbstractAuditCommand
     }
 
     /**
-     * The network-posture rows appended to the basics table: the classification
-     * verdict, then the raw facts behind it so an unexpected verdict can be read
-     * straight off the table.
-     *
      * @return array<int, array{0: string, 1: string}>
      */
     protected function postureRows(RdsInspection $rds, RdsNetworkPosture $posture): array
@@ -223,13 +201,9 @@ class AuditCommand extends AbstractAuditCommand
     }
 
     /**
-     * Run the whole-stack `sync --check` (account → environment → app) in-process
-     * to verdict drift, mirroring the deploy gate ({@see Steps\Deploy\EnsureInSyncStep}).
-     * It inherits the audit's read-only Observer cap — no escalation, no MFA — and
-     * runs inside {@see DeployCheck} so the admin-owned env-service reconcilers a
-     * read tier can't see are skipped (they're `yolo sync`'s job; the audit can't
-     * reconcile them anyway). Drift is an error; in human mode the buffered sync
-     * plan is flushed so the operator sees WHICH resources drifted.
+     * Mirrors the deploy gate ({@see Steps\Deploy\EnsureInSyncStep}). Inherits the
+     * audit's read-only Observer cap and runs inside {@see DeployCheck} so the
+     * admin-owned env-service reconcilers a read tier can't see are skipped.
      *
      * @return array{clean: bool}
      */
@@ -246,17 +220,14 @@ class AuditCommand extends AbstractAuditCommand
         ], $command->getDefinition());
         $input->setInteractive(false);
 
-        // sync renders through Laravel Prompts' own global output, not the command's
-        // — point it at the buffer, then restore a fresh default afterwards.
+        // sync renders through Laravel Prompts' own global output, not the command's.
         Prompt::setOutput($buffer);
 
         try {
             $clean = DeployCheck::during(fn (): int => $command->run($input, $buffer)) === SyncCommand::SUCCESS;
         } catch (\Throwable $exception) {
-            // A plan crash (a step threw — e.g. an AWS read the observer tier can't
-            // make) isn't a drift verdict. Flush the per-step detail the plan
-            // buffered before the bare exception bubbles up, so the operator sees
-            // which step failed rather than a context-free stack trace.
+            // A plan crash isn't a drift verdict — flush the buffered per-step detail
+            // so the operator sees which step failed, not a context-free stack trace.
             if ($render) {
                 $console->write($buffer->fetch());
             }

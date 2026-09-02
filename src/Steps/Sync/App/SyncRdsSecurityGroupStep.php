@@ -11,20 +11,13 @@ use Codinglabs\Yolo\Concerns\AuthorisesTaskIngress;
 use Codinglabs\Yolo\Resources\Ec2\RdsSecurityGroup;
 
 /**
- * Provisions the RDS security group and authorises the Fargate tasks to reach
- * the database on its own port ({@see Rds::port()}). Runs in sync:app (after
- * SyncTaskSecurityGroupStep) rather than sync:environment, because the ingress
- * source is the ECS task SG, which sync:app creates — the RDS subnet group
- * stays in sync:environment.
- *
- * With no port to derive — no `database:` declared yet, or a describe this tier
- * can't make — the group is still provisioned but NO ingress rule is written.
- * That's what makes a greenfield app's order work: sync provisions the group,
- * the database is created into it, the manifest declares it, and the next sync
- * authorises the one port it actually serves. Guessing a port here would leave a
- * speculative rule on a shared, long-lived group that sync can never revoke.
- *
- * The ingress rule is managed purely additively (see AuthorisesTaskIngress).
+ * Runs in sync:app (after SyncTaskSecurityGroupStep) rather than
+ * sync:environment because the ingress source is the ECS task SG, which
+ * sync:app creates. With no port to derive — no `database:` declared yet, or a
+ * describe this tier can't make — the group is still provisioned but NO ingress
+ * rule is written: guessing a port would leave a speculative rule on a shared,
+ * long-lived group that sync can never revoke. The rule is purely additive
+ * (see AuthorisesTaskIngress).
  */
 class SyncRdsSecurityGroupStep implements Step
 {
@@ -47,8 +40,7 @@ class SyncRdsSecurityGroupStep implements Step
         $description = 'Enable Fargate tasks to connect to RDS';
 
         if ($securityGroup->exists() && $this->reconcileTaskIngressRule($securityGroup->arn(), $port, $description, $dryRun) && $dryRun && $result === StepResult::SYNCED) {
-            // The group already exists but the ingress rule is missing, so a
-            // dry-run has a pending change to report rather than a clean SYNCED.
+            // Group exists but the rule is missing — pending, not a clean SYNCED.
             return StepResult::WOULD_SYNC;
         }
 

@@ -30,9 +30,8 @@ class Ecr
     }
 
     /**
-     * Whether an image with this tag exists in the repository. A missing
-     * repository reads as a missing image — on a greenfield plan pass the
-     * repo's own create is still pending, so the image can't exist either.
+     * A missing repository reads as a missing image — on a greenfield plan pass
+     * the repo's own create is still pending.
      */
     public static function imageExists(string $repository, string $tag): bool
     {
@@ -51,9 +50,7 @@ class Ecr
     }
 
     /**
-     * Every image detail in the repository, across all pages — each carrying
-     * its `imageTags` and `imagePushedAt`. A missing repository yields an empty
-     * list (a greenfield app has nothing to roll back to) rather than throwing.
+     * A missing repository yields [] — a greenfield app has nothing to roll back to.
      *
      * @return array<int, array<string, mixed>>
      */

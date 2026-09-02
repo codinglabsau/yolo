@@ -11,11 +11,8 @@ use Codinglabs\Yolo\Resources\Iam\EcsTaskPolicy;
 use Codinglabs\Yolo\Concerns\AttachesRolePolicies;
 
 /**
- * Reconciles the managed-policy attachments on this app's task role against the
- * desired set: the YOLO baseline task policy plus any ARNs the manifest declares
- * under `task-role-policies`. Reconciling (not merely additive) so removing a
- * policy from the manifest detaches it on the next sync — the role is YOLO's
- * alone, so its attachment set is declarative, with no feature-toggle-off orphan.
+ * Reconciling, not additive, so removing a policy from the manifest detaches it
+ * on the next sync — the role is YOLO's alone, so its attachment set is declarative.
  */
 class AttachEcsTaskRolePoliciesStep implements Step
 {

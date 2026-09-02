@@ -14,11 +14,8 @@ use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Detaches the env WAF web ACL from the load balancer before either is torn down —
- * WAFv2 refuses to delete a web ACL while it's still associated, and the
- * association is keyed on the ALB ARN, not the ACL. Idempotent: skips when the
- * load balancer is already gone or nothing is associated. The mirror of
- * SyncWafAssociationStep.
+ * WAFv2 refuses to delete a web ACL while it's associated, and the association
+ * is keyed on the ALB ARN, not the ACL — so this runs before either is torn down.
  */
 class DisassociateWafStep implements Step
 {

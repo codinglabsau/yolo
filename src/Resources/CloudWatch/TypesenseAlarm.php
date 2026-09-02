@@ -15,10 +15,9 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * One Typesense health alarm, firing to the env SNS topic — parameterised so
- * the alarms step composes the quorum pair (healthy hosts < 3 warns, < 2 is
- * quorum lost) and the per-node memory alarms from one resource. Env-scoped:
- * the cluster is the environment's, whoever consumes it.
+ * Parameterised so the alarms step composes the quorum pair and per-node memory
+ * alarms from one resource. Env-scoped: the cluster is the environment's, whoever
+ * consumes it.
  */
 class TypesenseAlarm implements Deletable, Resource, SynchronisesConfiguration
 {
@@ -82,8 +81,7 @@ class TypesenseAlarm implements Deletable, Resource, SynchronisesConfiguration
     }
 
     /**
-     * Reconcile the alarm's managed fields — putMetricAlarm is a pure upsert,
-     * so drift re-puts the whole payload.
+     * putMetricAlarm is a pure upsert, so drift re-puts the whole payload.
      *
      * @return array<int, Change>
      */
@@ -104,13 +102,8 @@ class TypesenseAlarm implements Deletable, Resource, SynchronisesConfiguration
             }
         }
 
-        // Re-point the alarm after a topic rename: an alarm keeps firing to
-        // whatever ARN it was created with, so AlarmActions is drift like any
-        // other field. Resolving the desired ARN needs the topic to exist —
-        // on the plan pass of the very sync that creates it (greenfield, or a
-        // rename), absence itself proves the re-point is pending, so record
-        // the change without resolving; the apply pass runs after the topic
-        // step and resolves it (the two-pass contract).
+        // Same AlarmActions re-point as AlertAlarm: a topic absent on the plan pass
+        // proves the re-point is pending, so record it without resolving.
         try {
             $desiredActions = [(new SnsAlarmTopic())->arn()];
 

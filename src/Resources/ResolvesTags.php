@@ -8,19 +8,10 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
 
 /**
- * Tags and name derived from the resource's scope() — the single source of
- * truth. Every YOLO-managed resource carries a `yolo:scope` tag matching its
- * scope() (app / env / account); App-scoped resources additionally carry the
- * `yolo:app` owner tag. The `yolo:environment` baseline is still added by
- * Aws::tags()/expectedTags() at write time.
- *
- * The `yolo:scope` tag is what lets `audit` tell a YOLO-declared env-shared
- * resource (ALB, VPC, subnets) apart from a genuinely rogue one — without it,
- * "no `yolo:app` tag" was indistinguishable from "shouldn't be here".
- *
- * Driving everything off scope() means a resource declares its tier once and
- * its name exclusivity, its owner tag, the scope tag and its writing command
- * all follow — they can't drift apart.
+ * Name and tags derive from scope() so a resource declares its tier once and its
+ * name exclusivity, owner tag, scope tag and writing command can't drift apart.
+ * `yolo:scope` is what lets `audit` tell a declared env-shared resource from a
+ * rogue one. The `yolo:environment` baseline is added by Aws::tags() at write time.
  *
  * @phpstan-require-implements Resource
  */
@@ -35,11 +26,6 @@ trait ResolvesTags
         ];
     }
 
-    /**
-     * The keyed resource name with exclusivity derived from scope() — so the
-     * name and the yolo:app tag share one source and can't disagree. App →
-     * yolo-{env}-{app}-{suffix}; Env/Account → yolo-{env}-{suffix}.
-     */
     protected function keyedName(string|BackedEnum|null $suffix = null): string
     {
         return Helpers::keyedResourceName($suffix, exclusive: $this->scope()->exclusive());

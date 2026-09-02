@@ -13,12 +13,8 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 use Codinglabs\Yolo\Steps\Destroy\App\RevokeCacheIngressStep;
 
 /**
- * This app's private path to the shared Valkey cache: an additive 6379-from-task-SG
- * ingress rule on the (env-owned) cache security group — the app-level half of the
- * cache, the mirror of {@see RevokeCacheIngressStep}.
- * Runs after SyncTaskSecurityGroupStep (the ingress source) and skips with
- * instructions while the cache SG isn't bootstrapped yet. Mirrors
- * SyncTypesenseAppIngressStep.
+ * The app-level half of the cache, mirror of {@see RevokeCacheIngressStep};
+ * skips while the env-owned cache SG isn't bootstrapped yet.
  */
 class AuthoriseCacheIngressStep implements Step
 {
@@ -33,7 +29,6 @@ class AuthoriseCacheIngressStep implements Step
         try {
             $groupId = (new CacheSecurityGroup())->arn();
         } catch (ResourceDoesNotExistException) {
-            // The cache SG isn't provisioned yet — the rule lands on the next pass.
             return StepResult::SKIPPED;
         }
 

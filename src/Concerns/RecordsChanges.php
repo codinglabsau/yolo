@@ -5,11 +5,8 @@ namespace Codinglabs\Yolo\Concerns;
 use Codinglabs\Yolo\Change;
 
 /**
- * Lets a step accumulate the attribute-level changes it reconciled (or, under
- * --dry-run, would reconcile) so the stepped-command runner can surface them in
- * its Changes report. The runner reads them back via changes() after invoking
- * the step. Steps backed by a Resource get this for free through
- * SynchronisesResource; steps with bespoke reconcile logic use it directly.
+ * A recorded Change is what keeps a step in the apply pass, so record drift
+ * before any dry-run guard or the step is pruned and never self-heals.
  */
 trait RecordsChanges
 {
@@ -39,11 +36,6 @@ trait RecordsChanges
         }
     }
 
-    /**
-     * Drop everything recorded so the next invocation starts clean. Used by
-     * `runScopes` between the plan and apply passes so the apply pass doesn't
-     * carry forward the plan pass's changes on the same step instance.
-     */
     public function resetChanges(): void
     {
         $this->recordedChanges = [];

@@ -10,17 +10,10 @@ use Codinglabs\Yolo\Resources\Ec2\EcsTaskSecurityGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Additively ensures a "<port> from the Fargate task SG" ingress rule exists on a
- * shared security group (the database's own port, Valkey cache 6379, …). The
- * caller owns deriving the port — for a database that means reading it off the
- * live record ({@see Rds::port()}), never assuming an engine. The rule is
- * identified by its content — AWS rejects duplicate permissions, so no marker
- * tag is needed.
- * Never revokes (any out-of-band rule is left untouched), records the change it
- * makes, and writes nothing under --dry-run. Returns whether the rule was missing
- * (a change is pending/applied). A group YOLO doesn't own (an external
- * database's) is a foreign write — pass $foreign so the plan names the group
- * and marks it not yolo-managed.
+ * Additive only — an out-of-band rule is never revoked. The caller derives the
+ * port (a database's off the live record, {@see Rds::port()}, never an assumed
+ * engine). A group YOLO doesn't own is a foreign write — pass $foreign so the
+ * plan names the group as not yolo-managed.
  */
 trait AuthorisesTaskIngress
 {
@@ -33,9 +26,7 @@ trait AuthorisesTaskIngress
             : "ingress {$port}/tcp from task security group";
 
         try {
-            // Name lookup throws if the task SG is missing — sync:app provisions it
-            // before this step runs, but a dry-run on a fresh environment can reach
-            // here before it exists.
+            // The plan pass on a fresh environment reaches here before the task SG exists.
             $taskSecurityGroupId = (new EcsTaskSecurityGroup())->arn();
         } catch (ResourceDoesNotExistException) {
             $this->recordChange(Change::make($attribute, null, 'authorised (task SG pending)'));

@@ -14,10 +14,9 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 
 /**
- * One model's full rebuild through the alias-swap engine, as a queued job —
- * the heal path for models Scout's own `scout:queue-import` refuses (a
- * non-numeric scout key rules out its ID-range fan-out). Unique per model
- * class, so a heal pass that fires twice queues each rebuild exactly once.
+ * The heal path for models `scout:queue-import` refuses (non-numeric key rules
+ * out its ID-range fan-out). Unique per model class, so a heal pass that fires
+ * twice queues each rebuild exactly once.
  */
 class ReimportSearchModel implements ShouldBeUnique, ShouldQueue
 {

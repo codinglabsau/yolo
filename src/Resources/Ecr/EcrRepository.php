@@ -13,14 +13,10 @@ use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * The app's image repository, env-scoped (`yolo-{env}-{app}`) like every other
- * App resource — NOT bare `{app}`. The image is env-specific by construction
- * (`ConfigureEnvAndVersionStep` bakes `APP_VERSION`/`ASSET_URL` in at build), so
- * there is no "build once, promote across envs" to gain from a shared repo —
- * only collisions to avoid: two environments of the same app would clobber each
- * other's `:latest` (and so each other's `--cache-from`), share one 30-image
- * retention window, and the per-env-scoped deployer would be free to overwrite a
- * sibling env's images (DeployerPolicy scopes ECR to this repo's ARN).
+ * Env-scoped (`yolo-{env}-{app}`), NOT bare `{app}`: the image is env-specific by
+ * construction (APP_VERSION/ASSET_URL baked at build), so a shared repo gains no
+ * promotion — only collisions on `:latest`, `--cache-from` and the retention window,
+ * and a deployer free to overwrite a sibling env's images.
  */
 class EcrRepository implements Deletable, Resource
 {
@@ -77,11 +73,7 @@ class EcrRepository implements Deletable, Resource
         ]);
     }
 
-    /**
-     * Force-delete the repository and every image in it — `force` is required
-     * because a repository holding images can't be removed otherwise. A missing
-     * repository is the goal state, so its not-found code is swallowed.
-     */
+    /** `force` is required — a repository holding images can't be removed otherwise. */
     public function delete(): void
     {
         try {

@@ -12,11 +12,6 @@ use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-/**
- * YOLO-managed IAM role assumed by AWS Elemental MediaConvert. Direct mirror of
- * EcsTaskRole, but app-exclusive (one per app) so it carries the yolo:app owner
- * tag. Permission policies are attached separately by AttachMediaConvertRolePoliciesStep.
- */
 class MediaConvertRole implements Deletable, Resource, SynchronisesConfiguration
 {
     use ResolvesTags;
@@ -58,10 +53,7 @@ class MediaConvertRole implements Deletable, Resource, SynchronisesConfiguration
         ]);
     }
 
-    /**
-     * IAM Description character set — see EcsTaskRole::description().
-     * Validated by IamDescriptionsAreSafeTest.
-     */
+    /** IAM Description allows only printable ASCII + Latin-1 (no em dashes or smart quotes) — pinned by IamDescriptionsAreSafeTest. */
     public function description(): string
     {
         return 'YOLO managed MediaConvert role';
@@ -72,11 +64,7 @@ class MediaConvertRole implements Deletable, Resource, SynchronisesConfiguration
         return Aws::synchroniseIamRoleTags($this->name(), $this->tags(), $apply);
     }
 
-    /**
-     * Teardown when the app drops its mediaconvert claim: IAM refuses to
-     * delete a role with attached policies, so the managed-policy attachments
-     * (AttachMediaConvertRolePoliciesStep's work) detach first.
-     */
+    /** IAM refuses to delete a role that still holds policy attachments. */
     public function delete(): void
     {
         $attached = Aws::iam()->listAttachedRolePolicies([

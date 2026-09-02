@@ -13,9 +13,8 @@ class SyncAppObserverRoleStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        // No GitHub-repo gate (unlike the deployer role): every app gets a per-app
-        // observer role so a read grant can name it. Trust-policy drift rides
-        // through SynchronisesConfiguration on the role into the plan.
+        // No GitHub-repo gate (unlike the deployer role): every app gets an observer
+        // role so a read grant can name it.
         return $this->syncResource(new AppObserverRole(), $options);
     }
 }

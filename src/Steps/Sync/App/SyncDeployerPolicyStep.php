@@ -18,10 +18,6 @@ class SyncDeployerPolicyStep implements Step
             return StepResult::SKIPPED;
         }
 
-        // Tag drift and policy-document drift (a YOLO upgrade that widened the
-        // deploy-time call set) both flow through syncResource — document drift
-        // surfaces as a plan-time Change via SynchronisesPolicyDocument, so the
-        // plan flags it and apply actually re-versions the policy.
         return $this->syncResource(new DeployerPolicy(), $options);
     }
 }

@@ -3,11 +3,8 @@
 namespace Codinglabs\Yolo\Tui;
 
 /**
- * The "Outrun YOLO" palette — the logo's cyan→lime signature on a deep-indigo
- * synthwave canvas, with neon magenta for selection and the flame's gold for
- * highlights. Values are truecolor hex; Symfony's OutputFormatter degrades them
- * to the nearest 256/16 colour on terminals without truecolor, so callers only
- * ever name a role.
+ * Truecolor hex; Symfony's OutputFormatter degrades to the nearest 256/16 colour
+ * where truecolor is unsupported, so callers only ever name a role.
  */
 enum Theme: string
 {
@@ -22,19 +19,16 @@ enum Theme: string
     case Muted = '#6C7A99';      // slate — inactive tabs, hints, borders
     case Text = '#E6ECF5';       // off-white — body text
 
-    /** Wrap text in this colour's foreground tag. */
     public function fg(string $text): string
     {
         return sprintf('<fg=%s>%s</>', $this->value, $text);
     }
 
-    /** Bold foreground in this colour. */
     public function bold(string $text): string
     {
         return sprintf('<fg=%s;options=bold>%s</>', $this->value, $text);
     }
 
-    /** This colour as a background fill, with $fg text on top (dark canvas by default). */
     public function bg(string $text, self $fg = self::Canvas): string
     {
         return sprintf('<fg=%s;bg=%s>%s</>', $fg->value, $this->value, $text);

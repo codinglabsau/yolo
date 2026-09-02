@@ -14,15 +14,11 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * A VPC peering connection from the environment's VPC to one declared peer —
- * the bridge to infrastructure outside the YOLO network (typically a database
- * mid-migration), declared via the env manifest `peering` list. Same-account:
- * YOLO both requests and accepts the connection. Configuration sync re-accepts
- * on every run, so an interrupted create self-heals. Routing is a separate
- * relationship concern (SyncVpcPeeringRoutesStep), and DNS resolution over the
- * peering is deliberately last (SyncVpcPeeringDnsStep) — it's the switch that
- * sends traffic across the bridge, so it must not flip until every route
- * exists.
+ * Same-account: YOLO both requests and accepts, and configuration sync re-accepts
+ * on every run so an interrupted create self-heals. Routing is a separate step
+ * (SyncVpcPeeringRoutesStep) and DNS resolution is deliberately last
+ * (SyncVpcPeeringDnsStep) — it's the switch that sends traffic across the bridge,
+ * so it must not flip until every route exists.
  */
 class VpcPeeringConnection implements Deletable, Resource, SynchronisesConfiguration
 {
@@ -66,18 +62,12 @@ class VpcPeeringConnection implements Deletable, Resource, SynchronisesConfigura
             ],
         ]);
 
-        // Same-account, so accept immediately — the request needs a beat to
-        // reach pending-acceptance, so the accept rides the same reconcile the
-        // config sync uses on every later run.
+        // The request needs a beat to reach pending-acceptance, so the accept rides the reconcile.
         $this->synchroniseConfiguration();
     }
 
     /**
-     * Reconcile the connection to accepted. The accept is eventually
-     * consistent, so it's retried briefly; an interrupted create heals on the
-     * next sync. DNS resolution is deliberately NOT part of this reconcile —
-     * SyncVpcPeeringDnsStep flips it only after the routes step has written
-     * every route, so nothing resolves across a bridge that can't route yet.
+     * DNS resolution is deliberately NOT reconciled here — see the class docblock.
      *
      * @return array<int, Change>
      */
@@ -104,11 +94,7 @@ class VpcPeeringConnection implements Deletable, Resource, SynchronisesConfigura
         return $changes;
     }
 
-    /**
-     * Whether DNS resolution over the peering is enabled in both directions on
-     * the live connection. An absent connection reads false — on a greenfield
-     * plan pass the enable is pending, not done.
-     */
+    /** An absent connection reads false — on a greenfield plan pass the enable is pending, not done. */
     public function dnsResolutionEnabled(): bool
     {
         $connection = Ec2::livePeeringConnection($this->name());
@@ -123,13 +109,9 @@ class VpcPeeringConnection implements Deletable, Resource, SynchronisesConfigura
     }
 
     /**
-     * The return routes sync wrote into the peer VPC's route tables — the
-     * foreign writes this connection carries, matched strictly: the
-     * destination must be the environment's CIDR AND the target must be this
-     * connection, so nothing else in tables YOLO doesn't manage is ever named
-     * or touched. Sorted by table id (see Ec2::vpcRouteTables) so the teardown
-     * plan reads identically run to run. Empty when the connection or the env
-     * VPC is already gone.
+     * The return routes sync wrote into the peer's tables, matched strictly (env CIDR
+     * AND this connection) so nothing else in tables YOLO doesn't manage is ever
+     * touched. Sorted by table id so the teardown plan reads identically run to run.
      *
      * @return array<int, array{RouteTableId: string, DestinationCidrBlock: string}>
      */
@@ -170,13 +152,9 @@ class VpcPeeringConnection implements Deletable, Resource, SynchronisesConfigura
     }
 
     /**
-     * Tear down the connection and everything sync wrote to ride on it, in
-     * reverse order of the bring-up: DNS resolution off first (workloads stop
-     * resolving across the bridge before any route disappears), then the
-     * peering routes in the yolo-managed tables, then the return routes sync
-     * wrote into the peer's tables ({@see foreignReturnRoutes} — nothing else
-     * in the foreign tables is ever touched), and finally the connection
-     * itself. A concurrent removal is tolerated.
+     * Reverse of bring-up: DNS off first so workloads stop resolving across the
+     * bridge before any route disappears, then the yolo-managed routes, then the
+     * peer's return routes, then the connection.
      */
     public function delete(): void
     {
@@ -230,10 +208,7 @@ class VpcPeeringConnection implements Deletable, Resource, SynchronisesConfigura
         return Aws::synchroniseEc2Tags($this->arn(), $this->tags(), $apply);
     }
 
-    /**
-     * Accept the request, retrying while it's still initiating — the create
-     * returns before the request reaches pending-acceptance.
-     */
+    /** The create returns before the request reaches pending-acceptance. */
     protected function acceptWhenPending(string $connectionId, int $maxAttempts = 6, int $sleepSeconds = 5): void
     {
         $attempt = 0;
@@ -255,10 +230,7 @@ class VpcPeeringConnection implements Deletable, Resource, SynchronisesConfigura
         }
     }
 
-    /**
-     * Enable DNS resolution on both sides, retrying while the just-accepted
-     * connection is still provisioning — options are only settable once active.
-     */
+    /** Options are only settable once active; a just-accepted connection is still provisioning. */
     protected function enableDnsResolutionWhenActive(string $connectionId, int $maxAttempts = 6, int $sleepSeconds = 5): void
     {
         $attempt = 0;
@@ -285,10 +257,7 @@ class VpcPeeringConnection implements Deletable, Resource, SynchronisesConfigura
     }
 
     /**
-     * Flip DNS resolution off ahead of the delete so nothing resolves the
-     * peer's private hostnames while the routes are being reclaimed. Options
-     * are only settable on an active connection — anything else (still
-     * pending, already deleting) has nothing to switch off.
+     * Options are only settable on an active connection — anything else has nothing to switch off.
      *
      * @param  array<string, mixed>  $connection
      */

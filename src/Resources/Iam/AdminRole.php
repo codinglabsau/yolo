@@ -14,25 +14,14 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * YOLO-managed IAM role an operator assumes to **provision** an environment — the
- * Admin tier. `yolo sync` / `yolo scale` run capped to this
- * role so a local operator can never exceed YOLO's own blast radius, even when
- * their personal identity is account-admin. It carries the read surface
- * ({@see ObserverPolicy}) plus the write surface ({@see AdminPolicy}).
+ * The Admin tier: `yolo sync` / `yolo scale` run capped to this role so an operator
+ * never exceeds YOLO's own blast radius, even when their identity is account-admin.
+ * Bootstrap is self-activating: the first sync of an environment runs on the
+ * operator's profile and creates the role; every sync after mints it.
  *
- * Env-scoped + shared: one `yolo-{env}-admin-role` per environment, since the
- * resources sync writes are environment-bounded.
- *
- * Bootstrap is self-activating, not a chicken-and-egg: the FIRST `yolo sync` of an
- * environment runs on the operator's profile (the role doesn't exist yet) and
- * creates this role; every sync after that mints it. So the tier turns itself on
- * the moment it's provisioned — no `--privileged` bootstrap flag needed.
- *
- * Trust: the account principal (`arn:aws:iam::{account}:root`), so any account
- * identity itself granted `sts:AssumeRole` on this role may assume it — the same
- * same-account model as {@see ObserverRole}. TODO(review): tighten to the specific
- * operator principal once that identity is settled, and decide whether the write
- * surface needs a permissions boundary (see AdminPolicy).
+ * Trust is the account root — any identity itself granted `sts:AssumeRole` may
+ * assume it. TODO(review): tighten to the operator principal; decide whether the
+ * write surface needs a permissions boundary (see AdminPolicy).
  */
 class AdminRole implements Deletable, Resource, SynchronisesConfiguration
 {
@@ -75,12 +64,7 @@ class AdminRole implements Deletable, Resource, SynchronisesConfiguration
         ]);
     }
 
-    /**
-     * IAM Description fields enforce a restricted character set
-     * (tab/LF/CR + printable ASCII + Latin-1 Supplement) — no em dashes,
-     * smart quotes, or U+007F - U+00A0 control range. Validated by
-     * IamDescriptionsAreSafeTest.
-     */
+    /** IAM Description allows only printable ASCII + Latin-1 (no em dashes or smart quotes) — pinned by IamDescriptionsAreSafeTest. */
     public function description(): string
     {
         return 'YOLO managed admin role that caps yolo sync and scale to YOLO-owned resources';
@@ -91,13 +75,7 @@ class AdminRole implements Deletable, Resource, SynchronisesConfiguration
         return Aws::synchroniseIamRoleTags($this->name(), $this->tags(), $apply);
     }
 
-    /**
-     * Teardown when the environment is torn down: IAM refuses to delete a role
-     * that still holds policy attachments, so both the read ({@see ObserverPolicy})
-     * and write ({@see AdminPolicy}) attachments and any inline policies
-     * detach/delete before deleteRole. A concurrent delete that already removed
-     * the role is tolerated.
-     */
+    /** IAM refuses to delete a role that still holds policy attachments. */
     public function delete(): void
     {
         try {
@@ -142,12 +120,9 @@ class AdminRole implements Deletable, Resource, SynchronisesConfiguration
                     'Effect' => 'Allow',
                     'Principal' => ['AWS' => sprintf('arn:aws:iam::%s:root', Aws::accountId())],
                     'Action' => 'sts:AssumeRole',
-                    // Every tier requires MFA; the admin tier additionally demands a
-                    // FRESH TOTP at mint time (mintTierCredentials) — so escalating
-                    // to it is an explicit human act an agent running as the operator
-                    // can't perform. It's AWS-enforced, not a CLI prompt: a direct
-                    // AssumeRole without MFA is denied here, so the gate can't be
-                    // bypassed by going around YOLO.
+                    // Every tier requires MFA; admin additionally demands a FRESH TOTP at
+                    // mint time, so escalating is an explicit human act an agent can't
+                    // perform. AWS-enforced, so it can't be bypassed by going around YOLO.
                     'Condition' => [
                         'Bool' => ['aws:MultiFactorAuthPresent' => 'true'],
                     ],

@@ -17,55 +17,41 @@ class Manifest
     protected const ALLOWED_ROOT_KEYS = ['name', 'timezone', 'environments'];
 
     /**
-     * An in-memory manifest that stands in for yolo.yml when set. Default null —
-     * every command reads the file from disk, unchanged. `destroy:environment`
-     * hydrates this to reconstruct an environment YOLO once provisioned but whose
-     * yolo.yml block `destroy:app` has since removed: the config comes from the live
-     * account (STS), the AWS profile and the published env manifest in S3 instead.
-     * Read-only by nature — the surgical writers (put / removeEnvironment /
-     * setServiceList) read the file directly, and the hydrating command never writes.
+     * An in-memory manifest standing in for yolo.yml, hydrated by `destroy:environment`
+     * for an environment the file no longer declares. Read-only — the surgical writers
+     * read the file directly.
      *
      * @var array<string, mixed>|null
      */
     protected static ?array $hydrated = null;
 
     /**
-     * Per-domain apex-derivation cache. {@see deriveApex()} probes Route 53 for the
-     * registrable root; memoising keeps a single run from re-listing zones for the
-     * same domain across steps. Cleared by {@see flushHydration()} (test reset).
+     * Memoised {@see deriveApex()} results, so one run doesn't re-probe Route 53 per step.
      *
      * @var array<string, string>
      */
     protected static array $apexCache = [];
 
     /**
-     * The account's hosted-zone names, memoised for the run. Every apex derivation
-     * walks the same list, so without this a multi-tenant app pays one
-     * ListHostedZones per distinct tenant domain — enough to trip Route 53's rate
-     * limit on a large tenant set, for an answer that can't differ between calls.
-     * Reset alongside {@see $apexCache}, which memoises what this feeds.
+     * Memoised hosted-zone names — without it a multi-tenant app pays one ListHostedZones
+     * per tenant domain, enough to trip Route 53's rate limit.
      *
      * @var array<int, string>|null
      */
     protected static ?array $hostedZoneNamesCache = null;
 
     /**
-     * The complete set of valid environment-block keys as dot-paths — the single
-     * source of truth for the manifest's shape. There is no `aws.*` namespace:
-     * every key sits at the top of the environment block. A trailing `.*` allows
-     * that prefix and anything beneath it (free-form subtrees: per-tenant config,
-     * the tasks.web.* tree).
+     * Every valid environment-block key as a dot-path, nested keys included, so a misspelt
+     * key hard-fails instead of being silently ignored. The only wildcards are a mid-path `*`
+     * for a tenant id and `queues.*`, which lets a map-form `queues:` reach the pointed error
+     * in {@see queueTiers()}.
      *
      * @var array<int, string>
      */
     protected const ALLOWED_ENVIRONMENT_KEYS = [
         'account-id', 'region',
         'domain', 'wildcard-subdomains', 'branch', 'tag', 'repository',
-        // Multi-tenancy. Every key is listed explicitly (no free-form subtree) so a
-        // stray or misremembered key hard-fails instead of being silently accepted
-        // and ignored — `apex` is the one that used to slip through, and it is
-        // always derived from `domain`, never declared. The landlord and each
-        // tenant are declared the same way: a domain, optionally wildcarded.
+        // `apex` is never declared — always derived from `domain`.
         'multitenancy.landlord.domain',
         'multitenancy.landlord.wildcard-subdomains',
         'multitenancy.queue-isolation',
@@ -82,20 +68,20 @@ class Manifest
         'session.driver',
         'task-role-policies',
         'budget', 'budget.amount', 'budget.strategy',
-        // Each task group has a fixed, known shape, so every key is listed
-        // explicitly: an unrecognised key under tasks.web / tasks.queue /
-        // tasks.scheduler hard-fails rather than being silently accepted by a
-        // wildcard. health-check / autoscaling / the ssr object form are the only
-        // nested subtrees.
         'tasks.web',
         'tasks.web.octane',
-        'tasks.web.cpu', 'tasks.web.memory', 'tasks.web.platform',
+        'tasks.web.cpu', 'tasks.web.memory',
         'tasks.web.enable-execute-command', 'tasks.web.shutdown-grace-period',
-        'tasks.web.log-retention',
-        'tasks.web.ssr', 'tasks.web.ssr.*',
-        'tasks.web.health-check.*', 'tasks.web.autoscaling.*',
+        'tasks.web.ssr', 'tasks.web.ssr.shutdown-grace-period',
+        'tasks.web.health-check.path', 'tasks.web.health-check.interval',
+        'tasks.web.health-check.timeout', 'tasks.web.health-check.healthy-threshold',
+        'tasks.web.health-check.unhealthy-threshold', 'tasks.web.health-check.grace-period',
+        'tasks.web.autoscaling', 'tasks.web.autoscaling.min', 'tasks.web.autoscaling.max',
+        'tasks.web.autoscaling.cpu-utilization',
+        'tasks.web.autoscaling.scale-out-cooldown', 'tasks.web.autoscaling.scale-in-cooldown',
         'tasks.queue',
-        'tasks.queue.autoscaling.*',
+        'tasks.queue.autoscaling', 'tasks.queue.autoscaling.min', 'tasks.queue.autoscaling.max',
+        'tasks.queue.autoscaling.backlog-per-task',
         'tasks.queue.cpu', 'tasks.queue.memory', 'tasks.queue.spot',
         'tasks.queue.shutdown-grace-period', 'tasks.queue.enable-execute-command',
         'tasks.scheduler',
@@ -110,10 +96,6 @@ class Manifest
     }
 
     /**
-     * Stand an in-memory manifest in for yolo.yml for the rest of this run — see
-     * the {@see $hydrated} property. Used by `destroy:environment` to run against an
-     * environment yolo.yml no longer declares.
-     *
      * @param  array<string, mixed>  $manifest
      */
     public static function hydrate(array $manifest): void
@@ -121,7 +103,7 @@ class Manifest
         static::$hydrated = $manifest;
     }
 
-    /** Drop any hydrated manifest, falling back to yolo.yml on disk (test reset). */
+    /** Test reset. */
     public static function flushHydration(): void
     {
         static::$hydrated = null;
@@ -149,10 +131,6 @@ class Manifest
     }
 
     /**
-     * Keys present in the manifest that aren't in the schema — or are at the
-     * wrong level. Empty array means the shape is valid. Checks both the file
-     * root and the current environment block.
-     *
      * @return array<int, string>
      */
     public static function unknownKeys(): array
@@ -176,10 +154,8 @@ class Manifest
     }
 
     /**
-     * Flatten an associative manifest node to leaf dot-paths. Lists and scalars
-     * are leaves at their own key — we don't descend into list items or
-     * free-form values. Public because EnvManifest validates its own schema
-     * with the same flattening.
+     * Lists and scalars are leaves at their own key — list items and free-form values
+     * aren't descended into.
      *
      * @param  array<string, mixed>  $node
      * @return array<int, string>
@@ -208,9 +184,7 @@ class Manifest
                 return true;
             }
 
-            // `prefix.*` matches that prefix and anything beneath it. Comparing
-            // against `$path.` (trailing dot) stops `tasks.web.*` matching a
-            // sibling like `tasks.webhook`.
+            // Comparing against `$path.` stops `tasks.web.*` matching a sibling like `tasks.webhook`.
             if (str_ends_with($allowed, '.*') && str_starts_with($path . '.', substr($allowed, 0, -1))) {
                 return true;
             }
@@ -224,14 +198,9 @@ class Manifest
     }
 
     /**
-     * Match a dot-path against a pattern holding a mid-path `*`, which stands for
-     * exactly one segment: `multitenancy.tenants.*.domain` covers any tenant id,
-     * while still rejecting a key the pattern doesn't name — a hand-written
-     * `apex` fails rather than being silently accepted and then overwritten.
-     *
-     * A path that stops short of the full pattern matches too, because a tenant
-     * declared bare (`acme:` with no config) flattens to
-     * `multitenancy.tenants.acme` — a legitimate leaf, not an unknown key.
+     * A mid-path `*` stands for exactly one segment. A path stopping short of the full
+     * pattern matches too: a bare tenant (`acme:` with no config) flattens to
+     * `multitenancy.tenants.acme`, a legitimate leaf.
      */
     protected static function matchesWildcardSegment(string $allowed, string $path): bool
     {
@@ -267,12 +236,9 @@ class Manifest
     }
 
     /**
-     * Whether YOLO owns the application data bucket. `bucket: true` puts it in
-     * YOLO's keyed namespace (see {@see Paths::s3AppBucket}), so YOLO creates and
-     * hardens it at birth — then hands it over: like an adopted bucket, it is never
-     * reconciled afterwards (see {@see S3Bucket} — it holds user data). A bucket
-     * *name* is a bring-your-own bucket YOLO adopts, never creates and never
-     * writes a byte of configuration to.
+     * `bucket: true` puts the bucket in YOLO's keyed namespace — created and hardened at
+     * birth, then never reconciled (it holds user data). A bucket *name* is bring-your-own:
+     * adopted, never created, never configured.
      */
     public static function managesAppBucket(): bool
     {
@@ -281,12 +247,10 @@ class Manifest
 
     public static function put(string $key, mixed $value): false|int
     {
-        // Scalar writes are applied surgically — the value is rewritten in place
-        // (or its key, plus any missing parent blocks, spliced in) so comments,
-        // blank lines, key ordering and quoting in yolo.yml all survive. Non-scalar
-        // writes (init scaffolding arrays like deploy/tenants into a fresh file) and
-        // any key the surgical pass can't anchor fall back to a full re-dump.
-        if (is_scalar($value)) {
+        // Scalars are rewritten in place so comments, ordering and quoting in yolo.yml
+        // survive; lists go through setList(). Anything else falls back to a full re-dump,
+        // which loses every comment.
+        if (is_scalar($value) || $value === null) {
             $path = [...['environments', Helpers::environment()], ...explode('.', $key)];
 
             $rewritten = static::setScalarPreservingFormat(file_get_contents(Paths::manifest()), $path, $value);
@@ -307,23 +271,16 @@ class Manifest
     }
 
     /**
-     * Rewrite a single scalar at $path (e.g. [environments, production, tasks,
-     * web, autoscaling, min]) in raw block-style YAML, preserving every other byte
-     * — comments, blank lines, ordering, indentation, quoting. Updates the value in
-     * place when the key exists; otherwise splices the missing chain (the leaf plus
-     * any absent intermediate blocks) in as a fresh block under the deepest existing
-     * ancestor on the path. Returns null when no block-style ancestor can anchor it
-     * — a fresh file, or a deepest ancestor that carries an inline value
-     * (`web: true`, `autoscaling: {}`) and so can't take block children, where a
-     * structural rewrite is needed — so the caller can fall back to a full dump.
+     * Rewrite one scalar in raw block-style YAML, preserving every other byte; a missing
+     * key is spliced in under its deepest existing ancestor. Returns null when no
+     * block-style ancestor can anchor it (a fresh file, or an ancestor carrying an inline
+     * value like `web: true` that can't take block children) so put() can re-dump.
      */
     protected static function setScalarPreservingFormat(string $raw, array $path, mixed $value): ?string
     {
         $formatted = static::formatScalar($value);
         $lines = explode("\n", $raw);
 
-        // Walk the block structure, tracking the active key path by indentation and
-        // the deepest existing ancestor of $path we could hang a missing chain off.
         $stack = [];        // list of [indent, key] for the current ancestry
         $ancestor = null;   // [depth, lineIndex, indent, blockStyle] of the deepest path-prefix found
 
@@ -342,19 +299,15 @@ class Manifest
             $currentPath = array_map(fn (array $entry): string => $entry[1], $stack);
 
             if ($currentPath === $path) {
-                // Update in place: keep indent + key, the exact post-colon spacing
-                // and any trailing inline comment — replace only the value.
                 preg_match('/^(\s*[A-Za-z0-9_.-]+:)(\s*)(.*?)(\s*(?:#.*)?)$/', $line, $leaf);
-                $lines[$index] = $leaf[1] . $leaf[2] . $formatted . $leaf[4];
+                $lines[$index] = $leaf[1] . ($formatted === '' ? '' : $leaf[2] . $formatted) . $leaf[4];
 
                 return implode("\n", $lines);
             }
 
-            // Track the deepest line whose path is a strict prefix of $path — the
-            // node we'd splice the missing chain under. Recorded regardless of style:
-            // a deepest ancestor carrying an inline value (`web: true`) can't take
-            // block children, and splicing under a shallower one would duplicate it,
-            // so that case must bail rather than splice (handled below).
+            // A deepest ancestor carrying an inline value (`web: true`) can't take block
+            // children, and splicing under a shallower one would duplicate it — so record
+            // it regardless of style and bail below.
             $depth = count($currentPath);
 
             if ($depth < count($path) && $currentPath === array_slice($path, 0, $depth) && ($ancestor === null || $depth > $ancestor[0])) {
@@ -363,16 +316,10 @@ class Manifest
             }
         }
 
-        // No usable ancestor, or the deepest one carries an inline value → bail so
-        // put() re-dumps (which renders the whole structure as proper blocks).
         if ($ancestor === null || ! $ancestor[3]) {
             return null;
         }
 
-        // Splice every path element below the deepest existing ancestor in as a fresh
-        // block under it — the missing intermediate blocks plus the leaf, each level
-        // indented two spaces deeper. With only the immediate parent missing this is a
-        // single leaf line; with a gap (an absent `autoscaling`) it builds the chain.
         [$depth, $lineIndex, $indent] = $ancestor;
         $missing = array_slice($path, $depth);
         $lastOffset = count($missing) - 1;
@@ -380,7 +327,7 @@ class Manifest
 
         foreach ($missing as $offset => $key) {
             $keyIndent = str_repeat(' ', $indent + 2 * ($offset + 1));
-            $insert[] = $offset === $lastOffset
+            $insert[] = $offset === $lastOffset && $formatted !== ''
                 ? sprintf('%s%s: %s', $keyIndent, $key, $formatted)
                 : sprintf('%s%s:', $keyIndent, $key);
         }
@@ -391,36 +338,38 @@ class Manifest
     }
 
     /**
-     * Surgically rewrite this environment's app `services` claim list to $services
-     * as a block sequence (`services:` with `- item` children) — preserving every
-     * other byte of yolo.yml (comments, ordering, quoting), unlike the put() re-dump. Drops the
-     * key for an empty list. Verifies the result parses to exactly the intended
-     * services before committing, so an unanticipated layout never corrupts the
-     * file: on any doubt it writes nothing and returns false, and the caller falls
-     * back to telling the operator to edit by hand.
-     *
      * @param  array<int, string>  $services
      */
     public static function setServiceList(array $services): bool
     {
-        $services = array_values($services);
+        return static::setList('services', $services);
+    }
+
+    /**
+     * Rewrite a top-level environment list key as a block sequence, preserving every other
+     * byte of yolo.yml. An empty list drops the key. Commits only a result that parses back
+     * to exactly the intended items — on any doubt it writes nothing and returns false.
+     *
+     * @param  array<int, string>  $items
+     */
+    public static function setList(string $key, array $items): bool
+    {
+        $items = array_values($items);
         $raw = (string) file_get_contents(Paths::manifest());
 
-        $rewritten = static::rewriteServiceList($raw, $services);
+        $rewritten = static::rewriteList($raw, $key, $items);
 
         if ($rewritten === null) {
             return false;
         }
 
-        // Safety net: only commit a result that parses and yields exactly the
-        // intended services — never leave a corrupt manifest from an odd layout.
         try {
-            $written = Arr::get(Yaml::parse($rewritten) ?? [], sprintf('environments.%s.services', Helpers::environment()), []);
+            $written = Arr::get(Yaml::parse($rewritten) ?? [], sprintf('environments.%s.%s', Helpers::environment(), $key), []);
         } catch (\Throwable) {
             return false;
         }
 
-        if (array_values((array) $written) !== $services) {
+        if (array_values((array) $written) !== $items) {
             return false;
         }
 
@@ -428,20 +377,16 @@ class Manifest
     }
 
     /**
-     * The pure line-surgery behind setServiceList — returns the rewritten YAML, or
-     * null when the `services` key (or its env block, for an insert) can't be
-     * located. Replaces an existing inline or block list with a block sequence,
-     * inserts the key as the env block's first child when absent, and removes the
-     * key for an empty list.
+     * Returns null when the key (or its env block, for an insert) can't be located.
      *
-     * @param  array<int, string>  $services
+     * @param  array<int, string>  $items
      */
-    protected static function rewriteServiceList(string $raw, array $services): ?string
+    protected static function rewriteList(string $raw, string $key, array $items): ?string
     {
         $lines = explode("\n", $raw);
-        $path = ['environments', Helpers::environment(), 'services'];
+        $path = ['environments', Helpers::environment(), $key];
         $parentPath = ['environments', Helpers::environment()];
-        $removing = $services === [];
+        $removing = $items === [];
 
         $stack = [];
         $parentLine = null;
@@ -475,8 +420,8 @@ class Manifest
                 }
 
                 preg_match('/^(\s*)[A-Za-z0-9_.-]+:\s*.*?(\s*(?:#.*)?)$/', $line, $leaf);
-                $block = static::serviceListBlock($services, strlen($leaf[1]));
-                $block[0] .= $leaf[2] ?? '';   // re-attach any trailing comment to the `services:` line
+                $block = static::listBlock($key, $items, strlen($leaf[1]));
+                $block[0] .= $leaf[2] ?? '';   // re-attach any trailing comment to the key line
 
                 array_splice($lines, $index, 1 + $children, $block);
 
@@ -494,7 +439,7 @@ class Manifest
         }
 
         if ($parentLine !== null) {
-            array_splice($lines, $parentLine + 1, 0, static::serviceListBlock($services, $parentIndent + 2));
+            array_splice($lines, $parentLine + 1, 0, static::listBlock($key, $items, $parentIndent + 2));
 
             return implode("\n", $lines);
         }
@@ -503,38 +448,42 @@ class Manifest
     }
 
     /**
-     * Render the `services:` claim as a block sequence at the given key indent:
-     *
-     *     services:
-     *       - typesense
-     *
-     * @param  array<int, string>  $services
+     * @param  array<int, string>  $items
      * @return array<int, string>
      */
-    protected static function serviceListBlock(array $services, int $keyIndent): array
+    protected static function listBlock(string $key, array $items, int $keyIndent): array
     {
-        $block = [str_repeat(' ', $keyIndent) . 'services:'];
+        $block = [str_repeat(' ', $keyIndent) . $key . ':'];
 
-        foreach ($services as $service) {
-            $block[] = str_repeat(' ', $keyIndent + 2) . '- ' . $service;
+        foreach ($items as $item) {
+            $block[] = str_repeat(' ', $keyIndent + 2) . '- ' . static::formatListItem($item);
         }
 
         return $block;
     }
 
     /**
-     * Surgically remove an environment's entire block from yolo.yml — the
-     * `environments.{environment}` key and every line nested under it, the
-     * trailing blank separator included — preserving every other byte (comments,
-     * ordering, the sibling environments' quoting), unlike the put() re-dump.
-     * The reverse of declaring a deployment target: `destroy:app` calls it as its
-     * final act, once the environment's resources are gone, so yolo.yml stops
-     * advertising a target that no longer exists.
-     *
-     * Verifies the result parses and that exactly this environment — and nothing
-     * else — was dropped before committing, so an unanticipated layout never
-     * corrupts the file: on any doubt it writes nothing and returns false, and
-     * the caller falls back to telling the operator to edit by hand.
+     * Plain scalar where the spec allows it, so a shell command stays readable; double-quoted
+     * only where plain would parse differently (leading indicator, `: ` or ` #`, edge
+     * whitespace, a non-string reading). setList's parse-and-compare catches any misjudgement.
+     */
+    protected static function formatListItem(string $item): string
+    {
+        $plain = $item !== ''
+            && trim($item) === $item
+            && preg_match('/^[A-Za-z0-9_\/.]/', $item) === 1
+            && preg_match('/(: | #)/', $item) !== 1
+            && ! is_numeric($item)
+            && ! in_array(strtolower($item), ['true', 'false', 'null', '~', 'yes', 'no', 'on', 'off'], true);
+
+        return $plain ? $item : '"' . str_replace('"', '\\"', $item) . '"';
+    }
+
+    /**
+     * Excise the `environments.{environment}` block from yolo.yml, preserving every other
+     * byte — `destroy:app`'s final act, so the file stops advertising a target that no longer
+     * exists. Commits only a result that parses and drops exactly this environment; on any
+     * doubt it writes nothing and returns false.
      */
     public static function removeEnvironment(string $environment): bool
     {
@@ -542,8 +491,6 @@ class Manifest
 
         $rewritten = static::rewriteEnvironmentRemoval($raw, $environment);
 
-        // Safety net: only commit a result that parses and leaves exactly the
-        // sibling environments standing — never a manifest mangled by an odd layout.
         try {
             $before = array_keys((array) Arr::get(Yaml::parse($raw) ?? [], 'environments', []));
             $after = array_keys((array) Arr::get(Yaml::parse($rewritten) ?? [], 'environments', []));
@@ -559,11 +506,8 @@ class Manifest
     }
 
     /**
-     * The pure line-surgery behind removeEnvironment — returns the rewritten YAML
-     * with the `environments.{environment}` block (header + nested children +
-     * trailing blank lines) excised, or the input unchanged when the environment
-     * is already absent. The block ends at the next line indented no deeper than
-     * the header (a sibling environment or a top-level key) or at end of file.
+     * The block ends at the next line indented no deeper than its header, or end of file;
+     * trailing blank lines go with it so the surviving siblings stay cleanly spaced.
      */
     protected static function rewriteEnvironmentRemoval(string $raw, string $environment): string
     {
@@ -590,9 +534,6 @@ class Manifest
                 continue;
             }
 
-            // The block runs from the header to the next structural line indented
-            // no deeper than it; trailing blank lines are swept with it so the
-            // separator goes too, leaving the surviving siblings cleanly spaced.
             $end = $index + 1;
 
             while ($end < count($lines)) {
@@ -617,12 +558,13 @@ class Manifest
         return $raw;
     }
 
-    /**
-     * Render a scalar as a YAML value — bare where safe, double-quoted when it
-     * contains characters that would otherwise change the parse.
-     */
+    /** Null renders as a bare `key:` line, which YAML reads back as null. */
     protected static function formatScalar(mixed $value): string
     {
+        if ($value === null) {
+            return '';
+        }
+
         if (is_bool($value)) {
             return $value ? 'true' : 'false';
         }
@@ -642,12 +584,9 @@ class Manifest
     }
 
     /**
-     * The effective cache store. Any app that runs tasks defaults to the shared
-     * Valkey cluster (`redis`) — the ephemeral per-task filesystem is broken
-     * across multiple Fargate tasks, and web-less workers lean on a shared cache
-     * just as hard (atomic locks, rate limiters, `onOneServer`). Set
-     * `cache.store` to opt out (`file` / `database` / `array`). Build-only apps
-     * (no `tasks`) run no containers, so they get no default.
+     * Any app that runs tasks defaults to the shared Valkey cluster: the per-task filesystem
+     * is broken across Fargate tasks, and web-less workers need a shared cache just as much
+     * (atomic locks, rate limiters, `onOneServer`). Build-only apps run no containers, so no default.
      */
     public static function cacheStore(): ?string
     {
@@ -655,11 +594,8 @@ class Manifest
     }
 
     /**
-     * The effective session driver. Web apps default to `redis` — sessions land
-     * on the shared Valkey cluster (strong read-after-write consistency), on its
-     * own logical database (DB 0) so they're isolated from the cache keyspace
-     * (DB 1) while sharing the instance. Set `session.driver` to opt out. Non-web
-     * apps have no sessions, so no default.
+     * Web apps default to `redis`, on a separate logical database (DB 0) from the cache
+     * keyspace (DB 1). Non-web apps have no sessions, so no default.
      */
     public static function sessionDriver(): ?string
     {
@@ -667,36 +603,25 @@ class Manifest
     }
 
     /**
-     * Whether the app runs a web (Fargate) service — `tasks.web: true` or a config
-     * object. Absent or `tasks.web: false` ⇒ a web-less app: a worker running a
-     * standalone queue and/or scheduler (a `tasks` block with neither is refused —
-     * see Command::ensureTasksRunnable), or a build-only app with no `tasks` at
-     * all. The single gate for the ALB / CDN / Route 53 / web-task provisioning
-     * (the value-aware replacement for `has('tasks.web')`).
+     * `tasks.web: true` or a config object. Absent or `false` is a web-less app (a standalone
+     * worker, or build-only). The single gate for ALB / CDN / Route 53 / web-task provisioning.
      */
     public static function hasWeb(): bool
     {
         return static::has('tasks.web') && self::taskExtraction('web') !== false;
     }
 
-    /**
-     * Whether the web service is switched off explicitly (`tasks.web: false`) — a
-     * web-less app. Distinct from absent (also web-less) only in being self-documenting.
-     */
+    /** Explicit `tasks.web: false` — web-less like absent, but self-documenting. */
     public static function webDisabled(): bool
     {
         return static::has('tasks.web') && self::taskExtraction('web') === false;
     }
 
     /**
-     * Whether the web container bundles an opt-in in-process program — today only
-     * `tasks.web.ssr` (Inertia's SSR renderer). Truthy is a bare `true` or an
-     * object of overrides (e.g. shutdown-grace-period); the bare-flag form goes
-     * through strict bool validation so a typo can't silently disable it.
-     *
-     * Queue and scheduler bundling is NOT a flag — it's derived from task presence
-     * (see queueHost / schedulerHost): each rides the web container unless a
-     * top-level tasks.queue / tasks.scheduler block extracts it into its own service.
+     * An opt-in in-process web-container program — today only `tasks.web.ssr`. `true` or an
+     * object of overrides; the bare flag is strict-bool validated so a typo can't silently
+     * disable it. Queue and scheduler bundling is derived from task presence (queueHost /
+     * schedulerHost), never a flag.
      */
     public static function bundles(string $program): bool
     {
@@ -706,13 +631,9 @@ class Manifest
     }
 
     /**
-     * Whether the web tier runs Octane (FrankenPHP worker mode) — the default.
-     * Set `tasks.web.octane: false` to run FrankenPHP in classic mode instead
-     * (per-request boot, no resident app), for an app that isn't Octane-safe yet
-     * — e.g. a migration onto Fargate that predates an Octane-readiness pass. Same
-     * image and port either way; only the web launch command differs (see
-     * ProcessCommands::web). Goes through strict bool validation so a typo can't
-     * silently flip the web server.
+     * Default on. `tasks.web.octane: false` runs FrankenPHP in classic mode (per-request boot)
+     * for an app that isn't Octane-safe yet; same image and port, only the launch command
+     * differs (ProcessCommands::web). Strict-bool so a typo can't silently flip the server.
      */
     public static function usesOctane(): bool
     {
@@ -720,13 +641,10 @@ class Manifest
     }
 
     /**
-     * Whether a group autoscales. Autoscaling is **bolted on by default** for an
-     * enabled web or queue tier — an omitted `autoscaling` key, `autoscaling: true`,
-     * or an `autoscaling: {min, max, …}` block all mean ON; only an explicit
-     * `autoscaling: false` turns it off (a fixed single task). The scheduler is a
-     * pinned singleton and never autoscales. This is the single gate every scaling
-     * resource keys off (scalable target, concurrency/CPU/backlog policies, burst,
-     * scale-to-zero) — off ⇒ those tear down or never provision.
+     * Autoscaling is on by default for an enabled web or queue tier — omitted, `true` or a
+     * config block all mean ON; only an explicit `false` gives a fixed single task. The
+     * scheduler is a pinned singleton and never autoscales. Every scaling resource keys off
+     * this — off ⇒ they tear down or never provision.
      */
     public static function autoscales(ServerGroup $group): bool
     {
@@ -739,19 +657,12 @@ class Manifest
         return $enabled && self::autoscalingValue($group) !== false;
     }
 
-    /**
-     * Web-tier autoscaling — the common gate, kept as a named shorthand for
-     * `autoscales(ServerGroup::WEB)` (most scaling code is web).
-     */
     public static function isAutoscaling(): bool
     {
         return static::autoscales(ServerGroup::WEB);
     }
 
     /**
-     * Validate and resolve a group's `autoscaling` value — the three-state knob,
-     * defaulting to ON when the key is omitted on an enabled group. `true` (or an
-     * omitted key) and a non-empty config object both mean ON; `false` means off.
      * An empty object (`{}`) or null hard-fails — write `true` / `false`.
      *
      * @return bool|array<string, mixed>
@@ -777,9 +688,8 @@ class Manifest
     }
 
     /**
-     * The autoscaling floor for a group. Both default to 1 (no accidental
-     * scale-to-zero); web is validated ≥ 1 (it serves traffic, can't idle to zero),
-     * the queue ≥ 0 (0 opts into scale-to-zero, with a 0→1 bootstrap alarm).
+     * Web must be ≥ 1 (it serves traffic); the queue may be 0, opting into scale-to-zero
+     * with a 0→1 bootstrap alarm.
      */
     public static function autoscalingMin(ServerGroup $group): int
     {
@@ -791,9 +701,6 @@ class Manifest
             : Helpers::validateNonNegativeInt($value, $key);
     }
 
-    /**
-     * The autoscaling ceiling for a group — web and the queue both default to 5.
-     */
     public static function autoscalingMax(ServerGroup $group): int
     {
         $key = "tasks.{$group->value}.autoscaling.max";
@@ -803,13 +710,10 @@ class Manifest
 
     /**
      * Whether the build ships a Caddyfile with FrankenPHP metrics enabled — the burst
-     * signal's source in either serving mode. True for any autoscaling web tier: Octane
-     * runs the app's own stub plus the `metrics` global option via `octane:start
-     * --caddyfile` (it overwrites the CADDY_GLOBAL_OPTIONS env var, so the option has to
-     * ride in a file), and classic mode adds the same option to the Caddyfile it already
-     * runs for its thread bounds. The single gate the Caddyfile generation, the burst
-     * env, the PutMetricData grant and the build preflight all key off, so they can't
-     * drift.
+     * signal in either serving mode. Octane needs the file because `octane:start`
+     * overwrites CADDY_GLOBAL_OPTIONS; classic mode adds the option to the Caddyfile it
+     * already runs for its thread bounds. The single gate for Caddyfile generation, the
+     * burst env, the PutMetricData grant and the build preflight.
      */
     public static function usesMetricsCaddyfile(): bool
     {
@@ -817,10 +721,8 @@ class Manifest
     }
 
     /**
-     * Which container runs the queue worker, or null when no worker runs anywhere.
-     * A standalone `tasks.queue` service if extracted; else the web container
-     * (bundled); else null — `tasks.queue: false` (disabled) or a worker-less app
-     * with no web tier to bundle into. Null ⇒ jobs run inline (QUEUE_CONNECTION=sync).
+     * Null ⇒ no worker runs anywhere (`tasks.queue: false`, or no web tier to bundle into)
+     * and jobs run inline (QUEUE_CONNECTION=sync).
      */
     public static function queueHost(): ?ServerGroup
     {
@@ -833,12 +735,8 @@ class Manifest
     }
 
     /**
-     * Which container runs the scheduler (supercronic + schedule:run), or null when
-     * cron runs nowhere (`tasks.scheduler: false`, or no host exists): a dedicated
-     * `tasks.scheduler` service if extracted, else the standalone queue if there is
-     * one, else the web container. Bundled cron lands on the least request-facing
-     * service that exists. Distinct from the deploy/management tier (see deployGroup),
-     * which always resolves to a real group even when the scheduler is disabled.
+     * Bundled cron lands on the least request-facing service that exists; null when cron runs
+     * nowhere. Unlike deployGroup, which always resolves a tier.
      */
     public static function schedulerHost(): ?ServerGroup
     {
@@ -852,11 +750,8 @@ class Manifest
     }
 
     /**
-     * Whether this app runs scheduled logical database backups — opt-in via
-     * `backups: true` (or a `backups:` map carrying overrides like `time`).
-     * Backups ride the scheduler (the generated crontab carries the daily
-     * entry), so an app with cron switched off has no host to run them and
-     * the whole feature is moot there.
+     * Opt-in via `backups: true` (or a `backups:` map). Backups ride the scheduler's crontab,
+     * so an app with cron switched off has no host to run them.
      */
     public static function backsUpDatabases(): bool
     {
@@ -865,12 +760,8 @@ class Manifest
     }
 
     /**
-     * The cron schedule the backup fires on (manifest timezone) —
-     * `backups.schedule`, a standard 5-field cron expression. Default is
-     * daily at 05:00: off-peak in the timezone the app declares, while the
-     * previous night's data is still fresh. The gate checks shape (five
-     * fields, cron charset), not cron semantics — supercronic is the parser
-     * of record.
+     * 5-field cron in the manifest timezone; the 05:00 default is off-peak with the night's
+     * data fresh. Shape check only (five fields, cron charset) — supercronic is the parser of record.
      */
     public static function backupSchedule(): string
     {
@@ -889,11 +780,8 @@ class Manifest
     }
 
     /**
-     * The autoscaling/desired-count floor for the standalone queue — its
-     * `autoscaling.min` (default 1). `0` opts into scale-to-zero (idle to no tasks,
-     * zero cost), except when the queue also hosts the scheduler, where cron can't
-     * ride a task that idles to zero — `ensureSchedulerHostNotScaleToZero` rejects an
-     * explicit `0` there.
+     * `0` opts into scale-to-zero — except when the queue also hosts the scheduler, where
+     * cron can't ride a task that idles to zero (ensureSchedulerHostNotScaleToZero rejects it).
      */
     public static function queueMin(): int
     {
@@ -901,11 +789,8 @@ class Manifest
     }
 
     /**
-     * Additional IAM policy ARNs to attach to this app's ECS task role, declared
-     * under the top-level `task-role-policies` list. The role is per-app, so these
-     * grant only this app's containers and never reach another app. Each entry must
-     * be a customer- or AWS-managed IAM policy ARN; a malformed value hard-fails the
-     * plan rather than silently dropping the grant.
+     * Extra IAM policy ARNs for this app's (per-app) ECS task role, so they never reach
+     * another app. A malformed value hard-fails rather than silently dropping the grant.
      *
      * @return array<int, string>
      */
@@ -929,40 +814,27 @@ class Manifest
         return $policies;
     }
 
-    /**
-     * Whether the queue runs as its own ECS service (`tasks.queue: true` or a
-     * config object) rather than bundled in the web container. Absent ⇒ bundled;
-     * `false` ⇒ disabled (see queueDisabled), so neither counts as standalone.
-     */
+    /** `tasks.queue: true` or a config object. Absent ⇒ bundled in web; `false` ⇒ disabled. */
     public static function hasStandaloneQueue(): bool
     {
         return static::has('tasks.queue') && self::taskExtraction('queue') !== false;
     }
 
-    /**
-     * Whether the scheduler runs as its own pinned-singleton ECS service
-     * (`tasks.scheduler: true` or a config object) rather than bundled in the web
-     * container. Absent ⇒ bundled; `false` ⇒ disabled (see schedulerDisabled).
-     */
+    /** `tasks.scheduler: true` or a config object. Absent ⇒ bundled in web; `false` ⇒ disabled. */
     public static function hasStandaloneScheduler(): bool
     {
         return static::has('tasks.scheduler') && self::taskExtraction('scheduler') !== false;
     }
 
-    /**
-     * Whether the queue worker is switched off entirely (`tasks.queue: false`) —
-     * it runs nowhere, neither bundled nor extracted. Jobs must run inline
-     * (QUEUE_CONNECTION=sync, enforced at build).
-     */
+    /** `tasks.queue: false` — runs nowhere; jobs must run inline (enforced at build). */
     public static function queueDisabled(): bool
     {
         return static::has('tasks.queue') && self::taskExtraction('queue') === false;
     }
 
     /**
-     * Whether the scheduler is switched off entirely (`tasks.scheduler: false`) —
-     * cron runs nowhere. Dangerous (framework + packages lean on the scheduler), so
-     * sync surfaces a warning; see SyncAppCommand::schedulerAdvisory.
+     * `tasks.scheduler: false` — cron runs nowhere. Dangerous (framework and packages lean
+     * on the scheduler), so sync warns; see SyncAppCommand::schedulerAdvisory.
      */
     public static function schedulerDisabled(): bool
     {
@@ -970,18 +842,10 @@ class Manifest
     }
 
     /**
-     * Validate and resolve a top-level task role's block value — the three-state
-     * opt-in shared by `tasks.queue` and `tasks.scheduler`, mirroring the
-     * boolean-or-object form of `tasks.web.ssr` (see bundles()):
-     *
-     *   - `true`               extract a standalone service with default sizing
-     *   - non-empty config map extract a standalone service with overrides
-     *   - `false`              disabled — runs nowhere
-     *
-     * Callers confirm presence first (has()); an absent block is the bundled
-     * default, not a value. An empty block (`tasks.queue:` → null), an empty map
-     * (`{}`), a list, or any non-boolean scalar hard-fails — write `true` for
-     * defaults rather than leaving the value ambiguous.
+     * The three-state block value shared by `tasks.queue` and `tasks.scheduler`: `true`
+     * (extract with defaults), a non-empty map (extract with overrides), `false` (disabled).
+     * Callers check has() first — absence is the bundled default, not a value. An empty
+     * block, `{}`, a list or a non-boolean scalar hard-fails rather than being read ambiguously.
      *
      * @return bool|array<string, mixed>
      */
@@ -1007,11 +871,9 @@ class Manifest
     }
 
     /**
-     * The workloads that run as their own ECS service for this app: web (when
-     * there's a `tasks.web` block) plus any extracted queue/scheduler. This is the
-     * single list that deploy registers task-def revisions for, sync provisions
-     * services for, and `yolo run --group` fans across. Bundled queue/scheduler
-     * are NOT here — they ride inside the web container, not their own service.
+     * The workloads that run as their own ECS service — what deploy registers task-defs
+     * for, sync provisions, and `yolo run --group` fans across. A bundled queue/scheduler
+     * rides inside the web container and is NOT here.
      *
      * @return array<int, ServerGroup>
      */
@@ -1025,12 +887,9 @@ class Manifest
     }
 
     /**
-     * The service group a one-off deploy/management task (the `deploy:` hooks,
-     * e.g. migrations) templates its task definition on — the least request-facing
-     * tier that exists: a dedicated scheduler if extracted, else a standalone queue,
-     * else web. Unlike schedulerHost this always resolves to a real group (it picks
-     * a tier to run on, independent of whether cron is enabled), so a disabled
-     * scheduler still leaves migrations a home.
+     * The tier a one-off deploy task (migrations) templates on — the least request-facing
+     * that exists. Always resolves, unlike schedulerHost, so a disabled scheduler still
+     * leaves migrations a home.
      */
     public static function deployGroup(): ServerGroup
     {
@@ -1042,15 +901,10 @@ class Manifest
     }
 
     /**
-     * The host this app is served on, or null when it has none.
-     *
-     * The single source for "the app's domain", because it lives in two places by
-     * design: a solo app declares `domain` at the root of the environment block,
-     * while a multi-tenant app declares its landlord's host inside the
-     * `multitenancy` block. Under multi-tenancy a root `domain` would be ambiguous
-     * — it would mean both "where the landlord is served" and "what subdomain
-     * tenants hang off", and those separate the moment one tenant takes a custom
-     * domain — so validation refuses it there.
+     * A solo app declares `domain` at the environment root; a multi-tenant app declares its
+     * landlord's host inside `multitenancy`. A root `domain` is refused there because it
+     * would mean both "where the landlord is served" and "what tenants hang off", which
+     * separate the moment one tenant takes a custom domain.
      */
     public static function domain(): ?string
     {
@@ -1067,11 +921,8 @@ class Manifest
     }
 
     /**
-     * The app's own apex. A tenanted app has one whenever its landlord declares a
-     * domain — tenants are an orthogonal axis, not a reason the app can't be served
-     * on a host of its own. Only an app with no domain at all (headless, or a
-     * tenanted app whose tenants each bring their own domain) has no app apex;
-     * there the apex is per tenant, {@see tenants()}.
+     * A tenanted app has an apex whenever its landlord declares a domain; only an app with no
+     * domain at all has none — there the apex is per tenant, {@see tenants()}.
      */
     public static function apex(): string
     {
@@ -1085,16 +936,10 @@ class Manifest
     }
 
     /**
-     * Whether the app's own certificate and listener rule already serve this host.
-     * True when it *is* the app's domain, or when the app serves every subdomain
-     * of that domain and this sits exactly one label below it.
-     *
-     * This is what lets `tenants` compose with `wildcard-subdomains` instead of
-     * excluding it: a tenant served on a subdomain of the app's domain needs no
-     * hosted zone, certificate, SNI attachment or listener rule of its own — the
-     * app's wildcard already covers it — while a tenant on a genuine custom domain
-     * gets all four. Each per-tenant DNS/TLS step gates on this, so one manifest
-     * shape covers both without a mode switch.
+     * True when this is the app's domain, or the app wildcards its subdomains and this sits
+     * exactly one label below. This is what lets tenants compose with `wildcard-subdomains`:
+     * a tenant under the app's domain needs no zone, certificate, SNI attachment or listener
+     * rule of its own, while a tenant on a custom domain gets all four.
      */
     public static function servesDomain(string $domain): bool
     {
@@ -1118,16 +963,10 @@ class Manifest
     }
 
     /**
-     * Whether every subdomain of the app's own `domain` is served by the app —
-     * one wildcard listener-rule host and one `*.{domain}` alias record instead
-     * of a resource per subdomain, so a multi-tenant app can bring a tenant live
-     * on a database insert with no infrastructure run.
-     *
-     * Opt-in, because a wildcard is only ever safe beneath the app's OWN domain.
-     * Several apps commonly hang off one shared apex (`app-a.example.com`,
-     * `app-b.example.com`); a wildcard at the apex would have whichever app won
-     * the ALB rule priority swallow its siblings' traffic. Scoped to `domain` it
-     * can only ever match hosts below this app.
+     * One wildcard listener-rule host and one `*.{domain}` alias record instead of a resource
+     * per subdomain, so a tenant can go live on a database insert. Opt-in because a wildcard
+     * is only safe beneath the app's OWN domain: apps commonly share one apex, and a wildcard
+     * there would let whichever app won ALB rule priority swallow its siblings' traffic.
      */
     public static function servesWildcardSubdomains(): bool
     {
@@ -1137,12 +976,7 @@ class Manifest
         );
     }
 
-    /**
-     * The wildcard host the app serves, or null when it serves only its canonical
-     * host. One label deep — ACM wildcards and ALB host-header wildcards both
-     * match a single label, so `*.{domain}` covers `{tenant}.{domain}` and
-     * nothing deeper.
-     */
+    /** One label deep — ACM and ALB host wildcards both match a single label. */
     public static function wildcardHost(): ?string
     {
         return static::servesWildcardSubdomains()
@@ -1151,14 +985,9 @@ class Manifest
     }
 
     /**
-     * The domain the app's ACM certificate is issued for; the certificate covers
-     * that name plus its single-label wildcard.
-     *
-     * Normally the apex, so one certificate serves the app and any sibling app on
-     * the same zone. A wildcard-subdomain app needs the wildcard one level
-     * deeper: with `domain: app.example.com`, the apex certificate's
-     * `*.example.com` matches `app.example.com` but NOT `tenant.app.example.com`,
-     * so the certificate is issued for the domain itself instead.
+     * Normally the apex, so one certificate serves every sibling app on the zone. A
+     * wildcard-subdomain app needs it one level deeper: `*.example.com` matches
+     * `app.example.com` but NOT `tenant.app.example.com`.
      */
     public static function certificateDomain(): string
     {
@@ -1168,12 +997,9 @@ class Manifest
     }
 
     /**
-     * Derive the apex (registrable root) for a domain by walking its labels
-     * longest-suffix-first and returning the longest suffix that already has a
-     * Route 53 hosted zone in the account — so `app.example.com` resolves to the
-     * existing `example.com` zone with no explicit key. When no ancestor zone
-     * exists yet the domain itself is the apex (sync then creates the zone), with
-     * any leading `www.` stripped so the apex is never the www host.
+     * The longest suffix that already has a Route 53 hosted zone, so `app.example.com`
+     * resolves to an existing `example.com` zone with no explicit key. With no ancestor zone
+     * the domain itself is the apex (sync creates the zone), with any leading `www.` stripped.
      */
     public static function deriveApex(string $domain): string
     {
@@ -1197,16 +1023,10 @@ class Manifest
     }
 
     /**
-     * The database DECLARED by the flat `database:` manifest key — the bare human
-     * name of an RDS instance or Aurora cluster (its DBInstanceIdentifier /
-     * DBClusterIdentifier, never an endpoint hostname). Null when nothing's
-     * declared. Whether the name is a cluster or a plain instance is resolved
-     * live by {@see Rds::target()}.
-     *
-     * Read from the manifest, never the app's secret `.env`: every consumer (the
-     * CloudWatch dashboard body, the status TUI, the audit health probe) must
-     * resolve the same target under every RBAC tier, which a secret read can't
-     * guarantee. The dashboard tier-parity contract leans on this directly.
+     * The bare DBInstanceIdentifier / DBClusterIdentifier, never an endpoint; instance vs
+     * cluster is resolved live by {@see Rds::target()}. Read from the manifest, never the
+     * secret `.env`, so every consumer (dashboard body, status TUI, audit probe) resolves
+     * the same target under every RBAC tier — the dashboard tier-parity contract depends on it.
      */
     public static function database(): ?string
     {
@@ -1216,9 +1036,7 @@ class Manifest
             return null;
         }
 
-        // RDS identifiers can't contain dots, so a dotted value is an endpoint
-        // hostname — reject it with a pointed message rather than letting RDS
-        // bounce the describe with an opaque InvalidParameterValue.
+        // RDS identifiers can't contain dots, so a dotted value is an endpoint hostname.
         if (str_contains($database, '.')) {
             throw new IntegrityCheckException(sprintf(
                 'The manifest `database:` key takes the bare database name (its DBInstanceIdentifier or DBClusterIdentifier), not an endpoint hostname — got "%s".',
@@ -1230,16 +1048,10 @@ class Manifest
     }
 
     /**
-     * Whether the app runs in multi-tenant mode — i.e. declares a `multitenancy`
-     * block. This is the **mode** predicate, and it deliberately does not depend on
-     * tenants being declared: the block's landlord is where a multi-tenant app's
-     * own host lives, so gating this on `multitenancy.tenants` would leave a
-     * landlord-only manifest with no reader for its domain and silently deploy it
-     * as a headless worker (validation forbids a root `domain` alongside the block,
-     * so there is nowhere else for the host to come from).
-     *
-     * The orthogonal question — are there tenants to fan out over — is
-     * {@see hasTenants()}. Every per-tenant fan-out gate keys off that one.
+     * The **mode** predicate — deliberately independent of tenants being declared: the
+     * landlord block is where a multi-tenant app's host lives, so gating on tenants would
+     * silently deploy a landlord-only manifest as a headless worker. Fan-out gates use
+     * {@see hasTenants()}.
      */
     public static function isMultitenanted(): bool
     {
@@ -1247,9 +1059,8 @@ class Manifest
     }
 
     /**
-     * Whether any tenant is declared. The fan-out predicate: per-tenant queues,
-     * DNS/TLS resources and teardown all key off this, never {@see isMultitenanted()},
-     * so a landlord-only app provisions exactly what the solo shape does.
+     * The fan-out predicate: per-tenant queues, DNS/TLS and teardown key off this, so a
+     * landlord-only app provisions exactly what the solo shape does.
      */
     public static function hasTenants(): bool
     {
@@ -1257,11 +1068,8 @@ class Manifest
     }
 
     /**
-     * How a multi-tenant app's queues fan out — `shared` (one queue set for all
-     * tenants, the default) or `dedicated` (a queue set and worker program per tenant).
-     * Solo apps have a single scope, so the knob is meaningless for them
-     * (ensureQueueIsolationValid rejects it there). An unknown value hard-fails rather
-     * than silently falling back.
+     * `shared` (default: one queue set for all tenants) or `dedicated` (a queue set and
+     * worker program per tenant). Meaningless for a solo app (ensureQueueIsolationValid).
      */
     public static function queueIsolation(): QueueIsolation
     {
@@ -1274,15 +1082,8 @@ class Manifest
     }
 
     /**
-     * Whether the queue layer fans out per tenant — one SQS queue set and one worker
-     * program per tenant. True only for an app with declared tenants that opts into
-     * the `dedicated` strategy; by default a multi-tenant app is `shared` — one queue
-     * set at the app name, the tenant carried in the job payload — so every
-     * per-tenant queue branch keys off this rather than isMultitenanted() alone.
-     *
-     * Gated on {@see hasTenants()}, not the mode: `dedicated` with no tenants would
-     * otherwise fan out to a lone `queue_landlord` program, renaming a landlord-only
-     * app's queues for no isolation benefit.
+     * Gated on {@see hasTenants()}, not the mode: `dedicated` with no tenants would fan out
+     * to a lone `queue_landlord` program, renaming a landlord-only app's queues for nothing.
      */
     public static function fansQueuesPerTenant(): bool
     {
@@ -1295,19 +1096,15 @@ class Manifest
             return false;
         }
 
-        // Read raw rather than through tenants(): that normaliser derives each
-        // tenant's apex, which probes Route 53 — an AWS round-trip this predicate
-        // (used during manifest validation) must not need.
+        // Raw read: tenants() derives each apex via Route 53, an AWS round-trip this
+        // validation-time predicate must not need.
         return collect(static::get('multitenancy.tenants') ?? [])
             ->every(fn (?array $config): bool => ! isset($config['domain']));
     }
 
     /**
-     * The YOLO-provisioned services this app consumes — bare capability names
-     * (`services: [ivs]`). Service shape (sizing, versions, hosts) lives in the
-     * environment manifest, never here, so apps can't declare competing
-     * configuration for shared infrastructure. Entries are validated against
-     * the Service enum before any command runs (ensureServicesValid).
+     * Bare capability names (`services: [ivs]`). Service shape lives in the environment
+     * manifest, so apps can't declare competing configuration for shared infrastructure.
      *
      * @return array<int, string>
      */
@@ -1321,20 +1118,13 @@ class Manifest
         return in_array($service->value, static::services(), true);
     }
 
-    /**
-     * The shared read core — this static class only supplies the CLI's
-     * context: BASE_PATH file resolution, hydration, the selected environment.
-     */
     protected static function reader(): ManifestReader
     {
         return new ManifestReader(static::current(), Helpers::environment());
     }
 
     /**
-     * Every declared tenant domain, read raw. Deliberately not via {@see tenants()}:
-     * that normaliser derives each apex through the Route 53 suffix walk, so a
-     * caller that only wants the declared hosts (printing URLs, a validation
-     * predicate) would pay an AWS round-trip per tenant for nothing.
+     * Raw read, not via {@see tenants()} — that normaliser pays a Route 53 round-trip per tenant.
      *
      * @return array<int, string>
      */
@@ -1358,21 +1148,14 @@ class Manifest
         $tenants = [];
 
         foreach ($configured as $tenantId => $config) {
-            // A tenant declared bare (`acme:` with no config) parses as null — it
-            // takes every default, including being served under the landlord's
-            // wildcard, so normalise it to an empty config rather than TypeError
-            // on every reader.
+            // A bare tenant (`acme:`) parses as null — normalise so readers don't TypeError.
             $config ??= [];
 
-            // Per-tenant apex is derived from the tenant's domain the same way the
-            // app's own apex is (deriveApex) — a tenant with no domain keeps none.
             if (isset($config['domain'])) {
                 $config['apex'] = static::deriveApex($config['domain']);
 
-                // A tenant wildcards its own domain exactly as the app does: the
-                // certificate moves off the apex onto the domain itself (an apex
-                // cert's `*.{apex}` doesn't reach `x.{sub}.{apex}`), and the extra
-                // host rides its forward rule and alias records.
+                // A wildcarded tenant moves its certificate off the apex onto the domain,
+                // exactly as the app does (an apex cert's `*.{apex}` doesn't reach `x.{sub}.{apex}`).
                 $wildcarded = (bool) ($config['wildcard-subdomains'] ?? false);
 
                 $config['certificate-domain'] = $wildcarded ? $config['domain'] : $config['apex'];
@@ -1386,19 +1169,11 @@ class Manifest
     }
 
     /**
-     * The declared SQS queue tiers, in priority order — a list of tier names under
-     * the `queues:` block. List order IS the strict-priority order the worker drains
-     * them in (a leading `high` tier is polled to empty before the next). An absent
-     * block returns `[]`: the app runs a single queue at its own name
-     * (Helpers::queueNames).
-     *
-     * Tiers are names only. Visibility timeout is deliberately app-wide
-     * ({@see queueVisibilityTimeout} — every tier drains through the one worker
-     * command with a single job timeout, so a per-tier value would have nothing to
-     * pair with), and no other per-tier knob has a consumer yet, so a map form
-     * (`queues: {high: …}`) is rejected rather than half-supported. When real
-     * per-tier config lands it introduces the map form alongside this list, not in
-     * place of it, so the list stays valid.
+     * Tier names under `queues:`, in strict-priority drain order (a leading `high` polls to
+     * empty before the next). Absent ⇒ `[]`: a single queue at the app name. Names only —
+     * visibility timeout is app-wide ({@see queueVisibilityTimeout}) and no per-tier knob has
+     * a consumer, so the map form is rejected; when one lands it joins the list form rather
+     * than replacing it.
      *
      * @return array<int, string>
      */
@@ -1422,17 +1197,10 @@ class Manifest
     }
 
     /**
-     * How long SQS hides a delivered message before re-delivering it, in seconds —
-     * the queue's VisibilityTimeout, applied to every queue the app provisions
-     * (all tiers, every tenant scope). One app-wide value rather than per-tier:
-     * visibility exists to outlast job runtime, and every tier drains through the
-     * same worker command with a single job timeout, so per-tier values would have
-     * nothing to pair with.
-     *
-     * The default clears the worker's default 60s job timeout with margin — a
-     * visibility below the job timeout re-delivers a message whose job is still
-     * running, so the job executes twice. Raise it in step with the app's
-     * longest-running job.
+     * SQS VisibilityTimeout for every queue the app provisions. App-wide, not per-tier: every
+     * tier drains through one worker command with one job timeout. The default clears the
+     * worker's 60s job timeout with margin — a shorter visibility re-delivers a still-running
+     * job, so it runs twice. Raise it with the app's longest job.
      */
     public static function queueVisibilityTimeout(): int
     {

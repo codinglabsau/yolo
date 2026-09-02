@@ -297,7 +297,7 @@ it('accepts the known shape of every task group', function (): void {
         'domain' => 'example.com',
         'tasks' => [
             'web' => [
-                'cpu' => '512', 'memory' => '1024', 'platform' => 'linux/amd64',
+                'cpu' => '512', 'memory' => '1024',
                 'enable-execute-command' => true, 'shutdown-grace-period' => 10, 'ssr' => true,
                 'health-check' => ['timeout' => 8], 'autoscaling' => ['min' => 1, 'max' => 4],
             ],
@@ -477,9 +477,9 @@ it('bails when queue-isolation is set on a solo app', function (): void {
 });
 
 describe('the multitenancy block', function (): void {
-    // Every key that moved is refused where it used to live, naming the exact path
-    // it moved to — an "unknown key" error would be correct and useless.
-    it('names the new path for a relocated root key', function (string $manifest, string $expected): void {
+    // A solo routing key alongside the block is refused naming the path it
+    // belongs at inside it — an "unknown key" error would be correct and useless.
+    it('names the landlord path for a root routing key declared alongside the block', function (string $manifest, string $expected): void {
         writeManifest([
             'account-id' => '111111111111', 'region' => 'ap-southeast-2',
             ...json_decode($manifest, true),
@@ -488,8 +488,6 @@ describe('the multitenancy block', function (): void {
         expect(invokeManifestIntegrity())->toBeFalse();
         expect(test()->promptOutput->fetch())->toContain($expected);
     })->with([
-        'tenants' => ['{"tenants":{"acme":[]}}', 'multitenancy.tenants'],
-        'queue-isolation' => ['{"queue-isolation":"dedicated"}', 'multitenancy.queue-isolation'],
         'domain' => [
             '{"domain":"example.com","multitenancy":{"tenants":{"acme":null}}}',
             'multitenancy.landlord.domain',

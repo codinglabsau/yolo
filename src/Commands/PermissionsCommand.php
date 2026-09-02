@@ -23,18 +23,10 @@ use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\multiselect;
 
 /**
- * Manage a team member's access to this app + environment by editing which YOLO
- * grant groups they belong to — membership is the entire access lever (add to
- * grant a tier, remove to revoke). Runs in an app's manifest directory like
- * deploy/scale: it offers the env-wide tiers (observer, admin) plus the per-app
- * tiers for THIS app (observer, deployer). To grant deploy on another app, run it
- * in that app's directory.
- *
- * Admin-tier: it assumes the env admin role, whose policy can manage yolo-*
- * group membership — so a member of yolo-{env}-admins can grant access to others.
- * YOLO never creates or deletes the IAM users themselves.
- *
- *   yolo permissions production
+ * Group membership is the entire access lever. Offers the env-wide tiers plus the
+ * per-app tiers for THIS app — to grant deploy on another app, run it in that app's
+ * directory. Admin-tier because the admin policy is what may manage yolo-* group
+ * membership. YOLO never creates or deletes the IAM users themselves.
  */
 class PermissionsCommand extends Command implements AdminCommand
 {
@@ -136,9 +128,8 @@ class PermissionsCommand extends Command implements AdminCommand
     }
 
     /**
-     * The candidate grants for this app + environment, gated by what makes sense:
-     * the per-app deployer only exists when the app has a deployer role (a GitHub
-     * repository). Pure — depends only on the manifest, no AWS calls.
+     * The per-app deployer only exists when the app has a deployer role (a GitHub
+     * repository).
      *
      * @return array<int, array{name: string, label: string, group: AssumeRoleGroup}>
      */
@@ -177,9 +168,6 @@ class PermissionsCommand extends Command implements AdminCommand
     }
 
     /**
-     * The candidate grants narrowed to the groups that are actually provisioned —
-     * you can't grant a tier whose group hasn't been synced yet.
-     *
      * @return array<int, array{name: string, label: string, group: AssumeRoleGroup}>
      */
     protected function provisionedGrants(): array
@@ -191,10 +179,8 @@ class PermissionsCommand extends Command implements AdminCommand
     }
 
     /**
-     * The membership diff: which offerable groups to add (selected, not current)
-     * and which to remove (offerable + current, but unselected). Only ever touches
-     * the offerable (YOLO-managed) set — a user's non-YOLO group memberships are
-     * never disturbed.
+     * Only ever touches the offerable (YOLO-managed) set — a user's non-YOLO group
+     * memberships are never disturbed.
      *
      * @param  array<int, string>  $offerable
      * @param  array<int, string>  $current

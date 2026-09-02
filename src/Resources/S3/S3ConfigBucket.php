@@ -15,11 +15,8 @@ use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 
 /**
- * Private, app-exclusive bucket holding the application's `.env.{env}` files.
- * Because it stores secrets it must never be publicly reachable and its
- * objects must be recoverable, so Block Public Access (all four settings)
- * and versioning are reconciled onto it on every sync — both declarative,
- * idempotent puts. The yolo:app owner tag lets `yolo audit` attribute it.
+ * Holds the app's `.env.{env}` files — secrets, so Block Public Access and
+ * versioning are reconciled on every sync.
  */
 class S3ConfigBucket implements Deletable, Resource, SynchronisesConfiguration
 {
@@ -66,11 +63,6 @@ class S3ConfigBucket implements Deletable, Resource, SynchronisesConfiguration
         return Aws::synchroniseS3Tags($this->name(), $this->tags(), $apply);
     }
 
-    /**
-     * Reconcile Block Public Access and versioning, each read-compared-then-
-     * written so a clean sync is a no-op and a dry-run reports exactly what
-     * would change. Returns the drifted attributes as Change[].
-     */
     public function synchroniseConfiguration(bool $apply = true): array
     {
         return [
@@ -79,14 +71,6 @@ class S3ConfigBucket implements Deletable, Resource, SynchronisesConfiguration
         ];
     }
 
-    /**
-     * Empty then delete the bucket. S3 refuses DeleteBucket on a non-empty
-     * bucket. This bucket is versioned (create() reconciles versioning to
-     * Enabled), so emptying must clear every object version AND every delete
-     * marker — a plain object sweep would leave noncurrent versions behind and
-     * the delete would fail. A concurrent removal (NoSuchBucket / 404) is
-     * tolerated.
-     */
     public function delete(): void
     {
         try {

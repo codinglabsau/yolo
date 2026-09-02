@@ -8,13 +8,6 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
-/**
- * Resolves the `--group` option (a comma-separated list of web/queue/scheduler)
- * against the app's actual service groups, so a deploy can target a subset of
- * services. No `--group` means every group the app runs; an unknown group, or one
- * the app doesn't run as its own service, is a hard error rather than a silent
- * no-op.
- */
 trait ResolvesServerGroups
 {
     /**

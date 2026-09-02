@@ -16,25 +16,16 @@ use Codinglabs\Yolo\Concerns\RendersServiceStatus;
 use Symfony\Component\Console\Output\OutputInterface;
 use Codinglabs\Yolo\Resources\CloudWatchLogs\TaskLogGroup;
 
-/**
- * Everything about one service group (web / queue / scheduler) in a single tab:
- * its vitals (task counts, spec, scaling, live load), wide CPU / memory (and, for
- * web, request-rate / response-time) braille charts over the last hour, and a tail
- * of its recent CloudWatch logs. One tab per group the app actually runs, so a
- * combined app shows only Web. Read-only — the vitals/charts/logs blocks are pure
- * and pinned in tests; only the live AWS gather touches the network.
- */
+/** One tab per group the app actually runs, so a combined app shows only Web. */
 class GroupPanel implements Panel
 {
     use RendersServiceStatus;
 
-    /** The chart trend window, in minutes — matches the Metrics window it replaces. */
     public const WINDOW_MINUTES = 60;
 
-    /** Braille rows per chart — tall enough to read a shape, short enough to stack a few. */
+    /** Tall enough to read a shape, short enough to stack a few. */
     public const CHART_HEIGHT = 5;
 
-    /** Recent log events to tail in the group's logs block. */
     public const LOG_LINES = 40;
 
     /** @var array<string, mixed> */
@@ -61,10 +52,8 @@ class GroupPanel implements Panel
 
     public function hotkey(): string
     {
-        // No letter hotkey — the group tabs are reached by number (1–8) and ◂ ▸.
-        // Their natural letters are taken (q is quit, s is Services), and forcing
-        // awkward picks reads worse than no letter at all. An empty string never
-        // equals a keypress, so the shell's letter-jump simply skips them.
+        // No letter hotkey — the natural ones are taken (q quit, s Services). An
+        // empty string never equals a keypress, so the shell's letter-jump skips these.
         return '';
     }
 
@@ -82,8 +71,7 @@ class GroupPanel implements Panel
 
     public function render(int $width, int $height): array
     {
-        // Default the group/exists keys so a pre-gather render (or a cold service)
-        // still draws the not-deployed vitals rather than tripping on a bare array.
+        // A pre-gather render still draws the not-deployed vitals rather than tripping on a bare array.
         $status = [...['group' => $this->group, 'exists' => false], ...$this->status];
 
         $header = [...self::vitals($status), ''];
@@ -101,11 +89,6 @@ class GroupPanel implements Panel
     }
 
     /**
-     * The group's headline: task counts + spec, its scaling stance, and the live
-     * load reading — the same canonical strings the Overview table renders, one
-     * group at a time. A service that isn't deployed yet collapses to a single
-     * muted line. Pure.
-     *
      * @param  array<string, mixed>  $status
      * @return array<int, string>
      */
@@ -127,10 +110,6 @@ class GroupPanel implements Panel
     }
 
     /**
-     * The group's metric charts: CPU then memory, plus request rate and response
-     * time for the web group only. Pure — pinned in a test with hand-built series,
-     * no AWS. A blank line separates blocks.
-     *
      * @param  array{cpu: array<int, float>, memory: array<int, float>, requests: array<int, float>, response: array<int, float>}  $series
      * @return array<int, string>
      */
@@ -161,9 +140,8 @@ class GroupPanel implements Panel
     }
 
     /**
-     * Format log events as `HH:MM:SS message` lines, oldest at the top. Each
-     * message is truncated to the row width *before* it's coloured (so a cut never
-     * lands mid-tag), keeping one event to exactly one row for the fixed layout.
+     * Messages are truncated before colouring so a cut never lands mid-tag,
+     * keeping one event to exactly one row for the fixed layout.
      *
      * @param  array<int, array<string, mixed>>  $events
      * @return array<int, string>
@@ -174,7 +152,7 @@ class GroupPanel implements Panel
             return [Theme::Muted->fg('  No recent log events.')];
         }
 
-        // The fixed prefix: two-space indent + "HH:MM:SS" + a separating space.
+        // Two-space indent + "HH:MM:SS" + a space.
         $messageWidth = max(0, $width - 11);
 
         return array_map(static function (array $event) use ($messageWidth): string {

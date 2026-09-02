@@ -41,8 +41,7 @@ class EnvironmentManifestPushCommand extends Command implements AdminCommand
             return;
         }
 
-        // Validate before anything touches the bucket — a misshapen manifest
-        // must never become the environment's declared truth.
+        // A misshapen manifest must never become the environment's declared truth.
         try {
             $new = EnvManifest::parse((string) file_get_contents($path));
         } catch (IntegrityCheckException $e) {
@@ -62,9 +61,8 @@ class EnvironmentManifestPushCommand extends Command implements AdminCommand
 
             warning(sprintf('%s does not exist in the env config bucket yet.', EnvManifest::filename()));
         } catch (IntegrityCheckException $e) {
-            // The bucket copy carries keys this binary doesn't know — pushed
-            // by a newer YOLO release. Overwriting it from here would silently
-            // drop those declarations.
+            // The bucket copy carries keys this binary doesn't know; overwriting it
+            // would silently drop those declarations.
             error($e->getMessage() . ' The bucket manifest was likely written by a newer YOLO release — update codinglabsau/yolo before pushing.');
 
             return;
@@ -84,12 +82,9 @@ class EnvironmentManifestPushCommand extends Command implements AdminCommand
     }
 
     /**
-     * Removing a service from the env manifest is only accepted once no
-     * running app still uses it — push-time is the cheapest failure point,
-     * and a hard error naming the app beats a sync that tears infrastructure
-     * out from under it. A running app that hasn't published its services yet
-     * blocks removal the same way: the environment can't know what it uses
-     * until its next deploy or sync:app.
+     * Push-time is the cheapest failure point — a hard error naming the app beats a
+     * sync that tears infrastructure out from under it. An app that hasn't published
+     * its services yet blocks removal the same way.
      *
      * @param  array<string, mixed>  $current
      * @param  array<string, mixed>  $new

@@ -16,15 +16,12 @@ class SyncCommand extends SyncSteppedCommand
     #[\Override]
     public function handle(): int
     {
-        // The orchestrating sync composes the tier commands' scopes but not
-        // their handle(), so the app tier's claim-without-offer gate is
-        // re-applied here.
+        // sync composes the tier commands' scopes but not their handle(), so the
+        // app tier's gates are re-applied here.
         if (! $this->ensureClaimedServicesOffered()) {
             return self::FAILURE;
         }
 
-        // Likewise the app tier's bring-your-own bucket gate — without it the full
-        // sync would reach a CreateBucket it has no permission for, mid-apply.
         if (! $this->ensureAppBucketAdoptable()) {
             return self::FAILURE;
         }
@@ -33,9 +30,7 @@ class SyncCommand extends SyncSteppedCommand
     }
 
     /**
-     * The orchestrating `sync` composes the tier commands' scopes but not their
-     * handle(), so compose their plan warnings the same way — deduplicated,
-     * since an advisory both tiers raise (the version-skew warning) should
+     * Deduplicated — an advisory both tiers raise (the version-skew warning) should
      * read once, not once per tier.
      */
     #[\Override]
@@ -49,11 +44,6 @@ class SyncCommand extends SyncSteppedCommand
     }
 
     /**
-     * The full sync orchestrates the three scopes in dependency order — account,
-     * then the env-shared environment tier, then this app. Each command keys its
-     * steps under its own scope (account / environment / app), so merging the
-     * three composes cleanly into the ordered scope map the renderer groups by.
-     *
      * @return array<string, array<int, class-string>>
      */
     public function scopes(): array

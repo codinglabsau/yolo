@@ -7,12 +7,6 @@ use Codinglabs\Yolo\Aws;
 use Aws\ServiceDiscovery\Exception\ServiceDiscoveryException;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-/**
- * Thin wrapper around the Cloud Map (Service Discovery) SDK client. Namespace
- * and service creation are asynchronous on AWS's side — both return an
- * operation id — so creators wait on the operation before anything resolves
- * the new resource's id.
- */
 class ServiceDiscovery
 {
     public static function privateNamespace(string $name): array
@@ -60,8 +54,7 @@ class ServiceDiscovery
     }
 
     /**
-     * Every service registered in a namespace — teardown deletes these before
-     * the namespace itself (AWS refuses to delete a non-empty namespace).
+     * Teardown deletes these first — AWS refuses to delete a non-empty namespace.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -84,13 +77,9 @@ class ServiceDiscovery
     }
 
     /**
-     * Delete a Cloud Map discovery service, retrying while it still holds
-     * registered instances. AWS refuses to delete a service with instances, and
-     * the ECS → Cloud Map instance deregistration that follows a node task
-     * stopping is eventual — so a delete right after the cluster teardown can race
-     * the deregistration and throw ResourceInUse even though the tasks are gone.
-     * Retry past it until the instances clear. Any other error (or exhausting the
-     * attempts) propagates unchanged.
+     * ECS → Cloud Map instance deregistration after a task stops is eventual, so a
+     * delete right after cluster teardown throws ResourceInUse even though the
+     * tasks are gone.
      */
     public static function deleteServiceWhenDrained(string $serviceId, int $maxAttempts = 24, int $sleepSeconds = 5): void
     {
@@ -114,8 +103,7 @@ class ServiceDiscovery
     }
 
     /**
-     * Block until an async Cloud Map operation lands. Namespace and service
-     * mutations return an operation id and complete out-of-band; resolving a
+     * Namespace and service mutations complete out-of-band; resolving a
      * just-created resource before its operation succeeds reads as absent.
      */
     public static function waitForOperation(string $operationId, int $timeout = 300): void

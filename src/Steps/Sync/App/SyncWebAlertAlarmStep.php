@@ -15,12 +15,9 @@ use Codinglabs\Yolo\Resources\CloudWatch\AlertAlarm;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * The app's error-rate alarm on the env SNS topic: sustained target 5xx as a
- * percentage of the app's own requests. A rate, not a count, so a busy app
- * and a quiet one share one threshold — with a traffic floor (a minute under
- * one request per second scores 0) so a single error on a trickle of
- * requests can't page. The dimensions are ARN suffixes, so on a greenfield
- * plan the alarm reports pending and lands on the next sync.
+ * A rate, not a count, so a busy app and a quiet one share one threshold —
+ * with a traffic floor so a single error on a trickle of requests can't page.
+ * The dimensions are ARN suffixes, so on a greenfield plan the alarm reports pending.
  */
 class SyncWebAlertAlarmStep implements ExecutesWebStep
 {
@@ -84,10 +81,9 @@ class SyncWebAlertAlarmStep implements ExecutesWebStep
                 ],
                 [
                     'Id' => 'rate',
-                    // The traffic floor: under 60 requests/min the rate is
-                    // pinned to 0, so one error on three requests can't page.
-                    // FILL backstops the 5xx series, which has no datapoints
-                    // at all in an error-free minute.
+                    // Under 60 requests/min the rate pins to 0 so one error on three
+                    // requests can't page; FILL backstops the 5xx series, which has
+                    // no datapoints in an error-free minute.
                     'Expression' => 'IF(requests >= 60, 100 * FILL(errors, 0) / requests, 0)',
                     'Label' => 'target 5xx rate %',
                     'ReturnData' => true,

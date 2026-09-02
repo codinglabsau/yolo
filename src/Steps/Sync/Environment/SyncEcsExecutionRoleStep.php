@@ -13,7 +13,6 @@ class SyncEcsExecutionRoleStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        // Trust-policy drift rides through SynchronisesConfiguration on the role.
         return $this->syncResource(new EcsExecutionRole(), $options);
     }
 }

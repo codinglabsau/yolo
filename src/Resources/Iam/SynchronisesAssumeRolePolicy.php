@@ -7,23 +7,11 @@ use Codinglabs\Yolo\Change;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 
 /**
- * Shared trust-policy drift reconciliation for the YOLO-managed IAM roles
- * (DeployerRole, EcsTaskRole, MediaConvertRole, EcsExecutionRole). A role's
- * assume-role (trust) policy can drift after creation — most consequentially the
- * deployer role's `sub` condition when an environment switches from a branch to a
- * tag — and IAM replaces it in place via UpdateAssumeRolePolicy.
- *
- * This is wired through SynchronisesConfiguration — NOT a bespoke side-effect the
- * sync step calls under `! dry-run` — on purpose. SyncSteppedCommand computes a
- * plan pass (compute-only, apply=false) and then applies only the steps the plan
- * flagged as having work. A trust rewrite computed only at apply time is invisible
- * to that plan, so the step reports clean, gets dropped before apply, and the
- * drifted trust never heals — exactly the bug that left a `tag: true` deployer
- * role stuck trusting `refs/heads/main` so its OIDC deploy could never assume it.
- * Returning the drift as a plan-time Change keeps the step on the apply side of
- * the "only-pending-steps" filter (same shape as SynchronisesPolicyDocument).
- *
- * Requires the using Resource to provide name() and assumeRolePolicyDocument().
+ * Trust-policy drift for YOLO roles, wired through SynchronisesConfiguration — NOT a
+ * side-effect under `! dry-run` — because sync applies only the steps the plan
+ * flagged. A rewrite computed at apply time is invisible to the plan, so the step
+ * reports clean, is pruned, and the drifted trust never heals (e.g. a `tag: true`
+ * deployer stuck trusting `refs/heads/main`).
  */
 trait SynchronisesAssumeRolePolicy
 {
@@ -52,8 +40,7 @@ trait SynchronisesAssumeRolePolicy
     }
 
     /**
-     * The role's live trust document. IAM returns it URL-encoded on the role
-     * record; decode to the same array shape as assumeRolePolicyDocument().
+     * IAM returns the trust document URL-encoded on the role record.
      *
      * @return array<string, mixed>
      */
@@ -63,9 +50,8 @@ trait SynchronisesAssumeRolePolicy
     }
 
     /**
-     * Render the drift as a single Change. The `sub` claim is the human-meaningful,
-     * security-relevant attribute (branch vs tag ref), so surface it directly when
-     * present; otherwise report the document drift generically.
+     * The `sub` claim (branch vs tag ref) is the security-relevant attribute, so
+     * surface it directly when present.
      *
      * @param  array<string, mixed>  $live
      * @param  array<string, mixed>  $desired
@@ -83,11 +69,7 @@ trait SynchronisesAssumeRolePolicy
     }
 
     /**
-     * The OIDC `sub` condition value (which ref may assume the role) from a given
-     * document, or null for a service-principal trust that carries no such
-     * condition. Named distinctly from DeployerRole::subjectClaim() (which renders
-     * the *desired* sub from the manifest) so the trait isn't shadowed when a role
-     * defines its own.
+     * Named distinctly from DeployerRole::subjectClaim() so the trait isn't shadowed.
      *
      * @param  array<string, mixed>  $document
      */

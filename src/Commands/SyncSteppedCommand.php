@@ -15,9 +15,8 @@ abstract class SyncSteppedCommand extends SteppedCommand implements AdminCommand
     }
 
     /**
-     * The ordered, scope-labelled steps this command will sync. Labels must stay
-     * distinct across the tiers the top-level `sync` composes, or the merge would
-     * drop a colliding group's steps.
+     * Scope labels must stay distinct across the tiers `sync` composes, or the merge
+     * drops a colliding group's steps.
      *
      * @return array<string, array<int, class-string>>
      */

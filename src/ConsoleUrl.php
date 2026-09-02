@@ -3,16 +3,9 @@
 namespace Codinglabs\Yolo;
 
 /**
- * Best-effort AWS Console deep link for a resource, built from its ARN.
- *
- * There is no AWS API that maps an ARN to a console URL, and every service has
- * its own URL scheme, so this is a per-service template table. A service we have
- * no confident template for returns null and the audit renders the resource name
- * as plain (unlinked) text — a missing link beats a dead one.
- *
- * Regional services use the `{region}.console.aws.amazon.com` host; the handful
- * of global services (S3, IAM, Route 53, CloudFront) carry an empty region in
- * their ARN and use the region-less host.
+ * Best-effort console deep link from an ARN. No AWS API maps an ARN to a console URL and every
+ * service has its own scheme, so this is a template table; an unknown service returns null
+ * and the audit renders plain text — a missing link beats a dead one.
  */
 class ConsoleUrl
 {
@@ -44,11 +37,7 @@ class ConsoleUrl
         };
     }
 
-    /**
-     * Build a regional console URL, appending `?region=` ahead of any `#`
-     * fragment in the path. Returns null for a region-less ARN (a regional
-     * service should always carry one — bail rather than emit a broken host).
-     */
+    /** Null for a region-less ARN — bail rather than emit a broken host. */
     protected static function regional(Arn $arn, string $path): ?string
     {
         if ($arn->region === '') {
@@ -129,7 +118,6 @@ class ConsoleUrl
 
     protected static function iam(Arn $arn): ?string
     {
-        // IAM is global — region-less host.
         return match ($arn->resourceType) {
             'role' => sprintf('https://console.aws.amazon.com/iam/home#/roles/details/%s', basename($arn->resourceId)),
             'policy' => sprintf('https://console.aws.amazon.com/iam/home#/policies/details/%s', rawurlencode($arn->value)),
@@ -140,8 +128,7 @@ class ConsoleUrl
 
     protected static function rds(Arn $arn): ?string
     {
-        // The RDS console keys off the identifier plus a cluster flag; YOLO meets
-        // `db` (a plain instance) and `cluster` (Aurora) here.
+        // The RDS console keys off the identifier plus a cluster flag.
         return match ($arn->resourceType) {
             'db' => static::regional($arn, sprintf('rds/home#database:id=%s;is-cluster=false', $arn->resourceId)),
             'cluster' => static::regional($arn, sprintf('rds/home#database:id=%s;is-cluster=true', $arn->resourceId)),
@@ -151,18 +138,13 @@ class ConsoleUrl
 
     protected static function elastiCache(Arn $arn): ?string
     {
-        // The shared Valkey cache is a single replication group; the console lists
-        // it under the Redis/Valkey OSS view.
+        // The console lists Valkey under the Redis OSS view.
         return $arn->resourceType === 'replicationgroup'
             ? static::regional($arn, sprintf('elasticache/home#/redis/%s', $arn->resourceId))
             : null;
     }
 
-    /**
-     * The CloudWatch alarms list for a region — the Alarms tab's "see everything"
-     * link. No per-alarm ARN is threaded through the dashboard, so this region-wide
-     * deep link is the closest stable target.
-     */
+    /** No per-alarm ARN is threaded through the dashboard, so the region-wide list is the closest stable target. */
     public static function cloudWatchAlarms(string $region): string
     {
         return sprintf('https://%s.console.aws.amazon.com/cloudwatch/home?region=%s#alarmsV2:', $region, $region);

@@ -12,11 +12,6 @@ use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Resources\ElbV2\RedirectListenerRule;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
-/**
- * Removes this app's apex↔www redirect rule from the shared :443 listener
- * (matched by its stable Name tag). A bare-subdomain app never had one, so the
- * rule is simply absent and the step skips.
- */
 class TeardownRedirectRuleStep implements ExecutesWebStep
 {
     use SynchronisesResource;

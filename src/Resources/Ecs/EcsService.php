@@ -19,19 +19,10 @@ use Codinglabs\Yolo\Resources\Ec2\EcsTaskSecurityGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * One app's ECS service for a given workload group. Each group (web / queue /
- * scheduler) gets its own service + task-definition family so they scale
- * independently. The group defaults to web, so every bare `new EcsService()`
- * keeps meaning the web service it always did.
- *
- * Topology follows the group:
- *  - web attaches to the ALB (target group, health-check grace, container port);
- *    queue and scheduler are headless workers.
- *  - the scheduler is a pinned singleton, deployed stop-then-start so a rollout
- *    never briefly runs two crons; web and queue roll the normal way.
- *  - desired count is create-only and owned by ops/autoscaling afterwards — sync
- *    never clobbers it. The queue starts at its autoscaling floor (0 when it
- *    scales to zero); web and scheduler start at one task.
+ * One service + task-definition family per group so they scale independently. Web
+ * attaches to the ALB; queue and scheduler are headless. The scheduler is a
+ * singleton deployed stop-then-start so a rollout never runs two crons. Desired
+ * count is create-only, owned by ops/autoscaling afterwards — sync never clobbers it.
  */
 class EcsService implements Deletable, Resource
 {
@@ -72,20 +63,13 @@ class EcsService implements Deletable, Resource
 
     public function create(): void
     {
-        // Routed through the retry helper for the web service's case: its target
-        // group is attached to the ALB listener only a few steps earlier, and
-        // ELB→ECS consistency can lag that write by a few seconds. Headless / queue
-        // / scheduler services carry no target group, so the helper never retries
-        // them — it's a plain createService for those.
+        // The web target group is attached to the listener only a few steps earlier and
+        // ELB→ECS consistency can lag; headless services have no target group, so the
+        // helper never retries them.
         Ecs::createServiceWhenTargetGroupAttached($this->createPayload());
     }
 
-    /**
-     * Force-delete the service: `force` drains running tasks (desired → 0) and
-     * removes the service in one call, so a live service tears down without a
-     * separate scale-down step. A service already gone (or mid-deletion) is the
-     * goal state, so the not-found / not-active codes are swallowed.
-     */
+    /** `force` drains and removes in one call; already gone or mid-deletion is the goal state. */
     public function delete(): void
     {
         try {
@@ -109,11 +93,9 @@ class EcsService implements Deletable, Resource
     }
 
     /**
-     * Exec-command and (web only) grace-period drift are reconciled by
-     * updateService. Desired count is NOT reconciled — capacity is set once at
-     * create then owned by ops (the console, `yolo scale`, or autoscaling), so a
-     * deploy/sync never resets it out from under a manual scale. Task definition
-     * revision adoption is owned by `yolo deploy`, not sync.
+     * Desired count is NOT reconciled — owned by ops (console, `yolo scale`,
+     * autoscaling) after create, so a sync never resets a manual scale. Task
+     * definition revision adoption belongs to `yolo deploy`, not sync.
      */
     public function needsUpdate(): bool
     {
@@ -121,9 +103,6 @@ class EcsService implements Deletable, Resource
     }
 
     /**
-     * The service-level attributes that have drifted from the manifest — read
-     * live and diffed so the sync step can report each current → desired change.
-     *
      * @return array<int, Change>
      */
     public function pendingChanges(): array
@@ -142,10 +121,8 @@ class EcsService implements Deletable, Resource
     }
 
     /**
-     * Pure comparison — extracted so tests can pin headless / missing-grace-period
-     * behaviour without mocking the ECS client. Exec-command drift is always
-     * reconciled; the grace period only for an ALB-attached (web, non-headless)
-     * service — a headless web app or a queue/scheduler worker has none.
+     * Pure, so tests can pin behaviour without mocking the ECS client. The grace
+     * period is reconciled only for an ALB-attached service — headless ones have none.
      *
      * @return array<int, Change>
      */
@@ -180,13 +157,8 @@ class EcsService implements Deletable, Resource
         return [
             'cluster' => (new EcsCluster())->name(),
             'serviceName' => $this->name(),
-            // The task definition family is the service name — SyncTaskDefinitionStep
-            // registers the family from this same value. TaskDef isn't modelled as a
-            // Resource (no taggable ARN to own; it's reconciled diff-first against the
-            // latest revision), so the family is the service name rather than its own Resource.
+            // The family is the service name — SyncTaskDefinitionStep registers from the same value.
             'taskDefinition' => $this->name(),
-            // Capacity isn't a manifest concern — start at the group's floor and let
-            // ops scale it (console / `yolo scale` / autoscaling); never reconciled.
             'desiredCount' => $this->initialDesiredCount(),
             ...$this->launchConfiguration(),
             ...$this->attachesToLoadBalancer() ? ['healthCheckGracePeriodSeconds' => $this->gracePeriod()] : [],
@@ -214,10 +186,8 @@ class EcsService implements Deletable, Resource
     }
 
     /**
-     * FARGATE by default. A standalone queue can opt into Spot (`tasks.queue.spot:
-     * true`) for ~70% cheaper interruptible capacity — fine for a worker whose
-     * jobs retry on interruption. Spot uses a capacity-provider strategy, which is
-     * mutually exclusive with launchType, so it's one or the other.
+     * Spot is fine for a worker whose jobs retry on interruption. It uses a
+     * capacity-provider strategy, which is mutually exclusive with launchType.
      *
      * @return array<string, mixed>
      */
@@ -231,17 +201,9 @@ class EcsService implements Deletable, Resource
     }
 
     /**
-     * Roll one task in at a time (minimumHealthyPercent 100 keeps the old version
-     * serving until the new one is healthy; maximumPercent 200 allows the extra
-     * task), with the deployment circuit breaker aborting and rolling back to the
-     * last healthy revision on a failed rollout.
-     *
-     * The scheduler is the exception: it's a singleton, so it deploys stop-then-start
-     * (minimumHealthyPercent 0 / maximumPercent 100) — the old cron task stops
-     * before the new one starts, so a rollout never briefly runs two schedulers
-     * (a missed cron minute is harmless; a double-run isn't). The circuit breaker
-     * stays on either way — it's what makes ECS mark a broken deploy FAILED, the
-     * signal WaitForDeploymentHealthyStep fast-fails on.
+     * The singleton scheduler deploys stop-then-start (a missed cron minute is
+     * harmless; a double-run isn't). The circuit breaker is what makes ECS mark a
+     * broken deploy FAILED — the signal WaitForDeploymentHealthyStep fast-fails on.
      *
      * @return array<string, mixed>
      */
@@ -263,7 +225,7 @@ class EcsService implements Deletable, Resource
             'cluster' => (new EcsCluster())->name(),
             'service' => $this->name(),
             'enableExecuteCommand' => $this->enableExecuteCommand(),
-            // No desiredCount — capacity is create-only (see needsUpdate()).
+            // No desiredCount — create-only (see needsUpdate()).
             ...$this->attachesToLoadBalancer() ? ['healthCheckGracePeriodSeconds' => $this->gracePeriod()] : [],
         ];
     }
@@ -281,12 +243,6 @@ class EcsService implements Deletable, Resource
         return (int) Manifest::get('tasks.web.health-check.grace-period', 60);
     }
 
-    /**
-     * The desired count to create the service at. An autoscaling queue starts at its
-     * floor (Manifest::queueMin) — 0 when it scales to zero, so a fresh idle queue
-     * costs nothing; a fixed queue (autoscaling: false) and web and the scheduler all
-     * start at one task.
-     */
     protected function initialDesiredCount(): int
     {
         if ($this->group === ServerGroup::QUEUE && Manifest::autoscales(ServerGroup::QUEUE)) {
@@ -296,10 +252,6 @@ class EcsService implements Deletable, Resource
         return 1;
     }
 
-    /**
-     * Whether this service sits behind the ALB — web only. A web task always
-     * attaches (it requires a domain, so the ALB path always exists).
-     */
     protected function attachesToLoadBalancer(): bool
     {
         return $this->group->attachesToLoadBalancer();

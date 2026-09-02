@@ -14,16 +14,13 @@ use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Resources\ServiceDiscovery\TypesenseDiscoveryService;
 
 /**
- * One Cloud Map DNS service per Typesense node (typesense-0/1/2). On a
- * greenfield plan the namespace doesn't exist yet, so each node simply reads
- * as absent and reports its pending create without resolving the sibling
- * (the two-pass contract); by apply the namespace step has run.
+ * On a greenfield plan the namespace doesn't exist yet, so each node reads as
+ * absent and reports its pending create without resolving the sibling.
  *
- * Teardown is a deliberate skip: AWS refuses to delete a namespace with
- * services in it, so the namespace's delete cascades these — same pattern as
- * the IVS rule/target pair. A node-count reduction's surplus entries are
- * removed by the nodes step alongside their ECS services, where the ordering
- * (task stopped, instance deregistered, then the DNS entry) lives in one place.
+ * Teardown is a skip: AWS refuses to delete a namespace with services in it,
+ * so the namespace's delete cascades these. A node-count reduction's surplus
+ * entries are removed by the nodes step, where the ordering (task stopped,
+ * instance deregistered, then the DNS entry) lives in one place.
  */
 class SyncTypesenseDiscoveryServicesStep implements Step
 {

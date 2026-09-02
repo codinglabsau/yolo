@@ -5,11 +5,9 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo\Runtime;
 
 /**
- * The outcome of one scrape, classified by {@see ScrapeOutcome} and carrying the gauges
- * a real reading obtained. Exactly one gauge family is present per reading: the
- * worker-pool size on an Octane tier (`totalWorkers`, the saturation denominator), or
- * the thread gauges on a classic tier (`busyThreads` / `queueDepth`, read against the
- * thread ceiling YOLO pinned) — so `totalWorkers` doubles as the mode discriminator.
+ * Exactly one gauge family is present per reading — `totalWorkers` on an Octane tier,
+ * `busyThreads` / `queueDepth` on a classic one — so `totalWorkers` doubles as the mode
+ * discriminator.
  */
 final readonly class ScrapeResult
 {

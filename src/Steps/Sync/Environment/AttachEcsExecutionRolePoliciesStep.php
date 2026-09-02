@@ -12,10 +12,6 @@ class AttachEcsExecutionRolePoliciesStep implements Step
 {
     use AttachesRolePolicies;
 
-    /**
-     * AWS-managed policy granting ECR image pull + CloudWatch Logs write — the
-     * baseline an ECS agent needs to launch a Fargate task.
-     */
     public const POLICY_ARN = 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy';
 
     public function __invoke(array $options): StepResult

@@ -13,8 +13,6 @@ use Codinglabs\Yolo\Resources\ElbV2\ForwardListenerRule;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Removes this app's host→target-group forward rule from the shared :443
- * listener (found by its stable Name tag, so no sibling app's rule is touched).
  * Must run before the target group is deleted — a rule whose action references
  * a target group blocks the group's delete.
  */

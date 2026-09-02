@@ -14,16 +14,12 @@ class SyncS3BucketStep implements Step
 
     public function __invoke(array $options): StepResult
     {
-        // The app data bucket is optional. Skip when the manifest doesn't define
-        // one (ConfigureEnvAndVersionStep injects it as AWS_BUCKET when it does).
         if (! Manifest::has('bucket')) {
             return StepResult::SKIPPED;
         }
 
-        // A bring-your-own bucket is adopt-only: nothing to create (its existence on
-        // this account is verified before the plan, by
-        // Command::ensureAppBucketAdoptable) and nothing to reconcile, since YOLO
-        // never writes to a bucket it doesn't own.
+        // A bring-your-own bucket is adopt-only: existence is verified pre-plan by
+        // Command::ensureAppBucketAdoptable, and YOLO never writes to a bucket it doesn't own.
         if (! Manifest::managesAppBucket()) {
             return StepResult::SKIPPED;
         }

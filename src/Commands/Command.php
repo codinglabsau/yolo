@@ -43,9 +43,8 @@ abstract class Command extends SymfonyCommand
     use RegistersAws;
 
     /**
-     * How many MFA codes an admin-tier assume will take before giving up. Enough
-     * for a spent code plus the next one to come around, without leaving a
-     * mistyped serial or a trust-policy refusal prompting in a loop.
+     * Enough for a spent code plus the next one, without a mistyped serial or a
+     * trust-policy refusal prompting in a loop.
      */
     protected const MFA_ATTEMPTS = 3;
 
@@ -59,34 +58,26 @@ abstract class Command extends SymfonyCommand
         Helpers::app()->instance('output', $this->output = $output);
         Helpers::app()->singleton('runningInAws', fn (): bool => static::detectAwsEnvironment());
 
-        // The yolo CLI is a deploy-time tool and must never run inside a deployed
-        // container, where it would hold the task role's credentials. yolo still
-        // ships in the image — its service provider exposes a runtime API — but the
-        // CLI itself is inert there, so any invocation hard-stops.
+        // yolo ships in the image for its runtime service provider, but the CLI must
+        // never run inside a deployed container holding the task role's credentials.
         if (Aws::runningInAws()) {
             error('yolo is a deploy-time CLI and cannot run inside a deployed container.');
 
             return 1;
         }
 
-        // bail if command should not be running
         if (! $this->shouldBeRunning($this)) {
             error(sprintf("Cannot run '%s' in current environment", $this->getName()));
 
             return 1;
         }
 
-        // special handling for `yolo init` command to execute early — it runs
-        // without a manifest or an environment argument, prompting for (and binding)
-        // the target environment itself before it writes the scaffold.
+        // init has no manifest or environment argument yet — it prompts for and binds
+        // the environment itself.
         if ($this instanceof InitCommand) {
             return (int) (Helpers::app()->call([$this, 'handle']) ?: 0);
         }
 
-        // A command may reconstruct an environment YOLO once provisioned but whose
-        // yolo.yml block is gone (destroy:environment, run after destroy:app removed
-        // it) by hydrating the manifest from the live account before the checks below
-        // read it. Default no-op, so every other command reads yolo.yml unchanged.
         if (($abort = $this->bootstrapEnvironment()) !== null) {
             return $abort;
         }
@@ -115,10 +106,8 @@ abstract class Command extends SymfonyCommand
             return 1;
         }
 
-        // A RunsWithoutAws command works against the manifest and the local
-        // machine only — resolving credentials here would be circular, since
-        // creating them is the command's own job. Manifest and environment
-        // checks above still apply; everything AWS below does not.
+        // Resolving credentials for a RunsWithoutAws command would be circular —
+        // creating them is the command's own job.
         if ($this instanceof RunsWithoutAws) {
             $exitCode = (int) (Helpers::app()->call([$this, 'handle']) ?: 0);
 
@@ -135,10 +124,6 @@ abstract class Command extends SymfonyCommand
             return 1;
         }
 
-        // Cap this run to its YOLO tier: mint an assumed-role token scoped to the
-        // tier's policy (the developer authenticates as themselves; YOLO can never
-        // exceed the tier). Fail-closed — if the cap can't be applied the command
-        // refuses, unless --dangerously-skip-permissions is set.
         if (($abort = $this->mintTierCredentials()) !== null) {
             return $abort;
         }
@@ -173,27 +158,13 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * Multi-tenancy lives in one nested block. Every key that used to sit at the
-     * top of the environment block is refused there with the exact path it moved
-     * to — an unrecognised-key error would be technically correct and useless.
-     *
-     * `domain` is the pointed one: alongside a `multitenancy` block it is genuinely
-     * ambiguous, meaning both "where the landlord is served" and "what subdomain
-     * tenants hang off" — readings that separate the moment one tenant takes a
-     * custom domain. The landlord's own block says it once.
-     *
-     * Runs before the unknown-key sweep so these get the specific message.
+     * A top-level `domain` alongside `multitenancy` is genuinely ambiguous (the
+     * landlord's host, or what tenant subdomains hang off — readings that separate
+     * once a tenant takes a custom domain). Runs before the unknown-key sweep so
+     * these get a pointed message instead of a technically-correct useless one.
      */
     protected function ensureMultitenancyKeysNested(): bool
     {
-        foreach (['tenants' => 'multitenancy.tenants', 'queue-isolation' => 'multitenancy.queue-isolation'] as $old => $new) {
-            if (Manifest::has($old)) {
-                error(sprintf('yolo.yml declares `%s` at the top of the environment block — it now lives inside the multitenancy block as `%s`.', $old, $new));
-
-                return false;
-            }
-        }
-
         if (! Manifest::has('multitenancy')) {
             return true;
         }
@@ -220,15 +191,10 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * `wildcard-subdomains` serves every subdomain of the app's own `domain` from
-     * the one service, so it needs a `domain` to be a wildcard *of*.
-     *
-     * It deliberately composes with `tenants` rather than excluding it: the two
-     * answer different questions — how the app is routed to, versus what each
-     * tenant gets of its own. A tenant whose domain sits under the wildcard is
-     * already served by the app's certificate and rule and provisions no DNS/TLS
-     * resources ({@see Manifest::servesDomain()}); a tenant on its own domain
-     * still gets a zone, certificate, SNI attachment and rule.
+     * `wildcard-subdomains` deliberately composes with `tenants` rather than
+     * excluding it: a tenant under the wildcard is already served by the app's
+     * certificate and rule ({@see Manifest::servesDomain()}); a tenant on its own
+     * domain still gets a zone, certificate, SNI attachment and rule.
      */
     protected function ensureWildcardSubdomainsValid(): bool
     {
@@ -242,11 +208,9 @@ abstract class Command extends SymfonyCommand
             return false;
         }
 
-        // A www-canonical domain would put the wildcard a level too deep
-        // (`*.www.{apex}`, which nobody wants) and, worse, move the certificate
-        // off the apex — leaving the apex/www redirect's own host with no valid
-        // certificate, so it would fail the TLS handshake before it could ever
-        // 301. Refuse the combination rather than silently serve that.
+        // A www-canonical domain would put the wildcard at `*.www.{apex}` and move the
+        // certificate off the apex, so the apex→www redirect would fail the TLS
+        // handshake before it could 301.
         $domain = (string) Manifest::domain();
 
         if (str_starts_with($domain, 'www.')) {
@@ -263,11 +227,8 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * `queue-isolation` (`dedicated` | `shared`) only means something once tenants
-     * are declared — it decides whether the queue layer fans out per tenant. With a
-     * single scope (a solo app, or a landlord-only `multitenancy` block) there is
-     * nothing to isolate, so the key is refused rather than silently ignored.
-     * Manifest::queueIsolation() validates the value.
+     * With no tenants there is nothing to isolate, so the key is refused rather
+     * than silently ignored.
      */
     protected function ensureQueueIsolationValid(): bool
     {
@@ -293,12 +254,8 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * A web task must be reachable: the task security group only accepts ingress
-     * from the ALB, and with no domain no listener rule ever points at the
-     * service — a web server nobody can reach, burning a Fargate task. So a solo
-     * web app must declare `domain`, and a multi-tenant web app needs at least
-     * one tenant domain. An app with no public host runs as a worker instead
-     * (standalone queue/scheduler, no web task).
+     * The task security group only accepts ingress from the ALB, and with no domain
+     * no listener rule ever points at the service — a Fargate task nobody can reach.
      */
     protected function ensureWebReachable(): bool
     {
@@ -315,12 +272,9 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * A declared `tasks` block must yield at least one ECS service. A web-less
-     * app is valid only with a standalone queue and/or scheduler — with neither
-     * there is nowhere to run any work (the bundled queue/scheduler have no web
-     * container to ride), so the shape is refused rather than silently
-     * provisioning nothing. A manifest with no `tasks` key at all is untouched
-     * (a build-only app).
+     * A bundled queue/scheduler has no web container to ride, so a `tasks` block
+     * yielding no ECS service is refused rather than silently provisioning nothing.
+     * No `tasks` key at all is a build-only app and untouched.
      */
     protected function ensureTasksRunnable(): bool
     {
@@ -337,13 +291,9 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * Web and queue must each make a definitive autoscaling decision — there is no
-     * implicit default. The value is `true` (cost-effective scaling from one task),
-     * `false` (a pinned single task), or a `{ min, max }` block for bespoke bounds.
-     * The bare `tasks.web: true` / `tasks.queue: true` shorthand is therefore not
-     * accepted for these two groups: a scalar tier has nowhere to declare scaling
-     * behaviour. Only the scheduler — a pinned singleton that never scales — keeps
-     * its bare-`true` shorthand. A disabled (`false`) or absent group is exempt.
+     * No implicit autoscaling default: the bare `tasks.web: true` shorthand has
+     * nowhere to declare scaling behaviour, so web and queue must say so explicitly.
+     * Only the scheduler (a pinned singleton) keeps the shorthand.
      */
     protected function ensureAutoscalingDeclared(): bool
     {
@@ -370,12 +320,8 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * When the scheduler rides the standalone queue (a `tasks.queue` block but no
-     * dedicated `tasks.scheduler` service), an autoscaling queue can't scale to zero
-     * — cron would stop the moment it idled to no tasks. The floor defaults to 1, so
-     * only an explicit `tasks.queue.autoscaling.min: 0` is a contradiction; hard-fail
-     * and point at the ways out. A fixed (autoscaling: false) queue never idles to
-     * zero, so it's exempt.
+     * A queue hosting the scheduler can't scale to zero — cron would stop the moment
+     * it idled. The floor defaults to 1, so only an explicit `min: 0` contradicts.
      */
     protected function ensureSchedulerHostNotScaleToZero(): bool
     {
@@ -396,12 +342,6 @@ abstract class Command extends SymfonyCommand
         return true;
     }
 
-    /**
-     * The manifest is validated against a strict allow-list of keys. Any key not
-     * in the schema, or a valid key in the wrong place, hard-fails so a misshapen
-     * manifest can't deploy silently. Reports the fully-qualified key path and
-     * links the manifest reference.
-     */
     protected function ensureNoUnknownManifestKeys(): bool
     {
         $unknown = Manifest::unknownKeys();
@@ -419,11 +359,6 @@ abstract class Command extends SymfonyCommand
         return false;
     }
 
-    /**
-     * `cache.store` (apps with tasks default to `redis`). `redis` provisions the shared
-     * Valkey cluster; `file`/`database`/`array` opt out and are app-managed. Any
-     * other store should be configured in the app's `.env`, not here.
-     */
     protected function ensureCacheStoreValid(): bool
     {
         $store = Manifest::get('cache.store');
@@ -444,12 +379,9 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * `bucket` says who owns the app data bucket: `true` for one YOLO provisions in
-     * its own namespace, or the name of an existing bucket to adopt. `false` is
-     * refused rather than read as "no bucket" — omitting the key already says that,
-     * and a silently-ignored `false` would ship an app with no AWS_BUCKET. A name S3
-     * would reject is caught here too, so a typo fails validation instead of
-     * surfacing as an InvalidBucketName mid-apply.
+     * `bucket: false` is refused rather than read as "no bucket" — omitting the key
+     * already says that, and a silently-ignored `false` would ship an app with no
+     * AWS_BUCKET. Invalid names fail here instead of as InvalidBucketName mid-apply.
      */
     protected function ensureAppBucketValid(): bool
     {
@@ -472,15 +404,11 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * A bring-your-own app data bucket must already exist on this account. YOLO
-     * never creates one: the name sits outside the `yolo-*` namespace the admin tier
-     * is fenced to, so CreateBucket — and the Block Public Access and CORS writes
-     * that follow it — would AccessDenied mid-apply.
-     *
-     * Ownership comes from ListBuckets rather than a HeadBucket probe. The bucket
-     * namespace is global, so a bucket owned by someone else answers HeadBucket with
-     * a 403 indistinguishable from "yours, but this tier may not read it"; adopting
-     * one of those looks like a clean sync and then fails every runtime write.
+     * YOLO never creates a BYO bucket: its name sits outside the `yolo-*` namespace
+     * the admin tier is fenced to, so CreateBucket would AccessDenied mid-apply.
+     * Ownership comes from ListBuckets, not HeadBucket — a bucket owned by another
+     * account answers HeadBucket with a 403 indistinguishable from "yours, but this
+     * tier may not read it", and adopting it fails every runtime write.
      */
     protected function ensureAppBucketAdoptable(): bool
     {
@@ -507,13 +435,6 @@ abstract class Command extends SymfonyCommand
         return false;
     }
 
-    /**
-     * `session.driver` (when set) must be a Laravel session driver YOLO supports.
-     * `redis` requires `cache.store: redis` — sessions can't land on a Valkey
-     * cluster that isn't provisioned — and that holds for the web-app default too,
-     * not just an explicit `redis`. Hard-fail loudly rather than silently shipping
-     * a broken session backend.
-     */
     protected function ensureSessionDriverValid(): bool
     {
         $driver = Manifest::get('session.driver');
@@ -526,9 +447,9 @@ abstract class Command extends SymfonyCommand
             return false;
         }
 
-        // The effective driver (explicit or the web-app default) — so a web app
-        // that opts the cache out (cache.store: file) without re-pinning the
-        // session driver is caught, not silently shipped pointing at no cluster.
+        // Checks the effective driver, not just an explicit one: a web app that opts
+        // the cache out without re-pinning sessions would otherwise ship pointing at
+        // a Valkey cluster that isn't provisioned.
         if (Manifest::sessionDriver() === 'redis' && Manifest::cacheStore() !== 'redis') {
             error('yolo.yml `session.driver: redis` needs the Valkey cache (`cache.store: redis`, the default) — don\'t opt the cache out.');
 
@@ -539,10 +460,8 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * `services` is the app's opt-in list of YOLO-provisioned services — bare
-     * capability names only (the Service enum). All service shape lives in the
-     * environment manifest, so there's nothing else an app may declare here:
-     * not an object, not duplicates, not an unknown name.
+     * Service shape lives in the environment manifest, so an app declares bare
+     * names only.
      */
     protected function ensureServicesValid(): bool
     {
@@ -581,13 +500,10 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * An app may only use an env-backed service the environment manifest
-     * declares — otherwise the app would publish what it uses, and the
-     * environment would quietly provision nothing. Build, deploy and sync:app
-     * hard-fail it with the fix spelled out. Before the env manifest exists
-     * (a greenfield environment the first sync hasn't seeded yet) there is
-     * nothing to validate against, so the check defers to that first sync
-     * rather than bricking it.
+     * An app using an env-backed service the environment doesn't declare would
+     * quietly get nothing provisioned. Before the env manifest exists (greenfield,
+     * first sync not yet run) there is nothing to validate against, so defer rather
+     * than brick that first sync.
      */
     protected function ensureClaimedServicesOffered(): bool
     {
@@ -640,10 +556,8 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * `services` is reserved: yolo-{env}-services is the env services cluster
-     * (shared service tasks, not an app), and app liveness derivation skips
-     * it — an app actually named "services" would be invisible to the claims
-     * registry and the audit.
+     * yolo-{env}-services is the env services cluster and app liveness derivation
+     * skips it — an app actually named "services" would be invisible to the audit.
      */
     protected function ensureNameNotReserved(): bool
     {
@@ -692,13 +606,10 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * Hook to reconstruct an environment's manifest config from the live account
-     * before the manifest checks read it — for a command that must run against an
-     * environment yolo.yml no longer declares (destroy:environment, after
-     * destroy:app removed the block). The default is a no-op: every other command
-     * reads its config from yolo.yml on disk. An overriding command hydrates the
-     * manifest (see Manifest::hydrate) and returns null to proceed, or an exit code
-     * to abort.
+     * Hook for a command that must run against an environment yolo.yml no longer
+     * declares (destroy:environment after destroy:app removed the block): hydrate
+     * the manifest from the live account (see Manifest::hydrate) before the checks
+     * read it. Returns null to proceed, or an exit code to abort.
      */
     protected function bootstrapEnvironment(): ?int
     {
@@ -706,11 +617,7 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * The YOLO permission tier this command runs under, or null to run on the
-     * developer's own profile credentials unchanged. Read commands run under the
-     * read-only Observer tier; the deploy lifecycle runs under the Deployer tier.
-     * The Admin tier (sync/scale) is a follow-up. The base default is null, so an
-     * un-tiered command is untouched.
+     * Null runs on the developer's own profile credentials unchanged.
      */
     protected function awsTier(): ?Iam
     {
@@ -723,26 +630,20 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * Cap this run to its tier: assume the tier's role (whose policy is the tier)
-     * and re-register every AWS client against the resulting scoped credentials,
-     * so YOLO can never exceed the tier even though the developer authenticated as
-     * their (broader) self — privilege escalation impossible by construction.
+     * Cap this run to its tier by assuming the tier role and re-registering every
+     * AWS client on the scoped credentials — YOLO can never exceed the tier even
+     * though the developer authenticated as their broader self.
      *
      * Fail-closed: there is no "run on the full profile because the role is
-     * missing" path. Assuming the role is the only way through — if it can't be
-     * assumed (a fresh environment with no role yet, a broken trust, a missing
-     * grant) the command refuses and points at the bootstrap flag. The single
-     * deliberate escape is --dangerously-skip-permissions, which skips the cap and
-     * runs on the full profile identity (bootstrap / break-glass / diagnostics).
+     * missing" path. The only escape is --dangerously-skip-permissions
+     * (bootstrap / break-glass / diagnostics).
      *
-     * A nested in-process run inherits the parent's already-minted cap rather than
-     * re-minting: the deploy → `sync --check` gate runs an admin-tier SyncCommand
-     * inside a deployer-capped deploy, and re-minting would try to climb deployer →
-     * admin — an escalation the tier model forbids by construction, and one that
-     * can't even resolve an MFA device from inside a role session, turning the
-     * read-only drift check into an auth refusal. The parent tier is the ceiling
-     * and the deployer cap already carries the per-app observer read surface the
-     * check needs, so the nested run proceeds on the inherited credentials.
+     * A nested in-process run inherits the parent's cap: the deploy → `sync --check`
+     * gate runs an admin-tier SyncCommand inside a deployer-capped deploy, and
+     * re-minting would climb deployer → admin — an escalation the tier model
+     * forbids, and one that can't resolve an MFA device from inside a role session.
+     * The deployer cap already carries the per-app observer read surface the check
+     * needs.
      *
      * Returns null to proceed, or an exit code to abort the command.
      */
@@ -760,12 +661,8 @@ abstract class Command extends SymfonyCommand
             return null;
         }
 
-        // Already capped — a parent in-process run (the deploy → `sync --check`
-        // gate) applied a tier, or this process is already running as a tier role
-        // (the CI/OIDC skip below). Inherit it rather than re-minting and
-        // escalating past the cap. Keyed off a dedicated marker, not the minted
-        // credentials, because the CI path caps without minting any (it runs on
-        // the ambient OIDC role).
+        // Keyed off a dedicated marker, not the minted credentials, because the
+        // CI/OIDC path caps without minting any.
         if (Helpers::app()->bound('yoloTierApplied')) {
             return null;
         }
@@ -781,14 +678,9 @@ abstract class Command extends SymfonyCommand
             return null;
         }
 
-        // The canonical CI path: a GitHub Actions workflow assumes the tier role
-        // via OIDC before yolo runs, so the process is already capped to exactly
-        // this tier. Re-assuming the role we already are is a redundant
-        // self-assume the role's own permission policy doesn't grant (and
-        // shouldn't) — detect it and proceed on the ambient role credentials.
-        // Gated to CI: a local run authenticates as the developer's own identity
-        // and always mints through the assume path (skipping the extra
-        // GetCallerIdentity call).
+        // CI assumes the tier role via OIDC before yolo runs; a self-assume is one
+        // the role's own policy doesn't (and shouldn't) grant. Gated to CI so a
+        // local run skips the extra GetCallerIdentity call.
         if (static::detectCiEnvironment() && $this->callerIsTierRole($role)) {
             Helpers::app()->instance('yoloTierApplied', true);
 
@@ -796,12 +688,9 @@ abstract class Command extends SymfonyCommand
         }
 
         try {
-            // Build the ARN deterministically (account id from the manifest, no
-            // IAM path on YOLO roles) — never resolve it live. A tier member's
-            // base identity holds nothing but the group grants, so any IAM read
-            // here (a GetRole, a ListRoles) is an AccessDenied that blocks the
-            // assume it was trying to help. A missing role surfaces from
-            // AssumeRole itself instead.
+            // Never resolve the ARN live: a tier member's base identity holds nothing
+            // but the group grants, so a GetRole/ListRoles here is an AccessDenied
+            // that blocks the assume it was trying to help.
             $roleArn = sprintf('arn:aws:iam::%s:role/%s', Aws::accountId(), $role->name());
             $sessionName = sprintf('yolo-%s', $tier->value);
 
@@ -833,9 +722,8 @@ abstract class Command extends SymfonyCommand
 
             return null;
         } catch (\Throwable $e) {
-            // A rejected TOTP is an operator-fixable slip, not a broken tier — say so
-            // plainly instead of sending them off to check role existence and MFA
-            // enrolment, neither of which is the problem.
+            // A rejected TOTP is an operator slip, not a broken tier — don't send
+            // them off to check role existence or MFA enrolment.
             error(static::isRejectedMfaCode($e)
                 ? sprintf(
                     "Refusing to run '%s': AWS rejected the MFA code.\n"
@@ -857,18 +745,9 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * Assume the admin role, re-prompting on a rejected MFA code rather than
-     * losing the run.
-     *
-     * A TOTP mints exactly one session: re-entering the code from the previous
-     * command — or the one still on screen after a successful run — is denied by
-     * STS, and that is by far the likeliest way this fails. Re-prompting costs the
-     * operator the seconds until their authenticator rolls over; aborting costs
-     * them the whole command, which for a sync is a full plan pass.
-     *
-     * Only a rejected code retries. Anything else (a missing role, a trust policy
-     * that won't have them) is not fixed by another code, so it surfaces
-     * immediately.
+     * A TOTP mints exactly one session, so re-entering the code still on screen is
+     * by far the likeliest failure; re-prompting costs seconds, aborting costs the
+     * whole run. Only a rejected code retries — nothing else is fixed by another one.
      *
      * @return array<string, mixed>
      */
@@ -894,12 +773,10 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * Whether a failed assume was AWS refusing the TOTP itself — the retryable
-     * case. Matched on the message because STS reports it as a plain AccessDenied,
-     * indistinguishable by error code from a trust-policy refusal. The narrower
-     * "one time pass code" phrasing keeps the sibling MFA failure (a serial number
-     * that isn't the caller's device) out: another code never fixes that, and a
-     * reworded message simply falls back to surfacing the error as before.
+     * Matched on the message because STS reports a rejected TOTP as a plain
+     * AccessDenied, indistinguishable by code from a trust-policy refusal. The
+     * "one time pass code" phrasing keeps the wrong-serial failure out — another
+     * code never fixes that.
      */
     protected static function isRejectedMfaCode(\Throwable $e): bool
     {
@@ -908,14 +785,10 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * Drop the assumed tier credentials and fall back to the operator's base
-     * profile identity — the mirror of {@see mintTierCredentials()}. Used by the
-     * IAM-tier teardown (see {@see RunsOnBaseCredentials}):
-     * a command can't delete the role + policy it's authenticated under, so the
-     * final teardown slice runs on the broader base identity instead. Idempotent;
-     * a no-op when no tier was minted (a --dangerously-skip-permissions run, or the
-     * CI/OIDC path where the process already IS the tier role and there's nothing
-     * broader to fall back to — that edge keeps the cap).
+     * Mirror of {@see mintTierCredentials()} for {@see RunsOnBaseCredentials}: a
+     * command can't delete the role + policy it's authenticated under, so the IAM
+     * teardown slice runs on the base identity. No-op when nothing was minted (the
+     * CI/OIDC path IS the tier role and has nothing broader to fall back to).
      */
     public function ensureBaseCredentials(): void
     {
@@ -929,14 +802,10 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * The env block handing the minted tier credentials to a subprocess (the
-     * aws CLI, session-manager-plugin). A subprocess must run on the tier, not
-     * the base profile: --profile resolves the operator's FULL identity, both
-     * escaping the tier cap and failing for least-privileged members, whose
-     * base identity holds nothing but the group grants (the tier role is where
-     * the session permission lives). Env credentials outrank every other
-     * source in the CLI's chain, so exporting the minted session is enough.
-     * Null when no tier was minted — see {@see subprocessProfile()}.
+     * A subprocess (aws CLI, session-manager-plugin) must run on the tier, not
+     * --profile: that resolves the operator's FULL identity, escaping the cap and
+     * failing for least-privileged members whose base identity holds only the group
+     * grants. Env credentials outrank every other source in the CLI's chain.
      *
      * @return array<string, string>|null
      */
@@ -956,10 +825,8 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * The --profile for a subprocess: only uncapped runs (break-glass, or the
-     * CI/OIDC path where the process already IS the tier role) carry one —
-     * whenever tier credentials were minted, {@see subprocessEnv()} exports
-     * them and the profile must stay out of the invocation entirely.
+     * Whenever tier credentials were minted, {@see subprocessEnv()} exports them and
+     * the profile must stay out of the invocation entirely.
      */
     protected function subprocessProfile(): ?string
     {
@@ -969,12 +836,8 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * Whether the AWS caller is already running as exactly this tier's role — the
-     * CI/OIDC path, where the workflow assumes the role before yolo runs. An STS
-     * assumed-role ARN is `arn:aws:sts::<account>:assumed-role/<role-name>/<session>`;
-     * YOLO roles carry no IAM path, so the role name alone identifies the role. A
-     * match means the process is already capped to the tier, so there is nothing
-     * to mint and a self-assume would be a no-op the role's own policy denies.
+     * An STS assumed-role ARN is `arn:aws:sts::<account>:assumed-role/<role-name>/<session>`;
+     * YOLO roles carry no IAM path, so the role name alone identifies the role.
      */
     protected function callerIsTierRole(Resource $role): bool
     {
@@ -986,10 +849,8 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * The MFA device serial for the admin-tier assume. An explicit
-     * `YOLO_{ENV}_MFA_SERIAL` override wins (no extra IAM permission needed);
-     * otherwise auto-discover the caller's first device (needs
-     * `iam:ListMFADevices`). Null when neither resolves — admin then refuses.
+     * The `YOLO_{ENV}_MFA_SERIAL` override needs no IAM permission; auto-discovery
+     * needs `iam:ListMFADevices`.
      */
     protected function resolveMfaSerial(): ?string
     {
@@ -1001,13 +862,9 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * Prompt for the fresh 6-digit TOTP that gates an admin-tier assume — the
-     * human factor an agent running as the operator can't generate.
-     *
-     * Codes AWS has already rejected this run are refused here rather than sent
-     * back to STS: the code is still displayed on the authenticator for the rest
-     * of its window, so re-entering it is the natural thing to do and guarantees
-     * a second rejection.
+     * Already-rejected codes are refused here rather than sent back to STS: the code
+     * is still on the authenticator for the rest of its window, so re-entering it is
+     * natural and guarantees a second rejection.
      *
      * @param  array<int, string>  $rejected  codes AWS has refused this run
      */
@@ -1033,11 +890,8 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * Pick the observer role for a read command. The default is the per-app
-     * observer role (log content fenced to this app's group), so a read grant can
-     * name one app. The env-wide reads — status:environment and every audit verb
-     * (audit tag-queries the whole env) — declare {@see ReadsEnvironment} and cap
-     * to the broader env observer role instead.
+     * Per-app observer by default so a read grant can name one app; env-wide reads
+     * (status:environment, every audit verb) declare {@see ReadsEnvironment}.
      */
     protected function observerRole(): Resource
     {
@@ -1047,10 +901,8 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * The global --dangerously-skip-permissions break-glass flag: skip the tier
-     * cap and run on the developer's full profile identity. Registered on the
-     * application (see Yolo), so guard against input not yet bound (direct unit
-     * invocation) before reading it.
+     * Registered on the application (see Yolo); input may not be bound yet under
+     * direct unit invocation.
      */
     protected function skipsPermissions(): bool
     {

@@ -12,14 +12,9 @@ use Symfony\Component\Process\Process;
 use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
 
 /**
- * Scheduled database backups shell out to `mysqldump` and `zstd` inside the
- * scheduler host's container, and neither ships in a bare base image. This
- * probes the freshly-built image for both binaries and hard-fails the build —
- * before the push — when either is missing. The failure it prevents is silent
- * in the worst way: the deploy goes green, the app serves, and the daily
- * backup errors unnoticed in the scheduler's logs until the day a restore is
- * needed. Skipped when the manifest opts out (`backups: false` — e.g. an
- * app without a database to dump) or when cron runs nowhere to host the dump.
+ * Neither `mysqldump` nor `zstd` ships in a bare base image, and a missing one
+ * fails silently: the deploy goes green and the backup errors unnoticed until
+ * a restore is needed.
  */
 class CheckBackupRuntimeStep implements Step
 {
@@ -49,10 +44,7 @@ class CheckBackupRuntimeStep implements Step
     }
 
     /**
-     * The `docker run` probe. `--entrypoint sh` bypasses YOLO's role-dispatch
-     * entrypoint; `command -v` resolves against the same PATH the running
-     * container sees, so a binary from the base image, a multi-stage COPY or
-     * a script install all count.
+     * `--entrypoint sh` bypasses YOLO's role-dispatch entrypoint.
      *
      * @return array<int, string>
      */

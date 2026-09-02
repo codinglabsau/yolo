@@ -14,13 +14,8 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 use Codinglabs\Yolo\Resources\ElbV2\TenantForwardListenerRule;
 
 /**
- * Removes one tenant's forward rule from the shared `:443` listener, found by its
- * tenant-keyed Name tag so no sibling tenant's rule (or another app's) is touched.
  * Runs before the target group is deleted — a rule whose action references a
  * target group blocks that group's delete.
- *
- * A tenant the app's own certificate already covers never had a rule of its own,
- * so it skips here exactly as it skipped in sync.
  */
 class TeardownForwardRuleStep extends TenantStep
 {

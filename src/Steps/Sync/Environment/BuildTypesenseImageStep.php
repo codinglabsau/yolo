@@ -22,18 +22,14 @@ use Codinglabs\Yolo\Contracts\SkippedByDeployCheck;
 use Codinglabs\Yolo\Resources\Ecr\TypesenseRepository;
 
 /**
- * Conditionally builds and pushes the environment's Typesense image: the
- * pinned upstream base plus a config file carrying the admin key, the static
- * Raft peer list (hostnames — the fail-closed entrypoint resolves them to IPs
- * at runtime, so Typesense itself never touches DNS), and that entrypoint. The
- * content tag fingerprints all of it, so the build is skipped entirely while
- * nothing has changed — and the plan pass reports WOULD_BUILD Docker-free (an
- * ECR tag lookup, never a daemon call). Secret control = env-bucket S3 read +
- * ECR pull; the task definition carries no secret and DescribeTaskDefinition
- * reveals nothing.
+ * The image is the pinned upstream base plus config carrying the admin key, the
+ * static Raft peer list (hostnames — the fail-closed entrypoint resolves them to
+ * IPs at runtime, so Typesense itself never touches DNS) and that entrypoint.
+ * The content tag fingerprints all of it, so the plan pass reports WOULD_BUILD
+ * Docker-free (an ECR tag lookup, never a daemon call). Secret control =
+ * env-bucket S3 read + ECR pull; the task definition carries no secret.
  *
- * Teardown is a skip: the repository's force-delete (the previous step) takes
- * the images with it.
+ * Teardown is a skip: the repository's force-delete takes the images with it.
  */
 class BuildTypesenseImageStep implements LongRunning, SkippedByDeployCheck, Step
 {
@@ -51,9 +47,8 @@ class BuildTypesenseImageStep implements LongRunning, SkippedByDeployCheck, Step
             return StepResult::SYNCED;
         }
 
-        // On a first plan the admin key hasn't been generated yet, so the tag
-        // is unknowable — report the pending build; by apply the key step has
-        // run and the tag resolves.
+        // On a first plan the admin key hasn't been generated yet, so the tag is
+        // unknowable — report the pending build; by apply the key step has run.
         $this->recordChange(Change::make('typesense image', 'absent', $tag ?? 'version + generated key'));
 
         if (Arr::get($options, 'dry-run')) {
@@ -84,8 +79,7 @@ class BuildTypesenseImageStep implements LongRunning, SkippedByDeployCheck, Step
             $this->writeBuildContext($buildDirectory);
             $this->loginToEcr();
 
-            // The nodes run arm64 (Typesense ships multi-arch; Graviton is the
-            // default node platform), so the image is built for it explicitly.
+            // The nodes run arm64 (Graviton), so build for it explicitly.
             (new Process(
                 command: [
                     'docker', 'build',
@@ -105,10 +99,8 @@ class BuildTypesenseImageStep implements LongRunning, SkippedByDeployCheck, Step
     }
 
     /**
-     * The whole build context: a FROM+COPY Dockerfile, the server config with
-     * the baked admin key, the static peer list (host:peering:api per node —
-     * identical on every node; each identifies itself by matching a local
-     * interface address), and the fail-closed entrypoint that resolves those
+     * The peer list is identical on every node (each identifies itself by
+     * matching a local interface address); the entrypoint resolves those
      * hostnames to IPs into the nodes file Typesense actually reads.
      */
     protected function writeBuildContext(string $directory): void

@@ -11,11 +11,9 @@ use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 
 /**
- * Security group on the Typesense node tasks. Models identity + tags; the
- * ingress rules (8108 from the ALB SG, plus 8108 and 8107 node-to-node) are
- * reconciled additively by SyncTypesenseSecurityGroupStep — consuming apps'
- * task-SG ingress arrives with the app-side consumption work, the RDS
- * pattern.
+ * Identity + tags only; the ingress rules are reconciled additively by
+ * SyncTypesenseSecurityGroupStep, and consuming apps add their own task-SG
+ * ingress app-side (the RDS pattern).
  */
 class TypesenseSecurityGroup implements Deletable, Resource
 {
@@ -49,12 +47,6 @@ class TypesenseSecurityGroup implements Deletable, Resource
         return Aws::synchroniseEc2Tags($this->arn(), $this->tags(), $apply);
     }
 
-    /**
-     * Teardown runs after the cluster cascade stopped the node tasks, but their
-     * ENIs detach asynchronously — DependencyViolation for a short window is
-     * expected, not an error. The delete is retried past it until the ENIs clear.
-     * See Ec2::deleteSecurityGroupWhenDetached.
-     */
     public function delete(): void
     {
         Ec2::deleteSecurityGroupWhenDetached($this->arn());

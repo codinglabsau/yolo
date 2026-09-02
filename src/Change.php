@@ -3,16 +3,10 @@
 namespace Codinglabs\Yolo;
 
 /**
- * A single reconciled attribute — the unit of detail a sync step reports so the
- * operator sees exactly what drifted (and what it became) rather than a flat
- * SYNCED. `from` is the live value (null = absent / never set), `to` the desired
- * value the sync would apply or did apply.
- *
- * Values arrive as scalars, bools or whole config documents; `make()` formats
- * them into the display strings the renderer prints, so the renderer stays dumb.
- * Resources comparing opaque documents (a bucket policy, an event pattern) build
- * a Change directly with their own semantic from/to labels (e.g. 'absent' →
- * 'managed') rather than dumping a JSON blob.
+ * One reconciled attribute, so the operator sees what drifted rather than a flat SYNCED.
+ * `from` is the live value (null = absent), `to` the desired. `make()` formats values so the
+ * renderer stays dumb; resources comparing opaque documents build a Change directly with
+ * semantic labels ('absent' → 'managed') rather than dumping a JSON blob.
  */
 final readonly class Change
 {
@@ -27,9 +21,6 @@ final readonly class Change
         return new self($attribute, self::format($from), self::format($to));
     }
 
-    /**
-     * Render the comparison as a single line for non-coloured output.
-     */
     public function describe(): string
     {
         return sprintf('%s: %s → %s', $this->attribute, $this->from ?? '<absent>', $this->to ?? '<absent>');

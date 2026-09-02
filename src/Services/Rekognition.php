@@ -7,10 +7,6 @@ namespace Codinglabs\Yolo\Services;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Service;
 
-/**
- * Amazon Rekognition (image/video analysis). App-side only: a task-role grant
- * on a pure pay-per-call API — no infrastructure at either tier.
- */
 class Rekognition extends ServiceDefinition
 {
     public function service(): Service
@@ -28,11 +24,7 @@ class Rekognition extends ServiceDefinition
         return false;
     }
 
-    /**
-     * The detection APIs are resource-less — they operate on request payloads
-     * or S3 objects read with the caller's own credentials, so the grant is
-     * service-wide and S3 access rides the app's bucket statements.
-     */
+    /** The detection APIs are resource-less, so the grant is service-wide; S3 access rides the app's bucket statements. */
     public function taskRoleStatements(): array
     {
         return [
@@ -59,9 +51,7 @@ class Rekognition extends ServiceDefinition
             return [];
         }
 
-        // Rekognition metrics are dimensioned per Operation and the app
-        // decides at runtime which APIs it calls — SEARCH charts whatever
-        // operations actually report, no hardcoded list to drift.
+        // Metrics are dimensioned per Operation and the app picks its APIs at runtime — SEARCH avoids a hardcoded list that drifts.
         $search = fn (string $metric, string $label): array => [[
             'expression' => sprintf('SEARCH(\'{AWS/Rekognition,Operation} MetricName="%s"\', \'Sum\', 300)', $metric),
             'label' => $label,

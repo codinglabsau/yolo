@@ -13,44 +13,26 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * The grant layer: a YOLO-managed IAM group whose single inline policy allows
- * `sts:AssumeRole` on exactly one scoped tier role, plus the self-service slice
- * every member needs to run their own credential hygiene — scoped to
- * `${aws:username}`, so a member only ever touches their own user. Membership IS
- * the access lever — add a user to the group to grant the tier, remove to
- * revoke. YOLO provisions and reconciles the group + its policy; it never
- * manages membership (that's the human lever, held by an admin via
- * `yolo permissions` or the console).
+ * The grant layer: an IAM group whose inline policy allows `sts:AssumeRole` on one
+ * tier role plus self-service credential hygiene scoped to `${aws:username}`.
+ * Membership IS the access lever; YOLO never manages it.
  *
- * The self-service slice is the standard force-MFA shape, split on one line:
- * what a member may do WITHOUT MFA is exactly the bootstrap path (enrol their
- * own device, plus the reads the console needs to render that flow — a
- * brand-new user signs in with just a password and must be able to reach MFA
- * enrolment, and the credential helper auto-discovers the serial via
- * `iam:ListMFADevices` at mint time, see {@see Aws::callerMfaSerial()});
- * everything else — creating and rotating their own access keys, changing the
- * password, deactivating or deleting the device — demands
- * `aws:MultiFactorAuthPresent`. A stolen bare key or pre-MFA console session
- * can therefore mint nothing (every tier's trust denies AssumeRole without
- * MFA), can't cut itself a replacement key, and can't strip the MFA device
- * that's containing it. The developer's first access key is self-issued AFTER
- * enrolment: sign in with the password, enrol, re-sign-in with a TOTP, then
- * create the key under the MFA gate — the key never exists before the device.
+ * The self-service slice is the force-MFA shape: without MFA a member can only enrol
+ * their first device (plus the reads the console and credential helper need for that
+ * flow — see {@see Aws::callerMfaSerial()}); creating/rotating keys, changing the
+ * password and deactivating the device demand `aws:MultiFactorAuthPresent`. A stolen
+ * bare key can mint nothing, can't cut a replacement key, and can't strip the device
+ * containing it.
  *
- * The inline document is pure and deterministic (the role ARN and the member's
- * user/mfa ARNs are built from account/env/app + the `${aws:username}` policy
- * variable, never a live lookup), so it survives the sync two-pass contract with
- * nothing created yet. IAM groups are not taggable, so ownership
- * is encoded in the name (`yolo-{env}[-{app}]-{tier}s`) rather than a `yolo:*`
- * tag — which is why `yolo audit` can't see them (the same blind spot it has for
- * scaling policies); sync-drift is the only stray-catcher.
+ * The document is deterministic (no live lookups) so it survives the plan pass with
+ * nothing created. IAM groups are not taggable, so ownership is encoded in the name —
+ * `yolo audit` can't see them; sync drift is the only stray-catcher.
  */
 abstract class AssumeRoleGroup implements Deletable, Resource, SynchronisesConfiguration
 {
     use CanonicalisesPolicyDocuments;
     use ResolvesTags;
 
-    /** The scoped tier role this group's members may assume. */
     abstract protected function role(): Resource;
 
     public function exists(): bool
@@ -80,24 +62,15 @@ abstract class AssumeRoleGroup implements Deletable, Resource, SynchronisesConfi
         ]);
     }
 
-    /**
-     * IAM groups have no tagging API, so there is nothing to reconcile — the
-     * name carries ownership. Returning no missing tags keeps the create-or-sync
-     * flow honest (an existing group with the right inline policy is a clean
-     * SYNCED, never a phantom tag change).
-     */
+    /** IAM groups have no tagging API; the name carries ownership. */
     public function synchroniseTags(bool $apply): array
     {
         return [];
     }
 
     /**
-     * Reconcile the inline assume-role policy. The document is deterministic, so
-     * the only drift is a YOLO upgrade that changed its shape (or a hand-edit);
-     * either way the plan records it and apply re-puts it. Compared canonically
-     * (see {@see CanonicalisesPolicyDocuments}) so IAM's list reordering and
-     * single-element collapsing never read as phantom drift. Reads only this
-     * group's own policy, behind the exists() gate in syncResource — two-pass safe.
+     * Compared canonically ({@see CanonicalisesPolicyDocuments}) so IAM's reordering
+     * and single-element collapsing never read as drift.
      *
      * @return array<int, Change>
      */
@@ -126,12 +99,8 @@ abstract class AssumeRoleGroup implements Deletable, Resource, SynchronisesConfi
     }
 
     /**
-     * Teardown when the tier is dropped (the app loses its deployer, or the
-     * environment is torn down): IAM refuses to delete a group that still has
-     * members, attached managed policies, or inline policies, so remove every
-     * user from the group, detach every managed policy, and delete the inline
-     * assume-role policy (create()'s put) before deleteGroup. A concurrent delete
-     * that already removed the group is tolerated.
+     * IAM refuses to delete a group that still has members, attached or inline
+     * policies, so strip all three first.
      */
     public function delete(): void
     {
@@ -185,11 +154,8 @@ abstract class AssumeRoleGroup implements Deletable, Resource, SynchronisesConfi
     }
 
     /**
-     * The role ARN(s) this group's members may assume — the tier role by
-     * default. A group whose tier subsumes narrower tiers widens this (the env
-     * observers group adds every per-app observer role, so an env-wide reader
-     * can run app-scoped commands that mint the narrower role). Must stay
-     * deterministic — built from account/env only, never the current app.
+     * Widened by groups whose tier subsumes narrower ones. Must stay deterministic —
+     * built from account/env only, never the current app.
      *
      * @return string|array<int, string>
      */
@@ -207,13 +173,9 @@ abstract class AssumeRoleGroup implements Deletable, Resource, SynchronisesConfi
      */
     public function document(): array
     {
-        // Every self-service IAM action here authorises on the member's own
-        // user ARN except CreateVirtualMFADevice/DeleteVirtualMFADevice, which
-        // evaluate against the device ARN — and a virtual device has no owner
-        // until it's enabled, so scoping its name (mfa/${aws:username}) only
-        // buys a console paper cut, not security: the boundary that matters is
-        // Deactivate, which is user-scoped and MFA-gated. Devices may be named
-        // freely; delete only ever works on deactivated device objects.
+        // CreateVirtualMFADevice/DeleteVirtualMFADevice evaluate against the device
+        // ARN, and a virtual device has no owner until enabled, so scoping its name
+        // buys nothing — the boundary is Deactivate, user-scoped and MFA-gated.
         $self = [
             sprintf('arn:aws:iam::%s:user/${aws:username}', Aws::accountId()),
             sprintf('arn:aws:iam::%s:mfa/*', Aws::accountId()),
@@ -227,10 +189,8 @@ abstract class AssumeRoleGroup implements Deletable, Resource, SynchronisesConfi
                     'Action' => 'sts:AssumeRole',
                     'Resource' => $this->assumableRoleArns(),
                 ],
-                // The MFA bootstrap path — deliberately NOT MFA-gated, or a new
-                // user could never enrol their first device (and the credential
-                // helper couldn't discover the serial to mint with). GetUser is
-                // here because the console's security-credentials page reads it.
+                // The MFA bootstrap path — deliberately NOT MFA-gated, or a new user
+                // could never enrol. GetUser: the console's credentials page reads it.
                 [
                     'Effect' => 'Allow',
                     'Action' => [
@@ -243,8 +203,7 @@ abstract class AssumeRoleGroup implements Deletable, Resource, SynchronisesConfi
                     ],
                     'Resource' => $self,
                 ],
-                // Account-level reads the console's MFA and password screens
-                // need to render — neither supports resource-level scoping.
+                // Console MFA/password screens need these; neither is resource-scopeable.
                 [
                     'Effect' => 'Allow',
                     'Action' => [
@@ -253,9 +212,8 @@ abstract class AssumeRoleGroup implements Deletable, Resource, SynchronisesConfi
                     ],
                     'Resource' => '*',
                 ],
-                // Credential self-management — MFA required, so a leaked bare
-                // key (or a pre-MFA console session) can't cut a fresh key,
-                // change the password, or remove the device.
+                // MFA required, so a leaked bare key or pre-MFA session can't cut a
+                // fresh key, change the password, or remove the device.
                 [
                     'Effect' => 'Allow',
                     'Action' => [

@@ -22,8 +22,7 @@ class SyncForwardRuleStep extends TenantStep
             return StepResult::SKIPPED;
         }
 
-        // A tenant already served by the app's own certificate and rule (a subdomain
-        // under `wildcard-subdomains`) needs nothing of its own here.
+        // A subdomain under `wildcard-subdomains` is already served by the app's own certificate and rule.
         if (Manifest::servesDomain($this->config['domain'])) {
             return StepResult::SKIPPED;
         }
@@ -31,12 +30,10 @@ class SyncForwardRuleStep extends TenantStep
         $listener = $this->httpsListener();
 
         if ($listener === null) {
-            // The `:443` listener is bootstrapped earlier in this same apply, so on
-            // the plan pass (which runs before anything is created) it isn't there
-            // yet. Report the rule as pending so the step survives to apply — a bare
-            // SKIPPED is pruned, leaving the tenant's host routed nowhere. With no
-            // certificate reachable this run the listener won't exist either, so
-            // genuinely defer.
+            // The `:443` listener is bootstrapped earlier in this same apply, so it's
+            // absent on the plan pass. Report the rule pending when a certificate
+            // will be issued this run — a bare SKIPPED is pruned, leaving the
+            // tenant's host routed nowhere; otherwise genuinely defer.
             if ((bool) Arr::get($options, 'dry-run') && $this->certificateWillBeIssued($this->config['certificate-domain'])) {
                 $this->recordChange(Change::make('forward rule', null, 'created'));
 

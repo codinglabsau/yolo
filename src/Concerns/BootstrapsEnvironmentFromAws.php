@@ -18,24 +18,16 @@ use function Laravel\Prompts\error;
 use function Laravel\Prompts\warning;
 
 /**
- * Reconstructs an environment's manifest config from the live account so a command
- * can run against an environment yolo.yml no longer declares — `destroy:environment`,
- * after `destroy:app` removed the block (its expected final act). The environment is
- * intentionally decoupled from the app manifest: its account-id comes from the
- * credential (STS), its region from the AWS profile, and its domain + services from
- * the published env manifest in S3.
- *
- * Resolution prefers what it can determine and prompts only for what it can't — a
- * CLI safety net rather than a hard failure. The whole operation is then gated on
- * the operator typing the resolved account-id back, on top of the admin-tier MFA
- * (minted later) and the typed environment-name confirm at the plan gate.
+ * Lets `destroy:environment` run against an environment yolo.yml no longer
+ * declares (`destroy:app` removes the block as its final act): account-id from STS,
+ * region from the AWS profile, domain + services from the published env manifest.
+ * Gated on the operator typing the resolved account-id back, since there's no local
+ * block to match the profile against.
  */
 trait BootstrapsEnvironmentFromAws
 {
     /**
-     * Resolve the environment from the live account and hydrate the manifest with it,
-     * so the standard command flow runs unchanged. Returns null to proceed, or an
-     * exit code to abort.
+     * Returns null to proceed, or an exit code to abort.
      */
     protected function bootstrapEnvironmentFromAws(string $environment): ?int
     {
@@ -49,11 +41,9 @@ trait BootstrapsEnvironmentFromAws
             return self::FAILURE;
         }
 
-        // Register AWS against the resolved profile + region — a region-only hydrate
-        // is enough, since clients need region + credentials, not the account-id — so
-        // the account-id (STS) and the env manifest (S3) read through the standard
-        // clients. The base flow's own registration runs only after this hook, so the
-        // bootstrap registers here; a test that has pre-bound mock clients keeps them.
+        // A region-only hydrate is enough to register clients (they need region +
+        // credentials, not the account-id). The base flow's own registration runs
+        // only after this hook; a test that has pre-bound mock clients keeps them.
         $name = $this->localManifestName($environment);
         Manifest::hydrate($this->synthesiseManifest($name, $environment, null, $region));
 
@@ -80,8 +70,7 @@ trait BootstrapsEnvironmentFromAws
             return self::FAILURE;
         }
 
-        // Now the account-id is known, hydrate it so the env config bucket
-        // (yolo-{account-id}-{env}-config) resolves for the env manifest read.
+        // The env config bucket name needs the account-id.
         Manifest::hydrate($this->synthesiseManifest($name, $environment, $accountId, $region));
 
         if (! EnvManifest::remoteExists()) {
@@ -96,9 +85,8 @@ trait BootstrapsEnvironmentFromAws
             return self::FAILURE;
         }
 
-        // Re-hydrate complete: domain + the services list (the env manifest stores
-        // services as a map of service => config; the app manifest's usesService()
-        // reads the bare-name list form, so flatten to its keys).
+        // The env manifest stores services as a map; the app manifest's usesService()
+        // reads the bare-name list form.
         $services = EnvManifest::get('services', []);
         Manifest::hydrate($this->synthesiseManifest(
             $name,
@@ -113,9 +101,6 @@ trait BootstrapsEnvironmentFromAws
     }
 
     /**
-     * The AWS profile to run under: the .env value if set, else prompt (a genuinely
-     * non-interactive run with no profile falls through to the base command's
-     * existing "specify YOLO_<ENV>_AWS_PROFILE" error / the SDK default chain in CI).
      * A prompted value is written back to the env repository so the existing
      * credential resolution picks it up unchanged.
      */
@@ -141,10 +126,6 @@ trait BootstrapsEnvironmentFromAws
         return $profile;
     }
 
-    /**
-     * The region the environment lives in: an explicit YOLO_<ENV>_AWS_REGION wins,
-     * else the profile's configured region from ~/.aws/config, else prompt.
-     */
     protected function resolveRegion(string $profile): ?string
     {
         if ($region = Helpers::keyedEnv('AWS_REGION')) {
@@ -173,7 +154,6 @@ trait BootstrapsEnvironmentFromAws
         ));
     }
 
-    /** The `region` configured for the named profile in ~/.aws/config, or null. */
     protected function profileConfiguredRegion(string $profile): ?string
     {
         $configFile = CredentialProvider::getConfigFileName();
@@ -189,10 +169,7 @@ trait BootstrapsEnvironmentFromAws
     }
 
     /**
-     * Gate the teardown on the operator typing the resolved account-id back — the
-     * which-account safety net that replaces the manifest-account-id↔profile match
-     * when there's no local block to match against. Bypassed by --force /
-     * non-interactive (CI), exactly as the typed environment-name confirm is.
+     * Bypassed by --force / non-interactive, exactly as the typed environment-name confirm is.
      */
     protected function confirmAccountId(string $environment, string $accountId, string $region): bool
     {
@@ -217,10 +194,8 @@ trait BootstrapsEnvironmentFromAws
     }
 
     /**
-     * The app name for the hydrated manifest: the on-disk yolo.yml name when present
-     * (a teardown run from the app repo), else the environment name. Env-scope
-     * teardown never uses the app name, but the base command requires a declared,
-     * non-reserved name.
+     * Env-scope teardown never uses the app name, but the base command requires a
+     * declared, non-reserved one.
      */
     protected function localManifestName(string $fallback): string
     {
@@ -236,8 +211,6 @@ trait BootstrapsEnvironmentFromAws
     }
 
     /**
-     * Build the synthetic single-environment manifest hydrated in place of yolo.yml.
-     *
      * @param  array<int, string>  $services
      * @return array<string, mixed>
      */

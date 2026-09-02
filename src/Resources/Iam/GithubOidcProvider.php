@@ -15,17 +15,10 @@ use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * The account-level IAM OIDC identity provider for GitHub Actions. There can be
- * exactly one provider per URL per account — it is shared across every YOLO
- * environment and app, so it is deliberately NOT keyed by environment. The
- * resource declares Scope::Account, which makes `Aws::expectedTags()` skip the
- * `yolo:environment` baseline (it would be a false label and a teardown hazard);
- * `ResolvesTags` still stamps `yolo:scope=account` as the positive ownership
- * marker so `audit:account` can recognise it.
- *
- * The deployer role's trust policy federates to this provider's ARN, letting a
- * GitHub Actions workflow exchange its OIDC token for short-lived AWS credentials
- * via sts:AssumeRoleWithWebIdentity — keyless.
+ * One OIDC provider per URL per account, shared by every environment — so it is
+ * Scope::Account, not env-keyed: `Aws::expectedTags()` skips `yolo:environment`
+ * (a false label and a teardown hazard) while `yolo:scope=account` still marks it
+ * for `audit:account`.
  */
 class GithubOidcProvider implements Adoptable, Deletable, Resource
 {
@@ -36,10 +29,8 @@ class GithubOidcProvider implements Adoptable, Deletable, Resource
     public const AUDIENCE = 'sts.amazonaws.com';
 
     /**
-     * GitHub's OIDC certificate thumbprints. AWS now validates the GitHub IdP
-     * against its own trusted-CA library, so these are largely vestigial — but
-     * CreateOpenIDConnectProvider still accepts the list, so we pin the known
-     * values rather than rely on undocumented optional behaviour.
+     * Largely vestigial (AWS now validates GitHub against its own trusted CAs) but
+     * CreateOpenIDConnectProvider still accepts the list, so pin the known values.
      */
     public const THUMBPRINTS = [
         '6938fd4d98bab03faadb97b34396831e3780aea1',
@@ -69,8 +60,7 @@ class GithubOidcProvider implements Adoptable, Deletable, Resource
 
     public function arn(): string
     {
-        // IAM ARNs carry no region; the OIDC provider ARN is fully derivable from
-        // the account id and the well-known GitHub URL — no lookup required.
+        // IAM ARNs carry no region, so this is derivable without a lookup.
         return sprintf('arn:aws:iam::%s:oidc-provider/%s', Aws::accountId(), self::URL);
     }
 
@@ -90,10 +80,8 @@ class GithubOidcProvider implements Adoptable, Deletable, Resource
     }
 
     /**
-     * Teardown: delete the OIDC provider. Account-scoped and shared across every
-     * environment, so this only ever runs once the last environment is gone (the
-     * destroy orchestrator gates it on no other environment remaining). A
-     * concurrent not-found is tolerated.
+     * Account-scoped and shared, so the destroy orchestrator gates this on no other
+     * environment remaining.
      */
     public function delete(): void
     {

@@ -10,18 +10,10 @@ use Codinglabs\Yolo\Resources\Ec2\EcsTaskSecurityGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Teardown mirror of {@see AuthorisesTaskIngress}: revoke the "<port> from this
- * app's Fargate task SG" ingress rule from a shared security group (the
- * database's own port, Valkey cache 6379) so the task SG can then be deleted —
- * AWS refuses to delete a security group another group's rule still references.
- *
- * Only this app's own rule is revoked: it's matched by the referenced task-SG id
- * + protocol/port, so a sibling app's rule on the same shared group is never
- * touched. Records the change and writes nothing under --dry-run. Returns whether
- * a rule was present (a change is pending/applied).
- *
- * {@see self::revokeAllTaskIngressRules()} is the port-agnostic form, for a group
- * whose port is derived rather than fixed.
+ * Teardown mirror of {@see AuthorisesTaskIngress}. AWS refuses to delete a
+ * security group another group's rule still references, so the task SG's rules
+ * on shared groups must go first. Rules are matched by the referenced task-SG id,
+ * so a sibling app's rule on the same shared group is never touched.
  */
 trait RevokesTaskIngress
 {
@@ -33,15 +25,9 @@ trait RevokesTaskIngress
     }
 
     /**
-     * Revoke EVERY tcp rule on the group that references this app's task SG,
-     * whatever its port. For a database group the port is a derived fact
-     * ({@see Rds::port()}), so a rule can outlive the port that wrote it — a sync
-     * run before the database existed authorises the fallback port, and a database
-     * moved to a new port leaves the old rule behind. Any such rule still
-     * references the task SG, and AWS refuses to
-     * delete a security group another group's rule points at, so a port-exact
-     * revoke wedges the whole teardown. Every rule referencing THIS app's task
-     * SG is this app's to reclaim, so sweeping them is both safe and complete.
+     * For a database group the port is derived ({@see Rds::port()}), so a rule can
+     * outlive the port that wrote it and a port-exact revoke would wedge the
+     * teardown. Every rule referencing THIS app's task SG is this app's to reclaim.
      */
     protected function revokeAllTaskIngressRules(string $groupId, bool $dryRun): bool
     {
@@ -56,8 +42,7 @@ trait RevokesTaskIngress
         try {
             $taskSecurityGroupId = (new EcsTaskSecurityGroup())->arn();
         } catch (ResourceDoesNotExistException) {
-            // The task SG is already gone, so nothing references it — the rule
-            // it would have authorised can't still exist.
+            // The task SG is already gone, so nothing can reference it.
             return false;
         }
 

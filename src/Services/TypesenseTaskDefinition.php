@@ -15,12 +15,9 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 use Codinglabs\Yolo\Resources\CloudWatchLogs\TypesenseLogGroup;
 
 /**
- * The single task-definition family every Typesense node runs
- * (yolo-{env}-typesense): its desired payload, the registered revision, and
- * whether the two still agree. Shared by the task-definition step (which
- * registers a drifted revision) and the nodes step (which has to know on the
- * plan pass that a revision is about to register — the plan runs before the
- * registration, so the live latest alone reads every node as current).
+ * Shared by the task-definition step and the nodes step: the plan pass runs
+ * before the registration, so the live latest alone would read every node as
+ * current — the nodes step needs to know a revision is about to register.
  */
 final class TypesenseTaskDefinition
 {
@@ -30,8 +27,6 @@ final class TypesenseTaskDefinition
     }
 
     /**
-     * The family's latest registered revision, or null before the first.
-     *
      * @return array<string, mixed>|null
      */
     public static function live(): ?array
@@ -43,12 +38,7 @@ final class TypesenseTaskDefinition
         }
     }
 
-    /**
-     * Whether the next sync registers a new revision: nothing registered yet,
-     * the registered revision drifted from the desired payload, or the payload
-     * can't render yet — its inputs (execution role, image tag) land earlier in
-     * the same sync, so an unrenderable payload is a pending one.
-     */
+    /** An unrenderable payload counts as pending — its inputs (execution role, image tag) land earlier in the same sync. */
     public static function registrationPending(): bool
     {
         try {
@@ -63,9 +53,8 @@ final class TypesenseTaskDefinition
     }
 
     /**
-     * Subset comparison — AWS enriches registered revisions with derived
-     * fields we don't manage, and tags live outside the revision (see
-     * SyncTaskDefinitionStep::matchesDesired).
+     * Subset comparison — AWS enriches registered revisions with derived fields
+     * we don't manage, and tags live outside the revision.
      *
      * @param  array<string, mixed>  $desired
      * @param  array<string, mixed>  $live
@@ -99,9 +88,7 @@ final class TypesenseTaskDefinition
     }
 
     /**
-     * The desired revision. Throws while its inputs aren't resolvable — on a
-     * greenfield plan the admin key, image and execution role may not exist
-     * yet; on apply the earlier steps have provisioned them.
+     * Throws while its inputs aren't resolvable (a greenfield plan pass).
      *
      * @return array<string, mixed>
      */
@@ -126,8 +113,7 @@ final class TypesenseTaskDefinition
                 'cpuArchitecture' => 'ARM64',
                 'operatingSystemFamily' => 'LINUX',
             ],
-            // The shared env execution role covers the ECR pull + log writes;
-            // there is no task role — Typesense calls no AWS APIs at runtime.
+            // No task role — Typesense calls no AWS APIs at runtime.
             'executionRoleArn' => (new EcsExecutionRole())->arn(),
             'containerDefinitions' => [
                 [
@@ -138,8 +124,7 @@ final class TypesenseTaskDefinition
                         ['containerPort' => Typesense::API_PORT, 'hostPort' => Typesense::API_PORT, 'protocol' => 'tcp'],
                         ['containerPort' => Typesense::PEERING_PORT, 'hostPort' => Typesense::PEERING_PORT, 'protocol' => 'tcp'],
                     ],
-                    // Typesense holds many concurrent connections + memory-mapped
-                    // index files; the Fargate default nofile (1024) is too low.
+                    // Many concurrent connections + memory-mapped index files; Fargate's default nofile (1024) is too low.
                     'ulimits' => [
                         ['name' => 'nofile', 'softLimit' => 65535, 'hardLimit' => 65535],
                     ],

@@ -8,13 +8,7 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\RecordsChanges;
 use Codinglabs\Yolo\Resources\CloudWatch\Dashboard;
 
-/**
- * Provisions the per-app CloudWatch dashboard. Runs last in sync:app so every
- * resource it visualises already exists on the apply pass. Dry-run honest: it
- * diffs the desired body against the live dashboard and reports WOULD_CREATE /
- * WOULD_SYNC / SYNCED accordingly, rather than blind-stamping like the queue
- * alarm step.
- */
+/** Runs last in sync:app so every resource it visualises exists on the apply pass. */
 class SyncCloudWatchDashboardStep implements Step
 {
     use RecordsChanges;

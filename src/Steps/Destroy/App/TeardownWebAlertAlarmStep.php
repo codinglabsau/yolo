@@ -10,8 +10,8 @@ use Codinglabs\Yolo\Steps\Destroy\TeardownStep;
 use Codinglabs\Yolo\Resources\CloudWatch\AlertAlarm;
 
 /**
- * Tears down the app's web 5xx alert alarm. Deletion is by name only, so the
- * alarm is constructed bare — the target group it watched may already be gone.
+ * Constructed bare: deletion is by name only, and the target group it watched
+ * may already be gone.
  */
 class TeardownWebAlertAlarmStep extends TeardownStep implements ExecutesWebStep
 {

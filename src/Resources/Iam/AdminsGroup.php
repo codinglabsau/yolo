@@ -9,11 +9,8 @@ use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 
 /**
- * Grant group for admin: members may assume the {@see AdminRole} and run
- * sync/scale across the environment, plus the account-tier sync the env admin
- * role carries (`yolo-{env}-admins`). The admin role also manages YOLO group
- * membership, so a member of this group can grant access to others — a
- * deliberate property for a small senior team.
+ * Members may assume {@see AdminRole}. The admin role also manages YOLO group
+ * membership, so a member can grant access to others — deliberate for a small team.
  */
 class AdminsGroup extends AssumeRoleGroup
 {
@@ -33,14 +30,9 @@ class AdminsGroup extends AssumeRoleGroup
     }
 
     /**
-     * Admin subsumes every tier, and the grant must say so: commands mint the
-     * LEAST-privileged role for their job (reads mint observer roles, deploys
-     * the per-app deployer) regardless of who runs them, so without these ARNs
-     * an admin would paradoxically be refused on any non-admin command. Only
-     * the admin-role assume itself demands a fresh TOTP — the narrower tiers
-     * ride the session's MFA, preserving least-privilege-by-default for admins
-     * too. Wildcards are env-built (never the current app) so the document
-     * stays deterministic across app checkouts.
+     * Commands mint the LEAST-privileged role for their job regardless of who runs
+     * them, so without these ARNs an admin would be refused on any non-admin command.
+     * Only the admin assume demands a fresh TOTP. Env-built, never the current app.
      *
      * @return array<int, string>
      */

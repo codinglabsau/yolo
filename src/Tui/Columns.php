@@ -4,12 +4,7 @@ declare(strict_types=1);
 
 namespace Codinglabs\Yolo\Tui;
 
-/**
- * Renders a fixed-width, themed table row. Each cell is padded to its column
- * width BEFORE the colour tag is applied, so ANSI escape codes never count
- * toward the visible width — the alignment trap that makes naively-coloured
- * terminal tables jagged.
- */
+/** Cells are padded BEFORE the colour tag is applied, so ANSI escapes never count toward the visible width. */
 class Columns
 {
     /**

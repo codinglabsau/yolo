@@ -14,10 +14,8 @@ use Codinglabs\Yolo\Enums\ElastiCache as ElastiCacheEnum;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * The shared Valkey cache: a single-node replication group (0 replicas), the
- * cheapest topology that still uses the modern, replica-ready construct.
- * Functionally a standard single instance — auto-failover and Multi-AZ are off.
- * Scaling is a manual vertical resize; HA, if ever needed, is an in-place add.
+ * Single-node replication group (0 replicas): the cheapest topology that still uses
+ * the replica-ready construct, so HA later is an in-place add.
  */
 class CacheCluster implements Deletable, Resource
 {
@@ -25,9 +23,8 @@ class CacheCluster implements Deletable, Resource
 
     public const ENGINE = 'valkey';
 
-    // Pinned as a matched pair — a custom parameter group forces a family that
-    // is coupled to the engine major. The only pinned version in YOLO; revisit
-    // on a Valkey engine bump.
+    // Pinned as a matched pair — the parameter group family is coupled to the
+    // engine major.
     public const ENGINE_VERSION = '9.0';
 
     public const PARAMETER_GROUP_FAMILY = 'valkey9';
@@ -62,10 +59,7 @@ class CacheCluster implements Deletable, Resource
         return ElastiCache::replicationGroup($this->name())['ARN'];
     }
 
-    /**
-     * The primary endpoint address (cluster mode disabled → one node group).
-     * Read at build time to populate REDIS_HOST.
-     */
+    /** Cluster mode is disabled, so there is exactly one node group. */
     public function endpoint(): string
     {
         return ElastiCache::replicationGroup($this->name())['NodeGroups'][0]['PrimaryEndpoint']['Address'];
@@ -83,9 +77,8 @@ class CacheCluster implements Deletable, Resource
             'AutomaticFailoverEnabled' => false,
             'MultiAZEnabled' => false,
             'AtRestEncryptionEnabled' => true,
-            // Valkey requires this explicitly once any encryption setting is touched — it has no
-            // default. TLS in-transit is deferred; the cache is SG-locked to the task SG on 6379, so
-            // plaintext stays inside the VPC.
+            // Valkey has no default once any encryption setting is set. TLS in-transit
+            // is deferred — the cache is SG-locked to the task SG, plaintext stays in-VPC.
             'TransitEncryptionEnabled' => false,
             'Port' => self::PORT,
             'CacheSubnetGroupName' => (new CacheSubnetGroup())->name(),
@@ -94,9 +87,7 @@ class CacheCluster implements Deletable, Resource
             ...Aws::tags($this->tags()),
         ]);
 
-        // A fresh single-node Valkey cluster routinely takes longer than the
-        // SDK's 10-minute default, so wait up to 20 minutes — the heartbeat
-        // keeps the (LongRunning) sync step's progress bar moving meanwhile.
+        // A fresh Valkey cluster routinely outlasts the SDK's 10-minute default.
         Aws::waitFor(Aws::elastiCache(), 'ReplicationGroupAvailable', [
             'ReplicationGroupId' => $this->name(),
         ], timeout: 20 * 60);
@@ -108,9 +99,8 @@ class CacheCluster implements Deletable, Resource
     }
 
     /**
-     * Teardown: delete the replication group, then wait for it to actually go —
-     * it pins its subnet/parameter groups + security group until then, which the
-     * later teardown steps delete. A concurrent not-found is tolerated.
+     * Wait for the group to actually go — it pins its subnet/parameter/security
+     * groups, which later teardown steps delete.
      */
     public function delete(): void
     {

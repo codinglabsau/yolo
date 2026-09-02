@@ -18,21 +18,12 @@ use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Withdraws this app's use of its TLS certificate — and ONLY that. The ACM
- * certificate itself is NEVER deleted: like the hosted zone, it's domain-level
- * infrastructure that can outlive any single environment. ACM addresses a cert by
- * domain name with no environment scoping, so a sibling environment serving the
- * same domain (a trial on `staging.example.com` alongside prod on `example.com`)
- * may hold a certificate for it too — and a domain-keyed lookup can't tell them
- * apart. Deleting one could break another environment's HTTPS, so destroy:app
- * never deletes the cert (certs are free to leave standing).
- *
- * All this step does is detach the cert from THIS environment's :443 listener SNI
- * set — the app's slice on the shared, env-scoped listener — mirroring how
- * {@see WithdrawAppDnsRecordsStep} withdraws the app's records but keeps the zone.
- * An SNI cert detaches cleanly; the listener's single default cert can't be
- * removed this way (AWS rejects it) and is tolerated — it's freed when
- * `yolo destroy:environment` removes the listener.
+ * The ACM certificate itself is never deleted: ACM addresses certs by domain
+ * with no environment scoping, so a sibling environment on the same domain may
+ * hold one too and a domain-keyed lookup can't tell them apart. Only the SNI
+ * attachment on this env's :443 listener is withdrawn; the listener's default
+ * cert can't be removed this way (AWS rejects it) and is left for
+ * `destroy:environment`.
  */
 class DetachSslCertificateStep implements ExecutesWebStep
 {
@@ -40,8 +31,7 @@ class DetachSslCertificateStep implements ExecutesWebStep
 
     public function __invoke(array $options): StepResult
     {
-        // No domain of its own means no app-level certificate; a tenanted app's
-        // per-tenant certificates are detached by the per-tenant teardown.
+        // Per-tenant certificates are detached by the per-tenant teardown.
         if (! Manifest::hasDomain()) {
             return StepResult::SKIPPED;
         }
@@ -53,8 +43,7 @@ class DetachSslCertificateStep implements ExecutesWebStep
             return StepResult::SKIPPED;
         }
 
-        // Nothing to detach from once this env's listener is gone — but the ACM
-        // cert is kept either way, so this is a clean skip, not pending work.
+        // The ACM cert is kept either way, so a missing listener is a clean skip.
         try {
             $listener = ElbV2::listenerOnPort((new LoadBalancer())->arn(), 443);
         } catch (ResourceDoesNotExistException) {
@@ -76,12 +65,6 @@ class DetachSslCertificateStep implements ExecutesWebStep
         return StepResult::DELETED;
     }
 
-    /**
-     * Remove the certificate from this environment's :443 listener SNI set. The
-     * listener's default certificate can't be removed this way (AWS rejects it)
-     * and a not-attached cert is a no-op — both are tolerated. The ACM cert is
-     * never deleted here, so a still-referenced cert degrades safely.
-     */
     protected function detachFromListener(string $listenerArn, string $certificateArn): void
     {
         try {
@@ -90,7 +73,7 @@ class DetachSslCertificateStep implements ExecutesWebStep
                 'Certificates' => [['CertificateArn' => $certificateArn]],
             ]);
         } catch (AwsException) {
-            // Default cert or already detached — leave it; the ACM cert is kept.
+            // Default cert or already detached — both tolerated.
         }
     }
 }

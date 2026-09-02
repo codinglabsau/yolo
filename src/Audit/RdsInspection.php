@@ -10,32 +10,14 @@ use Aws\Rds\Exception\RdsException;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * A read-only health snapshot of the database an app is wired to — the RDS
- * instance or Aurora cluster DECLARED by the manifest `database:` key (see
- * {@see Rds::target()}). It is NOT a YOLO-managed, YOLO-tagged resource,
- * so it never shows up in the tag-based audit inventory; the audit health check
- * looks it up directly by the manifest identifier instead.
+ * Read-only health snapshot of the database the manifest `database:` key
+ * declares. It is not a YOLO-tagged resource, so the tag-based inventory never
+ * sees it — the health check looks it up by the manifest identifier. Audit-only,
+ * never sync drift: an externally-hosted database must not block deploys.
  *
- * Three things matter to the health check:
- *  - **deletion protection** — an unprotected production database is an error
- *    (the audit exits non-zero on it), so a single fat-fingered console delete
- *    can't take the app's data with it.
- *  - **network posture** — which VPC and subnet group the database actually sits
- *    in, which security groups it carries, which port it listens on and whether
- *    it's publicly accessible; classified by {@see RdsNetworkPosture}. The port
- *    comes off this record rather than a second describe, so the reachability
- *    check tests the port the database actually serves (Postgres's 5432 as
- *    readily as MySQL's 3306). Audit-only, never sync drift: an
- *    externally-hosted database must not block deploys (the deploy gate runs
- *    `sync --check`).
- *  - **topology basics** — engine, version, size and (for Aurora) the writer +
- *    reader members, surfaced as informational context, never a failure.
- *
- * Reads run under the audit's read-only Observer tier, which already grants
- * `rds:Describe*`. When the declared database can't be read — it doesn't exist,
- * or the tier was denied — the snapshot degrades to `readable: false` with a
- * reason, which the command renders as a warning (never an error): we can't
- * assert protection is off, only that we couldn't confirm it's on.
+ * An unreadable database (missing, or the tier was denied) degrades to
+ * `readable: false` and renders as a warning, never an error: we can't assert
+ * protection is off, only that we couldn't confirm it's on.
  */
 final readonly class RdsInspection
 {
@@ -63,20 +45,14 @@ final readonly class RdsInspection
         public ?int $port = null,
     ) {}
 
-    /**
-     * Inspect the database the manifest declares, or null when none is declared
-     * (no `database:` key) — there is simply nothing to check.
-     */
     public static function inspect(): ?self
     {
         if (($database = Manifest::database()) === null) {
             return null;
         }
 
-        // Classification itself can fail — the declared name matches nothing, or
-        // the running tier was denied the describe. Either degrades to an
-        // unreadable snapshot (a warning, never an error), same as a failed read
-        // of a classified target; the kind is simply unknown at that point.
+        // A failed classification degrades to unreadable like any failed read;
+        // the kind is simply unknown at that point.
         try {
             $target = Rds::target();
         } catch (RdsException $exception) {
@@ -91,9 +67,8 @@ final readonly class RdsInspection
     }
 
     /**
-     * True only when we read the database AND deletion protection is explicitly on.
      * An unreadable snapshot is never "protected" — but it's a warning, not the
-     * error an explicit `false` is (see the command's finding severities).
+     * error an explicit `false` is.
      */
     public function deletionProtectionEnabled(): bool
     {
@@ -103,8 +78,7 @@ final readonly class RdsInspection
     public function kind(): string
     {
         return match ($this->cluster) {
-            // A snapshot unreadable at classification never learned its kind —
-            // don't render a guess.
+            // unreadable at classification — never learned its kind, don't guess
             null => 'database',
             true => 'Aurora cluster',
             false => 'instance',
@@ -112,10 +86,6 @@ final readonly class RdsInspection
     }
 
     /**
-     * The informational rows for the basics table: label => value. Engine, version
-     * and status always; size/Multi-AZ for a plain instance; the member count for a
-     * cluster (the per-member writer/reader breakdown renders as its own table).
-     *
      * @return array<string, string>
      */
     public function basics(): array
@@ -184,9 +154,8 @@ final readonly class RdsInspection
             return self::unreadable($identifier, true, 'no matching DB cluster');
         }
 
-        // Per-member instance detail is a best-effort nicety — an access gap on
-        // the instance describe just omits the sizes and the member-derived
-        // posture facts, never fails the cluster read.
+        // Best-effort: an access gap on the instance describe omits member detail,
+        // never fails the cluster read.
         try {
             $instances = Rds::clusterInstances($identifier);
         } catch (RdsException) {
@@ -199,10 +168,8 @@ final readonly class RdsInspection
             $classes[$instance['DBInstanceIdentifier']] = $instance['DBInstanceClass'] ?? '—';
         }
 
-        // The cluster describe carries the subnet group NAME and security groups
-        // but not the VPC or public accessibility — those are per-member facts,
-        // so derive them from the instances: any publicly accessible member
-        // exposes the cluster.
+        // The cluster describe carries no VPC or public accessibility — those are
+        // per-member facts; any publicly accessible member exposes the cluster.
         $publiclyAccessible = collect($instances)
             ->filter(fn (array $instance): bool => array_key_exists('PubliclyAccessible', $instance))
             ->map(fn (array $instance): bool => (bool) $instance['PubliclyAccessible']);
@@ -229,8 +196,6 @@ final readonly class RdsInspection
     }
 
     /**
-     * The active VPC security group ids attached to an instance or cluster record.
-     *
      * @param  array<string, mixed>  $record
      * @return array<int, string>
      */
@@ -244,9 +209,6 @@ final readonly class RdsInspection
     }
 
     /**
-     * Normalise DBClusterMembers into render-ready rows, writer(s) first then
-     * readers, each ordered by identifier — a stable, scannable order.
-     *
      * @param  array<int, array<string, mixed>>  $rawMembers
      * @param  array<string, string>  $classes
      * @return array<int, array{identifier: string, role: string, class: string|null, promotionTier: int|null}>

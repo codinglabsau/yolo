@@ -9,10 +9,8 @@ use Codinglabs\Yolo\Resources\Iam\DeployersGroup;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
 
 /**
- * Provisions this app's deployers grant group — membership grants deploy on this
- * app only. Gated on a GitHub repository exactly like the deployer role it points
- * at: with no repo there is no deployer role, so the group would grant assumption
- * of a non-existent role.
+ * Gated on a GitHub repository like the deployer role it points at: with no
+ * repo the group would grant assumption of a non-existent role.
  */
 class SyncDeployersGroupStep implements Step
 {

@@ -13,26 +13,14 @@ use Codinglabs\Yolo\Aws\ApplicationAutoScaling;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * The queue service's target-tracking scaling policy, scaling on **backlog per
- * task** — `ApproximateNumberOfMessagesVisible / RunningTaskCount` via CloudWatch
- * metric math (no Lambda) — held at `tasks.queue.autoscaling.backlog-per-task` messages per
- * task. This is what scales the queue 1→N under load and back down to its floor.
- *
- * It deliberately can't scale 0→1: when the service is at zero the running-task
- * count is 0, so the division yields no data and target tracking has nothing to
- * act on. That zero-deadlock is broken by {@see QueueScaleToZeroBootstrap}'s
- * step-scaling alarm; this policy owns everything from 1 upward. App Auto Scaling
- * takes the max desired count across the two, so they compose rather than fight.
- *
- * Like ScalingPolicy this is a constructor-free upsert reconciler (PutScalingPolicy
- * has no create/update split) and is dry-run honest — it diffs the live policy and
- * only writes on drift.
+ * Scales the queue 1→N on backlog per task (visible messages / running tasks via
+ * metric math). It can't scale 0→1: at zero running tasks the division yields no
+ * data, so {@see QueueScaleToZeroBootstrap} owns 0→1. App Auto Scaling takes the
+ * max desired count across the two, so they compose rather than fight.
  */
 class QueueBacklogPolicy
 {
-    // The queue scales out fast (backlog hurts) and in slowly (avoid flapping a
-    // cold-starting worker). Hardcoded — the backlog-per-task target is the tuning
-    // lever; expose cooldowns only if a real need emerges.
+    // Out fast (backlog hurts), in slowly (avoid flapping a cold-starting worker).
     private const int SCALE_OUT_COOLDOWN = 60;
 
     private const int SCALE_IN_COOLDOWN = 120;
@@ -56,9 +44,6 @@ class QueueBacklogPolicy
     }
 
     /**
-     * Diff the live policy against the desired config and (only on drift, when
-     * applying) upsert it.
-     *
      * @return array<int, Change>
      */
     public function synchronise(bool $apply): array
@@ -82,19 +67,13 @@ class QueueBacklogPolicy
     }
 
     /**
-     * The desired TargetTrackingScalingPolicyConfiguration: a customised metric
-     * that divides the queue's visible-message count by the running task count.
-     *
      * @return array<string, mixed>
      */
     public function configuration(): array
     {
-        // Scale on the base (default-tier) queue's backlog. With no `queues:` block
-        // this is the app's single queue (unchanged); with priority tiers it's the
-        // base queue below `high` — the high tier is meant to stay near-empty, so
-        // the base backlog is the throughput signal. (A multi-tenant standalone
-        // queue has no single aggregate metric here — that combination is a separate
-        // concern.)
+        // Scale on the base (default-tier) queue: a `high` tier is meant to stay
+        // near-empty, so the base backlog is the throughput signal. (A multi-tenant
+        // standalone queue has no single aggregate metric here.)
         $queueName = Helpers::defaultQueueName();
         $cluster = (new EcsCluster())->name();
         $service = (new EcsService(ServerGroup::QUEUE))->name();
@@ -119,8 +98,7 @@ class QueueBacklogPolicy
                         'Id' => 'running',
                         'MetricStat' => [
                             'Metric' => [
-                                // RunningTaskCount is published under Container Insights,
-                                // which the cluster enables at create.
+                                // RunningTaskCount only exists with Container Insights on (enabled at cluster create).
                                 'Namespace' => 'ECS/ContainerInsights',
                                 'MetricName' => 'RunningTaskCount',
                                 'Dimensions' => [
@@ -134,8 +112,6 @@ class QueueBacklogPolicy
                     ],
                     [
                         'Id' => 'backlog_per_task',
-                        // Division by a zero running-task count yields no data, so
-                        // this stays silent at zero — the step-scaling bootstrap owns 0→1.
                         'Expression' => 'visible / running',
                         'Label' => 'Backlog per task',
                         'ReturnData' => true,
@@ -148,10 +124,6 @@ class QueueBacklogPolicy
     }
 
     /**
-     * Diff the comparable fields of the live policy against the desired config. A
-     * null $live reports every field as a change, so a fresh policy shows as a
-     * full create.
-     *
      * @param  array<string, mixed>|null  $live
      * @return array<int, Change>
      */
@@ -182,8 +154,6 @@ class QueueBacklogPolicy
     }
 
     /**
-     * The live policy, or null when it isn't registered yet.
-     *
      * @return array<string, mixed>|null
      */
     public function current(): ?array

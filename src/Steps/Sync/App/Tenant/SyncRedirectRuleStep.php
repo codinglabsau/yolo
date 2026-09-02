@@ -24,14 +24,12 @@ class SyncRedirectRuleStep extends TenantStep
             return StepResult::SKIPPED;
         }
 
-        // A tenant already served by the app's own certificate and rule (a subdomain
-        // under `wildcard-subdomains`) needs nothing of its own here.
+        // A subdomain under `wildcard-subdomains` is already served by the app's own certificate and rule.
         if (Manifest::servesDomain($this->config['domain'])) {
             return StepResult::SKIPPED;
         }
 
-        // Only a tenant served on its apex (or `www.{apex}`) has a sibling to
-        // redirect; any other subdomain is served alone.
+        // Only a tenant served on its apex (or `www.{apex}`) has a sibling to redirect.
         if (! $this->hasWwwSibling($this->config['apex'], $this->config['domain'])) {
             return StepResult::SKIPPED;
         }

@@ -11,10 +11,8 @@ use Codinglabs\Yolo\EnvironmentVersion;
 use Codinglabs\Yolo\Services\Lifecycle;
 
 /**
- * Writer of env-shared (environment-tier) resources — one set per environment, shared by
- * every app in it (VPC, subnets, ALB, shared IAM roles). Blast radius: all apps
- * in the environment. Apps depend on these and additively attach, but never
- * mutate them.
+ * Blast radius: every app in the environment. Apps depend on these and additively
+ * attach, but never mutate them.
  */
 class SyncEnvironmentCommand extends SyncSteppedCommand
 {
@@ -35,22 +33,15 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
     }
 
     /**
-     * A heads-up for an env-backed service this environment provisions (declared
-     * in the env manifest) that no running app currently consumes — you're
-     * paying for an idle cluster. Not a gate: provisioning follows declaration,
-     * so a declared-but-unused service is a legitimate (if costly) state, and
-     * removing the manifest entry is what tears it down. Suppressed while a live
-     * app hasn't published its services yet, since we can't then be sure the
-     * service is truly unused.
+     * Not a gate: provisioning follows declaration, so a declared-but-unused
+     * service is a legitimate (if costly) state.
      *
      * @return array<int, string>
      */
     public static function idleServiceWarnings(): array
     {
-        // Only env-backed services the env manifest declares can sit idle. This
-        // gate is cheap (the manifest is read once per run anyway) and keeps the
-        // common sync — no env-backed service declared — off the registry/ECS
-        // reads the consumer probe below needs.
+        // Cheap gate that keeps the common sync (no env-backed service declared)
+        // off the registry/ECS reads the consumer probe needs.
         $declared = array_values(array_filter(
             Service::cases(),
             fn (Service $service): bool => $service->definition()->envBacked()
@@ -61,8 +52,8 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
             return [];
         }
 
-        // A live app that hasn't republished its services yet might be a
-        // consumer we can't see — don't cry "idle" while that's unknown.
+        // A live app that hasn't published its services yet might be a consumer we
+        // can't see.
         if (Lifecycle::unpublishedLiveApps() !== []) {
             return [];
         }
@@ -89,17 +80,14 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
     {
         return [
             'environment' => [
-                // network
                 Steps\Sync\Environment\SyncVpcStep::class,
                 Steps\Sync\Environment\SyncInternetGatewayStep::class,
                 Steps\Sync\Environment\SyncInternetGatewayAttachmentStep::class,
                 Steps\Sync\Environment\SyncPublicSubnetAStep::class,
                 Steps\Sync\Environment\SyncPublicSubnetBStep::class,
                 Steps\Sync\Environment\SyncPublicSubnetCStep::class,
-                // The private tier: three per-AZ subnets with no public IPs and a
-                // route table carrying only the VPC-local route — where the RDS DB
-                // subnet group lives, so a database in it is unreachable from
-                // outside the VPC.
+                // The private tier carries only the VPC-local route, so a database in
+                // the RDS subnet group is unreachable from outside the VPC.
                 Steps\Sync\Environment\SyncPrivateSubnetAStep::class,
                 Steps\Sync\Environment\SyncPrivateSubnetBStep::class,
                 Steps\Sync\Environment\SyncPrivateSubnetCStep::class,
@@ -109,92 +97,61 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 Steps\Sync\Environment\SyncPublicSubnetsAssociationToRouteTableStep::class,
                 Steps\Sync\Environment\SyncPrivateRouteTableStep::class,
                 Steps\Sync\Environment\SyncPrivateSubnetsAssociationToRouteTableStep::class,
-                // Declared VPC peering (env manifest `peering:`) — the bridge to
-                // infrastructure outside the YOLO network, typically a database
-                // mid-migration: the connection set first, then the routes both
-                // ways that ride on it, and DNS resolution dead last — it's the
-                // switch that sends traffic across the bridge, so it must not
-                // flip until every route exists.
+                // Peering DNS resolution goes dead last — it's the switch that sends
+                // traffic across the bridge, so it must not flip until every route exists.
                 Steps\Sync\Environment\SyncVpcPeeringStep::class,
                 Steps\Sync\Environment\SyncVpcPeeringRoutesStep::class,
                 Steps\Sync\Environment\SyncVpcPeeringDnsStep::class,
                 Steps\Sync\Environment\SyncLoadBalancerSecurityGroupStep::class,
                 Steps\Sync\Environment\SyncSnsAlarmTopicStep::class,
-                // shared IAM — the ECS execution role (ECR pull + log write) is
-                // generic and identical for every app, so it stays env-shared. The
-                // task role is per-app (sync:app) so each app's runtime grants stay
-                // its own.
+                // The execution role (ECR pull + log write) is identical for every app,
+                // so it stays env-shared; the task role is per-app.
                 Steps\Sync\Environment\SyncEcsExecutionRoleStep::class,
                 Steps\Sync\Environment\AttachEcsExecutionRolePoliciesStep::class,
-                // env-shared read-only inspection policy (yolo-{env}-observer): the
-                // drift-check surface every app's deployer role attaches so the
-                // pre-deploy `sync --check` gate can read the whole stack under the
-                // deploy role, scoped to exactly the services YOLO provisions.
+                // The observer policy is also the drift-check surface every app's
+                // deployer role attaches for the pre-deploy `sync --check` gate.
                 Steps\Sync\Environment\SyncObserverPolicyStep::class,
-                // The read-only role an operator/agent assumes for safe inspection —
-                // created, then the observer policy attached to it.
                 Steps\Sync\Environment\SyncObserverRoleStep::class,
                 Steps\Sync\Environment\AttachObserverRolePolicyStep::class,
-                // The Admin tier: the write surface (yolo-{env}-admin)
-                // and the role an operator assumes to run `yolo sync` / `yolo scale`
-                // capped to YOLO's blast radius. The role carries the observer
-                // (read) + admin (write) policies. Self-activating — the first sync
-                // creates these on the profile, every sync after mints the role.
+                // Self-activating: the first sync creates the admin tier on the
+                // profile, every sync after mints the role.
                 Steps\Sync\Environment\SyncAdminPolicyStep::class,
                 Steps\Sync\Environment\SyncAdminRoleStep::class,
                 Steps\Sync\Environment\AttachAdminRolePolicyStep::class,
-                // Grant groups: membership is the access lever. The
-                // env-wide observers + admins groups each allow sts:AssumeRole on
-                // their tier role; YOLO owns the group + policy, never membership.
+                // YOLO owns the grant groups + their policies, never membership.
                 Steps\Sync\Environment\SyncObserversGroupStep::class,
                 Steps\Sync\Environment\SyncAdminsGroupStep::class,
-                // env config bucket + the environment's declaration. The bucket
-                // holds the env manifest (yolo-environment-{environment}.yml) and the env-shared .env;
-                // the manifest is seeded exactly once, then owned by the operator
-                // (edited via environment:manifest:push) — sync only ever converges
-                // toward it, never rewrites it.
+                // The env manifest is seeded exactly once, then operator-owned — sync
+                // only ever converges toward it, never rewrites it.
                 Steps\Sync\Environment\SyncEnvConfigBucketStep::class,
                 Steps\Sync\Environment\SeedEnvManifestStep::class,
-                // env-backed services — each definition composes its own
-                // ordered steps, every one gated on the env-backed service
-                // lifecycle (declared in the env manifest). The same steps tear
-                // the service down when the declaration is removed, so the plan
-                // stays declared either way.
+                // The same steps tear a service down when its declaration is removed,
+                // so the plan stays declared either way.
                 ...static::environmentServiceSteps(),
-                // env logs bucket (ALB access logs under alb/) — provisioned
-                // before the load balancer so the log-delivery bucket policy
-                // already grants the ELB service principal `s3:PutObject` when
-                // `SyncLoadBalancerStep` enables access logs (AWS verifies the
-                // policy at attribute-write time).
+                // Before the load balancer: AWS verifies the log-delivery bucket policy
+                // at attribute-write time when SyncLoadBalancerStep enables access logs.
                 Steps\Sync\Environment\SyncS3LogsBucketStep::class,
-                // env backups bucket — the apps' logical database dumps, one
-                // write-only prefix per app task role
                 Steps\Sync\Environment\SyncS3BackupsBucketStep::class,
-                // load balancer + :80 listener
                 Steps\Sync\Environment\SyncLoadBalancerStep::class,
                 Steps\Sync\Environment\SyncHttpListenerStep::class,
-                // WAF — the IP sets are referenced by the web ACL's rules and the
-                // log group by its logging configuration, so all three are created
-                // first; the ACL is then bound to the load balancer.
+                // The web ACL's rules reference the IP sets and its logging config the
+                // log group, so all three come first.
                 Steps\Sync\Environment\SyncWafAllowIpSetStep::class,
                 Steps\Sync\Environment\SyncWafBlockIpSetStep::class,
                 Steps\Sync\Environment\SyncWafLogGroupStep::class,
                 Steps\Sync\Environment\SyncWafWebAclStep::class,
                 Steps\Sync\Environment\SyncWafAssociationStep::class,
-                // The env alert alarms — after the SNS topic they fire to and
-                // the load balancer whose ARN suffix they dimension on.
+                // After the SNS topic they fire to and the load balancer whose ARN
+                // suffix they dimension on.
                 Steps\Sync\Environment\SyncAlertAlarmsStep::class,
-                // Last on purpose: the version-of-record stamp only lands after
-                // the rest of the tier has synced under the stamped release.
+                // Last on purpose: the version-of-record stamp only lands after the
+                // rest of the tier has synced under the stamped release.
                 Steps\Sync\Environment\SyncEnvironmentVersionStep::class,
             ],
         ];
     }
 
     /**
-     * Every env-backed service's environment-tier steps, composed from the
-     * definitions in enum order.
-     *
      * @return array<int, class-string>
      */
     protected static function environmentServiceSteps(): array

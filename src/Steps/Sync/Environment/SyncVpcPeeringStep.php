@@ -14,12 +14,9 @@ use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Resources\Ec2\VpcPeeringConnection;
 
 /**
- * Reconciles the environment's peering connections against the env manifest
- * `peering` list — the plan stays declared either way: a listed VPC gets a
- * connection created and accepted (DNS resolution comes last, from
- * SyncVpcPeeringDnsStep, once the routes exist); a live YOLO connection whose
- * VPC is no longer listed is torn down (the migration is over, the bridge
- * comes down). With nothing declared and nothing live, there is nothing to do.
+ * A listed VPC gets a connection created and accepted (DNS resolution comes
+ * last, from SyncVpcPeeringDnsStep, once the routes exist); a live YOLO
+ * connection no longer listed is torn down.
  */
 class SyncVpcPeeringStep implements Step
 {
@@ -38,9 +35,8 @@ class SyncVpcPeeringStep implements Step
         foreach ($this->undeclaredPeerVpcIds($declared) as $peerVpcId) {
             $connection = new VpcPeeringConnection($peerVpcId);
 
-            // The return routes sync wrote into the peer's tables are foreign
-            // writes — the teardown that reclaims them must be as visible in
-            // the plan as the sync that wrote them.
+            // The return routes written into the peer's tables are foreign writes —
+            // their teardown must be as visible in the plan as the sync that wrote them.
             foreach ($connection->foreignReturnRoutes() as $foreignReturnRoute) {
                 $this->recordChange(Change::make(
                     sprintf('return route %s (peer %s — not yolo-managed)', $foreignReturnRoute['DestinationCidrBlock'], $foreignReturnRoute['RouteTableId']),
@@ -56,9 +52,8 @@ class SyncVpcPeeringStep implements Step
     }
 
     /**
-     * The peer VPCs of live YOLO-owned connections that the manifest no longer
-     * declares — the accepter side is always the peer (YOLO requests from the
-     * env VPC), so it identifies the connection to tear down.
+     * The accepter side is always the peer (YOLO requests from the env VPC), so
+     * it identifies the connection to tear down.
      *
      * @param  array<int, string>  $declared
      * @return array<int, string>
@@ -74,11 +69,9 @@ class SyncVpcPeeringStep implements Step
     }
 
     /**
-     * One step, many connections: the most eventful per-connection result wins
-     * the step's status line, and an empty run is SKIPPED. Pending work MUST
-     * outrank clean SYNCED — a WOULD_CREATE records no Change, so a mixed plan
-     * reporting SYNCED would be pruned before apply and the missing connection
-     * never created.
+     * Pending work MUST outrank clean SYNCED — a WOULD_CREATE records no Change,
+     * so a mixed plan reporting SYNCED would be pruned before apply and the
+     * missing connection never created.
      *
      * @param  array<int, StepResult>  $results
      */
