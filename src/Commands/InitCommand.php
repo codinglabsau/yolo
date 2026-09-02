@@ -155,27 +155,24 @@ class InitCommand extends Command
             )
         );
 
+        // Every write below is surgical (a scalar put, or a list rewrite) so the
+        // stub's comments — the manifest's own onboarding notes — survive into the
+        // scaffolded file; a structural put would re-dump and strip them all.
         if (confirm('Is the app multi-tenant?', default: false)) {
             // The landlord's own host, wildcarded, is the cheapest tenancy to start
             // on: tenants are served beneath it with no per-tenant infrastructure.
             // A tenant graduates to its own domain later by gaining a `domain` key.
-            Manifest::put('multitenancy', [
-                'landlord' => [
-                    'domain' => text('What is the landlord domain?', placeholder: 'eg. app.example.com'),
-                    'wildcard-subdomains' => true,
-                ],
-                'tenants' => [
-                    'tenant-id' => null,
-                ],
-            ]);
+            // Each put splices in as the first child of its parent, so the writes
+            // run bottom-up to land the block in reading order: landlord first,
+            // domain above the wildcard flag, then the placeholder tenant.
+            Manifest::put('multitenancy.tenants.tenant-id', null);
+            Manifest::put('multitenancy.landlord.wildcard-subdomains', true);
+            Manifest::put('multitenancy.landlord.domain', text('What is the landlord domain?', placeholder: 'eg. app.example.com'));
 
-            Manifest::put('deploy', $this->multitenantDeploySteps());
+            Manifest::setList('deploy', $this->multitenantDeploySteps());
         } else {
+            // The stub already carries the single `migrate` deploy hook.
             Manifest::put('domain', text('What is the domain?', placeholder: 'eg. example.com'));
-
-            Manifest::put('deploy', [
-                'php artisan migrate --force',
-            ]);
         }
         $s3Bucket = text('What is the name of the S3 bucket used for app storage?', placeholder: 'Leave blank to skip');
 

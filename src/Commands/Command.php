@@ -173,9 +173,10 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * Multi-tenancy lives in one nested block. Every key that used to sit at the
-     * top of the environment block is refused there with the exact path it moved
-     * to — an unrecognised-key error would be technically correct and useless.
+     * Multi-tenancy lives in one nested block, and the two routing keys a solo app
+     * declares at the top of the environment block are refused alongside it with a
+     * pointed message — an unrecognised-key error would be technically correct and
+     * useless.
      *
      * `domain` is the pointed one: alongside a `multitenancy` block it is genuinely
      * ambiguous, meaning both "where the landlord is served" and "what subdomain
@@ -186,14 +187,6 @@ abstract class Command extends SymfonyCommand
      */
     protected function ensureMultitenancyKeysNested(): bool
     {
-        foreach (['tenants' => 'multitenancy.tenants', 'queue-isolation' => 'multitenancy.queue-isolation'] as $old => $new) {
-            if (Manifest::has($old)) {
-                error(sprintf('yolo.yml declares `%s` at the top of the environment block — it now lives inside the multitenancy block as `%s`.', $old, $new));
-
-                return false;
-            }
-        }
-
         if (! Manifest::has('multitenancy')) {
             return true;
         }

@@ -158,3 +158,32 @@ YAML);
     expect(file_get_contents(Paths::manifest()))->toContain('domain: new.example.com');
     expect(Manifest::get('domain'))->toBe('new.example.com');
 });
+
+it('writes null as a bare `key:` line that reads back as null', function (): void {
+    writeFormattedManifest(<<<'YAML'
+name: my-app
+
+environments:
+  production:
+    # tenancy
+    multitenancy:
+      landlord:
+        domain: app.example.com   # served here
+YAML);
+
+    Manifest::put('multitenancy.tenants.acme', null);
+
+    expect(file_get_contents(Paths::manifest()))->toBe(<<<'YAML'
+name: my-app
+
+environments:
+  production:
+    # tenancy
+    multitenancy:
+      tenants:
+        acme:
+      landlord:
+        domain: app.example.com   # served here
+YAML)
+        ->and(Manifest::get('multitenancy.tenants'))->toBe(['acme' => null]);
+});

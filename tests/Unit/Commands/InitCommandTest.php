@@ -255,3 +255,42 @@ afterEach(function (): void {
         }
     }
 });
+
+it('scaffolds a multi-tenant manifest without losing a single stub comment', function (): void {
+    // The stub's comments are the manifest's own onboarding notes. Every write
+    // init makes after templating is surgical (scalar puts + a list rewrite); a
+    // structural put would re-dump the file and strip them all.
+    Prompt::fake([
+        ...str_split('111111111111'), Key::ENTER,   // account id
+        Key::ENTER,                                  // region (default)
+        'y', Key::ENTER,                             // multi-tenant
+        ...str_split('app.example.com'), Key::ENTER, // landlord domain
+        Key::ENTER,                                  // bucket (skip)
+    ]);
+    Helpers::app()->instance('environment', 'production');
+
+    $command = new InitCommand();
+    (new ReflectionProperty($command, 'environment'))->setValue($command, 'production');
+    (new ReflectionProperty($command, 'appName'))->setValue($command, 'my-app');
+
+    (new ReflectionMethod($command, 'initialiseManifest'))->invoke($command);
+
+    $written = file_get_contents(Paths::manifest());
+
+    $stubComments = collect(explode("\n", file_get_contents(Paths::stubs('yolo.yml.stub'))))
+        ->filter(fn (string $line): bool => str_starts_with(trim($line), '#'));
+
+    expect($stubComments)->not->toBeEmpty();
+
+    foreach ($stubComments as $comment) {
+        expect($written)->toContain($comment);
+    }
+
+    expect(Manifest::get('multitenancy'))->toBe([
+        'landlord' => ['domain' => 'app.example.com', 'wildcard-subdomains' => true],
+        'tenants' => ['tenant-id' => null],
+    ])
+        ->and(Manifest::has('domain'))->toBeFalse()
+        ->and(Manifest::get('deploy'))->toBe(['php artisan migrate --force'])
+        ->and(Manifest::unknownKeys())->toBe([]);
+})->after(fn (): bool => @unlink(Paths::manifest()));

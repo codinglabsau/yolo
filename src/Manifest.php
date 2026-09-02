@@ -52,9 +52,11 @@ class Manifest
     /**
      * The complete set of valid environment-block keys as dot-paths — the single
      * source of truth for the manifest's shape. There is no `aws.*` namespace:
-     * every key sits at the top of the environment block. A trailing `.*` allows
-     * that prefix and anything beneath it (free-form subtrees: per-tenant config,
-     * the tasks.web.* tree).
+     * every key sits at the top of the environment block. Every nested key is
+     * listed explicitly so a misspelt one hard-fails instead of being silently
+     * accepted and ignored; the only wildcards are a mid-path `*` standing for a
+     * tenant id and the `queues.*` prefix, which lets a map-form `queues:` reach
+     * the pointed error in {@see queueTiers()} rather than a generic unknown-key.
      *
      * @var array<int, string>
      */
@@ -83,19 +85,24 @@ class Manifest
         'task-role-policies',
         'budget', 'budget.amount', 'budget.strategy',
         // Each task group has a fixed, known shape, so every key is listed
-        // explicitly: an unrecognised key under tasks.web / tasks.queue /
-        // tasks.scheduler hard-fails rather than being silently accepted by a
-        // wildcard. health-check / autoscaling / the ssr object form are the only
-        // nested subtrees.
+        // explicitly — down into the autoscaling / health-check / ssr objects — so
+        // a misspelt bound or threshold (`autoscaling.mim`) fails the manifest
+        // check instead of silently leaving the default in force.
         'tasks.web',
         'tasks.web.octane',
         'tasks.web.cpu', 'tasks.web.memory', 'tasks.web.platform',
         'tasks.web.enable-execute-command', 'tasks.web.shutdown-grace-period',
         'tasks.web.log-retention',
-        'tasks.web.ssr', 'tasks.web.ssr.*',
-        'tasks.web.health-check.*', 'tasks.web.autoscaling.*',
+        'tasks.web.ssr', 'tasks.web.ssr.shutdown-grace-period',
+        'tasks.web.health-check.path', 'tasks.web.health-check.interval',
+        'tasks.web.health-check.timeout', 'tasks.web.health-check.healthy-threshold',
+        'tasks.web.health-check.unhealthy-threshold', 'tasks.web.health-check.grace-period',
+        'tasks.web.autoscaling', 'tasks.web.autoscaling.min', 'tasks.web.autoscaling.max',
+        'tasks.web.autoscaling.cpu-utilization',
+        'tasks.web.autoscaling.scale-out-cooldown', 'tasks.web.autoscaling.scale-in-cooldown',
         'tasks.queue',
-        'tasks.queue.autoscaling.*',
+        'tasks.queue.autoscaling', 'tasks.queue.autoscaling.min', 'tasks.queue.autoscaling.max',
+        'tasks.queue.autoscaling.backlog-per-task',
         'tasks.queue.cpu', 'tasks.queue.memory', 'tasks.queue.spot',
         'tasks.queue.shutdown-grace-period', 'tasks.queue.enable-execute-command',
         'tasks.scheduler',
@@ -281,12 +288,13 @@ class Manifest
 
     public static function put(string $key, mixed $value): false|int
     {
-        // Scalar writes are applied surgically — the value is rewritten in place
-        // (or its key, plus any missing parent blocks, spliced in) so comments,
-        // blank lines, key ordering and quoting in yolo.yml all survive. Non-scalar
-        // writes (init scaffolding arrays like deploy/tenants into a fresh file) and
-        // any key the surgical pass can't anchor fall back to a full re-dump.
-        if (is_scalar($value)) {
+        // Scalar (and null — a bare `key:` line) writes are applied surgically —
+        // the value is rewritten in place (or its key, plus any missing parent
+        // blocks, spliced in) so comments, blank lines, key ordering and quoting in
+        // yolo.yml all survive. Lists go through {@see setList()}. Anything else,
+        // and any key the surgical pass can't anchor, falls back to a full re-dump
+        // — which loses every comment, so callers avoid it where they can.
+        if (is_scalar($value) || $value === null) {
             $path = [...['environments', Helpers::environment()], ...explode('.', $key)];
 
             $rewritten = static::setScalarPreservingFormat(file_get_contents(Paths::manifest()), $path, $value);
@@ -345,7 +353,7 @@ class Manifest
                 // Update in place: keep indent + key, the exact post-colon spacing
                 // and any trailing inline comment — replace only the value.
                 preg_match('/^(\s*[A-Za-z0-9_.-]+:)(\s*)(.*?)(\s*(?:#.*)?)$/', $line, $leaf);
-                $lines[$index] = $leaf[1] . $leaf[2] . $formatted . $leaf[4];
+                $lines[$index] = $leaf[1] . ($formatted === '' ? '' : $leaf[2] . $formatted) . $leaf[4];
 
                 return implode("\n", $lines);
             }
@@ -380,7 +388,7 @@ class Manifest
 
         foreach ($missing as $offset => $key) {
             $keyIndent = str_repeat(' ', $indent + 2 * ($offset + 1));
-            $insert[] = $offset === $lastOffset
+            $insert[] = $offset === $lastOffset && $formatted !== ''
                 ? sprintf('%s%s: %s', $keyIndent, $key, $formatted)
                 : sprintf('%s%s:', $keyIndent, $key);
         }
@@ -391,36 +399,48 @@ class Manifest
     }
 
     /**
-     * Surgically rewrite this environment's app `services` claim list to $services
-     * as a block sequence (`services:` with `- item` children) — preserving every
-     * other byte of yolo.yml (comments, ordering, quoting), unlike the put() re-dump. Drops the
-     * key for an empty list. Verifies the result parses to exactly the intended
-     * services before committing, so an unanticipated layout never corrupts the
-     * file: on any doubt it writes nothing and returns false, and the caller falls
-     * back to telling the operator to edit by hand.
+     * Surgically rewrite this environment's app `services` claim list — see
+     * {@see setList()}.
      *
      * @param  array<int, string>  $services
      */
     public static function setServiceList(array $services): bool
     {
-        $services = array_values($services);
+        return static::setList('services', $services);
+    }
+
+    /**
+     * Surgically rewrite a top-level environment list key ($key, e.g. `services`
+     * or `deploy`) to $items as a block sequence (`key:` with `- item` children)
+     * — preserving every other byte of yolo.yml (comments, ordering, quoting),
+     * unlike the put() re-dump. Drops the key for an empty list. Verifies the
+     * result parses to exactly the intended items before committing, so an
+     * unanticipated layout never corrupts the file: on any doubt it writes nothing
+     * and returns false, and the caller falls back to telling the operator to edit
+     * by hand.
+     *
+     * @param  array<int, string>  $items
+     */
+    public static function setList(string $key, array $items): bool
+    {
+        $items = array_values($items);
         $raw = (string) file_get_contents(Paths::manifest());
 
-        $rewritten = static::rewriteServiceList($raw, $services);
+        $rewritten = static::rewriteList($raw, $key, $items);
 
         if ($rewritten === null) {
             return false;
         }
 
         // Safety net: only commit a result that parses and yields exactly the
-        // intended services — never leave a corrupt manifest from an odd layout.
+        // intended items — never leave a corrupt manifest from an odd layout.
         try {
-            $written = Arr::get(Yaml::parse($rewritten) ?? [], sprintf('environments.%s.services', Helpers::environment()), []);
+            $written = Arr::get(Yaml::parse($rewritten) ?? [], sprintf('environments.%s.%s', Helpers::environment(), $key), []);
         } catch (\Throwable) {
             return false;
         }
 
-        if (array_values((array) $written) !== $services) {
+        if (array_values((array) $written) !== $items) {
             return false;
         }
 
@@ -428,20 +448,20 @@ class Manifest
     }
 
     /**
-     * The pure line-surgery behind setServiceList — returns the rewritten YAML, or
-     * null when the `services` key (or its env block, for an insert) can't be
-     * located. Replaces an existing inline or block list with a block sequence,
-     * inserts the key as the env block's first child when absent, and removes the
-     * key for an empty list.
+     * The pure line-surgery behind setList — returns the rewritten YAML, or null
+     * when the key (or its env block, for an insert) can't be located. Replaces
+     * an existing inline or block list with a block sequence, inserts the key as
+     * the env block's first child when absent, and removes the key for an empty
+     * list.
      *
-     * @param  array<int, string>  $services
+     * @param  array<int, string>  $items
      */
-    protected static function rewriteServiceList(string $raw, array $services): ?string
+    protected static function rewriteList(string $raw, string $key, array $items): ?string
     {
         $lines = explode("\n", $raw);
-        $path = ['environments', Helpers::environment(), 'services'];
+        $path = ['environments', Helpers::environment(), $key];
         $parentPath = ['environments', Helpers::environment()];
-        $removing = $services === [];
+        $removing = $items === [];
 
         $stack = [];
         $parentLine = null;
@@ -475,8 +495,8 @@ class Manifest
                 }
 
                 preg_match('/^(\s*)[A-Za-z0-9_.-]+:\s*.*?(\s*(?:#.*)?)$/', $line, $leaf);
-                $block = static::serviceListBlock($services, strlen($leaf[1]));
-                $block[0] .= $leaf[2] ?? '';   // re-attach any trailing comment to the `services:` line
+                $block = static::listBlock($key, $items, strlen($leaf[1]));
+                $block[0] .= $leaf[2] ?? '';   // re-attach any trailing comment to the key line
 
                 array_splice($lines, $index, 1 + $children, $block);
 
@@ -494,7 +514,7 @@ class Manifest
         }
 
         if ($parentLine !== null) {
-            array_splice($lines, $parentLine + 1, 0, static::serviceListBlock($services, $parentIndent + 2));
+            array_splice($lines, $parentLine + 1, 0, static::listBlock($key, $items, $parentIndent + 2));
 
             return implode("\n", $lines);
         }
@@ -503,23 +523,43 @@ class Manifest
     }
 
     /**
-     * Render the `services:` claim as a block sequence at the given key indent:
+     * Render a list key as a block sequence at the given key indent:
      *
      *     services:
      *       - typesense
      *
-     * @param  array<int, string>  $services
+     * @param  array<int, string>  $items
      * @return array<int, string>
      */
-    protected static function serviceListBlock(array $services, int $keyIndent): array
+    protected static function listBlock(string $key, array $items, int $keyIndent): array
     {
-        $block = [str_repeat(' ', $keyIndent) . 'services:'];
+        $block = [str_repeat(' ', $keyIndent) . $key . ':'];
 
-        foreach ($services as $service) {
-            $block[] = str_repeat(' ', $keyIndent + 2) . '- ' . $service;
+        foreach ($items as $item) {
+            $block[] = str_repeat(' ', $keyIndent + 2) . '- ' . static::formatListItem($item);
         }
 
         return $block;
+    }
+
+    /**
+     * Render a list item as a YAML plain scalar where the spec allows it — a shell
+     * command with spaces and embedded quotes stays readable as `- php artisan
+     * migrate --force` — and double-quoted only where a plain scalar would parse
+     * differently: a leading indicator character, a `: ` or ` #` sequence, edge
+     * whitespace, or a value YAML would read as a non-string. The caller's
+     * parse-and-compare safety net catches anything this misjudges.
+     */
+    protected static function formatListItem(string $item): string
+    {
+        $plain = $item !== ''
+            && trim($item) === $item
+            && preg_match('/^[A-Za-z0-9_\/.]/', $item) === 1
+            && preg_match('/(: | #)/', $item) !== 1
+            && ! is_numeric($item)
+            && ! in_array(strtolower($item), ['true', 'false', 'null', '~', 'yes', 'no', 'on', 'off'], true);
+
+        return $plain ? $item : '"' . str_replace('"', '\\"', $item) . '"';
     }
 
     /**
@@ -619,10 +659,15 @@ class Manifest
 
     /**
      * Render a scalar as a YAML value — bare where safe, double-quoted when it
-     * contains characters that would otherwise change the parse.
+     * contains characters that would otherwise change the parse. Null renders as
+     * nothing: a bare `key:` line, which YAML reads back as null.
      */
     protected static function formatScalar(mixed $value): string
     {
+        if ($value === null) {
+            return '';
+        }
+
         if (is_bool($value)) {
             return $value ? 'true' : 'false';
         }
@@ -852,7 +897,7 @@ class Manifest
 
     /**
      * Whether this app runs scheduled logical database backups — opt-in via
-     * `backups: true` (or a `backups:` map carrying overrides like `time`).
+     * `backups: true` (or a `backups:` map carrying overrides like `schedule`).
      * Backups ride the scheduler (the generated crontab carries the daily
      * entry), so an app with cron switched off has no host to run them and
      * the whole feature is moot there.

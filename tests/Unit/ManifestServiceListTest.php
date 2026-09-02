@@ -144,3 +144,39 @@ it('drops a service (disable) and removes the key entirely for an empty list', f
         ->not->toContain('services:')
         ->toContain('region: ap-southeast-2');
 });
+
+it('rewrites any top-level list key the same way — the deploy hooks, comments intact', function (): void {
+    writeServiceListManifest(<<<'YAML'
+name: my-app
+environments:
+  testing:
+    # what runs before traffic shifts
+    deploy:
+      - php artisan migrate --force
+
+    deploy-all:
+      - php artisan optimize
+YAML);
+
+    expect(Manifest::setList('deploy', [
+        'php artisan migrate --path=database/migrations/landlord --force',
+        'php artisan tenants:artisan "migrate --path=database/migrations/tenant --database=tenant --force"',
+    ]))->toBeTrue();
+
+    expect(file_get_contents(BASE_PATH . '/yolo.yml'))->toBe(<<<'YAML'
+name: my-app
+environments:
+  testing:
+    # what runs before traffic shifts
+    deploy:
+      - php artisan migrate --path=database/migrations/landlord --force
+      - php artisan tenants:artisan "migrate --path=database/migrations/tenant --database=tenant --force"
+
+    deploy-all:
+      - php artisan optimize
+YAML)
+        ->and(Manifest::get('deploy'))->toBe([
+            'php artisan migrate --path=database/migrations/landlord --force',
+            'php artisan tenants:artisan "migrate --path=database/migrations/tenant --database=tenant --force"',
+        ]);
+});

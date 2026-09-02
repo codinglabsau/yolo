@@ -1,5 +1,16 @@
 # Canonical domain for shared-service ingress (e.g. search.<domain>).
 # domain: example.com.au
 
-# Env-shared services reconciled by sync:environment.
+# Env-shared services reconciled by sync:environment (services.<name>: { ... }).
 services: {}
+
+# Advisory monthly spend target for the whole environment (every app + shared
+# infra), read by `yolo status:environment`. Never enforced.
+# budget:
+#   amount: 500
+#   strategy: balanced   # lean | balanced | conservative
+
+# VPC peering to infrastructure outside the YOLO network (e.g. a database
+# mid-migration). Removing an entry tears the bridge down on the next sync.
+# peering:
+#   - vpc-0abc123

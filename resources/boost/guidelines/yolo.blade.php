@@ -42,8 +42,8 @@ These are **read-only and safe** to run when you need live state: `status <env> 
 ### Manifest (`yolo.yml`) essentials
 
 - Required keys per environment: `name`, `region`, `account-id`. Topology is encoded by what's declared.
-- `tasks.web` / `tasks.queue` / `tasks.scheduler` — declaring a task provisions its ECS service; bundling vs standalone is derived from presence. `tasks.web.autoscaling` (with `min`/`max`) turns on web target-tracking autoscaling (on by default from `init`, bounds 1–4).
-- Multi-tenancy is a manifest concern (`tenants`), fanned out at the step level — there is no `sync:tenant`/`deploy:tenant` verb; narrow with `--tenant=<id>`.
+- `tasks.web` / `tasks.queue` / `tasks.scheduler` — declaring a task provisions its ECS service; bundling vs standalone is derived from presence. `tasks.web.autoscaling` (with `min`/`max`) turns on web target-tracking autoscaling (on by default from `init`, bounds 1–5).
+- Multi-tenancy is a manifest concern (the `multitenancy` block — `landlord` + `tenants`), fanned out at the step level — there is no `sync:tenant`/`deploy:tenant` verb; narrow with `--tenant=<id>`.
 - `budget` (optional): `budget.amount` (USD/month) + `budget.strategy` (`lean`/`balanced`/`conservative`) — advisory only, read by `status:budget` and the skill; never enforced.
 - This is the **Fargate** YOLO. There is no EC2/ASG/CodeDeploy/AMI/`image:create`/`stage`/instance-type — if you see those referenced anywhere, it's stale alpha-era material.
 
