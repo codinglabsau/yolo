@@ -7,6 +7,7 @@ use Codinglabs\Yolo\Change;
 use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Aws\Ecs;
 use Codinglabs\Yolo\Manifest;
+use Codinglabs\Yolo\WebThreads;
 use Codinglabs\Yolo\Contracts\Step;
 use Codinglabs\Yolo\ShutdownTimings;
 use Codinglabs\Yolo\Enums\StepResult;
@@ -179,9 +180,11 @@ class SyncTaskDefinitionStep implements Step
     }
 
     /**
-     * The values the runtime {@see YoloServiceProvider} can't derive. YOLO_BURST_SERVICE's
-     * presence is what tells it to publish, so burst needs no separate "enabled" flag;
-     * same gate as the metrics Caddyfile and the PutMetricData grant, so they can't drift.
+     * The values the runtime {@see YoloServiceProvider} can't derive: the ECS service name
+     * the metric is dimensioned by, the vCPU allocation the CPU fallback divides by, and in
+     * classic mode the thread ceiling. YOLO_BURST_SERVICE's presence is what tells it to
+     * publish, so burst needs no separate "enabled" flag; same gate as the metrics Caddyfile
+     * and the PutMetricData grant, so they can't drift.
      *
      * @return array<string, array<int, array<string, string>>>
      */
@@ -193,14 +196,20 @@ class SyncTaskDefinitionStep implements Step
 
         $cpuUnits = (int) Manifest::get("{$group->manifestPrefix()}.cpu", $group->defaultCpu());
 
-        return [
-            'environment' => [
-                ['name' => 'YOLO_BURST_SERVICE', 'value' => (new EcsService($group))->name()],
-                // The Fargate microVM exposes more vCPUs than a fractional task is
-                // throttled to, so the allocation can't be read back from cgroup/proc.
-                ['name' => 'YOLO_BURST_CPU', 'value' => (string) ($cpuUnits / 1024)],
-            ],
+        $environment = [
+            ['name' => 'YOLO_BURST_SERVICE', 'value' => (new EcsService($group))->name()],
+            // The Fargate microVM exposes more vCPUs than a fractional task is throttled
+            // to, so the allocation can't be read back from cgroup/proc.
+            ['name' => 'YOLO_BURST_CPU', 'value' => (string) ($cpuUnits / 1024)],
         ];
+
+        // Classic mode's saturation denominator is the thread ceiling YOLO pinned in the
+        // Caddyfile; FrankenPHP's own gauge only reports the floor (see WebThreads).
+        if (! Manifest::usesOctane()) {
+            $environment[] = ['name' => 'YOLO_BURST_THREADS', 'value' => (string) WebThreads::maximum()];
+        }
+
+        return ['environment' => $environment];
     }
 
     protected static function taskRoleArn(): string

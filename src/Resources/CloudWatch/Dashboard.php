@@ -150,8 +150,8 @@ class Dashboard implements Deletable
         return [
             'region' => Manifest::get('region'),
             'web' => $web,
-            // Only an autoscaling Octane tier emits the saturation metric — the same
-            // gate the runtime reporter and Caddyfile key off.
+            // Only an autoscaling web tier emits the saturation metric — the same gate
+            // the runtime reporter and Caddyfile key off.
             'burst' => $web && Manifest::usesMetricsCaddyfile(),
             'clusterName' => $web ? (new EcsCluster())->name() : null,
             'serviceName' => $web ? (new EcsService())->name() : null,
@@ -454,7 +454,9 @@ class Dashboard implements Deletable
             $y += 6;
         }
 
-        // Maximum matches the burst alarm, which trips on the most-saturated task.
+        // Maximum matches the burst alarm, which trips on the most-saturated task. No
+        // y-axis ceiling: a classic tier reports queued requests past 100, and how far
+        // past is what an operator reads here.
         if ($context['burst']) {
             $widgets[] = static::metric(0, $y, 12, 6, [
                 'title' => 'Worker saturation',
@@ -462,7 +464,7 @@ class Dashboard implements Deletable
                 'view' => 'timeSeries',
                 'stacked' => false,
                 'period' => WebBurstPolicy::COOLDOWN,
-                'yAxis' => ['left' => ['min' => 0, 'max' => 100]],
+                'yAxis' => ['left' => ['min' => 0]],
                 'metrics' => [
                     [WebBurstPolicy::METRIC_NAMESPACE, WebBurstPolicy::METRIC_NAME, WebBurstPolicy::METRIC_DIMENSION, $service, ['label' => 'Busiest task', 'stat' => 'Maximum', 'color' => static::ORANGE]],
                 ],

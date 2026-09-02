@@ -11,8 +11,9 @@ use Codinglabs\Yolo\Enums\ServerGroup;
  * ceiling its autoscaler may grow to (`max_threads`), emitted into the generated Caddyfile and
  * read as the tier's concurrency ceiling by {@see WebConcurrency}. Two numbers where the Octane
  * pool has one because a thread holds one request's transient peak, not a resident app copy —
- * so a burst can grow the pool before ECS adds a task. A thread still serves one request at a
- * time, so the ceiling is the per-task concurrency ceiling.
+ * so a burst can grow the pool before ECS adds a task. The ceiling is also the burst reporter's
+ * denominator, injected as YOLO_BURST_THREADS: FrankenPHP's `total_threads` gauge reports the
+ * floor, not the grown count, so a scrape can't stand in for it.
  *
  * Both are pinned because FrankenPHP's auto-detections read the host, not the task: `num_threads`
  * defaults to 2 × visible CPUs (the Fargate microVM's fixed ~2, whatever the task size) and

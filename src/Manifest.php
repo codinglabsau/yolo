@@ -709,14 +709,15 @@ class Manifest
     }
 
     /**
-     * True only for an autoscaling web tier on Octane: FrankenPHP's worker gauges (the burst
-     * signal) exist only in worker mode, and `octane:start` overwrites CADDY_GLOBAL_OPTIONS,
-     * so the metrics option has to ride in a Caddyfile. The single gate for Caddyfile
-     * generation, the `--caddyfile` flag and the build preflight.
+     * Whether the build ships a Caddyfile with FrankenPHP metrics enabled — the burst
+     * signal in either serving mode. Octane needs the file because `octane:start`
+     * overwrites CADDY_GLOBAL_OPTIONS; classic mode adds the option to the Caddyfile it
+     * already runs for its thread bounds. The single gate for Caddyfile generation, the
+     * burst env, the PutMetricData grant and the build preflight.
      */
     public static function usesMetricsCaddyfile(): bool
     {
-        return static::isAutoscaling() && static::usesOctane();
+        return static::isAutoscaling();
     }
 
     /**

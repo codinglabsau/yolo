@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Codinglabs\Yolo\Runtime;
 
+use Closure;
 use Throwable;
 use Aws\CloudWatch\CloudWatchClient;
 use Codinglabs\Yolo\YoloServiceProvider;
@@ -14,11 +15,17 @@ use Codinglabs\Yolo\Runtime\Ssr\SaturationAwareSsrGateway;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
 
 /**
- * Publishes web-task saturation (peak in-flight requests / FrankenPHP worker-pool
- * size) to CloudWatch for burst step-scaling. The numerator is counted directly
- * ({@see InFlightRequests}) rather than read from FrankenPHP's `busy_workers`
- * gauge, which sampled from this after-response hook under-reports the very pin
- * burst exists to catch.
+ * Publishes web-task saturation to CloudWatch for burst step-scaling: the window's peak
+ * in-flight requests ({@see InFlightRequests}) over the tier's concurrency ceiling. On an
+ * Octane tier the ceiling is the FrankenPHP worker-pool size scraped from :2019; the
+ * numerator is counted directly because the `busy_workers` gauge, sampled from this
+ * after-response hook, under-reports the very pin burst exists to catch. On a classic tier
+ * the ceiling is the `max_threads` YOLO pinned (YOLO_BURST_THREADS — the scraped
+ * `total_threads` is only the floor) and the numerator is `busy_threads + queue_depth`:
+ * that gauge is sampled while the sampling thread is still busy, and a queued request is
+ * load the ceiling hasn't absorbed. Queueing pushes the value past 100 naturally rather
+ * than tripping a floor, so one momentarily-queued request can't buy a task that scale-in
+ * then holds for its window.
  *
  * Runs from `$app->terminating` ({@see YoloServiceProvider}) so the work rides a
  * request that already holds a CPU slice. The per-window cache claim is
@@ -49,14 +56,25 @@ class WorkerSaturationReporter
     /** A stale baseline (no recent window) simply yields no delta. */
     private const int CPU_TTL = 30;
 
+    /**
+     * @param  Closure(): CloudWatchClient  $cloudwatch  Built only when a datapoint is
+     *                                                   actually put: a classic tier
+     *                                                   boots the framework per request,
+     *                                                   so the reporter is constructed on
+     *                                                   every request while the debounce
+     *                                                   lets at most one per window publish.
+     */
     public function __construct(
         private readonly Repository $cache,
-        private readonly CloudWatchClient $cloudwatch,
+        private readonly Closure $cloudwatch,
         private readonly Scraper $scraper,
         private readonly Cpu $cpu,
         private readonly InFlightRequests $inFlight,
         private readonly string $serviceName,
         private readonly string $taskId,
+        // The classic tier's thread ceiling; null on an Octane tier, whose pool size
+        // arrives with every scrape instead.
+        private readonly ?int $threadCeiling = null,
     ) {}
 
     public function report(): void
@@ -74,27 +92,23 @@ class WorkerSaturationReporter
         $peak = $this->inFlight->flushPeak();
 
         match ($result->outcome) {
-            ScrapeOutcome::Reading => $this->onReading($result->totalWorkers ?? 0, $peak),
+            ScrapeOutcome::Reading => $this->onReading($result, $peak),
             ScrapeOutcome::Failure => $this->onFailure($utilisation),
-            // A 200 with no gauges is metrics-off / classic mode — config, not load.
+            // A 200 with no gauges is metrics-off — config, not load.
             ScrapeOutcome::Absent => null,
         };
     }
 
-    private function onReading(int $totalWorkers, int $peak): void
+    private function onReading(ScrapeResult $result, int $peak): void
     {
         $this->cache->put($this->key('primed'), 1, self::PRIMED_TTL);
 
-        // No pool to divide by (caught mid worker-reload).
-        if ($totalWorkers <= 0) {
-            return;
-        }
+        $saturation = $result->totalWorkers !== null
+            ? $this->workerSaturation($result->totalWorkers, $peak)
+            : $this->threadSaturation($result);
 
-        // In-flight can only exceed the pool if a leaked request never decremented;
-        // 100 already trips the step, so an absurd datapoint helps no one.
-        $saturation = min(100.0, $peak / $totalWorkers * 100);
-
-        if ($saturation < WebBurstPolicy::EMIT_FLOOR) {
+        // Below the emit floor: near-zero cost at rest, nothing worth publishing.
+        if ($saturation === null || $saturation < WebBurstPolicy::EMIT_FLOOR) {
             return;
         }
 
@@ -105,6 +119,32 @@ class WorkerSaturationReporter
             $this->markSaturated();
             $this->cache->put($this->key('window'), 1, WebBurstPolicy::COOLDOWN);
         }
+    }
+
+    /**
+     * Octane: saturation as a percentage of the resident pool. Capped at 100: the
+     * in-flight count can only exceed the pool size if a leaked request never
+     * decremented (the safe upward bias), and an absurd datapoint helps no one — 100
+     * already trips the +2 step.
+     */
+    private function workerSaturation(int $totalWorkers, int $peak): float
+    {
+        return min(100.0, $peak / $totalWorkers * 100);
+    }
+
+    /**
+     * Classic mode: busy plus queued requests as a percentage of the pinned ceiling.
+     * Uncapped, since a queue is real demand past the ceiling and the deeper reading
+     * earns the bigger step. Null without an injected ceiling — there is nothing
+     * honest to divide by.
+     */
+    private function threadSaturation(ScrapeResult $result): ?float
+    {
+        if ($this->threadCeiling === null) {
+            return null;
+        }
+
+        return ($result->busyThreads + $result->queueDepth) / $this->threadCeiling * 100;
     }
 
     private function onFailure(?float $utilisation): void
@@ -177,7 +217,7 @@ class WorkerSaturationReporter
     private function put(float $saturation): void
     {
         try {
-            $this->cloudwatch->putMetricData([
+            ($this->cloudwatch)()->putMetricData([
                 'Namespace' => WebBurstPolicy::METRIC_NAMESPACE,
                 'MetricData' => [[
                     'MetricName' => WebBurstPolicy::METRIC_NAME,

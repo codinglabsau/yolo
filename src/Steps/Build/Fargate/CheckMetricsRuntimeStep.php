@@ -12,11 +12,12 @@ use Symfony\Component\Process\Process;
 use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
 
 /**
- * Burst autoscaling reads FrankenPHP worker metrics, which Caddy only collects
- * with the `metrics` global option — carried by YOLO's generated Caddyfile. With
- * it missing nothing errors: no gauges, no datapoints, the burst alarm sits in
- * INSUFFICIENT_DATA and the deploy goes green. Probing the image (not the build
- * dir) also catches a Dockerfile that doesn't copy the build context.
+ * Burst autoscaling reads FrankenPHP's pool gauges — worker gauges under Octane, thread
+ * gauges in classic mode — which Caddy only collects with the `metrics` global option,
+ * carried by YOLO's generated Caddyfile in both modes. With it missing nothing errors: no
+ * gauges, no datapoints, the burst alarm sits in INSUFFICIENT_DATA and the deploy goes
+ * green. Probing the image (not the build dir) also catches a Dockerfile that doesn't
+ * copy the build context.
  */
 class CheckMetricsRuntimeStep implements Step
 {
@@ -39,9 +40,9 @@ class CheckMetricsRuntimeStep implements Step
 
         throw new RuntimeException(
             'Build aborted: web autoscaling is on but the built image has no Caddyfile with '
-            . 'FrankenPHP metrics enabled at /app/docker/Caddyfile. Burst scaling reads worker '
-            . 'metrics, which need it — ensure your Dockerfile copies the build context (e.g. '
-            . '`COPY . /app`) so YOLO\'s generated Caddyfile ships, or burst will be silently dark.'
+            . 'FrankenPHP metrics enabled at /app/docker/Caddyfile. Burst scaling reads its '
+            . 'pool gauges, which need it — ensure your Dockerfile copies the build context '
+            . '(e.g. `COPY . /app`) so YOLO\'s generated Caddyfile ships, or burst will be silently dark.'
         );
     }
 

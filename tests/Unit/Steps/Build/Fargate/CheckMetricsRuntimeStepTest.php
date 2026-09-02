@@ -24,17 +24,21 @@ it('skips without probing the image when the web tier is not autoscaling', funct
     expect($step(['app-version' => '26.24.1.1200']))->toBe(StepResult::SKIPPED);
 });
 
-it('skips in classic mode, where worker metrics never apply', function (): void {
+it('probes the image in classic mode too, where the thread gauges are the burst signal', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
         'tasks' => ['web' => ['octane' => false, 'autoscaling' => true]],
     ]);
 
-    $step = new CheckMetricsRuntimeStep('testing', probe: function (): void {
-        throw new RuntimeException('probe should not run in classic mode');
+    $probed = false;
+    $step = new CheckMetricsRuntimeStep('testing', probe: function () use (&$probed): true {
+        $probed = true;
+
+        return true;
     });
 
-    expect($step(['app-version' => '26.24.1.1200']))->toBe(StepResult::SKIPPED);
+    expect($step(['app-version' => '26.24.1.1200']))->toBe(StepResult::SUCCESS);
+    expect($probed)->toBeTrue();
 });
 
 it('passes when the built image ships a metrics Caddyfile', function (): void {

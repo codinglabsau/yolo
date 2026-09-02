@@ -9,7 +9,9 @@ use Codinglabs\Yolo\Enums\ServerGroup;
 /**
  * The Octane web tier's FrankenPHP worker-pool size — the single source of truth for the
  * `octane:start --workers` pin ({@see ProcessCommands::web()}) and the autoscaling concurrency
- * target ({@see WebConcurrency}). Classic-mode counterpart: {@see WebThreads}.
+ * target ({@see WebConcurrency}). The burst reporter reads the pool back from FrankenPHP's
+ * total_workers gauge instead, since Octane owns it at runtime. Classic-mode counterpart:
+ * {@see WebThreads}.
  *
  * A worker handles one request at a time and blocks for its whole lifetime, downstream waits
  * included, so the pool size IS the per-task concurrency ceiling. It's pinned because

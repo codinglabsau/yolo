@@ -23,9 +23,10 @@ use Codinglabs\Yolo\Steps\Build\Fargate\CheckYoloInstalledStep;
 
 /**
  * Auto-discovered runtime provider ({@see CheckYoloInstalledStep} guarantees YOLO ships as a
- * production dependency). On the autoscaling web tier it publishes FrankenPHP worker saturation
- * for burst step-scaling from an after-response hook; inert everywhere else, since the
- * YOLO_BURST_* environment is set only on the web task definition ({@see SyncTaskDefinitionStep}).
+ * production dependency). On the autoscaling web tier it publishes FrankenPHP pool saturation
+ * for burst step-scaling from an after-response hook, in either serving mode; inert everywhere
+ * else, since the YOLO_BURST_* environment is set only on the web task definition
+ * ({@see SyncTaskDefinitionStep}).
  */
 class YoloServiceProvider extends ServiceProvider
 {
@@ -50,7 +51,7 @@ class YoloServiceProvider extends ServiceProvider
 
         $this->app->singleton(WorkerSaturationReporter::class, fn (): WorkerSaturationReporter => new WorkerSaturationReporter(
             cache: Cache::store(),
-            cloudwatch: new CloudWatchClient([
+            cloudwatch: fn (): CloudWatchClient => new CloudWatchClient([
                 'version' => 'latest',
                 'region' => $this->region(),
                 // Tight: this publish runs inline on the worker's terminate path.
@@ -61,6 +62,7 @@ class YoloServiceProvider extends ServiceProvider
             inFlight: $this->app->make(InFlightRequests::class),
             serviceName: $this->burstService(),
             taskId: $this->taskId(),
+            threadCeiling: $this->burstThreads(),
         ));
     }
 
@@ -104,14 +106,18 @@ class YoloServiceProvider extends ServiceProvider
         });
 
         // Real in-flight concurrency, not the worker gauge that under-reports under a pin.
-        // pushMiddleware is idempotent, so each Octane worker boot adds it at most once.
-        $this->app->booted(function (): void {
-            $kernel = $this->app->make(HttpKernelContract::class);
+        // Octane only: a classic tier reads its thread gauges and never consumes the peak, so
+        // it shouldn't pay the per-request cache round-trips. pushMiddleware is idempotent, so
+        // each Octane worker boot adds it at most once.
+        if ($this->burstThreads() === null) {
+            $this->app->booted(function (): void {
+                $kernel = $this->app->make(HttpKernelContract::class);
 
-            if ($kernel instanceof FoundationHttpKernel) {
-                $kernel->pushMiddleware(TrackInFlightRequests::class);
-            }
-        });
+                if ($kernel instanceof FoundationHttpKernel) {
+                    $kernel->pushMiddleware(TrackInFlightRequests::class);
+                }
+            });
+        }
 
         // Bounds each SSR render and sheds to CSR while this task is flagged hot. Talks the
         // stable inertia.ssr config/protocol, so it's agnostic to the app's Inertia major;
@@ -152,6 +158,18 @@ class YoloServiceProvider extends ServiceProvider
     private function burstCpu(): float
     {
         return (float) config('yolo.burst.cpu');
+    }
+
+    /**
+     * The classic tier's thread ceiling ({@see WebThreads}), injected on the web
+     * task-def alongside the service name as the saturation denominator. Absent on an
+     * Octane tier, whose pool size arrives with every scrape.
+     */
+    private function burstThreads(): ?int
+    {
+        $threads = (int) config('yolo.burst.threads');
+
+        return $threads > 0 ? $threads : null;
     }
 
     private function region(): string

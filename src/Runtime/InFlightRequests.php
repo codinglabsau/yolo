@@ -7,12 +7,12 @@ namespace Codinglabs\Yolo\Runtime;
 use Illuminate\Contracts\Cache\Repository;
 
 /**
- * The saturation numerator, counted directly because FrankenPHP's `busy_workers`
- * gauge reads wrong under the exact pin burst is meant to catch: sampled from a
- * request's after-response hook, the sampling worker has just finished (so counts
- * itself idle) and only at the instant a worker freed — a momentary low. Under a
- * CPU-bound SSR pin it read ~50% on a box genuinely at 100%, so the alarm fired
- * only after scale-out gave headroom. The signal was inverted.
+ * The saturation numerator on an Octane tier (a classic tier reads its thread gauges and
+ * never tracks this), counted directly because FrankenPHP's `busy_workers` gauge reads
+ * wrong under the exact pin burst is meant to catch: sampled from a request's
+ * after-response hook, the sampling worker has just finished (so counts itself idle) and
+ * only at the instant a worker freed — a momentary low. Under a CPU-bound SSR pin it read
+ * ~50% on a box genuinely at 100%, so the alarm fired only after scale-out gave headroom.
  *
  * The reporter reads the window's peak, not the instantaneous count, so it's
  * immune to that sampling-instant lull even though `leave()` has run by the time

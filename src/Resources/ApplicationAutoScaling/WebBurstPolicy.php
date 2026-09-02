@@ -20,20 +20,18 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 /**
  * Real-time burst scale-out beside {@see WebConcurrencyPolicy}: target tracking rides
  * 1-minute ALB metrics, so this pairs a step-scaling policy with a 10s high-res alarm
- * on a FrankenPHP worker-saturation metric each task emits itself (workers queue
- * before latency climbs). Scale-out only — scale-in stays with target tracking, so
- * this can only add capacity faster, never fight them.
- *
- * No gate: a classic-mode tier never emits the metric, so the alarm sits in
- * INSUFFICIENT_DATA (not-breaching) and burst is a no-op. The same property means the
- * alarm can be put before any datapoint exists — no first-sync ordering trap.
+ * on a saturation metric each web task emits itself — in-flight requests over the
+ * Octane worker pool, or busy threads over the classic thread ceiling (requests queue
+ * before latency climbs). Scale-out only — scale-in stays with target tracking, so this
+ * can only add capacity faster, never fight them. Provisioned wherever web autoscaling
+ * is, in either serving mode; not a knob.
  *
  * {@see WorkerSaturationReporter} publishes synchronously via PutMetricData from an
  * after-response hook, only while hot (grant in {@see EcsTaskPolicy}). Not EMF via
  * logs: the awslogs driver's flush cadence isn't tunable and extraction is async, so an
  * EMF datapoint would surface on a cadence we don't control. FrankenPHP's metrics
- * endpoint is enabled by a YOLO-generated Caddyfile via `octane:start --caddyfile` —
- * Octane overwrites `CADDY_GLOBAL_OPTIONS`, so a task env var can't switch it on.
+ * endpoint is enabled by a YOLO-generated Caddyfile — Octane overwrites
+ * `CADDY_GLOBAL_OPTIONS`, so a task env var can't switch it on.
  *
  * Burst complements warm capacity, never replaces it: a new task still needs ~55s to
  * boot and pass ALB health. The in-request publish is best-effort — a hard-pinned task

@@ -12,9 +12,10 @@ namespace Codinglabs\Yolo;
 class ProcessCommands
 {
     /**
-     * Generated into the build context at docker/Caddyfile. Octane uses it for the metrics
-     * global option, classic mode for the thread bounds — never both. Absolute because
-     * supervisord's working directory is not contractual.
+     * Generated into the build context at docker/Caddyfile. Octane needs it for the metrics
+     * global option; classic mode always needs it for the thread bounds and carries the same
+     * option when autoscaling. Absolute because supervisord's working directory is not
+     * contractual.
      */
     public const string CADDYFILE = '/app/docker/Caddyfile';
 
@@ -36,7 +37,8 @@ class ProcessCommands
 
         // octane:start rebuilds CADDY_GLOBAL_OPTIONS from a fixed whitelist, so a container
         // env var can't switch on the Caddy metrics burst autoscaling reads — only a custom
-        // Caddyfile can.
+        // Caddyfile can. Classic mode returned above: its generated Caddyfile already carries
+        // the option.
         if (Manifest::usesMetricsCaddyfile()) {
             $command .= ' --caddyfile=' . self::CADDYFILE;
         }

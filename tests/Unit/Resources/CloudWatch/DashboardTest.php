@@ -306,8 +306,11 @@ it('labels the response-time ceiling as an SLO reference, not an alarm (no Targe
     expect($labels)->toContain('SLO', 'Target')->not->toContain('Alarm');
 });
 
-it('draws the burst worker-saturation panel with the burst threshold line on an autoscaling Octane web tier', function (): void {
+it('draws the burst worker-saturation panel with the burst threshold line on an autoscaling web tier', function (): void {
     $panel = findWidget(Dashboard::body(dashboardContext()), 'Worker saturation');
+
+    // No y-axis ceiling: a classic tier reports queued requests past 100.
+    expect($panel['properties']['yAxis']['left'])->toBe(['min' => 0]);
 
     // Reads the same metric the burst alarm reads, dimensioned by this web service.
     expect($panel['properties']['metrics'][0])
@@ -320,7 +323,7 @@ it('draws the burst worker-saturation panel with the burst threshold line on an 
     expect($burst['value'])->toBe(WebBurstPolicy::ALARM_THRESHOLD);
 });
 
-it('omits the worker-saturation panel when burst is inactive (classic mode or no web autoscaling)', function (): void {
+it('omits the worker-saturation panel when the web tier is not autoscaling', function (): void {
     expect(findWidget(Dashboard::body(dashboardContext(['burst' => false])), 'Worker saturation'))->toBeNull();
 });
 
