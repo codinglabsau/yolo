@@ -7,6 +7,7 @@ use GuzzleHttp\Client;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Change;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Str;
 use Codinglabs\Yolo\Aws\Ecs;
 use Codinglabs\Yolo\Aws\ElbV2;
 use Codinglabs\Yolo\WaitReporter;
@@ -84,6 +85,10 @@ class SyncTypesenseNodesStep implements LongRunning, Step
      * none points at operator-side reachability, not the cluster. */
     protected bool $clusterAnswered = false;
 
+    /** The node mid-roll, as "Node 2 of 3 (name)" — prefixed onto every
+     * heartbeat line so the operator can see where in the roll they are. */
+    protected ?string $rollPosition = null;
+
     public function __invoke(array $options): StepResult
     {
         if (Lifecycle::state(Service::TYPESENSE) !== ServiceState::Provision) {
@@ -134,6 +139,10 @@ class SyncTypesenseNodesStep implements LongRunning, Step
         // target group, cluster /health clean, leader present — before the
         // next one is touched.
         foreach (array_values($stale) as $index => $service) {
+            $this->rollPosition = sprintf('Node %d of %d (%s)', $index + 1, count($stale), $service->name());
+
+            $this->report('ECS replacing the task');
+
             $service->adoptLatestRevision();
 
             $this->waitForStability([$service->name()]);
@@ -141,17 +150,23 @@ class SyncTypesenseNodesStep implements LongRunning, Step
             $this->assertNodeRejoined($service, rolled: $index + 1, total: count($stale));
         }
 
+        $this->rollPosition = null;
+
         // Then grow: create every missing node up front, one wait at the end.
         foreach ($missing as $service) {
             $service->create();
         }
 
         if ($missing !== []) {
+            $this->report(sprintf('Creating %s · waiting for ECS stability', Str::plural('missing node', count($missing), true)));
+
             $this->waitForStability(array_map(fn (TypesenseService $service): string => $service->name(), $missing));
         }
 
         // Then shrink: the surplus nodes are no longer in anyone's peer list.
         foreach ($surplus as $service) {
+            $this->report(sprintf('Removing surplus node %s', $service->name()));
+
             $this->removeNode($service);
         }
 
@@ -278,6 +293,8 @@ class SyncTypesenseNodesStep implements LongRunning, Step
     protected function awaitReplacementServing(TypesenseService $service): bool
     {
         for ($attempt = 1; $attempt <= self::ROLL_GATE_ATTEMPTS; $attempt++) {
+            $this->report(sprintf('waiting for the replacement to serve · attempt %d/%d', $attempt, self::ROLL_GATE_ATTEMPTS));
+
             if ($this->replacementServing($service)) {
                 return true;
             }
@@ -353,6 +370,13 @@ class SyncTypesenseNodesStep implements LongRunning, Step
         $consecutive = 0;
 
         for ($failedRounds = 0; $failedRounds < self::ROLL_GATE_ATTEMPTS;) {
+            $this->report(sprintf(
+                'serving · %d/%d clean /health samples%s',
+                $consecutive,
+                self::CONVERGED_SAMPLES,
+                $failedRounds > 0 ? sprintf(' · %s', Str::plural('failed round', $failedRounds, true)) : '',
+            ));
+
             if ($this->healthSample($searchHost)) {
                 $consecutive++;
 
@@ -446,6 +470,19 @@ class SyncTypesenseNodesStep implements LongRunning, Step
         WaitReporter::poll();
 
         sleep($seconds);
+    }
+
+    /**
+     * Narrate the current phase through the LongRunning heartbeat. The roll
+     * spends minutes per node inside bounded polls, and an elapsed timer alone
+     * reads as hung — so each phase names itself (and its attempt budget) on
+     * the progress line, prefixed with the roll position while a node is
+     * mid-roll. The line persists across the ECS waiter's own polls too.
+     */
+    protected function report(string $message): void
+    {
+        WaitReporter::line($this->rollPosition === null ? $message : sprintf('%s · %s', $this->rollPosition, $message));
+        WaitReporter::poll();
     }
 
     /**
