@@ -49,9 +49,11 @@ it('reads busy threads and queue depth from a classic-mode scrape', function ():
         ->and(Gauges::queueDepth(classicModeMetrics()))->toBe(1);
 });
 
-it('reads an absent thread gauge as zero', function (): void {
-    // An idle classic tier omits nothing, but a FrankenPHP without the queue gauge
-    // must read as "no queue", never as a reading that can't be used.
-    expect(Gauges::busyThreads("frankenphp_total_threads 4\n"))->toBe(0)
-        ->and(Gauges::queueDepth("frankenphp_total_threads 4\n"))->toBe(0);
+it('refuses a thread gauge missing beside total_threads rather than reading it as zero', function (): void {
+    // FrankenPHP registers the three thread gauges together; one absent is a broken
+    // scrape, and a silent zero would under-report saturation.
+    expect(fn (): int => Gauges::busyThreads("frankenphp_total_threads 4\n"))
+        ->toThrow(RuntimeException::class, 'frankenphp_busy_threads');
+    expect(fn (): int => Gauges::queueDepth("frankenphp_total_threads 4\n"))
+        ->toThrow(RuntimeException::class, 'frankenphp_queue_depth');
 });

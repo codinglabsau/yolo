@@ -56,7 +56,7 @@ class YoloServiceProvider extends ServiceProvider
 
         $this->app->singleton(WorkerSaturationReporter::class, fn (): WorkerSaturationReporter => new WorkerSaturationReporter(
             cache: Cache::store(),
-            cloudwatch: new CloudWatchClient([
+            cloudwatch: fn (): CloudWatchClient => new CloudWatchClient([
                 'version' => 'latest',
                 'region' => $this->region(),
                 // Tight: this publish runs inline on the worker's terminate path.
@@ -118,16 +118,20 @@ class YoloServiceProvider extends ServiceProvider
         });
 
         // Bracket every web request so the reporter scales on real in-flight concurrency
-        // rather than the worker gauge that under-reports under a pin. Pushed once the app
-        // has booted (the HTTP kernel is resolvable by then); pushMiddleware is idempotent,
-        // so re-running on each Octane worker boot adds it at most once.
-        $this->app->booted(function (): void {
-            $kernel = $this->app->make(HttpKernelContract::class);
+        // rather than the worker gauge that under-reports under a pin. Octane only: a
+        // classic tier reads its thread gauges instead and never consumes the peak, so it
+        // shouldn't pay the per-request cache round-trips. Pushed once the app has booted
+        // (the HTTP kernel is resolvable by then); pushMiddleware is idempotent, so
+        // re-running on each Octane worker boot adds it at most once.
+        if ($this->burstThreads() === null) {
+            $this->app->booted(function (): void {
+                $kernel = $this->app->make(HttpKernelContract::class);
 
-            if ($kernel instanceof FoundationHttpKernel) {
-                $kernel->pushMiddleware(TrackInFlightRequests::class);
-            }
-        });
+                if ($kernel instanceof FoundationHttpKernel) {
+                    $kernel->pushMiddleware(TrackInFlightRequests::class);
+                }
+            });
+        }
 
         // On an Inertia app, swap the SSR gateway for one that bounds each render and sheds
         // to CSR while the burst reporter has flagged this task hot. It talks the stable
@@ -182,10 +186,9 @@ class YoloServiceProvider extends ServiceProvider
     }
 
     /**
-     * The classic tier's thread ceiling (`max_threads`), injected on the web task-def
-     * alongside the service name — the saturation denominator there, since the scraped
-     * `total_threads` gauge reports the floor rather than what the pool may grow to.
-     * Absent on an Octane tier, whose pool size arrives with every scrape.
+     * The classic tier's thread ceiling ({@see WebThreads}), injected on the web
+     * task-def alongside the service name as the saturation denominator. Absent on an
+     * Octane tier, whose pool size arrives with every scrape.
      */
     private function burstThreads(): ?int
     {

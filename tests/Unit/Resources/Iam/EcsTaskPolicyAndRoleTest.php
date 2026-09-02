@@ -93,6 +93,16 @@ it('grants namespace-scoped cloudwatch:PutMetricData when web autoscaling burst 
     ]);
 });
 
+it('grants cloudwatch:PutMetricData to a classic-mode autoscaling tier, which publishes the same metric', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['octane' => false, 'autoscaling' => true]],
+    ]);
+
+    expect(collect((new EcsTaskPolicy())->document()['Statement'])->pluck('Action')->flatten())
+        ->toContain('cloudwatch:PutMetricData');
+});
+
 it('grants no cloudwatch:PutMetricData when web autoscaling is off', function (): void {
     $actions = collect((new EcsTaskPolicy())->document()['Statement'])->pluck('Action')->flatten();
 

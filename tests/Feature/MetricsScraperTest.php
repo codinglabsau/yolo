@@ -36,6 +36,20 @@ it('classifies a thread-gauge payload as a classic-mode reading carrying busy th
         ->and($result->queueDepth)->toBe(1);
 });
 
+it('reads an Octane tier caught mid worker-reload as a thread reading, not absent', function (): void {
+    // A zero worker total is no denominator, but the endpoint answered with gauges —
+    // the reporter primes on it and stays silent for lack of a thread ceiling.
+    Http::fake(['*' => Http::response(
+        "frankenphp_busy_threads 3\nfrankenphp_total_threads 4\nfrankenphp_queue_depth 0\nfrankenphp_busy_workers 0\nfrankenphp_total_workers 0\n"
+    )]);
+
+    $result = (new MetricsScraper())->scrape();
+
+    expect($result->outcome)->toBe(ScrapeOutcome::Reading)
+        ->and($result->totalWorkers)->toBeNull()
+        ->and($result->busyThreads)->toBe(3);
+});
+
 it('classifies a gaugeless 200 as absent (metrics off)', function (): void {
     Http::fake(['*' => Http::response('nothing to see here')]);
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Codinglabs\Yolo\Runtime;
 
+use Closure;
 use Throwable;
 use Codinglabs\Yolo\WebThreads;
 use Aws\CloudWatch\CloudWatchClient;
@@ -22,15 +23,13 @@ use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
  * numerator is counted directly rather than read from FrankenPHP's `busy_workers` gauge
  * because that gauge, sampled from this after-response hook, under-reports the very pin
  * burst exists to catch — high when idle, low when pinned. On a classic tier the ceiling
- * is the `max_threads` YOLO pinned ({@see WebThreads}), injected as YOLO_BURST_THREADS:
- * the scraped `total_threads` gauge reports the floor the pool boots with, not what the
- * thread autoscaler has grown to, so `busy_threads` can exceed it. There the numerator
- * is `busy_threads + queue_depth` — the thread gauge is sampled while the sampling
- * request's own thread is still busy, so it doesn't self-undercount the way the worker
- * gauge does, and a request waiting for a thread is load the ceiling hasn't absorbed
- * yet. Queueing pushes the value past 100 naturally rather than tripping a floor: a
- * single momentarily-queued request must not buy a task that scale-in then holds for
- * its fifteen-minute window.
+ * is the `max_threads` YOLO pinned ({@see WebThreads}, injected as YOLO_BURST_THREADS —
+ * the scraped `total_threads` is only the floor) and the numerator is
+ * `busy_threads + queue_depth`: the thread gauge is sampled while the sampling
+ * request's own thread is still busy, so it doesn't self-undercount, and a queued
+ * request is load the ceiling hasn't absorbed. Queueing pushes the value past 100
+ * naturally rather than tripping a floor: a single momentarily-queued request must not
+ * buy a task that scale-in then holds for its fifteen-minute window.
  *
  * It's invoked from an after-response hook the {@see YoloServiceProvider} registers
  * ($app->terminating), so the work rides on a request that already holds a CPU slice
@@ -71,9 +70,17 @@ class WorkerSaturationReporter
     /** CPU-baseline TTL — a stale baseline (no recent window) simply yields no delta. */
     private const int CPU_TTL = 30;
 
+    /**
+     * @param  Closure(): CloudWatchClient  $cloudwatch  Built only when a datapoint is
+     *                                                   actually put: a classic tier
+     *                                                   boots the framework per request,
+     *                                                   so the reporter is constructed on
+     *                                                   every request while the debounce
+     *                                                   lets at most one per window publish.
+     */
     public function __construct(
         private readonly Repository $cache,
-        private readonly CloudWatchClient $cloudwatch,
+        private readonly Closure $cloudwatch,
         private readonly Scraper $scraper,
         private readonly Cpu $cpu,
         private readonly InFlightRequests $inFlight,
@@ -154,7 +161,7 @@ class WorkerSaturationReporter
      */
     private function threadSaturation(ScrapeResult $result): ?float
     {
-        if ($this->threadCeiling === null || $this->threadCeiling <= 0) {
+        if ($this->threadCeiling === null) {
             return null;
         }
 
@@ -238,7 +245,7 @@ class WorkerSaturationReporter
     private function put(float $saturation): void
     {
         try {
-            $this->cloudwatch->putMetricData([
+            ($this->cloudwatch)()->putMetricData([
                 'Namespace' => WebBurstPolicy::METRIC_NAMESPACE,
                 'MetricData' => [[
                     'MetricName' => WebBurstPolicy::METRIC_NAME,

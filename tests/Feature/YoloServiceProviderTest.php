@@ -15,12 +15,36 @@ afterEach(function (): void {
     putenv('YOLO_BURST_THREADS');
 });
 
-it('reads the classic-mode thread ceiling from the injected env', function (): void {
+/** The reporter's private ceiling, read back so the env → constructor wiring is pinned. */
+function reporterThreadCeiling(WorkerSaturationReporter $reporter): ?int
+{
+    return (new ReflectionProperty($reporter, 'threadCeiling'))->getValue($reporter);
+}
+
+it('wires the classic-mode thread ceiling from the injected env into the reporter', function (): void {
     putenv('YOLO_BURST_SERVICE=svc');
     putenv('YOLO_BURST_THREADS=16');
     $this->refreshApplication();
 
-    expect(config('yolo.burst.threads'))->toBe('16');
+    expect(reporterThreadCeiling($this->app->make(WorkerSaturationReporter::class)))->toBe(16);
+});
+
+it('leaves the reporter without a thread ceiling on an Octane tier', function (): void {
+    putenv('YOLO_BURST_SERVICE=svc');
+    $this->refreshApplication();
+
+    expect(reporterThreadCeiling($this->app->make(WorkerSaturationReporter::class)))->toBeNull();
+});
+
+it('does not push the in-flight tracking middleware on a classic tier, which never reads the peak', function (): void {
+    putenv('YOLO_BURST_SERVICE=svc');
+    putenv('YOLO_BURST_THREADS=16');
+    $this->refreshApplication();
+
+    $kernel = $this->app->make(Kernel::class);
+    assert($kernel instanceof FoundationHttpKernel);
+
+    expect($kernel->hasMiddleware(TrackInFlightRequests::class))->toBeFalse();
 });
 
 it('registers nothing when no burst service is set', function (): void {

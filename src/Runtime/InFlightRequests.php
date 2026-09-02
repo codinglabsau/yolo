@@ -8,8 +8,8 @@ use Illuminate\Contracts\Cache\Repository;
 
 /**
  * A task-scoped count of HTTP requests currently in flight — the numerator the burst
- * reporter divides by the pool size (the Octane worker pool, or the classic thread
- * ceiling) to get saturation. It exists because the
+ * reporter divides by the Octane worker-pool size to get saturation (a classic tier
+ * reads its thread gauges instead and never tracks this). It exists because the
  * obvious source, FrankenPHP's `busy_workers` gauge scraped from :2019, reads *wrong
  * under the exact pin burst is meant to catch*: it's sampled from a request's
  * after-response hook (the sampling worker has just finished, so it counts itself idle)

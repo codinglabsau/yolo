@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Codinglabs\Yolo\Runtime;
 
+use RuntimeException;
 use Codinglabs\Yolo\WebThreads;
 
 /**
@@ -37,7 +38,7 @@ final class Gauges
         return $total > 0 ? $total : null;
     }
 
-    /** Whether the thread gauges are present at all — the classic-mode signature. */
+    /** Whether the thread gauges are present — both modes emit them, so absence means metrics are off. */
     public static function hasThreads(string $metrics): bool
     {
         return self::sum($metrics, 'frankenphp_total_threads') !== null;
@@ -45,12 +46,23 @@ final class Gauges
 
     public static function busyThreads(string $metrics): int
     {
-        return self::sum($metrics, 'frankenphp_busy_threads') ?? 0;
+        return self::thread($metrics, 'frankenphp_busy_threads');
     }
 
     public static function queueDepth(string $metrics): int
     {
-        return self::sum($metrics, 'frankenphp_queue_depth') ?? 0;
+        return self::thread($metrics, 'frankenphp_queue_depth');
+    }
+
+    /**
+     * A thread gauge that must accompany `total_threads` — FrankenPHP registers the
+     * three together, so one missing beside the others is a broken scrape, not an idle
+     * pool, and defaulting it to zero would silently under-report saturation.
+     */
+    private static function thread(string $metrics, string $gauge): int
+    {
+        return self::sum($metrics, $gauge)
+            ?? throw new RuntimeException("FrankenPHP metrics carry frankenphp_total_threads but no {$gauge}.");
     }
 
     /**

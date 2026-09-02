@@ -236,8 +236,7 @@ class SyncTaskDefinitionStep implements Step
         ];
 
         // Classic mode's saturation denominator is the thread ceiling YOLO pinned in the
-        // Caddyfile — FrankenPHP's own total_threads gauge reports the floor the pool
-        // boots with, not what it may grow to, so it can't be scraped back.
+        // Caddyfile; FrankenPHP's own gauge only reports the floor (see WebThreads).
         if (! Manifest::usesOctane()) {
             $environment[] = ['name' => 'YOLO_BURST_THREADS', 'value' => (string) WebThreads::maximum()];
         }
