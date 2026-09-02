@@ -67,17 +67,19 @@ The interactive picker lists your recent deployments (newest first, the running 
 Rollback reverts code and assets, never the schema. Roll back across additive migrations freely; across a destructive one, only after confirming the old code runs against the new schema.
 :::
 
-## Hooks: `build` vs `deploy` vs `deploy-all`
+## Hooks: `build` vs `deploy` vs `start`
 
-Three manifest arrays run shell commands at different points:
+Three manifest arrays run shell commands at different points in an image's lifecycle:
 
 | Hook | Runs | Where | Use for |
 |---|---|---|---|
 | `build` | At build time, on your machine | the build context | `composer install`, `npm run build`, asset compilation |
 | `deploy` | Once per deploy, before traffic shifts | a one-off ECS task | `php artisan migrate --force` |
-| `deploy-all` | On every container start | the entrypoint | `php artisan optimize` (cache config/routes/views) |
+| `start` | On every container start — a deploy, a scale-out replica, a replaced task, a one-off `yolo run` | the entrypoint, before the role's process | `php artisan optimize` (cache config/routes/views) |
 
 The `deploy` task templates on your management-tier service — a dedicated `scheduler` if you've extracted one, else a standalone `queue`, else `web` (the same `scheduler → queue → web` order `yolo run` uses). It's a one-off task, so it just runs the hooks once and exits. It runs at a fixed 1 vCPU / 2 GiB regardless of that service's task size, so migrations and other hooks aren't throttled by a thin management tier (a `queue`/`scheduler` defaults to 0.25 vCPU).
+
+The `start` hooks run inside every container the image boots, so keep them idempotent and fast — they also run ahead of the `deploy` task itself, since that one-off task boots through the same entrypoint.
 
 ```yaml
 build:
@@ -86,7 +88,7 @@ build:
   - npm run build
 deploy:
   - php artisan migrate --force
-deploy-all:
+start:
   - php artisan optimize
 ```
 

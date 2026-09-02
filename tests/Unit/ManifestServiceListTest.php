@@ -154,7 +154,7 @@ environments:
     deploy:
       - php artisan migrate --force
 
-    deploy-all:
+    start:
       - php artisan optimize
 YAML);
 
@@ -172,7 +172,7 @@ environments:
       - php artisan migrate --path=database/migrations/landlord --force
       - php artisan tenants:artisan "migrate --path=database/migrations/tenant --database=tenant --force"
 
-    deploy-all:
+    start:
       - php artisan optimize
 YAML)
         ->and(Manifest::get('deploy'))->toBe([

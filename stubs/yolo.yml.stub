@@ -86,5 +86,5 @@ environments:
     deploy:
       - php artisan migrate --force
 
-    deploy-all:
+    start:
       - php artisan optimize
