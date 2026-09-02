@@ -10,6 +10,7 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Codinglabs\Yolo\Aws\Ecs;
 use Codinglabs\Yolo\Aws\ElbV2;
+use Codinglabs\Yolo\DeployCheck;
 use Codinglabs\Yolo\WaitReporter;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Contracts\Step;
@@ -23,6 +24,7 @@ use Codinglabs\Yolo\Concerns\RecordsChanges;
 use Codinglabs\Yolo\Concerns\RecordsWarnings;
 use Codinglabs\Yolo\Resources\Ecs\ServicesCluster;
 use Codinglabs\Yolo\Resources\Ecs\TypesenseService;
+use Codinglabs\Yolo\Services\TypesenseTaskDefinition;
 use Codinglabs\Yolo\Resources\ElbV2\SearchTargetGroup;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 use Codinglabs\Yolo\Resources\ServiceDiscovery\TypesenseDiscoveryService;
@@ -97,7 +99,7 @@ class SyncTypesenseNodesStep implements LongRunning, Step
 
         $dryRun = (bool) Arr::get($options, 'dry-run');
 
-        [$missing, $stale, $surplus] = $this->partition();
+        [$missing, $stale, $surplus] = $this->partition(planning: $dryRun);
 
         if ($missing === [] && $stale === [] && $surplus === []) {
             return StepResult::SYNCED;
@@ -189,11 +191,19 @@ class SyncTypesenseNodesStep implements LongRunning, Step
      * greenfield plan the family may not exist yet — every node then reads as
      * missing, which is exactly the pending state to report.
      *
+     * The plan pass runs BEFORE the task-definition step registers anything,
+     * so while that step is about to register a new revision the live latest
+     * is still the old one and every node would read current — the roll would
+     * be pruned from apply and land one sync late. So on the plan, a pending
+     * registration stales every existing node; the apply pass re-partitions
+     * against the now-registered revision and reaches the same set.
+     *
      * @return array{0: array<int, TypesenseService>, 1: array<int, TypesenseService>, 2: array<int, TypesenseService>}
      */
-    protected function partition(): array
+    protected function partition(bool $planning): array
     {
         $missing = [];
+        $existing = [];
         $stale = [];
         $surplus = [];
 
@@ -208,9 +218,15 @@ class SyncTypesenseNodesStep implements LongRunning, Step
                 continue;
             }
 
+            $existing[] = $service;
+
             if ($latest !== null && $service->current()['taskDefinition'] !== $latest) {
                 $stale[] = $service;
             }
+        }
+
+        if ($planning && $existing !== [] && $this->revisionRegistersThisSync()) {
+            $stale = $existing;
         }
 
         // Indexes above the declared count — only ever 3 and 4, since the
@@ -522,13 +538,21 @@ class SyncTypesenseNodesStep implements LongRunning, Step
         }
     }
 
+    /**
+     * Whether the task-definition step registers a new revision in this same
+     * sync. Never under the deploy gate's read-tier check: that gate skips the
+     * task-definition step outright (rendering the desired revision reads the
+     * admin key the tier is fenced from), so nothing registers there and the
+     * live latest is the whole truth.
+     */
+    protected function revisionRegistersThisSync(): bool
+    {
+        return ! DeployCheck::active() && TypesenseTaskDefinition::registrationPending();
+    }
+
     protected function latestRevisionArn(): ?string
     {
-        try {
-            return Ecs::taskDefinition((new TypesenseService(0))->taskDefinitionFamily())['taskDefinitionArn'] ?? null;
-        } catch (ResourceDoesNotExistException) {
-            return null;
-        }
+        return TypesenseTaskDefinition::live()['taskDefinitionArn'] ?? null;
     }
 
     /**
