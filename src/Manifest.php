@@ -90,9 +90,8 @@ class Manifest
         // check instead of silently leaving the default in force.
         'tasks.web',
         'tasks.web.octane',
-        'tasks.web.cpu', 'tasks.web.memory', 'tasks.web.platform',
+        'tasks.web.cpu', 'tasks.web.memory',
         'tasks.web.enable-execute-command', 'tasks.web.shutdown-grace-period',
-        'tasks.web.log-retention',
         'tasks.web.ssr', 'tasks.web.ssr.shutdown-grace-period',
         'tasks.web.health-check.path', 'tasks.web.health-check.interval',
         'tasks.web.health-check.timeout', 'tasks.web.health-check.healthy-threshold',

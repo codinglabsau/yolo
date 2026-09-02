@@ -300,24 +300,6 @@ class Helpers
         return $validated;
     }
 
-    public static function validateCloudWatchLogRetention(mixed $value, string $key): int
-    {
-        $allowed = [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 2192, 2557, 2922, 3288, 3653];
-
-        $validated = filter_var($value, FILTER_VALIDATE_INT);
-
-        if ($validated === false || ! in_array($validated, $allowed, true)) {
-            throw new IntegrityCheckException(sprintf(
-                '%s must be one of CloudWatch Logs retention values [%s] (got %s)',
-                $key,
-                implode(', ', $allowed),
-                json_encode($value),
-            ));
-        }
-
-        return $validated;
-    }
-
     public static function validateStrictBool(mixed $value, string $key): bool
     {
         $validated = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);

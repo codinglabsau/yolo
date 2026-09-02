@@ -94,10 +94,8 @@ environments:
         octane: true
         cpu: '512'
         memory: '1024'
-        platform: linux/amd64
         shutdown-grace-period: 15
         enable-execute-command: true
-        log-retention: 30
         ssr: false
         health-check:
           path: /up
@@ -482,10 +480,8 @@ The last three rows are **web-less worker apps**: a pure queue consumer, a sched
 | `tasks.web.octane` | `true` | Run the web tier on Octane (FrankenPHP **worker mode**) via `octane:start`. Set `false` to run FrankenPHP in **classic mode** — per-request boot, no resident app — for an app that isn't Octane-safe yet. Same image and port either way; only the launch command differs, and the build's [Octane preflight](/guide/building-and-deploying) is skipped (classic mode needs no `laravel/octane`). YOLO sizes the classic thread pool from this task's `cpu`/`memory` — see [what the ceiling is](/guide/scaling#what-the-ceiling-is-and-why-yolo-pins-it). |
 | `tasks.web.cpu` | `'512'` | Fargate CPU units. |
 | `tasks.web.memory` | `'1024'` | Fargate memory (MB). |
-| `tasks.web.platform` | `linux/amd64` | Docker build platform. |
 | `tasks.web.shutdown-grace-period` | `15` | Seconds the web process gets on `SIGTERM` before `SIGKILL`. It's also the ALB drain window and the container `stopTimeout`. See [graceful shutdown](/guide/images#graceful-shutdown). |
 | `tasks.web.enable-execute-command` | `true` | Enable ECS Exec so [`yolo run`](/reference/commands#yolo-run) can attach. Access is gated by MFA on the admin IAM tier; set `false` to disable it for this group. |
-| `tasks.web.log-retention` | `30` | CloudWatch Logs retention (days). Must be a valid CloudWatch retention value. |
 | `tasks.web.ssr` | `false` | Run Inertia's SSR renderer (`inertia:start-ssr`, a Node process on `127.0.0.1:13714`) **bundled** in the web container, so PHP server-renders your Vue pages. `true`, or an object to override its `shutdown-grace-period`. SSR is always bundled — never its own service. Needs a Node runtime in your Dockerfile and an SSR bundle from `npm run build`; YOLO injects `INERTIA_SSR_ENABLED=true` unless your `.env` sets it. See [Inertia SSR](/guide/images#inertia-ssr). |
 | `tasks.web.health-check` | *(defaults)* | ALB health-check tuning — see [`tasks.web.health-check.*`](#tasks-web-health-check). |
 

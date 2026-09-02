@@ -4,7 +4,6 @@ namespace Codinglabs\Yolo\Steps\Build\Fargate;
 
 use Codinglabs\Yolo\Paths;
 use Illuminate\Support\Arr;
-use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\StepResult;
 use Symfony\Component\Process\Process;
 use Codinglabs\Yolo\Concerns\RunsProcess;
@@ -51,7 +50,7 @@ class BuildDockerImageStep implements LongRunning
     {
         return [
             'docker', 'build',
-            '--platform', Manifest::get('tasks.web.platform', 'linux/amd64'),
+            '--platform', 'linux/amd64',
             '--file', Paths::build('Dockerfile'),
             '--cache-from', "$repository:latest",
             '--cache-to', 'type=inline',

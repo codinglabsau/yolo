@@ -35,30 +35,6 @@ describe('validatePositiveInt', function (): void {
     })->throws(IntegrityCheckException::class);
 });
 
-describe('validateCloudWatchLogRetention', function (): void {
-    it('accepts valid retention values', function (): void {
-        foreach ([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 2192, 2557, 2922, 3288, 3653] as $valid) {
-            expect(Helpers::validateCloudWatchLogRetention($valid, 'k'))->toBe($valid);
-        }
-    });
-
-    it('accepts numeric strings of valid values', function (): void {
-        expect(Helpers::validateCloudWatchLogRetention('30', 'k'))->toBe(30);
-    });
-
-    it('rejects values not in the enum', function (): void {
-        Helpers::validateCloudWatchLogRetention(45, 'tasks.web.log-retention');
-    })->throws(IntegrityCheckException::class, 'tasks.web.log-retention must be one of CloudWatch Logs retention values');
-
-    it('rejects zero', function (): void {
-        Helpers::validateCloudWatchLogRetention(0, 'k');
-    })->throws(IntegrityCheckException::class);
-
-    it('rejects garbage', function (): void {
-        Helpers::validateCloudWatchLogRetention('forever', 'k');
-    })->throws(IntegrityCheckException::class);
-});
-
 describe('validateStrictBool', function (): void {
     it('accepts true', function (): void {
         expect(Helpers::validateStrictBool(true, 'k'))->toBeTrue();

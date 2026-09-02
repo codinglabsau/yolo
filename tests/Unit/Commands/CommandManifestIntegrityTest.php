@@ -297,7 +297,7 @@ it('accepts the known shape of every task group', function (): void {
         'domain' => 'example.com',
         'tasks' => [
             'web' => [
-                'cpu' => '512', 'memory' => '1024', 'platform' => 'linux/amd64',
+                'cpu' => '512', 'memory' => '1024',
                 'enable-execute-command' => true, 'shutdown-grace-period' => 10, 'ssr' => true,
                 'health-check' => ['timeout' => 8], 'autoscaling' => ['min' => 1, 'max' => 4],
             ],

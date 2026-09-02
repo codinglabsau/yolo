@@ -3,7 +3,6 @@
 namespace Codinglabs\Yolo\Resources\CloudWatchLogs;
 
 use Codinglabs\Yolo\Aws;
-use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Aws\CloudWatchLogs;
@@ -90,10 +89,7 @@ class TaskLogGroup implements Deletable, Resource
 
     public function retentionInDays(): int
     {
-        return Helpers::validateCloudWatchLogRetention(
-            Manifest::get('tasks.web.log-retention', 30),
-            'tasks.web.log-retention',
-        );
+        return 30;
     }
 
     public function currentRetentionInDays(): ?int
