@@ -52,10 +52,11 @@ App manifests declare what each **app** needs. The environment-shared tier has a
 - **`yolo-environment-{environment}.yml`** — [the env manifest](/reference/manifest#the-environment-manifest-yolo-environment-environment-yml): the environment's canonical service domain and its env-shared services. `yolo.yml` is the app; `yolo-environment-production.yml` is the production environment. Seeded with defaults by the environment's first `sync` and **never touched by sync again** — every later edit is yours, made through the pull/push flow below.
 - **`.env`** — the env-shared secrets channel, the environment-tier sibling of each app's `.env.{environment}`. It holds *generated* service secrets (created on demand by the services that need them) and anything an env-shared service should read at provision time.
 
-The bucket carries two more classes of object that are **not** yours to edit, both YOLO-owned:
+The bucket carries three more classes of object that are **not** yours to edit, all YOLO-owned:
 
 - **`apps/{app}.yml`** — each app's services file (the app's name and the [`services`](/reference/manifest#services) it uses). Every `deploy` and every `sync:app` rewrites it, so the environment always knows which apps are using which shared services.
 - **`env/.env.{app}`** — each app's *environment-side `.env`*: YOLO-minted per-app secrets, one file per app. Today that's the app's scoped [Typesense](/guide/services#typesense-the-environment-s-search-cluster) key, minted by `sync:app` and merged into the app's build. It lives here, not in the app's developer `.env`, precisely so the admin tier running `sync` (fenced from the per-app config buckets) can mint it — and so each app's build reads only its own key, never the env-shared `.env`'s admin key or a sibling's.
+- **`yolo-version`** — the environment's **version-of-record**: the newest tagged `codinglabsau/yolo` release that has run `sync:environment` here (a `dev-*` pin never advances it, and an older release never lowers it). Sync's drift checks are only as current as the CLI running them, so a checkout with a stale vendor can plan against a newer environment and read "in sync" simply because it doesn't know about newer checks — every `sync` / `sync:app` compares its own version to the marker and **warns loudly** on the plan when it's provably older. A warning, never a refusal: an older CLI's writes are still valid; it's the silence that misleads.
 
 The edit flow mirrors app env files:
 

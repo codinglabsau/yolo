@@ -212,18 +212,19 @@ class Typesense extends ServiceDefinition
             // isn't yet associated with a load balancer, and a target group only
             // becomes associated once a listener rule forwards to it. So the target
             // group, the env-domain cert (which also bootstraps the shared :443
-            // listener — the service owns its ingress, never waiting on an app) and
-            // the search.{domain} rule all precede the node services. /health then
-            // doubles as readiness, dropping a catching-up node out of rotation
-            // while the quorum keeps serving.
+            // listener — the service owns its ingress, never waiting on an app),
+            // the search.{domain} rule AND the Route 53 alias all precede the node
+            // services — the alias needs nothing but the ALB, and the nodes step's
+            // roll gate probes the public search host, so the host must resolve
+            // before any node is rolled (a domain change would otherwise roll
+            // against a record that doesn't exist yet and abort every time).
             Steps\Sync\Environment\SyncSearchTargetGroupStep::class,
             Steps\Sync\Environment\SyncSearchCertificateStep::class,
             Steps\Sync\Environment\SyncSearchListenerRuleStep::class,
+            Steps\Sync\Environment\SyncSearchRecordSetStep::class,
             Steps\Sync\Environment\SyncTypesenseTaskDefinitionStep::class,
             Steps\Sync\Environment\SyncTypesenseNodesStep::class,
-            // The Route 53 alias + the healthy-host alarms follow — neither gates
-            // service creation.
-            Steps\Sync\Environment\SyncSearchRecordSetStep::class,
+            // The healthy-host alarms follow — they gate nothing.
             Steps\Sync\Environment\SyncTypesenseAlarmsStep::class,
         ];
     }
@@ -498,10 +499,19 @@ class Typesense extends ServiceDefinition
      * The wrapper takes DNS out of Typesense's hands entirely: it resolves the
      * baked hostname peer list itself and (re)writes the nodes file Typesense
      * watches only when EVERY peer resolves, so a failed or partial round
-     * leaves the last-known-good membership standing. Boot blocks until the
-     * full peer set resolves once — a node that can't see its peers can't form
-     * a quorum anyway, and /health stays red while it waits. A stale IP after
-     * a task replacement heals on the next successful round.
+     * leaves the last-known-good membership standing.
+     *
+     * Boot is the deliberate exception to fail-closed: a dead sibling has no
+     * DNS record, so "wait until every peer resolves" deadlocks every
+     * replacement node exactly when the cluster most needs one — no record,
+     * no boot; no boot, no record. Booting needs only enough to JOIN: this
+     * node's own address (so it can identify itself in the peer list) plus at
+     * least one other peer — a node that boots on that partial list converges
+     * on the next full refresh round. Below that floor the gate never opens:
+     * past a bounded window the entrypoint EXITS for a fresh task rather than
+     * proceed, because a below-quorum peer list is worse than a restart — a
+     * self-only list can elect a one-node raft over an empty ephemeral disk,
+     * the exact fresh-empty-cluster failure this wrapper exists to prevent.
      */
     public static function entrypointScript(): string
     {
@@ -517,12 +527,15 @@ class Typesense extends ServiceDefinition
         readonly PEERS_FILE=/etc/typesense/peers
         readonly NODES_FILE=/etc/typesense/nodes
         readonly REFRESH_SECONDS=15
+        readonly BOOT_TIMEOUT_SECONDS=120
 
-        # Resolve every baked host:peering:api entry to ip:peering:api. Prints
-        # the full comma-joined list only when every host resolved; any miss
-        # returns non-zero so the caller leaves the nodes file untouched.
-        resolve_all() {
-            local entries entry host ports ip resolved=()
+        # Resolve every baked host:peering:api entry to ip:peering:api, printing
+        # the comma-joined entries that DID resolve. Exit status is the contract:
+        # 0 only when every host resolved — the refresh loop keys off it so a
+        # partial round never rewrites standing membership; the boot gate reads
+        # the partial output instead.
+        resolve_peers() {
+            local entries entry host ports ip resolved=() missed=0
 
             IFS=',' read -ra entries < "$PEERS_FILE"
 
@@ -532,13 +545,51 @@ class Typesense extends ServiceDefinition
                 ip=$(getent ahostsv4 "$host" | awk '{ print $1; exit }') || true
 
                 if [[ -z ${ip:-} ]]; then
-                    return 1
+                    missed=1
+                    continue
                 fi
 
                 resolved+=("$ip:$ports")
             done
 
-            (IFS=','; printf '%s' "${resolved[*]}")
+            if (( ${#resolved[@]} > 0 )); then
+                (IFS=','; printf '%s' "${resolved[*]}")
+            fi
+
+            return "$missed"
+        }
+
+        # This task's own interface addresses, space-separated. ECS (awsvpc)
+        # writes the task IP against the container hostname in /etc/hosts, so
+        # the getent fallback holds even where hostname -I is unavailable.
+        local_addresses() {
+            hostname -I 2>/dev/null || getent hosts "$(hostname)" | awk '{ printf "%s ", $1 }'
+        }
+
+        # Whether a (possibly partial) resolved list is enough to BOOT on: it
+        # names this node itself — an entry resolving to a local address, so
+        # Typesense can identify itself in the peer list — plus at least one
+        # other peer to join. Anything less and we keep waiting (bounded).
+        bootable() {
+            local entries entry ip self=0 others=0 locals
+
+            [[ -z $1 ]] && return 1
+
+            locals=" $(local_addresses) "
+
+            IFS=',' read -ra entries <<< "$1"
+
+            for entry in "${entries[@]}"; do
+                ip=${entry%%:*}
+
+                if [[ $locals == *" $ip "* ]]; then
+                    self=1
+                else
+                    others=$(( others + 1 ))
+                fi
+            done
+
+            (( self == 1 && others >= 1 ))
         }
 
         # Atomic same-filesystem replace so Typesense never reads a partial file.
@@ -548,8 +599,31 @@ class Typesense extends ServiceDefinition
             fi
         }
 
-        until nodes=$(resolve_all); do
-            echo "typesense-entrypoint: waiting for every peer in $PEERS_FILE to resolve" >&2
+        # Boot gate: self + at least one other peer — enough to join. Requiring
+        # the FULL set here would deadlock on a dead sibling (no task, no DNS
+        # record), so full-set discipline belongs to the refresh loop alone.
+        # But below the join floor the gate never opens: past the bounded
+        # window, exit for a fresh task instead — a below-quorum nodes file is
+        # worse than a restart, because a self-only list can elect a one-node
+        # raft over an empty ephemeral disk.
+        boot_deadline=$(( SECONDS + BOOT_TIMEOUT_SECONDS ))
+
+        while true; do
+            if nodes=$(resolve_peers); then
+                break
+            fi
+
+            if bootable "$nodes"; then
+                echo "typesense-entrypoint: booting on a partial peer list ($nodes) — the refresh loop restores full membership as the rest resolve" >&2
+                break
+            fi
+
+            if (( SECONDS >= boot_deadline )); then
+                echo "typesense-entrypoint: boot gate timed out after ${BOOT_TIMEOUT_SECONDS}s without this node plus a peer resolving (got: ${nodes:-nothing}) — exiting for a fresh task rather than forming a below-quorum cluster" >&2
+                exit 1
+            fi
+
+            echo "typesense-entrypoint: waiting for this node plus at least one peer in $PEERS_FILE to resolve" >&2
             sleep 5
         done
 
@@ -559,7 +633,7 @@ class Typesense extends ServiceDefinition
             while true; do
                 sleep "$REFRESH_SECONDS"
 
-                if nodes=$(resolve_all); then
+                if nodes=$(resolve_peers); then
                     write_if_changed "$nodes"
                 fi
             done

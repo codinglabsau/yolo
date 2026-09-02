@@ -6,6 +6,7 @@ use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServerGroup;
+use Codinglabs\Yolo\EnvironmentVersion;
 use Codinglabs\Yolo\Resources\Route53\HostedZone;
 
 /**
@@ -53,6 +54,7 @@ class SyncAppCommand extends SyncSteppedCommand
     public function warnings(): array
     {
         return array_filter([
+            ...EnvironmentVersion::skewWarnings(),
             static::schedulerDisabledWarning(),
             static::schedulerAdvisory(),
             $this->hostedZoneOwnershipWarning(),
