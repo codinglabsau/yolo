@@ -22,18 +22,17 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * {@see WebConcurrencyPolicy} default, for the sudden spike the ~60s CloudWatch
  * metric floor can't catch in time. Not a knob — like the concurrency and CPU
  * policies it's just part of the scaling machinery, provisioned wherever web
- * autoscaling is. The signal is FrankenPHP's worker metrics, which only the worker
- * mode (Octane) populates — but it needs no gate: a classic-mode web tier simply
- * never emits the metric, so the alarm sits inert (INSUFFICIENT_DATA) and burst is
- * a no-op there. Nothing to switch on.
+ * autoscaling is, in either serving mode. Nothing to switch on.
  *
  * The target-tracking policies scale on ALB metrics, which are 1-minute resolution
  * — a good signal, but ~1 min behind. This pairs a **step-scaling policy** with a
  * **high-resolution CloudWatch alarm** on a worker-saturation metric the container
- * emits itself: each web task reports its FrankenPHP busy/total worker ratio (an
- * *earlier* signal than the ALB — workers queue before latency even climbs) as a
- * high-res metric, only while it's hot. The alarm evaluates the most-saturated task
- * every 10s and steps the desired count out. Detection drops from ~60s to ~10–15s.
+ * emits itself: each web task reports how full its request pool is — in-flight
+ * requests over the Octane worker pool, or busy threads over the classic thread
+ * ceiling (an *earlier* signal than the ALB — requests queue before latency even
+ * climbs) — as a high-res metric, only while it's hot. The alarm evaluates the
+ * most-saturated task every 10s and steps the desired count out. Detection drops from
+ * ~60s to ~10–15s.
  *
  * The metric is published in real time via PutMetricData — the runtime worker-
  * saturation reporter ({@see WorkerSaturationReporter}),
@@ -47,10 +46,11 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * and whose extraction is async, so an EMF datapoint surfaces on a cadence you don't
  * control. The task role carries a single namespace-scoped `cloudwatch:PutMetricData`
  * grant ({@see EcsTaskPolicy}). FrankenPHP's metrics
- * endpoint is enabled by a Caddyfile YOLO generates (the app's Octane stub plus the
- * top-level `metrics` global option) and runs via `octane:start --caddyfile` — Octane
- * overwrites `CADDY_GLOBAL_OPTIONS`, so a task env var can't switch it on. Built only
- * for an autoscaling Octane web tier.
+ * endpoint is enabled by a Caddyfile YOLO generates with the top-level `metrics`
+ * global option — the app's Octane stub run via `octane:start --caddyfile` (Octane
+ * overwrites `CADDY_GLOBAL_OPTIONS`, so a task env var can't switch it on), or the
+ * classic-mode Caddyfile YOLO already writes for the thread bounds. Built only for an
+ * autoscaling web tier.
  *
  * Scale-*in* is left entirely to the target-tracking policies (slow, safe) — this
  * is scale-out only, so it can only ever add capacity faster, never fight them.
@@ -90,6 +90,15 @@ class WebBurstPolicy
      * default that holds across the realistic 4–16 worker range rather than a derived one.
      */
     public const int ALARM_THRESHOLD = 70;
+
+    /**
+     * The saturation a classic tier publishes while FrankenPHP reports a request
+     * queued for a thread — the burst condition outright, whatever busy ÷ ceiling
+     * says (the thread autoscaler may still be growing the pool toward it). Past the
+     * alarm's strict `>` threshold but inside the +1 step band, so one queued request
+     * earns one task; a deeper ratio still lands the bigger step on its own.
+     */
+    public const int QUEUED_SATURATION = 75;
 
     /**
      * The reporter only publishes at or above this saturation %, so the metric (and its

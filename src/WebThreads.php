@@ -11,7 +11,10 @@ use Codinglabs\Yolo\Enums\ServerGroup;
  * (`num_threads`) and the ceiling its own thread autoscaler may grow to
  * (`max_threads`) — emitted into the generated Caddyfile by
  * {@see Steps\Build\Fargate\GenerateSupervisorConfigStep} and read as the tier's
- * concurrency ceiling by {@see WebConcurrency}.
+ * concurrency ceiling by {@see WebConcurrency}. The ceiling is also the burst
+ * reporter's saturation denominator, injected on the task definition as
+ * YOLO_BURST_THREADS: FrankenPHP's own total_threads gauge reports the floor, not the
+ * count the thread autoscaler has grown to, so a scrape can't stand in for it.
  *
  * Classic mode (`tasks.web.octane: false`) boots the framework per request, so a
  * thread is not the resident app copy an Octane worker is ({@see WebWorkers}) — it

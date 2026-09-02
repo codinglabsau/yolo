@@ -510,7 +510,7 @@ YOLO manages the ECS task and execution roles for you — the task role is per-a
 | `autoscaling.scale-out-cooldown` | `60` | Seconds between scale-out steps (both policies). |
 | `autoscaling.scale-in-cooldown` | `300` | Seconds between scale-in steps, both policies (kept conservative). |
 
-There's no `burst` knob: real-time [burst scale-out](/guide/scaling#faster-scale-out-burst) (a high-res worker-saturation alarm + step policy, ~10s spike detection) is just part of how web autoscaling works — provisioned with the scalable target, like the concurrency and CPU policies (a classic-mode tier never emits the signal, so it's a no-op there).
+There's no `burst` knob: real-time [burst scale-out](/guide/scaling#faster-scale-out-burst) (a high-res worker-saturation alarm + step policy, ~10s spike detection) is just part of how web autoscaling works — provisioned with the scalable target, like the concurrency and CPU policies, in either serving mode.
 
 The request-concurrency policy itself has no manifest knob: its target is the task's pinned worker pool (`16 × vCPU`, capped by memory) at 70% utilisation (see [Scaling](/guide/scaling#how-the-concurrency-target-is-derived)).
 

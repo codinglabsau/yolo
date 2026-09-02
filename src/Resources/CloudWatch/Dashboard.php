@@ -189,10 +189,9 @@ class Dashboard implements Deletable
         return [
             'region' => Manifest::get('region'),
             'web' => $web,
-            // The burst worker-saturation metric only exists on an autoscaling
-            // Octane web tier (classic mode never emits it), so the Worker
-            // saturation panel — and its burst threshold line — is drawn only
-            // there. Same gate the runtime reporter and Caddyfile key off.
+            // The burst saturation metric only exists on an autoscaling web tier,
+            // so the Worker saturation panel — and its burst threshold line — is
+            // drawn only there. Same gate the runtime reporter and Caddyfile key off.
             'burst' => $web && Manifest::usesMetricsCaddyfile(),
             'clusterName' => $web ? (new EcsCluster())->name() : null,
             'serviceName' => $web ? (new EcsService())->name() : null,

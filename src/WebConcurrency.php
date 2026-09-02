@@ -17,7 +17,8 @@ namespace Codinglabs\Yolo;
  * ({@see WebThreads}). Resolving it here keeps the scaling signal honest about the
  * capacity the task actually runs: reading the Octane pool on a classic tier would
  * target-track a ceiling that doesn't exist, and reading the classic floor would
- * scale out against a fraction of the real one.
+ * scale out against a fraction of the real one. The burst path divides by the same
+ * ceiling in both modes — see {@see Runtime\WorkerSaturationReporter}.
  */
 final class WebConcurrency
 {

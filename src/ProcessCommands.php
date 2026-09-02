@@ -65,7 +65,8 @@ class ProcessCommands
         // a custom Caddyfile: GenerateSupervisorConfigStep writes the app's own Octane stub
         // with the top-level `metrics` global option added to docker/Caddyfile, and
         // --caddyfile runs it.
-        // Web autoscaling only; classic mode returned above and never reaches here.
+        // Web autoscaling only. Classic mode returned above: its generated Caddyfile
+        // carries the same option and is already the file `run --config` loads.
         if (Manifest::usesMetricsCaddyfile()) {
             $command .= ' --caddyfile=' . self::CADDYFILE;
         }

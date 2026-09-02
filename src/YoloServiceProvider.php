@@ -25,8 +25,8 @@ use Codinglabs\Yolo\Steps\Build\Fargate\CheckYoloInstalledStep;
  * YOLO's runtime service provider — auto-discovered, it boots with the deployed app
  * ({@see CheckYoloInstalledStep} guarantees
  * YOLO ships as a production dependency). Its job today: on the autoscaling web
- * tier, publish FrankenPHP worker saturation for burst step-scaling from an
- * after-response hook ($app->terminating).
+ * tier, publish FrankenPHP pool saturation for burst step-scaling from an
+ * after-response hook ($app->terminating), in either serving mode.
  *
  * It is inert everywhere else. The YOLO_BURST_* environment is set only on the web
  * task definition ({@see SyncTaskDefinitionStep}),
@@ -67,6 +67,7 @@ class YoloServiceProvider extends ServiceProvider
             inFlight: $this->app->make(InFlightRequests::class),
             serviceName: $this->burstService(),
             taskId: $this->taskId(),
+            threadCeiling: $this->burstThreads(),
         ));
     }
 
@@ -178,6 +179,19 @@ class YoloServiceProvider extends ServiceProvider
     private function burstCpu(): float
     {
         return (float) config('yolo.burst.cpu');
+    }
+
+    /**
+     * The classic tier's thread ceiling (`max_threads`), injected on the web task-def
+     * alongside the service name — the saturation denominator there, since the scraped
+     * `total_threads` gauge reports the floor rather than what the pool may grow to.
+     * Absent on an Octane tier, whose pool size arrives with every scrape.
+     */
+    private function burstThreads(): ?int
+    {
+        $threads = (int) config('yolo.burst.threads');
+
+        return $threads > 0 ? $threads : null;
     }
 
     private function region(): string

@@ -12,6 +12,15 @@ uses(TestbenchCase::class);
 
 afterEach(function (): void {
     putenv('YOLO_BURST_SERVICE');
+    putenv('YOLO_BURST_THREADS');
+});
+
+it('reads the classic-mode thread ceiling from the injected env', function (): void {
+    putenv('YOLO_BURST_SERVICE=svc');
+    putenv('YOLO_BURST_THREADS=16');
+    $this->refreshApplication();
+
+    expect(config('yolo.burst.threads'))->toBe('16');
 });
 
 it('registers nothing when no burst service is set', function (): void {
