@@ -21,10 +21,10 @@ use Codinglabs\Yolo\Contracts\SkippedByDeployCheck;
  *
  * Skipped by the deploy gate and audit: a version bump reading as drift would
  * block every deploy until an admin syncs — backwards pressure for a
- * bookkeeping write; the skew WARNING on every sync plan is the guard rail. A
- * direct admin `sync --check` is NOT skipped and goes red after a release bump
- * until an admin applies a sync — deliberate: the pressure lands on the admin
- * who upgraded, never on app deploys.
+ * bookkeeping write; the refusal of an OLDER CLI's env/account-tier writes is
+ * the guard rail. A direct admin `sync --check` is NOT skipped and goes red after a
+ * release bump until an admin applies a sync — deliberate: the pressure lands
+ * on the admin who upgraded, never on app deploys.
  */
 class SyncEnvironmentVersionStep implements SkippedByDeployCheck, Step
 {

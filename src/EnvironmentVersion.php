@@ -9,9 +9,12 @@ use Aws\S3\Exception\S3Exception;
 /**
  * The newest YOLO release that has synced the environment, stamped as a marker object in the
  * env config bucket. Catches silent version skew: a stale checkout can run an OLD binary
- * against an environment a NEWER release reconciled and report "in sync" only because it
- * doesn't know the newer checks. Advisory only ({@see skewWarnings}) — an older CLI's writes
- * are still valid; it's its silence that misleads. Only tagged releases advance the stamp.
+ * against an environment a NEWER release reconciled, plan "in sync" because it doesn't know
+ * the newer checks, and reconcile a newer default back to its old value. A provably older
+ * CLI is refused only when its plan would write a guarded (account / environment) tier
+ * ({@see Commands\Command::ensureCliMayApply}); the app tier only warns ({@see skewWarnings}),
+ * since an app pin lagging the environment is the normal state between releases. Only
+ * tagged releases advance the stamp.
  */
 class EnvironmentVersion
 {
@@ -22,8 +25,8 @@ class EnvironmentVersion
 
     /**
      * Null when never stamped or when the marker can't be read (no bucket on a greenfield plan
-     * pass, a tier fenced from the bucket). The broad swallow is deliberate: advisory, never
-     * load-bearing.
+     * pass, a tier fenced from the bucket). The broad swallow is deliberate — an unreadable
+     * marker fails open, so a fenced read-only tier is never refused for what it can't see.
      */
     public static function stamped(): ?string
     {
@@ -57,31 +60,42 @@ class EnvironmentVersion
     }
 
     /**
-     * Never a refusal; silent when either side is unordered (a dev pin, an unstamped env).
-     *
-     * @return array<int, string>
+     * The stamped release this CLI is provably behind, or null when it's current or when
+     * either side is unordered (a dev pin, an unstamped or unreadable environment).
      */
-    public static function skewWarnings(?string $cliVersion = null): array
+    public static function outrunBy(?string $cliVersion = null): ?string
     {
         $cli = $cliVersion ?? Helpers::version();
 
         if (! Helpers::isReleaseVersion($cli)) {
-            return [];
+            return null;
         }
 
         $stamped = static::stamped();
 
         if ($stamped === null || ! Helpers::isReleaseVersion($stamped)) {
-            return [];
+            return null;
         }
 
-        if (version_compare(ltrim($cli, 'v'), ltrim($stamped, 'v'), '>=')) {
+        return version_compare(ltrim($cli, 'v'), ltrim($stamped, 'v'), '<') ? $stamped : null;
+    }
+
+    /**
+     * The app tier's advisory form of the skew check.
+     *
+     * @return array<int, string>
+     */
+    public static function skewWarnings(?string $cliVersion = null): array
+    {
+        $stamped = static::outrunBy($cliVersion);
+
+        if ($stamped === null) {
             return [];
         }
 
         return [sprintf(
             'This yolo CLI (%s) is OLDER than the release that last synced this environment (%s) — its checks predate that release, so this plan can read "in sync" while missing work a current CLI would flag. Update codinglabsau/yolo in this checkout before trusting it.',
-            $cli,
+            $cliVersion ?? Helpers::version(),
             $stamped,
         )];
     }

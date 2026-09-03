@@ -29,18 +29,24 @@ class SyncCommand extends SyncSteppedCommand
         return parent::handle();
     }
 
-    /**
-     * Deduplicated — an advisory both tiers raise (the version-skew warning) should
-     * read once, not once per tier.
-     */
     #[\Override]
     public function warnings(): array
     {
-        return array_values(array_unique([
+        return [
             ...(new SyncAccountCommand())->warnings(),
             ...(new SyncEnvironmentCommand())->warnings(),
             ...(new SyncAppCommand())->warnings(),
-        ]));
+        ];
+    }
+
+    #[\Override]
+    public function guardedScopes(): array
+    {
+        return [
+            ...(new SyncAccountCommand())->guardedScopes(),
+            ...(new SyncEnvironmentCommand())->guardedScopes(),
+            ...(new SyncAppCommand())->guardedScopes(),
+        ];
     }
 
     /**

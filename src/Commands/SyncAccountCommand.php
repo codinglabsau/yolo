@@ -15,6 +15,12 @@ class SyncAccountCommand extends SyncSteppedCommand
             ->setDescription('Sync the account-global resources (shared across every environment)');
     }
 
+    #[\Override]
+    public function guardedScopes(): array
+    {
+        return array_keys($this->scopes());
+    }
+
     public function scopes(): array
     {
         return [

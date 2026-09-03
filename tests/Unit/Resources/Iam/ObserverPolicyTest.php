@@ -155,11 +155,13 @@ it('scopes s3 object reads to the env-shared config only — never secrets', fun
     $objectStatement = collect((new ObserverPolicy())->document()['Statement'])
         ->first(fn (array $s): bool => in_array('s3:GetObject', (array) $s['Action'], true));
 
-    // GetObject is granted on exactly the env manifest + app claim files — config,
-    // not secrets. The env-shared `.env` (bucket root) is never in scope.
+    // GetObject is granted on exactly the env manifest, app claim files and the
+    // version marker (the skew check's read) — config, not secrets. The env-shared
+    // `.env` (bucket root) is never in scope.
     expect($objectStatement['Resource'])->toBe([
         'arn:aws:s3:::yolo-111111111111-testing-config/yolo-environment-testing.yml',
         'arn:aws:s3:::yolo-111111111111-testing-config/apps/*',
+        'arn:aws:s3:::yolo-111111111111-testing-config/yolo-version',
     ]);
 
     expect($objectStatement['Resource'])->not->toContain('arn:aws:s3:::yolo-111111111111-testing-config/.env');

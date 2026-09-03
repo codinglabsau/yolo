@@ -10,6 +10,7 @@ use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\EnvManifest;
 use Aws\Iam\Exception\IamException;
+use Codinglabs\Yolo\EnvironmentVersion;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
@@ -250,12 +251,14 @@ class ObserverPolicy implements Deletable, Resource, SynchronisesConfiguration
                     ],
                 ],
                 [
-                    // Object reads on the env manifest and app claim files only — the
-                    // env-shared `.env` and every other secret are deliberately absent.
+                    // Object reads on the env manifest, app claim files and the
+                    // environment's version-of-record only — the env-shared `.env` and
+                    // every other secret are deliberately absent.
                     'Effect' => 'Allow',
                     'Resource' => [
                         sprintf('arn:aws:s3:::%s/%s', $envConfigBucket, EnvManifest::filename()),
                         sprintf('arn:aws:s3:::%s/apps/*', $envConfigBucket),
+                        sprintf('arn:aws:s3:::%s/%s', $envConfigBucket, EnvironmentVersion::MARKER_KEY),
                     ],
                     'Action' => [
                         's3:GetObject',
