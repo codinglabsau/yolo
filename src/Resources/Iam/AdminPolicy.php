@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\EnvManifest;
 use Aws\Iam\Exception\IamException;
+use Codinglabs\Yolo\EnvironmentVersion;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
@@ -287,13 +288,15 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                     'Action' => ['s3:DeleteObject', 's3:DeleteObjectVersion'],
                 ],
                 [
-                    // The env manifest and every app's claim file (`apps/*` — env-scoped
-                    // admin syncs every app). The per-app developer `.env` lives in the
-                    // per-app config bucket and is never granted here.
+                    // The env manifest, every app's claim file (`apps/*` — env-scoped
+                    // admin syncs every app) and the environment's version-of-record.
+                    // The per-app developer `.env` lives in the per-app config bucket and
+                    // is never granted here.
                     'Effect' => 'Allow',
                     'Resource' => [
                         sprintf('arn:aws:s3:::%s/%s', $envConfigBucket, EnvManifest::filename()),
                         sprintf('arn:aws:s3:::%s/apps/*', $envConfigBucket),
+                        sprintf('arn:aws:s3:::%s/%s', $envConfigBucket, EnvironmentVersion::MARKER_KEY),
                     ],
                     'Action' => ['s3:PutObject'],
                 ],

@@ -17,7 +17,11 @@ class SyncCommand extends SyncSteppedCommand
     public function handle(): int
     {
         // sync composes the tier commands' scopes but not their handle(), so the
-        // app tier's gates are re-applied here.
+        // tiers' gates are re-applied here.
+        if (! $this->ensureCliNotOlderThanEnvironment()) {
+            return self::FAILURE;
+        }
+
         if (! $this->ensureClaimedServicesOffered()) {
             return self::FAILURE;
         }
@@ -29,18 +33,14 @@ class SyncCommand extends SyncSteppedCommand
         return parent::handle();
     }
 
-    /**
-     * Deduplicated — an advisory both tiers raise (the version-skew warning) should
-     * read once, not once per tier.
-     */
     #[\Override]
     public function warnings(): array
     {
-        return array_values(array_unique([
+        return [
             ...(new SyncAccountCommand())->warnings(),
             ...(new SyncEnvironmentCommand())->warnings(),
             ...(new SyncAppCommand())->warnings(),
-        ]));
+        ];
     }
 
     /**

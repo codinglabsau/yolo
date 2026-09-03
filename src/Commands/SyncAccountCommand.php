@@ -15,6 +15,16 @@ class SyncAccountCommand extends SyncSteppedCommand
             ->setDescription('Sync the account-global resources (shared across every environment)');
     }
 
+    #[\Override]
+    public function handle(): int
+    {
+        if (! $this->ensureCliNotOlderThanEnvironment()) {
+            return self::FAILURE;
+        }
+
+        return parent::handle();
+    }
+
     public function scopes(): array
     {
         return [

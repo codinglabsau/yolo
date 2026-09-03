@@ -7,7 +7,6 @@ namespace Codinglabs\Yolo\Commands;
 use Codinglabs\Yolo\Steps;
 use Codinglabs\Yolo\EnvManifest;
 use Codinglabs\Yolo\Enums\Service;
-use Codinglabs\Yolo\EnvironmentVersion;
 use Codinglabs\Yolo\Services\Lifecycle;
 
 /**
@@ -24,12 +23,19 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
     }
 
     #[\Override]
+    public function handle(): int
+    {
+        if (! $this->ensureCliNotOlderThanEnvironment()) {
+            return self::FAILURE;
+        }
+
+        return parent::handle();
+    }
+
+    #[\Override]
     public function warnings(): array
     {
-        return [
-            ...EnvironmentVersion::skewWarnings(),
-            ...static::idleServiceWarnings(),
-        ];
+        return static::idleServiceWarnings();
     }
 
     /**

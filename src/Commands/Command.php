@@ -10,9 +10,11 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Iam;
 use Aws\Credentials\Credentials;
 use Codinglabs\Yolo\Audit\Audit;
+use Codinglabs\Yolo\DeployCheck;
 use Codinglabs\Yolo\EnvManifest;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServerGroup;
+use Codinglabs\Yolo\EnvironmentVersion;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Concerns\RegistersAws;
 use Codinglabs\Yolo\Contracts\AdminCommand;
@@ -542,6 +544,42 @@ abstract class Command extends SymfonyCommand
         ));
 
         return false;
+    }
+
+    /**
+     * An older release syncing an environment a newer one reconciled plans "in sync" for
+     * the checks it doesn't know and can walk a newer default back to its old value — so
+     * the env and account tiers refuse. The deploy gate and audit run `sync --check` on
+     * the app's pinned release, which lags the environment as a matter of course between
+     * releases, so they pass through to the app tier's warning instead. Unordered sides
+     * (a dev pin, an unstamped or unreadable marker) never refuse.
+     */
+    protected function ensureCliNotOlderThanEnvironment(): bool
+    {
+        if (DeployCheck::active()) {
+            return true;
+        }
+
+        $stamped = EnvironmentVersion::outrunBy($this->cliVersion());
+
+        if ($stamped === null) {
+            return true;
+        }
+
+        error(sprintf(
+            "This yolo CLI (%s) is OLDER than the release that last synced %s (%s) — its checks predate that release, so a sync from here could walk newer defaults back without flagging it.\nUpdate codinglabsau/yolo in this checkout (`composer update codinglabsau/yolo`) before syncing the environment.",
+            $this->cliVersion(),
+            Helpers::environment(),
+            $stamped,
+        ));
+
+        return false;
+    }
+
+    /** A seam: in a test run the real value is whatever pin the checkout is on. */
+    protected function cliVersion(): string
+    {
+        return Helpers::version();
     }
 
     protected function ensureNameDeclared(): bool
