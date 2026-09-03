@@ -8,6 +8,7 @@ use Aws\MockHandler;
 use Aws\S3\S3Client;
 use Codinglabs\Yolo\Aws\S3;
 use Codinglabs\Yolo\Helpers;
+use GuzzleHttp\Psr7\Response;
 use GuzzleHttp\Promise\Create;
 use Aws\S3\Exception\S3Exception;
 use GuzzleHttp\Promise\PromiseInterface;
@@ -76,4 +77,56 @@ it('returns the rules when a lifecycle configuration exists', function (): void 
     bindS3WrapperClient(fn ($cmd): PromiseInterface => Create::promiseFor(new Result(['Rules' => $rules])));
 
     expect(S3::lifecycleRules('yolo-111111111111-testing-logs'))->toBe($rules);
+});
+
+function s3AccessDenied(): S3Exception
+{
+    return new S3Exception('denied', new Command('PutObject'), ['code' => 'AccessDenied', 'response' => new Response(403)]);
+}
+
+it('retries an AccessDenied write while a just-widened policy propagates', function (): void {
+    $calls = 0;
+
+    $result = S3::retryWhilePermissionsPropagate(function () use (&$calls): string {
+        $calls++;
+
+        if ($calls < 3) {
+            throw s3AccessDenied();
+        }
+
+        return 'written';
+    }, maxAttempts: 5, sleepSeconds: 0);
+
+    expect($result)->toBe('written')
+        ->and($calls)->toBe(3);
+});
+
+it('gives up on a real permission gap once the window closes', function (): void {
+    $calls = 0;
+
+    $run = function () use (&$calls): void {
+        S3::retryWhilePermissionsPropagate(function () use (&$calls): string {
+            $calls++;
+
+            throw s3AccessDenied();
+        }, maxAttempts: 3, sleepSeconds: 0);
+    };
+
+    expect($run)->toThrow(S3Exception::class);
+    expect($calls)->toBe(3);
+});
+
+it('never retries a failure that propagation cannot explain', function (): void {
+    $calls = 0;
+
+    $run = function () use (&$calls): void {
+        S3::retryWhilePermissionsPropagate(function () use (&$calls): string {
+            $calls++;
+
+            throw new S3Exception('gone', new Command('PutObject'), ['code' => 'NoSuchBucket', 'response' => new Response(404)]);
+        }, maxAttempts: 5, sleepSeconds: 0);
+    };
+
+    expect($run)->toThrow(S3Exception::class);
+    expect($calls)->toBe(1);
 });
