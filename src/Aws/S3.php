@@ -11,6 +11,38 @@ use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 class S3
 {
+    /**
+     * Retrying AccessDenied normally masks a real permission gap. The carve-out mirrors
+     * {@see WafV2::retryWhileLoggingPermissionsPropagate}: sync widens its own tier's policy
+     * earlier in the same apply pass, and a new default policy version reaches the
+     * authorization plane seconds after the control-plane write — so the first sync of a
+     * release that adds a grant races that grant. A real gap still fails, just after the
+     * bounded window.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $operation
+     * @return T
+     */
+    public static function retryWhilePermissionsPropagate(callable $operation, int $maxAttempts = 5, int $sleepSeconds = 5): mixed
+    {
+        $attempt = 0;
+
+        while (true) {
+            try {
+                return $operation();
+            } catch (S3Exception $exception) {
+                $attempt++;
+
+                if ($attempt >= $maxAttempts || $exception->getAwsErrorCode() !== 'AccessDenied') {
+                    throw $exception;
+                }
+
+                sleep($sleepSeconds);
+            }
+        }
+    }
+
     public static function bucketExists(string $name): bool
     {
         return Aws::s3()->doesBucketExistV2($name);

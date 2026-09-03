@@ -128,3 +128,22 @@ it('treats an unreadable marker as unstamped — the read is advisory, never loa
     expect(EnvironmentVersion::stamped())->toBeNull()
         ->and(EnvironmentVersion::skewWarnings('1.2.0'))->toBeEmpty();
 });
+
+it('rides out the propagation of the grant it is racing', function (): void {
+    // The admin policy gains the marker's PutObject grant earlier in the same apply
+    // pass, so the first write of a release that widens the tier can land before IAM
+    // has caught up.
+    $captured = [];
+    bindRoutedS3Client([
+        'GetObject' => new S3Exception('missing', new Command('GetObject'), ['code' => 'NoSuchKey', 'response' => new Response(404)]),
+        'PutObject' => [
+            new S3Exception('denied', new Command('PutObject'), ['code' => 'AccessDenied', 'response' => new Response(403)]),
+            new Result([]),
+        ],
+    ], $captured);
+
+    EnvironmentVersion::stamp('1.2.0', sleepSeconds: 0);
+
+    expect(collect($captured)->where('name', 'PutObject'))->toHaveCount(2)
+        ->and(EnvironmentVersion::stamped())->toBe('1.2.0');
+});

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Codinglabs\Yolo;
 
+use Aws\Result;
+use Codinglabs\Yolo\Aws\S3;
 use Aws\S3\Exception\S3Exception;
 
 /**
@@ -48,13 +50,20 @@ class EnvironmentVersion
         return static::$stamped = ($version !== '' ? $version : null);
     }
 
-    public static function stamp(string $version): void
+    /**
+     * Retried through {@see S3::retryWhilePermissionsPropagate} because this write is the
+     * one that races its own grant: the marker is granted by key in the admin policy, and
+     * {@see Steps\Sync\Environment\SyncAdminPolicyStep} pushes a widened policy version
+     * earlier in the same apply pass — so the first sync of a release that adds a grant can
+     * reach here before IAM's authorization plane has caught up.
+     */
+    public static function stamp(string $version, int $maxAttempts = 5, int $sleepSeconds = 5): void
     {
-        Aws::s3()->putObject([
+        S3::retryWhilePermissionsPropagate(fn (): Result => Aws::s3()->putObject([
             'Bucket' => Paths::s3EnvConfigBucket(),
             'Key' => self::MARKER_KEY,
             'Body' => $version . "\n",
-        ]);
+        ]), $maxAttempts, $sleepSeconds);
 
         static::$stamped = $version;
     }
