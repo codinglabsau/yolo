@@ -13,6 +13,7 @@ use Codinglabs\Yolo\Audit\Audit;
 use Codinglabs\Yolo\DeployCheck;
 use Codinglabs\Yolo\EnvManifest;
 use Codinglabs\Yolo\Enums\Service;
+use Illuminate\Support\Collection;
 use Codinglabs\Yolo\Enums\ServerGroup;
 use Codinglabs\Yolo\EnvironmentVersion;
 use Codinglabs\Yolo\Resources\Resource;
@@ -547,16 +548,27 @@ abstract class Command extends SymfonyCommand
     }
 
     /**
-     * An older release syncing an environment a newer one reconciled plans "in sync" for
-     * the checks it doesn't know and can walk a newer default back to its old value — so
-     * the env and account tiers refuse. The deploy gate and audit run `sync --check` on
-     * the app's pinned release, which lags the environment as a matter of course between
-     * releases, so they pass through to the app tier's warning instead. Unordered sides
-     * (a dev pin, an unstamped or unreadable marker) never refuse.
+     * The harm an older CLI can do is the write, not the plan: reconciling a guarded
+     * tier it doesn't fully know can walk a newer default back to its old value. So the
+     * refusal keys on the plan — only a pending change in a {@see guardedScopes()} scope
+     * reads the version marker, and only a provably older CLI is refused. A clean guarded
+     * plan (or one pending only in an unguarded scope) proceeds without the read. The
+     * deploy gate and audit run `sync --check` on the app's pinned release, which lags the
+     * environment as a matter of course between releases, so they pass through to the app
+     * tier's warning instead. Unordered sides (a dev pin, an unstamped or unreadable
+     * marker) never refuse.
+     *
+     * @param  Collection<int, array{scope: string, status: mixed}>  $pending
      */
-    protected function ensureCliNotOlderThanEnvironment(): bool
+    protected function ensureCliMayApply(Collection $pending): bool
     {
         if (DeployCheck::active()) {
+            return true;
+        }
+
+        $guarded = $pending->filter(fn (array $entry): bool => in_array($entry['scope'], $this->guardedScopes(), true));
+
+        if ($guarded->isEmpty()) {
             return true;
         }
 
@@ -567,13 +579,28 @@ abstract class Command extends SymfonyCommand
         }
 
         error(sprintf(
-            "This yolo CLI (%s) is OLDER than the release that last synced %s (%s) — its checks predate that release, so a sync from here could walk newer defaults back without flagging it.\nUpdate codinglabsau/yolo in this checkout (`composer update codinglabsau/yolo`) before syncing the environment.",
+            "This yolo CLI (%s) is OLDER than the release that last synced %s (%s), and the plan holds %d pending change(s) in the %s tier — applying them from here could walk newer defaults back without flagging it.\nUpdate codinglabsau/yolo in this checkout (`composer update codinglabsau/yolo`) and re-run.",
             $this->cliVersion(),
             Helpers::environment(),
             $stamped,
+            $guarded->count(),
+            implode(' / ', $guarded->pluck('scope')->unique()->all()),
         ));
 
         return false;
+    }
+
+    /**
+     * Scope labels whose pending changes an older CLI must not apply — the tiers where
+     * a reconcile from a release that predates the environment can regress it. The
+     * account and environment tiers declare theirs; the app tier guards nothing (an
+     * app pin lagging the environment is the normal state between releases).
+     *
+     * @return array<int, string>
+     */
+    public function guardedScopes(): array
+    {
+        return [];
     }
 
     /** A seam: in a test run the real value is whatever pin the checkout is on. */

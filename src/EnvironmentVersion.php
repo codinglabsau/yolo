@@ -10,10 +10,11 @@ use Aws\S3\Exception\S3Exception;
  * The newest YOLO release that has synced the environment, stamped as a marker object in the
  * env config bucket. Catches silent version skew: a stale checkout can run an OLD binary
  * against an environment a NEWER release reconciled, plan "in sync" because it doesn't know
- * the newer checks, and reconcile a newer default back to its old value. The env and account
- * tiers refuse on provable skew ({@see Commands\Command::ensureCliNotOlderThanEnvironment});
- * the app tier only warns ({@see skewWarnings}), since an app pin lagging the environment is
- * the normal state between releases. Only tagged releases advance the stamp.
+ * the newer checks, and reconcile a newer default back to its old value. A provably older
+ * CLI is refused only when its plan would write a guarded (account / environment) tier
+ * ({@see Commands\Command::ensureCliMayApply}); the app tier only warns ({@see skewWarnings}),
+ * since an app pin lagging the environment is the normal state between releases. Only
+ * tagged releases advance the stamp.
  */
 class EnvironmentVersion
 {

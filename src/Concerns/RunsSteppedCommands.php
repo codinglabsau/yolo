@@ -65,6 +65,10 @@ trait RunsSteppedCommands
 
         $pending = $plan->filter(fn (array $entry): bool => static::planEntryHasWork($entry))->values();
 
+        if (! $this->ensureCliMayApply($pending)) {
+            return SymfonyCommand::FAILURE;
+        }
+
         // --check is a CI gate: exit non-zero on drift so a pipeline can fail on unsynced infra.
         if ($this->option('check')) {
             if ($pending->isNotEmpty()) {

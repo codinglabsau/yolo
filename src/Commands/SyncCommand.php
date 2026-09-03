@@ -17,11 +17,7 @@ class SyncCommand extends SyncSteppedCommand
     public function handle(): int
     {
         // sync composes the tier commands' scopes but not their handle(), so the
-        // tiers' gates are re-applied here.
-        if (! $this->ensureCliNotOlderThanEnvironment()) {
-            return self::FAILURE;
-        }
-
+        // app tier's gates are re-applied here.
         if (! $this->ensureClaimedServicesOffered()) {
             return self::FAILURE;
         }
@@ -40,6 +36,16 @@ class SyncCommand extends SyncSteppedCommand
             ...(new SyncAccountCommand())->warnings(),
             ...(new SyncEnvironmentCommand())->warnings(),
             ...(new SyncAppCommand())->warnings(),
+        ];
+    }
+
+    #[\Override]
+    public function guardedScopes(): array
+    {
+        return [
+            ...(new SyncAccountCommand())->guardedScopes(),
+            ...(new SyncEnvironmentCommand())->guardedScopes(),
+            ...(new SyncAppCommand())->guardedScopes(),
         ];
     }
 

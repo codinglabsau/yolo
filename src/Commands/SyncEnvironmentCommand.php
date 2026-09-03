@@ -23,13 +23,9 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
     }
 
     #[\Override]
-    public function handle(): int
+    public function guardedScopes(): array
     {
-        if (! $this->ensureCliNotOlderThanEnvironment()) {
-            return self::FAILURE;
-        }
-
-        return parent::handle();
+        return array_keys($this->scopes());
     }
 
     #[\Override]

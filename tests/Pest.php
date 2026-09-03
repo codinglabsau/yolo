@@ -936,6 +936,10 @@ function bindServiceLifecycleWorld(array $world, array &$captured): void
         $byKey['.env.environment.' . Helpers::environment()] = new Result(['Body' => $world['sharedEnv']]);
     }
 
+    if (($world['version'] ?? null) !== null) {
+        $byKey[EnvironmentVersion::MARKER_KEY] = new Result(['Body' => $world['version'] . "\n"]);
+    }
+
     // Each app's environment-side `.env` (env/.env.{app}) — the YOLO-minted
     // per-app secret channel the build merges and SyncTypesenseKeyStep reads
     // back as its idempotency marker. Routed by key alongside the claims, so a
