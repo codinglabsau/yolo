@@ -19,9 +19,11 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * Bootstrap is self-activating: the first sync of an environment runs on the
  * operator's profile and creates the role; every sync after mints it.
  *
- * Trust is the account root — any identity itself granted `sts:AssumeRole` may
- * assume it. TODO(review): tighten to the operator principal; decide whether the
- * write surface needs a permissions boundary (see AdminPolicy).
+ * Trust is the account root with MFA required — by design, not a shortcut. Same-account
+ * root trust still needs an `sts:AssumeRole` allow on the caller's own identity, so
+ * {@see AdminsGroup} membership is the gate; pinning principals here would only churn
+ * the trust document on every membership change. What the tier can do once assumed is
+ * {@see AdminPolicy}'s concern (see its threat model).
  */
 class AdminRole implements Deletable, Resource, SynchronisesConfiguration
 {

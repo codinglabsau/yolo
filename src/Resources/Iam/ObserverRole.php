@@ -17,9 +17,10 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * The read-only tier: carries {@see ObserverPolicy}, so a profile assuming it can
  * inspect exactly YOLO's services and nothing mutating — safe by construction.
  *
- * Trust is the account root — any identity itself granted `sts:AssumeRole` may
- * assume it, so that grant is the real gate. TODO(review): tighten to the specific
- * operator/agent principal once settled.
+ * Trust is the account root with MFA required — by design. Same-account root trust
+ * still needs an `sts:AssumeRole` allow on the caller's own identity, so
+ * {@see ObserversGroup} membership is the gate; pinning principals here would only
+ * churn the trust document on every membership change.
  */
 class ObserverRole implements Deletable, Resource, SynchronisesConfiguration
 {
