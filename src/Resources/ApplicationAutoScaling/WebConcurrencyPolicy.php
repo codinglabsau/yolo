@@ -26,6 +26,14 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * the web tier out even when more tasks won't help. `max` is the backstop — the CPU
  * policy won't cap it, since CPU stays low when the stall is downstream.
  *
+ * Scale-out only ({@see self::configuration()} sets DisableScaleIn): the same latency
+ * term makes the signal dip the moment a burst-added task starts serving, so the
+ * policy's scale-in alarm would read "over-provisioned" during the exact window the
+ * tier is recovering — and remove the task the burst alarm just added while that alarm
+ * is still in ALARM. Scale-in belongs to the CPU policy ({@see ScalingPolicy}), whose
+ * 15-minute evaluation can't fire mid-ramp. App Auto Scaling never creates a scale-in
+ * alarm for a policy with scale-in disabled, so there is nothing to prune.
+ *
  * Needs the ALB + target group for its dimensions, so SyncScalingPoliciesStep only
  * constructs it once they exist — deferring on a greenfield first sync rather than
  * throwing in the plan pass.
@@ -121,9 +129,9 @@ class WebConcurrencyPolicy implements TargetTrackingPolicy
                     ],
                 ],
             ],
-            // Shared with the CPU policy so one cooldown setting governs web scaling.
+            // Shared with the CPU policy so one cooldown setting governs web scale-out.
             'ScaleOutCooldown' => ScalingPolicy::scaleOutCooldown(),
-            'ScaleInCooldown' => ScalingPolicy::scaleInCooldown(),
+            'DisableScaleIn' => true,
         ];
     }
 
@@ -156,10 +164,13 @@ class WebConcurrencyPolicy implements TargetTrackingPolicy
             $changes[] = Change::make("{$this->policyName} ScaleOutCooldown", $currentOut, ScalingPolicy::scaleOutCooldown());
         }
 
-        $currentIn = isset($current['ScaleInCooldown']) ? (int) $current['ScaleInCooldown'] : null;
+        // An existing policy that omits the flag on read-back has scale-in enabled (the
+        // AWS default) — real drift, not phantom. ScaleInCooldown is deliberately not
+        // compared: it's inert once scale-in is disabled, so whatever AWS echoes is fine.
+        $currentDisableScaleIn = $live === null ? null : (bool) ($current['DisableScaleIn'] ?? false);
 
-        if ($currentIn !== ScalingPolicy::scaleInCooldown()) {
-            $changes[] = Change::make("{$this->policyName} ScaleInCooldown", $currentIn, ScalingPolicy::scaleInCooldown());
+        if ($currentDisableScaleIn !== true) {
+            $changes[] = Change::make("{$this->policyName} DisableScaleIn", $currentDisableScaleIn, true);
         }
 
         return $changes;

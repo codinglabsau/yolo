@@ -42,7 +42,7 @@ function matchingConcurrencyPolicy(string $name): array
                 ['Id' => 'concurrency', 'Expression' => '(requests / 60) * latency', 'ReturnData' => true],
             ]],
             'ScaleOutCooldown' => 60,
-            'ScaleInCooldown' => 300,
+            'DisableScaleIn' => true,
         ],
     ];
 }
@@ -143,6 +143,45 @@ it('creates both the CPU and concurrency policies when applying', function (): v
     $returning = collect($concurrency['args']['TargetTrackingScalingPolicyConfiguration']['CustomizedMetricSpecification']['Metrics'])
         ->firstWhere('Id', 'concurrency');
     expect($returning['Expression'])->toBe('(requests / 60) * latency');
+});
+
+it('cannot scale in while the burst alarm is in ALARM: only the CPU policy may remove a task', function (): void {
+    // The burst alarm fires on worker saturation and re-adds capacity within ~10s;
+    // the concurrency signal (requests × latency) dips the moment that task starts
+    // serving, so a concurrency scale-in would fire during the exact window burst is
+    // recovering and remove the task it just added. The invariant: across every policy
+    // YOLO puts on the web target, the only one allowed to scale in is the CPU policy —
+    // its 15-minute evaluation can't complete inside a burst.
+    bindResolvableLoadBalancer();
+
+    $scalesIn = collect(SyncScalingPoliciesStep::policies())
+        ->map(fn ($policy): array => $policy->configuration())
+        ->filter(fn (array $config): bool => ! ($config['DisableScaleIn'] ?? false));
+
+    expect($scalesIn)->toHaveCount(1)
+        ->and($scalesIn->first()['PredefinedMetricSpecification']['PredefinedMetricType'])->toBe('ECSServiceAverageCPUUtilization');
+
+    // Burst itself is scale-out only: every step adds capacity.
+    $aa = [];
+    $cw = [];
+    bindMockApplicationAutoScalingClient([
+        'DescribeScalingPolicies' => new Result(['ScalingPolicies' => []]),
+        'PutScalingPolicy' => new Result(['PolicyARN' => 'arn:aws:autoscaling:ap-southeast-2:111111111111:scalingPolicy:x:resource/ecs/service/yolo-testing-my-app/yolo-testing-my-app-web:policyName/burst']),
+    ], $aa);
+    bindMockCloudWatchClient([
+        'DescribeAlarms' => new Result(['MetricAlarms' => [
+            ['AlarmName' => 'yolo-testing-my-app-web-worker-saturation', 'AlarmArn' => 'arn:aws:cloudwatch:ap-southeast-2:111111111111:alarm:yolo-testing-my-app-web-worker-saturation'],
+        ]]),
+        'ListTagsForResource' => new Result(['Tags' => []]),
+    ], $cw);
+
+    (new WebBurstPolicy())->synchronise(apply: true);
+
+    $burst = collect($aa)->firstWhere('name', 'PutScalingPolicy');
+    $adjustments = collect($burst['args']['StepScalingPolicyConfiguration']['StepAdjustments'])->pluck('ScalingAdjustment');
+
+    expect($adjustments)->not->toBeEmpty()
+        ->and($adjustments->every(fn (int $adjustment): bool => $adjustment > 0))->toBeTrue();
 });
 
 it('skips entirely when autoscaling is removed from the manifest', function (): void {

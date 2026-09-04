@@ -51,6 +51,12 @@ YOLO runs two target-tracking policies at once. Application Auto Scaling takes t
 
 Both are on the moment the web tier declares `autoscaling: true` (or a block) — there's nothing to seed from a load test first. Scaling on the requests a task is actively serving rather than trailing CPU means faster responses need fewer tasks for the same traffic, and a spike is caught as it arrives.
 
+### Scale-in belongs to the CPU policy
+
+The concurrency policy is **scale-out only** (its target-tracking configuration sets `DisableScaleIn`). Its signal includes latency, and latency dips the moment a freshly-added task starts serving — so under a load ramp the concurrency scale-in alarm reads "over-provisioned" during the exact window the tier is recovering from a [burst](#faster-scale-out-burst), and would remove the task burst just added while the burst alarm is still in ALARM. Burst then re-adds it, and the tier thrashes instead of climbing.
+
+Application Auto Scaling's own scale-in alarms aren't configurable (it manages them, and a composite alarm can't drive a scaling action), so the fix is ownership rather than tuning: only the **CPU** policy scales in. Its scale-in alarm needs 15 consecutive minutes under target, which can't complete inside a burst, and `scale-in-cooldown` applies to it alone. The concurrency and burst policies can only ever add capacity.
+
 ### How the concurrency target is derived
 
 The ALB doesn't publish in-flight concurrency, so YOLO derives it with CloudWatch metric math from two metrics it does — request rate and response time (Little's Law, `concurrency = rate × latency`):
@@ -82,7 +88,7 @@ In [classic mode](/reference/manifest#tasks-web) the denominator is instead the 
 
 Burst reacts to **thread saturation**, not CPU. A CPU-pinned task with threads to spare reads low here and waits on the CPU target-tracking policy — that's the CPU policy's job, and the two signals are deliberately separate: burst catches the arrival spike that fills the pool, CPU target-tracking catches the sustained compute climb.
 
-Detection drops from ~60s to **~10–15s**; once saturation clears 70% it adds a task, and beyond 80% it adds two. The threshold sits at 70% rather than higher because saturation quantises to in-flight ÷ pool — so a 70% line trips a step below a full pin (e.g. 6-of-8 busy on a 0.5 vCPU task) while a tighter threshold would need a sustained 100% pin that rarely holds. Scale-in stays with the target-tracking policies, so burst can only ever scale out faster, never fight them.
+Detection drops from ~60s to **~10–15s**; once saturation clears 70% it adds a task, and beyond 80% it adds two. The threshold sits at 70% rather than higher because saturation quantises to in-flight ÷ pool — so a 70% line trips a step below a full pin (e.g. 6-of-8 busy on a 0.5 vCPU task) while a tighter threshold would need a sustained 100% pin that rarely holds. Scale-in stays with the [CPU target-tracking policy](#scale-in-belongs-to-the-cpu-policy), so burst can only ever scale out faster, never fight it.
 
 How it works, and what it costs:
 
