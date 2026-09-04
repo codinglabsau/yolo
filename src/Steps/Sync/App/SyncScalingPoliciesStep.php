@@ -25,7 +25,9 @@ use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebConcurrencyPolicy;
  * ({@see WebConcurrencyPolicy}, the leading signal, target derived from task
  * memory) and CPU ({@see ScalingPolicy}, the safety net for load that pegs CPU
  * without raising concurrency). Application Auto Scaling takes the max desired
- * across every policy, so they compose rather than fight.
+ * across every policy, so they compose rather than fight. Only the CPU policy
+ * scales in — see {@see WebConcurrencyPolicy} for why the concurrency signal
+ * can't be trusted to.
  *
  * Prunes any live policy outside YOLO's managed set — the union of this step's
  * two and the burst policy {@see SyncWebBurstStep} writes onto the same target —

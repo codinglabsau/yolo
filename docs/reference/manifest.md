@@ -489,7 +489,7 @@ YOLO manages the ECS task and execution roles for you — the task role is per-a
 
 ### `tasks.web.autoscaling.*`
 
-[Application Auto Scaling](/guide/scaling) is **required** for the web service — `autoscaling` is `true | false | {config}` and the key can't be omitted (nor can web use the bare `tasks.web: true` shorthand). **`autoscaling: true`** takes the defaults (`min: 1`, `max: 5`); **`autoscaling: false`** pins a fixed single task (no scalable target); a `{min, max, …}` object sets bespoke bounds. An empty object (`{}`) is rejected — write `true` or `false`. Web **`min` must be ≥ 1** (it serves traffic and can't idle to zero). With autoscaling on, YOLO scales on **request concurrency** — the default, leading signal, with its target derived from the task's pinned worker pool (sized from vCPU) so there's nothing to tune — and composes a **CPU** policy alongside as a safety net. The only knobs are the bounds and cooldowns.
+[Application Auto Scaling](/guide/scaling) is **required** for the web service — `autoscaling` is `true | false | {config}` and the key can't be omitted (nor can web use the bare `tasks.web: true` shorthand). **`autoscaling: true`** takes the defaults (`min: 1`, `max: 5`); **`autoscaling: false`** pins a fixed single task (no scalable target); a `{min, max, …}` object sets bespoke bounds. An empty object (`{}`) is rejected — write `true` or `false`. Web **`min` must be ≥ 1** (it serves traffic and can't idle to zero). With autoscaling on, YOLO scales on **request concurrency** — the default, leading signal, with its target derived from the task's pinned worker pool (sized from vCPU) so there's nothing to tune — and composes a **CPU** policy alongside as a safety net. Only the CPU policy [scales in](/guide/scaling#scale-in-belongs-to-the-cpu-policy); concurrency and burst are scale-out only. The only knobs are the bounds and cooldowns.
 
 | Key | Default | Description |
 |---|---|---|
@@ -498,7 +498,7 @@ YOLO manages the ECS task and execution roles for you — the task role is per-a
 | `autoscaling.max` | `5` | Maximum number of tasks. |
 | `autoscaling.cpu-utilization` | `65` | Target average CPU % — the safety-net policy composed alongside concurrency. |
 | `autoscaling.scale-out-cooldown` | `60` | Seconds between scale-out steps (both policies). |
-| `autoscaling.scale-in-cooldown` | `300` | Seconds between scale-in steps, both policies (kept conservative). |
+| `autoscaling.scale-in-cooldown` | `300` | Seconds between scale-in steps on the CPU policy — the only one that scales in (kept conservative). |
 
 There's no `burst` knob: real-time [burst scale-out](/guide/scaling#faster-scale-out-burst) (a high-res worker-saturation alarm + step policy, ~10s spike detection) is just part of how web autoscaling works — provisioned with the scalable target, like the concurrency and CPU policies, in either serving mode.
 

@@ -16,6 +16,11 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * catches a few heavy, low-rate requests that peg the CPU without raising request
  * concurrency. Both attach to the same {@see ScalableTarget}; App Auto Scaling takes
  * the max desired count across policies, so the two compose rather than fight.
+ *
+ * Also the web tier's only scale-in path. The concurrency policy and the burst policy
+ * ({@see WebBurstPolicy}) are scale-out only, so the CPU scale-in alarm — 15 consecutive
+ * minutes under target — is the one thing that can remove a task, and it can't trip
+ * while a burst is still ramping. `scale-in-cooldown` therefore governs this policy alone.
  */
 class ScalingPolicy implements TargetTrackingPolicy
 {

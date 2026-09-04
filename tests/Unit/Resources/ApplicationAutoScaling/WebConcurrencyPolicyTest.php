@@ -121,7 +121,7 @@ it('reports no drift when the live policy already matches', function (): void {
             ['Id' => 'concurrency', 'Expression' => '(requests / 60) * latency', 'ReturnData' => true],
         ]],
         'ScaleOutCooldown' => 60,
-        'ScaleInCooldown' => 300,
+        'DisableScaleIn' => true,
     ]];
 
     expect(concurrencyPolicy()->drift($live))->toBe([]);
@@ -135,7 +135,48 @@ it('does not report drift when AWS reformats the expression whitespace on read-b
             ['Id' => 'concurrency', 'Expression' => '(requests/60)*latency', 'ReturnData' => true],
         ]],
         'ScaleOutCooldown' => 60,
+        'DisableScaleIn' => true,
+    ]];
+
+    expect(concurrencyPolicy()->drift($live))->toBe([]);
+});
+
+it('is scale-out only: the put disables scale-in and carries no scale-in cooldown', function (): void {
+    $config = concurrencyPolicy()->configuration();
+
+    expect($config['DisableScaleIn'])->toBeTrue()
+        ->and($config)->not->toHaveKey('ScaleInCooldown');
+});
+
+it('flips a live policy that still scales in, whether AWS echoes the flag or omits it', function (string $case, array $live): void {
+    $changes = concurrencyPolicy()->drift(['TargetTrackingScalingPolicyConfiguration' => $live]);
+
+    expect($changes)->toHaveCount(1)
+        ->and($changes[0]->attribute)->toEndWith('DisableScaleIn')
+        ->and($changes[0]->to)->toBe('true');
+})->with([
+    'flag echoed false' => ['flag echoed false', [
+        'TargetValue' => 5.0,
+        'CustomizedMetricSpecification' => ['Metrics' => [['Id' => 'concurrency', 'Expression' => '(requests / 60) * latency', 'ReturnData' => true]]],
+        'ScaleOutCooldown' => 60,
+        'DisableScaleIn' => false,
+    ]],
+    'flag omitted' => ['flag omitted', [
+        'TargetValue' => 5.0,
+        'CustomizedMetricSpecification' => ['Metrics' => [['Id' => 'concurrency', 'Expression' => '(requests / 60) * latency', 'ReturnData' => true]]],
+        'ScaleOutCooldown' => 60,
+    ]],
+]);
+
+it('ignores whatever scale-in cooldown AWS echoes back, since scale-in is disabled', function (): void {
+    // A policy migrated from the old scale-in-enabled set keeps its cooldown on
+    // read-back; comparing it would re-put on every sync.
+    $live = ['TargetTrackingScalingPolicyConfiguration' => [
+        'TargetValue' => 5.0,
+        'CustomizedMetricSpecification' => ['Metrics' => [['Id' => 'concurrency', 'Expression' => '(requests / 60) * latency', 'ReturnData' => true]]],
+        'ScaleOutCooldown' => 60,
         'ScaleInCooldown' => 300,
+        'DisableScaleIn' => true,
     ]];
 
     expect(concurrencyPolicy()->drift($live))->toBe([]);
