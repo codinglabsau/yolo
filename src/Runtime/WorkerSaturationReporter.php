@@ -6,6 +6,8 @@ namespace Codinglabs\Yolo\Runtime;
 
 use Closure;
 use Throwable;
+use Psr\Log\NullLogger;
+use Psr\Log\LoggerInterface;
 use Aws\CloudWatch\CloudWatchClient;
 use Codinglabs\Yolo\YoloServiceProvider;
 use Codinglabs\Yolo\Runtime\Contracts\Cpu;
@@ -42,6 +44,15 @@ use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
  * ({@see Cpu}) rather than retrying the starved endpoint. The asymmetry justifies
  * it: a false burst is additive and target-tracking scales it back in minutes; a
  * missed saturation is an outage.
+ *
+ * Diagnostics: the window's sample is also logged — the in-flight peak and raw
+ * counter beside every FrankenPHP gauge the scrape carries ({@see Gauges::diagnostics()}),
+ * and the CPU reading on the fallback path. The published value is one ratio; when
+ * it disagrees with what the load balancer sees, the log is what shows which term
+ * is wrong — a counter that under-reports, a pool with fewer ready workers than it
+ * was sized for, or a queue the formula doesn't count. Hot windows (at or above the
+ * emit floor) log at info so they're on by default; colder ones log at debug so the
+ * ramp into a pin can be watched without paying for it at rest.
  */
 class WorkerSaturationReporter
 {
@@ -75,6 +86,7 @@ class WorkerSaturationReporter
         // The classic tier's thread ceiling; null on an Octane tier, whose pool size
         // arrives with every scrape instead.
         private readonly ?int $threadCeiling = null,
+        private readonly LoggerInterface $logger = new NullLogger(),
     ) {}
 
     public function report(): void
@@ -106,6 +118,8 @@ class WorkerSaturationReporter
         $saturation = $result->totalWorkers !== null
             ? $this->workerSaturation($result->totalWorkers, $peak)
             : $this->threadSaturation($result);
+
+        $this->logSample($saturation, $peak, $result->gauges);
 
         // Below the emit floor: near-zero cost at rest, nothing worth publishing.
         if ($saturation === null || $saturation < WebBurstPolicy::EMIT_FLOOR) {
@@ -155,6 +169,12 @@ class WorkerSaturationReporter
             return;
         }
 
+        $this->logger->warning('yolo-burst: metrics scrape failed on a primed task', [
+            'task' => $this->taskId,
+            'cpu' => $utilisation === null ? null : round($utilisation, 1),
+            'breach' => $utilisation !== null && $utilisation >= self::CPU_BREACH_THRESHOLD,
+        ]);
+
         if ($utilisation === null || $utilisation < self::CPU_BREACH_THRESHOLD) {
             return;
         }
@@ -162,6 +182,27 @@ class WorkerSaturationReporter
         $this->put(self::BREACH_VALUE);
         $this->markSaturated();
         $this->cache->put($this->key('window'), 1, WebBurstPolicy::COOLDOWN);
+    }
+
+    /**
+     * Logged before the emit floor, so the ramp is visible and not just the plateau.
+     *
+     * @param  array<string, int|null>  $gauges
+     */
+    private function logSample(?float $saturation, int $peak, array $gauges): void
+    {
+        $context = [
+            'task' => $this->taskId,
+            'saturation' => $saturation === null ? null : round($saturation, 1),
+            'peak' => $peak,
+            'current' => $this->inFlight->raw(),
+            'ceiling' => $this->threadCeiling ?? $gauges['total_workers'] ?? null,
+            ...$gauges,
+        ];
+
+        $saturation !== null && $saturation >= WebBurstPolicy::EMIT_FLOOR
+            ? $this->logger->info('yolo-burst: window sample', $context)
+            : $this->logger->debug('yolo-burst: window sample', $context);
     }
 
     /**

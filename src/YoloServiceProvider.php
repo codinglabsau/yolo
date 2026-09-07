@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo;
 
 use Inertia\Ssr\Gateway;
+use Psr\Log\LoggerInterface;
 use Codinglabs\Yolo\Enums\Service;
 use Aws\CloudWatch\CloudWatchClient;
 use Illuminate\Support\Facades\Cache;
@@ -63,6 +64,7 @@ class YoloServiceProvider extends ServiceProvider
             serviceName: $this->burstService(),
             taskId: $this->taskId(),
             threadCeiling: $this->burstThreads(),
+            logger: $this->app->make(LoggerInterface::class),
         ));
     }
 

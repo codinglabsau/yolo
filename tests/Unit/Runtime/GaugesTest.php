@@ -57,3 +57,31 @@ it('refuses a thread gauge missing beside total_threads rather than reading it a
     expect(fn (): int => Gauges::queueDepth("frankenphp_total_threads 4\n"))
         ->toThrow(RuntimeException::class, 'frankenphp_queue_depth');
 });
+
+it('reads the diagnostic set by FrankenPHP name, null where a line is absent', function (): void {
+    $metrics = "frankenphp_busy_threads 5\nfrankenphp_total_threads 9\nfrankenphp_queue_depth 0\n"
+        . "frankenphp_total_workers{worker=\"/app/public/frankenphp-worker.php\"} 8\n"
+        . "frankenphp_ready_workers{worker=\"/app/public/frankenphp-worker.php\"} 5\n"
+        . "frankenphp_busy_workers{worker=\"/app/public/frankenphp-worker.php\"} 5\n"
+        . "frankenphp_worker_crashes{worker=\"/app/public/frankenphp-worker.php\"} 3\n"
+        . "frankenphp_worker_restarts{worker=\"/app/public/frankenphp-worker.php\"} 3\n";
+
+    expect(Gauges::diagnostics($metrics))->toBe([
+        'total_workers' => 8,
+        'ready_workers' => 5,
+        'busy_workers' => 5,
+        'worker_queue_depth' => null,
+        'worker_crashes' => 3,
+        'worker_restarts' => 3,
+        'total_threads' => 9,
+        'busy_threads' => 5,
+        'queue_depth' => 0,
+    ]);
+});
+
+it('keeps the thread queue and the worker queue apart in the diagnostic set', function (): void {
+    // `queue_depth` is the thread-level gauge; `worker_queue_depth` is per worker
+    // script. A prefix match would fold one into the other.
+    expect(Gauges::diagnostics("frankenphp_queue_depth 2\nfrankenphp_worker_queue_depth{worker=\"/a\"} 7\n"))
+        ->toMatchArray(['queue_depth' => 2, 'worker_queue_depth' => 7]);
+});

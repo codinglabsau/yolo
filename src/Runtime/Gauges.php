@@ -55,6 +55,34 @@ final class Gauges
     }
 
     /**
+     * Every gauge and counter the burst diagnostics log, keyed by the FrankenPHP name
+     * minus its prefix; null where a line is absent. Diagnostic only — nothing here
+     * feeds the saturation formula — so a missing line is reported, never thrown on.
+     * `ready_workers` and the two counters are the ones that separate "workers
+     * counted" from "workers alive": a pool whose ready count sits under its total, or
+     * whose crash/restart counters climb, is serving fewer requests than it was sized
+     * for, which no numerator can correct.
+     *
+     * @return array<string, int|null>
+     */
+    public static function diagnostics(string $metrics): array
+    {
+        $names = [
+            'total_workers', 'ready_workers', 'busy_workers',
+            'worker_queue_depth', 'worker_crashes', 'worker_restarts',
+            'total_threads', 'busy_threads', 'queue_depth',
+        ];
+
+        $diagnostics = [];
+
+        foreach ($names as $name) {
+            $diagnostics[$name] = self::sum($metrics, "frankenphp_{$name}");
+        }
+
+        return $diagnostics;
+    }
+
+    /**
      * A thread gauge that must accompany `total_threads` — FrankenPHP registers the
      * three together, so one missing beside the others is a broken scrape, not an idle
      * pool, and defaulting it to zero would silently under-report saturation.

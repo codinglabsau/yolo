@@ -19,7 +19,8 @@ it('classifies a worker-gauge payload as a reading carrying the worker-pool size
     $result = (new MetricsScraper())->scrape();
 
     expect($result->outcome)->toBe(ScrapeOutcome::Reading)
-        ->and($result->totalWorkers)->toBe(4);
+        ->and($result->totalWorkers)->toBe(4)
+        ->and($result->gauges)->toMatchArray(['total_workers' => 4, 'busy_workers' => 3, 'busy_threads' => 3, 'total_threads' => 4]);
 });
 
 it('classifies a thread-gauge payload as a classic-mode reading carrying busy threads and queue depth', function (): void {
