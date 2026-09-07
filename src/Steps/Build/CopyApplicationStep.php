@@ -61,7 +61,6 @@ class CopyApplicationStep implements LongRunning
             '.yolo',
             '.claude/worktrees',
             '.cursor/worktrees',
-            '.worktrees',
             'public/hot',
             'public/assets/next/*',
             'node_modules',

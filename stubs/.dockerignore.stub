@@ -21,7 +21,6 @@
 # app, vendor included, and would ship inside the image layer
 .claude/worktrees
 .cursor/worktrees
-.worktrees
 
 # Dependencies reinstalled during the build
 node_modules
