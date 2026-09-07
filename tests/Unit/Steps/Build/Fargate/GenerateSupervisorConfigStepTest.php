@@ -646,10 +646,10 @@ it('bakes an explicit tasks.web.concurrency into the classic-mode thread bounds'
 
     generatedSupervisorConfig();
 
-    // 2 vCPU would derive 32/64; the floor is the declared count and the ceiling twice it.
+    // 2 vCPU would derive 32/64; the declared count fixes both bounds.
     expect((string) file_get_contents(Paths::build('docker/Caddyfile')))
         ->toContain('num_threads 6')
-        ->toContain('max_threads 12')
+        ->toContain('max_threads 6')
         ->not->toContain('num_threads 32');
 });
 

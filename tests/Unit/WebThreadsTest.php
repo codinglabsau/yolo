@@ -62,12 +62,14 @@ it('never drops below one thread on a deliberately tiny task', function (): void
         ->and(WebThreads::maximum())->toBe(1);
 });
 
-it('boots an explicit tasks.web.concurrency as the floor with the ceiling held at twice it', function (): void {
-    // 1 vCPU would derive 16/32; the burst ratio stays derived rather than a second key.
+it('fixes the pool at an explicit tasks.web.concurrency — the ceiling is the ceiling, no burst headroom', function (): void {
+    // 1 vCPU would derive 16/32. The key is for a CPU-bound app, where a thread past what
+    // the cores can clear is contention, not capacity, so an influx queues at the task
+    // rather than growing the pool.
     manifestWithClassicWebTask(['cpu' => 1024, 'memory' => 2048, 'concurrency' => 4]);
 
     expect(WebThreads::minimum())->toBe(4)
-        ->and(WebThreads::maximum())->toBe(8);
+        ->and(WebThreads::maximum())->toBe(4);
 });
 
 it('does not memory-cap an explicit concurrency — the operator has sized it', function (): void {
@@ -75,7 +77,7 @@ it('does not memory-cap an explicit concurrency — the operator has sized it', 
     manifestWithClassicWebTask(['cpu' => 1024, 'memory' => 512, 'concurrency' => 12]);
 
     expect(WebThreads::minimum())->toBe(12)
-        ->and(WebThreads::maximum())->toBe(24);
+        ->and(WebThreads::maximum())->toBe(12);
 });
 
 it('falls back to the formula when the key is absent', function (): void {

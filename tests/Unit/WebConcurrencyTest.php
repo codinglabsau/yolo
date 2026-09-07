@@ -44,9 +44,9 @@ it('follows an explicit tasks.web.concurrency on an Octane tier', function (): v
     expect(WebConcurrency::ceiling())->toBe(4);
 });
 
-it('follows twice an explicit tasks.web.concurrency on a classic tier — the thread ceiling, not the floor', function (): void {
+it('follows an explicit tasks.web.concurrency on a classic tier too — the same number in both modes', function (): void {
     manifestWithWebMode(octane: false, web: ['concurrency' => 4]);
 
-    expect(WebConcurrency::ceiling())->toBe(8)
+    expect(WebConcurrency::ceiling())->toBe(4)
         ->and(WebConcurrency::ceiling())->toBe(WebThreads::maximum());
 });
