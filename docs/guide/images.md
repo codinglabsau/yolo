@@ -158,7 +158,7 @@ The scaffolded `.dockerignore` trims the build context but **deliberately keeps*
 
 Don't add those to `.dockerignore` or the build will produce a broken image.
 
-`yolo build` stages the app into `.yolo/build/` with the same exclusions before Docker ever sees it, so the `.dockerignore` mainly protects a direct `docker build .`. Both drop what must never ship: VCS and CI metadata, `node_modules`, `tests`, editor cruft, and `.claude/` — an agent worktree under `.claude/worktrees` is a whole second checkout of the app, vendor included, and would otherwise be baked into the image layer and pulled on every scale-out.
+`yolo build` stages the app into `.yolo/build/` with the same exclusions before Docker ever sees it, so the `.dockerignore` mainly protects a direct `docker build .`. Both drop what must never ship: VCS and CI metadata, `node_modules`, `tests`, editor cruft, and the agent worktree dirs that nest inside the app (`.claude/worktrees`, `.cursor/worktrees`, `.worktrees`) — each worktree is a whole second checkout of the app, vendor included, and would otherwise be baked into the image layer and pulled on every scale-out.
 
 ## Graceful shutdown
 

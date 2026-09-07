@@ -17,9 +17,11 @@
 # YOLO working directory
 .yolo
 
-# Agent tooling — a .claude/worktrees checkout is a whole second copy of the
+# Agent worktrees nested inside the app — each is a whole second copy of the
 # app, vendor included, and would ship inside the image layer
-.claude
+.claude/worktrees
+.cursor/worktrees
+.worktrees
 
 # Dependencies reinstalled during the build
 node_modules

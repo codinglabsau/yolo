@@ -9,7 +9,9 @@ it('stages the app with the environment env file included and the never-ship tre
         ->and($command)->toContain('--include=.env.production')
         ->and($command)->toContain('--exclude=.env.*')
         ->and($command)->toContain('--exclude=.git')
-        ->and($command)->toContain('--exclude=.claude')
+        ->and($command)->toContain('--exclude=.claude/worktrees')
+        ->and($command)->toContain('--exclude=.cursor/worktrees')
+        ->and($command)->toContain('--exclude=.worktrees')
         ->and($command)->toContain('--exclude=node_modules')
         ->and($command)->toContain('--exclude=tests')
         ->and($command)->toContain('--exclude=.yolo');

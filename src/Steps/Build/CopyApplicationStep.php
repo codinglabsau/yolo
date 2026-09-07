@@ -40,9 +40,9 @@ class CopyApplicationStep implements LongRunning
     }
 
     /**
-     * Mirrors the scaffolded .dockerignore, and drops the agent tooling tree
-     * too: a `.claude/worktrees` checkout is a whole second copy of the app,
-     * vendor included, and once staged it rides straight into the image layer.
+     * Mirrors the scaffolded .dockerignore. The agent worktree dirs matter
+     * most: a checkout nested there is a whole second copy of the app, vendor
+     * included, and once staged it rides straight into the image layer.
      *
      * @return array<int, string>
      */
@@ -55,11 +55,13 @@ class CopyApplicationStep implements LongRunning
         $exclude = [
             '.git',
             '.github',
-            '.claude',
             '.phpunit.cache',
             '.idea',
             '.vscode',
             '.yolo',
+            '.claude/worktrees',
+            '.cursor/worktrees',
+            '.worktrees',
             'public/hot',
             'public/assets/next/*',
             'node_modules',
