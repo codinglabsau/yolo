@@ -42,17 +42,37 @@ final class WebThreads
      */
     private const int THREAD_MEMORY_MB = 48;
 
+    /**
+     * An explicit `tasks.web.concurrency` fixes the pool at that size — floor and ceiling
+     * alike, absolute, not per vCPU, not memory-capped. The key exists for a CPU-bound app,
+     * where the derived 2× headroom is contention rather than capacity: a thread spawned
+     * past what the cores can clear slows every request in flight and holds a database
+     * connection while it does. Fixed at the value, an influx queues at the task instead —
+     * the in-flight work finishes at full speed, and `queue_depth` reads the overflow
+     * honestly for burst scale-out.
+     */
     public static function minimum(): int
     {
+        if (($concurrency = Manifest::webConcurrency()) !== null) {
+            return $concurrency;
+        }
+
         return max(1, min(
             (int) round(self::THREADS_PER_VCPU * self::vcpu()),
             self::byMemory(),
         ));
     }
 
-    /** Never below the floor — a memory-starved task collapses to one fixed-size pool, not an invalid range. */
+    /**
+     * The explicit concurrency itself when set (see {@see minimum()}). Otherwise never below
+     * the floor — a memory-starved task collapses to one fixed-size pool, not an invalid range.
+     */
     public static function maximum(): int
     {
+        if (($concurrency = Manifest::webConcurrency()) !== null) {
+            return $concurrency;
+        }
+
         return max(self::minimum(), min(
             (int) round(self::MAX_THREADS_PER_VCPU * self::vcpu()),
             self::byMemory(),

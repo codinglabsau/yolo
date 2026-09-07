@@ -70,7 +70,7 @@ class Manifest
         'budget', 'budget.amount', 'budget.strategy',
         'tasks.web',
         'tasks.web.octane',
-        'tasks.web.cpu', 'tasks.web.memory',
+        'tasks.web.cpu', 'tasks.web.memory', 'tasks.web.concurrency',
         'tasks.web.enable-execute-command', 'tasks.web.shutdown-grace-period',
         'tasks.web.ssr', 'tasks.web.ssr.shutdown-grace-period',
         'tasks.web.health-check.path', 'tasks.web.health-check.interval',
@@ -638,6 +638,22 @@ class Manifest
     public static function usesOctane(): bool
     {
         return Helpers::validateStrictBool(static::get('tasks.web.octane', true), 'tasks.web.octane');
+    }
+
+    /**
+     * The operator's per-task request concurrency (`tasks.web.concurrency`) — the absolute
+     * count one web task serves at once, whichever mode it runs. Null when unset, so the
+     * mode's own formula sizes the pool from the task's vCPU/memory ({@see WebWorkers},
+     * {@see WebThreads}). It sits beside `cpu`/`memory` rather than under `autoscaling`
+     * because it describes one task and applies with autoscaling off.
+     */
+    public static function webConcurrency(): ?int
+    {
+        if (! static::has('tasks.web.concurrency')) {
+            return null;
+        }
+
+        return Helpers::validatePositiveInt(static::get('tasks.web.concurrency'), 'tasks.web.concurrency');
     }
 
     /**

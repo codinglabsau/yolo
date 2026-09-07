@@ -44,3 +44,23 @@ it('never drops below one worker on a deliberately tiny task', function (): void
 
     expect(WebWorkers::count())->toBe(1);
 });
+
+it('takes an explicit tasks.web.concurrency verbatim — absolute, not per vCPU', function (): void {
+    // 1 vCPU would derive 16; a CPU-bound app pins the pool to what its cores can clear.
+    manifestWithWebTask(['cpu' => 1024, 'memory' => 2048, 'concurrency' => 4]);
+
+    expect(WebWorkers::count())->toBe(4);
+});
+
+it('lets an explicit concurrency exceed what the formula would derive, memory bound included', function (): void {
+    // 0.25 vCPU / 512 MB derives 4 (memory would hold 8); the operator has sized it.
+    manifestWithWebTask(['cpu' => 256, 'memory' => 512, 'concurrency' => 12]);
+
+    expect(WebWorkers::count())->toBe(12);
+});
+
+it('falls back to the formula when the key is absent', function (): void {
+    manifestWithWebTask(['cpu' => 1024, 'memory' => 2048]);
+
+    expect(WebWorkers::count())->toBe(16);
+});

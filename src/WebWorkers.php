@@ -27,7 +27,10 @@ final class WebWorkers
      * downstream rather than burning the core. A conservative floor, not a measured answer:
      * the principled ceiling is where CPU becomes the binding constraint under target
      * concurrency, which for bundled SSR sits below the memory cap (16→32 on a 2 GB task is
-     * the range a load test would explore). Hardcoded — no override case yet.
+     * the range a load test would explore). The formula's guess, not a fit for every app: a
+     * CPU-bound request never parks, so 16 per vCPU oversubscribes the task many times over,
+     * queueing requests inside it (each holding a database connection) where the load balancer
+     * can't see the saturation. `tasks.web.concurrency` sets the count directly for that app.
      */
     private const int WORKERS_PER_VCPU = 16;
 
@@ -37,9 +40,17 @@ final class WebWorkers
      */
     private const int WORKER_MEMORY_MB = 64;
 
-    /** `real vCPU` is Fargate CPU units ÷ 1024 — the same honest allocation injected as `YOLO_BURST_CPU`. */
+    /**
+     * An explicit `tasks.web.concurrency` is taken verbatim — absolute, not per vCPU, and not
+     * memory-capped: the operator has sized it. Otherwise `real vCPU` is Fargate CPU units ÷
+     * 1024 — the same honest allocation injected as `YOLO_BURST_CPU`.
+     */
     public static function count(): int
     {
+        if (($concurrency = Manifest::webConcurrency()) !== null) {
+            return $concurrency;
+        }
+
         $cpuUnits = (int) Manifest::get('tasks.web.cpu', ServerGroup::WEB->defaultCpu());
         $memoryMb = (int) Manifest::get('tasks.web.memory', ServerGroup::WEB->defaultMemory());
 
