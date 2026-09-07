@@ -27,15 +27,38 @@ class CopyApplicationStep implements LongRunning
     {
         $this->ensureBuildDirectoryExists();
 
+        $process = new Process(
+            command: static::command($this->environment),
+            cwd: Paths::base(),
+            env: [],
+            timeout: null
+        );
+
+        $this->runProcess($process);
+
+        return StepResult::SUCCESS;
+    }
+
+    /**
+     * Mirrors the scaffolded .dockerignore, and drops the agent tooling tree
+     * too: a `.claude/worktrees` checkout is a whole second copy of the app,
+     * vendor included, and once staged it rides straight into the image layer.
+     *
+     * @return array<int, string>
+     */
+    public static function command(string $environment): array
+    {
         $include = [
-            ".env.$this->environment",
+            ".env.$environment",
         ];
 
         $exclude = [
             '.git',
             '.github',
+            '.claude',
             '.phpunit.cache',
             '.idea',
+            '.vscode',
             '.yolo',
             'public/hot',
             'public/assets/next/*',
@@ -51,28 +74,20 @@ class CopyApplicationStep implements LongRunning
 
             '*.DS_Store',
             '.env.*',
+            '.pest',
             '.php-cs-fixer.cache',
             '.phpunit.result.cache',
             'public/assets/manifest.json',
         ];
 
-        $process = new Process(
-            command: [
-                'rsync',
-                '-avq',
-                ...array_map(fn (string $item): string => "--include=$item", $include),
-                ...array_map(fn (string $item): string => "--exclude=$item", $exclude),
-                '.',
-                Paths::build(),
-            ],
-            cwd: Paths::base(),
-            env: [],
-            timeout: null
-        );
-
-        $this->runProcess($process);
-
-        return StepResult::SUCCESS;
+        return [
+            'rsync',
+            '-avq',
+            ...array_map(fn (string $item): string => "--include=$item", $include),
+            ...array_map(fn (string $item): string => "--exclude=$item", $exclude),
+            '.',
+            Paths::build(),
+        ];
     }
 
     protected function ensureBuildDirectoryExists(): void
