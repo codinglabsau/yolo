@@ -65,3 +65,13 @@ it('keeps task-scoped keys so a shared store does not collide', function (): voi
 
     expect($taskB->flushPeak())->toBe(0);
 });
+
+it('exposes the raw counter unclamped while the live count floors at zero', function (): void {
+    $cache = new Repository(new ArrayStore());
+    $gauge = new InFlightRequests($cache, 'task-1');
+
+    $gauge->leave();
+
+    expect($gauge->raw())->toBe(-1)
+        ->and($gauge->current())->toBe(0);
+});

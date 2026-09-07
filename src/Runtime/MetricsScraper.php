@@ -43,13 +43,14 @@ class MetricsScraper implements Scraper
         // primes the reporter's fallback, then stays silent for lack of a thread
         // ceiling outside classic mode.
         $totalWorkers = Gauges::totalWorkers($body);
+        $gauges = Gauges::diagnostics($body);
 
         if ($totalWorkers !== null) {
-            return ScrapeResult::workers($totalWorkers);
+            return ScrapeResult::workers($totalWorkers, $gauges);
         }
 
         return Gauges::hasThreads($body)
-            ? ScrapeResult::threads(Gauges::busyThreads($body), Gauges::queueDepth($body))
+            ? ScrapeResult::threads(Gauges::busyThreads($body), Gauges::queueDepth($body), $gauges)
             : ScrapeResult::absent();
     }
 }

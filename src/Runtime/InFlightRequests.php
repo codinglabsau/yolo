@@ -55,7 +55,17 @@ class InFlightRequests
 
     public function current(): int
     {
-        return max(0, (int) $this->cache->get($this->key('current'), 0));
+        return max(0, $this->raw());
+    }
+
+    /**
+     * The counter as stored, unclamped. A value that has drifted negative reads as a
+     * permanent under-count through {@see current()}, so the diagnostics log this
+     * rather than the clamped view.
+     */
+    public function raw(): int
+    {
+        return (int) $this->cache->get($this->key('current'), 0);
     }
 
     /**

@@ -7,7 +7,8 @@ namespace Codinglabs\Yolo\Runtime;
 /**
  * Exactly one gauge family is present per reading — `totalWorkers` on an Octane tier,
  * `busyThreads` / `queueDepth` on a classic one — so `totalWorkers` doubles as the mode
- * discriminator.
+ * discriminator. `gauges` carries the raw diagnostic set ({@see Gauges::diagnostics()})
+ * for the reporter's per-window log line; it never feeds the formula.
  */
 final readonly class ScrapeResult
 {
@@ -16,18 +17,28 @@ final readonly class ScrapeResult
         public ?int $totalWorkers = null,
         public int $busyThreads = 0,
         public int $queueDepth = 0,
+        /** @var array<string, int|null> */
+        public array $gauges = [],
     ) {}
 
-    /** A worker-mode reading: the resident pool size. */
-    public static function workers(int $totalWorkers): self
+    /**
+     * A worker-mode reading: the resident pool size.
+     *
+     * @param  array<string, int|null>  $gauges
+     */
+    public static function workers(int $totalWorkers, array $gauges = []): self
     {
-        return new self(ScrapeOutcome::Reading, $totalWorkers);
+        return new self(ScrapeOutcome::Reading, $totalWorkers, gauges: $gauges);
     }
 
-    /** A classic-mode reading: threads busy right now, and requests waiting for one. */
-    public static function threads(int $busyThreads, int $queueDepth): self
+    /**
+     * A classic-mode reading: threads busy right now, and requests waiting for one.
+     *
+     * @param  array<string, int|null>  $gauges
+     */
+    public static function threads(int $busyThreads, int $queueDepth, array $gauges = []): self
     {
-        return new self(ScrapeOutcome::Reading, busyThreads: $busyThreads, queueDepth: $queueDepth);
+        return new self(ScrapeOutcome::Reading, busyThreads: $busyThreads, queueDepth: $queueDepth, gauges: $gauges);
     }
 
     public static function failure(): self

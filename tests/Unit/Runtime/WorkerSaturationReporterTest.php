@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 use Aws\Result;
 use Aws\MockHandler;
+use Psr\Log\NullLogger;
 use Aws\CommandInterface;
+use Psr\Log\AbstractLogger;
+use Psr\Log\LoggerInterface;
 use GuzzleHttp\Promise\Create;
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Cache\Repository;
@@ -99,13 +102,27 @@ function recordingCloudWatch(array &$captured): CloudWatchClient
     ]);
 }
 
-function burstReporter(Repository $cache, Scraper $scraper, Cpu $cpu, InFlightRequests $inFlight, array &$published, ?int $threadCeiling = null): WorkerSaturationReporter
+function burstReporter(Repository $cache, Scraper $scraper, Cpu $cpu, InFlightRequests $inFlight, array &$published, ?int $threadCeiling = null, ?LoggerInterface $logger = null): WorkerSaturationReporter
 {
     $cloudwatch = function () use (&$published): CloudWatchClient {
         return recordingCloudWatch($published);
     };
 
-    return new WorkerSaturationReporter($cache, $cloudwatch, $scraper, $cpu, $inFlight, 'svc', 'task-1', $threadCeiling);
+    return new WorkerSaturationReporter($cache, $cloudwatch, $scraper, $cpu, $inFlight, 'svc', 'task-1', $threadCeiling, $logger ?? new NullLogger());
+}
+
+/** A logger that records every [level, message, context] triple. */
+function recordingLogger(array &$logged): LoggerInterface
+{
+    return new class($logged) extends AbstractLogger
+    {
+        public function __construct(private array &$logged) {}
+
+        public function log($level, string|Stringable $message, array $context = []): void
+        {
+            $this->logged[] = [$level, (string) $message, $context];
+        }
+    };
 }
 
 /** A cache that records every put's TTL, so a window hold can be asserted. */
@@ -390,4 +407,90 @@ it('flags SSR bypass on a CPU-corroborated scrape-failure breach', function (): 
 
     expect($published)->toBe([100.0]);
     expect($cache->get(SSR_BYPASS_KEY))->not->toBeNull();
+});
+
+it('logs the window sample — peak, raw counter and every scraped gauge — at info when hot', function (): void {
+    $published = [];
+    $logged = [];
+    $cache = arrayCache();
+    $gauges = ['total_workers' => 8, 'ready_workers' => 5, 'busy_workers' => 5, 'worker_queue_depth' => 0, 'worker_crashes' => 3, 'worker_restarts' => 3, 'total_threads' => 9, 'busy_threads' => 5, 'queue_depth' => 0];
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(8, $gauges)]), nullCpu(), inFlightPeaking($cache, 5), $published, logger: recordingLogger($logged));
+
+    $reporter->report();
+
+    expect($logged)->toHaveCount(1)
+        ->and($logged[0][0])->toBe('info')
+        ->and($logged[0][1])->toBe('yolo-burst: window sample')
+        ->and($logged[0][2])->toBe(['task' => 'task-1', 'saturation' => 62.5, 'peak' => 5, 'current' => 5, 'ceiling' => 8, ...$gauges]);
+});
+
+it('logs a sample below the emit floor at debug, so the ramp is visible without the metric', function (): void {
+    $published = [];
+    $logged = [];
+    $cache = arrayCache();
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(4, ['total_workers' => 4])]), nullCpu(), inFlightPeaking($cache, 1), $published, logger: recordingLogger($logged));
+
+    $reporter->report();
+
+    expect($published)->toBe([])
+        ->and($logged[0][0])->toBe('debug')
+        ->and($logged[0][2]['saturation'])->toBe(25.0);
+});
+
+it('logs the raw counter unclamped, so a drifted-negative count is visible', function (): void {
+    $published = [];
+    $logged = [];
+    $cache = arrayCache();
+    $inFlight = new InFlightRequests($cache, 'task-1');
+    $inFlight->leave();
+    $inFlight->leave();
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(4)]), nullCpu(), $inFlight, $published, logger: recordingLogger($logged));
+
+    $reporter->report();
+
+    expect($logged[0][2]['current'])->toBe(-2)
+        ->and($logged[0][2]['peak'])->toBe(0);
+});
+
+it('logs the classic-mode sample against the injected ceiling', function (): void {
+    $published = [];
+    $logged = [];
+    $cache = arrayCache();
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::threads(6, 1, ['total_threads' => 4, 'busy_threads' => 6, 'queue_depth' => 1])]), nullCpu(), inFlightPeaking($cache, 1), $published, 8, recordingLogger($logged));
+
+    $reporter->report();
+
+    expect($logged[0][2]['ceiling'])->toBe(8)
+        ->and($logged[0][2]['saturation'])->toBe(87.5)
+        ->and($logged[0][2]['queue_depth'])->toBe(1);
+});
+
+it('logs a primed scrape failure with the CPU reading and whether it breached', function (): void {
+    $published = [];
+    $logged = [];
+    $cache = arrayCache();
+    $reporter = burstReporter($cache, queuedScraper([
+        ScrapeResult::workers(4), // primes (25%, below floor) + seeds the CPU baseline
+        ScrapeResult::failure(),
+    ]), queuedCpu(cpuRamp(90.0)), inFlightPeaking($cache, 1), $published, logger: recordingLogger($logged));
+
+    foreach (range(1, 2) as $ignored) {
+        $cache->forget(WINDOW_KEY);
+        $reporter->report();
+    }
+
+    expect($published)->toBe([100.0])
+        ->and($logged[1][0])->toBe('warning')
+        ->and($logged[1][2])->toBe(['task' => 'task-1', 'cpu' => 90.0, 'breach' => true]);
+});
+
+it('does not log an unprimed scrape failure — config, not load', function (): void {
+    $published = [];
+    $logged = [];
+    $cache = arrayCache();
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::failure()]), nullCpu(), inFlightPeaking($cache, 1), $published, logger: recordingLogger($logged));
+
+    $reporter->report();
+
+    expect($logged)->toBe([]);
 });
