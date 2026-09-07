@@ -12,11 +12,11 @@ use Codinglabs\Yolo\WebThreads;
  * queue signals the burst reporter needs and can't know without asking FrankenPHP.
  *
  * Worker mode (Octane) exposes the worker gauges; classic mode has no worker script,
- * so it exposes only the thread gauges. `total_workers` is a static gauge that reads
- * correctly even while the box is pinned, unlike `busy_workers`, whose after-response
- * snapshot under-reports the very pin burst exists to catch — which is why the worker-
- * mode numerator comes from {@see InFlightRequests}, counted directly. `total_threads`
- * is *not* a usable denominator: it reports the pinned floor (`num_threads`), not the
+ * so it exposes only the thread gauges. `busy_workers` over `total_workers` is the
+ * worker-mode ratio: the busy gauge counts every request dispatched to the worker
+ * script, those still waiting for a worker included, so under overload it carries the
+ * front queue and reads past the pool rather than stalling at it. `total_threads` is
+ * *not* a usable denominator: it reports the pinned floor (`num_threads`), not the
  * count the thread autoscaler has grown to, so `busy_threads` can legitimately exceed
  * it. The classic denominator is the `max_threads` ceiling YOLO itself pinned
  * ({@see WebThreads}). `queue_depth` is the classic tier's direct
@@ -38,6 +38,15 @@ final class Gauges
         return $total > 0 ? $total : null;
     }
 
+    /**
+     * Requests dispatched to the worker scripts, summed the same way as the total —
+     * queued ones included, so it can exceed the pool.
+     */
+    public static function busyWorkers(string $metrics): int
+    {
+        return self::companion($metrics, 'frankenphp_busy_workers', 'frankenphp_total_workers');
+    }
+
     /** Whether the thread gauges are present — both modes emit them, so absence means metrics are off. */
     public static function hasThreads(string $metrics): bool
     {
@@ -46,12 +55,12 @@ final class Gauges
 
     public static function busyThreads(string $metrics): int
     {
-        return self::thread($metrics, 'frankenphp_busy_threads');
+        return self::companion($metrics, 'frankenphp_busy_threads', 'frankenphp_total_threads');
     }
 
     public static function queueDepth(string $metrics): int
     {
-        return self::thread($metrics, 'frankenphp_queue_depth');
+        return self::companion($metrics, 'frankenphp_queue_depth', 'frankenphp_total_threads');
     }
 
     /**
@@ -83,14 +92,14 @@ final class Gauges
     }
 
     /**
-     * A thread gauge that must accompany `total_threads` — FrankenPHP registers the
-     * three together, so one missing beside the others is a broken scrape, not an idle
-     * pool, and defaulting it to zero would silently under-report saturation.
+     * A gauge that must accompany its family's total — FrankenPHP registers each family
+     * together, so one missing beside the others is a broken scrape, not an idle pool,
+     * and defaulting it to zero would silently under-report saturation.
      */
-    private static function thread(string $metrics, string $gauge): int
+    private static function companion(string $metrics, string $gauge, string $total): int
     {
         return self::sum($metrics, $gauge)
-            ?? throw new RuntimeException("FrankenPHP metrics carry frankenphp_total_threads but no {$gauge}.");
+            ?? throw new RuntimeException("FrankenPHP metrics carry {$total} but no {$gauge}.");
     }
 
     /**

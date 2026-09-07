@@ -107,8 +107,8 @@ class YoloServiceProvider extends ServiceProvider
             $this->app->make(WorkerSaturationReporter::class)->report();
         });
 
-        // Real in-flight concurrency, not the worker gauge that under-reports under a pin.
-        // Octane only: a classic tier reads its thread gauges and never consumes the peak, so
+        // The in-flight peak floors the scraped worker gauge, so a scrape on a momentary low
+        // can't under-read. Octane only: a classic tier never consumes the peak, so
         // it shouldn't pay the per-request cache round-trips. pushMiddleware is idempotent, so
         // each Octane worker boot adds it at most once.
         if ($this->burstThreads() === null) {

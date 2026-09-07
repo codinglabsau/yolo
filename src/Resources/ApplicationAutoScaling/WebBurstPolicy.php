@@ -20,9 +20,9 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 /**
  * Real-time burst scale-out beside {@see WebConcurrencyPolicy}: target tracking rides
  * 1-minute ALB metrics, so this pairs a step-scaling policy with a 10s high-res alarm
- * on a saturation metric each web task emits itself — in-flight requests over the
- * Octane worker pool, or busy threads over the classic thread ceiling (requests queue
- * before latency climbs). Scale-out only — scale-in stays with target tracking, so this
+ * on a saturation metric each web task emits itself — busy workers over the Octane
+ * worker pool, or busy threads over the classic thread ceiling, queued requests counted
+ * in both (requests queue before latency climbs). Scale-out only — scale-in stays with target tracking, so this
  * can only add capacity faster, never fight them. Provisioned wherever web autoscaling
  * is, in either serving mode; not a knob.
  *

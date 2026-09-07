@@ -10,7 +10,7 @@ use Illuminate\Http\Client\ConnectionException;
 
 uses(TestbenchCase::class);
 
-it('classifies a worker-gauge payload as a reading carrying the worker-pool size', function (): void {
+it('classifies a worker-gauge payload as a reading carrying the pool size and its busy workers', function (): void {
     // Worker mode exposes both gauge families; the worker pool is the one that counts.
     Http::fake(['*' => Http::response(
         "frankenphp_busy_threads 3\nfrankenphp_total_threads 4\nfrankenphp_busy_workers 3\nfrankenphp_total_workers 4\n"
@@ -20,6 +20,7 @@ it('classifies a worker-gauge payload as a reading carrying the worker-pool size
 
     expect($result->outcome)->toBe(ScrapeOutcome::Reading)
         ->and($result->totalWorkers)->toBe(4)
+        ->and($result->busyWorkers)->toBe(3)
         ->and($result->gauges)->toMatchArray(['total_workers' => 4, 'busy_workers' => 3, 'busy_threads' => 3, 'total_threads' => 4]);
 });
 

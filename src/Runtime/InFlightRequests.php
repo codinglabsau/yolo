@@ -5,19 +5,24 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo\Runtime;
 
 use Illuminate\Contracts\Cache\Repository;
+use Codinglabs\Yolo\Runtime\Http\TrackInFlightRequests;
 
 /**
- * The saturation numerator on an Octane tier (a classic tier reads its thread gauges and
- * never tracks this), counted directly because FrankenPHP's `busy_workers` gauge reads
- * wrong under the exact pin burst is meant to catch: sampled from a request's
- * after-response hook, the sampling worker has just finished (so counts itself idle) and
- * only at the instant a worker freed — a momentary low. Under a CPU-bound SSR pin it read
- * ~50% on a box genuinely at 100%, so the alarm fired only after scale-out gave headroom.
+ * The window's peak in-flight requests inside the app on an Octane tier (a classic tier
+ * reads its thread gauges and never tracks this), bracketed by {@see TrackInFlightRequests}.
+ * It is the floor under the saturation numerator, not the numerator: FrankenPHP's
+ * `busy_workers` counts every request dispatched to the worker script, those still
+ * waiting for a worker included, so under sustained overload it reads the front queue
+ * and the time a busy worker spends outside Laravel's handle span — where this counter,
+ * entered only once a worker has picked the request up and the framework is handling
+ * it, peaks at a fraction of the pool. It stays because a scrape samples one instant: a
+ * reading that lands on a momentary low can't drag the window below the concurrency the
+ * app itself saw.
  *
- * The reporter reads the window's peak, not the instantaneous count, so it's
- * immune to that sampling-instant lull even though `leave()` has run by the time
- * the hook reads. A request only enters once a worker picks it up (FrankenPHP
- * queues overflow before PHP), so the count tops out at the pool size.
+ * The reporter reads the window's peak, not the instantaneous count, so the
+ * sampling-instant lull doesn't matter even though `leave()` has run by the time
+ * the after-response hook reads. A request only enters once a worker picks it up
+ * (FrankenPHP queues overflow before PHP), so the count tops out at the pool size.
  *
  * Keys are task-scoped in the app cache, so a shared Redis is correct: each task
  * tracks its own concurrency and the alarm takes Maximum across tasks.
