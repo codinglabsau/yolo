@@ -157,11 +157,12 @@ function cpuRamp(float $percent): array
     return [new CpuSnapshot(0, 0, $cores), new CpuSnapshot($usedMicros, $wallMicros, $cores)];
 }
 
-it('publishes saturation (peak in-flight ÷ pool) at or above the emit floor', function (): void {
+it('publishes saturation (busy workers ÷ pool) at or above the emit floor', function (): void {
     $published = [];
     $cache = arrayCache();
-    // 3 in flight of a 4-worker pool → 75%.
-    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(4)]), nullCpu(), inFlightPeaking($cache, 3), $published);
+    // 3 busy of a 4-worker pool → 75%. The in-flight peak is seeded low to prove the
+    // scraped gauge, not the app-side count, is the numerator.
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(4, 3)]), nullCpu(), inFlightPeaking($cache, 1), $published);
 
     $reporter->report();
 
@@ -172,18 +173,44 @@ it('stays silent for saturation below the emit floor', function (): void {
     $published = [];
     $cache = arrayCache();
     // 1 of 4 → 25%, below the 50% floor.
-    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(4)]), nullCpu(), inFlightPeaking($cache, 1), $published);
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(4, 1)]), nullCpu(), inFlightPeaking($cache, 1), $published);
 
     $reporter->report();
 
     expect($published)->toBe([]);
 });
 
-it('caps a leaked over-pool count at 100 rather than publishing an absurd value', function (): void {
+it('lets busy workers read past the pool, carrying the queue in front of it', function (): void {
     $published = [];
     $cache = arrayCache();
-    // 6 in flight on a 4-worker pool (a leaked, never-decremented request) → capped to 100.
-    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(4)]), nullCpu(), inFlightPeaking($cache, 6), $published);
+    // 6 dispatched to a 4-worker pool: two are waiting for a worker. 6/4 = 150%,
+    // uncapped, so the deeper overshoot keeps landing the bigger step.
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(4, 6)]), nullCpu(), inFlightPeaking($cache, 2), $published);
+
+    $reporter->report();
+
+    expect($published)->toBe([150.0]);
+    expect($cache->get('yolo-burst:task-1:ssr-bypass'))->not->toBeNull();
+});
+
+it('floors the reading at the in-flight peak when the scrape lands on a momentary low', function (): void {
+    $published = [];
+    $cache = arrayCache();
+    // The scrape caught the pool with 1 busy, but the app saw 3 in flight this window:
+    // 3/4 = 75%, not 25%.
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(4, 1)]), nullCpu(), inFlightPeaking($cache, 3), $published);
+
+    $reporter->report();
+
+    expect($published)->toBe([75.0]);
+});
+
+it('caps the in-flight floor at the pool, so a leaked counter cannot publish an absurd value', function (): void {
+    $published = [];
+    $cache = arrayCache();
+    // 6 in flight on a 4-worker pool can only be a leaked, never-decremented request
+    // (a request enters once a worker has it) → the floor reads 100, not 150.
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(4, 0)]), nullCpu(), inFlightPeaking($cache, 6), $published);
 
     $reporter->report();
 
@@ -193,7 +220,7 @@ it('caps a leaked over-pool count at 100 rather than publishing an absurd value'
 it('does real work at most once per window no matter the request rate', function (): void {
     $published = [];
     $cache = arrayCache();
-    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(4), ScrapeResult::workers(4)]), nullCpu(), inFlightPeaking($cache, 3), $published);
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(4, 3), ScrapeResult::workers(4, 3)]), nullCpu(), inFlightPeaking($cache, 3), $published);
 
     $reporter->report();
     $reporter->report(); // window still claimed → no scrape, no publish
@@ -228,7 +255,7 @@ it('breaches with a tripping value when a primed scrape fails and CPU is high', 
     $published = [];
     $cache = arrayCache();
     $reporter = burstReporter($cache, queuedScraper([
-        ScrapeResult::workers(4), // primes (1 of 4 = 25%, below floor → no publish) + seeds the CPU baseline
+        ScrapeResult::workers(4, 1), // primes (1 of 4 = 25%, below floor → no publish) + seeds the CPU baseline
         ScrapeResult::failure(),  // scrape fails; CPU corroborates
     ]), queuedCpu(cpuRamp(100.0)), inFlightPeaking($cache, 1), $published);
 
@@ -245,7 +272,7 @@ it('stays silent when a primed scrape fails but CPU is low (a transient, not a p
     $published = [];
     $cache = arrayCache();
     $reporter = burstReporter($cache, queuedScraper([
-        ScrapeResult::workers(4),
+        ScrapeResult::workers(4, 1),
         ScrapeResult::failure(),
     ]), queuedCpu(cpuRamp(20.0)), inFlightPeaking($cache, 1), $published);
 
@@ -261,7 +288,7 @@ it('stays silent when a primed scrape fails and CPU cannot be read', function ()
     $published = [];
     $cache = arrayCache();
     $reporter = burstReporter($cache, queuedScraper([
-        ScrapeResult::workers(4),
+        ScrapeResult::workers(4, 1),
         ScrapeResult::failure(),
     ]), queuedCpu([new CpuSnapshot(0, 0, 0.5)]), inFlightPeaking($cache, 1), $published); // no second snapshot → null on the failure window
 
@@ -372,7 +399,7 @@ const SSR_BYPASS_KEY = 'yolo-burst:task-1:ssr-bypass';
 it('flags the task saturated for SSR bypass when saturation trips the alarm threshold', function (): void {
     $published = [];
     $cache = arrayCache();
-    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(4)]), nullCpu(), inFlightPeaking($cache, 3), $published); // 75%
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(4, 3)]), nullCpu(), inFlightPeaking($cache, 3), $published); // 75%
 
     $reporter->report();
 
@@ -384,7 +411,7 @@ it('does not flag SSR bypass for saturation below the alarm threshold', function
     $published = [];
     $cache = arrayCache();
     // 2 of 4 = 50%: publishes (≥ emit floor) but is below the 70% alarm threshold — no shed.
-    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(4)]), nullCpu(), inFlightPeaking($cache, 2), $published);
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(4, 2)]), nullCpu(), inFlightPeaking($cache, 2), $published);
 
     $reporter->report();
 
@@ -396,8 +423,8 @@ it('flags SSR bypass on a CPU-corroborated scrape-failure breach', function (): 
     $published = [];
     $cache = arrayCache();
     $reporter = burstReporter($cache, queuedScraper([
-        ScrapeResult::workers(4), // primes (25%, below floor) + seeds the CPU baseline
-        ScrapeResult::failure(),  // scrape fails; high CPU corroborates → breach
+        ScrapeResult::workers(4, 1), // primes (25%, below floor) + seeds the CPU baseline
+        ScrapeResult::failure(),     // scrape fails; high CPU corroborates → breach
     ]), queuedCpu(cpuRamp(100.0)), inFlightPeaking($cache, 1), $published);
 
     foreach (range(1, 2) as $ignored) {
@@ -414,7 +441,7 @@ it('logs the window sample — peak, raw counter and every scraped gauge — at 
     $logged = [];
     $cache = arrayCache();
     $gauges = ['total_workers' => 8, 'ready_workers' => 5, 'busy_workers' => 5, 'worker_queue_depth' => 0, 'worker_crashes' => 3, 'worker_restarts' => 3, 'total_threads' => 9, 'busy_threads' => 5, 'queue_depth' => 0];
-    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(8, $gauges)]), nullCpu(), inFlightPeaking($cache, 5), $published, logger: recordingLogger($logged));
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(8, 5, $gauges)]), nullCpu(), inFlightPeaking($cache, 5), $published, logger: recordingLogger($logged));
 
     $reporter->report();
 
@@ -428,7 +455,7 @@ it('logs a sample below the emit floor at debug, so the ramp is visible without 
     $published = [];
     $logged = [];
     $cache = arrayCache();
-    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(4, ['total_workers' => 4])]), nullCpu(), inFlightPeaking($cache, 1), $published, logger: recordingLogger($logged));
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(4, 1, ['total_workers' => 4])]), nullCpu(), inFlightPeaking($cache, 1), $published, logger: recordingLogger($logged));
 
     $reporter->report();
 
@@ -444,7 +471,7 @@ it('logs the raw counter unclamped, so a drifted-negative count is visible', fun
     $inFlight = new InFlightRequests($cache, 'task-1');
     $inFlight->leave();
     $inFlight->leave();
-    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(4)]), nullCpu(), $inFlight, $published, logger: recordingLogger($logged));
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(4, 0)]), nullCpu(), $inFlight, $published, logger: recordingLogger($logged));
 
     $reporter->report();
 
@@ -470,7 +497,7 @@ it('logs a primed scrape failure with the CPU reading and whether it breached', 
     $logged = [];
     $cache = arrayCache();
     $reporter = burstReporter($cache, queuedScraper([
-        ScrapeResult::workers(4), // primes (25%, below floor) + seeds the CPU baseline
+        ScrapeResult::workers(4, 1), // primes (25%, below floor) + seeds the CPU baseline
         ScrapeResult::failure(),
     ]), queuedCpu(cpuRamp(90.0)), inFlightPeaking($cache, 1), $published, logger: recordingLogger($logged));
 

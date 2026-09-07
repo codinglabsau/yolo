@@ -17,17 +17,19 @@ use Codinglabs\Yolo\Runtime\Ssr\SaturationAwareSsrGateway;
 use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebBurstPolicy;
 
 /**
- * Publishes web-task saturation to CloudWatch for burst step-scaling: the window's peak
- * in-flight requests ({@see InFlightRequests}) over the tier's concurrency ceiling. On an
- * Octane tier the ceiling is the FrankenPHP worker-pool size scraped from :2019; the
- * numerator is counted directly because the `busy_workers` gauge, sampled from this
- * after-response hook, under-reports the very pin burst exists to catch. On a classic tier
- * the ceiling is the `max_threads` YOLO pinned (YOLO_BURST_THREADS — the scraped
- * `total_threads` is only the floor) and the numerator is `busy_threads + queue_depth`:
- * that gauge is sampled while the sampling thread is still busy, and a queued request is
- * load the ceiling hasn't absorbed. Queueing pushes the value past 100 naturally rather
- * than tripping a floor, so one momentarily-queued request can't buy a task that scale-in
- * then holds for its window.
+ * Publishes web-task saturation to CloudWatch for burst step-scaling: load on the tier
+ * over its concurrency ceiling. On an Octane tier both terms come from the FrankenPHP
+ * scrape on :2019 — `busy_workers` over `total_workers`. The busy gauge counts every
+ * request dispatched to the worker script, those still waiting for a worker included,
+ * so it carries the front queue and the time a busy worker spends outside Laravel's
+ * handle span; the window's peak in-flight count inside the app ({@see InFlightRequests})
+ * is kept only as a floor under it, so a scrape that lands on a momentary low can't
+ * under-read a window the app itself saw busier. On a classic tier the ceiling is the
+ * `max_threads` YOLO pinned (YOLO_BURST_THREADS — the scraped `total_threads` is only
+ * the floor) and the numerator is `busy_threads + queue_depth`: a queued request is load
+ * the ceiling hasn't absorbed. In both modes queueing pushes the value past 100 naturally
+ * rather than tripping a floor, so one momentarily-queued request can't buy a task that
+ * scale-in then holds for its window.
  *
  * Runs from `$app->terminating` ({@see YoloServiceProvider}) so the work rides a
  * request that already holds a CPU slice. The per-window cache claim is
@@ -116,7 +118,7 @@ class WorkerSaturationReporter
         $this->cache->put($this->key('primed'), 1, self::PRIMED_TTL);
 
         $saturation = $result->totalWorkers !== null
-            ? $this->workerSaturation($result->totalWorkers, $peak)
+            ? $this->workerSaturation($result->totalWorkers, $result->busyWorkers, $peak)
             : $this->threadSaturation($result);
 
         $this->logSample($saturation, $peak, $result->gauges);
@@ -136,14 +138,17 @@ class WorkerSaturationReporter
     }
 
     /**
-     * Octane: saturation as a percentage of the resident pool. Capped at 100: the
-     * in-flight count can only exceed the pool size if a leaked request never
-     * decremented (the safe upward bias), and an absurd datapoint helps no one — 100
-     * already trips the +2 step.
+     * Octane: busy workers as a percentage of the resident pool. Uncapped, since the
+     * gauge counts queued requests too and the deeper reading earns the bigger step.
+     * The in-flight peak floors it — a scrape samples one instant, and one that lands
+     * on a momentary low can't under-read a window the app saw busier. That floor is
+     * itself capped at the pool: the count can only exceed the pool through a leaked
+     * request that never decremented (the safe upward bias), and an absurd datapoint
+     * helps no one — 100 already trips the +2 step.
      */
-    private function workerSaturation(int $totalWorkers, int $peak): float
+    private function workerSaturation(int $totalWorkers, int $busyWorkers, int $peak): float
     {
-        return min(100.0, $peak / $totalWorkers * 100);
+        return max($busyWorkers, min($peak, $totalWorkers)) / $totalWorkers * 100;
     }
 
     /**

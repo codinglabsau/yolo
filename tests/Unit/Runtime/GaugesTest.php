@@ -38,6 +38,19 @@ it('has no worker total for a zero reading caught mid worker-reload', function (
     expect(Gauges::totalWorkers("frankenphp_total_workers 0\n"))->toBeNull();
 });
 
+it('parses busy workers, summed across every worker entry', function (): void {
+    expect(Gauges::busyWorkers(workerModeMetrics()))->toBe(3)
+        ->and(Gauges::busyWorkers(
+            "frankenphp_total_workers{worker=\"/a\"} 4\nfrankenphp_busy_workers{worker=\"/a\"} 5\n"
+            . "frankenphp_total_workers{worker=\"/b\"} 4\nfrankenphp_busy_workers{worker=\"/b\"} 2\n"
+        ))->toBe(7);
+});
+
+it('refuses busy workers missing beside total_workers rather than reading it as zero', function (): void {
+    expect(fn (): int => Gauges::busyWorkers("frankenphp_total_workers 4\n"))
+        ->toThrow(RuntimeException::class, 'frankenphp_busy_workers');
+});
+
 it('recognises the thread gauges in both modes', function (): void {
     expect(Gauges::hasThreads(classicModeMetrics()))->toBeTrue()
         ->and(Gauges::hasThreads(workerModeMetrics()))->toBeTrue()

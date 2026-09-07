@@ -46,7 +46,7 @@ class MetricsScraper implements Scraper
         $gauges = Gauges::diagnostics($body);
 
         if ($totalWorkers !== null) {
-            return ScrapeResult::workers($totalWorkers, $gauges);
+            return ScrapeResult::workers($totalWorkers, Gauges::busyWorkers($body), $gauges);
         }
 
         return Gauges::hasThreads($body)
