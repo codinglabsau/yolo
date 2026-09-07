@@ -297,6 +297,24 @@ it('injects the pinned thread ceiling as the burst denominator in classic mode',
         ->toContain(['name' => 'YOLO_BURST_THREADS', 'value' => '16']);
 });
 
+it('injects twice an explicit tasks.web.concurrency as the classic-mode burst denominator', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['octane' => false, 'cpu' => '1024', 'memory' => '2048', 'concurrency' => 6]],
+    ]);
+
+    bindMockIamClient([
+        'yolo-testing-my-app-ecs-task-role' => 'arn:aws:iam::111111111111:role/yolo-testing-my-app-ecs-task-role',
+        'yolo-testing-ecs-execution-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role',
+    ]);
+
+    // The same max_threads the Caddyfile pins (6 × 2), so the reporter divides by the
+    // ceiling the runtime was actually started with — not the 32 the formula would derive.
+    expect(SyncTaskDefinitionStep::payload()['containerDefinitions'][0]['environment'])
+        ->toContain(['name' => 'YOLO_BURST_THREADS', 'value' => '12'])
+        ->not->toContain(['name' => 'YOLO_BURST_THREADS', 'value' => '32']);
+});
+
 it('keeps the burst-metrics env off the queue and scheduler task definitions', function (): void {
     // Only the web tier publishes saturation; the headless workers never carry the env.
     expect(SyncTaskDefinitionStep::payload(ServerGroup::QUEUE)['containerDefinitions'][0])

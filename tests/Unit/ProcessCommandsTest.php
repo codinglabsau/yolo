@@ -20,6 +20,13 @@ describe('web', function (): void {
             ->toBe('php artisan octane:start --host=0.0.0.0 --port=8000 --workers=8');
     });
 
+    it('pins the Octane worker pool to an explicit tasks.web.concurrency', function (): void {
+        manifestWithWeb(['cpu' => 1024, 'memory' => 2048, 'concurrency' => 4, 'autoscaling' => false]);
+
+        expect(ProcessCommands::web())
+            ->toBe('php artisan octane:start --host=0.0.0.0 --port=8000 --workers=4');
+    });
+
     it('runs classic mode against the generated Caddyfile, never php-server', function (): void {
         // php-server takes no thread flag and reads no Caddyfile, so its pool is fixed
         // at 2x the microVM's visible CPUs with no way to override it. `run --config`

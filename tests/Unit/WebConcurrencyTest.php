@@ -37,3 +37,16 @@ it('defaults to the Octane pool when the mode is not declared', function (): voi
 
     expect(WebConcurrency::ceiling())->toBe(WebWorkers::count());
 });
+
+it('follows an explicit tasks.web.concurrency on an Octane tier', function (): void {
+    manifestWithWebMode(octane: true, web: ['concurrency' => 4]);
+
+    expect(WebConcurrency::ceiling())->toBe(4);
+});
+
+it('follows twice an explicit tasks.web.concurrency on a classic tier — the thread ceiling, not the floor', function (): void {
+    manifestWithWebMode(octane: false, web: ['concurrency' => 4]);
+
+    expect(WebConcurrency::ceiling())->toBe(8)
+        ->and(WebConcurrency::ceiling())->toBe(WebThreads::maximum());
+});

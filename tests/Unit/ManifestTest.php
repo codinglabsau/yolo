@@ -266,6 +266,59 @@ describe('octane', function (): void {
     });
 });
 
+describe('web concurrency', function (): void {
+    it('is unset by default so the mode formula sizes the pool', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => ['cpu' => 1024, 'memory' => 2048]],
+        ]);
+
+        expect(Manifest::webConcurrency())->toBeNull();
+    });
+
+    it('reads a declared per-task concurrency', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => ['concurrency' => 4]],
+        ]);
+
+        expect(Manifest::webConcurrency())->toBe(4);
+    });
+
+    it('accepts the key beside cpu and memory through the manifest validator', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => ['cpu' => 1024, 'memory' => 2048, 'concurrency' => 4, 'autoscaling' => false]],
+        ]);
+
+        expect(Manifest::unknownKeys())->toBe([]);
+    });
+
+    it('rejects the key under autoscaling — it describes one task, not the scaling policy', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => ['autoscaling' => ['min' => 1, 'max' => 3, 'concurrency' => 4]]],
+        ]);
+
+        expect(Manifest::unknownKeys())->toBe(['environments.testing.tasks.web.autoscaling.concurrency']);
+    });
+
+    it('hard-fails on anything but a positive integer', function (mixed $value): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'tasks' => ['web' => ['concurrency' => $value]],
+        ]);
+
+        expect(fn (): ?int => Manifest::webConcurrency())
+            ->toThrow(IntegrityCheckException::class, 'tasks.web.concurrency must be a positive integer');
+    })->with([
+        'zero' => [0],
+        'negative' => [-4],
+        'fractional' => [2.5],
+        'per-vCPU string' => ['16/vcpu'],
+    ]);
+});
+
 describe('autoscaling', function (): void {
     it('is on with an autoscaling block', function (): void {
         writeManifest([

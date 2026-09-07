@@ -42,17 +42,30 @@ final class WebThreads
      */
     private const int THREAD_MEMORY_MB = 48;
 
+    /** An explicit `tasks.web.concurrency` is the floor verbatim — absolute, not per vCPU, not memory-capped. */
     public static function minimum(): int
     {
+        if (($concurrency = Manifest::webConcurrency()) !== null) {
+            return $concurrency;
+        }
+
         return max(1, min(
             (int) round(self::THREADS_PER_VCPU * self::vcpu()),
             self::byMemory(),
         ));
     }
 
-    /** Never below the floor — a memory-starved task collapses to one fixed-size pool, not an invalid range. */
+    /**
+     * Twice an explicit `tasks.web.concurrency`, keeping the burst ratio derived rather than a
+     * second key to keep in step. Otherwise never below the floor — a memory-starved task
+     * collapses to one fixed-size pool, not an invalid range.
+     */
     public static function maximum(): int
     {
+        if (($concurrency = Manifest::webConcurrency()) !== null) {
+            return $concurrency * 2;
+        }
+
         return max(self::minimum(), min(
             (int) round(self::MAX_THREADS_PER_VCPU * self::vcpu()),
             self::byMemory(),

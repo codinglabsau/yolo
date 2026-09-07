@@ -65,7 +65,7 @@ The ALB doesn't publish in-flight concurrency, so YOLO derives it with CloudWatc
 concurrency_per_task = (RequestCountPerTarget / 60) × TargetResponseTime
 ```
 
-and target-tracks it against the task's **pinned concurrency ceiling** held at **70% utilisation**. A 1 vCPU Octane task → 16 workers → a target of ~11 concurrent requests, leaving headroom for the within-minute peak and the next task's cold start. Resize the task (`tasks.web.cpu`) and both the ceiling and the target follow; there's no separate knob.
+and target-tracks it against the task's **pinned concurrency ceiling** held at **70% utilisation**. A 1 vCPU Octane task → 16 workers → a target of ~11 concurrent requests, leaving headroom for the within-minute peak and the next task's cold start. Resize the task (`tasks.web.cpu`) and both the ceiling and the target follow; set [`tasks.web.concurrency`](/reference/manifest#tasks-web) and they follow that instead — there's no separate target knob.
 
 ### What the ceiling is, and why YOLO pins it
 
@@ -73,6 +73,8 @@ Whichever mode the tier runs, one PHP worker or thread serves one request at a t
 
 - **Octane (worker mode, the default)** — a resident pool of `16 × vCPU` workers, capped by memory, pinned with `octane:start --workers`. Fixed at boot: the pool *is* the ceiling.
 - **Classic mode** ([`tasks.web.octane: false`](/reference/manifest#tasks-web)) — threads spawned on demand between a floor of `16 × vCPU` and a ceiling of `32 × vCPU`, both capped by memory. The ceiling is what the target tracks; the floor is just where the pool idles. The extra headroom absorbs a within-minute arrival spike while ECS brings another task up.
+
+Both formulas assume an I/O-bound request — one that spends most of its life parked on a downstream rather than burning the core, which is why the pool is sized well above the vCPU count. An app whose requests are CPU-bound breaks that assumption: at `16 × vCPU` the task is oversubscribed many times over, requests queue inside it for seconds (each holding a database connection while it waits), and the load balancer never sees the saturation because the task is still accepting. For that app, [`tasks.web.concurrency`](/reference/manifest#tasks-web) sets the count directly — absolute, not per vCPU: the Octane pool becomes exactly that, and classic mode boots that many threads with the ceiling held at twice it. The autoscaling target and the burst denominator follow whichever value is in force, so scaling reads the same number the runtime was started with.
 
 Classic mode needs both bounds written explicitly, which is why YOLO generates a `docker/Caddyfile` and runs `frankenphp run --config` against it rather than the simpler `frankenphp php-server`: that command exposes no thread flag and reads no Caddyfile, so its pool can't be moved off the microVM-derived default. `max_threads auto` isn't an option either — it sizes off host memory without consulting the container's limit, returning the same ceiling whether the task is capped at 512 MB or 4 GB, so a small task would grow a pool it can't hold.
 

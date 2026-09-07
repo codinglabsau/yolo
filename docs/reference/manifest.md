@@ -94,6 +94,7 @@ environments:
         octane: true
         cpu: '512'
         memory: '1024'
+        concurrency: 8   # derived from cpu/memory when omitted
         shutdown-grace-period: 15
         enable-execute-command: true
         ssr: false
@@ -480,6 +481,7 @@ The last three rows are **web-less worker apps**: a pure queue consumer, a sched
 | `tasks.web.octane` | `true` | Run the web tier on Octane (FrankenPHP **worker mode**) via `octane:start`. Set `false` to run FrankenPHP in **classic mode** — per-request boot, no resident app — for an app that isn't Octane-safe yet. Same image and port either way; only the launch command differs, and the build's [Octane preflight](/guide/building-and-deploying) is skipped (classic mode needs no `laravel/octane`). YOLO sizes the classic thread pool from this task's `cpu`/`memory` — see [what the ceiling is](/guide/scaling#what-the-ceiling-is-and-why-yolo-pins-it). |
 | `tasks.web.cpu` | `'512'` | Fargate CPU units. |
 | `tasks.web.memory` | `'1024'` | Fargate memory (MB). |
+| `tasks.web.concurrency` | *(derived)* | How many requests one web task serves at once — an absolute count, not per vCPU. Sets the Octane worker pool (`octane:start --workers`) or, in classic mode, the thread floor (`num_threads`) with the ceiling (`max_threads`) held at twice it. Omit it and YOLO derives the pool from `cpu`/`memory` — see [what the ceiling is](/guide/scaling#what-the-ceiling-is-and-why-yolo-pins-it). Set it for an app whose requests are CPU-bound rather than I/O-bound: the derived `16 × vCPU` assumes a request spends most of its life parked on a downstream, and a CPU-bound app oversubscribes the task many times over at that size — requests queue inside the task, each holding a database connection, where the load balancer can't see the saturation. Positive integer; the autoscaling concurrency target and the burst denominator follow it. Applies with autoscaling off too — it describes one task. |
 | `tasks.web.shutdown-grace-period` | `15` | Seconds the web process gets on `SIGTERM` before `SIGKILL`. It's also the ALB drain window and the container `stopTimeout`. See [graceful shutdown](/guide/images#graceful-shutdown). |
 | `tasks.web.enable-execute-command` | `true` | Enable ECS Exec so [`yolo run`](/reference/commands#yolo-run) can attach. Access is gated by MFA on the admin IAM tier; set `false` to disable it for this group. |
 | `tasks.web.ssr` | `false` | Run Inertia's SSR renderer (`inertia:start-ssr`, a Node process on `127.0.0.1:13714`) **bundled** in the web container, so PHP server-renders your Vue pages. `true`, or an object to override its `shutdown-grace-period`. SSR is always bundled — never its own service. Needs a Node runtime in your Dockerfile and an SSR bundle from `npm run build`; YOLO injects `INERTIA_SSR_ENABLED=true` unless your `.env` sets it. See [Inertia SSR](/guide/images#inertia-ssr). |

@@ -638,6 +638,31 @@ it('bakes the classic-mode thread bounds from the declared task size', function 
         ->toContain('max_threads 64');
 });
 
+it('bakes an explicit tasks.web.concurrency into the classic-mode thread bounds', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['octane' => false, 'cpu' => 2048, 'memory' => 4096, 'concurrency' => 6, 'autoscaling' => false]],
+    ]);
+
+    generatedSupervisorConfig();
+
+    // 2 vCPU would derive 32/64; the floor is the declared count and the ceiling twice it.
+    expect((string) file_get_contents(Paths::build('docker/Caddyfile')))
+        ->toContain('num_threads 6')
+        ->toContain('max_threads 12')
+        ->not->toContain('num_threads 32');
+});
+
+it('pins the Octane worker pool to an explicit tasks.web.concurrency', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['cpu' => 1024, 'memory' => 2048, 'concurrency' => 4, 'autoscaling' => false]],
+    ]);
+
+    expect(generatedSupervisorConfig())
+        ->toContain('command=php artisan octane:start --host=0.0.0.0 --port=8000 --workers=4');
+});
+
 it('serves the classic-mode Caddyfile on the port the target group health-checks', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
