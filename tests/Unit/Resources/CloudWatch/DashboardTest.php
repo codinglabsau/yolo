@@ -29,6 +29,7 @@ function dashboardContext(array $overrides = []): array
         'region' => 'ap-southeast-2',
         'web' => true,
         'burst' => true,
+        'octane' => true,
         'clusterName' => 'yolo-testing-my-app',
         'serviceName' => 'yolo-testing-my-app-web',
         'albSuffix' => 'app/yolo-testing/abc123def456',
@@ -320,7 +321,16 @@ it('draws the burst worker-saturation panel with the burst threshold line on an 
     $burst = collect($panel['properties']['annotations']['horizontal'])
         ->first(fn (array $annotation): bool => $annotation['label'] === 'Burst');
 
-    expect($burst['value'])->toBe(WebBurstPolicy::ALARM_THRESHOLD);
+    expect($burst['value'])->toBe(WebBurstPolicy::alarmThreshold(octane: true));
+});
+
+it('draws the burst line at the tier\'s own threshold — the classic line on a classic tier', function (): void {
+    $panel = findWidget(Dashboard::body(dashboardContext(['octane' => false])), 'Worker saturation');
+
+    $burst = collect($panel['properties']['annotations']['horizontal'])
+        ->first(fn (array $annotation): bool => $annotation['label'] === 'Burst');
+
+    expect($burst['value'])->toBe(WebBurstPolicy::alarmThreshold(octane: false))->toBe(70);
 });
 
 it('omits the worker-saturation panel when the web tier is not autoscaling', function (): void {

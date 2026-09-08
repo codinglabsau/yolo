@@ -153,6 +153,8 @@ class Dashboard implements Deletable
             // Only an autoscaling web tier emits the saturation metric — the same gate
             // the runtime reporter and Caddyfile key off.
             'burst' => $web && Manifest::usesMetricsCaddyfile(),
+            // The burst line is per serving mode; the annotation must draw the tier's own.
+            'octane' => Manifest::usesOctane(),
             'clusterName' => $web ? (new EcsCluster())->name() : null,
             'serviceName' => $web ? (new EcsService())->name() : null,
             // A bundled queue/scheduler rides web's section; the cluster only exists with web.
@@ -469,7 +471,7 @@ class Dashboard implements Deletable
                     [WebBurstPolicy::METRIC_NAMESPACE, WebBurstPolicy::METRIC_NAME, WebBurstPolicy::METRIC_DIMENSION, $service, ['label' => 'Busiest task', 'stat' => 'Maximum', 'color' => static::ORANGE]],
                 ],
                 'annotations' => ['horizontal' => [
-                    ['color' => static::ORANGE, 'label' => 'Burst', 'value' => WebBurstPolicy::ALARM_THRESHOLD],
+                    ['color' => static::ORANGE, 'label' => 'Burst', 'value' => WebBurstPolicy::alarmThreshold($context['octane'])],
                     // Explains the metric's absence below the floor (not a gap in coverage).
                     ['color' => static::BLUE, 'label' => 'Emit floor', 'value' => WebBurstPolicy::EMIT_FLOOR],
                 ]],
