@@ -22,9 +22,10 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * 1-minute ALB metrics, so this pairs a step-scaling policy with a 10s high-res alarm
  * on a saturation metric each web task emits itself — busy workers over the Octane
  * worker pool, or busy threads over the classic thread ceiling, queued requests counted
- * in both (requests queue before latency climbs). Scale-out only — scale-in stays with target tracking, so this
- * can only add capacity faster, never fight them. Provisioned wherever web autoscaling
- * is, in either serving mode; not a knob.
+ * in both (requests queue before latency climbs). The alarm line is per tier
+ * ({@see alarmThreshold()}); the alarm shape is shared. Scale-out only — scale-in stays
+ * with target tracking, so this can only add capacity faster, never fight them.
+ * Provisioned wherever web autoscaling is, in either serving mode; not a knob.
  *
  * {@see WorkerSaturationReporter} publishes synchronously via PutMetricData from an
  * after-response hook, only while hot (grant in {@see EcsTaskPolicy}). Not EMF via
@@ -48,17 +49,27 @@ class WebBurstPolicy
     public const string METRIC_DIMENSION = 'ServiceName';
 
     /**
-     * Saturation quantises to busy/total, so a 4-worker task only reads 0/25/50/75/100 %;
-     * with the strict `>` comparator, 70 trips at 3/4 yet stays under a larger pool's
-     * higher steps. The worker count is auto-detected at runtime, not a manifest value,
-     * so this is fixed across the realistic 4–16 range rather than derived.
+     * Classic mode: the numerator carries queue depth and the thread ceiling is large
+     * (32/vCPU), so a fractional reading below a full pin is real load — 70 trips one
+     * step below it while staying under a small ceiling's coarse quantisation (a
+     * 4-thread task reads only 0/25/50/75/100, and 75 must clear the strict `>`).
      */
-    public const int ALARM_THRESHOLD = 70;
+    public const int CLASSIC_ALARM_THRESHOLD = 70;
+
+    /**
+     * Octane: the `busy_workers` gauge counts every dispatched request, health checks
+     * included, and a small resident pool (16/vCPU) quantises coarsely — two or three
+     * load-balancer probes landing in one window read 6-9 of 8 on an idle task, which
+     * a fraction-of-pool line mistakes for a burst. Probes can never queue a pool, so
+     * the honest cut is "dispatched exceeds the pool": strictly over 100 means requests
+     * are waiting for a worker. The same absolute count on a 32-worker pool reads under
+     * 20 either way; only the small pool ever saw the false trip.
+     */
+    public const int OCTANE_ALARM_THRESHOLD = 100;
 
     /**
      * The reporter publishes only at/above this, so the metric costs nothing when cold.
-     * One quantised step (2/4 = 50 %) under the trip, so the alarm sees a not-breaching
-     * datapoint first.
+     * Under both thresholds, so the alarm sees a not-breaching datapoint first.
      */
     public const int EMIT_FLOOR = 50;
 
@@ -66,8 +77,17 @@ class WebBurstPolicy
     private const int PERIOD = 10;
 
     /**
-     * Also the reporter's window hold after a tripping datapoint: one breach already
-     * steps the count out, so further datapoints would be ignored by the cooldown anyway.
+     * Two consecutive breaching periods, so one window in which probes and requests
+     * coincide can't buy a task. Detection is therefore two periods plus the reporter's
+     * {@see POLL_INTERVAL} debounce: 20-25s from a spike to ALARM. A real spike clears
+     * that easily — the gauge climbs from tens to hundreds inside a single window.
+     */
+    private const int EVALUATION_PERIODS = 2;
+
+    /**
+     * The step policy's cooldown. Step scaling keeps counting capacity a previous step
+     * added toward the next evaluation for this long, so an alarm that stays in ALARM
+     * at the same band adds nothing more — the reporter needs no hold of its own.
      */
     public const int COOLDOWN = 60;
 
@@ -87,6 +107,16 @@ class WebBurstPolicy
     public static function serviceName(): string
     {
         return (new EcsService(ServerGroup::WEB))->name();
+    }
+
+    /**
+     * The alarm line for a serving mode, with the strict `>` comparator. The one place
+     * the tier picks a threshold: the alarm, the reporter's SSR-shed gate and the
+     * dashboard annotation all read it, so no consumer can carry the other tier's line.
+     */
+    public static function alarmThreshold(bool $octane): int
+    {
+        return $octane ? self::OCTANE_ALARM_THRESHOLD : self::CLASSIC_ALARM_THRESHOLD;
     }
 
     public function exists(): bool
@@ -194,9 +224,10 @@ class WebBurstPolicy
     private function alarmBehaviour(): array
     {
         return [
-            'Threshold' => self::ALARM_THRESHOLD,
+            'Threshold' => self::alarmThreshold(Manifest::usesOctane()),
             'Period' => self::PERIOD,
-            'EvaluationPeriods' => 1,
+            'EvaluationPeriods' => self::EVALUATION_PERIODS,
+            'DatapointsToAlarm' => self::EVALUATION_PERIODS,
             'ComparisonOperator' => 'GreaterThanThreshold',
             'Statistic' => 'Maximum',
         ];
@@ -221,8 +252,11 @@ class WebBurstPolicy
     }
 
     /**
-     * Step bounds are relative to the alarm threshold: ≥70 → +1, ≥80 → +2, so a pinned
-     * task (100 %) gets the bigger step.
+     * Step bounds are relative to the alarm threshold: up to 10 over → +1, beyond → +2.
+     * Classic: 70-80 adds one, a pinned task (100) gets two. Octane: one queued request
+     * on a pool of ten or fewer already quantises past the +1 band (9 of 8 is 112.5), so
+     * a small pool goes straight to +2 — accepted, since a real queue is real demand and
+     * the threshold change only removed the false positives.
      *
      * @return array<string, mixed>
      */

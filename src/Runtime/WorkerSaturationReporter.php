@@ -60,8 +60,14 @@ class WorkerSaturationReporter
 {
     private const float CPU_BREACH_THRESHOLD = 85.0;
 
-    /** Above the alarm threshold, so a fallback breach trips. */
-    private const float BREACH_VALUE = 100.0;
+    /**
+     * Clear of both tiers' alarm lines with the strict `>` comparator. 100 would sit
+     * exactly on the Octane line: this hook runs in `terminating`, after the response
+     * has left, and FrankenPHP still counts the reporting worker as busy, so a
+     * one-worker pool reads exactly 100 at idle — the value must be past the line,
+     * not on it.
+     */
+    private const float BREACH_VALUE = 200.0;
 
     /** One success arms the fallback for the task's life. */
     private const int PRIMED_TTL = 86400;
@@ -130,11 +136,21 @@ class WorkerSaturationReporter
 
         $this->put($saturation);
 
-        // Hold the window at the cooldown so we don't pile on while the new task boots.
-        if ($saturation >= WebBurstPolicy::ALARM_THRESHOLD) {
+        // No hold after a breach: the alarm needs consecutive breaching datapoints, and
+        // the step policy's cooldown already stops a standing ALARM from piling on.
+        if ($saturation > $this->alarmThreshold()) {
             $this->markSaturated();
-            $this->cache->put($this->key('window'), 1, WebBurstPolicy::COOLDOWN);
         }
+    }
+
+    /**
+     * The tier's line with the alarm's strict `>` comparator, so the SSR shed and the
+     * alarm agree: an idle one-worker pool reads exactly 100 (see BREACH_VALUE) and
+     * must shed nothing.
+     */
+    private function alarmThreshold(): int
+    {
+        return WebBurstPolicy::alarmThreshold(octane: $this->threadCeiling === null);
     }
 
     /**
@@ -144,7 +160,7 @@ class WorkerSaturationReporter
      * on a momentary low can't under-read a window the app saw busier. That floor is
      * itself capped at the pool: the count can only exceed the pool through a leaked
      * request that never decremented (the safe upward bias), and an absurd datapoint
-     * helps no one — 100 already trips the +2 step.
+     * helps no one — the floor can at most read a full pool, never a queue.
      */
     private function workerSaturation(int $totalWorkers, int $busyWorkers, int $peak): float
     {
@@ -186,7 +202,6 @@ class WorkerSaturationReporter
 
         $this->put(self::BREACH_VALUE);
         $this->markSaturated();
-        $this->cache->put($this->key('window'), 1, WebBurstPolicy::COOLDOWN);
     }
 
     /**

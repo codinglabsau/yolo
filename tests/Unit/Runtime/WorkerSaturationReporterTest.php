@@ -264,8 +264,12 @@ it('breaches with a tripping value when a primed scrape fails and CPU is high', 
         $reporter->report();
     }
 
-    expect($published)->toBe([100.0]);
-    expect((float) WebBurstPolicy::ALARM_THRESHOLD)->toBeLessThan(100.0);
+    // Past both tiers' lines with the strict `>` comparator — 100 would sit exactly on
+    // the Octane line and never trip.
+    expect($published)->toBe([200.0]);
+    expect($published[0])
+        ->toBeGreaterThan((float) WebBurstPolicy::alarmThreshold(octane: true))
+        ->toBeGreaterThan((float) WebBurstPolicy::alarmThreshold(octane: false));
 });
 
 it('stays silent when a primed scrape fails but CPU is low (a transient, not a pin)', function (): void {
@@ -338,16 +342,62 @@ it('lets a queue push classic saturation past 100', function (): void {
     expect($cache->get('yolo-burst:task-1:ssr-bypass'))->not->toBeNull();
 });
 
-it('holds the window at the cooldown after a tripping datapoint', function (): void {
+it('keeps publishing after a tripping datapoint, so the alarm sees its second consecutive breach', function (): void {
+    // The alarm needs two consecutive breaching datapoints and treats a missing one as
+    // not breaching, so a reporter that held its window after the first breach would
+    // starve the alarm of the second and it could never fire on a single task.
     $published = [];
     $puts = [];
     $cache = ttlRecordingCache($puts);
-    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::threads(8, 2)]), nullCpu(), inFlightPeaking($cache, 8), $published, threadCeiling: 8);
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::threads(8, 2), ScrapeResult::threads(8, 3)]), nullCpu(), inFlightPeaking($cache, 8), $published, threadCeiling: 8);
+
+    $reporter->report();
+    $cache->forget(WINDOW_KEY); // the poll debounce expiring
+    $reporter->report();
+
+    expect($published)->toBe([125.0, 137.5]);
+    expect($puts)->not->toContain([WINDOW_KEY, WebBurstPolicy::COOLDOWN]);
+});
+
+it('publishes consecutive Octane breaches too, uncapped, so a queue reads past the line twice', function (): void {
+    $published = [];
+    $cache = arrayCache();
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(8, 9), ScrapeResult::workers(8, 12)]), nullCpu(), inFlightPeaking($cache, 8), $published);
+
+    $reporter->report();
+    $cache->forget(WINDOW_KEY);
+    $reporter->report();
+
+    expect($published)->toBe([112.5, 150.0]);
+    expect($published[0])->toBeGreaterThan((float) WebBurstPolicy::alarmThreshold(octane: true));
+});
+
+it('publishes an idle one-worker pool at exactly the Octane line, which the strict comparator never trips', function (): void {
+    // The reporting request runs in `terminating`, so FrankenPHP still counts its own
+    // worker as busy: a one-worker pool reads 1 of 1 at idle. That must publish (it is
+    // over the emit floor) but neither exceed the line nor shed SSR.
+    $published = [];
+    $cache = arrayCache();
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(1, 1)]), nullCpu(), inFlightPeaking($cache, 1), $published);
 
     $reporter->report();
 
-    // One breach already steps the desired count out; the next scrape waits for it.
-    expect($puts)->toContain([WINDOW_KEY, WebBurstPolicy::COOLDOWN]);
+    expect($published)->toBe([100.0]);
+    expect($published[0])->not->toBeGreaterThan((float) WebBurstPolicy::alarmThreshold(octane: true));
+    expect($cache->get(SSR_BYPASS_KEY))->toBeNull();
+});
+
+it('does not trip on a full Octane pool with nothing queued — probes coinciding on a small pool', function (): void {
+    // Two or three load-balancer probes landing in one window on an 8-worker pool
+    // read 6-9 busy. Only the reading past the pool is a queue.
+    $published = [];
+    $cache = arrayCache();
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(8, 8)]), nullCpu(), inFlightPeaking($cache, 3), $published);
+
+    $reporter->report();
+
+    expect($published)->toBe([100.0]);
+    expect($cache->get(SSR_BYPASS_KEY))->toBeNull();
 });
 
 it('does not trip on a queued request while the ceiling has room', function (): void {
@@ -390,7 +440,7 @@ it('breaches on a CPU-corroborated scrape failure primed by a classic reading', 
         $reporter->report();
     }
 
-    expect($published)->toBe([100.0]);
+    expect($published)->toBe([200.0]);
     expect($cache->get('yolo-burst:task-1:ssr-bypass'))->not->toBeNull();
 });
 
@@ -399,7 +449,7 @@ const SSR_BYPASS_KEY = 'yolo-burst:task-1:ssr-bypass';
 it('flags the task saturated for SSR bypass when saturation trips the alarm threshold', function (): void {
     $published = [];
     $cache = arrayCache();
-    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(4, 3)]), nullCpu(), inFlightPeaking($cache, 3), $published); // 75%
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(4, 5)]), nullCpu(), inFlightPeaking($cache, 4), $published); // 125%: one queued
 
     $reporter->report();
 
@@ -410,13 +460,25 @@ it('flags the task saturated for SSR bypass when saturation trips the alarm thre
 it('does not flag SSR bypass for saturation below the alarm threshold', function (): void {
     $published = [];
     $cache = arrayCache();
-    // 2 of 4 = 50%: publishes (≥ emit floor) but is below the 70% alarm threshold — no shed.
-    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(4, 2)]), nullCpu(), inFlightPeaking($cache, 2), $published);
+    // 3 of 4 = 75%: publishes (≥ emit floor) but is below the Octane line — no shed.
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::workers(4, 3)]), nullCpu(), inFlightPeaking($cache, 3), $published);
 
     $reporter->report();
 
-    expect($published)->toBe([50.0]);
+    expect($published)->toBe([75.0]);
     expect($cache->get(SSR_BYPASS_KEY))->toBeNull();
+});
+
+it('flags SSR bypass on the classic tier at its own, lower line', function (): void {
+    $published = [];
+    $cache = arrayCache();
+    // 6 of 8 threads = 75%: over the classic 70 line though under the Octane one.
+    $reporter = burstReporter($cache, queuedScraper([ScrapeResult::threads(6, 0)]), nullCpu(), inFlightPeaking($cache, 6), $published, threadCeiling: 8);
+
+    $reporter->report();
+
+    expect($published)->toBe([75.0]);
+    expect($cache->get(SSR_BYPASS_KEY))->not->toBeNull();
 });
 
 it('flags SSR bypass on a CPU-corroborated scrape-failure breach', function (): void {
@@ -432,7 +494,7 @@ it('flags SSR bypass on a CPU-corroborated scrape-failure breach', function (): 
         $reporter->report();
     }
 
-    expect($published)->toBe([100.0]);
+    expect($published)->toBe([200.0]);
     expect($cache->get(SSR_BYPASS_KEY))->not->toBeNull();
 });
 
@@ -506,7 +568,7 @@ it('logs a primed scrape failure with the CPU reading and whether it breached', 
         $reporter->report();
     }
 
-    expect($published)->toBe([100.0])
+    expect($published)->toBe([200.0])
         ->and($logged[1][0])->toBe('warning')
         ->and($logged[1][2])->toBe(['task' => 'task-1', 'cpu' => 90.0, 'breach' => true]);
 });
