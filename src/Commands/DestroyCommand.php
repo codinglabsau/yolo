@@ -92,7 +92,10 @@ class DestroyCommand extends SyncSteppedCommand implements PlansSequentially
                 ...$this->networkSteps(),
                 ...DestroyEnvironmentCommand::iamTierTeardownSteps(),
             ],
-            'account' => [Steps\Destroy\Account\TeardownGithubOidcProviderStep::class],
+            'account' => [
+                Steps\Destroy\Account\TeardownGithubOidcProviderStep::class,
+                Steps\Destroy\Account\TeardownUsersGroupStep::class,
+            ],
             'manifest' => [Steps\Destroy\Environment\RemoveEnvironmentFromManifestStep::class],
         ];
     }

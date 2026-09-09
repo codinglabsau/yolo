@@ -7,6 +7,7 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Contracts\AdminCommand;
+use Codinglabs\Yolo\Resources\Iam\UsersGroup;
 use Codinglabs\Yolo\Resources\Iam\AdminsGroup;
 use Codinglabs\Yolo\Resources\Iam\ObserversGroup;
 use Codinglabs\Yolo\Resources\Iam\AssumeRoleGroup;
@@ -28,6 +29,13 @@ use function Laravel\Prompts\multiselect;
  * per-app tiers for THIS app — to grant deploy on another app, run it in that app's
  * directory. Admin-tier because the admin policy is what may manage yolo-* group
  * membership. YOLO never creates or deletes the IAM users themselves.
+ *
+ * The account-scoped {@see UsersGroup} rides along: the member being edited is
+ * enrolled on every run whatever tiers are ticked, and never unenrolled here.
+ * Self-service credential hygiene therefore comes with the user rather than with a
+ * tier — a developer holding no tier at all can still enrol MFA and rotate their own
+ * key, and revoking every tier doesn't strand them. Only this offered set is touched;
+ * the account's other users are nobody's business here.
  */
 class PermissionsCommand extends Command implements AdminCommand
 {
@@ -88,7 +96,11 @@ class PermissionsCommand extends Command implements AdminCommand
 
         $changes = static::membershipChanges(array_keys($options), $current, $selected);
 
-        if ($changes['add'] === [] && $changes['remove'] === []) {
+        // Not part of $options, so membershipChanges can never propose removing it.
+        $selfService = new UsersGroup();
+        $enrolSelfService = $selfService->exists() && ! in_array($selfService->name(), $current, true);
+
+        if ($changes['add'] === [] && $changes['remove'] === [] && ! $enrolSelfService) {
             info(sprintf('No changes — %s already has exactly those tiers.', $user));
 
             return self::SUCCESS;
@@ -101,6 +113,10 @@ class PermissionsCommand extends Command implements AdminCommand
             [
                 ...array_map(fn (string $g): array => ['grant', $labelFor($g)], $changes['add']),
                 ...array_map(fn (string $g): array => ['revoke', $labelFor($g)], $changes['remove']),
+                ...($enrolSelfService ? [['grant', sprintf(
+                    'Self-service — %s (enrol MFA, rotate own key and password)',
+                    $selfService->name(),
+                )]] : []),
             ],
         );
 
@@ -118,11 +134,18 @@ class PermissionsCommand extends Command implements AdminCommand
             Aws::iam()->removeUserFromGroup(['UserName' => $user, 'GroupName' => $group]);
         }
 
+        if ($enrolSelfService) {
+            Aws::iam()->addUserToGroup(['UserName' => $user, 'GroupName' => $selfService->name()]);
+        }
+
         info(sprintf(
-            '%s: granted %d, revoked %d. Access takes effect on their next assume (tokens last ~1h).',
+            '%s: granted %d, revoked %d.%s Access takes effect on their next assume (tokens last ~1h).',
             $user,
             count($changes['add']),
             count($changes['remove']),
+            $enrolSelfService
+                ? sprintf(' Enrolled in %s for self-service credentials.', $selfService->name())
+                : '',
         ));
 
         return self::SUCCESS;

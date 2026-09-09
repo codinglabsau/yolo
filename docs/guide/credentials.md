@@ -4,7 +4,7 @@ YOLO authenticates to AWS as **you** — a named profile per environment on each
 
 ## Who can do what
 
-Access is granted by **grant-group membership**, never by attaching policies to a user (see [conventions](/reference/commands#conventions)). Each group allows `sts:AssumeRole` on exactly one scoped tier role, plus a self-service slice scoped to the member's own user: enrolling an MFA device (allowed without MFA — a new user must be able to bootstrap), and managing their own access keys and password (**MFA required** — a leaked credential can't cut itself a replacement or remove the device):
+Access is granted by **grant-group membership**, never by attaching policies to a user (see [conventions](/reference/commands#conventions)). Each tier group allows `sts:AssumeRole` on exactly one scoped tier role — nothing else:
 
 | Tier | Group | Grants |
 |---|---|---|
@@ -20,13 +20,15 @@ The tiers split along two axes — **infrastructure** and **data**, each read or
 
 Broader tiers **subsume narrower ones in the grant itself**: commands always mint the least-privileged role for their job (reads mint observer roles, deploys the per-app deployer) regardless of who runs them — so the env observers and developers grants include every per-app observer role, and the admins grant includes the whole hierarchy. An admin, developer or env observer runs app-scoped commands (`status`, `db:tunnel`) without per-app membership; only the admin-role assume itself prompts for a fresh MFA code. No YOLO command mints the developer role itself — a developer assumes it directly (a profile pointed at `yolo-{env}-developer-role`, or `yolo-{env}-{app}-developer-role`) to reach the data grants.
 
+Self-service credential hygiene — enrolling an MFA device (allowed without MFA, so a new user can bootstrap) and, once MFA-carrying, managing their own access keys and password — is a **separate, account-scoped `yolo-users` group** (not per-environment, and carrying no `sts:AssumeRole` on anything). It comes with the user rather than with a tier: [`yolo permissions`](/reference/commands#yolo-permissions) enrols whoever you're editing on every run, whatever tiers you tick — so unticking every tier revokes all access and still leaves the developer able to enrol a device and rotate their own key.
+
 **Every tier requires MFA to assume** — the trust condition is on every tier role, AWS-enforced, so a bare static key can't hold even read-only access. Sessions minted by the `yolo-credentials-1password` helper carry the MFA context automatically; only the admin tier adds a per-run prompt. Most developers want **environment observer**, plus **developer on the apps whose data they work with**. Keep the admins group small.
 
 Each code mints exactly one session, so back-to-back admin commands need a **different code each time** — reusing the one still on screen is refused by AWS for the rest of its window. The prompt handles that itself: a refused code is re-prompted (a few attempts) rather than failing the command, and a code AWS has already rejected is caught at the prompt instead of being sent back.
 
 ## Onboard a developer
 
-Onboarding is split cleanly in two: the **admin** creates the user and grants tiers (a few minutes, once), then the **developer** does everything else self-service — enrolling MFA, creating their own access key, and configuring their machine. The order matters: group membership carries the self-service permissions, so the admin's half must be complete before the developer's half can start.
+Onboarding is two halves: the **admin** creates the IAM user and runs `yolo permissions` once (a few minutes, once), then the **developer** does everything else self-service — enrolling MFA, creating their own access key, and configuring their machine. The `permissions` run is what unlocks the developer's half, so do it in the same sitting as creating the user. Which **tiers** you grant there is a separate question you can revisit anytime: self-service comes with the user, so even a run that ticks nothing lets the developer bootstrap.
 
 ### Admin: create the IAM user
 
@@ -34,7 +36,9 @@ YOLO never creates or owns users — an account admin does this once per person,
 
 - Create the user with a **console password** and **no access key**. Untick *"user must create a new password at next sign-in"* — the password change is MFA-gated, so a forced pre-MFA reset would be denied; the developer changes it themselves once enrolled. That's it: no policies to attach, no MFA device to register, no key to hand over.
 
-### Admin: grant tiers
+Hand over the console password once the `permissions` run below is done — until then the user has no groups and can't enrol a device.
+
+### Admin: grant access
 
 From the app's directory, a member of `yolo-{env}-admins` runs:
 
@@ -44,13 +48,13 @@ yolo permissions production
 
 Pick the user, tick the tiers, confirm. Membership is the entire access lever — the same command revokes by unticking. See [`yolo permissions`](/reference/commands#yolo-permissions).
 
-This step is not just about tier access: the grant groups also carry the developer's **self-service permissions** (enrol MFA, manage own keys). A user in no group can't even add a device — so hand over the console password only after this step.
+Every run also enrols that user in `yolo-users`, whatever you tick — so a developer you grant no tier at all can still bootstrap, and revoking every tier later doesn't strand them mid-rotation. If the group doesn't exist yet, run [`yolo sync:account`](/reference/commands#yolo-sync-account) once to provision it.
 
 ### Developer: enrol MFA and create your access key
 
 Self-service in the console, in an order that keeps MFA structural — the access key can't exist before the device does:
 
-1. Sign in to the console with the password from your admin.
+1. Sign in to the console with the password from your admin. (If the credentials page won't let you add a device, your admin hasn't run `yolo permissions` for you yet.)
 2. Enrol an **MFA device** — choose **Authenticator app** (TOTP), not a passkey (allowed pre-MFA — the bootstrap path). Name it anything you like (names are account-unique, so make it yours). Scan the QR into 1Password — the same seed later provides the TOTP field the credential helper forwards.
 3. **Sign out and back in**, entering a one-time code at the prompt. Enrolling doesn't upgrade your current session — only a fresh MFA sign-in carries the MFA context. If you aren't prompted for a code, the device didn't attach; go back to step 2.
 4. Create your own **access key** (and change your password) — both MFA-gated, so they only work from the re-signed-in session.
@@ -75,7 +79,7 @@ The long-lived key lives only in 1Password — it never sits in `~/.aws/credenti
 
 Prerequisites — `yolo configure` verifies the whole chain live, so everything above must exist first:
 
-- [ ] IAM user created, **in its grant group(s)**
+- [ ] IAM user created and **in its tier grant group(s)** (`yolo permissions`) — `yolo configure`'s live checks need a tier to assume
 - [ ] MFA device enrolled (TOTP, not a passkey)
 - [ ] Access key created and stored in 1Password **with the TOTP field**
 

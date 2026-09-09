@@ -9,6 +9,7 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 - **Permission tiers** — you authenticate as yourself; YOLO then assumes a scoped role per command and runs capped to it, so it can never exceed what the command needs: read commands (`status`, `audit`) → an observer role, the app lifecycle (`deploy`, `build`, `run`, `rollback`, and the app's env-file pair `env:pull` / `env:push`) → the per-app deployer role, and provisioning plus environment-level management (`sync`, `scale`, `services`, and the `environment:*` file commands) → the `yolo-*`-scoped admin role. The observer tier is **scope-aware**: a single-app read (`status`, `status:logs`) caps to a **per-app** observer role whose log-content reads are fenced to that app's log group, while an env-wide read (`status:environment`, every `audit`) caps to the env observer role. The guard is **fail-closed** — a command refuses if it can't assume its role rather than running on your full identity. See [provisioning](/guide/provisioning).
 - **Every tier requires MFA** — each tier role's trust demands `aws:MultiFactorAuthPresent`, even read-only observer, so a bare static key can't assume anything: the tier cap limits what YOLO does, not what the key pair could do elsewhere, and the weakest credential on the team is still an MFA'd one. Sessions minted by [`yolo configure`](#yolo-configure)'s helper carry the MFA context automatically, so observer and developer add **no prompts**. The **admin tier additionally demands a fresh 6-digit code** each run (`sync` / `scale` / `permissions` prompt for it), so escalating to admin is always an **explicit human act** an agent can't perform — AWS-enforced, not just a CLI prompt; a direct AssumeRole without MFA is denied. The CI path is unaffected: GitHub OIDC federation carries no MFA context and its trust statement doesn't ask for one. YOLO resolves your MFA device automatically (`iam:ListMFADevices`); set `YOLO_<ENVIRONMENT>_MFA_SERIAL` to the device ARN to skip discovery (or when it isn't permitted).
 - **Grant groups** — access is granted by **group membership**, not by editing identities. YOLO provisions convention-named IAM groups (`yolo-{env}-observers`, `yolo-{env}-{app}-observers`, `yolo-{env}-developers`, `yolo-{env}-{app}-developers`, `yolo-{env}-admins`), each allowing `sts:AssumeRole` on one tier role. Add a user to a group to grant the tier, remove to revoke — managed with [`permissions`](#yolo-permissions) (or the IAM console). YOLO never creates or owns the users themselves — see [Developer Credentials](/guide/credentials) for the full onboarding flow, including each developer's local credential setup.
+- **`yolo-users`** — an account-scoped (not per-environment) group carrying only self-service credential hygiene: enrol an MFA device, and once MFA-carrying rotate your own access keys and password. No `sts:AssumeRole` on anything. See [Developer Credentials](/guide/credentials#who-can-do-what).
 - **`--dangerously-skip-permissions`** — a global flag that bypasses the tier cap and runs on your full AWS identity (with a loud warning). It's the deliberate escape for **bootstrapping a fresh environment** (the first `yolo sync <env> --dangerously-skip-permissions` creates the tier roles) and for break-glass / diagnostics. Avoid it otherwise.
 - **Required manifest keys** — every command except `init` checks that `name`, `region`, and `account-id` are declared, and fails fast if not.
 
@@ -629,7 +630,7 @@ yolo scale production                            # prompt for a fixed count
 
 ## `yolo permissions`
 
-Grant or revoke a team member's access by editing which YOLO [grant groups](#conventions) they belong to — membership is the entire access lever. Runs in an app's directory like `deploy`/`scale`: it offers the env-wide tiers plus this app's per-app tiers.
+Grant or revoke a team member's access by editing which YOLO tier [grant groups](#conventions) they belong to — membership is the entire access lever for `sts:AssumeRole`. Runs in an app's directory like `deploy`/`scale`: it offers the env-wide tiers plus this app's per-app tiers. Every run also enrols that user in the account-scoped [`yolo-users`](#conventions) group whatever tiers are ticked, and never unenrols them. Skipped until [`sync:account`](#yolo-sync-account) has provisioned that group.
 
 ```bash
 yolo permissions <environment>
@@ -717,7 +718,7 @@ These four options are shared by every `sync` command below. See [Provisioning](
 
 ## `yolo sync:account`
 
-Sync the account-global resources (shared across every environment) — the service-linked roles for ECS, Application Auto Scaling and ElastiCache (AWS-owned account singletons those services require before their first resource can exist; created if missing, never reconciled or torn down), and the GitHub OIDC identity provider.
+Sync the account-global resources (shared across every environment) — the service-linked roles for ECS, Application Auto Scaling and ElastiCache (AWS-owned account singletons those services require before their first resource can exist; created if missing, never reconciled or torn down), the GitHub OIDC identity provider, and the `yolo-users` self-service group (see [conventions](#conventions)) — the group and its policy only. Membership is not synced: it is granted per user by [`permissions`](#yolo-permissions), like every other YOLO group.
 
 ```bash
 yolo sync:account <environment> [--check] [--force] [--no-progress] [--tenant=<id>]
@@ -773,7 +774,7 @@ What it tears down, each scope self-gating:
 
 - **app** — this app's resources ([`destroy:app`](#yolo-destroy-app)).
 - **environment** — the compute/edge tier ([`destroy:environment`](#yolo-destroy-environment) Tier A) **and the network shell** (VPC, subnets, route table, internet gateway, RDS SG + subnet group) — *unless a database is attached to the VPC*, which keeps the shell standing (YOLO never deletes a database it doesn't own, and a live DB pins the whole network; the blocking instance is named in the summary).
-- **account** — the account-shared GitHub OIDC provider, reclaimed **only when no other environment remains** (no resource tagged `yolo:environment=<other>`). It fails safe: if that can't be determined, the provider is kept, never deleted on a guess.
+- **account** — the account-shared GitHub OIDC provider and the `yolo-users` self-service group, each reclaimed **only when no other environment remains** (no resource tagged `yolo:environment=<other>`). It fails safe: if that can't be determined, both are kept, never deleted on a guess.
 
 **Never deleted.** The database and the [app data bucket](/reference/manifest#bucket) are off-limits — not by configuration, but structurally: the data bucket isn't a deletable resource, and no destructive RDS call exists anywhere in YOLO (both enforced by tests). The confirmation names them so you can see they're safe.
 

@@ -25,4 +25,7 @@ enum Iam: string
     case OBSERVERS_GROUP = 'observers';
     case DEVELOPERS_GROUP = 'developers';
     case ADMINS_GROUP = 'admins';
+
+    // Account-scoped, not env-keyed — see UsersGroup.
+    case USERS_GROUP = 'users';
 }
