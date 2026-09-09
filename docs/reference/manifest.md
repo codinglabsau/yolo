@@ -542,7 +542,7 @@ The other defaults are tuned to avoid false-positive failures on a Laravel/Octan
 
 `autoscaling` is the same `true | false | {min, max, backlog-per-task}` knob as web: `true` takes the defaults (`min: 1`, `max: 5`), `false` pins a fixed single task (no scalable target, no backlog policy). Set **`autoscaling.min: 0`** to opt into **scale to zero**: zero tasks — and zero compute cost — when the queue is empty, at the cost of a ~30–60s Fargate cold start on the first message after idle (so it suits bursty, latency-tolerant work). The queue `min` may be `0` (unlike web); but when the queue also hosts the scheduler (a `tasks.queue` block with no [`tasks.scheduler`](#tasks-scheduler)) it can't scale to zero — cron would stop — so an explicit `tasks.queue.autoscaling.min: 0` is rejected there.
 
-Scaling is **backlog-per-task** target tracking (`ApproximateNumberOfMessagesVisible / RunningTaskCount`, CloudWatch metric math — no Lambda). A scale-to-zero queue (`autoscaling.min: 0`) also gets a step-scaling alarm that lifts it 0→1 the instant a message arrives (target tracking can't divide by zero running tasks).
+Scaling is **backlog-per-task** target tracking (`ApproximateNumberOfMessagesVisible / RunningTaskCount`, CloudWatch metric math — no Lambda). A scale-to-zero queue (`autoscaling.min: 0`) also gets a step-scaling alarm that lifts it 0→1 the instant a message arrives (target tracking can't divide by zero running tasks). On a multi-tenant app with [`queue-isolation: dedicated`](#multitenancy-queue-isolation) the visible-message term is the SUM across the landlord queue and every tenant queue, for the policy and the alarm alike — see [Scaling → multi-tenant queues](/guide/scaling#multi-tenant-queues).
 
 | Key | Default | Description |
 |---|---|---|

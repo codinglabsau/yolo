@@ -180,7 +180,11 @@ That makes the choice of *where* the queue lives a latency decision:
 | Standalone, `min: 0` | **~$0** | ~30–60s cold start from idle | bursty, latency-tolerant async |
 | Standalone, `min: 1+` | one always-on task | instant, then autoscales | high-volume, always-busy |
 
-For multi-tenant apps, a single queue service works the app's default queue; per-tenant queue fan-out is on the roadmap and isn't covered here.
+### Multi-tenant queues
+
+On a multi-tenant app the backlog signal follows [`queue-isolation`](/reference/manifest#multitenancy-queue-isolation). Under the default `shared` strategy there is one default queue at the app name, so the policy tracks it exactly as a solo app does. Under `dedicated` no queue exists at the app name — the tier drains a landlord queue plus one per declared tenant — so the backlog is the metric-math **SUM** of `ApproximateNumberOfMessagesVisible` across every one of those queues, divided by running tasks as before. The scale-to-zero alarm watches the same summed term, so a message on any tenant's queue lifts the tier off zero. Both follow the manifest: declaring a new tenant re-puts the policy and the alarm on the next `sync` with the new queue in the set, and the following `sync` plans clean.
+
+Only the `default` tier of each queue set counts toward the backlog; a `high` tier ([`queues:`](/reference/manifest#queues)) is meant to stay near-empty, so the base backlog is the throughput signal.
 
 ## The scheduler
 
