@@ -135,7 +135,7 @@ deploy:
 
 `yolo sync` (or `sync:app`) fans the per-tenant steps out across every tenant:
 
-- **Queues**, when [`queue-isolation`](/reference/manifest#multitenancy-queue-isolation) is `dedicated` — a **landlord** SQS queue and depth alarm for shared/central work, plus a per-tenant queue and alarm for each tenant. On the default `shared` strategy one queue set serves every tenant instead, with the tenant carried in the job payload.
+- **Queues**, when [`queue-isolation`](/reference/manifest#multitenancy-queue-isolation) is `dedicated` — a **landlord** SQS queue and depth alarm for shared/central work, plus a per-tenant queue and alarm for each tenant. On the default `shared` strategy one queue set serves every tenant instead, with the tenant carried in the job payload. A standalone, autoscaling queue tier scales on the backlog across whichever set it drains — see [Scaling → multi-tenant queues](/guide/scaling#multi-tenant-queues).
 - **Hosted zone, certificate, SNI attachment and listener rules**, for each tenant on a domain the landlord's certificate doesn't already cover.
 - **DNS records** for every tenant domain, pointed at the shared load balancer, UPSERTed during `yolo deploy`.
 

@@ -13,8 +13,8 @@ use Codinglabs\Yolo\Aws\ApplicationAutoScaling;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
- * Scales the queue 1→N on backlog per task (visible messages / running tasks via
- * metric math). It can't scale 0→1: at zero running tasks the division yields no
+ * Scales the queue 1→N on backlog per task (visible messages across the tier's
+ * {@see QueueBacklog} queues / running tasks via metric math). It can't scale 0→1: at zero running tasks the division yields no
  * data, so {@see QueueScaleToZeroBootstrap} owns 0→1. App Auto Scaling takes the
  * max desired count across the two, so they compose rather than fight.
  */
@@ -71,10 +71,6 @@ class QueueBacklogPolicy
      */
     public function configuration(): array
     {
-        // Scale on the base (default-tier) queue: a `high` tier is meant to stay
-        // near-empty, so the base backlog is the throughput signal. (A multi-tenant
-        // standalone queue has no single aggregate metric here.)
-        $queueName = Helpers::defaultQueueName();
         $cluster = (new EcsCluster())->name();
         $service = (new EcsService(ServerGroup::QUEUE))->name();
 
@@ -82,18 +78,7 @@ class QueueBacklogPolicy
             'TargetValue' => $this->targetValue(),
             'CustomizedMetricSpecification' => [
                 'Metrics' => [
-                    [
-                        'Id' => 'visible',
-                        'MetricStat' => [
-                            'Metric' => [
-                                'Namespace' => 'AWS/SQS',
-                                'MetricName' => 'ApproximateNumberOfMessagesVisible',
-                                'Dimensions' => [['Name' => 'QueueName', 'Value' => $queueName]],
-                            ],
-                            'Stat' => 'Sum',
-                        ],
-                        'ReturnData' => false,
-                    ],
+                    ...QueueBacklog::metricStats('Sum'),
                     [
                         'Id' => 'running',
                         'MetricStat' => [
@@ -112,7 +97,7 @@ class QueueBacklogPolicy
                     ],
                     [
                         'Id' => 'backlog_per_task',
-                        'Expression' => 'visible / running',
+                        'Expression' => QueueBacklog::expression() . ' / running',
                         'Label' => 'Backlog per task',
                         'ReturnData' => true,
                     ],
@@ -148,6 +133,18 @@ class QueueBacklogPolicy
 
         if ($currentIn !== self::SCALE_IN_COOLDOWN) {
             $changes[] = Change::make('queue backlog ScaleInCooldown', $currentIn, self::SCALE_IN_COOLDOWN);
+        }
+
+        // The queue set follows the manifest: a tenant added under dedicated isolation, or
+        // isolation switched, re-puts the policy so the old shape never lingers.
+        $currentQueues = QueueBacklog::liveQueueNames($current['CustomizedMetricSpecification'] ?? []);
+
+        if ($currentQueues !== QueueBacklog::queueNames()) {
+            $changes[] = Change::make(
+                'queue backlog queues',
+                $currentQueues === [] ? null : implode(', ', $currentQueues),
+                implode(', ', QueueBacklog::queueNames()),
+            );
         }
 
         return $changes;

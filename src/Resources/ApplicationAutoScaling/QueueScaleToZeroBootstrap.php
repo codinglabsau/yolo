@@ -15,13 +15,15 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 /**
  * Breaks the queue's 0→1 deadlock: {@see QueueBacklogPolicy} divides by running
  * tasks, so it has no data at zero. A step-scaling policy on a visible-messages
- * alarm sets desired count to ExactCapacity 1 — not +1, so it never fights the
+ * alarm over the same {@see QueueBacklog} queues sets desired count to ExactCapacity 1 — not +1, so it never fights the
  * backlog policy's higher number or ratchets up on a long backlog. Only needed
  * when `tasks.queue.autoscaling.min` is 0.
  */
 class QueueScaleToZeroBootstrap
 {
     private const int COOLDOWN = 60;
+
+    private const int PERIOD = 60;
 
     public function policyName(): string
     {
@@ -39,7 +41,8 @@ class QueueScaleToZeroBootstrap
     }
 
     /**
-     * The config is static, so drift is simply "either piece is missing".
+     * Drift is either piece missing, or the alarm watching a different queue set than
+     * the manifest declares (a tenant added under dedicated isolation).
      *
      * @return array<int, Change>
      */
@@ -51,14 +54,24 @@ class QueueScaleToZeroBootstrap
             $changes[] = Change::make('queue scale-to-zero policy', null, $this->policyName());
         }
 
-        if (! $this->alarmExists()) {
+        $alarm = $this->currentAlarm();
+
+        if ($alarm === null) {
             $changes[] = Change::make('queue scale-to-zero alarm', null, $this->alarmName());
+        } elseif (QueueBacklog::liveQueueNames($alarm) !== QueueBacklog::queueNames()) {
+            $changes[] = Change::make(
+                'queue scale-to-zero alarm queues',
+                implode(', ', QueueBacklog::liveQueueNames($alarm)) ?: null,
+                implode(', ', QueueBacklog::queueNames()),
+            );
         }
 
         if ($changes === [] || ! $apply) {
             return $changes;
         }
 
+        // PutScalingPolicy is an upsert, so re-putting an existing policy is the
+        // cheapest way to hold its ARN for the alarm action.
         $policyArn = Aws::applicationAutoScaling()->putScalingPolicy([
             'PolicyName' => $this->policyName(),
             'ServiceNamespace' => ApplicationAutoScaling::SERVICE_NAMESPACE,
@@ -80,15 +93,11 @@ class QueueScaleToZeroBootstrap
             'AlarmName' => $this->alarmName(),
             'AlarmDescription' => 'Lifts the queue off zero when a message arrives. Created by yolo CLI',
             'ComparisonOperator' => 'GreaterThanThreshold',
-            'Dimensions' => [['Name' => 'QueueName', 'Value' => Helpers::keyedResourceName()]],
             'EvaluationPeriods' => 1,
-            'MetricName' => 'ApproximateNumberOfMessagesVisible',
-            'Namespace' => 'AWS/SQS',
-            'Period' => 60,
-            'Statistic' => 'Maximum',
             'Threshold' => 0,
             'TreatMissingData' => 'notBreaching',
             'AlarmActions' => [$policyArn],
+            ...$this->alarmMetric(),
             ...Aws::tags($this->tags()),
         ]);
 
@@ -100,6 +109,40 @@ class QueueScaleToZeroBootstrap
         );
 
         return $changes;
+    }
+
+    /**
+     * A single queue is watched directly; a dedicated-isolation set is watched as a
+     * metric-math SUM, the same term the backlog policy divides by running tasks. The
+     * two forms are mutually exclusive on PutMetricAlarm, so this returns exactly one.
+     *
+     * @return array<string, mixed>
+     */
+    protected function alarmMetric(): array
+    {
+        $queues = QueueBacklog::queues();
+
+        if (count($queues) === 1) {
+            return [
+                'MetricName' => 'ApproximateNumberOfMessagesVisible',
+                'Namespace' => 'AWS/SQS',
+                'Dimensions' => [['Name' => 'QueueName', 'Value' => reset($queues)]],
+                'Period' => self::PERIOD,
+                'Statistic' => 'Maximum',
+            ];
+        }
+
+        return [
+            'Metrics' => [
+                ...QueueBacklog::metricStats('Maximum', self::PERIOD),
+                [
+                    'Id' => 'visible',
+                    'Expression' => QueueBacklog::expression(),
+                    'Label' => 'Visible messages',
+                    'ReturnData' => true,
+                ],
+            ],
+        ];
     }
 
     public function policyExists(): bool
@@ -115,12 +158,18 @@ class QueueScaleToZeroBootstrap
 
     public function alarmExists(): bool
     {
-        try {
-            CloudWatch::alarm($this->alarmName());
+        return $this->currentAlarm() !== null;
+    }
 
-            return true;
+    /**
+     * @return array<string, mixed>|null
+     */
+    protected function currentAlarm(): ?array
+    {
+        try {
+            return CloudWatch::alarm($this->alarmName());
         } catch (ResourceDoesNotExistException) {
-            return false;
+            return null;
         }
     }
 
