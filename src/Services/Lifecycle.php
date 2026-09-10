@@ -16,6 +16,7 @@ use Aws\S3\Exception\S3Exception;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServiceState;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
+use Codinglabs\Yolo\Steps\Sync\App\PublishAppManifestStep;
 
 /**
  * An env-backed service exists iff the env manifest declares it. Declaration is
@@ -27,8 +28,8 @@ use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
  */
 class Lifecycle
 {
-    /** @var array<string, array<int, string>>|null app name => services it uses */
-    protected static ?array $published = null;
+    /** @var array<string, array{services: array<int, string>, bucket: string|null}>|null app name => its published claim */
+    protected static ?array $claims = null;
 
     /** @var array<int, string>|null */
     protected static ?array $liveApps = null;
@@ -51,7 +52,7 @@ class Lifecycle
         if ($using !== []) {
             throw new IntegrityCheckException(sprintf(
                 '%s %s still using the %s service, but the environment manifest no longer declares services.%s. '
-                . 'Put the entry back with `yolo environment:manifest:pull/push`, or remove %s from each app\'s yolo.yml and deploy (or `yolo sync:app`) it first.',
+                . 'Put the entry back with `yolo environment:manifest:pull/push`, or remove %s from each app\'s yolo.yml and `yolo sync:app` it first.',
                 implode(', ', $using),
                 count($using) === 1 ? 'is' : 'are',
                 $service->value,
@@ -100,7 +101,7 @@ class Lifecycle
 
     /**
      * The environment doesn't know what an unpublished app uses, so it blocks
-     * teardown (and env-manifest removal) until its next deploy/sync:app.
+     * teardown (and env-manifest removal) until its next sync:app.
      *
      * @return array<int, string>
      */
@@ -116,26 +117,74 @@ class Lifecycle
         return $unpublished;
     }
 
+    /**
+     * Every bring-your-own data bucket named by a published app, for the env-wide
+     * data tiers (safe to grant from because only sync:app writes a claim — see
+     * {@see PublishAppManifestStep}). The YOLO-named
+     * buckets sit inside the `-data` wildcard, and a `yolo-` prefixed name is dropped
+     * here so a claim can never widen a grant onto YOLO's own infrastructure buckets.
+     * A name that isn't a valid bucket name at all (an IAM wildcard, say) is a
+     * corrupted claim and fails loudly. Sorted so the policy document is stable.
+     *
+     * @return array<int, string>
+     */
+    public static function publishedBuckets(): array
+    {
+        $buckets = [];
+
+        foreach (static::claims() as $app => $claim) {
+            $bucket = $claim['bucket'];
+
+            if ($bucket === null || str_starts_with($bucket, 'yolo-')) {
+                continue;
+            }
+
+            if (! S3::isValidBucketName($bucket)) {
+                throw new IntegrityCheckException(sprintf(
+                    'The claim for %s names "%s" as its bucket, which is not a valid bucket name — refusing to grant on it. Fix `bucket:` in that app\'s yolo.yml and `yolo sync:app` it.',
+                    $app,
+                    $bucket,
+                ));
+            }
+
+            $buckets[] = $bucket;
+        }
+
+        $buckets = array_values(array_unique($buckets));
+
+        sort($buckets);
+
+        return $buckets;
+    }
+
     /** Tests bind fresh AWS mocks per case. */
     public static function reset(): void
     {
-        static::$published = null;
+        static::$claims = null;
         static::$liveApps = null;
+    }
+
+    /**
+     * @return array<string, array<int, string>> app name => services it uses
+     */
+    protected static function published(): array
+    {
+        return array_map(fn (array $claim): array => $claim['services'], static::claims());
     }
 
     /**
      * A missing bucket (greenfield plan pass) reads as nothing published; an
      * unreadable file is a hard error — unreadable is not "uses nothing".
      *
-     * @return array<string, array<int, string>>
+     * @return array<string, array{services: array<int, string>, bucket: string|null}>
      */
-    protected static function published(): array
+    protected static function claims(): array
     {
-        if (static::$published !== null) {
-            return static::$published;
+        if (static::$claims !== null) {
+            return static::$claims;
         }
 
-        $published = [];
+        $claims = [];
         $token = null;
 
         try {
@@ -151,28 +200,31 @@ class Lifecycle
                         continue;
                     }
 
-                    [$app, $services] = static::parseServicesFile((string) $object['Key']);
+                    [$app, $claim] = static::parseClaimFile((string) $object['Key']);
 
-                    $published[$app] = $services;
+                    $claims[$app] = $claim;
                 }
 
                 $token = ($result['IsTruncated'] ?? false) ? ($result['NextContinuationToken'] ?? null) : null;
             } while ($token !== null);
         } catch (S3Exception $e) {
             if (S3::isNotFound($e)) {
-                return static::$published = [];
+                return static::$claims = [];
             }
 
             throw $e;
         }
 
-        return static::$published = $published;
+        return static::$claims = $claims;
     }
 
     /**
-     * @return array{0: string, 1: array<int, string>}
+     * `bucket` is the app's per-env manifest value: `true` (YOLO-named, covered by
+     * the namespace wildcard) reads as no BYO bucket; a string is one.
+     *
+     * @return array{0: string, 1: array{services: array<int, string>, bucket: string|null}}
      */
-    protected static function parseServicesFile(string $key): array
+    protected static function parseClaimFile(string $key): array
     {
         $file = Yaml::parse((string) Aws::s3()->getObject([
             'Bucket' => Paths::s3EnvConfigBucket(),
@@ -185,13 +237,18 @@ class Lifecycle
         // An empty services list dumps as `services: {}`, which parses back to [] — still a valid list.
         if (! is_string($name) || $name === '' || ! is_array($services) || ! array_is_list($services)) {
             throw new IntegrityCheckException(sprintf(
-                'Could not read s3://%s/%s — expected the app\'s name and its services list. A fresh `yolo deploy` or `yolo sync:app` from that app rewrites it.',
+                'Could not read s3://%s/%s — expected the app\'s name and its services list. A fresh `yolo sync:app` from that app rewrites it.',
                 Paths::s3EnvConfigBucket(),
                 $key,
             ));
         }
 
-        return [$name, array_map(strval(...), $services)];
+        $bucket = $file['bucket'] ?? null;
+
+        return [$name, [
+            'services' => array_map(strval(...), $services),
+            'bucket' => is_string($bucket) && $bucket !== '' ? $bucket : null,
+        ]];
     }
 
     /**

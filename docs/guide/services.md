@@ -70,7 +70,7 @@ Provisioning deliberately does **not** depend on a consuming app. An earlier des
 - An app that uses a service the environment doesn't declare fails `build`, `deploy` and `sync:app` with the fix spelled out (declare it via the manifest pull/push flow, or take it out of `yolo.yml`). On a greenfield environment whose manifest hasn't been seeded yet, the check defers to the first sync instead of bricking it.
 - `environment:manifest:push` refuses to remove a service while running apps still use it — naming them — and likewise while any running app hasn't published what it uses yet. (Hand-editing the bucket manifest to drop a service apps still use is caught at sync as a hard error too, rather than silently tearing it out from under them.)
 
-Retiring a service is therefore self-enforcing, with hard edges the whole way: remove it from each app's `yolo.yml` → `deploy`/`sync:app` (the app's per-service IAM melts away in the same pass) → remove the env-manifest entry and `push` (accepted once nothing is using it) → `sync:environment` plans the teardown for you to confirm.
+Retiring a service is therefore self-enforcing, with hard edges the whole way: remove it from each app's `yolo.yml` → `sync:app` (the app's per-service IAM melts away in the same pass) → remove the env-manifest entry and `push` (accepted once nothing is using it) → `sync:environment` plans the teardown for you to confirm.
 
 ## IVS — live video
 

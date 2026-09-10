@@ -128,7 +128,7 @@ it('refuses to remove a service while a running app has not published what it us
 
     expect(array_column($captured, 'name'))->not->toContain('PutObject');
     expect(Prompt::content())->toContain("Can't remove services.ivs")
-        ->toContain("hasn't deployed");
+        ->toContain("hasn't synced");
 });
 
 it('allows removing a service once no running app uses it', function (): void {

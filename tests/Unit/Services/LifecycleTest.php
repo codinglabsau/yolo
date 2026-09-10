@@ -117,3 +117,41 @@ it('memoises the registry per process so the plan and apply passes agree', funct
 
     expect(count(array_filter($captured, fn (array $call): bool => $call['name'] === 'ListObjectsV2')))->toBe($listCalls);
 });
+
+it('surfaces every bring-your-own bucket the published apps name, once, sorted — YOLO-named ones are the wildcard\'s', function (): void {
+    $captured = [];
+    bindServiceLifecycleWorld([
+        'claims' => ['zeta' => [], 'alpha' => [], 'managed' => [], 'shared' => [], 'none' => []],
+        'buckets' => ['zeta' => 'zeta-uploads', 'alpha' => 'alpha-media', 'managed' => true, 'shared' => 'alpha-media'],
+    ], $captured);
+
+    expect(Lifecycle::publishedBuckets())->toBe(['alpha-media', 'zeta-uploads']);
+});
+
+it('refuses a yolo- prefixed claim so a claim can never widen a grant onto an infrastructure bucket', function (): void {
+    $captured = [];
+    bindServiceLifecycleWorld([
+        'claims' => ['sneaky' => [], 'honest' => []],
+        'buckets' => ['sneaky' => 'yolo-111111111111-testing-config', 'honest' => 'honest-uploads'],
+    ], $captured);
+
+    expect(Lifecycle::publishedBuckets())->toBe(['honest-uploads']);
+});
+
+it('reads no bring-your-own buckets on a greenfield environment', function (): void {
+    $captured = [];
+    bindServiceLifecycleWorld(['bucket' => false], $captured);
+
+    expect(Lifecycle::publishedBuckets())->toBe([]);
+});
+
+it('fails loudly on a claim whose bucket is not a bucket name — an IAM wildcard is a corrupted claim, never a grant', function (): void {
+    $captured = [];
+    bindServiceLifecycleWorld([
+        'claims' => ['broken' => []],
+        'buckets' => ['broken' => '*'],
+    ], $captured);
+
+    expect(fn (): array => Lifecycle::publishedBuckets())
+        ->toThrow(IntegrityCheckException::class, 'The claim for broken names "*"');
+});

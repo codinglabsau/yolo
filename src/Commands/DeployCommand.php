@@ -16,9 +16,9 @@ class DeployCommand extends SteppedCommand implements DeployerCommand
 {
     use RendersServiceStatus;
 
+    // Never publish the app claim from a deploy — it feeds env-wide grants, so only
+    // sync:app (admin) writes it; see {@see Steps\Sync\App\PublishAppManifestStep}.
     protected array $steps = [
-        // Claims must lead the code that consumes a service.
-        Steps\Sync\App\PublishAppManifestStep::class,
         Steps\Deploy\PushAssetsToS3Step::class,
         Steps\Deploy\RegisterTaskDefinitionRevisionStep::class,
         Steps\Deploy\ExecuteDeployStepsStep::class,

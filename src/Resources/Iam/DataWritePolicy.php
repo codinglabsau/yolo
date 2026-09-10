@@ -23,6 +23,7 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
  */
 class DataWritePolicy implements Deletable, Resource, SynchronisesConfiguration
 {
+    use GrantsEnvDataBuckets;
     use ManagesCustomerPolicy;
     use ResolvesTags;
 
@@ -66,16 +67,6 @@ class DataWritePolicy implements Deletable, Resource, SynchronisesConfiguration
                 ],
             ],
         ];
-    }
-
-    /**
-     * YOLO-named only, for the same reason as {@see DataReadPolicy}.
-     *
-     * @return array<int, string>
-     */
-    protected function dataBucketArns(): array
-    {
-        return [Paths::s3EnvDataBucketsArn()];
     }
 
     protected function backupObjectArn(): string

@@ -102,7 +102,7 @@ class EnvironmentManifestPushCommand extends Command implements AdminCommand
 
             if (($using = Lifecycle::liveAppsUsing($service)) !== []) {
                 error(sprintf(
-                    "Can't remove services.%s — %s %s still using it. Remove %s from each app's yolo.yml services and deploy (or `yolo sync:app`) it, then push again.",
+                    "Can't remove services.%s — %s %s still using it. Remove %s from each app's yolo.yml services and `yolo sync:app` it, then push again.",
                     $service->value,
                     implode(', ', $using),
                     count($using) === 1 ? 'is' : 'are',
@@ -114,7 +114,7 @@ class EnvironmentManifestPushCommand extends Command implements AdminCommand
 
             if (($unpublished = Lifecycle::unpublishedLiveApps()) !== []) {
                 error(sprintf(
-                    "Can't remove services.%s yet — %s %s deployed since this YOLO release, so the environment doesn't know whether the service is in use. Deploy (or `yolo sync:app`) each first.",
+                    "Can't remove services.%s yet — %s %s synced since this YOLO release, so the environment doesn't know whether the service is in use. `yolo sync:app` each first.",
                     $service->value,
                     implode(', ', $unpublished),
                     count($unpublished) === 1 ? "hasn't" : "haven't",
