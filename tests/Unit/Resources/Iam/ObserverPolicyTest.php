@@ -174,11 +174,24 @@ it('scopes s3 object reads to the env-shared config only — never secrets', fun
     expect($onStar['Action'])->not->toContain('s3:GetObject');
 });
 
-it('scopes s3 bucket-config reads to YOLO-named buckets and excludes object contents', function (): void {
+it('scopes s3 bucket-config reads to the YOLO infrastructure buckets and excludes object contents', function (): void {
     $bucketStatement = collect((new ObserverPolicy())->document()['Statement'])
-        ->first(fn (array $s): bool => $s['Resource'] === 'arn:aws:s3:::yolo-*');
+        ->first(fn (array $s): bool => in_array('s3:ListBucket', (array) $s['Action'], true));
 
+    // By type suffix, never the bare namespace: the app data buckets (`-data`, or
+    // a bring-your-own name) are outside, because ListBucket there enumerates
+    // user uploads — a data read that belongs to DataReadPolicy.
+    expect($bucketStatement['Resource'])->toBe([
+        'arn:aws:s3:::yolo-*-config',
+        'arn:aws:s3:::yolo-*-assets',
+        'arn:aws:s3:::yolo-*-logs',
+        'arn:aws:s3:::yolo-*-backups',
+    ]);
     expect($bucketStatement['Action'])->toContain('s3:GetBucket*', 's3:ListBucket');
     // Bucket ARN (no /*) can't authorise object reads.
     expect($bucketStatement['Action'])->not->toContain('s3:GetObject');
+
+    $onDataBuckets = collect((new ObserverPolicy())->document()['Statement'])
+        ->filter(fn (array $s): bool => str_contains(json_encode($s['Resource']), '-data'));
+    expect($onDataBuckets)->toBeEmpty();
 });

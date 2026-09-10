@@ -113,8 +113,14 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 // The observer policy is also the drift-check surface every app's
                 // deployer role attaches for the pre-deploy `sync --check` gate.
                 Steps\Sync\Environment\SyncObserverPolicyStep::class,
+                // The data documents (every YOLO-named app data bucket) before any
+                // role attaches them.
+                Steps\Sync\Environment\SyncDataReadPolicyStep::class,
+                Steps\Sync\Environment\SyncDataWritePolicyStep::class,
                 Steps\Sync\Environment\SyncObserverRoleStep::class,
                 Steps\Sync\Environment\AttachObserverRolePolicyStep::class,
+                Steps\Sync\Environment\SyncDeveloperRoleStep::class,
+                Steps\Sync\Environment\AttachDeveloperRolePoliciesStep::class,
                 // Self-activating: the first sync creates the admin tier on the
                 // profile, every sync after mints the role.
                 Steps\Sync\Environment\SyncAdminPolicyStep::class,
@@ -122,6 +128,7 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 Steps\Sync\Environment\AttachAdminRolePolicyStep::class,
                 // YOLO owns the grant groups + their policies, never membership.
                 Steps\Sync\Environment\SyncObserversGroupStep::class,
+                Steps\Sync\Environment\SyncDevelopersGroupStep::class,
                 Steps\Sync\Environment\SyncAdminsGroupStep::class,
                 // The env manifest is seeded exactly once, then operator-owned — sync
                 // only ever converges toward it, never rewrites it.

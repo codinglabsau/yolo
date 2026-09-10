@@ -5,12 +5,8 @@ namespace Codinglabs\Yolo\Resources\Iam;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
-use Aws\Iam\Exception\IamException;
-use Codinglabs\Yolo\Resources\Deletable;
-use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Resources\Ecs\EcsCluster;
 use Codinglabs\Yolo\Resources\CloudWatchLogs\TaskLogGroup;
-use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * Per-app {@see ObserverPolicy}: log *content* is fenced to this app's own group
@@ -18,68 +14,12 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * it's the one thing per-app observer can enforce — an operator or agent granted one
  * app can't tail another's logs, where PII lives. Everything else is inherited.
  */
-class AppObserverPolicy extends ObserverPolicy implements Deletable
+class AppObserverPolicy extends ObserverPolicy
 {
     #[\Override]
     public function scope(): Scope
     {
         return Scope::App;
-    }
-
-    /**
-     * IAM refuses to delete a policy that is still attached anywhere or carries
-     * non-default versions, so detach and prune before deletePolicy.
-     */
-    #[\Override]
-    public function delete(): void
-    {
-        try {
-            $policyArn = $this->arn();
-
-            $entities = Aws::iam()->listEntitiesForPolicy([
-                'PolicyArn' => $policyArn,
-            ]);
-
-            foreach ($entities['PolicyRoles'] ?? [] as $role) {
-                Aws::iam()->detachRolePolicy([
-                    'RoleName' => $role['RoleName'],
-                    'PolicyArn' => $policyArn,
-                ]);
-            }
-
-            foreach ($entities['PolicyGroups'] ?? [] as $group) {
-                Aws::iam()->detachGroupPolicy([
-                    'GroupName' => $group['GroupName'],
-                    'PolicyArn' => $policyArn,
-                ]);
-            }
-
-            foreach ($entities['PolicyUsers'] ?? [] as $user) {
-                Aws::iam()->detachUserPolicy([
-                    'UserName' => $user['UserName'],
-                    'PolicyArn' => $policyArn,
-                ]);
-            }
-
-            foreach (IamClient::policyVersions($policyArn) as $version) {
-                if (! ($version['IsDefaultVersion'] ?? false)) {
-                    Aws::iam()->deletePolicyVersion([
-                        'PolicyArn' => $policyArn,
-                        'VersionId' => $version['VersionId'],
-                    ]);
-                }
-            }
-
-            Aws::iam()->deletePolicy([
-                'PolicyArn' => $policyArn,
-            ]);
-        } catch (IamException $e) {
-            if ($e->getAwsErrorCode() !== 'NoSuchEntity') {
-                throw $e;
-            }
-        } catch (ResourceDoesNotExistException) {
-            // Removed between exists() and here — nothing left to do.
-        }
     }
 
     /** IAM Description allows only printable ASCII + Latin-1 (no em dashes or smart quotes) — pinned by IamDescriptionsAreSafeTest. */

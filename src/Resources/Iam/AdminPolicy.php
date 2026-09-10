@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Codinglabs\Yolo\Resources\Iam;
 
 use Codinglabs\Yolo\Aws;
@@ -7,14 +9,11 @@ use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\EnvManifest;
-use Aws\Iam\Exception\IamException;
 use Codinglabs\Yolo\EnvironmentVersion;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\Deletable;
-use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
-use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 /**
  * The Admin tier's write half, attached to {@see AdminRole} beside {@see ObserverPolicy}:
@@ -39,8 +38,8 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  */
 class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
 {
+    use ManagesCustomerPolicy;
     use ResolvesTags;
-    use SynchronisesPolicyDocument;
 
     public function name(): string
     {
@@ -52,96 +51,10 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
         return Scope::Env;
     }
 
-    public function exists(): bool
-    {
-        try {
-            IamClient::policy($this->name());
-
-            return true;
-        } catch (ResourceDoesNotExistException) {
-            return false;
-        }
-    }
-
-    public function arn(): string
-    {
-        return IamClient::policy($this->name())['Arn'];
-    }
-
-    public function create(): void
-    {
-        Aws::iam()->createPolicy([
-            'PolicyName' => $this->name(),
-            'Description' => $this->description(),
-            'PolicyDocument' => json_encode($this->document()),
-            ...Aws::tags($this->tags()),
-        ]);
-    }
-
     /** IAM Description allows only printable ASCII + Latin-1 (no em dashes or smart quotes) — pinned by IamDescriptionsAreSafeTest. */
     public function description(): string
     {
         return 'YOLO managed write surface for yolo sync and scale, scoped to the services YOLO provisions with IAM fenced to yolo-* against escalation';
-    }
-
-    public function synchroniseTags(bool $apply): array
-    {
-        return Aws::synchroniseIamPolicyTags($this->arn(), $this->tags(), $apply);
-    }
-
-    /**
-     * IAM refuses to delete a policy that is still attached anywhere or carries
-     * non-default versions, so detach and prune before deletePolicy.
-     */
-    public function delete(): void
-    {
-        try {
-            $policyArn = $this->arn();
-
-            $entities = Aws::iam()->listEntitiesForPolicy([
-                'PolicyArn' => $policyArn,
-            ]);
-
-            foreach ($entities['PolicyRoles'] ?? [] as $role) {
-                Aws::iam()->detachRolePolicy([
-                    'RoleName' => $role['RoleName'],
-                    'PolicyArn' => $policyArn,
-                ]);
-            }
-
-            foreach ($entities['PolicyGroups'] ?? [] as $group) {
-                Aws::iam()->detachGroupPolicy([
-                    'GroupName' => $group['GroupName'],
-                    'PolicyArn' => $policyArn,
-                ]);
-            }
-
-            foreach ($entities['PolicyUsers'] ?? [] as $user) {
-                Aws::iam()->detachUserPolicy([
-                    'UserName' => $user['UserName'],
-                    'PolicyArn' => $policyArn,
-                ]);
-            }
-
-            foreach (IamClient::policyVersions($policyArn) as $version) {
-                if (! ($version['IsDefaultVersion'] ?? false)) {
-                    Aws::iam()->deletePolicyVersion([
-                        'PolicyArn' => $policyArn,
-                        'VersionId' => $version['VersionId'],
-                    ]);
-                }
-            }
-
-            Aws::iam()->deletePolicy([
-                'PolicyArn' => $policyArn,
-            ]);
-        } catch (IamException $e) {
-            if ($e->getAwsErrorCode() !== 'NoSuchEntity') {
-                throw $e;
-            }
-        } catch (ResourceDoesNotExistException) {
-            // Removed between exists() and here — nothing left to do.
-        }
     }
 
     /**

@@ -168,10 +168,14 @@ class DestroyEnvironmentCommand extends SyncSteppedCommand implements PlansSeque
         return [
             Steps\Destroy\Environment\TeardownEcsExecutionRoleStep::class,
             Steps\Destroy\Environment\TeardownAdminsGroupStep::class,
+            Steps\Destroy\Environment\TeardownDevelopersGroupStep::class,
             Steps\Destroy\Environment\TeardownObserversGroupStep::class,
             Steps\Destroy\Environment\TeardownAdminRoleStep::class,
+            Steps\Destroy\Environment\TeardownDeveloperRoleStep::class,
             Steps\Destroy\Environment\TeardownObserverRoleStep::class,
             Steps\Destroy\Environment\TeardownAdminPolicyStep::class,
+            Steps\Destroy\Environment\TeardownDataWritePolicyStep::class,
+            Steps\Destroy\Environment\TeardownDataReadPolicyStep::class,
             Steps\Destroy\Environment\TeardownObserverPolicyStep::class,
         ];
     }

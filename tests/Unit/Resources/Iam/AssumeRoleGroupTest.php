@@ -2,10 +2,11 @@
 
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Iam\AdminsGroup;
-use Codinglabs\Yolo\Resources\Iam\DeployersGroup;
 use Codinglabs\Yolo\Resources\Iam\ObserversGroup;
 use Codinglabs\Yolo\Resources\Iam\AssumeRoleGroup;
+use Codinglabs\Yolo\Resources\Iam\DevelopersGroup;
 use Codinglabs\Yolo\Resources\Iam\AppObserversGroup;
+use Codinglabs\Yolo\Resources\Iam\AppDevelopersGroup;
 
 beforeEach(function (): void {
     writeManifest([
@@ -19,7 +20,8 @@ it('names each grant group and scopes it correctly', function (AssumeRoleGroup $
 })->with([
     'env observers' => [fn (): AssumeRoleGroup => new ObserversGroup(), Scope::Env, 'yolo-testing-observers'],
     'app observers' => [fn (): AssumeRoleGroup => new AppObserversGroup(), Scope::App, 'yolo-testing-my-app-observers'],
-    'app deployers' => [fn (): AssumeRoleGroup => new DeployersGroup(), Scope::App, 'yolo-testing-my-app-deployers'],
+    'env developers' => [fn (): AssumeRoleGroup => new DevelopersGroup(), Scope::Env, 'yolo-testing-developers'],
+    'app developers' => [fn (): AssumeRoleGroup => new AppDevelopersGroup(), Scope::App, 'yolo-testing-my-app-developers'],
     'env admins' => [fn (): AssumeRoleGroup => new AdminsGroup(), Scope::Env, 'yolo-testing-admins'],
 ]);
 
@@ -89,13 +91,28 @@ it('grants sts:AssumeRole on exactly its tier role plus the self-service credent
         'arn:aws:iam::111111111111:role/yolo-testing-*-observer-role',
     ]],
     'app observers -> per-app observer role' => [fn (): AssumeRoleGroup => new AppObserversGroup(), 'arn:aws:iam::111111111111:role/yolo-testing-my-app-observer-role'],
-    'app deployers -> deployer role' => [fn (): AssumeRoleGroup => new DeployersGroup(), 'arn:aws:iam::111111111111:role/yolo-testing-my-app-deployer'],
+    // Developer subsumes observer (read commands mint observer roles) but never
+    // the deployer: humans deploy through CI, admins from a laptop.
+    'env developers -> developer + observer roles, never the deployer' => [fn (): AssumeRoleGroup => new DevelopersGroup(), [
+        'arn:aws:iam::111111111111:role/yolo-testing-developer-role',
+        'arn:aws:iam::111111111111:role/yolo-testing-observer-role',
+        'arn:aws:iam::111111111111:role/yolo-testing-*-observer-role',
+        'arn:aws:iam::111111111111:role/yolo-testing-*-developer-role',
+    ]],
+    'app developers -> per-app developer + observer roles' => [fn (): AssumeRoleGroup => new AppDevelopersGroup(), [
+        'arn:aws:iam::111111111111:role/yolo-testing-my-app-developer-role',
+        'arn:aws:iam::111111111111:role/yolo-testing-my-app-observer-role',
+    ]],
     // Admin subsumes every tier: commands mint the least-privileged role for
-    // their job, so the admin grant must cover the whole role hierarchy.
+    // their job, so the admin grant must cover the whole role hierarchy — the
+    // per-app deployer roles included, which is what makes a laptop deploy an
+    // admin act (there is no human deployer grant).
     'env admins -> every tier role' => [fn (): AssumeRoleGroup => new AdminsGroup(), [
         'arn:aws:iam::111111111111:role/yolo-testing-admin-role',
         'arn:aws:iam::111111111111:role/yolo-testing-observer-role',
+        'arn:aws:iam::111111111111:role/yolo-testing-developer-role',
         'arn:aws:iam::111111111111:role/yolo-testing-*-observer-role',
+        'arn:aws:iam::111111111111:role/yolo-testing-*-developer-role',
         'arn:aws:iam::111111111111:role/yolo-testing-*-deployer',
     ]],
 ]);

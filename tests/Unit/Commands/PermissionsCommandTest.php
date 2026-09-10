@@ -5,21 +5,21 @@ use Codinglabs\Yolo\Commands\PermissionsCommand;
 beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        // A manifest repository wins over env/git-origin, so the deployer grant
-        // is offered deterministically regardless of where the suite runs.
+        // A repository would provision a deployer role — and still no human grant
+        // for it is offered, whatever the suite's git origin.
         'repository' => 'codinglabsau/example',
     ]);
 });
 
 it('grants the tier selected but not held, and revokes the held-but-unselected — only within the offerable set', function (): void {
-    $offerable = ['yolo-prod-observers', 'yolo-prod-my-app-observers', 'yolo-prod-my-app-deployers', 'yolo-prod-admins'];
-    $current = ['yolo-prod-observers', 'yolo-prod-my-app-deployers', 'some-other-team-group'];
+    $offerable = ['yolo-prod-observers', 'yolo-prod-my-app-observers', 'yolo-prod-my-app-developers', 'yolo-prod-admins'];
+    $current = ['yolo-prod-observers', 'yolo-prod-my-app-developers', 'some-other-team-group'];
     $selected = ['yolo-prod-observers', 'yolo-prod-admins'];
 
     $changes = PermissionsCommand::membershipChanges($offerable, $current, $selected);
 
     expect($changes['add'])->toBe(['yolo-prod-admins']);
-    expect($changes['remove'])->toBe(['yolo-prod-my-app-deployers']);
+    expect($changes['remove'])->toBe(['yolo-prod-my-app-developers']);
 });
 
 it('never disturbs a user\'s non-YOLO group memberships', function (): void {
@@ -45,13 +45,15 @@ it('is a no-op when the selection already matches the current YOLO membership', 
     expect($changes['remove'])->toBe([]);
 });
 
-it('offers env + per-app grants for this app, deployer included when a repository is set', function (): void {
+it('offers observer, developer and admin grants, env-wide and for this app — never the deployer', function (): void {
     $names = array_column((new PermissionsCommand())->grants(), 'name');
 
+    // The deployer role is CI's (GitHub OIDC); a laptop deploy is an admin act.
     expect($names)->toBe([
         'yolo-testing-observers',
         'yolo-testing-my-app-observers',
-        'yolo-testing-my-app-deployers',
+        'yolo-testing-developers',
+        'yolo-testing-my-app-developers',
         'yolo-testing-admins',
     ]);
 });

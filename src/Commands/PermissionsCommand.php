@@ -8,11 +8,12 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Contracts\AdminCommand;
 use Codinglabs\Yolo\Resources\Iam\AdminsGroup;
-use Codinglabs\Yolo\Resources\Iam\DeployersGroup;
 use Codinglabs\Yolo\Resources\Iam\ObserversGroup;
 use Codinglabs\Yolo\Resources\Iam\AssumeRoleGroup;
+use Codinglabs\Yolo\Resources\Iam\DevelopersGroup;
 use Symfony\Component\Console\Input\InputArgument;
 use Codinglabs\Yolo\Resources\Iam\AppObserversGroup;
+use Codinglabs\Yolo\Resources\Iam\AppDevelopersGroup;
 
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
@@ -128,8 +129,9 @@ class PermissionsCommand extends Command implements AdminCommand
     }
 
     /**
-     * The per-app deployer only exists when the app has a deployer role (a GitHub
-     * repository).
+     * Observer → Developer → Admin, env-wide or this app. The deployer role is
+     * never offered: it's CI's (GitHub OIDC), and an admin already assumes it for
+     * a laptop deploy.
      *
      * @return array<int, array{name: string, label: string, group: AssumeRoleGroup}>
      */
@@ -140,24 +142,24 @@ class PermissionsCommand extends Command implements AdminCommand
         $grants = [
             [
                 'group' => new ObserversGroup(),
-                'label' => 'Observer — entire environment (read every app)',
+                'label' => 'Observer — entire environment (read every app and its data)',
             ],
             [
                 'group' => new AppObserversGroup(),
-                'label' => sprintf('Observer — %s only (read this app, logs fenced)', $app),
+                'label' => sprintf('Observer — %s only (read this app and its data, logs fenced)', $app),
             ],
-        ];
-
-        if (Helpers::githubRepository() !== null) {
-            $grants[] = [
-                'group' => new DeployersGroup(),
-                'label' => sprintf('Deployer — %s (deploy this app)', $app),
-            ];
-        }
-
-        $grants[] = [
-            'group' => new AdminsGroup(),
-            'label' => 'Admin — entire environment (sync / scale / manage access)',
+            [
+                'group' => new DevelopersGroup(),
+                'label' => 'Developer — entire environment (observer + write every app\'s data, no infrastructure)',
+            ],
+            [
+                'group' => new AppDevelopersGroup(),
+                'label' => sprintf('Developer — %s only (observer + write this app\'s data)', $app),
+            ],
+            [
+                'group' => new AdminsGroup(),
+                'label' => 'Admin — entire environment (sync / scale / deploy / manage access)',
+            ],
         ];
 
         return array_map(fn (array $grant): array => [

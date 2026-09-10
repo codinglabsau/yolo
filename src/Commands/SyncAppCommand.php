@@ -131,14 +131,20 @@ class SyncAppCommand extends SyncSteppedCommand
                 // per-app observer policy. The observer is always provisioned (no
                 // GitHub-repo gate) so a read grant can name a single app; it's also
                 // the read surface the deployer carries for the pre-deploy sync-check.
+                // The data documents are the human tiers' half: the observer role
+                // adds the read, the developer role both — the deployer neither.
                 Steps\Sync\App\SyncDeployerPolicyStep::class,
                 Steps\Sync\App\SyncAppObserverPolicyStep::class,
+                Steps\Sync\App\SyncAppDataReadPolicyStep::class,
+                Steps\Sync\App\SyncAppDataWritePolicyStep::class,
                 Steps\Sync\App\SyncDeployerRoleStep::class,
                 Steps\Sync\App\SyncAppObserverRoleStep::class,
+                Steps\Sync\App\SyncAppDeveloperRoleStep::class,
                 Steps\Sync\App\AttachDeployerRolePoliciesStep::class,
                 Steps\Sync\App\AttachAppObserverRolePolicyStep::class,
-                Steps\Sync\App\SyncDeployersGroupStep::class,
+                Steps\Sync\App\AttachAppDeveloperRolePoliciesStep::class,
                 Steps\Sync\App\SyncAppObserversGroupStep::class,
+                Steps\Sync\App\SyncAppDevelopersGroupStep::class,
                 // Before Fargate so the certificate exists before the HTTPS listener
                 // that needs it. `tenants` is an orthogonal axis: a tenanted app on
                 // its own domain gets the same app-level zone + cert a solo app does.
