@@ -17,8 +17,10 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 
 /**
  * Read-only access to exactly the surface YOLO inspects (the sync/audit plan pass,
- * `status` log tailing, `status:budget` Cost Explorer). Deliberately NOT AWS's
- * ReadOnlyAccess, which grants ~300 services and `s3:GetObject` on every bucket.
+ * `status` log tailing, `status:budget` Cost Explorer), plus the console's own
+ * account-colour read. Deliberately NOT AWS's ReadOnlyAccess, which grants ~300
+ * services and `s3:GetObject` on every bucket, nor its console-access managed
+ * policy, which AWS widens without a sync and the drift gate can't see move.
  *
  * One `yolo-{env}-observer` per environment, attached to every app's deployer role
  * so the deploy-time `sync --check` gate can read the whole stack. Per-service read
@@ -109,6 +111,12 @@ class ObserverPolicy implements Deletable, Resource, SynchronisesConfiguration
                         'iam:ListOpenIDConnectProviders',
                         // collection op, unscopeable
                         's3:ListAllMyBuckets',
+                        // console identification - the account colour banner, so the
+                        // wrong-account guardrail is visible to a human who assumes a
+                        // tier role in the console. Not a YOLO service read, and uxc
+                        // has no resource-level permissions.
+                        'uxc:GetAccountColor',
+                        'uxc:GetAccountCustomizations',
                     ],
                 ],
                 [
