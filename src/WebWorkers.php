@@ -23,20 +23,22 @@ use Codinglabs\Yolo\Enums\ServerGroup;
 final class WebWorkers
 {
     /**
-     * Above FrankenPHP's 2×-CPU default because an I/O-bound request parks its worker on a
-     * downstream rather than burning the core. A conservative floor, not a measured answer:
-     * the principled ceiling is where CPU becomes the binding constraint under target
-     * concurrency, which for bundled SSR sits below the memory cap (16→32 on a 2 GB task is
-     * the range a load test would explore). The formula's guess, not a fit for every app: a
-     * CPU-bound request never parks, so 16 per vCPU oversubscribes the task many times over,
-     * queueing requests inside it (each holding a database connection) where the load balancer
-     * can't see the saturation. `tasks.web.concurrency` sets the count directly for that app.
+     * Above FrankenPHP's 2×-CPU default because a request that parks its worker on a downstream
+     * isn't burning the core, but half the 16 a purely I/O-bound pool would justify. Load
+     * testing a CPU-bound app measured throughput flat across pool sizes; what differs is how
+     * the two mistakes fail. Too few workers fails visibly — requests queue at the load balancer,
+     * where the saturation metric and the autoscaler both see them. Too many fails invisibly:
+     * the excess queues inside the task (each holding a database connection), the load balancer
+     * sees healthy latency, and the saturation metric under-reads. Sizing errs toward the visible
+     * failure. `tasks.web.concurrency` sets the count directly for an app that knows better in
+     * either direction — a genuinely I/O-bound workload wanting the larger pool included.
      */
-    private const int WORKERS_PER_VCPU = 16;
+    private const int WORKERS_PER_VCPU = 8;
 
     /**
      * The outer safety bound, not the target (~64 MB per resident app copy). Only binds on a
-     * deliberately memory-starved task; for every standard Fargate pair the vCPU term is smaller.
+     * deliberately memory-starved task; for every standard Fargate pair the vCPU term is at
+     * most a quarter of it (1 vCPU / 2 GB derives 8 by CPU against 32 by memory).
      */
     private const int WORKER_MEMORY_MB = 64;
 

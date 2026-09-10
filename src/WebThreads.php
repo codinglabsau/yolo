@@ -23,22 +23,24 @@ use Codinglabs\Yolo\Enums\ServerGroup;
 final class WebThreads
 {
     /**
-     * The same 16 as the Octane pool ({@see WebWorkers}) — an I/O-bound request parks its
-     * thread on a downstream, so a task needs more threads than cores — and holding them equal
-     * keeps a mode switch from silently changing steady-state capacity.
+     * The same 8 as the Octane pool ({@see WebWorkers}, which carries the sizing argument) —
+     * a request that parks its thread on a downstream isn't burning the core, so a task needs
+     * more threads than cores — and holding them equal keeps a mode switch from silently
+     * changing steady-state capacity.
      */
-    private const int THREADS_PER_VCPU = 16;
+    private const int THREADS_PER_VCPU = 8;
 
     /**
      * 2× the floor: enough to absorb a within-minute spike while ECS brings a task up, without
      * every request in the pool degrading together. Sustained load is the task autoscaler's job.
      */
-    private const int MAX_THREADS_PER_VCPU = 32;
+    private const int MAX_THREADS_PER_VCPU = 16;
 
     /**
      * Lower than the Octane per-worker budget (one request's transient peak, not a resident app),
      * but budgeted against the ceiling since a burst is when every thread is occupied. A
-     * conservative starting point, not a measured one.
+     * conservative starting point, not a measured one; no standard Fargate pair reaches it
+     * (1 vCPU / 2 GB budgets 42 threads against a ceiling of 16).
      */
     private const int THREAD_MEMORY_MB = 48;
 

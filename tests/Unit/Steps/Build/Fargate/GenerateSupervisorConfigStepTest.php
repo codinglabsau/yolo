@@ -85,10 +85,10 @@ it('runs octane on the hardcoded 8000 port by default', function (): void {
     expect($config)->toContain('command=php artisan octane:start --host=0.0.0.0 --port=8000');
 });
 
-it('pins the octane worker pool from the task vCPU rather than FrankenPHP auto-detect (default 0.5 vCPU → 8)', function (): void {
+it('pins the octane worker pool from the task vCPU rather than FrankenPHP auto-detect (default 0.5 vCPU → 4)', function (): void {
     // FrankenPHP would auto-detect ~4 workers off the Fargate microVM's fixed ~2 vCPUs;
-    // YOLO pins the count from the task's real allocation instead (16 × 0.5 vCPU = 8).
-    expect(generatedSupervisorConfig())->toContain('--workers=8');
+    // YOLO pins the count from the task's real allocation instead (8 × 0.5 vCPU = 4).
+    expect(generatedSupervisorConfig())->toContain('--workers=4');
 });
 
 it('scales the pinned worker pool with the task vCPU allocation', function (): void {
@@ -98,7 +98,7 @@ it('scales the pinned worker pool with the task vCPU allocation', function (): v
     ]);
 
     expect(generatedSupervisorConfig())
-        ->toContain('command=php artisan octane:start --host=0.0.0.0 --port=8000 --workers=16');
+        ->toContain('command=php artisan octane:start --host=0.0.0.0 --port=8000 --workers=8');
 });
 
 it('pins --workers after --caddyfile on an autoscaling octane tier', function (): void {
@@ -108,7 +108,7 @@ it('pins --workers after --caddyfile on an autoscaling octane tier', function ()
     ]);
 
     expect(generatedSupervisorConfig())
-        ->toContain('command=php artisan octane:start --host=0.0.0.0 --port=8000 --caddyfile=/app/docker/Caddyfile --workers=8');
+        ->toContain('command=php artisan octane:start --host=0.0.0.0 --port=8000 --caddyfile=/app/docker/Caddyfile --workers=4');
 });
 
 it('passes no --workers in classic mode (the pool is set in the Caddyfile instead)', function (): void {
@@ -615,12 +615,12 @@ it('generates a classic-mode Caddyfile carrying both pinned thread bounds', func
 
     generatedSupervisorConfig();
 
-    // Default 0.5 vCPU web task → floor 8, ceiling 16. Both must be explicit: FrankenPHP
+    // Default 0.5 vCPU web task → floor 4, ceiling 8. Both must be explicit: FrankenPHP
     // would otherwise size num_threads off the microVM's visible CPUs, and `max_threads
     // auto` sizes off host memory without reading the container's limit.
     expect((string) file_get_contents(Paths::build('docker/Caddyfile')))
-        ->toContain('num_threads 8')
-        ->toContain('max_threads 16')
+        ->toContain('num_threads 4')
+        ->toContain('max_threads 8')
         // No emitted directive may be `auto` (the header comment names it; that's prose).
         ->not->toMatch('/^\s*max_threads\s+auto/m');
 });
@@ -634,8 +634,8 @@ it('bakes the classic-mode thread bounds from the declared task size', function 
     generatedSupervisorConfig();
 
     expect((string) file_get_contents(Paths::build('docker/Caddyfile')))
-        ->toContain('num_threads 32')
-        ->toContain('max_threads 64');
+        ->toContain('num_threads 16')
+        ->toContain('max_threads 32');
 });
 
 it('bakes an explicit tasks.web.concurrency into the classic-mode thread bounds', function (): void {
@@ -646,11 +646,11 @@ it('bakes an explicit tasks.web.concurrency into the classic-mode thread bounds'
 
     generatedSupervisorConfig();
 
-    // 2 vCPU would derive 32/64; the declared count fixes both bounds.
+    // 2 vCPU would derive 16/32; the declared count fixes both bounds.
     expect((string) file_get_contents(Paths::build('docker/Caddyfile')))
         ->toContain('num_threads 6')
         ->toContain('max_threads 6')
-        ->not->toContain('num_threads 32');
+        ->not->toContain('num_threads 16');
 });
 
 it('pins the Octane worker pool to an explicit tasks.web.concurrency', function (): void {
@@ -710,8 +710,8 @@ it('adds the metrics option to the classic-mode Caddyfile when the tier autoscal
     // `servers { metrics }` form, which leaves FrankenPHP's gauges dark.
     expect($caddyfile)
         ->toMatch('/^\s*metrics\s*$/m')
-        ->toContain('num_threads 8')
-        ->toContain('max_threads 16')
+        ->toContain('num_threads 4')
+        ->toContain('max_threads 8')
         ->not->toContain('servers {');
     expect(preg_match_all('/^\s*metrics\s*$/m', $caddyfile))->toBe(1);
 });

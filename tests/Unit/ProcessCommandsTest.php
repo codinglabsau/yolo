@@ -17,7 +17,7 @@ describe('web', function (): void {
         manifestWithWeb(['autoscaling' => false]);
 
         expect(ProcessCommands::web())
-            ->toBe('php artisan octane:start --host=0.0.0.0 --port=8000 --workers=8');
+            ->toBe('php artisan octane:start --host=0.0.0.0 --port=8000 --workers=4');
     });
 
     it('pins the Octane worker pool to an explicit tasks.web.concurrency', function (): void {

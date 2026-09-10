@@ -37,7 +37,7 @@ function matchingConcurrencyPolicy(string $name): array
     return [
         'PolicyName' => $name,
         'TargetTrackingScalingPolicyConfiguration' => [
-            'TargetValue' => 5.0,
+            'TargetValue' => 2.0,
             'CustomizedMetricSpecification' => ['Metrics' => [
                 ['Id' => 'concurrency', 'Expression' => '(requests / 60) * latency', 'ReturnData' => true],
             ]],

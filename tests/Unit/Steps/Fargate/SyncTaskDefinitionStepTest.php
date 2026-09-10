@@ -291,10 +291,10 @@ it('injects the pinned thread ceiling as the burst denominator in classic mode',
         'yolo-testing-ecs-execution-role' => 'arn:aws:iam::111111111111:role/yolo-testing-ecs-execution-role',
     ]);
 
-    // 0.5 vCPU → max_threads 16, the same ceiling the generated Caddyfile pins. It's
+    // 0.5 vCPU → max_threads 8, the same ceiling the generated Caddyfile pins. It's
     // injected because FrankenPHP's total_threads gauge reports the floor, not this.
     expect(SyncTaskDefinitionStep::payload()['containerDefinitions'][0]['environment'])
-        ->toContain(['name' => 'YOLO_BURST_THREADS', 'value' => '16']);
+        ->toContain(['name' => 'YOLO_BURST_THREADS', 'value' => '8']);
 });
 
 it('injects an explicit tasks.web.concurrency as the classic-mode burst denominator', function (): void {
@@ -309,10 +309,10 @@ it('injects an explicit tasks.web.concurrency as the classic-mode burst denomina
     ]);
 
     // The same max_threads the Caddyfile pins, so the reporter divides by the ceiling the
-    // runtime was actually started with — not the 32 the formula would derive.
+    // runtime was actually started with — not the 16 the formula would derive.
     expect(SyncTaskDefinitionStep::payload()['containerDefinitions'][0]['environment'])
         ->toContain(['name' => 'YOLO_BURST_THREADS', 'value' => '6'])
-        ->not->toContain(['name' => 'YOLO_BURST_THREADS', 'value' => '32']);
+        ->not->toContain(['name' => 'YOLO_BURST_THREADS', 'value' => '16']);
 });
 
 it('keeps the burst-metrics env off the queue and scheduler task definitions', function (): void {
