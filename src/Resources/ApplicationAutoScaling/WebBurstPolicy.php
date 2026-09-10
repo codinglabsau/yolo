@@ -50,7 +50,7 @@ class WebBurstPolicy
 
     /**
      * Classic mode: the numerator carries queue depth and the thread ceiling is large
-     * (32/vCPU), so a fractional reading below a full pin is real load — 70 trips one
+     * (16/vCPU), so a fractional reading below a full pin is real load — 70 trips one
      * step below it while staying under a small ceiling's coarse quantisation (a
      * 4-thread task reads only 0/25/50/75/100, and 75 must clear the strict `>`).
      */
@@ -58,8 +58,8 @@ class WebBurstPolicy
 
     /**
      * Octane: the `busy_workers` gauge counts every dispatched request, health checks
-     * included, and a small resident pool (16/vCPU) quantises coarsely — two or three
-     * load-balancer probes landing in one window read 6-9 of 8 on an idle task, which
+     * included, and a small resident pool (8/vCPU) quantises coarsely — two or three
+     * load-balancer probes landing in one window read 50-75 of a 4-worker task's pool, which
      * a fraction-of-pool line mistakes for a burst. Probes can never queue a pool, so
      * the honest cut is "dispatched exceeds the pool": strictly over 100 means requests
      * are waiting for a worker. The same absolute count on a 32-worker pool reads under

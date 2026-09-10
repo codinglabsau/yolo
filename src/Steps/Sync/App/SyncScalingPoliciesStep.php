@@ -45,6 +45,15 @@ use Codinglabs\Yolo\Resources\ApplicationAutoScaling\WebConcurrencyPolicy;
  */
 class SyncScalingPoliciesStep implements Step
 {
+    /**
+     * Assumes replacement capacity arrives quickly: at 65 a task runs near saturation
+     * for the whole scale-out lead, and a target-tracking policy has been observed to
+     * scale in while the tier is still under load. A tier with a slow cold start or a
+     * low tolerance for saturation wants more headroom under it — how much is the
+     * app's to measure (`tasks.web.autoscaling.cpu-utilization`), not a number to guess.
+     */
+    private const int CPU_TARGET_PERCENT = 65;
+
     use RecordsChanges;
 
     protected const CPU_POLICY = 'cpu-scaling-policy';
@@ -133,7 +142,7 @@ class SyncScalingPoliciesStep implements Step
             new ScalingPolicy(
                 policyName: Helpers::keyedResourceName(static::CPU_POLICY),
                 metricType: 'ECSServiceAverageCPUUtilization',
-                targetValue: (float) Manifest::get('tasks.web.autoscaling.cpu-utilization', 65),
+                targetValue: (float) Manifest::get('tasks.web.autoscaling.cpu-utilization', self::CPU_TARGET_PERCENT),
             ),
         ];
 

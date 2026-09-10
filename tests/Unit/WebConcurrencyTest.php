@@ -18,14 +18,14 @@ it('is the resident worker pool on an Octane tier', function (): void {
     manifestWithWebMode(octane: true);
 
     expect(WebConcurrency::ceiling())->toBe(WebWorkers::count())
-        ->and(WebConcurrency::ceiling())->toBe(8);
+        ->and(WebConcurrency::ceiling())->toBe(4);
 });
 
 it('is the thread ceiling, not the floor, on a classic-mode tier', function (): void {
     manifestWithWebMode(octane: false);
 
     expect(WebConcurrency::ceiling())->toBe(WebThreads::maximum())
-        ->and(WebConcurrency::ceiling())->toBe(16)
+        ->and(WebConcurrency::ceiling())->toBe(8)
         ->and(WebConcurrency::ceiling())->not->toBe(WebThreads::minimum());
 });
 

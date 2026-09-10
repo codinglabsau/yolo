@@ -20,8 +20,8 @@ beforeEach(function (): void {
 });
 
 it('derives the concurrency target from the pinned worker pool of the default 0.5 vCPU task', function (): void {
-    // Default web task is 0.5 vCPU → 8 workers; 8 * 0.7 = 5.6, floored to 5.
-    expect(concurrencyPolicy()->targetValue())->toBe(5.0);
+    // Default web task is 0.5 vCPU → 4 workers; 4 * 0.7 = 2.8, floored to 2.
+    expect(concurrencyPolicy()->targetValue())->toBe(2.0);
 });
 
 it('scales the concurrency target with the task vCPU allocation', function (): void {
@@ -30,8 +30,8 @@ it('scales the concurrency target with the task vCPU allocation', function (): v
         'tasks' => ['web' => ['cpu' => 1024, 'memory' => 2048, 'autoscaling' => ['min' => 1, 'max' => 6]]],
     ]);
 
-    // 1 vCPU → 16 workers; 16 * 0.7 = 11.2, floored to 11.
-    expect(concurrencyPolicy()->targetValue())->toBe(11.0);
+    // 1 vCPU → 8 workers; 8 * 0.7 = 5.6, floored to 5.
+    expect(concurrencyPolicy()->targetValue())->toBe(5.0);
 });
 
 it('never targets below one in-flight request on a tiny task', function (): void {
@@ -48,7 +48,7 @@ it('never targets below one in-flight request on a tiny task', function (): void
 it('tracks in-flight concurrency per task with metric math from request rate and latency', function (): void {
     $config = concurrencyPolicy()->configuration();
 
-    expect($config['TargetValue'])->toBe(5.0);
+    expect($config['TargetValue'])->toBe(2.0);
 
     $metrics = collect($config['CustomizedMetricSpecification']['Metrics']);
 
@@ -116,7 +116,7 @@ it('reports drift without writing on a dry-run', function (): void {
 
 it('reports no drift when the live policy already matches', function (): void {
     $live = ['TargetTrackingScalingPolicyConfiguration' => [
-        'TargetValue' => 5.0,
+        'TargetValue' => 2.0,
         'CustomizedMetricSpecification' => ['Metrics' => [
             ['Id' => 'concurrency', 'Expression' => '(requests / 60) * latency', 'ReturnData' => true],
         ]],
@@ -129,7 +129,7 @@ it('reports no drift when the live policy already matches', function (): void {
 
 it('does not report drift when AWS reformats the expression whitespace on read-back', function (): void {
     $live = ['TargetTrackingScalingPolicyConfiguration' => [
-        'TargetValue' => 5.0,
+        'TargetValue' => 2.0,
         'CustomizedMetricSpecification' => ['Metrics' => [
             // Same formula, AWS-normalised spacing — must not look like drift.
             ['Id' => 'concurrency', 'Expression' => '(requests/60)*latency', 'ReturnData' => true],
@@ -156,13 +156,13 @@ it('flips a live policy that still scales in, whether AWS echoes the flag or omi
         ->and($changes[0]->to)->toBe('true');
 })->with([
     'flag echoed false' => ['flag echoed false', [
-        'TargetValue' => 5.0,
+        'TargetValue' => 2.0,
         'CustomizedMetricSpecification' => ['Metrics' => [['Id' => 'concurrency', 'Expression' => '(requests / 60) * latency', 'ReturnData' => true]]],
         'ScaleOutCooldown' => 60,
         'DisableScaleIn' => false,
     ]],
     'flag omitted' => ['flag omitted', [
-        'TargetValue' => 5.0,
+        'TargetValue' => 2.0,
         'CustomizedMetricSpecification' => ['Metrics' => [['Id' => 'concurrency', 'Expression' => '(requests / 60) * latency', 'ReturnData' => true]]],
         'ScaleOutCooldown' => 60,
     ]],
@@ -172,7 +172,7 @@ it('ignores whatever scale-in cooldown AWS echoes back, since scale-in is disabl
     // A policy migrated from the old scale-in-enabled set keeps its cooldown on
     // read-back; comparing it would re-put on every sync.
     $live = ['TargetTrackingScalingPolicyConfiguration' => [
-        'TargetValue' => 5.0,
+        'TargetValue' => 2.0,
         'CustomizedMetricSpecification' => ['Metrics' => [['Id' => 'concurrency', 'Expression' => '(requests / 60) * latency', 'ReturnData' => true]]],
         'ScaleOutCooldown' => 60,
         'ScaleInCooldown' => 300,
