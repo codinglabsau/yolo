@@ -44,12 +44,15 @@ class S3Bucket implements Resource, Undeletable
     }
 
     /**
-     * Only reached in YOLO-owned mode, where the read tier is granted the namespace
-     * — so a 403 means a broken tier and must surface, not be swallowed as "exists".
+     * ListBuckets rather than HeadBucket: HeadBucket authorises on s3:ListBucket,
+     * which the read tiers deliberately don't hold on the data bucket (it would
+     * enumerate user uploads), and a 403 there would read as "missing" and plan a
+     * create every sync. ListBuckets returns only our own buckets, which is the
+     * question anyway.
      */
     public function exists(): bool
     {
-        return S3::bucketExists($this->name());
+        return S3::accountOwnsBucket($this->name());
     }
 
     public function arn(): string

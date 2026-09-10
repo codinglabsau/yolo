@@ -39,12 +39,13 @@ use Codinglabs\Yolo\Resources\WafV2\AllowIpSet;
 use Codinglabs\Yolo\Resources\WafV2\BlockIpSet;
 use Codinglabs\Yolo\Resources\Ecr\EcrRepository;
 use Codinglabs\Yolo\Resources\ElbV2\TargetGroup;
+use Codinglabs\Yolo\Resources\Iam\DeveloperRole;
 use Codinglabs\Yolo\Resources\Iam\EcsTaskPolicy;
 use Codinglabs\Yolo\Resources\S3\S3ConfigBucket;
 use Codinglabs\Yolo\Resources\ElbV2\HttpListener;
 use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
+use Codinglabs\Yolo\Resources\Iam\DataReadPolicy;
 use Codinglabs\Yolo\Resources\Iam\DeployerPolicy;
-use Codinglabs\Yolo\Resources\Iam\DeployersGroup;
 use Codinglabs\Yolo\Resources\Iam\ObserverPolicy;
 use Codinglabs\Yolo\Resources\Iam\ObserversGroup;
 use Codinglabs\Yolo\Resources\Route53\HostedZone;
@@ -53,13 +54,19 @@ use Codinglabs\Yolo\Resources\Ec2\InternetGateway;
 use Codinglabs\Yolo\Resources\Ecs\ServicesCluster;
 use Codinglabs\Yolo\Resources\ElbV2\HttpsListener;
 use Codinglabs\Yolo\Resources\Iam\AppObserverRole;
+use Codinglabs\Yolo\Resources\Iam\DataWritePolicy;
+use Codinglabs\Yolo\Resources\Iam\DevelopersGroup;
 use Codinglabs\Yolo\Concerns\TearsDownScopedQueues;
 use Codinglabs\Yolo\Resources\CloudWatch\Dashboard;
 use Codinglabs\Yolo\Resources\Ec2\RdsSecurityGroup;
+use Codinglabs\Yolo\Resources\Iam\AppDeveloperRole;
 use Codinglabs\Yolo\Resources\Iam\EcsExecutionRole;
+use Codinglabs\Yolo\Resources\Iam\AppDataReadPolicy;
 use Codinglabs\Yolo\Resources\Iam\AppObserverPolicy;
 use Codinglabs\Yolo\Resources\Iam\AppObserversGroup;
 use Codinglabs\Yolo\Resources\Ec2\CacheSecurityGroup;
+use Codinglabs\Yolo\Resources\Iam\AppDataWritePolicy;
+use Codinglabs\Yolo\Resources\Iam\AppDevelopersGroup;
 use Codinglabs\Yolo\Resources\Ec2\EcsTaskSecurityGroup;
 use Codinglabs\Yolo\Resources\ElastiCache\CacheCluster;
 use Codinglabs\Yolo\Resources\CloudWatchLogs\TaskLogGroup;
@@ -211,7 +218,7 @@ it('empties members and policies before deleting a group', function (): void {
         'ListGroupPolicies' => new Result(['PolicyNames' => []]),
     ], $captured);
 
-    (new DeployersGroup())->delete();
+    (new AppDevelopersGroup())->delete();
 
     $names = array_column($captured, 'name');
     expect($names)->toContain('RemoveUserFromGroup')->toContain('DetachGroupPolicy')->toContain('DeleteGroup');
@@ -483,6 +490,7 @@ it('detaches and deletes every app IAM role', function (string $class): void {
     expect($names)->toContain('DetachRolePolicy')->toContain('DeleteRolePolicy')->toContain('DeleteRole');
 })->with([
     AppObserverRole::class,
+    AppDeveloperRole::class,
     EcsTaskRole::class,
 ]);
 
@@ -503,6 +511,8 @@ it('detaches entities, prunes versions and deletes every app IAM policy', functi
         ->toContain('DeletePolicyVersion')->toContain('DeletePolicy');
 })->with([
     AppObserverPolicy::class,
+    AppDataReadPolicy::class,
+    AppDataWritePolicy::class,
     EcsTaskPolicy::class,
 ]);
 
@@ -650,7 +660,7 @@ it('detaches and deletes every env IAM role', function (string $class): void {
 
     $names = array_column($captured, 'name');
     expect($names)->toContain('DetachRolePolicy')->toContain('DeleteRole');
-})->with([EcsExecutionRole::class, ObserverRole::class, AdminRole::class]);
+})->with([EcsExecutionRole::class, ObserverRole::class, DeveloperRole::class, AdminRole::class]);
 
 it('detaches entities and prunes versions before deleting every env IAM policy', function (string $class): void {
     $policy = new $class();
@@ -666,7 +676,7 @@ it('detaches entities and prunes versions before deleting every env IAM policy',
 
     $names = array_column($captured, 'name');
     expect($names)->toContain('DetachRolePolicy')->toContain('DeletePolicyVersion')->toContain('DeletePolicy');
-})->with([ObserverPolicy::class, AdminPolicy::class]);
+})->with([ObserverPolicy::class, DataReadPolicy::class, DataWritePolicy::class, AdminPolicy::class]);
 
 it('empties members before deleting every env grant group', function (string $class): void {
     $captured = [];
@@ -680,7 +690,7 @@ it('empties members before deleting every env grant group', function (string $cl
 
     $names = array_column($captured, 'name');
     expect($names)->toContain('RemoveUserFromGroup')->toContain('DeleteGroupPolicy')->toContain('DeleteGroup');
-})->with([ObserversGroup::class, AdminsGroup::class]);
+})->with([ObserversGroup::class, DevelopersGroup::class, AdminsGroup::class]);
 
 it('deletes the Valkey replication group and waits for it to go', function (): void {
     $captured = [];

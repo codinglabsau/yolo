@@ -191,7 +191,8 @@ it('does not flip public access on an existing app bucket', function (): void {
     $captured = [];
 
     bindMockS3Client([
-        'HeadBucket' => new Result(),   // exists
+        // exists — the data bucket is probed through ListBuckets, never HeadBucket
+        'ListBuckets' => new Result(['Buckets' => [['Name' => 'yolo-111111111111-testing-my-app-data']]]),
     ], $captured);
 
     expect((new SyncS3BucketStep())([]))->toBe(StepResult::SYNCED);
@@ -227,7 +228,8 @@ it('leaves an existing YOLO-named app bucket completely untouched — create-onl
     $captured = [];
 
     bindMockS3Client([
-        'HeadBucket' => new Result(),   // exists
+        // exists — the data bucket is probed through ListBuckets, never HeadBucket
+        'ListBuckets' => new Result(['Buckets' => [['Name' => 'yolo-111111111111-testing-my-app-data']]]),
     ], $captured);
 
     expect((new SyncS3BucketStep())([]))->toBe(StepResult::SYNCED);

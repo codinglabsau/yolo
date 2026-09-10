@@ -3,6 +3,7 @@
 namespace Codinglabs\Yolo;
 
 use Codinglabs\Yolo\Resources\S3\S3Bucket;
+use Codinglabs\Yolo\Resources\Iam\DataReadPolicy;
 
 class Paths
 {
@@ -50,6 +51,16 @@ class Paths
         return Manifest::managesAppBucket()
             ? Helpers::keyedBucketName('data')
             : Manifest::get('bucket');
+    }
+
+    /**
+     * Every YOLO-named app data bucket in the environment, as one ARN pattern. Only
+     * the YOLO-named ones: a bring-your-own name is reachable through that app's
+     * own per-app tier, never by an env-wide grant (see {@see DataReadPolicy}).
+     */
+    public static function s3EnvDataBucketsArn(): string
+    {
+        return sprintf('arn:aws:s3:::yolo-%s-%s-*-data', Aws::accountId(), Helpers::environment());
     }
 
     public static function s3ConfigBucket(): string

@@ -15,11 +15,14 @@ enum Iam: string
     case DEPLOYER_POLICY = 'deployer-policy';
     case OBSERVER_POLICY = 'observer';
     case OBSERVER_ROLE = 'observer-role';
+    case DATA_READ_POLICY = 'data-read';
+    case DATA_WRITE_POLICY = 'data-write';
+    case DEVELOPER_ROLE = 'developer-role';
     case ADMIN_POLICY = 'admin';
     case ADMIN_ROLE = 'admin-role';
 
     // Grant groups are plural so the name stays distinct from the singular role/policy they assume.
     case OBSERVERS_GROUP = 'observers';
-    case DEPLOYERS_GROUP = 'deployers';
+    case DEVELOPERS_GROUP = 'developers';
     case ADMINS_GROUP = 'admins';
 }

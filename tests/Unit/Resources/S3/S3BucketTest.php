@@ -147,3 +147,22 @@ it('creates the derived name, not the manifest value', function (): void {
     $create = collect($recorder->captured)->firstWhere('name', 'CreateBucket');
     expect($create['args']['Bucket'])->toBe('yolo-111111111111-testing-my-app-data');
 });
+
+it('probes existence through ListBuckets, never HeadBucket — the read tiers hold no ListBucket on user data', function (): void {
+    writeManagedBucketManifest();
+
+    $recorder = bindRecordingAppBucketS3Client([
+        'ListBuckets' => new Result(['Buckets' => [['Name' => 'yolo-111111111111-testing-my-app-data']]]),
+    ]);
+
+    // HeadBucket authorises on s3:ListBucket, which is deliberately absent on the
+    // data bucket — a 403 there would read as "missing" and plan a create every sync.
+    expect((new S3Bucket())->exists())->toBeTrue();
+    expect(array_column($recorder->captured, 'name'))->toBe(['ListBuckets']);
+
+    $recorder = bindRecordingAppBucketS3Client([
+        'ListBuckets' => new Result(['Buckets' => [['Name' => 'someone-elses-bucket']]]),
+    ]);
+
+    expect((new S3Bucket())->exists())->toBeFalse();
+});
