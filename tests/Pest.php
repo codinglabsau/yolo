@@ -948,8 +948,16 @@ function bindServiceLifecycleWorld(array $world, array &$captured): void
         $byKey["env/.env.$app"] = new Result(['Body' => $body]);
     }
 
+    // A claim carries the app's whole per-env manifest block; only `name`,
+    // `services` and (when the world names one) `bucket` matter to a reader.
     foreach ($claims as $app => $services) {
-        $byKey["apps/$app.yml"] = new Result(['Body' => Yaml::dump(['name' => $app, 'services' => $services])]);
+        $claim = ['name' => $app, 'services' => $services];
+
+        if (isset($world['buckets'][$app])) {
+            $claim['bucket'] = $world['buckets'][$app];
+        }
+
+        $byKey["apps/$app.yml"] = new Result(['Body' => Yaml::dump($claim)]);
     }
 
     $listing = new Result([

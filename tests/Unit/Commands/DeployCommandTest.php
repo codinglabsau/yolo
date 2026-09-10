@@ -1,6 +1,8 @@
 <?php
 
 use Codinglabs\Yolo\Commands\DeployCommand;
+use Codinglabs\Yolo\Commands\SyncAppCommand;
+use Codinglabs\Yolo\Steps\Sync\App\PublishAppManifestStep;
 
 function deployAppUrlLines(): array
 {
@@ -40,4 +42,13 @@ it('prints no URL for a headless app', function (): void {
     ]);
 
     expect(deployAppUrlLines())->toBe([]);
+});
+
+it('never publishes the app claim — that is sync:app\'s, so the claim stays an admin-written file', function (): void {
+    // The claim names the app's bring-your-own data bucket and the env data
+    // documents grant on it env-wide; a deploy (CI, deployer tier) must never be
+    // able to write it. The in-sync gate still plans the publish step, so a claim
+    // that lags the manifest is drift the deploy refuses on.
+    expect((new DeployCommand())->steps())->not->toContain(PublishAppManifestStep::class);
+    expect((new SyncAppCommand())->scopes()['app'])->toContain(PublishAppManifestStep::class);
 });

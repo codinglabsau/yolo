@@ -50,7 +50,7 @@ class DbStatusCommand extends Command implements ReadOnlyCommand, ReadsEnvironme
         }
 
         if ($databases === []) {
-            info(sprintf("No published app claims in '%s' — nothing has synced or deployed here yet.", $environment));
+            info(sprintf("No published app claims in '%s' — nothing has synced here yet.", $environment));
 
             return self::SUCCESS;
         }

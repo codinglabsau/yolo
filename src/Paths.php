@@ -54,9 +54,9 @@ class Paths
     }
 
     /**
-     * Every YOLO-named app data bucket in the environment, as one ARN pattern. Only
-     * the YOLO-named ones: a bring-your-own name is reachable through that app's
-     * own per-app tier, never by an env-wide grant (see {@see DataReadPolicy}).
+     * Every YOLO-named app data bucket in the environment, as one ARN pattern. A
+     * bring-your-own name is outside it and comes from the app's published claim
+     * (see {@see DataReadPolicy}).
      */
     public static function s3EnvDataBucketsArn(): string
     {

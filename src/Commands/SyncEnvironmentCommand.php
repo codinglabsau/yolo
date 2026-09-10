@@ -113,8 +113,9 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 // The observer policy is also the drift-check surface every app's
                 // deployer role attaches for the pre-deploy `sync --check` gate.
                 Steps\Sync\Environment\SyncObserverPolicyStep::class,
-                // The data documents (every YOLO-named app data bucket) before any
-                // role attaches them.
+                // The data documents (every app data bucket) before any role attaches
+                // them. A bring-your-own bucket comes from the published claims, so a
+                // new app that names one needs a second env sync after its first sync:app.
                 Steps\Sync\Environment\SyncDataReadPolicyStep::class,
                 Steps\Sync\Environment\SyncDataWritePolicyStep::class,
                 Steps\Sync\Environment\SyncObserverRoleStep::class,

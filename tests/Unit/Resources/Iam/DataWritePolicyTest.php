@@ -15,13 +15,19 @@ it('is an env-scoped policy named yolo-{env}-data-write', function (): void {
     expect((new DataWritePolicy())->name())->toBe('yolo-testing-data-write');
 });
 
-it('grants object writes on every YOLO-named data bucket and reads on every database dump — never a dump delete', function (): void {
+it('grants object writes on every data bucket and reads on every database dump — never a dump delete', function (): void {
     $captured = [];
-    bindRoutedS3Client([], $captured);
+    bindServiceLifecycleWorld([
+        'claims' => ['other' => []],
+        'buckets' => ['other' => 'other-uploads'],
+    ], $captured);
 
     [$writes, $dumps] = (new DataWritePolicy())->document()['Statement'];
 
-    expect($writes['Resource'])->toBe(['arn:aws:s3:::yolo-111111111111-testing-*-data/*']);
+    expect($writes['Resource'])->toBe([
+        'arn:aws:s3:::yolo-111111111111-testing-*-data/*',
+        'arn:aws:s3:::other-uploads/*',
+    ]);
     expect($writes['Action'])->toBe(['s3:PutObject', 's3:DeleteObject', 's3:AbortMultipartUpload']);
 
     // A restore is a write-side act, so the dump read lives here, env-wide.
@@ -30,12 +36,12 @@ it('grants object writes on every YOLO-named data bucket and reads on every data
 
     // Versioning is the tamper armour — no tier deletes a dump.
     expect($dumps['Action'])->not->toContain('s3:DeleteObject', 's3:DeleteObjectVersion');
-
-    // Pure manifest, no S3 read.
-    expect($captured)->toBe([]);
 });
 
 it('never includes the read document\'s actions — composed on top of DataReadPolicy, not inclusive of it', function (): void {
+    $captured = [];
+    bindServiceLifecycleWorld(['bucket' => false], $captured);
+
     $onData = collect((new DataWritePolicy())->document()['Statement'])
         ->filter(fn (array $s): bool => str_contains(json_encode($s['Resource']), '-data'))
         ->flatMap(fn (array $s): array => (array) $s['Action']);

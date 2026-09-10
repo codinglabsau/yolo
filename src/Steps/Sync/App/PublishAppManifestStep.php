@@ -20,10 +20,13 @@ use Codinglabs\Yolo\Concerns\RecordsChanges;
 
 /**
  * The env tier reads the union of published claims to flag declared-but-idle
- * services and to refuse removing a service apps still consume — never to gate
- * provisioning. Manifests carry no secrets, so the whole environment block
- * ships. Unlike the operator-owned env manifest, the claim file is YOLO's and
- * reconciles freely.
+ * services, to refuse removing a service apps still consume, and to widen the
+ * env-wide data documents with any bring-your-own bucket an app names. That last
+ * use makes the file load-bearing for grants, so it is published from sync:app
+ * only — an admin act — and never under the deployer tier: a claim that lags the
+ * manifest is drift the deploy gate refuses on. Manifests carry no secrets, so
+ * the whole environment block ships. Unlike the operator-owned env manifest, the
+ * claim file is YOLO's and reconciles freely.
  */
 class PublishAppManifestStep implements Step
 {

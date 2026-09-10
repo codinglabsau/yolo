@@ -15,26 +15,48 @@ it('is an env-scoped policy named yolo-{env}-data-read', function (): void {
     expect((new DataReadPolicy())->name())->toBe('yolo-testing-data-read');
 });
 
-it('grants listing + object reads on every YOLO-named data bucket in the environment, from the manifest alone', function (): void {
+it('grants listing + object reads on every YOLO-named data bucket in the environment', function (): void {
     $captured = [];
-    bindRoutedS3Client([], $captured);
+    bindServiceLifecycleWorld(['bucket' => false], $captured);
 
     [$bucket, $objects] = (new DataReadPolicy())->document()['Statement'];
 
-    // The keyed `-data` wildcard covers every app YOLO named the bucket for — and
-    // ONLY those: a bring-your-own name is known only from the CI-written claim,
-    // so an env-wide grant built from it could be pointed at any bucket in the
-    // account. Pure manifest, no S3 read, survives a greenfield plan pass.
+    // The keyed `-data` wildcard covers every app YOLO named the bucket for, and a
+    // greenfield plan pass (no config bucket yet) reads as nothing more.
     expect($bucket['Resource'])->toBe(['arn:aws:s3:::yolo-111111111111-testing-*-data']);
     expect($bucket['Action'])->toBe(['s3:ListBucket', 's3:GetBucketLocation']);
 
     expect($objects['Resource'])->toBe(['arn:aws:s3:::yolo-111111111111-testing-*-data/*']);
     expect($objects['Action'])->toBe(['s3:GetObject', 's3:GetObjectVersion']);
+});
 
-    expect($captured)->toBe([]);
+it('adds every bring-your-own bucket the admin-published claims name', function (): void {
+    $captured = [];
+    bindServiceLifecycleWorld([
+        'claims' => ['zeta' => [], 'alpha' => [], 'managed' => []],
+        // Only sync:app writes a claim, so the name is an admin's word; `true` is
+        // YOLO-named and already inside the wildcard.
+        'buckets' => ['zeta' => 'zeta-uploads', 'alpha' => 'alpha-media', 'managed' => true],
+    ], $captured);
+
+    [$bucket, $objects] = (new DataReadPolicy())->document()['Statement'];
+
+    expect($bucket['Resource'])->toBe([
+        'arn:aws:s3:::yolo-111111111111-testing-*-data',
+        'arn:aws:s3:::alpha-media',
+        'arn:aws:s3:::zeta-uploads',
+    ]);
+    expect($objects['Resource'])->toBe([
+        'arn:aws:s3:::yolo-111111111111-testing-*-data/*',
+        'arn:aws:s3:::alpha-media/*',
+        'arn:aws:s3:::zeta-uploads/*',
+    ]);
 });
 
 it('grants no write actions — read-only by construction', function (): void {
+    $captured = [];
+    bindServiceLifecycleWorld(['bucket' => false], $captured);
+
     $actions = collect((new DataReadPolicy())->document()['Statement'])
         ->flatMap(fn (array $s): array => (array) $s['Action']);
 

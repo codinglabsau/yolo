@@ -66,7 +66,6 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
 
         $assetBucketArn = (new AssetBucket())->arn();
         $configBucketArn = (new S3ConfigBucket())->arn();
-        $appManifestArn = (new EnvConfigBucket())->arn() . '/' . Paths::s3AppManifestKey();
 
         $statements = [
             [
@@ -172,17 +171,6 @@ class DeployerPolicy implements Deletable, Resource, SynchronisesConfiguration
                 'Effect' => 'Allow',
                 'Resource' => sprintf('%s/%s', $configBucketArn, Paths::s3AppEnvKey()),
                 'Action' => ['s3:GetObject', 's3:PutObject'],
-            ],
-            [
-                // The claim file only — never the bucket root, so the deployer can't
-                // reach the env-shared `.env` or env manifest in the same bucket
-                // (reading those is what gates env-secret control).
-                'Effect' => 'Allow',
-                'Resource' => $appManifestArn,
-                'Action' => [
-                    's3:GetObject',
-                    's3:PutObject',
-                ],
             ],
             [
                 // This app's env-side `.env` (its YOLO-minted Typesense key) — never the

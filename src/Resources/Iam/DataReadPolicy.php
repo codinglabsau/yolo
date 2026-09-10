@@ -4,31 +4,28 @@ declare(strict_types=1);
 
 namespace Codinglabs\Yolo\Resources\Iam;
 
-use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
+use Codinglabs\Yolo\Steps\Sync\App\PublishAppManifestStep;
 
 /**
- * Read access to the *data* the environment's apps hold — every YOLO-named app
- * data bucket — as its own document rather than a statement on {@see ObserverPolicy}.
- * Infra reads and data reads are separate axes: the per-app observer document is
- * also the CI deployer's fence, and a deploy grant must never be able to read user
+ * Read access to the *data* the environment's apps hold — every app data bucket —
+ * as its own document rather than a statement on {@see ObserverPolicy}. Infra
+ * reads and data reads are separate axes: the per-app observer document is also
+ * the CI deployer's fence, and a deploy grant must never be able to read user
  * uploads. Only the human tier roles carry this.
  *
- * Bring-your-own buckets are deliberately NOT here. Their names are only known
- * from the apps' published claims, and a claim is written by the deployer on every
- * CI deploy — so deriving an env-wide grant from it would let any app repo name
- * the env config bucket (or another environment's data) and have the next env
- * sync grant every observer access to it. A BYO bucket is reached through that
- * app's own per-app tier instead, whose document is built from the manifest under
- * an admin-run sync:app; the env tiers can assume every per-app role.
+ * The YOLO-named buckets sit inside the keyed `-data` wildcard; a bring-your-own
+ * name comes from the app's published claim, which only sync:app writes (see
+ * {@see PublishAppManifestStep} for why that matters).
  */
 class DataReadPolicy implements Deletable, Resource, SynchronisesConfiguration
 {
+    use GrantsEnvDataBuckets;
     use ManagesCustomerPolicy;
     use ResolvesTags;
 
@@ -73,15 +70,5 @@ class DataReadPolicy implements Deletable, Resource, SynchronisesConfiguration
                 ],
             ],
         ];
-    }
-
-    /**
-     * Bucket ARNs, no object suffix.
-     *
-     * @return array<int, string>
-     */
-    protected function dataBucketArns(): array
-    {
-        return [Paths::s3EnvDataBucketsArn()];
     }
 }

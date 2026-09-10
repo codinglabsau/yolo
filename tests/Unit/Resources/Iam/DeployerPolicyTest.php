@@ -173,16 +173,15 @@ it('grants read on this app\'s env-side .env in the env config bucket, scoped to
         ->not->toContain('arn:aws:s3:::yolo-111111111111-testing-config/env/*');
 });
 
-it('grants object access on this app\'s claim file in the env config bucket, scoped to the object not the bucket', function (): void {
-    // PublishAppManifestStep reads then writes apps/{app}.yml in the env config
-    // bucket on every deploy. The grant must be scoped to exactly this app's
-    // claim object — never the bucket root — so the deployer can't reach the
-    // env-shared `.env` or env manifest that live in the same bucket.
-    $claimStatement = collect((new DeployerPolicy())->document()['Statement'])
-        ->first(fn (array $statement): bool => $statement['Resource'] === 'arn:aws:s3:::yolo-111111111111-testing-config/apps/my-app.yml');
+it('never grants a write on this app\'s claim file — the claim feeds env-wide grants, so only sync:app publishes it', function (): void {
+    // The claim (apps/{app}.yml) names the app's bring-your-own data bucket, which
+    // the env data documents turn into an env-wide grant. A deployer that could
+    // write it could point that grant at any bucket in the account, so the deploy
+    // never touches it: a stale claim is drift the in-sync gate refuses on.
+    $onClaim = collect((new DeployerPolicy())->document()['Statement'])
+        ->filter(fn (array $statement): bool => str_contains(json_encode($statement['Resource']), '/apps/'));
 
-    expect($claimStatement)->not->toBeNull();
-    expect($claimStatement['Action'])->toBe(['s3:GetObject', 's3:PutObject']);
+    expect($onClaim)->toBeEmpty();
 
     // The env config bucket root is never granted at the object or bucket level —
     // that read is the permission gating env-secret control. (The read surface the
