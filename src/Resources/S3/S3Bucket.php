@@ -10,6 +10,7 @@ use Codinglabs\Yolo\Aws\S3;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\Undeletable;
+use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 
 /**
  * The optional application data bucket (AWS_BUCKET). `bucket: true` — YOLO
@@ -18,16 +19,26 @@ use Codinglabs\Yolo\Resources\Undeletable;
  * and the hardening writes would AccessDenied; its step skips before reaching
  * this resource).
  *
- * Create-only in both modes — never reconciled, never deleted. Block Public
- * Access and CORS are set once because it holds user data and an app may
- * legitimately change its own CORS or serve public objects. Never YOLO-tagged
- * either: a tag would drag it into `yolo audit` as a permanent "unexpected"
- * finding after `destroy:app` deliberately leaves it standing. Undeletable is
- * backed by the name guard in {@see S3::deleteBucket()} and by the admin tier's
- * destructive S3 grants covering only the regeneratable bucket suffixes.
+ * Create-only in both modes for everything except versioning — never deleted.
+ * Block Public Access and CORS are set once because it holds user data and an
+ * app may legitimately change its own CORS or serve public objects; tags are
+ * never written either, for the same reason as below.
+ *
+ * Versioning is the one attribute reconciled on every sync: the Developer tier
+ * holds `s3:DeleteObject` on this bucket, and versioning is the only recovery
+ * path from a bad delete short of an Admin-tier backup restore — so it
+ * defaults on at create and self-heals if ever found disabled.
+ *
+ * Never YOLO-tagged: a tag would drag it into `yolo audit` as a permanent
+ * "unexpected" finding after `destroy:app` deliberately leaves it standing.
+ * Undeletable is backed by the name guard in {@see S3::deleteBucket()} and by
+ * the admin tier's destructive S3 grants covering only the regeneratable
+ * bucket suffixes.
  */
-class S3Bucket implements Resource, Undeletable
+class S3Bucket implements Resource, SynchronisesConfiguration, Undeletable
 {
+    use ReconcilesBucketHardening;
+
     public function name(): string
     {
         return Paths::s3AppBucket();
@@ -79,14 +90,26 @@ class S3Bucket implements Resource, Undeletable
             'Bucket' => $this->name(),
             'CORSConfiguration' => ['CORSRules' => [$this->desiredCors()]],
         ]);
+
+        $this->synchroniseConfiguration();
     }
 
     /**
-     * Never reconciled, so the tier needs no S3 tag permission on an adopted bucket.
+     * Tags are never reconciled, so the tier needs no S3 tag permission on an
+     * adopted bucket.
      */
     public function synchroniseTags(bool $apply): array
     {
         return [];
+    }
+
+    /**
+     * The one piece of live config this create-only resource still reconciles
+     * — see the class docblock for why versioning is the exception.
+     */
+    public function synchroniseConfiguration(bool $apply = true): array
+    {
+        return $this->reconcileVersioning($apply);
     }
 
     /**
