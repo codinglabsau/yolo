@@ -176,6 +176,21 @@ function bindRoutedS3Client(array $byCommand, array &$captured): void
 }
 
 /**
+ * Serve the env manifest from the env config bucket. Null serves a missing object
+ * (the greenfield plan pass), which reads as nothing declared.
+ */
+function bindEnvManifest(?string $yaml): void
+{
+    $captured = [];
+
+    bindRoutedS3Client([
+        'GetObject' => $yaml === null
+            ? new S3Exception('Not Found', new AwsCommand('GetObject'), ['response' => new Response(404)])
+            : new Result(['Body' => $yaml]),
+    ], $captured);
+}
+
+/**
  * Assert a sync step honours the reconciler contract that the invisible-write class
  * of bug violated: its plan-pass status and recorded changes must reflect ACTUAL
  * drift, and it must never write on the plan pass. This is the shared standard —

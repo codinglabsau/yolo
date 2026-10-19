@@ -9,6 +9,8 @@ beforeEach(function (): void {
         // for it is offered, whatever the suite's git origin.
         'repository' => 'codinglabsau/example',
     ]);
+
+    bindEnvManifest(null);
 });
 
 it('grants the tier selected but not held, and revokes the held-but-unselected — only within the offerable set', function (): void {
@@ -57,3 +59,16 @@ it('offers observer, developer and admin grants, env-wide and for this app — n
         'yolo-testing-admins',
     ]);
 });
+
+it('labels the developer grants with deploy access only where the env manifest opts in', function (?string $envManifest, bool $optedIn): void {
+    bindEnvManifest($envManifest);
+
+    $labels = array_column((new PermissionsCommand())->grants(), 'label', 'name');
+
+    expect(str_contains($labels['yolo-testing-developers'], 'deploy / run / .env'))->toBe($optedIn);
+    expect(str_contains($labels['yolo-testing-my-app-developers'], 'deploy / run / .env'))->toBe($optedIn);
+    expect($labels['yolo-testing-observers'])->not->toContain('deploy');
+})->with([
+    'opted in' => ["developers:\n  deploy: true\n", true],
+    'not declared' => [null, false],
+]);

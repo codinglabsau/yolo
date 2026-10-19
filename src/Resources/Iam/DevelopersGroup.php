@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Enums\Scope;
+use Codinglabs\Yolo\EnvManifest;
 use Codinglabs\Yolo\Resources\Resource;
 
 class DevelopersGroup extends AssumeRoleGroup
@@ -30,7 +31,9 @@ class DevelopersGroup extends AssumeRoleGroup
     /**
      * The admins list minus the deployer wildcard: commands mint the least-privileged
      * role for their job, so a developer must also be able to assume the observer
-     * roles or every read command would refuse them. Env-built, never the current app.
+     * roles or every read command would refuse them. The deployer wildcard joins only
+     * when the env manifest opts in ({@see EnvManifest::developersDeploy()}). Env-built,
+     * never the current app.
      *
      * @return array<int, string>
      */
@@ -42,6 +45,9 @@ class DevelopersGroup extends AssumeRoleGroup
             sprintf('arn:aws:iam::%s:role/%s', Aws::accountId(), (new ObserverRole())->name()),
             sprintf('arn:aws:iam::%s:role/yolo-%s-*-%s', Aws::accountId(), Helpers::environment(), Iam::OBSERVER_ROLE->value),
             sprintf('arn:aws:iam::%s:role/yolo-%s-*-%s', Aws::accountId(), Helpers::environment(), Iam::DEVELOPER_ROLE->value),
+            ...EnvManifest::developersDeploy()
+                ? [sprintf('arn:aws:iam::%s:role/yolo-%s-*-%s', Aws::accountId(), Helpers::environment(), Iam::DEPLOYER_ROLE->value)]
+                : [],
         ];
     }
 }

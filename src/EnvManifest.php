@@ -49,7 +49,18 @@ class EnvManifest
             }
         }
 
-        return ['domain', 'services', 'budget', 'budget.amount', 'budget.strategy', 'peering', ...$serviceKeys];
+        return ['domain', 'services', 'budget', 'budget.amount', 'budget.strategy', 'peering', 'developers', 'developers.deploy', ...$serviceKeys];
+    }
+
+    /**
+     * Env-shared because a grant group spans every app in the environment. Opting in lets
+     * the developer tier assume the per-app deployer roles — deploy, `run` and `.env`
+     * included, which reach every secret an app holds — so it belongs on non-production
+     * environments only. parse() has already rejected a non-boolean.
+     */
+    public static function developersDeploy(): bool
+    {
+        return static::get('developers.deploy') === true;
     }
 
     /**
@@ -162,6 +173,11 @@ class EnvManifest
                 static::filename(),
                 implode(', ', $unknown),
             ));
+        }
+
+        // A quoted 'true' would silently read as off; an access grant fails loudly instead.
+        if (Arr::has($manifest, 'developers.deploy') && ! is_bool(Arr::get($manifest, 'developers.deploy'))) {
+            throw new IntegrityCheckException(sprintf('developers.deploy in %s must be true or false.', static::filename()));
         }
 
         // The allow-list catches unknown keys; this catches a misshapen offer before it

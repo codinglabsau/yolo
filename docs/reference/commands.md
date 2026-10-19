@@ -122,7 +122,7 @@ yolo env:pull <environment>
 
 Writes `.env.<environment>` to your project root, overwriting any local copy. (For the *environment's own* files — the env manifest and the env-shared `.env` — see the [`environment:*` commands](#yolo-environment-manifest-pull).)
 
-Runs under the per-app **deployer** tier — the same scoped role that pulls the file at build time — so reading an app's env file requires the admin tier (the deployer role is CI's — an admin assumes it for a laptop run).
+Runs under the per-app **deployer** tier — the same scoped role that pulls the file at build time — so reading an app's env file requires the admin tier (the deployer role is CI's — an admin assumes it for a laptop run), or the developer tier on an environment that opts in with [`developers.deploy`](/reference/manifest#the-environment-manifest-yolo-environment-environment-yml).
 
 ---
 
@@ -142,7 +142,7 @@ yolo env:push <environment>
 
 Downloads the current remote file, shows a diff of changed keys, and asks for confirmation before uploading. If no remote file exists yet, it uploads without a diff. After a successful upload it offers to **delete the local file (default: yes)** — the bucket holds the truth, and an env file left on disk is both a staleness risk and secrets sitting around for anything on the machine to read.
 
-Runs under the per-app **deployer** tier, whose policy carries get + put on exactly this app's env-file object — so writing an app's secrets requires the admin tier (the deployer role is CI's — an admin assumes it for a laptop run), never a raw-identity S3 grant.
+Runs under the per-app **deployer** tier, whose policy carries get + put on exactly this app's env-file object — so writing an app's secrets requires the admin tier (the deployer role is CI's — an admin assumes it for a laptop run), or the developer tier on an environment that opts in with [`developers.deploy`](/reference/manifest#the-environment-manifest-yolo-environment-environment-yml) — never a raw-identity S3 grant.
 
 ---
 
@@ -641,11 +641,11 @@ Interactive: pick an IAM user, then a checkbox list pre-ticked with their curren
 |---|---|---|
 | Observer — entire environment | `yolo-{env}-observers` | read every app in the environment and its data |
 | Observer — this app only | `yolo-{env}-{app}-observers` | read this app and its data (log content fenced to its log group) |
-| Developer — entire environment | `yolo-{env}-developers` | observer + write every app's data and read the database dumps; no infrastructure writes |
-| Developer — this app only | `yolo-{env}-{app}-developers` | observer + write this app's data and read its dumps |
+| Developer — entire environment | `yolo-{env}-developers` | observer + write every app's data and read the database dumps, plus every app's deployer tier where the env manifest opts in; no infrastructure writes |
+| Developer — this app only | `yolo-{env}-{app}-developers` | observer + write this app's data and read its dumps, plus this app's deployer tier where the env manifest opts in |
 | Admin — entire environment | `yolo-{env}-admins` | `sync` / `scale` / `deploy` / manage access |
 
-The deployer role is never offered: it's CI's (GitHub OIDC), and an admin already assumes it for a laptop deploy. Toggling and confirming applies the membership diff — and only ever touches these YOLO groups, never a user's other group memberships. Only groups that have actually been [synced](#yolo-sync) are offered (you can't grant a tier that isn't provisioned). It runs under the **admin** tier, whose policy can manage `yolo-*` group membership, so a member of `yolo-{env}-admins` can grant access to others. To grant a per-app tier on a different app, run it in that app's directory. See [provisioning](/guide/provisioning), and [Developer Credentials](/guide/credentials) for the end-to-end onboarding flow this fits into (IAM user, MFA, local credential setup).
+The deployer role is never offered as a grant of its own: it's CI's (GitHub OIDC), and an admin already assumes it for a laptop deploy. An environment whose manifest sets [`developers.deploy: true`](/reference/manifest#the-environment-manifest-yolo-environment-environment-yml) folds it into the developer grants instead, and the developer labels say so. Toggling and confirming applies the membership diff — and only ever touches these YOLO groups, never a user's other group memberships. Only groups that have actually been [synced](#yolo-sync) are offered (you can't grant a tier that isn't provisioned). It runs under the **admin** tier, whose policy can manage `yolo-*` group membership, so a member of `yolo-{env}-admins` can grant access to others. To grant a per-app tier on a different app, run it in that app's directory. See [provisioning](/guide/provisioning), and [Developer Credentials](/guide/credentials) for the end-to-end onboarding flow this fits into (IAM user, MFA, local credential setup).
 
 ---
 
