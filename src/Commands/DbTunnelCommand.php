@@ -114,11 +114,11 @@ class DbTunnelCommand extends Command implements ReadOnlyCommand
             return null;
         }
 
-        $endpoint = $record === null ? null : ($target['cluster']
+        $endpoint = $target['cluster']
             ? ($record['Endpoint'] ?? null)
-            : ($record['Endpoint']['Address'] ?? null));
+            : ($record['Endpoint']['Address'] ?? null);
 
-        if ($endpoint === null || $record === null) {
+        if ($record === null || $endpoint === null) {
             error(sprintf('Could not resolve the endpoint for "%s" — the database reports no endpoint yet.', $target['identifier']));
 
             return null;
