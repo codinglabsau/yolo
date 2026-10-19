@@ -136,7 +136,7 @@ class SyncAppCommand extends SyncSteppedCommand
                 Steps\Sync\App\SyncDeployerPolicyStep::class,
                 Steps\Sync\App\SyncAppObserverPolicyStep::class,
                 Steps\Sync\App\SyncAppDataReadPolicyStep::class,
-                Steps\Sync\App\SyncAppDataWritePolicyStep::class,
+                Steps\Sync\App\SyncAppDumpsReadPolicyStep::class,
                 Steps\Sync\App\SyncDeployerRoleStep::class,
                 Steps\Sync\App\SyncAppObserverRoleStep::class,
                 Steps\Sync\App\SyncAppDeveloperRoleStep::class,

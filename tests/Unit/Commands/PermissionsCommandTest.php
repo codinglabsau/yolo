@@ -5,12 +5,10 @@ use Codinglabs\Yolo\Commands\PermissionsCommand;
 beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
-        // A repository would provision a deployer role — and still no human grant
-        // for it is offered, whatever the suite's git origin.
+        // A repository would provision a deployer role — and still no grant of its
+        // own is offered, whatever the suite's git origin.
         'repository' => 'codinglabsau/example',
     ]);
-
-    bindEnvManifest(null);
 });
 
 it('grants the tier selected but not held, and revokes the held-but-unselected — only within the offerable set', function (): void {
@@ -50,7 +48,8 @@ it('is a no-op when the selection already matches the current YOLO membership', 
 it('offers observer, developer and admin grants, env-wide and for this app — never the deployer', function (): void {
     $names = array_column((new PermissionsCommand())->grants(), 'name');
 
-    // The deployer role is CI's (GitHub OIDC); a laptop deploy is an admin act.
+    // The deployer role is CI's (GitHub OIDC); humans reach it through the developer
+    // and admin grants, never a grant of its own.
     expect($names)->toBe([
         'yolo-testing-observers',
         'yolo-testing-my-app-observers',
@@ -59,16 +58,3 @@ it('offers observer, developer and admin grants, env-wide and for this app — n
         'yolo-testing-admins',
     ]);
 });
-
-it('labels the developer grants with deploy access only where the env manifest opts in', function (?string $envManifest, bool $optedIn): void {
-    bindEnvManifest($envManifest);
-
-    $labels = array_column((new PermissionsCommand())->grants(), 'label', 'name');
-
-    expect(str_contains($labels['yolo-testing-developers'], 'deploy / run / .env'))->toBe($optedIn);
-    expect(str_contains($labels['yolo-testing-my-app-developers'], 'deploy / run / .env'))->toBe($optedIn);
-    expect($labels['yolo-testing-observers'])->not->toContain('deploy');
-})->with([
-    'opted in' => ["developers:\n  deploy: true\n", true],
-    'not declared' => [null, false],
-]);

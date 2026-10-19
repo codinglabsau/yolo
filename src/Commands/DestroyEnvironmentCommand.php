@@ -174,6 +174,7 @@ class DestroyEnvironmentCommand extends SyncSteppedCommand implements PlansSeque
             Steps\Destroy\Environment\TeardownDeveloperRoleStep::class,
             Steps\Destroy\Environment\TeardownObserverRoleStep::class,
             Steps\Destroy\Environment\TeardownAdminPolicyStep::class,
+            Steps\Destroy\Environment\TeardownDumpsReadPolicyStep::class,
             Steps\Destroy\Environment\TeardownDataWritePolicyStep::class,
             Steps\Destroy\Environment\TeardownDataReadPolicyStep::class,
             Steps\Destroy\Environment\TeardownObserverPolicyStep::class,

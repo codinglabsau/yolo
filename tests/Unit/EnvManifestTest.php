@@ -156,27 +156,3 @@ it('hard-fails a peering entry that is not a VPC id', function (): void {
     expect(fn (): array => EnvManifest::peering())
         ->toThrow(IntegrityCheckException::class, 'Invalid `peering` entry');
 });
-
-it('opts developers in to deploys only on an explicit boolean true', function (string $yaml, bool $expected): void {
-    bindEnvManifest($yaml);
-
-    expect(EnvManifest::developersDeploy())->toBe($expected);
-})->with([
-    'true' => ["developers:\n  deploy: true\n", true],
-    'false' => ["developers:\n  deploy: false\n", false],
-    'bare block' => ["developers:\n", false],
-    'undeclared' => ["domain: example.com\n", false],
-]);
-
-it('rejects a non-boolean developers.deploy rather than reading it as off', function (string $yaml): void {
-    expect(fn (): array => EnvManifest::parse($yaml))
-        ->toThrow(IntegrityCheckException::class, 'developers.deploy');
-})->with([
-    'quoted string' => ["developers:\n  deploy: 'true'\n"],
-    'integer' => ["developers:\n  deploy: 1\n"],
-]);
-
-it('rejects unknown keys under developers', function (): void {
-    expect(fn (): array => EnvManifest::parse("developers:\n  run: true\n"))
-        ->toThrow(IntegrityCheckException::class, 'developers.run');
-});

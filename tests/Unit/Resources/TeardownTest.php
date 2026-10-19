@@ -56,6 +56,7 @@ use Codinglabs\Yolo\Resources\ElbV2\HttpsListener;
 use Codinglabs\Yolo\Resources\Iam\AppObserverRole;
 use Codinglabs\Yolo\Resources\Iam\DataWritePolicy;
 use Codinglabs\Yolo\Resources\Iam\DevelopersGroup;
+use Codinglabs\Yolo\Resources\Iam\DumpsReadPolicy;
 use Codinglabs\Yolo\Concerns\TearsDownScopedQueues;
 use Codinglabs\Yolo\Resources\CloudWatch\Dashboard;
 use Codinglabs\Yolo\Resources\Ec2\RdsSecurityGroup;
@@ -65,8 +66,8 @@ use Codinglabs\Yolo\Resources\Iam\AppDataReadPolicy;
 use Codinglabs\Yolo\Resources\Iam\AppObserverPolicy;
 use Codinglabs\Yolo\Resources\Iam\AppObserversGroup;
 use Codinglabs\Yolo\Resources\Ec2\CacheSecurityGroup;
-use Codinglabs\Yolo\Resources\Iam\AppDataWritePolicy;
 use Codinglabs\Yolo\Resources\Iam\AppDevelopersGroup;
+use Codinglabs\Yolo\Resources\Iam\AppDumpsReadPolicy;
 use Codinglabs\Yolo\Resources\Ec2\EcsTaskSecurityGroup;
 use Codinglabs\Yolo\Resources\ElastiCache\CacheCluster;
 use Codinglabs\Yolo\Resources\CloudWatchLogs\TaskLogGroup;
@@ -512,7 +513,7 @@ it('detaches entities, prunes versions and deletes every app IAM policy', functi
 })->with([
     AppObserverPolicy::class,
     AppDataReadPolicy::class,
-    AppDataWritePolicy::class,
+    AppDumpsReadPolicy::class,
     EcsTaskPolicy::class,
 ]);
 
@@ -676,7 +677,7 @@ it('detaches entities and prunes versions before deleting every env IAM policy',
 
     $names = array_column($captured, 'name');
     expect($names)->toContain('DetachRolePolicy')->toContain('DeletePolicyVersion')->toContain('DeletePolicy');
-})->with([ObserverPolicy::class, DataReadPolicy::class, DataWritePolicy::class, AdminPolicy::class]);
+})->with([ObserverPolicy::class, DataReadPolicy::class, DataWritePolicy::class, DumpsReadPolicy::class, AdminPolicy::class]);
 
 it('empties members before deleting every env grant group', function (string $class): void {
     $captured = [];

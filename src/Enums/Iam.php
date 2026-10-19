@@ -17,6 +17,7 @@ enum Iam: string
     case OBSERVER_ROLE = 'observer-role';
     case DATA_READ_POLICY = 'data-read';
     case DATA_WRITE_POLICY = 'data-write';
+    case DUMPS_READ_POLICY = 'dumps-read';
     case DEVELOPER_ROLE = 'developer-role';
     case ADMIN_POLICY = 'admin';
     case ADMIN_ROLE = 'admin-role';

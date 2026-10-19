@@ -14,9 +14,3 @@ services: {}
 # mid-migration). Removing an entry tears the bridge down on the next sync.
 # peering:
 #   - vpc-0abc123
-
-# Let the developer tier assume the per-app deployer roles: deploy, rollback,
-# `run`, `db:backup` and `env:pull`/`env:push` — which reach every secret an app
-# holds. Non-production environments only; production ships through CI.
-# developers:
-#   deploy: true

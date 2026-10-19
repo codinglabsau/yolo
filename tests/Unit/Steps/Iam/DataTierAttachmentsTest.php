@@ -10,9 +10,9 @@ use Codinglabs\Yolo\Steps\Sync\Environment\AttachObserverRolePolicyStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\AttachDeveloperRolePoliciesStep;
 
 /**
- * Which documents each tier role composes. The invariant that matters most:
- * the deployer role — CI's — never carries a data document, whatever the
- * human tiers gain.
+ * Which documents each tier role composes. The invariants that matter most:
+ * the deployer role — CI's, and reachable by developers — never carries a data
+ * document, and only the admin role writes app data.
  *
  * @return array<int, string> the policy ARNs a step attaches to a bare role
  */
@@ -32,17 +32,17 @@ function attachedByStep(object $step): array
         ->all();
 }
 
-it('composes the env tiers: observer reads data, developer also writes it, admin adds the infrastructure', function (): void {
+it('composes the env tiers: observer reads data, developer adds the dumps, admin adds data writes and the infrastructure', function (): void {
     writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
 
     expect(attachedByStep(new AttachObserverRolePolicyStep()))
         ->toBe(['yolo-testing-observer', 'yolo-testing-data-read']);
 
     expect(attachedByStep(new AttachDeveloperRolePoliciesStep()))
-        ->toBe(['yolo-testing-observer', 'yolo-testing-data-read', 'yolo-testing-data-write']);
+        ->toBe(['yolo-testing-observer', 'yolo-testing-data-read', 'yolo-testing-dumps-read']);
 
     expect(attachedByStep(new AttachAdminRolePolicyStep()))
-        ->toBe(['yolo-testing-observer', 'yolo-testing-data-read', 'yolo-testing-data-write', 'yolo-testing-admin']);
+        ->toBe(['yolo-testing-observer', 'yolo-testing-data-read', 'yolo-testing-data-write', 'yolo-testing-dumps-read', 'yolo-testing-admin']);
 });
 
 it('composes the per-app tiers the same way, fenced to this app', function (): void {
@@ -52,7 +52,7 @@ it('composes the per-app tiers the same way, fenced to this app', function (): v
         ->toBe(['yolo-testing-my-app-observer', 'yolo-testing-my-app-data-read']);
 
     expect(attachedByStep(new AttachAppDeveloperRolePoliciesStep()))
-        ->toBe(['yolo-testing-my-app-observer', 'yolo-testing-my-app-data-read', 'yolo-testing-my-app-data-write']);
+        ->toBe(['yolo-testing-my-app-observer', 'yolo-testing-my-app-data-read', 'yolo-testing-my-app-dumps-read']);
 });
 
 it('leaves the per-app data-read document out when the app declares no bucket — it would have no resource', function (): void {
@@ -61,9 +61,9 @@ it('leaves the per-app data-read document out when the app declares no bucket �
     expect(attachedByStep(new AttachAppObserverRolePolicyStep()))
         ->toBe(['yolo-testing-my-app-observer']);
 
-    // The write document keeps its dump-prefix read, so it always exists.
+    // The dumps-read document is bucket-independent, so it always exists.
     expect(attachedByStep(new AttachAppDeveloperRolePoliciesStep()))
-        ->toBe(['yolo-testing-my-app-observer', 'yolo-testing-my-app-data-write']);
+        ->toBe(['yolo-testing-my-app-observer', 'yolo-testing-my-app-dumps-read']);
 });
 
 it('never hands the deployer role a data document — a deploy grant can\'t read user uploads', function (): void {
@@ -74,3 +74,25 @@ it('never hands the deployer role a data document — a deploy grant can\'t read
     expect($attached)->toBe(['yolo-testing-my-app-deployer-policy', 'yolo-testing-my-app-observer']);
     expect(implode(' ', $attached))->not->toContain('data-');
 });
+
+it('detaches the data-write documents a developer role still carries — developers never write app data', function (object $step, string $role, string $stale): void {
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => true]);
+
+    $captured = [];
+    bindRoutedIamClient([
+        'ListAttachedRolePolicies' => new Result(['AttachedPolicies' => [
+            ['PolicyArn' => 'arn:aws:iam::111111111111:policy/' . $stale],
+        ]]),
+    ], $captured);
+
+    expect($step([]))->toBe(StepResult::SYNCED);
+
+    $detached = collect($captured)->where('name', 'DetachRolePolicy')->values();
+
+    expect($detached)->toHaveCount(1);
+    expect($detached[0]['args']['RoleName'])->toBe($role);
+    expect($detached[0]['args']['PolicyArn'])->toBe('arn:aws:iam::111111111111:policy/' . $stale);
+})->with([
+    'env developer' => [fn (): object => new AttachDeveloperRolePoliciesStep(), 'yolo-testing-developer-role', 'yolo-testing-data-write'],
+    'app developer' => [fn (): object => new AttachAppDeveloperRolePoliciesStep(), 'yolo-testing-my-app-developer-role', 'yolo-testing-my-app-data-write'],
+]);

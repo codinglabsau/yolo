@@ -24,8 +24,8 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * bare key can mint nothing, can't cut a replacement key, and can't strip the device
  * containing it.
  *
- * The document is deterministic (no live lookups beyond the env manifest, which reads
- * absent as empty) so it survives the plan pass with nothing created. IAM groups are not taggable, so ownership is encoded in the name —
+ * The document is deterministic (no live lookups) so it survives the plan pass with
+ * nothing created. IAM groups are not taggable, so ownership is encoded in the name —
  * `yolo audit` can't see them; sync drift is the only stray-catcher.
  */
 abstract class AssumeRoleGroup implements Deletable, Resource, SynchronisesConfiguration

@@ -12,9 +12,6 @@ beforeEach(function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
     ]);
-
-    // No env manifest yet — the greenfield plan pass — so no opt-in is declared.
-    bindEnvManifest(null);
 });
 
 it('names each grant group and scopes it correctly', function (AssumeRoleGroup $group, Scope $scope, string $name): void {
@@ -94,18 +91,20 @@ it('grants sts:AssumeRole on exactly its tier role plus the self-service credent
         'arn:aws:iam::111111111111:role/yolo-testing-*-observer-role',
     ]],
     'app observers -> per-app observer role' => [fn (): AssumeRoleGroup => new AppObserversGroup(), 'arn:aws:iam::111111111111:role/yolo-testing-my-app-observer-role'],
-    // Developer subsumes observer (read commands mint observer roles) but not the
-    // deployer unless the env manifest opts in: humans deploy through CI, admins
-    // from a laptop.
-    'env developers -> developer + observer roles, no deployer by default' => [fn (): AssumeRoleGroup => new DevelopersGroup(), [
+    // Developer subsumes observer (read commands mint observer roles) and the
+    // deployer (deploy-tier commands mint the per-app deployer) — everything but
+    // the admin role.
+    'env developers -> developer, observer and every app deployer role' => [fn (): AssumeRoleGroup => new DevelopersGroup(), [
         'arn:aws:iam::111111111111:role/yolo-testing-developer-role',
         'arn:aws:iam::111111111111:role/yolo-testing-observer-role',
         'arn:aws:iam::111111111111:role/yolo-testing-*-observer-role',
         'arn:aws:iam::111111111111:role/yolo-testing-*-developer-role',
+        'arn:aws:iam::111111111111:role/yolo-testing-*-deployer',
     ]],
-    'app developers -> per-app developer + observer roles' => [fn (): AssumeRoleGroup => new AppDevelopersGroup(), [
+    'app developers -> per-app developer, observer and deployer roles' => [fn (): AssumeRoleGroup => new AppDevelopersGroup(), [
         'arn:aws:iam::111111111111:role/yolo-testing-my-app-developer-role',
         'arn:aws:iam::111111111111:role/yolo-testing-my-app-observer-role',
+        'arn:aws:iam::111111111111:role/yolo-testing-my-app-deployer',
     ]],
     // Admin subsumes every tier: commands mint the least-privileged role for
     // their job, so the admin grant must cover the whole role hierarchy — the
@@ -128,32 +127,19 @@ it('is untaggable — synchroniseTags is a no-op (ownership lives in the name)',
     expect((new AppObserversGroup())->synchroniseTags(apply: true))->toBe([]);
 });
 
-it('lets developers assume the deployer roles only where the env manifest opts in', function (?string $envManifest, bool $optedIn): void {
-    bindEnvManifest($envManifest);
-
-    $envDeployers = 'arn:aws:iam::111111111111:role/yolo-testing-*-deployer';
-    $appDeployer = 'arn:aws:iam::111111111111:role/yolo-testing-my-app-deployer';
-
-    $envGrant = (new DevelopersGroup())->document()['Statement'][0]['Resource'];
-    $appGrant = (new AppDevelopersGroup())->document()['Statement'][0]['Resource'];
-
-    expect(in_array($envDeployers, $envGrant, true))->toBe($optedIn);
-    expect(in_array($appDeployer, $appGrant, true))->toBe($optedIn);
-
-    // The app grant names its own deployer only — never a sibling app's.
-    expect($appGrant)->not->toContain($envDeployers);
+it('never lets an observer or developer grant assume the admin role', function (AssumeRoleGroup $group): void {
+    expect((array) $group->document()['Statement'][0]['Resource'])
+        ->not->toContain('arn:aws:iam::111111111111:role/yolo-testing-admin-role');
 })->with([
-    'opted in' => ["developers:\n  deploy: true\n", true],
-    'opted out' => ["developers:\n  deploy: false\n", false],
-    'undeclared' => ["domain: example.com\n", false],
-    'no env manifest yet' => [null, false],
+    'env observers' => [fn (): AssumeRoleGroup => new ObserversGroup()],
+    'app observers' => [fn (): AssumeRoleGroup => new AppObserversGroup()],
+    'env developers' => [fn (): AssumeRoleGroup => new DevelopersGroup()],
+    'app developers' => [fn (): AssumeRoleGroup => new AppDevelopersGroup()],
 ]);
 
-it('never widens the observers grant when developers opt in to deploys', function (): void {
-    bindEnvManifest("developers:\n  deploy: true\n");
-
-    expect((new ObserversGroup())->document()['Statement'][0]['Resource'])
-        ->not->toContain('arn:aws:iam::111111111111:role/yolo-testing-*-deployer');
-    expect((new AppObserversGroup())->document()['Statement'][0]['Resource'])
-        ->not->toContain('arn:aws:iam::111111111111:role/yolo-testing-my-app-deployer');
-});
+it('never lets an observer grant assume a deployer role', function (AssumeRoleGroup $group): void {
+    expect(implode(' ', (array) $group->document()['Statement'][0]['Resource']))->not->toContain('deployer');
+})->with([
+    'env observers' => [fn (): AssumeRoleGroup => new ObserversGroup()],
+    'app observers' => [fn (): AssumeRoleGroup => new AppObserversGroup()],
+]);

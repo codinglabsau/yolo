@@ -5,7 +5,6 @@ namespace Codinglabs\Yolo\Commands;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
-use Codinglabs\Yolo\EnvManifest;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Contracts\AdminCommand;
 use Codinglabs\Yolo\Resources\Iam\AdminsGroup;
@@ -131,16 +130,14 @@ class PermissionsCommand extends Command implements AdminCommand
 
     /**
      * Observer → Developer → Admin, env-wide or this app. The deployer role is
-     * never offered as its own grant: it's CI's (GitHub OIDC), an admin already
-     * assumes it for a laptop deploy, and developers reach it only where the env
-     * manifest opts in.
+     * never offered as its own grant: it's CI's (GitHub OIDC), and the developer and
+     * admin grants already include it for a laptop deploy.
      *
      * @return array<int, array{name: string, label: string, group: AssumeRoleGroup}>
      */
     public function grants(): array
     {
         $app = Manifest::name();
-        $deploy = EnvManifest::developersDeploy() ? ' + deploy / run / .env' : '';
 
         $grants = [
             [
@@ -153,11 +150,11 @@ class PermissionsCommand extends Command implements AdminCommand
             ],
             [
                 'group' => new DevelopersGroup(),
-                'label' => sprintf('Developer — entire environment (observer + write every app\'s data%s, no infrastructure)', $deploy),
+                'label' => 'Developer — entire environment (observer + database dumps + deploy / run / .env, no infrastructure)',
             ],
             [
                 'group' => new AppDevelopersGroup(),
-                'label' => sprintf('Developer — %s only (observer + write this app\'s data%s)', $app, $deploy),
+                'label' => sprintf('Developer — %s only (observer + its database dumps + deploy / run / .env)', $app),
             ],
             [
                 'group' => new AdminsGroup(),
