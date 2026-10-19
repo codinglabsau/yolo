@@ -17,14 +17,14 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
  * because the observer tier never sees a dump. Read-only for every tier: the
  * backups bucket is versioned as tamper armour and no tier gets to delete one.
  */
-class DumpsReadPolicy implements Deletable, Resource, SynchronisesConfiguration
+class BackupsReadPolicy implements Deletable, Resource, SynchronisesConfiguration
 {
     use ManagesCustomerPolicy;
     use ResolvesTags;
 
     public function name(): string
     {
-        return $this->keyedName(Iam::DUMPS_READ_POLICY);
+        return $this->keyedName(Iam::BACKUPS_READ_POLICY);
     }
 
     public function scope(): Scope

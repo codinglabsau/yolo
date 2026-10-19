@@ -39,10 +39,10 @@ it('composes the env tiers: observer reads data, developer adds the dumps, admin
         ->toBe(['yolo-testing-observer', 'yolo-testing-data-read']);
 
     expect(attachedByStep(new AttachDeveloperRolePoliciesStep()))
-        ->toBe(['yolo-testing-observer', 'yolo-testing-data-read', 'yolo-testing-dumps-read']);
+        ->toBe(['yolo-testing-observer', 'yolo-testing-data-read', 'yolo-testing-backups-read']);
 
     expect(attachedByStep(new AttachAdminRolePolicyStep()))
-        ->toBe(['yolo-testing-observer', 'yolo-testing-data-read', 'yolo-testing-data-write', 'yolo-testing-dumps-read', 'yolo-testing-admin']);
+        ->toBe(['yolo-testing-observer', 'yolo-testing-data-read', 'yolo-testing-data-write', 'yolo-testing-backups-read', 'yolo-testing-admin']);
 });
 
 it('composes the per-app tiers the same way, fenced to this app', function (): void {
@@ -52,7 +52,7 @@ it('composes the per-app tiers the same way, fenced to this app', function (): v
         ->toBe(['yolo-testing-my-app-observer', 'yolo-testing-my-app-data-read']);
 
     expect(attachedByStep(new AttachAppDeveloperRolePoliciesStep()))
-        ->toBe(['yolo-testing-my-app-observer', 'yolo-testing-my-app-data-read', 'yolo-testing-my-app-dumps-read']);
+        ->toBe(['yolo-testing-my-app-observer', 'yolo-testing-my-app-data-read', 'yolo-testing-my-app-backups-read']);
 });
 
 it('leaves the per-app data-read document out when the app declares no bucket — it would have no resource', function (): void {
@@ -61,9 +61,9 @@ it('leaves the per-app data-read document out when the app declares no bucket �
     expect(attachedByStep(new AttachAppObserverRolePolicyStep()))
         ->toBe(['yolo-testing-my-app-observer']);
 
-    // The dumps-read document is bucket-independent, so it always exists.
+    // The backups-read document is bucket-independent, so it always exists.
     expect(attachedByStep(new AttachAppDeveloperRolePoliciesStep()))
-        ->toBe(['yolo-testing-my-app-observer', 'yolo-testing-my-app-dumps-read']);
+        ->toBe(['yolo-testing-my-app-observer', 'yolo-testing-my-app-backups-read']);
 });
 
 it('never hands the deployer role a data document — a deploy grant can\'t read user uploads', function (): void {

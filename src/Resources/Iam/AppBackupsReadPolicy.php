@@ -9,8 +9,8 @@ use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Deletable;
 
-/** Per-app {@see DumpsReadPolicy}: this app's own dump prefix only. */
-class AppDumpsReadPolicy extends DumpsReadPolicy implements Deletable
+/** Per-app {@see BackupsReadPolicy}: this app's own dump prefix only. */
+class AppBackupsReadPolicy extends BackupsReadPolicy implements Deletable
 {
     #[\Override]
     public function scope(): Scope

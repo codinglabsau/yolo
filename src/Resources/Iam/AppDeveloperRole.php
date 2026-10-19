@@ -9,7 +9,7 @@ use Codinglabs\Yolo\Resources\Deletable;
 
 /**
  * Per-app {@see DeveloperRole}, so a developer grant can name a single app.
- * Carries the per-app observer, data-read and dumps-read documents; never OIDC-trusted.
+ * Carries the per-app observer, data-read and backups-read documents; never OIDC-trusted.
  */
 class AppDeveloperRole extends DeveloperRole implements Deletable
 {

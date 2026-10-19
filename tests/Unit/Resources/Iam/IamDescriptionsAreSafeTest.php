@@ -7,12 +7,12 @@ use Codinglabs\Yolo\Resources\Iam\EcsTaskPolicy;
 use Codinglabs\Yolo\Resources\Iam\DataReadPolicy;
 use Codinglabs\Yolo\Resources\Iam\DeployerPolicy;
 use Codinglabs\Yolo\Resources\Iam\DataWritePolicy;
-use Codinglabs\Yolo\Resources\Iam\DumpsReadPolicy;
 use Codinglabs\Yolo\Resources\Iam\AppDeveloperRole;
 use Codinglabs\Yolo\Resources\Iam\EcsExecutionRole;
 use Codinglabs\Yolo\Resources\Iam\MediaConvertRole;
 use Codinglabs\Yolo\Resources\Iam\AppDataReadPolicy;
-use Codinglabs\Yolo\Resources\Iam\AppDumpsReadPolicy;
+use Codinglabs\Yolo\Resources\Iam\BackupsReadPolicy;
+use Codinglabs\Yolo\Resources\Iam\AppBackupsReadPolicy;
 
 /**
  * IAM `Description` fields (CreateRole, UpdateRole, CreatePolicy) accept only
@@ -56,8 +56,8 @@ it('keeps every data-tier description safe for the IAM API', function (object $r
     'DataReadPolicy' => [fn (): DataReadPolicy => new DataReadPolicy()],
     'AppDataReadPolicy' => [fn (): AppDataReadPolicy => new AppDataReadPolicy()],
     'DataWritePolicy' => [fn (): DataWritePolicy => new DataWritePolicy()],
-    'DumpsReadPolicy' => [fn (): DumpsReadPolicy => new DumpsReadPolicy()],
-    'AppDumpsReadPolicy' => [fn (): AppDumpsReadPolicy => new AppDumpsReadPolicy()],
+    'BackupsReadPolicy' => [fn (): BackupsReadPolicy => new BackupsReadPolicy()],
+    'AppBackupsReadPolicy' => [fn (): AppBackupsReadPolicy => new AppBackupsReadPolicy()],
     'DeveloperRole' => [fn (): DeveloperRole => new DeveloperRole()],
     'AppDeveloperRole' => [fn (): AppDeveloperRole => new AppDeveloperRole()],
 ]);

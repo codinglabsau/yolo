@@ -150,7 +150,7 @@ class DestroyAppCommand extends SyncSteppedCommand implements PlansSequentially
                 Steps\Destroy\App\TeardownAppDeveloperRoleStep::class,
                 Steps\Destroy\App\TeardownAppObserverRoleStep::class,
                 Steps\Destroy\App\TeardownDeployerPolicyStep::class,
-                Steps\Destroy\App\TeardownAppDumpsReadPolicyStep::class,
+                Steps\Destroy\App\TeardownAppBackupsReadPolicyStep::class,
                 Steps\Destroy\App\TeardownAppDataReadPolicyStep::class,
                 Steps\Destroy\App\TeardownAppObserverPolicyStep::class,
                 Steps\Destroy\App\UnpublishAppManifestStep::class,

@@ -8,7 +8,7 @@ use Codinglabs\Yolo\Enums\Iam;
 
 /**
  * The Developer tier's own role: everything the observer reads plus the database
- * dumps ({@see DataReadPolicy} + {@see DumpsReadPolicy}) — no writes at all. A
+ * dumps ({@see DataReadPolicy} + {@see BackupsReadPolicy}) — no writes at all. A
  * developer ships through the per-app deployer roles, which {@see DevelopersGroup}
  * also grants, so deploy, `run` and `.env` stay capped to that deploy policy.
  *

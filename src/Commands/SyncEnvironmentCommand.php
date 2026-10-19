@@ -118,7 +118,7 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 // new app that names one needs a second env sync after its first sync:app.
                 Steps\Sync\Environment\SyncDataReadPolicyStep::class,
                 Steps\Sync\Environment\SyncDataWritePolicyStep::class,
-                Steps\Sync\Environment\SyncDumpsReadPolicyStep::class,
+                Steps\Sync\Environment\SyncBackupsReadPolicyStep::class,
                 Steps\Sync\Environment\SyncObserverRoleStep::class,
                 Steps\Sync\Environment\AttachObserverRolePolicyStep::class,
                 Steps\Sync\Environment\SyncDeveloperRoleStep::class,

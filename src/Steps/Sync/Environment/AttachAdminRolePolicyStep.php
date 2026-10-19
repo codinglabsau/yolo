@@ -11,7 +11,7 @@ use Codinglabs\Yolo\Resources\Iam\DataReadPolicy;
 use Codinglabs\Yolo\Resources\Iam\ObserverPolicy;
 use Codinglabs\Yolo\Concerns\AttachesRolePolicies;
 use Codinglabs\Yolo\Resources\Iam\DataWritePolicy;
-use Codinglabs\Yolo\Resources\Iam\DumpsReadPolicy;
+use Codinglabs\Yolo\Resources\Iam\BackupsReadPolicy;
 
 /**
  * The observer, data and dump documents are reused rather than duplicated: admin
@@ -30,7 +30,7 @@ class AttachAdminRolePolicyStep implements Step
                 $this->customerManagedPolicyArn((new ObserverPolicy())->name()),
                 $this->customerManagedPolicyArn((new DataReadPolicy())->name()),
                 $this->customerManagedPolicyArn((new DataWritePolicy())->name()),
-                $this->customerManagedPolicyArn((new DumpsReadPolicy())->name()),
+                $this->customerManagedPolicyArn((new BackupsReadPolicy())->name()),
                 $this->customerManagedPolicyArn((new AdminPolicy())->name()),
             ],
             (bool) Arr::get($options, 'dry-run'),

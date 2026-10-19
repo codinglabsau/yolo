@@ -11,7 +11,7 @@ use Codinglabs\Yolo\Resources\Iam\DeveloperRole;
 use Codinglabs\Yolo\Resources\Iam\DataReadPolicy;
 use Codinglabs\Yolo\Resources\Iam\ObserverPolicy;
 use Codinglabs\Yolo\Concerns\AttachesRolePolicies;
-use Codinglabs\Yolo\Resources\Iam\DumpsReadPolicy;
+use Codinglabs\Yolo\Resources\Iam\BackupsReadPolicy;
 
 /**
  * Observer reads + data reads + dump reads; never a write policy. Exact, so a policy
@@ -28,7 +28,7 @@ class AttachDeveloperRolePoliciesStep implements Step
             [
                 $this->customerManagedPolicyArn((new ObserverPolicy())->name()),
                 $this->customerManagedPolicyArn((new DataReadPolicy())->name()),
-                $this->customerManagedPolicyArn((new DumpsReadPolicy())->name()),
+                $this->customerManagedPolicyArn((new BackupsReadPolicy())->name()),
             ],
             (bool) Arr::get($options, 'dry-run'),
         );
