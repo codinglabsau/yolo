@@ -22,6 +22,15 @@ use Codinglabs\Yolo\WebThreads;
  * ({@see WebThreads}). `queue_depth` is the classic tier's direct
  * burst signal: a non-zero reading means a request is waiting for a thread.
  *
+ * The two families differ in how their series come into being, which decides whether a
+ * missing line is an idle pool or a broken scrape. The thread gauges are plain
+ * unlabelled gauges, all registered when FrankenPHP builds its metrics collector, so
+ * they appear together from the first scrape. The worker gauges are vectors labelled by
+ * worker script, and a vector's child series only materialises when something writes
+ * it: the total's on worker boot, the busy one's on the first request dispatched to
+ * that worker. So a worker-mode task that hasn't served a request yet legitimately
+ * exposes a total with no busy line at all.
+ *
  * Split from the scrape so it can be unit-tested against a real payload.
  */
 final class Gauges
@@ -41,10 +50,16 @@ final class Gauges
     /**
      * Requests dispatched to the worker scripts, summed the same way as the total —
      * queued ones included, so it can exceed the pool.
+     *
+     * Absent reads as zero, unlike the thread family ({@see self::companion()}), because
+     * the worker gauges are lazily-created label series: the busy one appears only once
+     * a request has been dispatched to that worker script. A total with no busy line is
+     * therefore a pool that hasn't served a request yet — an idle worker, which is
+     * exactly zero busy — not a scrape to refuse.
      */
     public static function busyWorkers(string $metrics): int
     {
-        return self::companion($metrics, 'frankenphp_busy_workers', 'frankenphp_total_workers');
+        return self::sum($metrics, 'frankenphp_busy_workers') ?? 0;
     }
 
     /** Whether the thread gauges are present — both modes emit them, so absence means metrics are off. */
@@ -92,9 +107,12 @@ final class Gauges
     }
 
     /**
-     * A gauge that must accompany its family's total — FrankenPHP registers each family
-     * together, so one missing beside the others is a broken scrape, not an idle pool,
-     * and defaulting it to zero would silently under-report saturation.
+     * A thread gauge that must accompany `total_threads`. FrankenPHP registers the three
+     * thread gauges together when it builds its metrics collector and they carry no
+     * labels, so they are present or absent as a set: one missing beside the others is a
+     * broken scrape, not an idle pool, and defaulting it to zero would silently
+     * under-report saturation. The worker family can't be read this way — its series are
+     * created per worker script on first write ({@see self::busyWorkers()}).
      */
     private static function companion(string $metrics, string $gauge, string $total): int
     {

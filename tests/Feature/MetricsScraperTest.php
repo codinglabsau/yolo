@@ -38,6 +38,24 @@ it('classifies a thread-gauge payload as a classic-mode reading carrying busy th
         ->and($result->queueDepth)->toBe(1);
 });
 
+it('classifies a freshly booted worker pool as a reading with no busy workers', function (): void {
+    // The busy gauge's label series only appears once a request has been dispatched to
+    // the worker script, so a task scraped before it has served one carries a total and
+    // no busy line at all. That's an idle pool: a reading of zero busy, not a refusal.
+    Http::fake(['*' => Http::response(
+        "frankenphp_busy_threads 0\nfrankenphp_total_threads 4\nfrankenphp_queue_depth 0\n"
+        . "frankenphp_total_workers{worker=\"/app/public/frankenphp-worker.php\"} 4\n"
+        . "frankenphp_ready_workers{worker=\"/app/public/frankenphp-worker.php\"} 4\n"
+    )]);
+
+    $result = (new MetricsScraper())->scrape();
+
+    expect($result->outcome)->toBe(ScrapeOutcome::Reading)
+        ->and($result->totalWorkers)->toBe(4)
+        ->and($result->busyWorkers)->toBe(0)
+        ->and($result->gauges)->toMatchArray(['total_workers' => 4, 'ready_workers' => 4, 'busy_workers' => null]);
+});
+
 it('reads an Octane tier caught mid worker-reload as a thread reading, not absent', function (): void {
     // A zero worker total is no denominator, but the endpoint answered with gauges —
     // the reporter primes on it and stays silent for lack of a thread ceiling.

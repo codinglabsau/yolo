@@ -27,7 +27,8 @@ use Codinglabs\Yolo\Steps\Build\Fargate\CheckYoloInstalledStep;
  * production dependency). On the autoscaling web tier it publishes FrankenPHP pool saturation
  * for burst step-scaling from an after-response hook, in either serving mode; inert everywhere
  * else, since the YOLO_BURST_* environment is set only on the web task definition
- * ({@see SyncTaskDefinitionStep}).
+ * ({@see SyncTaskDefinitionStep}) and the whole burst path is registered on the HTTP side of
+ * `runningInConsole()` only — the same task definition also runs console processes.
  */
 class YoloServiceProvider extends ServiceProvider
 {
@@ -94,6 +95,17 @@ class YoloServiceProvider extends ServiceProvider
             $this->commands([
                 Runtime\Commands\DatabaseBackupCommand::class,
             ]);
+
+            // Everything below is HTTP-only, and the image runs console processes beside
+            // the web server (scheduler, queue workers), so the gate has to be here
+            // rather than left to the burst env — a console process on a web task sees
+            // the same YOLO_BURST_* values the web server does. `terminating` fires at
+            // the end of a console command too, which would scrape and publish from a
+            // process that serves no requests, and read a worker pool that may not have
+            // handled one yet. `runningInConsole()` is true for the scheduler and the
+            // queue as well as artisan, and false under the `frankenphp` SAPI an Octane
+            // worker runs in, so the serving tier keeps reporting.
+            return;
         }
 
         if (! $this->burstEnabled()) {

@@ -46,9 +46,12 @@ it('parses busy workers, summed across every worker entry', function (): void {
         ))->toBe(7);
 });
 
-it('refuses busy workers missing beside total_workers rather than reading it as zero', function (): void {
-    expect(fn (): int => Gauges::busyWorkers("frankenphp_total_workers 4\n"))
-        ->toThrow(RuntimeException::class, 'frankenphp_busy_workers');
+it('reads busy workers missing beside total_workers as an idle pool', function (): void {
+    // The worker gauges are label series created on first write: the total's when a
+    // worker boots, the busy one's when a request is first dispatched to it. A freshly
+    // booted worker-mode task that hasn't served a request yet therefore exposes a total
+    // with no busy line, and that is zero busy, not a broken scrape.
+    expect(Gauges::busyWorkers("frankenphp_total_workers{worker=\"/app\"} 4\n"))->toBe(0);
 });
 
 it('recognises the thread gauges in both modes', function (): void {
