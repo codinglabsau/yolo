@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Codinglabs\Yolo\Arn;
 
 it('parses an EC2 instance ARN', function (): void {
