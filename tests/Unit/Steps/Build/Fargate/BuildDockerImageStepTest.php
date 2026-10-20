@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Enums\StepResult;
+use Illuminate\Filesystem\Filesystem;
+use Symfony\Component\Process\Process;
 use Codinglabs\Yolo\Steps\Build\Fargate\BuildDockerImageStep;
 
 beforeEach(function (): void {
@@ -23,4 +27,19 @@ it('builds with inline cache seeded from the last pushed image', function (): vo
     // Still tags both the version and latest.
     expect($command)->toContain('--tag', "$repository:26.21.5.0900");
     expect($command)->toContain("$repository:latest");
+});
+
+it('drops the .git placeholder before the context is handed to Docker', function (): void {
+    // The scaffolded .dockerignore lists .git, but an app owns that file — so the
+    // guarantee that the marker never reaches an image layer stays with YOLO.
+    (new Filesystem())->ensureDirectoryExists(Paths::build('.git'));
+
+    $step = new class('testing') extends BuildDockerImageStep
+    {
+        #[Override]
+        protected function runProcess(Process $process): void {}
+    };
+
+    expect($step(['app-version' => '26.21.5.0900']))->toBe(StepResult::SUCCESS)
+        ->and(is_dir(Paths::build('.git')))->toBeFalse();
 });
