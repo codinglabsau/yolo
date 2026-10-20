@@ -46,7 +46,17 @@ class MetricsScraper implements Scraper
         $gauges = Gauges::diagnostics($body);
 
         if ($totalWorkers !== null) {
-            return ScrapeResult::workers($totalWorkers, Gauges::busyWorkers($body), $gauges);
+            $busyWorkers = Gauges::busyWorkers($body);
+
+            // A total with no busy gauge is an incomplete payload, not an idle pool: this
+            // runs on a request's terminate path, so a request has already been dispatched
+            // to a worker and FrankenPHP counts it. Reading the gap as zero would leave
+            // saturation floored by the in-flight peak, which caps at exactly the alarm
+            // line — a reassuring datapoint published at the moment the endpoint is
+            // struggling. A failure routes to the CPU corroboration instead.
+            return $busyWorkers === null
+                ? ScrapeResult::failure()
+                : ScrapeResult::workers($totalWorkers, $busyWorkers, $gauges);
         }
 
         return Gauges::hasThreads($body)
