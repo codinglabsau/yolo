@@ -40,6 +40,15 @@ class BuildDockerImageStep implements LongRunning
      * the compiled layers instead of rebuilding them; a missing :latest on the
      * first build is a no-op, not an error.
      *
+     * `--pull` re-resolves the Dockerfile's FROM tag every build. The scaffolded
+     * base image is a floating tag, so a machine that has built before happily
+     * reuses whatever it cached months ago while CI gets today's — and a base
+     * runtime older than the app's expects it to be upgradable, which it isn't
+     * from an unprivileged container. The failure surfaces as a crash-looping
+     * web tier and a deploy that times out waiting for health, long after the
+     * build it came from reported success. It costs one registry round-trip and
+     * doesn't touch the layer cache above, which `--cache-from` still seeds.
+     *
      * @return array<int, string>
      */
     public static function command(string $appVersion, string $repository): array
@@ -47,6 +56,7 @@ class BuildDockerImageStep implements LongRunning
         return [
             'docker', 'build',
             '--platform', 'linux/amd64',
+            '--pull',
             '--file', Paths::build('Dockerfile'),
             '--cache-from', "$repository:latest",
             '--cache-to', 'type=inline',
