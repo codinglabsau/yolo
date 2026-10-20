@@ -118,9 +118,10 @@ class DbTunnelCommand extends Command implements ReadOnlyCommand
             ? ($record['Endpoint'] ?? null)
             : ($record['Endpoint']['Address'] ?? null));
 
-        // Record first: the endpoint is derived from it, so a null endpoint only means
-        // anything once there's a record it could have been read from.
-        if ($record === null || $endpoint === null) {
+        // A null endpoint already covers a null record — the ternary above can only
+        // yield one from the other — so don't re-test the record here: the branch is
+        // unreachable, and PHPStan fails the build on it.
+        if ($endpoint === null) {
             error(sprintf('Could not resolve the endpoint for "%s" — the database reports no endpoint yet.', $target['identifier']));
 
             return null;
