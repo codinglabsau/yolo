@@ -2,10 +2,12 @@
 
 declare(strict_types=1);
 
+use Inertia\Ssr\Gateway;
 use Tests\TestbenchCase;
 use Illuminate\Contracts\Http\Kernel;
 use Codinglabs\Yolo\Runtime\WorkerSaturationReporter;
 use Codinglabs\Yolo\Runtime\Http\TrackInFlightRequests;
+use Codinglabs\Yolo\Runtime\Ssr\SaturationAwareSsrGateway;
 use Illuminate\Foundation\Http\Kernel as FoundationHttpKernel;
 
 uses(TestbenchCase::class);
@@ -139,6 +141,23 @@ it('does not push the in-flight tracking middleware in a console process', funct
 
     expect($kernel->hasMiddleware(TrackInFlightRequests::class))->toBeFalse();
 });
+
+it('binds the saturation-aware SSR gateway on the HTTP side', function (): void {
+    servingHttp();
+    putenv('YOLO_BURST_SERVICE=svc');
+    $this->refreshApplication();
+
+    expect($this->app->make(Gateway::class))->toBeInstanceOf(SaturationAwareSsrGateway::class);
+})->skip(fn (): bool => ! interface_exists(Gateway::class), 'Inertia is not installed.');
+
+it('leaves the SSR gateway unbound in a console process, which renders nothing', function (): void {
+    putenv('YOLO_BURST_SERVICE=svc');
+    $this->refreshApplication();
+
+    // Inertia's own provider isn't loaded here, so YOLO's bind is the only one that
+    // could exist — unbound proves the console gate skipped it.
+    expect($this->app->bound(Gateway::class))->toBeFalse();
+})->skip(fn (): bool => ! interface_exists(Gateway::class), 'Inertia is not installed.');
 
 it('pushes the in-flight tracking middleware onto the web kernel when burst is on', function (): void {
     servingHttp();

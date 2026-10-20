@@ -27,8 +27,10 @@ use Codinglabs\Yolo\Steps\Build\Fargate\CheckYoloInstalledStep;
  * production dependency). On the autoscaling web tier it publishes FrankenPHP pool saturation
  * for burst step-scaling from an after-response hook, in either serving mode; inert everywhere
  * else, since the YOLO_BURST_* environment is set only on the web task definition
- * ({@see SyncTaskDefinitionStep}) and the whole burst path is registered on the HTTP side of
- * `runningInConsole()` only — the same task definition also runs console processes.
+ * ({@see SyncTaskDefinitionStep}). The publishing path — the terminate hook, the in-flight
+ * middleware and the SSR gateway — is booted on the HTTP side of `runningInConsole()` only,
+ * since the same task definition also runs console processes; the container bindings stay in
+ * `register()`, where a console process resolves none of them.
  */
 class YoloServiceProvider extends ServiceProvider
 {
@@ -96,15 +98,12 @@ class YoloServiceProvider extends ServiceProvider
                 Runtime\Commands\DatabaseBackupCommand::class,
             ]);
 
-            // Everything below is HTTP-only, and the image runs console processes beside
-            // the web server (scheduler, queue workers), so the gate has to be here
-            // rather than left to the burst env — a console process on a web task sees
-            // the same YOLO_BURST_* values the web server does. `terminating` fires at
-            // the end of a console command too, which would scrape and publish from a
-            // process that serves no requests, and read a worker pool that may not have
-            // handled one yet. `runningInConsole()` is true for the scheduler and the
-            // queue as well as artisan, and false under the `frankenphp` SAPI an Octane
-            // worker runs in, so the serving tier keeps reporting.
+            // Everything below is HTTP-only, and a web task runs console processes beside
+            // the web server, which see the same YOLO_BURST_* values it does. `terminating`
+            // fires at the end of a console command too, so without this gate a scheduler
+            // tick would claim the publish window and flush the in-flight peak the web
+            // tier's own reading floors against. True for the scheduler and queue as well
+            // as artisan; false under the `frankenphp` SAPI that serves both modes.
             return;
         }
 
