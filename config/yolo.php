@@ -22,6 +22,10 @@ return [
     |   exposes more vCPUs than a fractional task is throttled to.
     | - threads: a classic-mode tier's pinned thread ceiling (max_threads) — the
     |   saturation denominator there. Unset on Octane.
+    | - role: which workload this process belongs to, declared per supervisord program
+    |   rather than per task definition — a bundled web container runs the scheduler and
+    |   queue beside the web server, so one task-def value can't tell them apart. Unset
+    |   on an image built before YOLO declared it, where the process type is inferred.
     |
     */
 
@@ -29,6 +33,7 @@ return [
         'service' => env('YOLO_BURST_SERVICE'),
         'cpu' => env('YOLO_BURST_CPU'),
         'threads' => env('YOLO_BURST_THREADS'),
+        'role' => env('YOLO_BURST_ROLE'),
     ],
 
     /*

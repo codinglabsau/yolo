@@ -21,6 +21,7 @@ use Codinglabs\Yolo\Steps\Sync\App\SyncTaskDefinitionStep;
 use Illuminate\Contracts\Http\Kernel as HttpKernelContract;
 use Illuminate\Foundation\Http\Kernel as FoundationHttpKernel;
 use Codinglabs\Yolo\Steps\Build\Fargate\CheckYoloInstalledStep;
+use Codinglabs\Yolo\Steps\Build\Fargate\GenerateSupervisorConfigStep;
 
 /**
  * Auto-discovered runtime provider ({@see CheckYoloInstalledStep} guarantees YOLO ships as a
@@ -28,9 +29,10 @@ use Codinglabs\Yolo\Steps\Build\Fargate\CheckYoloInstalledStep;
  * for burst step-scaling from an after-response hook, in either serving mode; inert everywhere
  * else, since the YOLO_BURST_* environment is set only on the web task definition
  * ({@see SyncTaskDefinitionStep}). The publishing path — the terminate hook, the in-flight
- * middleware and the SSR gateway — is booted on the HTTP side of `runningInConsole()` only,
- * since the same task definition also runs console processes; the container bindings stay in
- * `register()`, where a console process resolves none of them.
+ * middleware and the SSR gateway — is booted only in the process that serves web requests
+ * ({@see self::servesWeb()}), since the same task definition also runs the scheduler and
+ * queue workers; the container bindings stay in `register()`, where those processes resolve
+ * none of them.
  */
 class YoloServiceProvider extends ServiceProvider
 {
@@ -97,17 +99,9 @@ class YoloServiceProvider extends ServiceProvider
             $this->commands([
                 Runtime\Commands\DatabaseBackupCommand::class,
             ]);
-
-            // Everything below is HTTP-only, and a web task runs console processes beside
-            // the web server, which see the same YOLO_BURST_* values it does. `terminating`
-            // fires at the end of a console command too, so without this gate a scheduler
-            // tick would claim the publish window and flush the in-flight peak the web
-            // tier's own reading floors against. True for the scheduler and queue as well
-            // as artisan; false under the `frankenphp` SAPI that serves both modes.
-            return;
         }
 
-        if (! $this->burstEnabled()) {
+        if (! $this->burstEnabled() || ! $this->servesWeb()) {
             return;
         }
 
@@ -141,6 +135,29 @@ class YoloServiceProvider extends ServiceProvider
                 taskId: $this->taskId(),
             ));
         }
+    }
+
+    /**
+     * Whether this process is the one serving web requests — the only one the burst path
+     * belongs on. A web task definition also runs the scheduler and queue workers, which
+     * boot with the same YOLO_BURST_* values the web server sees, and `terminating` fires
+     * at the end of a console command too: without this gate a scheduler tick claims the
+     * publish window and flushes the in-flight peak the web tier's own reading floors
+     * against, once a minute per task.
+     *
+     * Two terms, because neither alone is enough. The declared role ({@see
+     * GenerateSupervisorConfigStep}) is what YOLO wrote into the supervisord program, so a
+     * non-web workload is excluded by declaration rather than by whatever its SAPI reports;
+     * an image built before YOLO declared it carries no role, and falls back to the
+     * inference rather than going dark. `runningInConsole()` stays because the role can't
+     * separate the `octane:start` supervisord parent — an artisan command that serves
+     * nothing — from the workers it spawns, which inherit the web program's environment.
+     */
+    private function servesWeb(): bool
+    {
+        $role = (string) config('yolo.burst.role');
+
+        return ($role === '' || $role === 'web') && ! $this->app->runningInConsole();
     }
 
     /** Overridable so tests can point at a fixture. */

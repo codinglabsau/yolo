@@ -64,6 +64,18 @@ function plantOctaneCaddyfileStub(): void
 STUB);
 }
 
+/** One program's block, so a role assertion can't match a sibling program's line. */
+function supervisorProgram(string $config, string $name): string
+{
+    foreach (explode("\n\n", $config) as $block) {
+        if (str_starts_with($block, "[program:{$name}]")) {
+            return $block;
+        }
+    }
+
+    return '';
+}
+
 function generatedSupervisorConfig(): string
 {
     (new GenerateSupervisorConfigStep('testing'))();
@@ -150,6 +162,47 @@ it('bundles octane, the scheduler and the queue worker into the web config for a
     expect($config)->not->toContain('schedule:work');
     expect($config)->toContain('[program:queue]');
     expect($config)->toContain('command=nice -n 19 php artisan queue:work --tries=3 --max-time=3600');
+});
+
+it('declares the workload each bundled program serves, so the runtime reads its role', function (): void {
+    // The burst publish belongs to the web process alone, and a bundled container runs
+    // all three off one task definition — so the role is declared per program rather
+    // than per task def, which could not tell them apart.
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => true]],
+    ]);
+
+    expect(supervisorProgram(generatedSupervisorConfig(), 'web'))->toContain('environment=YOLO_BURST_ROLE=web');
+
+    $config = generatedSupervisorConfig();
+
+    expect(supervisorProgram($config, 'scheduler'))->toContain('environment=YOLO_BURST_ROLE=scheduler')
+        ->and(supervisorProgram($config, 'queue'))->toContain('environment=YOLO_BURST_ROLE=queue');
+});
+
+it('declares the web role in classic mode too, where the request path is frankenphp itself', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['octane' => false, 'autoscaling' => true]],
+    ]);
+
+    expect(supervisorProgram(generatedSupervisorConfig(), 'web'))
+        ->toContain('command=frankenphp run --config /app/docker/Caddyfile')
+        ->toContain('environment=YOLO_BURST_ROLE=web');
+});
+
+it('declares the queue role on every per-tenant queue program, since each is the same workload', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => true]],
+        'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => ['alpha' => [], 'beta' => []]],
+    ]);
+
+    $config = generatedSupervisorConfig();
+
+    expect(substr_count($config, 'environment=YOLO_BURST_ROLE=queue'))->toBeGreaterThan(1)
+        ->and($config)->not->toContain('YOLO_BURST_ROLE=queue_landlord');
 });
 
 it('nices the bundled queue and scheduler so the web request path wins CPU under contention', function (): void {

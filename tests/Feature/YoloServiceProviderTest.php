@@ -15,6 +15,7 @@ uses(TestbenchCase::class);
 afterEach(function (): void {
     putenv('YOLO_BURST_SERVICE');
     putenv('YOLO_BURST_THREADS');
+    putenv('YOLO_BURST_ROLE');
     putenv('APP_RUNNING_IN_CONSOLE');
 });
 
@@ -134,6 +135,65 @@ it('does not register the terminating hook in a console process, which serves no
 
 it('does not push the in-flight tracking middleware in a console process', function (): void {
     putenv('YOLO_BURST_SERVICE=svc');
+    $this->refreshApplication();
+
+    $kernel = $this->app->make(Kernel::class);
+    assert($kernel instanceof FoundationHttpKernel);
+
+    expect($kernel->hasMiddleware(TrackInFlightRequests::class))->toBeFalse();
+});
+
+it('publishes from a process declared as the web workload', function (): void {
+    servingHttp();
+    putenv('YOLO_BURST_SERVICE=svc');
+    putenv('YOLO_BURST_ROLE=web');
+    $this->refreshApplication();
+
+    $spy = reporterSpy();
+    $this->app->instance(WorkerSaturationReporter::class, $spy);
+
+    $this->app->terminate();
+
+    expect($spy->reported)->toBeTrue();
+});
+
+it('publishes nothing from a process declared as another workload, whatever its SAPI reports', function (): void {
+    // The declared role is what YOLO wrote into the supervisord program, so a scheduler
+    // or queue process is excluded by declaration — not by the SAPI it happens to run
+    // under. servingHttp() here stands in for that SAPI reporting the wrong thing.
+    servingHttp();
+    putenv('YOLO_BURST_SERVICE=svc');
+    putenv('YOLO_BURST_ROLE=scheduler');
+    $this->refreshApplication();
+
+    $spy = reporterSpy();
+    $this->app->instance(WorkerSaturationReporter::class, $spy);
+
+    $this->app->terminate();
+
+    expect($spy->reported)->toBeFalse();
+});
+
+it('falls back to the process type when no role is declared, rather than going dark', function (): void {
+    // An image built before YOLO declared the role carries none. Burst must keep working
+    // there: a silent dark tier is worse than the inference it replaces.
+    servingHttp();
+    putenv('YOLO_BURST_SERVICE=svc');
+    putenv('YOLO_BURST_ROLE');
+    $this->refreshApplication();
+
+    $spy = reporterSpy();
+    $this->app->instance(WorkerSaturationReporter::class, $spy);
+
+    $this->app->terminate();
+
+    expect($spy->reported)->toBeTrue();
+});
+
+it('does not push the in-flight tracking middleware for a non-web workload', function (): void {
+    servingHttp();
+    putenv('YOLO_BURST_SERVICE=svc');
+    putenv('YOLO_BURST_ROLE=queue');
     $this->refreshApplication();
 
     $kernel = $this->app->make(Kernel::class);
