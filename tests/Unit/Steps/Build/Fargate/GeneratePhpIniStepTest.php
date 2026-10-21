@@ -49,3 +49,9 @@ it('ships a baseline that lifts the compile-default request-body limits', functi
         ->and($stub)->toContain('post_max_size = 12M')
         ->and($stub)->toContain('opcache.validate_timestamps = 0');
 });
+
+it('ships a baseline that disables session upload progress', function (): void {
+    // Reachable pre-routing on any multipart POST, and no Laravel app uses it.
+    expect(file_get_contents(Paths::stubs('php.ini.stub')))
+        ->toContain('session.upload_progress.enabled = Off');
+});
