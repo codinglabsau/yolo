@@ -29,6 +29,20 @@ it('builds with inline cache seeded from the last pushed image', function (): vo
     expect($command)->toContain("$repository:latest");
 });
 
+it('re-resolves the base image every build', function (): void {
+    // The scaffolded FROM is a floating tag, so without --pull a builder that has
+    // built before keeps whatever base layer it cached while a cold one gets today's.
+    // A stale runtime fails at container start, not at build, so the deploy is what
+    // breaks.
+    $command = BuildDockerImageStep::command('26.21.5.0900', 'repo');
+
+    expect($command)->toContain('--pull');
+
+    // --pull re-resolves FROM only; the layer cache above it still seeds from the
+    // last pushed image.
+    expect($command)->toContain('--cache-from', 'repo:latest');
+});
+
 it('drops the .git placeholder before the context is handed to Docker', function (): void {
     // The scaffolded .dockerignore lists .git, but an app owns that file — so the
     // guarantee that the marker never reaches an image layer stays with YOLO.
