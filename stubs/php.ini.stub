@@ -11,6 +11,12 @@
 ; Don't advertise the PHP version in response headers.
 expose_php = Off
 
+; Session upload progress runs inside PHP's multipart parser on any POST that
+; carries a PHP_SESSION_UPLOAD_PROGRESS field, before the app is reached — so
+; any client can drive it on every route, though Laravel never uses native
+; sessions. Off removes that pre-routing attack surface at no cost to the app.
+session.upload_progress.enabled = Off
+
 ; PHP's bare defaults cap uploads at 2M and POST bodies at 8M, and nothing else
 ; in the stack imposes a request-body limit (the load balancer and web server
 ; pass bodies through) — so these two ARE the app's upload ceiling. Kept modest
