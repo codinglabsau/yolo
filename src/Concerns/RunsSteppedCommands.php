@@ -296,10 +296,11 @@ trait RunsSteppedCommands
     }
 
     /**
-     * Each child first releases the AWS clients it inherited (a forked copy of a
-     * live client shares the parent's open sockets) and ships back plain values
-     * only. Failures are gathered rather than fail-fast so a broken first sync
-     * surfaces every crashing step in one pass.
+     * Each child parks the AWS clients it inherited and rebuilds its own rather
+     * than releasing them, because releasing an inherited client destructs it and
+     * closes a socket the parent and its siblings are still using. Children ship
+     * back plain values only. Failures are gathered rather than fail-fast so a
+     * broken first sync surfaces every crashing step in one pass.
      *
      * @param  Collection<int, array{scope: string, step: Step}>  $plan
      * @param  array<string, mixed>  $options
@@ -348,7 +349,7 @@ trait RunsSteppedCommands
 
         $results = Fork::new()
             ->concurrent(static::planWorkers($entries->count()))
-            ->before(child: static fn () => static::forgetAwsClients())
+            ->before(child: static fn () => static::releaseInheritedAwsClients())
             ->after(parent: function (mixed $output) use ($progress): void {
                 $progress?->label(sprintf('Planned %s', is_array($output) ? $output['label'] : 'step'))->advance();
             })

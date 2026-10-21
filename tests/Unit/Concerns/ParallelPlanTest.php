@@ -30,6 +30,17 @@ class ParallelPlanPidStep implements Step
     }
 }
 
+/** Flags whether its destructor ran — parking an inherited client must prevent that. */
+class ParallelPlanDestructSpy
+{
+    public static bool $destructed = false;
+
+    public function __destruct()
+    {
+        self::$destructed = true;
+    }
+}
+
 class ParallelPlanThrowingStep implements Step
 {
     public function __invoke(array $options): StepResult
@@ -182,4 +193,33 @@ it('marks every teardown command PlansSequentially, but not sync', function (): 
         ->and(class_implements(DestroyCommand::class))->toContain(PlansSequentially::class)
         ->and(class_implements(DestroyEnvironmentCommand::class))->toContain(PlansSequentially::class)
         ->and(class_implements(SyncCommand::class))->not->toContain(PlansSequentially::class);
+});
+
+it('leaves the parent AWS clients untouched when the plan fans out', function (): void {
+    putenv('YOLO_PLAN_SEQUENTIAL');
+
+    // Stands in for a client the pre-plan account guard leaves warm in the parent.
+    $sentinel = new stdClass();
+    Helpers::app()->instance('sts', $sentinel);
+
+    runParallelPlanCheck([
+        'environment' => [ParallelPlanPidStep::class, ParallelPlanPidStep::class],
+    ]);
+
+    // The fan-out must never reach back into the parent's clients: a child that
+    // released what it inherited would close a socket the parent still holds.
+    expect(Helpers::app('sts'))->toBe($sentinel);
+})->skip(! extension_loaded('pcntl'), 'pcntl is required to fork plan workers');
+
+it('parks an inherited AWS client rather than letting it destruct', function (): void {
+    ParallelPlanDestructSpy::$destructed = false;
+
+    Helpers::app()->instance('sqs', new ParallelPlanDestructSpy());
+
+    SyncCommand::releaseInheritedAwsClients();
+
+    // Destructing is what FINs the socket the parent and its siblings share, so the
+    // worker keeps a reference; the binding clears so it rebuilds its own client.
+    expect(ParallelPlanDestructSpy::$destructed)->toBeFalse()
+        ->and(Helpers::app()->resolved('sqs'))->toBeFalse();
 });
