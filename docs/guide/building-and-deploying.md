@@ -27,11 +27,32 @@ To watch a rollout as it happens, or check what's running at any time, run [`yol
 
 `yolo build production` prepares and packages the image:
 
-1. Purge the build directory and stage a clean copy of your app.
+1. Purge the build directory and stage a clean copy of your app (see [the staged copy](#the-staged-copy)).
 2. Pull `.env.<environment>` from S3 and stamp in `APP_VERSION` (and `ASSET_URL`, mirrored into `VITE_ASSET_URL` for Vite, if a CDN is configured).
 3. Run your manifest's `build` hooks (`composer install`, `npm run build`, …). With [Inertia SSR](/guide/images#inertia-ssr) enabled, this is also where `npm run build` produces the SSR bundle that gets baked into the image.
 4. Generate the entrypoint and supervisord config (see [The Container Image](/guide/images)), gated by an Octane preflight: YOLO **hard-fails the build** if `laravel/octane` isn't in your committed `composer.lock` production requirements — the web role runs `octane:start`, so a missing (or `require-dev`-only) octane would crash-loop the container on boot. (Skipped when [`tasks.web.octane: false`](/reference/manifest#tasks-web), where the web tier runs FrankenPHP classic mode and needs no octane package.)
 5. Log in to ECR, build the Docker image, probe it for the runtimes it needs — `supercronic` always (the scheduler's cron), `node` when `tasks.web.ssr` is on, the metrics-enabled `docker/Caddyfile` when the web tier autoscales — **hard-failing the build** if one is missing (see [Runtime checks](/guide/images#runtime-checks)), then push it.
+
+### The staged copy
+
+The build never runs in your working tree. YOLO rsyncs the app into `.yolo/build` first, dropping
+everything the image has no business carrying: `.git`, CI config, editor and tooling caches,
+`node_modules`, `tests`, nested agent worktrees, and the runtime contents of `storage`. Your `build`
+hooks then run in that copy, so a hook can scribble on the tree without touching your checkout.
+
+One nuance of staging the tree without its `.git`: tools that discover their input files by walking
+the directory and honouring `.gitignore` only do so **inside a git repository**, so in a bare copy
+they fall back to scanning everything — `node_modules` and `vendor` included. Tailwind v4's automatic
+source detection works this way, and on a dependency-heavy app the difference is a `vite build` that
+takes minutes instead of seconds. YOLO therefore creates an **empty** `.git` directory in the build
+copy after staging, which restores the repository boundary (the staged `.gitignore` files do the rest)
+and produces identical compiled output. The placeholder is removed again before the image is built, so
+it never reaches a layer, and the real `.git` is never copied — its history can run to hundreds of
+megabytes.
+
+::: tip
+If your manifest works around this with a `mkdir -p .git` build hook, you can drop it.
+:::
 
 The image-building steps (4–5) only run when your manifest declares `tasks` — with none declared, the build stops after staging the build directory (env file baked, build hooks run) and no image is produced.
 
