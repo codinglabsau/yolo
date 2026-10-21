@@ -44,6 +44,22 @@ CMD ["web"]
 
 Customise it freely — add PHP extensions, system packages, a different base image. Just keep the contract below intact.
 
+### The base image is re-resolved every build
+
+The scaffolded `FROM` is a **floating tag**, so the image it names moves as upstream publishes. `yolo build`
+therefore passes `--pull` to `docker build`: every build re-resolves the tag rather than reusing whatever the
+builder happened to cache. A fresh CI runner does that anyway; a machine that has built before would not, and
+would quietly keep shipping a base runtime that may be months old.
+
+That matters because a base runtime older than the app expects fails at **container start**, not at build. A
+mismatch between the image's web-server binary and the version Laravel Octane accepts, for example, makes
+Octane try to replace the binary in place — which an unprivileged container can't do — so the web program goes
+`FATAL`, health checks fail, and the deploy times out while ECS cycles tasks. Pinning the `FROM` tag to an exact
+version is the other way to get a predictable base; `--pull` makes the floating form behave predictably too.
+
+`--pull` re-resolves `FROM` only. The layer cache above it is untouched, and still seeds from the last pushed
+image via `--cache-from`.
+
 ## PHP configuration
 
 The base image activates no `php.ini`, so without one PHP runs its compile defaults — 2M uploads, 8M POST bodies, opcache stat'ing an immutable filesystem on every request. Nothing else in the stack imposes a request-body limit, so those two ini values *are* the app's upload ceiling.
