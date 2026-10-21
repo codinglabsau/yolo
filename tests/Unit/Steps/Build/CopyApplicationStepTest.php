@@ -1,5 +1,8 @@
 <?php
 
+use Codinglabs\Yolo\Paths;
+use Codinglabs\Yolo\Enums\StepResult;
+use Symfony\Component\Process\Process;
 use Codinglabs\Yolo\Steps\Build\CopyApplicationStep;
 
 it('stages the app with the environment env file included and the never-ship trees excluded', function (): void {
@@ -27,4 +30,18 @@ it('excludes everything the scaffolded .dockerignore does', function (): void {
         ->map(fn (string $argument): string => substr($argument, strlen('--exclude=')));
 
     expect($ignored->diff($excluded)->values()->all())->toBe([]);
+});
+
+it('seeds an empty .git in the build directory so the asset build keeps its repository boundary', function (): void {
+    // Tailwind v4's source detection only honours .gitignore inside a git repository;
+    // without the marker it scans node_modules and vendor in the staged copy.
+    $step = new class('testing') extends CopyApplicationStep
+    {
+        #[Override]
+        protected function runProcess(Process $process): void {}
+    };
+
+    expect($step())->toBe(StepResult::SUCCESS)
+        ->and(is_dir(Paths::build('.git')))->toBeTrue()
+        ->and(scandir(Paths::build('.git')))->toBe(['.', '..']);
 });

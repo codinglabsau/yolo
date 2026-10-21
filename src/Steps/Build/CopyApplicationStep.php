@@ -8,6 +8,7 @@ use Illuminate\Filesystem\Filesystem;
 use Symfony\Component\Process\Process;
 use Codinglabs\Yolo\Concerns\RunsProcess;
 use Codinglabs\Yolo\Contracts\LongRunning;
+use Codinglabs\Yolo\Steps\Build\Fargate\BuildDockerImageStep;
 
 class CopyApplicationStep implements LongRunning
 {
@@ -35,6 +36,8 @@ class CopyApplicationStep implements LongRunning
         );
 
         $this->runProcess($process);
+
+        $this->seedGitPlaceholder();
 
         return StepResult::SUCCESS;
     }
@@ -89,6 +92,24 @@ class CopyApplicationStep implements LongRunning
             '.',
             Paths::build(),
         ];
+    }
+
+    /**
+     * Tailwind v4's automatic source detection only applies .gitignore rules inside a
+     * git repository. The staged copy excludes .git (see the list above), so without a
+     * marker the scanner treats the build directory as an unversioned tree and walks
+     * all of it — node_modules and vendor included — which turns a seconds-long asset
+     * build into a minutes-long one on a dependency-heavy app.
+     *
+     * An empty directory is enough to restore the repository boundary, with identical
+     * compiled output; copying the real .git is not an option, since the history can
+     * run to hundreds of megabytes and the Dockerfile copies the whole build context
+     * into the image. {@see BuildDockerImageStep} removes the placeholder again before
+     * the image is built.
+     */
+    protected function seedGitPlaceholder(): void
+    {
+        $this->filesystem->ensureDirectoryExists(Paths::build('.git'));
     }
 
     protected function ensureBuildDirectoryExists(): void
