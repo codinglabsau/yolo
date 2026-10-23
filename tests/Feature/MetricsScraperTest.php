@@ -38,6 +38,21 @@ it('classifies a thread-gauge payload as a classic-mode reading carrying busy th
         ->and($result->queueDepth)->toBe(1);
 });
 
+it('classifies a worker total with no busy gauge as a failure, not a zero-busy reading', function (): void {
+    // The endpoint answered, but the payload is incomplete — the reporting request is
+    // itself occupying a worker, so the busy series should exist. A zero here would be
+    // floored by the in-flight peak, which caps at exactly the alarm line, publishing a
+    // not-breaching datapoint while the endpoint struggles. A failure reaches the CPU
+    // corroboration instead.
+    Http::fake(['*' => Http::response(
+        "frankenphp_busy_threads 4\nfrankenphp_total_threads 4\nfrankenphp_queue_depth 2\n"
+        . "frankenphp_total_workers{worker=\"/app/public/frankenphp-worker.php\"} 4\n"
+        . "frankenphp_ready_workers{worker=\"/app/public/frankenphp-worker.php\"} 4\n"
+    )]);
+
+    expect((new MetricsScraper())->scrape()->outcome)->toBe(ScrapeOutcome::Failure);
+});
+
 it('reads an Octane tier caught mid worker-reload as a thread reading, not absent', function (): void {
     // A zero worker total is no denominator, but the endpoint answered with gauges —
     // the reporter primes on it and stays silent for lack of a thread ceiling.
