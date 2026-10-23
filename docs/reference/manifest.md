@@ -394,7 +394,7 @@ cache:
 
 `redis` provisions, with hardcoded sensible defaults (no tuning knobs until a real need lands):
 
-- a single-node replication group on `cache.t4g.micro` (auto-failover / Multi-AZ off — a standard single instance, ~A$11/mo), at-rest encryption on;
+- a single-node replication group on `cache.t4g.micro` (auto-failover / Multi-AZ off — a standard single instance), at-rest encryption on;
 - `maxmemory-policy=allkeys-lru` (writes never fail under memory pressure);
 - a security group allowing ingress on `6379` **only** from the Fargate task security group (the cache has no public endpoint);
 - a cache subnet group across the VPC subnets.
