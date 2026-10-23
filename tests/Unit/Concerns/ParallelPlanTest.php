@@ -223,3 +223,14 @@ it('parks an inherited AWS client rather than letting it destruct', function ():
     expect(ParallelPlanDestructSpy::$destructed)->toBeFalse()
         ->and(Helpers::app()->resolved('sqs'))->toBeFalse();
 });
+
+it('labels the plan with what is running, naming the steps once the tail narrows', function (): void {
+    $label = fn (array $inFlight): string => (new ReflectionMethod(SyncCommand::class, 'planProgressLabel'))->invoke(null, $inFlight);
+
+    // A wide fan-out has no single current step, so it reports a count...
+    expect($label(['a', 'b', 'c', 'd']))->toBe('Planning 4 steps...')
+        // ...and the narrow tail — where a wedged worker shows up — names them.
+        ->and($label(['app · Sync fargate', 'app · Sync queue']))->toBe('Planning app · Sync fargate, app · Sync queue')
+        ->and($label(['app · Sync fargate']))->toBe('Planning app · Sync fargate')
+        ->and($label([]))->toBe('Finishing plan...');
+});
