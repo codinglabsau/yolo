@@ -9,7 +9,7 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Resources\Iam\AppDevelopersGroup;
 
-/** Always provisioned (no repo gate), so a data-write grant can name a single app. */
+/** Always provisioned (no repo gate), so a developer grant can name a single app. */
 class SyncAppDevelopersGroupStep implements Step
 {
     use SynchronisesResource;

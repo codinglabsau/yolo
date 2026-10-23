@@ -9,7 +9,7 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Concerns\SynchronisesResource;
 use Codinglabs\Yolo\Resources\Iam\AppDeveloperRole;
 
-/** No GitHub-repo gate: every app gets a developer role so a data-write grant can name it. */
+/** No GitHub-repo gate: every app gets a developer role so a developer grant can name it. */
 class SyncAppDeveloperRoleStep implements Step
 {
     use SynchronisesResource;

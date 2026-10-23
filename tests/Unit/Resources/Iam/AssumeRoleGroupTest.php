@@ -91,17 +91,20 @@ it('grants sts:AssumeRole on exactly its tier role plus the self-service credent
         'arn:aws:iam::111111111111:role/yolo-testing-*-observer-role',
     ]],
     'app observers -> per-app observer role' => [fn (): AssumeRoleGroup => new AppObserversGroup(), 'arn:aws:iam::111111111111:role/yolo-testing-my-app-observer-role'],
-    // Developer subsumes observer (read commands mint observer roles) but never
-    // the deployer: humans deploy through CI, admins from a laptop.
-    'env developers -> developer + observer roles, never the deployer' => [fn (): AssumeRoleGroup => new DevelopersGroup(), [
+    // Developer subsumes observer (read commands mint observer roles) and the
+    // deployer (deploy-tier commands mint the per-app deployer) — everything but
+    // the admin role.
+    'env developers -> developer, observer and every app deployer role' => [fn (): AssumeRoleGroup => new DevelopersGroup(), [
         'arn:aws:iam::111111111111:role/yolo-testing-developer-role',
         'arn:aws:iam::111111111111:role/yolo-testing-observer-role',
         'arn:aws:iam::111111111111:role/yolo-testing-*-observer-role',
         'arn:aws:iam::111111111111:role/yolo-testing-*-developer-role',
+        'arn:aws:iam::111111111111:role/yolo-testing-*-deployer',
     ]],
-    'app developers -> per-app developer + observer roles' => [fn (): AssumeRoleGroup => new AppDevelopersGroup(), [
+    'app developers -> per-app developer, observer and deployer roles' => [fn (): AssumeRoleGroup => new AppDevelopersGroup(), [
         'arn:aws:iam::111111111111:role/yolo-testing-my-app-developer-role',
         'arn:aws:iam::111111111111:role/yolo-testing-my-app-observer-role',
+        'arn:aws:iam::111111111111:role/yolo-testing-my-app-deployer',
     ]],
     // Admin subsumes every tier: commands mint the least-privileged role for
     // their job, so the admin grant must cover the whole role hierarchy — the
@@ -123,3 +126,20 @@ it('is untaggable — synchroniseTags is a no-op (ownership lives in the name)',
     expect((new ObserversGroup())->synchroniseTags(apply: false))->toBe([]);
     expect((new AppObserversGroup())->synchroniseTags(apply: true))->toBe([]);
 });
+
+it('never lets an observer or developer grant assume the admin role', function (AssumeRoleGroup $group): void {
+    expect((array) $group->document()['Statement'][0]['Resource'])
+        ->not->toContain('arn:aws:iam::111111111111:role/yolo-testing-admin-role');
+})->with([
+    'env observers' => [fn (): AssumeRoleGroup => new ObserversGroup()],
+    'app observers' => [fn (): AssumeRoleGroup => new AppObserversGroup()],
+    'env developers' => [fn (): AssumeRoleGroup => new DevelopersGroup()],
+    'app developers' => [fn (): AssumeRoleGroup => new AppDevelopersGroup()],
+]);
+
+it('never lets an observer grant assume a deployer role', function (AssumeRoleGroup $group): void {
+    expect(implode(' ', (array) $group->document()['Statement'][0]['Resource']))->not->toContain('deployer');
+})->with([
+    'env observers' => [fn (): AssumeRoleGroup => new ObserversGroup()],
+    'app observers' => [fn (): AssumeRoleGroup => new AppObserversGroup()],
+]);

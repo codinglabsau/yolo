@@ -7,11 +7,10 @@ namespace Codinglabs\Yolo\Resources\Iam;
 use Codinglabs\Yolo\Enums\Iam;
 
 /**
- * The Developer tier: everything the observer reads plus writes to the apps'
- * *data* ({@see DataReadPolicy} + {@see DataWritePolicy}) — and nothing on the
- * infrastructure axis. No sync, no scale, and no `yolo run` / `db:backup`
- * either: those run arbitrary code in the app's task role, which reaches every
- * secret the app holds, not just its data.
+ * The Developer tier's own role: everything the observer reads plus the database
+ * dumps ({@see DataReadPolicy} + {@see BackupsReadPolicy}) — no writes at all. A
+ * developer ships through the per-app deployer roles, which {@see DevelopersGroup}
+ * also grants, so deploy, `run` and `.env` stay capped to that deploy policy.
  *
  * Same account-root + MFA trust as the observer role; {@see DevelopersGroup}
  * membership is the gate. No YOLO command mints this tier — it's assumed
@@ -28,6 +27,6 @@ class DeveloperRole extends ObserverRole
     #[\Override]
     public function description(): string
     {
-        return 'YOLO managed developer role: read-only inspection plus app data writes, no infrastructure writes';
+        return 'YOLO managed developer role: read-only inspection plus database dump reads';
     }
 }

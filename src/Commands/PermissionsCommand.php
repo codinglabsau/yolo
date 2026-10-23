@@ -130,8 +130,8 @@ class PermissionsCommand extends Command implements AdminCommand
 
     /**
      * Observer → Developer → Admin, env-wide or this app. The deployer role is
-     * never offered: it's CI's (GitHub OIDC), and an admin already assumes it for
-     * a laptop deploy.
+     * never offered as its own grant: it's CI's (GitHub OIDC), and the developer and
+     * admin grants already include it for a laptop deploy.
      *
      * @return array<int, array{name: string, label: string, group: AssumeRoleGroup}>
      */
@@ -150,11 +150,11 @@ class PermissionsCommand extends Command implements AdminCommand
             ],
             [
                 'group' => new DevelopersGroup(),
-                'label' => 'Developer — entire environment (observer + write every app\'s data, no infrastructure)',
+                'label' => 'Developer — entire environment (observer + database dumps + deploy / run / .env, no infrastructure)',
             ],
             [
                 'group' => new AppDevelopersGroup(),
-                'label' => sprintf('Developer — %s only (observer + write this app\'s data)', $app),
+                'label' => sprintf('Developer — %s only (observer + its database dumps + deploy / run / .env)', $app),
             ],
             [
                 'group' => new AdminsGroup(),
