@@ -90,12 +90,56 @@ it('derives a YOLO-named bucket in the keyed namespace so it can never collide a
     expect((new S3Bucket())->name())->toBe('yolo-111111111111-testing-my-app-data');
 });
 
-it('is create-only — never a SynchronisesConfiguration, so an existing bucket is never reconciled', function (): void {
+it('is a SynchronisesConfiguration for versioning only — CORS, BPA and tags stay create-once', function (): void {
     writeManagedBucketManifest();
 
-    // True in both modes: YOLO hands the bucket over at birth. It holds user data and
-    // an app may legitimately change its own CORS or serve public objects.
-    expect(new S3Bucket())->not->toBeInstanceOf(SynchronisesConfiguration::class);
+    // The Developer tier holds s3:DeleteObject on this bucket, so versioning is the
+    // one attribute reconciled on every sync — it's the only recovery path from a
+    // bad delete short of an Admin-tier backup restore. Everything else hands the
+    // bucket over at birth: an app may legitimately change its own CORS or serve
+    // public objects.
+    expect(new S3Bucket())->toBeInstanceOf(SynchronisesConfiguration::class);
+});
+
+it('reconciles versioning back to Enabled on an existing bucket found drifted', function (): void {
+    writeManagedBucketManifest();
+
+    $recorder = bindRecordingAppBucketS3Client([
+        'GetBucketVersioning' => new Result(['Status' => 'Suspended']),
+        'PutBucketVersioning' => new Result(),
+    ]);
+
+    $changes = (new S3Bucket())->synchroniseConfiguration(apply: true);
+
+    expect(array_column($recorder->captured, 'name'))->toContain('PutBucketVersioning');
+    expect($changes)->toHaveCount(1);
+
+    $put = collect($recorder->captured)->firstWhere('name', 'PutBucketVersioning');
+    expect($put['args']['VersioningConfiguration']['Status'])->toBe('Enabled');
+});
+
+it('reports versioning drift but writes nothing on a dry run', function (): void {
+    writeManagedBucketManifest();
+
+    $recorder = bindRecordingAppBucketS3Client([
+        'GetBucketVersioning' => new Result(['Status' => 'Suspended']),
+    ]);
+
+    $changes = (new S3Bucket())->synchroniseConfiguration(apply: false);
+
+    expect($changes)->toHaveCount(1);
+    expect(array_column($recorder->captured, 'name'))->not->toContain('PutBucketVersioning');
+});
+
+it('leaves an already-versioned bucket alone', function (): void {
+    writeManagedBucketManifest();
+
+    $recorder = bindRecordingAppBucketS3Client([
+        'GetBucketVersioning' => new Result(['Status' => 'Enabled']),
+    ]);
+
+    expect((new S3Bucket())->synchroniseConfiguration(apply: true))->toBe([]);
+    expect(array_column($recorder->captured, 'name'))->not->toContain('PutBucketVersioning');
 });
 
 it('is never deletable, so destroy:app leaves even a YOLO-named data bucket standing', function (): void {
@@ -116,11 +160,13 @@ it('is never YOLO-tagged in either mode — it stays out of the tag-based audit'
     }
 });
 
-it('stamps Block Public Access and the CORS ruleset at create — and never tags the bucket', function (): void {
+it('stamps Block Public Access, CORS and versioning at create — and never tags the bucket', function (): void {
     writeManagedBucketManifest();
 
     $recorder = bindRecordingAppBucketS3Client([
         'HeadBucket' => new Result(['@metadata' => ['statusCode' => 200]]), // the BucketExists waiter
+        'GetBucketVersioning' => new Result(), // no Status yet — a fresh bucket
+        'PutBucketVersioning' => new Result(),
     ]);
 
     (new S3Bucket())->create();
@@ -129,10 +175,14 @@ it('stamps Block Public Access and the CORS ruleset at create — and never tags
         ->toContain('CreateBucket')
         ->toContain('PutPublicAccessBlock')
         ->toContain('PutBucketCors')
+        ->toContain('PutBucketVersioning')
         ->not->toContain('PutBucketTagging');
 
     $put = collect($recorder->captured)->firstWhere('name', 'PutBucketCors');
     expect($put['args']['CORSConfiguration']['CORSRules'])->toBe(managedAppBucketCors());
+
+    $versioning = collect($recorder->captured)->firstWhere('name', 'PutBucketVersioning');
+    expect($versioning['args']['VersioningConfiguration']['Status'])->toBe('Enabled');
 });
 
 it('creates the derived name, not the manifest value', function (): void {

@@ -169,11 +169,18 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                     // contents. Covers the whole yolo-* namespace because the YOLO-owned
                     // app data bucket needs CreateBucket + hardening writes — destructive
                     // verbs deliberately do NOT follow (next statement).
+                    //
+                    // GetBucketVersioning lives here rather than on ObserverPolicy's
+                    // infrastructure-bucket read wildcard: that wildcard deliberately
+                    // excludes the app data bucket (see its comment), but sync must still
+                    // probe versioning there to self-heal it — the one live-config read
+                    // this otherwise create-only resource needs (see S3Bucket's docblock).
                     'Effect' => 'Allow',
                     'Resource' => 'arn:aws:s3:::yolo-*',
                     'Action' => [
                         's3:CreateBucket',
                         's3:PutBucket*',
+                        's3:GetBucketVersioning',
                         's3:PutEncryptionConfiguration',
                         's3:PutLifecycleConfiguration',
                         's3:PutReplicationConfiguration',

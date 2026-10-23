@@ -307,6 +307,22 @@ it('never lets a destructive S3 grant match a YOLO-named app data bucket', funct
     }
 });
 
+it('grants s3:GetBucketVersioning on the app data bucket so sync can self-heal a drifted bucket', function (): void {
+    // ObserverPolicy's infrastructure-bucket read wildcard deliberately excludes the
+    // app data bucket, so the versioning probe (S3Bucket::synchroniseConfiguration)
+    // needs its own narrow read grant here — without it, every sync would AccessDenied
+    // trying to detect drift on the Developer tier's s3:DeleteObject recovery path.
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => true,
+    ]);
+
+    $versioningRead = collect((new AdminPolicy())->document()['Statement'])
+        ->first(fn (array $statement): bool => in_array('s3:GetBucketVersioning', (array) $statement['Action'], true));
+
+    expect($versioningRead)->not->toBeNull();
+    expect(fnmatch((string) $versioningRead['Resource'], 'arn:aws:s3:::' . Paths::s3AppBucket()))->toBeTrue();
+});
+
 it('still lets the create+harden grant reach a YOLO-named app data bucket', function (): void {
     // The mirror of the test above: creation and the Block Public Access / CORS writes
     // must reach it, which is the entire reason `bucket: true` derives a yolo-* name.
