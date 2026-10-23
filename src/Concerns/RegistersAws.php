@@ -66,13 +66,48 @@ trait RegistersAws
     ];
 
     /**
-     * A forked child inherits the parent's resolved clients and with them its open
-     * curl sockets, which two processes must never share. The singleton bindings
-     * survive, so clients rebuild lazily in the child.
+     * Instances a forked worker inherited from its parent, parked so that nothing
+     * destructs them for the life of the worker.
+     *
+     * @var array<int, mixed>
+     */
+    protected static array $inheritedAwsClients = [];
+
+    /**
+     * Drops the resolved clients so they rebuild lazily from the surviving singleton
+     * bindings. This releases the container's only reference, so each client
+     * destructs and libcurl closes its connections — safe in the process that owns
+     * them, never in a forked child. {@see releaseInheritedAwsClients}
      */
     public static function forgetAwsClients(): void
     {
         foreach (self::AWS_CLIENT_BINDINGS as $service) {
+            Helpers::app()->forgetInstance($service);
+        }
+    }
+
+    /**
+     * A forked child inherits the parent's resolved clients and with them its open
+     * curl sockets, which two processes must never share. It cannot simply forget
+     * them: dropping the last reference runs libcurl's graceful shutdown, which
+     * FINs a socket the parent and every sibling still hold, and whichever one is
+     * mid-request then blocks on a half-closed connection — a hang the client
+     * `http.timeout` never covers, because a credential refresh carries its own.
+     *
+     * So park the inherited instances instead. Holding a reference keeps their
+     * destructors from ever running, while the bindings rebuild fresh clients for
+     * the child's own work. The parked sockets are closed by the kernel when the
+     * worker exits, with no graceful shutdown to disturb the parent — spatie/fork
+     * SIGKILLs its children, which skips destructors (a build without ext-posix
+     * falls back to exit() and would run them).
+     */
+    public static function releaseInheritedAwsClients(): void
+    {
+        foreach (self::AWS_CLIENT_BINDINGS as $service) {
+            if (Helpers::app()->resolved($service)) {
+                static::$inheritedAwsClients[] = Helpers::app($service);
+            }
+
             Helpers::app()->forgetInstance($service);
         }
     }
