@@ -46,9 +46,12 @@ it('parses busy workers, summed across every worker entry', function (): void {
         ))->toBe(7);
 });
 
-it('refuses busy workers missing beside total_workers rather than reading it as zero', function (): void {
-    expect(fn (): int => Gauges::busyWorkers("frankenphp_total_workers 4\n"))
-        ->toThrow(RuntimeException::class, 'frankenphp_busy_workers');
+it('has no busy worker count when the gauge is absent beside the total', function (): void {
+    // Reported rather than defaulted to zero: the only caller scrapes from a request's
+    // terminate path, so a request has already been dispatched to a worker and the busy
+    // series exists. A total without it is an incomplete payload, and a zero there would
+    // cap saturation at exactly the alarm line.
+    expect(Gauges::busyWorkers("frankenphp_total_workers{worker=\"/app\"} 4\n"))->toBeNull();
 });
 
 it('recognises the thread gauges in both modes', function (): void {

@@ -2,10 +2,12 @@
 
 declare(strict_types=1);
 
+use Inertia\Ssr\Gateway;
 use Tests\TestbenchCase;
 use Illuminate\Contracts\Http\Kernel;
 use Codinglabs\Yolo\Runtime\WorkerSaturationReporter;
 use Codinglabs\Yolo\Runtime\Http\TrackInFlightRequests;
+use Codinglabs\Yolo\Runtime\Ssr\SaturationAwareSsrGateway;
 use Illuminate\Foundation\Http\Kernel as FoundationHttpKernel;
 
 uses(TestbenchCase::class);
@@ -13,12 +15,38 @@ uses(TestbenchCase::class);
 afterEach(function (): void {
     putenv('YOLO_BURST_SERVICE');
     putenv('YOLO_BURST_THREADS');
+    putenv('YOLO_BURST_ROLE');
+    putenv('APP_RUNNING_IN_CONSOLE');
 });
 
 /** The reporter's private ceiling, read back so the env → constructor wiring is pinned. */
 function reporterThreadCeiling(WorkerSaturationReporter $reporter): ?int
 {
     return (new ReflectionProperty($reporter, 'threadCeiling'))->getValue($reporter);
+}
+
+/**
+ * The suite runs under the `cli` SAPI, so every booted app would look like a console
+ * process and skip the HTTP-only burst wiring. This is the framework's own override for
+ * that decision, so a test can boot an app that reports itself as serving a request.
+ */
+function servingHttp(): void
+{
+    putenv('APP_RUNNING_IN_CONSOLE=false');
+}
+
+/** A reporter stand-in, so terminate() never constructs the real AWS/cgroup stack. */
+function reporterSpy(): object
+{
+    return new class()
+    {
+        public bool $reported = false;
+
+        public function report(): void
+        {
+            $this->reported = true;
+        }
+    };
 }
 
 it('wires the classic-mode thread ceiling from the injected env into the reporter', function (): void {
@@ -37,6 +65,7 @@ it('leaves the reporter without a thread ceiling on an Octane tier', function ()
 });
 
 it('does not push the in-flight tracking middleware on a classic tier, which never reads the peak', function (): void {
+    servingHttp();
     putenv('YOLO_BURST_SERVICE=svc');
     putenv('YOLO_BURST_THREADS=16');
     $this->refreshApplication();
@@ -62,20 +91,11 @@ it('binds the saturation reporter when a burst service is set', function (): voi
 });
 
 it('runs the reporter after the response via the app terminating hook', function (): void {
+    servingHttp();
     putenv('YOLO_BURST_SERVICE=svc');
     $this->refreshApplication();
 
-    // Stand in for the reporter so terminate() doesn't construct the real AWS/cgroup
-    // stack — the assertion is purely that the terminating hook invokes report().
-    $spy = new class()
-    {
-        public bool $reported = false;
-
-        public function report(): void
-        {
-            $this->reported = true;
-        }
-    };
+    $spy = reporterSpy();
     $this->app->instance(WorkerSaturationReporter::class, $spy);
 
     $this->app->terminate();
@@ -84,18 +104,11 @@ it('runs the reporter after the response via the app terminating hook', function
 });
 
 it('does not register the terminating hook when no burst service is set', function (): void {
+    servingHttp();
     putenv('YOLO_BURST_SERVICE');
     $this->refreshApplication();
 
-    $spy = new class()
-    {
-        public bool $reported = false;
-
-        public function report(): void
-        {
-            $this->reported = true;
-        }
-    };
+    $spy = reporterSpy();
     $this->app->instance(WorkerSaturationReporter::class, $spy);
 
     $this->app->terminate();
@@ -103,7 +116,111 @@ it('does not register the terminating hook when no burst service is set', functi
     expect($spy->reported)->toBeFalse();
 });
 
+it('does not register the terminating hook in a console process, which serves no requests', function (): void {
+    // The web image runs the scheduler and queue workers beside the web server, so they
+    // boot with the same burst environment. `terminating` fires at the end of a console
+    // command too, and a scrape from there reads a pool that process never served.
+    putenv('YOLO_BURST_SERVICE=svc');
+    $this->refreshApplication();
+
+    expect($this->app->runningInConsole())->toBeTrue();
+
+    $spy = reporterSpy();
+    $this->app->instance(WorkerSaturationReporter::class, $spy);
+
+    $this->app->terminate();
+
+    expect($spy->reported)->toBeFalse();
+});
+
+it('does not push the in-flight tracking middleware in a console process', function (): void {
+    putenv('YOLO_BURST_SERVICE=svc');
+    $this->refreshApplication();
+
+    $kernel = $this->app->make(Kernel::class);
+    assert($kernel instanceof FoundationHttpKernel);
+
+    expect($kernel->hasMiddleware(TrackInFlightRequests::class))->toBeFalse();
+});
+
+it('publishes from a process declared as the web workload', function (): void {
+    servingHttp();
+    putenv('YOLO_BURST_SERVICE=svc');
+    putenv('YOLO_BURST_ROLE=web');
+    $this->refreshApplication();
+
+    $spy = reporterSpy();
+    $this->app->instance(WorkerSaturationReporter::class, $spy);
+
+    $this->app->terminate();
+
+    expect($spy->reported)->toBeTrue();
+});
+
+it('publishes nothing from a process declared as another workload, whatever its SAPI reports', function (): void {
+    // The declared role is what YOLO wrote into the supervisord program, so a scheduler
+    // or queue process is excluded by declaration — not by the SAPI it happens to run
+    // under. servingHttp() here stands in for that SAPI reporting the wrong thing.
+    servingHttp();
+    putenv('YOLO_BURST_SERVICE=svc');
+    putenv('YOLO_BURST_ROLE=scheduler');
+    $this->refreshApplication();
+
+    $spy = reporterSpy();
+    $this->app->instance(WorkerSaturationReporter::class, $spy);
+
+    $this->app->terminate();
+
+    expect($spy->reported)->toBeFalse();
+});
+
+it('falls back to the process type when no role is declared, rather than going dark', function (): void {
+    // An image built before YOLO declared the role carries none. Burst must keep working
+    // there: a silent dark tier is worse than the inference it replaces.
+    servingHttp();
+    putenv('YOLO_BURST_SERVICE=svc');
+    putenv('YOLO_BURST_ROLE');
+    $this->refreshApplication();
+
+    $spy = reporterSpy();
+    $this->app->instance(WorkerSaturationReporter::class, $spy);
+
+    $this->app->terminate();
+
+    expect($spy->reported)->toBeTrue();
+});
+
+it('does not push the in-flight tracking middleware for a non-web workload', function (): void {
+    servingHttp();
+    putenv('YOLO_BURST_SERVICE=svc');
+    putenv('YOLO_BURST_ROLE=queue');
+    $this->refreshApplication();
+
+    $kernel = $this->app->make(Kernel::class);
+    assert($kernel instanceof FoundationHttpKernel);
+
+    expect($kernel->hasMiddleware(TrackInFlightRequests::class))->toBeFalse();
+});
+
+it('binds the saturation-aware SSR gateway on the HTTP side', function (): void {
+    servingHttp();
+    putenv('YOLO_BURST_SERVICE=svc');
+    $this->refreshApplication();
+
+    expect($this->app->make(Gateway::class))->toBeInstanceOf(SaturationAwareSsrGateway::class);
+})->skip(fn (): bool => ! interface_exists(Gateway::class), 'Inertia is not installed.');
+
+it('leaves the SSR gateway unbound in a console process, which renders nothing', function (): void {
+    putenv('YOLO_BURST_SERVICE=svc');
+    $this->refreshApplication();
+
+    // Inertia's own provider isn't loaded here, so YOLO's bind is the only one that
+    // could exist — unbound proves the console gate skipped it.
+    expect($this->app->bound(Gateway::class))->toBeFalse();
+})->skip(fn (): bool => ! interface_exists(Gateway::class), 'Inertia is not installed.');
+
 it('pushes the in-flight tracking middleware onto the web kernel when burst is on', function (): void {
+    servingHttp();
     putenv('YOLO_BURST_SERVICE=svc');
     $this->refreshApplication();
 
@@ -114,6 +231,7 @@ it('pushes the in-flight tracking middleware onto the web kernel when burst is o
 });
 
 it('does not push the in-flight tracking middleware when no burst service is set', function (): void {
+    servingHttp();
     putenv('YOLO_BURST_SERVICE');
     $this->refreshApplication();
 

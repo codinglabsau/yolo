@@ -34,6 +34,16 @@ class GenerateSupervisorConfigStep implements Step
      */
     private const array PROGRAM_NICE = ['scheduler' => 10, 'queue' => 19];
 
+    /**
+     * Each program declares the workload it serves, so the runtime provider reads its
+     * process type instead of inferring it ({@see YoloServiceProvider}). It has to be
+     * per-program: a bundled web container runs the scheduler and queue beside the web
+     * server off one task definition, so a task-def variable couldn't separate them.
+     * Only the web value admits the burst publish; the others exist so a non-web process
+     * is excluded by what YOLO wrote rather than by what its SAPI happens to report.
+     */
+    private const string ROLE_VARIABLE = 'YOLO_BURST_ROLE';
+
     public function __construct(
         protected string $environment,
         protected $filesystem = new Filesystem()
@@ -108,13 +118,15 @@ class GenerateSupervisorConfigStep implements Step
 
             if ($program === 'queue') {
                 foreach ($this->queuePrograms() as $name => $chain) {
-                    $blocks[] = $this->program($name, $this->queueCommand($chain, $colocatesWebServer), stopwaitsecs: $graces['queue']);
+                    // Keyed on the tier, not the fanned-out program name — every per-scope
+                    // program is the same workload.
+                    $blocks[] = $this->program($name, $this->queueCommand($chain, $colocatesWebServer), stopwaitsecs: $graces['queue'], role: 'queue');
                 }
 
                 continue;
             }
 
-            $blocks[] = $this->program($program, $this->command($program, $colocatesWebServer), stopwaitsecs: $graces[$program]);
+            $blocks[] = $this->program($program, $this->command($program, $colocatesWebServer), stopwaitsecs: $graces[$program], role: $program);
         }
 
         return implode("\n\n", $blocks) . "\n";
@@ -323,11 +335,12 @@ class GenerateSupervisorConfigStep implements Step
         return $colocatesWebServer ? (self::PROGRAM_NICE[$program] ?? null) : null;
     }
 
-    protected function program(string $name, string $command, int $stopwaitsecs = 10): string
+    protected function program(string $name, string $command, int $stopwaitsecs = 10, ?string $role = null): string
     {
-        return implode("\n", [
+        return implode("\n", array_filter([
             "[program:$name]",
             "command=$command",
+            $role === null ? null : 'environment=' . self::ROLE_VARIABLE . "=$role",
             'autostart=true',
             'autorestart=true',
             "stopwaitsecs=$stopwaitsecs",
@@ -335,6 +348,6 @@ class GenerateSupervisorConfigStep implements Step
             'stdout_logfile_maxbytes=0',
             'stderr_logfile=/dev/fd/2',
             'stderr_logfile_maxbytes=0',
-        ]);
+        ]));
     }
 }
