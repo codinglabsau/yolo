@@ -47,6 +47,8 @@ function cacheWorld(array $overrides = []): array
         'nodeListLag' => 0,
         // node-count refusals BatchApplyUpdateAction returns even once listed
         'applyRefusals' => 0,
+        // name => later updates that applying it completes as well
+        'bundles' => [],
         ...$overrides,
     ];
 }
@@ -222,6 +224,14 @@ function bindCacheWorld(array &$world, array &$captured): void
         {
             $name = $args['ServiceUpdateName'];
 
+            if ($this->world['updates'][$name][1] !== 'not-applied') {
+                return ['ProcessedUpdateActions' => [], 'UnprocessedUpdateActions' => [[
+                    'ServiceUpdateName' => $name,
+                    'ErrorType' => 'InvalidParameterValue',
+                    'ErrorMessage' => 'The update action is not in a valid status. Current status: ' . $this->world['updates'][$name][1] . '.',
+                ]]];
+            }
+
             if ($this->world['nodeListLag'] > 0 || $this->world['applyRefusals'] > 0) {
                 $this->world['applyRefusals'] = max(0, $this->world['applyRefusals'] - 1);
 
@@ -233,6 +243,11 @@ function bindCacheWorld(array &$world, array &$captured): void
             }
 
             $this->world['updates'][$name][1] = array_shift($this->world['updates'][$name][2]) ?? 'complete';
+
+            foreach ($this->world['bundles'][$name] ?? [] as $bundled) {
+                $this->world['updates'][$bundled][1] = 'complete';
+                $this->world['updates'][$bundled][2] = [];
+            }
 
             // Patching the primary fails over to the already-patched replica.
             if ($this->world['failover'] === 'enabled' && ($this->world['members'][CACHE_GROUP . '-001']['role'] ?? null) === 'primary') {
@@ -500,6 +515,30 @@ it('retries an apply AWS refuses while the update is still catching up with the 
     expect($exit)->toBe(0)
         ->and(array_slice(cacheMutations($captured), 2, 3))->toBe(array_fill(0, 3, 'apply elasticache-20260901-001'))
         ->and($world['updates']['elasticache-20260901-001'][1])->not->toBe('not-applied');
+});
+
+it('skips an update that an earlier one in the same run already completed', function (): void {
+    $world = cacheWorld([
+        'updates' => [
+            'elasticache-20260301-001' => cacheUpdate('2026-03-01T00:00:00Z'),
+            'elasticache-20260901-001' => cacheUpdate('2026-09-01T00:00:00Z'),
+        ],
+        'bundles' => ['elasticache-20260301-001' => ['elasticache-20260901-001']],
+    ]);
+    $captured = [];
+    bindCacheWorld($world, $captured);
+
+    [$exit] = runCachePatch();
+
+    expect($exit)->toBe(0)
+        ->and(cacheMutations($captured))->toBe([
+            'add replica',
+            'failover on',
+            'apply elasticache-20260301-001',
+            'failover off',
+            'promote yolo-testing-cache-001',
+            'remove yolo-testing-cache-002',
+        ]);
 });
 
 it('removes the replica by name alone — AWS refuses it alongside a replica count', function (): void {

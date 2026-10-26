@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo\Steps\CachePatch;
 
 use Codinglabs\Yolo\Aws;
+use Illuminate\Support\Str;
 use Codinglabs\Yolo\WaitReporter;
 use Codinglabs\Yolo\CacheTopology;
 use Codinglabs\Yolo\Aws\ElastiCache;
@@ -29,8 +30,11 @@ class ApplyCacheServiceUpdatesStep implements LongRunning
     /** How long AWS gets to list a freshly added replica against each update. */
     public const int NODE_LIST_TIMEOUT_SECONDS = 30 * 60;
 
-    /** AWS's refusal while an update's node list still lags the group. */
-    public const string NODE_COUNT_MISMATCH = 'does not have the same number of nodes';
+    /**
+     * Refusals that mean "not yet" or "already moving": the node list still lags the
+     * group, or the update was started (or finished) since it was last read.
+     */
+    public const array RETRYABLE_REFUSALS = ['does not have the same number of nodes', 'not in a valid status'];
 
     public function __invoke(array $options): StepResult
     {
@@ -40,9 +44,18 @@ class ApplyCacheServiceUpdatesStep implements LongRunning
             return StepResult::SKIPPED;
         }
 
-        foreach ($pending as $index => $action) {
-            $name = (string) $action['ServiceUpdateName'];
+        foreach ($pending as $index => $listed) {
+            $name = (string) $listed['ServiceUpdateName'];
             $label = sprintf('[%d/%d] %s', $index + 1, count($pending), $name);
+
+            // Read fresh: applying one update often completes later ones with it.
+            $action = static::current($name);
+
+            if ($action['UpdateActionStatus'] === 'complete') {
+                WaitReporter::line(sprintf('%s · already complete', $label));
+
+                continue;
+            }
 
             static::assertNotHalted($action);
 
@@ -72,8 +85,12 @@ class ApplyCacheServiceUpdatesStep implements LongRunning
         $attempts = (int) ceil(self::NODE_LIST_TIMEOUT_SECONDS / self::POLL_SECONDS);
 
         for ($attempt = 0; $attempt < $attempts; $attempt++) {
-            $action = ElastiCache::updateActions(CacheTopology::groupId(), serviceUpdateName: $name, nodeLevel: true, delaySeconds: $attempt > 0 ? self::POLL_SECONDS : 0)[0]
-                ?? throw new IntegrityCheckException(sprintf('%s is no longer listed against %s.', $name, CacheTopology::groupId()));
+            $action = static::current($name, $attempt > 0 ? self::POLL_SECONDS : 0);
+
+            // Started or finished since it was read, so there is nothing to apply.
+            if ($action['UpdateActionStatus'] !== 'not-applied') {
+                return;
+            }
 
             if (static::nodeCount($action) >= $members) {
                 $result = Aws::elastiCache()->batchApplyUpdateAction([
@@ -89,7 +106,7 @@ class ApplyCacheServiceUpdatesStep implements LongRunning
 
                 $reason = (string) ($unprocessed['ErrorMessage'] ?? $unprocessed['ErrorType'] ?? 'no reason given');
 
-                if (! str_contains($reason, self::NODE_COUNT_MISMATCH)) {
+                if (! Str::contains($reason, self::RETRYABLE_REFUSALS)) {
                     throw new IntegrityCheckException(sprintf('AWS did not accept %s: %s', $name, $reason));
                 }
             }
@@ -120,14 +137,22 @@ class ApplyCacheServiceUpdatesStep implements LongRunning
         return preg_match('#/(\d+)$#', (string) ($action['NodesUpdated'] ?? ''), $match) === 1 ? (int) $match[1] : 0;
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    protected static function current(string $name, int $delaySeconds = 0): array
+    {
+        return ElastiCache::updateActions(CacheTopology::groupId(), serviceUpdateName: $name, nodeLevel: true, delaySeconds: $delaySeconds)[0]
+            ?? throw new IntegrityCheckException(sprintf('%s is no longer listed against %s.', $name, CacheTopology::groupId()));
+    }
+
     protected static function waitForCompletion(string $name, string $label): void
     {
         $attempts = (int) ceil(self::TIMEOUT_SECONDS / self::POLL_SECONDS);
         $action = [];
 
         for ($attempt = 0; $attempt < $attempts; $attempt++) {
-            $action = ElastiCache::updateActions(CacheTopology::groupId(), serviceUpdateName: $name, nodeLevel: true, delaySeconds: $attempt > 0 ? self::POLL_SECONDS : 0)[0]
-                ?? throw new IntegrityCheckException(sprintf('%s is no longer listed against %s.', $name, CacheTopology::groupId()));
+            $action = static::current($name, $attempt > 0 ? self::POLL_SECONDS : 0);
 
             if ($action['UpdateActionStatus'] === 'complete') {
                 return;
