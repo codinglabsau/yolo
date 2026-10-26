@@ -24,6 +24,6 @@ class SyncCacheClusterStep implements LongRunning
 
     public function patienceMessage(): string
     {
-        return 'Provisioning the Valkey cache cluster — ElastiCache usually takes 5–15 minutes';
+        return 'Provisioning or resizing the Valkey cache cluster — ElastiCache usually takes 5–30 minutes';
     }
 }

@@ -156,3 +156,26 @@ it('hard-fails a peering entry that is not a VPC id', function (): void {
     expect(fn (): array => EnvManifest::peering())
         ->toThrow(IntegrityCheckException::class, 'Invalid `peering` entry');
 });
+
+it('defaults the cache node type when the manifest declares none', function (): void {
+    $captured = [];
+    bindRoutedS3Client([
+        'GetObject' => envManifestNotFound(),
+    ], $captured);
+
+    expect(EnvManifest::cacheNodeType())->toBe('cache.t4g.micro');
+});
+
+it('reads a declared cache node type', function (): void {
+    $captured = [];
+    bindRoutedS3Client([
+        'GetObject' => new Result(['Body' => "cache:\n  node-type: cache.m7g.large\n"]),
+    ], $captured);
+
+    expect(EnvManifest::cacheNodeType())->toBe('cache.m7g.large');
+});
+
+it('rejects a cache node type missing the cache. prefix before it can be pushed', function (string $nodeType): void {
+    expect(fn (): array => EnvManifest::parse("cache:\n  node-type: {$nodeType}\n"))
+        ->toThrow(IntegrityCheckException::class, 'cache.node-type');
+})->with(['m7g.large', 'cache.m7g', 'cache-m7g-large', 'Cache.M7G.Large']);

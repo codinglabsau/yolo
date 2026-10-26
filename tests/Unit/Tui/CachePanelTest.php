@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 use Codinglabs\Yolo\Tui\Panels\CachePanel;
 
-it('summarises status, endpoint and engine', function (): void {
-    $available = implode("\n", CachePanel::details('available', 'cache.abc.cache.amazonaws.com'));
-    $missing = implode("\n", CachePanel::details('', ''));
+it('summarises status, endpoint, engine and the live node type', function (): void {
+    $available = implode("\n", CachePanel::details('available', 'cache.abc.cache.amazonaws.com', 'cache.m7g.large'));
+    $missing = implode("\n", CachePanel::details('', '', ''));
 
-    expect($available)->toContain('available')->toContain('cache.abc')->toContain('valkey')
+    expect($available)->toContain('available')->toContain('cache.abc')->toContain('valkey')->toContain('cache.m7g.large')
         ->and($missing)->toContain('unknown')->toContain('—');
 });
 
