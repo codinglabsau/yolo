@@ -6,6 +6,7 @@ use Aws\Result;
 use Codinglabs\Yolo\Aws\Rds;
 use Aws\Command as AwsCommand;
 use Aws\Rds\Exception\RdsException;
+use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 beforeEach(function (): void {
@@ -244,4 +245,45 @@ it('maps every instance with an endpoint to its address, across pages', function
     ]);
 
     expect(collect($rds)->where('name', 'DescribeDBInstances'))->toHaveCount(2);
+});
+
+describe('readerEndpoint', function (): void {
+    it('returns the reader endpoint of a cluster with a reader member', function (): void {
+        writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'my-cluster']);
+
+        $rds = [];
+        bindMockRdsClient(['DescribeDBClusters' => auroraCluster(readers: 2)], $rds);
+
+        expect(Rds::readerEndpoint())->toBe('my-cluster.cluster-ro-abc123.ap-southeast-2.rds.amazonaws.com');
+    });
+
+    it('throws for a writer-only cluster, whose reader endpoint routes to the writer', function (): void {
+        writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'my-cluster']);
+
+        $rds = [];
+        bindMockRdsClient(['DescribeDBClusters' => auroraCluster(readers: 0)], $rds);
+
+        expect(fn (): ?string => Rds::readerEndpoint())
+            ->toThrow(IntegrityCheckException::class, 'cluster "my-cluster", but it has no reader instance');
+    });
+
+    it('is null for a plain instance, which has no reader to prefer', function (): void {
+        writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'my-db']);
+
+        $rds = [];
+        bindMockRdsClient([
+            'DescribeDBClusters' => new RdsException('not found', new AwsCommand('DescribeDBClusters'), ['code' => 'DBClusterNotFoundFault']),
+            'DescribeDBInstances' => new Result(['DBInstances' => [['DBInstanceIdentifier' => 'my-db']]]),
+        ], $rds);
+
+        expect(Rds::readerEndpoint())->toBeNull();
+    });
+
+    it('is null without an RDS call when no database is declared', function (): void {
+        $rds = [];
+        bindMockRdsClient([], $rds);
+
+        expect(Rds::readerEndpoint())->toBeNull()
+            ->and($rds)->toBeEmpty();
+    });
 });

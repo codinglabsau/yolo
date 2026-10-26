@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Codinglabs\Yolo\ProcessCommands;
+use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
 describe('web', function (): void {
     function manifestWithWeb(array $web): void
@@ -87,5 +88,33 @@ describe('mysql backup invocation', function (): void {
         ]);
 
         expect(ProcessCommands::databaseBackup())->toContain('--tenants=acme,globex');
+    });
+
+    it('dumps from the declared Aurora cluster\'s reader endpoint, not the app\'s connection hosts', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'database' => 'my-cluster',
+            'tasks' => ['web' => true],
+        ]);
+
+        $rds = [];
+        bindMockRdsClient(['DescribeDBClusters' => auroraCluster(readers: 1)], $rds);
+
+        expect(ProcessCommands::databaseBackup())
+            ->toContain('--host=my-cluster.cluster-ro-abc123.ap-southeast-2.rds.amazonaws.com');
+    });
+
+    it('fails the build when the cluster has no reader, rather than bake an endpoint that means the writer', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'database' => 'my-cluster',
+            'tasks' => ['web' => true],
+        ]);
+
+        $rds = [];
+        bindMockRdsClient(['DescribeDBClusters' => auroraCluster(readers: 0)], $rds);
+
+        expect(fn (): array => ProcessCommands::databaseBackup())
+            ->toThrow(IntegrityCheckException::class, 'has no reader instance');
     });
 });

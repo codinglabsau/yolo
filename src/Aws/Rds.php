@@ -5,6 +5,7 @@ namespace Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\Manifest;
 use Aws\Rds\Exception\RdsException;
+use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
 
 class Rds
@@ -58,6 +59,36 @@ class Rds
         }
 
         return static::$ports[$target['identifier']] ??= static::resolvePort($target);
+    }
+
+    /**
+     * Where a workload that must never load the writer connects. Aurora routes
+     * its reader endpoint to the writer while the cluster has no reader member,
+     * so a cluster without one throws rather than return an endpoint that
+     * silently means the writer. Null when there's no reader to prefer: nothing
+     * declared, or a plain instance.
+     */
+    public static function readerEndpoint(): ?string
+    {
+        $target = static::target();
+
+        if ($target === null || ! $target['cluster']) {
+            return null;
+        }
+
+        $cluster = static::cluster($target['identifier']);
+
+        $hasReader = collect($cluster['DBClusterMembers'])
+            ->contains(fn (array $member): bool => $member['IsClusterWriter'] === false);
+
+        if (! $hasReader) {
+            throw new IntegrityCheckException(sprintf(
+                'Backups dump from the reader endpoint of the Aurora cluster "%s", but it has no reader instance, so that endpoint resolves to the writer. Add a reader to the cluster, or turn `backups` off until it has one.',
+                $target['identifier'],
+            ));
+        }
+
+        return (string) $cluster['ReaderEndpoint'];
     }
 
     /**

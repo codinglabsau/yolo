@@ -142,6 +142,34 @@ it('passes connection details as environment, never on the command line', functi
         ->and($dump['env']['BACKUP_USER'])->toBe('app-user');
 });
 
+it('dumps from --host over the connection\'s read and write hosts', function (): void {
+    // The baked reader endpoint must win even where the app splits reads —
+    // the app's own read host can still be the writer.
+    config()->set('database.connections.mysql.read', ['host' => ['app-read.internal']]);
+
+    $command = fakeBackupCommand($this->app);
+    runBackupCommand($command, [
+        '--destination' => 'yolo-111111111111-testing-backups/my-app',
+        '--region' => 'ap-southeast-2',
+        '--host' => 'reader.internal',
+    ]);
+
+    $dump = collect($command->processes)->first(fn (array $process): bool => str_contains((string) $process['commandLine'], 'mysqldump'));
+
+    expect($dump['env']['BACKUP_HOST'])->toBe('reader.internal');
+});
+
+it('falls back to the connection\'s read host when no --host is given', function (): void {
+    config()->set('database.connections.mysql.read', ['host' => ['app-read.internal']]);
+
+    $command = fakeBackupCommand($this->app);
+    runBackupCommand($command);
+
+    $dump = collect($command->processes)->first(fn (array $process): bool => str_contains((string) $process['commandLine'], 'mysqldump'));
+
+    expect($dump['env']['BACKUP_HOST'])->toBe('app-read.internal');
+});
+
 it('refuses to upload a dump whose trailer is missing, fails the run, and keeps going', function (): void {
     // Every archive verifies structurally but the dump never completed — the
     // trailer is the completeness proof, so nothing may ship.

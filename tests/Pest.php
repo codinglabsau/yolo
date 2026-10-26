@@ -531,6 +531,25 @@ function bindMockRdsClient(array $byCommand, array &$captured): void
 }
 
 /**
+ * A DescribeDBClusters answer for an Aurora cluster with one writer and
+ * `$readers` reader members.
+ */
+function auroraCluster(int $readers): Result
+{
+    $members = [['DBInstanceIdentifier' => 'my-cluster-writer', 'IsClusterWriter' => true]];
+
+    for ($i = 1; $i <= $readers; $i++) {
+        $members[] = ['DBInstanceIdentifier' => "my-cluster-reader-{$i}", 'IsClusterWriter' => false];
+    }
+
+    return new Result(['DBClusters' => [[
+        'DBClusterIdentifier' => 'my-cluster',
+        'ReaderEndpoint' => 'my-cluster.cluster-ro-abc123.ap-southeast-2.rds.amazonaws.com',
+        'DBClusterMembers' => $members,
+    ]]]);
+}
+
+/**
  * Bind a mock Application Auto Scaling client with command-routed responses,
  * capturing every call. Mirrors bindMockEc2Client.
  *

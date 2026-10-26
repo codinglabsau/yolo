@@ -40,6 +40,7 @@ class DatabaseBackupCommand extends Command
     protected $signature = 'yolo:backup-database
         {--destination= : The bucket/prefix the dumps upload to (baked into the crontab from the manifest)}
         {--region= : The backups bucket region}
+        {--host= : The host to dump from (baked in as the cluster reader endpoint when the manifest declares an Aurora `database`)}
         {--tenants= : Comma-separated tenant database names dumped alongside the default connection}';
 
     protected $description = 'Dump each database, verify the archive, and upload it to the env backups bucket';
@@ -147,13 +148,15 @@ class DatabaseBackupCommand extends Command
      * Piped straight through zstd — an uncompressed dump can exceed the task's
      * ephemeral storage. Connection details ride env vars into a fixed shell
      * template so nothing is interpolated into the command line (`MYSQL_PWD`
-     * also keeps the password out of the process list).
+     * also keeps the password out of the process list). `--host` wins over the
+     * connection's own hosts, so a backup can read from a replica the app
+     * itself never routes reads to.
      */
     protected function dump(string $database, string $archive): bool
     {
         $connection = $this->connection();
 
-        $host = Arr::get($connection, 'read.host', $connection['host'] ?? '127.0.0.1');
+        $host = $this->option('host') ?: Arr::get($connection, 'read.host', $connection['host'] ?? '127.0.0.1');
 
         $process = new Process(
             command: [

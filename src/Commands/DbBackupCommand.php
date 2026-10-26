@@ -58,9 +58,10 @@ class DbBackupCommand extends Command implements DeployerCommand
         // silently boot the role's default process instead of the backup.
         $group = Manifest::deployGroup();
         $cluster = (new EcsCluster())->name();
+        $command = ProcessCommands::databaseBackup();
 
         intro('Launching the backup task');
-        note('Same invocation as the scheduled crontab entry: ' . implode(' ', ProcessCommands::databaseBackup()));
+        note('Same invocation as the scheduled crontab entry: ' . implode(' ', $command));
 
         $run = Aws::ecs()->runTask([
             'cluster' => $cluster,
@@ -74,7 +75,7 @@ class DbBackupCommand extends Command implements DeployerCommand
                 'containerOverrides' => [
                     [
                         'name' => $group->value,
-                        'command' => ProcessCommands::databaseBackup(),
+                        'command' => $command,
                     ],
                 ],
             ],
