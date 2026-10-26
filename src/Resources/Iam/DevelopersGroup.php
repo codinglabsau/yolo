@@ -28,9 +28,10 @@ class DevelopersGroup extends AssumeRoleGroup
     }
 
     /**
-     * The admins list minus the deployer wildcard: commands mint the least-privileged
-     * role for their job, so a developer must also be able to assume the observer
-     * roles or every read command would refuse them. Env-built, never the current app.
+     * The admins list minus the admin role: commands mint the least-privileged role
+     * for their job, so a developer must also be able to assume the observer roles
+     * (read commands) and every app's deployer role (deploy, `run`, `.env`), or those
+     * commands would refuse them. Env-built, never the current app.
      *
      * @return array<int, string>
      */
@@ -42,6 +43,7 @@ class DevelopersGroup extends AssumeRoleGroup
             sprintf('arn:aws:iam::%s:role/%s', Aws::accountId(), (new ObserverRole())->name()),
             sprintf('arn:aws:iam::%s:role/yolo-%s-*-%s', Aws::accountId(), Helpers::environment(), Iam::OBSERVER_ROLE->value),
             sprintf('arn:aws:iam::%s:role/yolo-%s-*-%s', Aws::accountId(), Helpers::environment(), Iam::DEVELOPER_ROLE->value),
+            sprintf('arn:aws:iam::%s:role/yolo-%s-*-%s', Aws::accountId(), Helpers::environment(), Iam::DEPLOYER_ROLE->value),
         ];
     }
 }

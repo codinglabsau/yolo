@@ -8,8 +8,8 @@ use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Deletable;
 
 /**
- * Per-app {@see DeveloperRole}, so a data-write grant can name a single app.
- * Carries the per-app observer + data documents; never OIDC-trusted.
+ * Per-app {@see DeveloperRole}, so a developer grant can name a single app.
+ * Carries the per-app observer, data-read and backups-read documents; never OIDC-trusted.
  */
 class AppDeveloperRole extends DeveloperRole implements Deletable
 {
@@ -22,6 +22,6 @@ class AppDeveloperRole extends DeveloperRole implements Deletable
     #[\Override]
     public function description(): string
     {
-        return 'YOLO managed developer role for this app: read-only inspection plus its data writes';
+        return 'YOLO managed developer role for this app: read-only inspection plus its database dump reads';
     }
 }

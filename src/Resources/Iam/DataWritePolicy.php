@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Codinglabs\Yolo\Resources\Iam;
 
-use Codinglabs\Yolo\Paths;
 use Codinglabs\Yolo\Enums\Iam;
 use Codinglabs\Yolo\Enums\Scope;
 use Codinglabs\Yolo\Resources\Resource;
@@ -13,13 +12,10 @@ use Codinglabs\Yolo\Resources\ResolvesTags;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 
 /**
- * Write access to the environment's app data — objects in every data bucket, plus
- * reading the database dumps (a restore is a write-side act; nothing observes a
- * dump). Composed on top of {@see DataReadPolicy}, never inclusive of it, so each
- * statement lives in exactly one document.
- *
- * Dumps are read-only even here: the backups bucket is versioned as tamper
- * armour and no tier gets to delete one.
+ * Write access to the environment's app data — objects in every data bucket.
+ * Composed on top of {@see DataReadPolicy}, never inclusive of it, so each
+ * statement lives in exactly one document. Admin only: developers change data
+ * through the app (`yolo run`), never by writing user uploads directly.
  */
 class DataWritePolicy implements Deletable, Resource, SynchronisesConfiguration
 {
@@ -40,7 +36,7 @@ class DataWritePolicy implements Deletable, Resource, SynchronisesConfiguration
     /** IAM Description allows only printable ASCII + Latin-1 (no em dashes or smart quotes) — pinned by IamDescriptionsAreSafeTest. */
     public function description(): string
     {
-        return 'YOLO managed write access to the app data buckets of this environment, and read access to its database dumps';
+        return 'YOLO managed write access to the app data buckets of this environment';
     }
 
     public function document(): array
@@ -57,20 +53,7 @@ class DataWritePolicy implements Deletable, Resource, SynchronisesConfiguration
                         's3:AbortMultipartUpload',
                     ],
                 ],
-                [
-                    'Effect' => 'Allow',
-                    'Resource' => $this->backupObjectArn(),
-                    'Action' => [
-                        's3:GetObject',
-                        's3:GetObjectVersion',
-                    ],
-                ],
             ],
         ];
-    }
-
-    protected function backupObjectArn(): string
-    {
-        return sprintf('arn:aws:s3:::%s/*', Paths::s3BackupsBucket());
     }
 }

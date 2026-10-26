@@ -11,21 +11,24 @@ use Codinglabs\Yolo\Resources\Iam\DeveloperRole;
 use Codinglabs\Yolo\Resources\Iam\DataReadPolicy;
 use Codinglabs\Yolo\Resources\Iam\ObserverPolicy;
 use Codinglabs\Yolo\Concerns\AttachesRolePolicies;
-use Codinglabs\Yolo\Resources\Iam\DataWritePolicy;
+use Codinglabs\Yolo\Resources\Iam\BackupsReadPolicy;
 
-/** Observer reads + both data documents; the infrastructure write policy never. */
+/**
+ * Observer reads + data reads + dump reads; never a write policy. Exact, so a policy
+ * dropped from this list (the data writes once were here) is detached on the next sync.
+ */
 class AttachDeveloperRolePoliciesStep implements Step
 {
     use AttachesRolePolicies;
 
     public function __invoke(array $options): StepResult
     {
-        return $this->attachRolePolicies(
+        return $this->reconcileRolePolicies(
             (new DeveloperRole())->name(),
             [
                 $this->customerManagedPolicyArn((new ObserverPolicy())->name()),
                 $this->customerManagedPolicyArn((new DataReadPolicy())->name()),
-                $this->customerManagedPolicyArn((new DataWritePolicy())->name()),
+                $this->customerManagedPolicyArn((new BackupsReadPolicy())->name()),
             ],
             (bool) Arr::get($options, 'dry-run'),
         );

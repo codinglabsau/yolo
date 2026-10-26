@@ -12,21 +12,22 @@ use Codinglabs\Yolo\Concerns\AttachesRolePolicies;
 use Codinglabs\Yolo\Resources\Iam\AppDeveloperRole;
 use Codinglabs\Yolo\Resources\Iam\AppDataReadPolicy;
 use Codinglabs\Yolo\Resources\Iam\AppObserverPolicy;
-use Codinglabs\Yolo\Resources\Iam\AppDataWritePolicy;
+use Codinglabs\Yolo\Resources\Iam\AppBackupsReadPolicy;
 
+/** Exact, so a policy dropped from this list is detached on the next sync. */
 class AttachAppDeveloperRolePoliciesStep implements Step
 {
     use AttachesRolePolicies;
 
     public function __invoke(array $options): StepResult
     {
-        return $this->attachRolePolicies(
+        return $this->reconcileRolePolicies(
             (new AppDeveloperRole())->name(),
             [
                 $this->customerManagedPolicyArn((new AppObserverPolicy())->name()),
                 // The read document only exists when the app declares a bucket.
                 ...Manifest::has('bucket') ? [$this->customerManagedPolicyArn((new AppDataReadPolicy())->name())] : [],
-                $this->customerManagedPolicyArn((new AppDataWritePolicy())->name()),
+                $this->customerManagedPolicyArn((new AppBackupsReadPolicy())->name()),
             ],
             (bool) Arr::get($options, 'dry-run'),
         );
