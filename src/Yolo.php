@@ -58,6 +58,9 @@ class Yolo
         Commands\DbStatusCommand::class,
         Commands\DbBackupCommand::class,
 
+        // Cache
+        Commands\CachePatchCommand::class,
+
         // Scale
         Commands\ScaleCommand::class,
 

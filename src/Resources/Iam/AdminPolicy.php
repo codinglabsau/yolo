@@ -121,6 +121,10 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                         // data / cache / queues
                         'elasticache:Create*', 'elasticache:Modify*',
                         'elasticache:Delete*', 'elasticache:Add*', 'elasticache:Remove*',
+                        // `cache:patch` patches through a temporary replica; none of
+                        // these verbs fit the wildcards above.
+                        'elasticache:IncreaseReplicaCount', 'elasticache:DecreaseReplicaCount',
+                        'elasticache:BatchApplyUpdateAction',
                         // RDS stays wildcard-free so the tier can never touch a database;
                         // the subnet group is YOLO's own network resource. See
                         // NeverDeletesDatabaseTest.
