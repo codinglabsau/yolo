@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Codinglabs\Yolo\Steps\CacheUpdate;
+namespace Codinglabs\Yolo\Steps\CachePatch;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\WaitReporter;
@@ -90,7 +90,7 @@ class ApplyCacheServiceUpdatesStep implements LongRunning
             WaitReporter::poll();
         }
 
-        throw new IntegrityCheckException(sprintf('%s was still %s after %d minutes — re-run cache:update to keep waiting on it.', $name, $action['UpdateActionStatus'] ?? 'pending', self::TIMEOUT_SECONDS / 60));
+        throw new IntegrityCheckException(sprintf('%s was still %s after %d minutes — re-run cache:patch to keep waiting on it.', $name, $action['UpdateActionStatus'] ?? 'pending', self::TIMEOUT_SECONDS / 60));
     }
 
     /**

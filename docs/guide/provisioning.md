@@ -194,7 +194,7 @@ Writes that land in the fallback store during an outage are **not** synced back 
 
 ### Service updates
 
-AWS periodically publishes ElastiCache **service updates** (security and engine patches) with a recommended apply-by date. On a single node, applying one restarts it: the cache comes back empty and, because sessions share the node, every user is logged out. [`yolo cache:update`](/reference/commands#yolo-cache-update) applies them without that blip by patching through a temporary replica:
+AWS periodically publishes ElastiCache **service updates** (security and engine patches) with a recommended apply-by date. On a single node, applying one restarts it: the cache comes back empty and, because sessions share the node, every user is logged out. [`yolo cache:patch`](/reference/commands#yolo-cache-patch) applies them without that blip by patching through a temporary replica:
 
 1. Adds a replica in a second availability zone. It launches already carrying every pending update.
 2. Turns on automatic failover and Multi-AZ.

@@ -59,7 +59,7 @@ class Yolo
         Commands\DbBackupCommand::class,
 
         // Cache
-        Commands\CacheUpdateCommand::class,
+        Commands\CachePatchCommand::class,
 
         // Scale
         Commands\ScaleCommand::class,

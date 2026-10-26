@@ -13,8 +13,8 @@ use GuzzleHttp\Promise\Create;
 use Codinglabs\Yolo\CacheTopology;
 use Aws\ElastiCache\ElastiCacheClient;
 use Codinglabs\Yolo\Contracts\AdminCommand;
+use Codinglabs\Yolo\Commands\CachePatchCommand;
 use Symfony\Component\Console\Input\ArrayInput;
-use Codinglabs\Yolo\Commands\CacheUpdateCommand;
 use Symfony\Component\Console\Output\BufferedOutput;
 
 const CACHE_GROUP = 'yolo-testing-cache';
@@ -212,12 +212,12 @@ function bindCacheWorld(array &$world, array &$captured): void
 /**
  * @return array{0: int, 1: string}
  */
-function runCacheUpdate(array $options = ['--force' => true]): array
+function runCachePatch(array $options = ['--force' => true]): array
 {
     Prompt::interactive(false);
     Prompt::setOutput($prompts = new BufferedOutput());
 
-    $command = new CacheUpdateCommand();
+    $command = new CachePatchCommand();
     $command->input = new ArrayInput(['environment' => 'testing', '--no-progress' => true, ...$options], $command->getDefinition());
     $command->output = new BufferedOutput();
 
@@ -246,10 +246,10 @@ function cacheMutations(array $captured): array
         ->all();
 }
 
-it('is named cache:update, registered, and runs at the admin tier', function (): void {
-    expect((new CacheUpdateCommand())->getName())->toBe('cache:update')
-        ->and((new ReflectionClass(Yolo::class))->getDefaultProperties()['commands'])->toContain(CacheUpdateCommand::class)
-        ->and(new CacheUpdateCommand())->toBeInstanceOf(AdminCommand::class);
+it('is named cache:patch, registered, and runs at the admin tier', function (): void {
+    expect((new CachePatchCommand())->getName())->toBe('cache:patch')
+        ->and((new ReflectionClass(Yolo::class))->getDefaultProperties()['commands'])->toContain(CachePatchCommand::class)
+        ->and(new CachePatchCommand())->toBeInstanceOf(AdminCommand::class);
 });
 
 it('patches through a temporary replica and returns the cache to one node', function (): void {
@@ -260,7 +260,7 @@ it('patches through a temporary replica and returns the cache to one node', func
     $captured = [];
     bindCacheWorld($world, $captured);
 
-    [$exit] = runCacheUpdate();
+    [$exit] = runCachePatch();
 
     expect($exit)->toBe(0)
         ->and(cacheMutations($captured))->toBe([
@@ -296,7 +296,7 @@ it('waits on the new node itself, not the group, before turning failover on', fu
     $captured = [];
     bindCacheWorld($world, $captured);
 
-    runCacheUpdate();
+    runCachePatch();
 
     $names = array_column($captured, 'name');
     $nodeWait = array_search('DescribeCacheClusters', array_slice($names, (int) array_search('IncreaseReplicaCount', $names, true)), true);
@@ -310,7 +310,7 @@ it('exits without touching the cluster when nothing is pending', function (): vo
     $captured = [];
     bindCacheWorld($world, $captured);
 
-    [$exit, $output] = runCacheUpdate();
+    [$exit, $output] = runCachePatch();
 
     expect($exit)->toBe(0)
         ->and($output)->toContain('up to date')
@@ -322,7 +322,7 @@ it('refuses a cluster that is not available', function (): void {
     $captured = [];
     bindCacheWorld($world, $captured);
 
-    [$exit, $output] = runCacheUpdate();
+    [$exit, $output] = runCachePatch();
 
     expect($exit)->toBe(1)
         ->and($output)->toContain('is modifying')
@@ -334,7 +334,7 @@ it('refuses a topology it did not create', function (array $overrides, string $m
     $captured = [];
     bindCacheWorld($world, $captured);
 
-    [$exit, $output] = runCacheUpdate();
+    [$exit, $output] = runCachePatch();
 
     expect($exit)->toBe(1)
         ->and($output)->toContain($message)
@@ -355,7 +355,7 @@ it('changes nothing when the confirmation is declined', function (): void {
     bindCacheWorld($world, $captured);
 
     // Non-interactive confirm falls back to its default, which is no.
-    [$exit, $output] = runCacheUpdate([]);
+    [$exit, $output] = runCachePatch([]);
 
     expect($exit)->toBe(0)
         ->and($output)->toContain('nothing was changed')
@@ -381,7 +381,7 @@ it('resumes mid-run from the cluster state, waiting on a started update instead 
     $captured = [];
     bindCacheWorld($world, $captured);
 
-    [$exit, $output] = runCacheUpdate();
+    [$exit, $output] = runCachePatch();
 
     expect($exit)->toBe(0)
         ->and($output)->toContain('Resuming an earlier run')
@@ -404,7 +404,7 @@ it('finishes a teardown an earlier run left behind even with nothing pending', f
     $captured = [];
     bindCacheWorld($world, $captured);
 
-    [$exit, $output] = runCacheUpdate();
+    [$exit, $output] = runCachePatch();
 
     expect($exit)->toBe(0)
         ->and($output)->toContain('only tears the temporary replica down')
@@ -420,7 +420,7 @@ it('stops on a halted update and leaves the replica in place', function (): void
     $captured = [];
     bindCacheWorld($world, $captured);
 
-    [$exit, $output] = runCacheUpdate();
+    [$exit, $output] = runCachePatch();
 
     expect($exit)->toBe(1)
         ->and($output)->toContain('elasticache-20260301-001 is stopped')
@@ -452,7 +452,7 @@ it('stops when AWS refuses to apply an update', function (): void {
         ? Create::promiseFor(new Result(['UnprocessedUpdateActions' => [['ErrorType' => 'InvalidParameterValue', 'ErrorMessage' => 'The update is not applicable']]]))
         : $handler($cmd, $request));
 
-    [$exit, $output] = runCacheUpdate();
+    [$exit, $output] = runCachePatch();
 
     expect($exit)->toBe(1)
         ->and($output)->toContain('The update is not applicable')
@@ -462,7 +462,7 @@ it('stops when AWS refuses to apply an update', function (): void {
 it('flags updates past their recommended apply-by date', function (): void {
     Carbon::setTestNow('2026-10-01');
 
-    $rows = CacheUpdateCommand::pendingRows([
+    $rows = CachePatchCommand::pendingRows([
         ['ServiceUpdateName' => 'old', 'ServiceUpdateType' => 'security-update', 'ServiceUpdateSeverity' => 'critical', 'ServiceUpdateReleaseDate' => '2026-03-01T00:00:00Z', 'ServiceUpdateRecommendedApplyByDate' => '2026-04-01T00:00:00Z', 'UpdateActionStatus' => 'not-applied'],
         ['ServiceUpdateName' => 'new', 'ServiceUpdateType' => 'security-update', 'ServiceUpdateSeverity' => 'low', 'ServiceUpdateReleaseDate' => '2026-09-20T00:00:00Z', 'ServiceUpdateRecommendedApplyByDate' => '2026-11-20T00:00:00Z', 'UpdateActionStatus' => 'not-applied'],
     ]);

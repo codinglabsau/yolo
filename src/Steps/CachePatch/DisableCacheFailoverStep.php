@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Codinglabs\Yolo\Steps\CacheUpdate;
+namespace Codinglabs\Yolo\Steps\CachePatch;
 
 use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\CacheTopology;

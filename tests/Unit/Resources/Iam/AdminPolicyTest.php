@@ -48,7 +48,7 @@ it('grants the write surface for the services YOLO provisions', function (): voi
     );
 });
 
-it('grants the replica and service-update verbs cache:update needs', function (): void {
+it('grants the replica and service-update verbs cache:patch needs', function (): void {
     // None of these fit the ElastiCache Create*/Modify*/Delete* wildcards.
     expect(adminActions())->toContain(
         'elasticache:IncreaseReplicaCount',

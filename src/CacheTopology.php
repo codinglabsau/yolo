@@ -10,7 +10,7 @@ use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 use Codinglabs\Yolo\Resources\ElastiCache\CacheCluster;
 
 /**
- * The shared cache's replication group as AWS reports it right now. `cache:update`
+ * The shared cache's replication group as AWS reports it right now. `cache:patch`
  * reads this fresh before every decision, so a re-run resumes from the cluster's
  * real state instead of anything a crashed run remembered.
  */
@@ -110,11 +110,11 @@ final readonly class CacheTopology
         $members = $this->members();
 
         if (! in_array(self::originalNode(), $members, true)) {
-            return sprintf('%s has no %s member — cache:update only handles the group it creates.', self::groupId(), self::originalNode());
+            return sprintf('%s has no %s member — cache:patch only handles the group it creates.', self::groupId(), self::originalNode());
         }
 
         if (count($members) > 2) {
-            return sprintf('%s has %d members — cache:update only handles a single node plus its own temporary replica.', self::groupId(), count($members));
+            return sprintf('%s has %d members — cache:patch only handles a single node plus its own temporary replica.', self::groupId(), count($members));
         }
 
         if (count($members) === 2) {
@@ -126,7 +126,7 @@ final readonly class CacheTopology
         }
 
         if ($this->failoverEnabled() || $this->multiAzEnabled()) {
-            return sprintf('%s has automatic failover or Multi-AZ on with a single node — turn them off before running cache:update.', self::groupId());
+            return sprintf('%s has automatic failover or Multi-AZ on with a single node — turn them off before running cache:patch.', self::groupId());
         }
 
         return null;
@@ -175,7 +175,7 @@ final readonly class CacheTopology
             }
         }
 
-        throw new IntegrityCheckException(sprintf('%s did not %s within %d minutes — re-run cache:update to resume from its current state.', self::groupId(), $what, self::WAIT_TIMEOUT_SECONDS / 60));
+        throw new IntegrityCheckException(sprintf('%s did not %s within %d minutes — re-run cache:patch to resume from its current state.', self::groupId(), $what, self::WAIT_TIMEOUT_SECONDS / 60));
     }
 
     /** The SDK hydrates timestamps as DateTimeResult; mocks hand back strings. */

@@ -32,22 +32,22 @@ use function Laravel\Prompts\warning;
  *
  * Admin tier: it reshapes env-shared infrastructure that every app depends on.
  */
-class CacheUpdateCommand extends SteppedCommand implements AdminCommand
+class CachePatchCommand extends SteppedCommand implements AdminCommand
 {
     /** @var array<int, class-string> */
     protected array $steps = [
-        Steps\CacheUpdate\AddCacheReplicaStep::class,
-        Steps\CacheUpdate\EnableCacheFailoverStep::class,
-        Steps\CacheUpdate\ApplyCacheServiceUpdatesStep::class,
-        Steps\CacheUpdate\FailBackCachePrimaryStep::class,
-        Steps\CacheUpdate\DisableCacheFailoverStep::class,
-        Steps\CacheUpdate\RemoveCacheReplicaStep::class,
+        Steps\CachePatch\AddCacheReplicaStep::class,
+        Steps\CachePatch\EnableCacheFailoverStep::class,
+        Steps\CachePatch\ApplyCacheServiceUpdatesStep::class,
+        Steps\CachePatch\FailBackCachePrimaryStep::class,
+        Steps\CachePatch\DisableCacheFailoverStep::class,
+        Steps\CachePatch\RemoveCacheReplicaStep::class,
     ];
 
     protected function configure(): void
     {
         $this
-            ->setName('cache:update')
+            ->setName('cache:patch')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
             ->addOption('force', 'f', InputOption::VALUE_NONE, 'Skip the confirmation prompt')
             ->addOption('no-progress', null, InputOption::VALUE_NONE, 'Hide the progress output')
@@ -66,7 +66,7 @@ class CacheUpdateCommand extends SteppedCommand implements AdminCommand
         $topology = CacheTopology::read();
         $pending = CacheTopology::pendingUpdates();
 
-        intro(sprintf('yolo cache:update · %s · %s', $this->argument('environment'), CacheTopology::groupId()));
+        intro(sprintf('yolo cache:patch · %s · %s', $this->argument('environment'), CacheTopology::groupId()));
 
         if ($pending === [] && $topology->isBaseline()) {
             info('No pending service updates — the cache is up to date.');
@@ -98,7 +98,7 @@ class CacheUpdateCommand extends SteppedCommand implements AdminCommand
             ? 'Nothing left to apply — this run only tears the temporary replica down.'
             : 'Adds a temporary replica in another zone, turns on failover, applies each update oldest first, promotes the original node back and removes the replica. Clients stay connected throughout; expect 30–60 minutes.');
 
-        if (! $this->option('force') && ! confirm(sprintf('Update %s now?', CacheTopology::groupId()), default: false)) {
+        if (! $this->option('force') && ! confirm(sprintf('Patch %s now?', CacheTopology::groupId()), default: false)) {
             note('Aborted — nothing was changed.');
 
             return self::SUCCESS;
@@ -108,7 +108,7 @@ class CacheUpdateCommand extends SteppedCommand implements AdminCommand
             parent::handle();
         } catch (IntegrityCheckException $e) {
             error($e->getMessage());
-            warning('Re-running `yolo cache:update` resumes from the cluster\'s current state.');
+            warning('Re-running `yolo cache:patch` resumes from the cluster\'s current state.');
 
             return self::FAILURE;
         }
@@ -134,7 +134,7 @@ class CacheUpdateCommand extends SteppedCommand implements AdminCommand
             ->all());
 
         if (in_array(false, $checks, true)) {
-            error('The cache is not back to its baseline — re-run `yolo cache:update` to resume.');
+            error('The cache is not back to its baseline — re-run `yolo cache:patch` to resume.');
 
             return self::FAILURE;
         }
