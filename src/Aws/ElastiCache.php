@@ -31,7 +31,8 @@ class ElastiCache
     /**
      * Service updates against one replication group, across every page. The delay
      * rides the request (as the SDK waiters do it), so a poll loop needs no sleep
-     * of its own and mocked clients answer instantly.
+     * of its own and mocked clients answer instantly. Statuses are filtered here:
+     * the API only accepts a status filter alongside a service update name.
      *
      * @param  array<int, string>  $statuses  update-action statuses to keep; empty keeps all
      * @return array<int, array<string, mixed>>
@@ -45,8 +46,6 @@ class ElastiCache
             $page = Aws::elastiCache()->describeUpdateActions(array_filter([
                 'ReplicationGroupIds' => [$replicationGroupId],
                 'ServiceUpdateName' => $serviceUpdateName,
-                'ServiceUpdateStatus' => ['available'],
-                'UpdateActionStatus' => $statuses,
                 'ShowNodeLevelUpdateStatus' => $nodeLevel,
                 'Marker' => $marker,
                 '@http' => $delaySeconds > 0 && $marker === null ? ['delay' => $delaySeconds * 1000] : null,
@@ -56,7 +55,8 @@ class ElastiCache
             $marker = $page['Marker'] ?? null;
         } while ($marker !== null);
 
-        return $actions;
+        return array_values(array_filter($actions, fn (array $action): bool => ($action['ServiceUpdateStatus'] ?? null) === 'available'
+            && ($statuses === [] || in_array($action['UpdateActionStatus'] ?? null, $statuses, true))));
     }
 
     /**

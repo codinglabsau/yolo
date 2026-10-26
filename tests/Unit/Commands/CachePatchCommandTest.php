@@ -15,6 +15,7 @@ use Aws\ElastiCache\ElastiCacheClient;
 use Codinglabs\Yolo\Contracts\AdminCommand;
 use Codinglabs\Yolo\Commands\CachePatchCommand;
 use Symfony\Component\Console\Input\ArrayInput;
+use Aws\ElastiCache\Exception\ElastiCacheException;
 use Symfony\Component\Console\Output\BufferedOutput;
 
 const CACHE_GROUP = 'yolo-testing-cache';
@@ -74,6 +75,13 @@ function bindCacheWorld(array &$world, array &$captured): void
             $args = $cmd->toArray();
             $this->captured[] = ['name' => $cmd->getName(), 'args' => $args];
             $w = &$this->world;
+
+            // AWS refuses a status filter without a service update name.
+            if ($cmd->getName() === 'DescribeUpdateActions' && isset($args['UpdateActionStatus']) && ! isset($args['ServiceUpdateName'])) {
+                return Create::rejectionFor(new ElastiCacheException('Update action status needs to be provided together with service update name.', $cmd, [
+                    'code' => 'InvalidParameterCombination',
+                ]));
+            }
 
             return Create::promiseFor(new Result(match ($cmd->getName()) {
                 'DescribeReplicationGroups' => ['ReplicationGroups' => [$this->group()]],
@@ -162,6 +170,7 @@ function bindCacheWorld(array &$world, array &$captured): void
                     'ServiceUpdateRecommendedApplyByDate' => Carbon::parse($released)->addMonth()->toIso8601String(),
                     'ServiceUpdateSeverity' => 'important',
                     'ServiceUpdateType' => 'security-update',
+                    'ServiceUpdateStatus' => 'available',
                     'UpdateActionStatus' => $status,
                     'NodeGroupUpdateStatus' => [['NodeGroupId' => '0001', 'NodeGroupMemberUpdateStatus' => array_map(
                         fn (string $id): array => ['CacheClusterId' => $id, 'NodeUpdateStatus' => $status],
