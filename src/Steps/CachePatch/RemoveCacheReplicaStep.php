@@ -10,7 +10,10 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\LongRunning;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
-/** The replica is always named: left to choose, AWS may remove the original node. */
+/**
+ * The replica is always named: left to choose, AWS may remove the original node.
+ * AWS takes a replica count or a removal list, never both.
+ */
 class RemoveCacheReplicaStep implements LongRunning
 {
     public function __invoke(array $options): StepResult
@@ -30,7 +33,6 @@ class RemoveCacheReplicaStep implements LongRunning
 
         Aws::elastiCache()->decreaseReplicaCount([
             'ReplicationGroupId' => CacheTopology::groupId(),
-            'NewReplicaCount' => 0,
             'ReplicasToRemove' => [$replica],
             'ApplyImmediately' => true,
         ]);

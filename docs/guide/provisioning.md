@@ -198,10 +198,10 @@ AWS periodically publishes ElastiCache **service updates** (security and engine 
 
 1. Adds a replica in a second availability zone. It launches already carrying every pending update.
 2. Turns on automatic failover and Multi-AZ.
-3. Applies each pending update, oldest first, waiting for each to finish. AWS fails over to the patched replica while it patches the original node, so clients stay connected.
-4. Promotes the original node back to primary, turns failover off and removes the replica.
+3. Applies each pending update, oldest first, waiting for each to finish. AWS takes a while to list the new replica against each update and refuses to apply one until it does, so the run waits for that first. AWS fails over to the patched replica while it patches the original node, so clients stay connected.
+4. Turns failover off (AWS refuses a manual promotion while it's on), promotes the original node back to primary and removes the replica.
 
-The cache ends on exactly the topology it started on. A full run takes 30–60 minutes, mostly AWS queueing each update. Every step reads the cluster's live state first, so if a run is interrupted (a dropped connection, an expired session), re-running it picks up where the cluster was left.
+The cache ends on exactly the topology it started on. A full run takes 1–2 hours, mostly AWS queueing each update. Every step reads the cluster's live state first, so if a run is interrupted (a dropped connection, an expired session), re-running it picks up where the cluster was left.
 
 Major engine-version upgrades are not service updates and aren't covered: they need a new parameter group family and an in-place engine upgrade.
 

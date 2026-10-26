@@ -8,9 +8,11 @@ use Codinglabs\Yolo\Aws;
 use Codinglabs\Yolo\CacheTopology;
 use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Contracts\LongRunning;
-use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
-/** AWS refuses to drop to zero replicas while failover is on, so it goes first. */
+/**
+ * AWS refuses both a manual promotion and a drop to zero replicas while failover
+ * is on, so it goes off before either — whichever node is primary at the time.
+ */
 class DisableCacheFailoverStep implements LongRunning
 {
     public function __invoke(array $options): StepResult
@@ -19,10 +21,6 @@ class DisableCacheFailoverStep implements LongRunning
 
         if (! $topology->failoverEnabled() && ! $topology->multiAzEnabled()) {
             return StepResult::SKIPPED;
-        }
-
-        if ($topology->primary() !== CacheTopology::originalNode()) {
-            throw new IntegrityCheckException(sprintf('%s is not the primary — refusing to turn failover off while the temporary replica holds the primary role.', CacheTopology::originalNode()));
         }
 
         CacheTopology::waitUntilAvailable();

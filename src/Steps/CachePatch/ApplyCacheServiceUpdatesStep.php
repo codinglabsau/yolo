@@ -26,6 +26,12 @@ class ApplyCacheServiceUpdatesStep implements LongRunning
 
     public const array HALTED_STATUSES = ['stopping', 'stopped'];
 
+    /** How long AWS gets to list a freshly added replica against each update. */
+    public const int NODE_LIST_TIMEOUT_SECONDS = 30 * 60;
+
+    /** AWS's refusal while an update's node list still lags the group. */
+    public const string NODE_COUNT_MISMATCH = 'does not have the same number of nodes';
+
     public function __invoke(array $options): StepResult
     {
         $pending = CacheTopology::pendingUpdates();
@@ -45,7 +51,7 @@ class ApplyCacheServiceUpdatesStep implements LongRunning
             if ($action['UpdateActionStatus'] === 'not-applied') {
                 CacheTopology::waitUntilAvailable();
 
-                static::apply($name);
+                static::apply($name, $label);
             }
 
             static::waitForCompletion($name, $label);
@@ -54,21 +60,64 @@ class ApplyCacheServiceUpdatesStep implements LongRunning
         return StepResult::SYNCED;
     }
 
-    /** Only the group can be targeted; AWS picks the node order within it. */
-    protected static function apply(string $name): void
+    /**
+     * Only the group can be targeted; AWS picks the node order within it. An update
+     * lists a freshly added replica some time after the replica is available, and
+     * AWS refuses to apply it until it does, so wait for the full node list and
+     * treat that one refusal as "not yet".
+     */
+    protected static function apply(string $name, string $label): void
     {
-        $result = Aws::elastiCache()->batchApplyUpdateAction([
-            'ReplicationGroupIds' => [CacheTopology::groupId()],
-            'ServiceUpdateName' => $name,
-        ]);
+        $members = count(CacheTopology::read()->members());
+        $attempts = (int) ceil(self::NODE_LIST_TIMEOUT_SECONDS / self::POLL_SECONDS);
 
-        if (($unprocessed = $result['UnprocessedUpdateActions'] ?? []) !== []) {
-            throw new IntegrityCheckException(sprintf(
-                'AWS did not accept %s: %s',
-                $name,
-                $unprocessed[0]['ErrorMessage'] ?? $unprocessed[0]['ErrorType'] ?? 'no reason given',
-            ));
+        for ($attempt = 0; $attempt < $attempts; $attempt++) {
+            $action = ElastiCache::updateActions(CacheTopology::groupId(), serviceUpdateName: $name, nodeLevel: true, delaySeconds: $attempt > 0 ? self::POLL_SECONDS : 0)[0]
+                ?? throw new IntegrityCheckException(sprintf('%s is no longer listed against %s.', $name, CacheTopology::groupId()));
+
+            if (static::nodeCount($action) >= $members) {
+                $result = Aws::elastiCache()->batchApplyUpdateAction([
+                    'ReplicationGroupIds' => [CacheTopology::groupId()],
+                    'ServiceUpdateName' => $name,
+                ]);
+
+                $unprocessed = $result['UnprocessedUpdateActions'][0] ?? null;
+
+                if ($unprocessed === null) {
+                    return;
+                }
+
+                $reason = (string) ($unprocessed['ErrorMessage'] ?? $unprocessed['ErrorType'] ?? 'no reason given');
+
+                if (! str_contains($reason, self::NODE_COUNT_MISMATCH)) {
+                    throw new IntegrityCheckException(sprintf('AWS did not accept %s: %s', $name, $reason));
+                }
+            }
+
+            WaitReporter::line(sprintf('%s · waiting for AWS to list all %d nodes against it', $label, $members));
+            WaitReporter::poll();
         }
+
+        throw new IntegrityCheckException(sprintf('AWS still had not listed every node against %s after %d minutes — re-run cache:patch to retry.', $name, self::NODE_LIST_TIMEOUT_SECONDS / 60));
+    }
+
+    /**
+     * Nodes the update is tracking: the node-level list, else the denominator of
+     * AWS's "updated/total" summary.
+     *
+     * @param  array<string, mixed>  $action
+     */
+    public static function nodeCount(array $action): int
+    {
+        $nodes = collect($action['NodeGroupUpdateStatus'] ?? [])
+            ->flatMap(fn (array $group): array => $group['NodeGroupMemberUpdateStatus'] ?? [])
+            ->count();
+
+        if ($nodes > 0) {
+            return $nodes;
+        }
+
+        return preg_match('#/(\d+)$#', (string) ($action['NodesUpdated'] ?? ''), $match) === 1 ? (int) $match[1] : 0;
     }
 
     protected static function waitForCompletion(string $name, string $label): void
