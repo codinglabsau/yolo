@@ -14,3 +14,8 @@ services: {}
 # mid-migration). Removing an entry tears the bridge down on the next sync.
 # peering:
 #   - vpc-0abc123
+
+# Node type for the shared Valkey cache (default cache.t4g.micro). Changing it
+# resizes the live cluster in place on the next sync:app of any app using it.
+# cache:
+#   node-type: cache.m7g.large

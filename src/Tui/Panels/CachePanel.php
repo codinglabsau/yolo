@@ -34,6 +34,8 @@ class CachePanel implements Panel
 
     protected string $arn = '';
 
+    protected string $nodeType = '';
+
     /** @var array{cpu: array<int, float>, memory: array<int, float>, connections: array<int, float>, evictions: array<int, float>} */
     protected array $series = self::EMPTY_SERIES;
 
@@ -67,6 +69,7 @@ class CachePanel implements Panel
         $this->status = (string) ($group['Status'] ?? '');
         $this->endpoint = (string) data_get($group, 'NodeGroups.0.PrimaryEndpoint.Address', '');
         $this->arn = (string) ($group['ARN'] ?? '');
+        $this->nodeType = (string) ($group['CacheNodeType'] ?? '');
 
         $members = $group['MemberClusters'] ?? [];
         $memberId = is_array($members) && $members !== [] ? (string) $members[0] : (new CacheCluster())->name() . '-001';
@@ -88,7 +91,7 @@ class CachePanel implements Panel
             return [Theme::Muted->fg('  No cache cluster in this environment.')];
         }
 
-        $header = [...self::details($this->status, $this->endpoint), ''];
+        $header = [...self::details($this->status, $this->endpoint, $this->nodeType), ''];
         $footer = ['', Theme::Muted->fg('  ' . Helpers::truncate(ConsoleUrl::for(Arn::parse($this->arn)) ?? '', max(0, $width - 2)))];
 
         $this->bodyHeight = max(0, $height - count($header) - count($footer));
@@ -99,14 +102,14 @@ class CachePanel implements Panel
     /**
      * @return array<int, string>
      */
-    public static function details(string $status, string $endpoint): array
+    public static function details(string $status, string $endpoint, string $nodeType): array
     {
         $statusColour = $status === 'available' ? Theme::Healthy : Theme::Warning;
 
         return [
             Theme::Primary->bold('  cache') . '  ' . $statusColour->fg($status === '' ? 'unknown' : $status),
             Theme::Muted->fg('  endpoint  ') . Theme::Text->fg($endpoint === '' ? '—' : $endpoint),
-            Theme::Muted->fg('  engine    ') . Theme::Text->fg(CacheCluster::ENGINE . ' ' . CacheCluster::ENGINE_VERSION . ' · ' . CacheCluster::NODE_TYPE),
+            Theme::Muted->fg('  engine    ') . Theme::Text->fg(CacheCluster::ENGINE . ' ' . CacheCluster::ENGINE_VERSION . ' · ' . ($nodeType === '' ? '—' : $nodeType)),
         ];
     }
 

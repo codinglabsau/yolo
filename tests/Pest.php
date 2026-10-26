@@ -441,11 +441,11 @@ function bindMockSqsClient(array $byCommand, array &$captured): void
 
 /**
  * Bind a mock ElastiCache client with command-routed responses. A command's
- * value may be a single Result (repeated) or an array of Results used as a queue
- * (the last entry repeats once exhausted). Calls are captured by reference.
- * Mirrors bindMockEc2Client.
+ * value may be a single Result/Throwable (repeated) or an array used as a queue
+ * (the last entry repeats once exhausted); a Throwable is returned as a
+ * rejection. Calls are captured by reference. Mirrors bindMockEc2Client.
  *
- * @param  array<string, Result|array<int, Result>>  $byCommand
+ * @param  array<string, Result|Throwable|array<int, Result|Throwable>>  $byCommand
  * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
  */
 function bindMockElastiCacheClient(array $byCommand, array &$captured): void
@@ -470,7 +470,9 @@ function bindMockElastiCacheClient(array $byCommand, array &$captured): void
                 $entry = $entry[$index];
             }
 
-            return Create::promiseFor($entry);
+            return $entry instanceof Throwable
+                ? Create::rejectionFor($entry)
+                : Create::promiseFor($entry);
         }
     };
 

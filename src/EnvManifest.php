@@ -10,6 +10,7 @@ use Symfony\Component\Yaml\Yaml;
 use Aws\S3\Exception\S3Exception;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
+use Codinglabs\Yolo\Resources\ElastiCache\CacheCluster;
 
 /**
  * Env-shared desired state, one yolo-environment-{environment}.yml per environment in the env
@@ -49,7 +50,7 @@ class EnvManifest
             }
         }
 
-        return ['domain', 'services', 'budget', 'budget.amount', 'budget.strategy', 'peering', ...$serviceKeys];
+        return ['domain', 'services', 'budget', 'budget.amount', 'budget.strategy', 'peering', 'cache', 'cache.node-type', ...$serviceKeys];
     }
 
     /**
@@ -81,6 +82,33 @@ class EnvManifest
         }
 
         return $peering;
+    }
+
+    /**
+     * Env-shared because one replication group serves every app in the environment — a
+     * per-app key would let two apps fight over one cluster's size.
+     */
+    public static function cacheNodeType(): string
+    {
+        $nodeType = static::get('cache.node-type') ?? CacheCluster::DEFAULT_NODE_TYPE;
+
+        static::validateCacheNodeType($nodeType);
+
+        return $nodeType;
+    }
+
+    /**
+     * Shape only — the valid sizes vary by region and generation, so AWS rejects a
+     * well-formed but unknown type at write time.
+     */
+    protected static function validateCacheNodeType(mixed $nodeType): void
+    {
+        if (! is_string($nodeType) || preg_match('/^cache\.[a-z0-9-]+\.[a-z0-9]+$/', $nodeType) !== 1) {
+            throw new IntegrityCheckException(sprintf(
+                'Invalid `cache.node-type` "%s" — it must be an ElastiCache node type (e.g. cache.t4g.micro, cache.m7g.large).',
+                is_scalar($nodeType) ? (string) $nodeType : gettype($nodeType),
+            ));
+        }
     }
 
     /** @var array<string, mixed>|null */
@@ -162,6 +190,10 @@ class EnvManifest
                 static::filename(),
                 implode(', ', $unknown),
             ));
+        }
+
+        if (Arr::get($manifest, 'cache.node-type') !== null) {
+            static::validateCacheNodeType(Arr::get($manifest, 'cache.node-type'));
         }
 
         // The allow-list catches unknown keys; this catches a misshapen offer before it
