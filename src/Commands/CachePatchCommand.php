@@ -28,7 +28,7 @@ use function Laravel\Prompts\warning;
  * original, and the original is promoted back before the replica is removed.
  *
  * Every step reads the group's live state before acting, so a re-run after a crash
- * resumes wherever the cluster was left. A full run takes 30–60 minutes.
+ * resumes wherever the cluster was left. A full run takes 1–2 hours.
  *
  * Admin tier: it reshapes env-shared infrastructure that every app depends on.
  */
@@ -39,8 +39,9 @@ class CachePatchCommand extends SteppedCommand implements AdminCommand
         Steps\CachePatch\AddCacheReplicaStep::class,
         Steps\CachePatch\EnableCacheFailoverStep::class,
         Steps\CachePatch\ApplyCacheServiceUpdatesStep::class,
-        Steps\CachePatch\FailBackCachePrimaryStep::class,
+        // AWS refuses a manual promotion while failover is on.
         Steps\CachePatch\DisableCacheFailoverStep::class,
+        Steps\CachePatch\FailBackCachePrimaryStep::class,
         Steps\CachePatch\RemoveCacheReplicaStep::class,
     ];
 
@@ -96,7 +97,7 @@ class CachePatchCommand extends SteppedCommand implements AdminCommand
 
         note($pending === []
             ? 'Nothing left to apply — this run only tears the temporary replica down.'
-            : 'Adds a temporary replica in another zone, turns on failover, applies each update oldest first, promotes the original node back and removes the replica. Clients stay connected throughout; expect 30–60 minutes.');
+            : 'Adds a temporary replica in another zone, turns on failover, applies each update oldest first, turns failover off, promotes the original node back and removes the replica. Clients stay connected throughout; expect 1–2 hours.');
 
         if (! $this->option('force') && ! confirm(sprintf('Patch %s now?', CacheTopology::groupId()), default: false)) {
             note('Aborted — nothing was changed.');

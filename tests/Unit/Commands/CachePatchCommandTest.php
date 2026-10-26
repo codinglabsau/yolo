@@ -15,6 +15,7 @@ use Aws\ElastiCache\ElastiCacheClient;
 use Codinglabs\Yolo\Contracts\AdminCommand;
 use Codinglabs\Yolo\Commands\CachePatchCommand;
 use Symfony\Component\Console\Input\ArrayInput;
+use Aws\ElastiCache\Exception\ElastiCacheException;
 use Symfony\Component\Console\Output\BufferedOutput;
 
 const CACHE_GROUP = 'yolo-testing-cache';
@@ -42,6 +43,12 @@ function cacheWorld(array $overrides = []): array
         'multiAz' => 'disabled',
         // name => [released, status, statuses still to report once applied]
         'updates' => [],
+        // DescribeUpdateActions calls before the update lists a new replica
+        'nodeListLag' => 0,
+        // node-count refusals BatchApplyUpdateAction returns even once listed
+        'applyRefusals' => 0,
+        // name => later updates that applying it completes as well
+        'bundles' => [],
         ...$overrides,
     ];
 }
@@ -67,15 +74,29 @@ function bindCacheWorld(array &$world, array &$captured): void
 {
     $handler = new class($world, $captured) extends MockHandler
     {
+        protected CommandInterface $cmd;
+
         public function __construct(protected array &$world, protected array &$captured) {}
 
         public function __invoke(CommandInterface $cmd, $request)
         {
+            $this->cmd = $cmd;
+
             $args = $cmd->toArray();
             $this->captured[] = ['name' => $cmd->getName(), 'args' => $args];
+
+            try {
+                return Create::promiseFor(new Result($this->respond($cmd, $args)));
+            } catch (ElastiCacheException $e) {
+                return Create::rejectionFor($e);
+            }
+        }
+
+        protected function respond(CommandInterface $cmd, array $args): array
+        {
             $w = &$this->world;
 
-            return Create::promiseFor(new Result(match ($cmd->getName()) {
+            return match ($cmd->getName()) {
                 'DescribeReplicationGroups' => ['ReplicationGroups' => [$this->group()]],
                 'DescribeCacheClusters' => ['CacheClusters' => [[
                     'CacheClusterId' => $args['CacheClusterId'],
@@ -93,7 +114,12 @@ function bindCacheWorld(array &$world, array &$captured): void
                 'BatchApplyUpdateAction' => $this->apply($args),
                 'DecreaseReplicaCount' => $this->removeReplicas($args),
                 default => [],
-            }));
+            };
+        }
+
+        protected function refuse(string $code, string $message): never
+        {
+            throw new ElastiCacheException($message, $this->cmd, ['code' => $code]);
         }
 
         protected function group(): array
@@ -134,17 +160,32 @@ function bindCacheWorld(array &$world, array &$captured): void
             }
 
             if (isset($args['PrimaryClusterId'])) {
-                foreach ($this->world['members'] as $id => $member) {
-                    $this->world['members'][$id]['role'] = $id === $args['PrimaryClusterId'] ? 'primary' : 'replica';
+                if ($this->world['failover'] === 'enabled') {
+                    $this->refuse('InvalidReplicationGroupState', 'Cannot manually promote a new master cache cluster while autofailover is enabled.');
                 }
+
+                $this->promote($args['PrimaryClusterId']);
             }
 
             return [];
         }
 
+        protected function promote(string $primary): void
+        {
+            foreach ($this->world['members'] as $id => $member) {
+                $this->world['members'][$id]['role'] = $id === $primary ? 'primary' : 'replica';
+            }
+        }
+
         protected function updateActions(array $args): array
         {
+            if (isset($args['UpdateActionStatus']) && ! isset($args['ServiceUpdateName'])) {
+                $this->refuse('InvalidParameterCombination', 'Update action status needs to be provided together with service update name.');
+            }
+
             $actions = [];
+            $listed = $this->world['nodeListLag'] > 0 ? [CACHE_GROUP . '-001'] : array_keys($this->world['members']);
+            $this->world['nodeListLag'] = max(0, $this->world['nodeListLag'] - 1);
 
             foreach ($this->world['updates'] as $name => [$released, $status]) {
                 if (isset($args['ServiceUpdateName']) && $args['ServiceUpdateName'] !== $name) {
@@ -162,10 +203,11 @@ function bindCacheWorld(array &$world, array &$captured): void
                     'ServiceUpdateRecommendedApplyByDate' => Carbon::parse($released)->addMonth()->toIso8601String(),
                     'ServiceUpdateSeverity' => 'important',
                     'ServiceUpdateType' => 'security-update',
+                    'ServiceUpdateStatus' => 'available',
                     'UpdateActionStatus' => $status,
                     'NodeGroupUpdateStatus' => [['NodeGroupId' => '0001', 'NodeGroupMemberUpdateStatus' => array_map(
                         fn (string $id): array => ['CacheClusterId' => $id, 'NodeUpdateStatus' => $status],
-                        array_keys($this->world['members']),
+                        $listed,
                     )]],
                 ];
 
@@ -181,11 +223,35 @@ function bindCacheWorld(array &$world, array &$captured): void
         protected function apply(array $args): array
         {
             $name = $args['ServiceUpdateName'];
+
+            if ($this->world['updates'][$name][1] !== 'not-applied') {
+                return ['ProcessedUpdateActions' => [], 'UnprocessedUpdateActions' => [[
+                    'ServiceUpdateName' => $name,
+                    'ErrorType' => 'InvalidParameterValue',
+                    'ErrorMessage' => 'The update action is not in a valid status. Current status: ' . $this->world['updates'][$name][1] . '.',
+                ]]];
+            }
+
+            if ($this->world['nodeListLag'] > 0 || $this->world['applyRefusals'] > 0) {
+                $this->world['applyRefusals'] = max(0, $this->world['applyRefusals'] - 1);
+
+                return ['ProcessedUpdateActions' => [], 'UnprocessedUpdateActions' => [[
+                    'ServiceUpdateName' => $name,
+                    'ErrorType' => 'InvalidParameterValue',
+                    'ErrorMessage' => 'Update action does not have the same number of nodes as the replication group. Please retry later.',
+                ]]];
+            }
+
             $this->world['updates'][$name][1] = array_shift($this->world['updates'][$name][2]) ?? 'complete';
+
+            foreach ($this->world['bundles'][$name] ?? [] as $bundled) {
+                $this->world['updates'][$bundled][1] = 'complete';
+                $this->world['updates'][$bundled][2] = [];
+            }
 
             // Patching the primary fails over to the already-patched replica.
             if ($this->world['failover'] === 'enabled' && ($this->world['members'][CACHE_GROUP . '-001']['role'] ?? null) === 'primary') {
-                $this->modify(['PrimaryClusterId' => CACHE_GROUP . '-002']);
+                $this->promote(CACHE_GROUP . '-002');
             }
 
             return ['ProcessedUpdateActions' => [['ServiceUpdateName' => $name]], 'UnprocessedUpdateActions' => []];
@@ -193,6 +259,10 @@ function bindCacheWorld(array &$world, array &$captured): void
 
         protected function removeReplicas(array $args): array
         {
+            if (count(array_intersect_key($args, array_flip(['NewReplicaCount', 'ReplicaConfiguration', 'ReplicasToRemove']))) > 1) {
+                $this->refuse('InvalidParameterCombination', 'Can specify only one parameter from the following new replica count, replica configuration, replicas to remove.');
+            }
+
             foreach ($args['ReplicasToRemove'] as $id) {
                 unset($this->world['members'][$id]);
             }
@@ -269,8 +339,8 @@ it('patches through a temporary replica and returns the cache to one node', func
             // Oldest release first.
             'apply elasticache-20260301-001',
             'apply elasticache-20260901-001',
-            'promote yolo-testing-cache-001',
             'failover off',
+            'promote yolo-testing-cache-001',
             'remove yolo-testing-cache-002',
         ])
         ->and(array_keys($world['members']))->toBe(['yolo-testing-cache-001'])
@@ -387,10 +457,100 @@ it('resumes mid-run from the cluster state, waiting on a started update instead 
         ->and($output)->toContain('Resuming an earlier run')
         ->and(cacheMutations($captured))->toBe([
             'apply elasticache-20260901-001',
-            'promote yolo-testing-cache-001',
             'failover off',
+            'promote yolo-testing-cache-001',
             'remove yolo-testing-cache-002',
         ]);
+});
+
+it('resumes with failover already off and the replica still primary', function (): void {
+    $world = cacheWorld([
+        'members' => [
+            CACHE_GROUP . '-001' => ['role' => 'replica', 'zone' => 'ap-southeast-2a'],
+            CACHE_GROUP . '-002' => ['role' => 'primary', 'zone' => 'ap-southeast-2b'],
+        ],
+        'updates' => ['elasticache-20260901-001' => cacheUpdate('2026-09-01T00:00:00Z', 'complete')],
+    ]);
+    $captured = [];
+    bindCacheWorld($world, $captured);
+
+    [$exit] = runCachePatch();
+
+    expect($exit)->toBe(0)
+        ->and(cacheMutations($captured))->toBe(['promote yolo-testing-cache-001', 'remove yolo-testing-cache-002'])
+        ->and($world['members'])->toBe([CACHE_GROUP . '-001' => ['role' => 'primary', 'zone' => 'ap-southeast-2a']]);
+});
+
+it('waits for each update to list the new replica before applying it', function (): void {
+    $world = cacheWorld([
+        'updates' => ['elasticache-20260901-001' => cacheUpdate('2026-09-01T00:00:00Z')],
+        'nodeListLag' => 3,
+    ]);
+    $captured = [];
+    bindCacheWorld($world, $captured);
+
+    [$exit] = runCachePatch();
+
+    $names = array_column($captured, 'name');
+    $firstApply = (int) array_search('BatchApplyUpdateAction', $names, true);
+    $nodeLevelPolls = collect(array_slice($captured, 0, $firstApply))
+        ->filter(fn (array $call): bool => $call['name'] === 'DescribeUpdateActions' && ($call['args']['ShowNodeLevelUpdateStatus'] ?? false));
+
+    expect($exit)->toBe(0)
+        ->and($nodeLevelPolls)->not->toBeEmpty()
+        // Applied once, only after the update tracked both nodes.
+        ->and(array_count_values($names)['BatchApplyUpdateAction'])->toBe(1);
+});
+
+it('retries an apply AWS refuses while the update is still catching up with the new replica', function (): void {
+    $world = cacheWorld([
+        'updates' => ['elasticache-20260901-001' => cacheUpdate('2026-09-01T00:00:00Z')],
+        'applyRefusals' => 2,
+    ]);
+    $captured = [];
+    bindCacheWorld($world, $captured);
+
+    [$exit] = runCachePatch();
+
+    expect($exit)->toBe(0)
+        ->and(array_slice(cacheMutations($captured), 2, 3))->toBe(array_fill(0, 3, 'apply elasticache-20260901-001'))
+        ->and($world['updates']['elasticache-20260901-001'][1])->not->toBe('not-applied');
+});
+
+it('skips an update that an earlier one in the same run already completed', function (): void {
+    $world = cacheWorld([
+        'updates' => [
+            'elasticache-20260301-001' => cacheUpdate('2026-03-01T00:00:00Z'),
+            'elasticache-20260901-001' => cacheUpdate('2026-09-01T00:00:00Z'),
+        ],
+        'bundles' => ['elasticache-20260301-001' => ['elasticache-20260901-001']],
+    ]);
+    $captured = [];
+    bindCacheWorld($world, $captured);
+
+    [$exit] = runCachePatch();
+
+    expect($exit)->toBe(0)
+        ->and(cacheMutations($captured))->toBe([
+            'add replica',
+            'failover on',
+            'apply elasticache-20260301-001',
+            'failover off',
+            'promote yolo-testing-cache-001',
+            'remove yolo-testing-cache-002',
+        ]);
+});
+
+it('removes the replica by name alone — AWS refuses it alongside a replica count', function (): void {
+    $world = cacheWorld(['updates' => ['elasticache-20260901-001' => cacheUpdate('2026-09-01T00:00:00Z')]]);
+    $captured = [];
+    bindCacheWorld($world, $captured);
+
+    runCachePatch();
+
+    expect(collect($captured)->firstWhere('name', 'DecreaseReplicaCount')['args'])
+        ->toHaveKey('ReplicasToRemove', [CACHE_GROUP . '-002'])
+        ->not->toHaveKey('NewReplicaCount');
 });
 
 it('finishes a teardown an earlier run left behind even with nothing pending', function (): void {
