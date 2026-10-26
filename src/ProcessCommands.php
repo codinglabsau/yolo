@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Codinglabs\Yolo;
 
 use Codinglabs\Yolo\Aws\Rds;
+use Codinglabs\Yolo\Enums\BackupSource;
 
 /**
  * One place for every workload's shell command, so the bundled supervisord config and the
@@ -87,8 +88,8 @@ class ProcessCommands
     /**
      * Shared by the generated crontab entry and `backup:database`'s one-off task so the two
      * paths can't drift. Tenant ids are the database names (the per-tenant queue contract).
-     * An Aurora `database:` bakes in its reader endpoint, checked for a live reader at bake
-     * time, so the dump reads off the writer whatever the app's own connection config says.
+     * An Aurora `database:` bakes in the endpoint `backups.source` picks — the reader by default,
+     * checked for a live reader at bake time — whatever the app's own connection config says.
      *
      * @return array<int, string>
      */
@@ -99,7 +100,12 @@ class ProcessCommands
             '--region=' . Manifest::get('region'),
         ];
 
-        if (($host = Rds::readerEndpoint()) !== null) {
+        $host = match (Manifest::backupSource()) {
+            BackupSource::Reader => Rds::readerEndpoint(),
+            BackupSource::Writer => Rds::writerEndpoint(),
+        };
+
+        if ($host !== null) {
             $arguments[] = '--host=' . $host;
         }
 

@@ -8,6 +8,7 @@ use Codinglabs\Yolo\Aws\Route53;
 use Symfony\Component\Yaml\Yaml;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServerGroup;
+use Codinglabs\Yolo\Enums\BackupSource;
 use Codinglabs\Yolo\Enums\QueueIsolation;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
@@ -62,6 +63,7 @@ class Manifest
         'bucket',
         'backups',
         'backups.schedule',
+        'backups.source',
         'services',
         'database',
         'cache.store',
@@ -793,6 +795,20 @@ class Manifest
         }
 
         return implode(' ', $fields);
+    }
+
+    /**
+     * `reader` (default) or `writer`: which Aurora endpoint the dump connects to. Only a
+     * cluster has the choice; an instance always dumps from the app's own connection.
+     */
+    public static function backupSource(): BackupSource
+    {
+        $value = static::get('backups.source', BackupSource::Reader->value);
+
+        return BackupSource::tryFrom($value) ?? throw new IntegrityCheckException(sprintf(
+            'Unknown backups.source "%s" — expected "reader" or "writer".',
+            is_scalar($value) ? $value : gettype($value),
+        ));
     }
 
     /**

@@ -264,7 +264,8 @@ describe('readerEndpoint', function (): void {
         bindMockRdsClient(['DescribeDBClusters' => auroraCluster(readers: 0)], $rds);
 
         expect(fn (): ?string => Rds::readerEndpoint())
-            ->toThrow(IntegrityCheckException::class, 'cluster "my-cluster", but it has no reader instance');
+            ->toThrow(IntegrityCheckException::class, 'cluster "my-cluster", but it has no reader instance')
+            ->toThrow(IntegrityCheckException::class, '`backups.source: writer`');
     });
 
     it('is null for a plain instance, which has no reader to prefer', function (): void {
@@ -285,5 +286,28 @@ describe('readerEndpoint', function (): void {
 
         expect(Rds::readerEndpoint())->toBeNull()
             ->and($rds)->toBeEmpty();
+    });
+});
+
+describe('writerEndpoint', function (): void {
+    it('returns the cluster endpoint, even for a writer-only cluster', function (): void {
+        writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'my-cluster']);
+
+        $rds = [];
+        bindMockRdsClient(['DescribeDBClusters' => auroraCluster(readers: 0)], $rds);
+
+        expect(Rds::writerEndpoint())->toBe('my-cluster.cluster-abc123.ap-southeast-2.rds.amazonaws.com');
+    });
+
+    it('is null for a plain instance', function (): void {
+        writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2', 'database' => 'my-db']);
+
+        $rds = [];
+        bindMockRdsClient([
+            'DescribeDBClusters' => new RdsException('not found', new AwsCommand('DescribeDBClusters'), ['code' => 'DBClusterNotFoundFault']),
+            'DescribeDBInstances' => new Result(['DBInstances' => [['DBInstanceIdentifier' => 'my-db']]]),
+        ], $rds);
+
+        expect(Rds::writerEndpoint())->toBeNull();
     });
 });

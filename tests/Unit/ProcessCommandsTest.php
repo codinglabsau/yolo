@@ -117,4 +117,19 @@ describe('mysql backup invocation', function (): void {
         expect(fn (): array => ProcessCommands::databaseBackup())
             ->toThrow(IntegrityCheckException::class, 'has no reader instance');
     });
+
+    it('dumps a writer-only cluster from its writer when backups.source opts in', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'database' => 'my-cluster',
+            'backups' => ['source' => 'writer'],
+            'tasks' => ['web' => true],
+        ]);
+
+        $rds = [];
+        bindMockRdsClient(['DescribeDBClusters' => auroraCluster(readers: 0)], $rds);
+
+        expect(ProcessCommands::databaseBackup())
+            ->toContain('--host=my-cluster.cluster-abc123.ap-southeast-2.rds.amazonaws.com');
+    });
 });

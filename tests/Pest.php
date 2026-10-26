@@ -544,6 +544,7 @@ function auroraCluster(int $readers): Result
 
     return new Result(['DBClusters' => [[
         'DBClusterIdentifier' => 'my-cluster',
+        'Endpoint' => 'my-cluster.cluster-abc123.ap-southeast-2.rds.amazonaws.com',
         'ReaderEndpoint' => 'my-cluster.cluster-ro-abc123.ap-southeast-2.rds.amazonaws.com',
         'DBClusterMembers' => $members,
     ]]]);

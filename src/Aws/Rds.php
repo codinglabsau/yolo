@@ -83,12 +83,27 @@ class Rds
 
         if (! $hasReader) {
             throw new IntegrityCheckException(sprintf(
-                'Backups dump from the reader endpoint of the Aurora cluster "%s", but it has no reader instance, so that endpoint resolves to the writer. Add a reader to the cluster, or turn `backups` off until it has one.',
+                'Backups dump from the reader endpoint of the Aurora cluster "%s", but it has no reader instance, so that endpoint resolves to the writer. Add a reader to the cluster, or set `backups.source: writer` to back up from the writer.',
                 $target['identifier'],
             ));
         }
 
         return (string) $cluster['ReaderEndpoint'];
+    }
+
+    /**
+     * The cluster endpoint, which follows the writer across failovers. Null when
+     * there's no cluster: nothing declared, or a plain instance.
+     */
+    public static function writerEndpoint(): ?string
+    {
+        $target = static::target();
+
+        if ($target === null || ! $target['cluster']) {
+            return null;
+        }
+
+        return (string) static::cluster($target['identifier'])['Endpoint'];
     }
 
     /**
