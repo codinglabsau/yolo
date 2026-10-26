@@ -278,6 +278,24 @@ trait RunsSteppedCommands
     }
 
     /**
+     * Names the steps currently being planned. A wide fan-out has no single current
+     * step, so many in flight report a count; once the tail narrows, naming them is
+     * the difference between "some step is slow" and "these two are wedged".
+     *
+     * @param  array<int, string>  $inFlight
+     */
+    protected static function planProgressLabel(array $inFlight): string
+    {
+        if ($inFlight === []) {
+            return 'Finishing plan...';
+        }
+
+        return count($inFlight) <= 3
+            ? 'Planning ' . implode(', ', $inFlight)
+            : sprintf('Planning %d steps...', count($inFlight));
+    }
+
+    /**
      * Capped so a wide plan can't burst-throttle the AWS Describe APIs. The test
      * suite pins YOLO_PLAN_SEQUENTIAL because MockHandler queues can't cross a
      * process boundary.
@@ -296,10 +314,11 @@ trait RunsSteppedCommands
     }
 
     /**
-     * Each child first releases the AWS clients it inherited (a forked copy of a
-     * live client shares the parent's open sockets) and ships back plain values
-     * only. Failures are gathered rather than fail-fast so a broken first sync
-     * surfaces every crashing step in one pass.
+     * Each child parks the AWS clients it inherited and rebuilds its own rather
+     * than releasing them, because releasing an inherited client destructs it and
+     * closes a socket the parent and its siblings are still using. Children ship
+     * back plain values only. Failures are gathered rather than fail-fast so a
+     * broken first sync surfaces every crashing step in one pass.
      *
      * @param  Collection<int, array{scope: string, step: Step}>  $plan
      * @param  array<string, mixed>  $options
@@ -346,11 +365,33 @@ trait RunsSteppedCommands
             };
         });
 
+        // The label tracks what is RUNNING, not what last finished. spatie/fork calls
+        // the parent `before` hook once per task, in declaration order, so a pointer
+        // into $entries identifies each step as it is forked; `after` carries the
+        // finished step's label back out again.
+        $queued = 0;
+        $inFlight = [];
+
         $results = Fork::new()
             ->concurrent(static::planWorkers($entries->count()))
-            ->before(child: static fn () => static::forgetAwsClients())
-            ->after(parent: function (mixed $output) use ($progress): void {
-                $progress?->label(sprintf('Planned %s', is_array($output) ? $output['label'] : 'step'))->advance();
+            ->before(
+                child: static fn () => static::releaseInheritedAwsClients(),
+                parent: function () use ($entries, $multiScope, $progress, &$queued, &$inFlight): void {
+                    if (($entry = $entries->get($queued++)) !== null) {
+                        $inFlight[] = static::planEntryLabel($entry, $multiScope);
+                    }
+
+                    $progress?->label(static::planProgressLabel($inFlight));
+                },
+            )
+            ->after(parent: function (mixed $output) use ($progress, &$inFlight): void {
+                // A worker that died without reporting comes back as a non-array, so its
+                // label stays listed — better a stale name than a silent miscount.
+                if (is_array($output) && ($at = array_search($output['label'], $inFlight, true)) !== false) {
+                    unset($inFlight[$at]);
+                }
+
+                $progress?->label(static::planProgressLabel($inFlight))->advance();
             })
             ->run(...$tasks->all());
 
