@@ -192,6 +192,19 @@ The single cache node is a sound default — a node loss flushes the cache (it r
 Writes that land in the fallback store during an outage are **not** synced back to Valkey when it recovers, so it's a degradation cushion, not a replica. It also only covers the **cache** store — sessions on the redis driver still depend on the node being up, so for session HA add a Multi-AZ replica rather than relying on failover.
 :::
 
+### Service updates
+
+AWS periodically publishes ElastiCache **service updates** (security and engine patches) with a recommended apply-by date. On a single node, applying one restarts it: the cache comes back empty and, because sessions share the node, every user is logged out. [`yolo cache:update`](/reference/commands#yolo-cache-update) applies them without that blip by patching through a temporary replica:
+
+1. Adds a replica in a second availability zone. It launches already carrying every pending update.
+2. Turns on automatic failover and Multi-AZ.
+3. Applies each pending update, oldest first, waiting for each to finish. AWS fails over to the patched replica while it patches the original node, so clients stay connected.
+4. Promotes the original node back to primary, turns failover off and removes the replica.
+
+The cache ends on exactly the topology it started on. A full run takes 30–60 minutes, mostly AWS queueing each update. Every step reads the cluster's live state first, so if a run is interrupted (a dropped connection, an expired session), re-running it picks up where the cluster was left.
+
+Major engine-version upgrades are not service updates and aren't covered: they need a new parameter group family and an in-place engine upgrade.
+
 ## Auditing what's deployed
 
 `yolo audit` is the read-only **health check** for an environment. It rolls up three things and exits **non-zero if any of them turns up an error** — a green/red gate you can wire into CI or run by hand:

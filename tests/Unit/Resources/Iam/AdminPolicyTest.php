@@ -48,6 +48,15 @@ it('grants the write surface for the services YOLO provisions', function (): voi
     );
 });
 
+it('grants the replica and service-update verbs cache:update needs', function (): void {
+    // None of these fit the ElastiCache Create*/Modify*/Delete* wildcards.
+    expect(adminActions())->toContain(
+        'elasticache:IncreaseReplicaCount',
+        'elasticache:DecreaseReplicaCount',
+        'elasticache:BatchApplyUpdateAction',
+    );
+});
+
 it('grants the DB subnet group lifecycle but never a destructive database action', function (): void {
     // The DB subnet group is YOLO's own network resource — sync creates it,
     // destroy:environment reclaims it (a capped teardown 403s on the delete

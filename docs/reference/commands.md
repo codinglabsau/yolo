@@ -6,7 +6,7 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 
 - **`<environment>`** — almost every command takes a required `environment` argument naming a key under `environments` in your `yolo.yml` (e.g. `production`, `staging`).
 - **AWS authentication** — outside CI, YOLO reads a named AWS profile from `YOLO_<ENVIRONMENT>_AWS_PROFILE` in your local `.env`. Before any AWS call it verifies (via STS) that the profile resolves to the `account-id` declared in the manifest. The `default` profile is rejected. In CI it falls back to the AWS SDK default credential chain (GitHub OIDC, SSO).
-- **Permission tiers** — you authenticate as yourself; YOLO then assumes a scoped role per command and runs capped to it, so it can never exceed what the command needs: read commands (`status`, `audit`) → an observer role, the app lifecycle (`deploy`, `build`, `run`, `rollback`, and the app's env-file pair `env:pull` / `env:push`) → the per-app deployer role, and provisioning plus environment-level management (`sync`, `scale`, `services`, and the `environment:*` file commands) → the `yolo-*`-scoped admin role. The observer tier is **scope-aware**: a single-app read (`status`, `status:logs`) caps to a **per-app** observer role whose log-content reads are fenced to that app's log group, while an env-wide read (`status:environment`, every `audit`) caps to the env observer role. The guard is **fail-closed** — a command refuses if it can't assume its role rather than running on your full identity. See [provisioning](/guide/provisioning).
+- **Permission tiers** — you authenticate as yourself; YOLO then assumes a scoped role per command and runs capped to it, so it can never exceed what the command needs: read commands (`status`, `audit`) → an observer role, the app lifecycle (`deploy`, `build`, `run`, `rollback`, and the app's env-file pair `env:pull` / `env:push`) → the per-app deployer role, and provisioning plus environment-level management (`sync`, `scale`, `services`, `cache:update`, and the `environment:*` file commands) → the `yolo-*`-scoped admin role. The observer tier is **scope-aware**: a single-app read (`status`, `status:logs`) caps to a **per-app** observer role whose log-content reads are fenced to that app's log group, while an env-wide read (`status:environment`, every `audit`) caps to the env observer role. The guard is **fail-closed** — a command refuses if it can't assume its role rather than running on your full identity. See [provisioning](/guide/provisioning).
 - **Every tier requires MFA** — each tier role's trust demands `aws:MultiFactorAuthPresent`, even read-only observer, so a bare static key can't assume anything: the tier cap limits what YOLO does, not what the key pair could do elsewhere, and the weakest credential on the team is still an MFA'd one. Sessions minted by [`yolo configure`](#yolo-configure)'s helper carry the MFA context automatically, so observer and developer add **no prompts**. The **admin tier additionally demands a fresh 6-digit code** each run (`sync` / `scale` / `permissions` prompt for it), so escalating to admin is always an **explicit human act** an agent can't perform — AWS-enforced, not just a CLI prompt; a direct AssumeRole without MFA is denied. The CI path is unaffected: GitHub OIDC federation carries no MFA context and its trust statement doesn't ask for one. YOLO resolves your MFA device automatically (`iam:ListMFADevices`); set `YOLO_<ENVIRONMENT>_MFA_SERIAL` to the device ARN to skip discovery (or when it isn't permitted).
 - **Grant groups** — access is granted by **group membership**, not by editing identities. YOLO provisions convention-named IAM groups (`yolo-{env}-observers`, `yolo-{env}-{app}-observers`, `yolo-{env}-developers`, `yolo-{env}-{app}-developers`, `yolo-{env}-admins`), each allowing `sts:AssumeRole` on one tier role. Add a user to a group to grant the tier, remove to revoke — managed with [`permissions`](#yolo-permissions) (or the IAM console). YOLO never creates or owns the users themselves — see [Developer Credentials](/guide/credentials) for the full onboarding flow, including each developer's local credential setup.
 - **`--dangerously-skip-permissions`** — a global flag that bypasses the tier cap and runs on your full AWS identity (with a loud warning). It's the deliberate escape for **bootstrapping a fresh environment** (the first `yolo sync <env> --dangerously-skip-permissions` creates the tier roles) and for break-glass / diagnostics. Avoid it otherwise.
@@ -42,6 +42,7 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | [`db:cutover <env>`](#yolo-db-cutover) | Flip every running task onto a new database host in place, then verify the fleet |
 | [`db:status <env>`](#yolo-db-status) | Show every environment app's declared database, from the published claim files |
 | [`backup:database <env>`](#yolo-backup-database) | Run the scheduled database backup now, as a one-off task with streamed output |
+| [`cache:update <env>`](#yolo-cache-update) | Apply pending service updates to the shared cache with zero downtime, through a temporary replica |
 | [`scale <env> [count]`](#yolo-scale) | Adjust the web service's task count out of band |
 | [`permissions <env>`](#yolo-permissions) | Grant or revoke a team member's access by editing their YOLO group membership |
 | [`services <env>`](#yolo-services) | View and manage the services an environment offers |
@@ -586,6 +587,36 @@ yolo backup:database <environment>
 **Arguments:** `environment` · **Options:** none · Deployer-tier (the same `ecs:RunTask` surface as deploy hooks).
 
 Refused when the manifest hasn't opted into backups ([`backups: true`](/reference/manifest#backups) absent, or cron disabled) — the task role carries no dumps-bucket grant there, so the run could only fail at upload.
+
+---
+
+## `yolo cache:update`
+
+Apply the shared Valkey cache's pending ElastiCache **service updates** without the restart a single node would take (an empty cache and every session lost). See [Service updates](/guide/provisioning#service-updates) for how the temporary replica makes it zero-downtime.
+
+```bash
+yolo cache:update <environment> [--force] [--no-progress]
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `environment` | yes | The environment name |
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--force` / `-f` | flag | off | Skip the confirmation prompt. Without it, a non-interactive run declines. |
+| `--no-progress` | flag | off | Hide the progress output |
+
+**Behaviour:** lists the pending updates (name, type, severity, release date, recommended apply-by date, with overdue ones flagged) and exits if there are none. It then checks the cluster is one it can handle: `available`, a single member (the `-001` node it was created with), failover and Multi-AZ off. A cluster with that node plus one other member is treated as an earlier, interrupted run and resumed. After confirmation it adds a replica, enables failover, applies each update oldest first, promotes `-001` back, disables failover and removes the replica by name. It finishes by verifying the cluster is back to one node, `-001` primary, failover off, and nothing pending.
+
+A run takes 30–60 minutes. If an update stops, the run stops with the replica left in place (the cache stays highly available meanwhile); investigate, then re-run. Any re-run resumes from the cluster's current state, including after the admin session expires mid-run.
+
+Admin-tier (MFA per run): it reshapes environment-shared infrastructure every app depends on.
+
+```bash
+yolo cache:update production           # show what's pending, confirm, apply
+yolo cache:update production --force   # unattended
+```
 
 ---
 
