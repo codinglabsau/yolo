@@ -856,6 +856,23 @@ it('adds the backup entry to the crontab with every argument baked from the mani
         ->toContain('0 5 * * * cd /app && php artisan yolo:backup-database --destination=yolo-111111111111-testing-backups/my-app --region=ap-southeast-2');
 });
 
+it('bakes the cluster reader endpoint into the backup entry when an Aurora database is declared', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'backups' => true,
+        'database' => 'my-cluster',
+        'tasks' => ['web' => true],
+    ]);
+
+    $rds = [];
+    bindMockRdsClient(['DescribeDBClusters' => auroraCluster(readers: 1)], $rds);
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    expect(file_get_contents(Paths::build('docker/crontab')))
+        ->toContain('--region=ap-southeast-2 --host=my-cluster.cluster-ro-abc123.ap-southeast-2.rds.amazonaws.com');
+});
+
 it('writes the backup entry on the configured cron schedule', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',

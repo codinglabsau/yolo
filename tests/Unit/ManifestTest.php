@@ -6,6 +6,7 @@ use Illuminate\Support\Arr;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Enums\Service;
 use Codinglabs\Yolo\Enums\ServerGroup;
+use Codinglabs\Yolo\Enums\BackupSource;
 use Codinglabs\Yolo\Enums\QueueIsolation;
 use Codinglabs\Yolo\Exceptions\IntegrityCheckException;
 
@@ -826,6 +827,26 @@ describe('mysql backups', function (): void {
         writeManifest(['backups' => true]);
 
         expect(Manifest::unknownKeys())->toBe([]);
+    });
+
+    it('defaults the backup source to the reader', function (): void {
+        writeManifest(['backups' => true, 'tasks' => ['web' => true]]);
+
+        expect(Manifest::backupSource())->toBe(BackupSource::Reader);
+    });
+
+    it('reads an explicit writer backup source and accepts the key', function (): void {
+        writeManifest(['backups' => ['source' => 'writer'], 'tasks' => ['web' => true]]);
+
+        expect(Manifest::backupSource())->toBe(BackupSource::Writer)
+            ->and(Manifest::unknownKeys())->toBe([]);
+    });
+
+    it('refuses an unknown backup source', function (): void {
+        writeManifest(['backups' => ['source' => 'replica'], 'tasks' => ['web' => true]]);
+
+        expect(fn (): BackupSource => Manifest::backupSource())
+            ->toThrow(IntegrityCheckException::class, 'Unknown backups.source "replica"');
     });
 });
 
