@@ -142,6 +142,16 @@ it('passes connection details as environment, never on the command line', functi
         ->and($dump['env']['BACKUP_USER'])->toBe('app-user');
 });
 
+it('dumps at the lowest CPU priority so the scheduler\'s cron keeps the CPU', function (): void {
+    $command = fakeBackupCommand($this->app);
+    runBackupCommand($command);
+
+    $dump = collect($command->processes)->first(fn (array $process): bool => str_contains((string) $process['commandLine'], 'mysqldump'));
+
+    expect($dump['commandLine'])->toContain('nice -n 19 mysqldump')
+        ->toContain('| nice -n 19 zstd -T0');
+});
+
 it('dumps from --host over the connection\'s read and write hosts', function (): void {
     // The baked reader endpoint must win even where the app splits reads —
     // the app's own read host can still be the writer.

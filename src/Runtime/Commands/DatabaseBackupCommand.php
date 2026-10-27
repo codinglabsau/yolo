@@ -150,7 +150,9 @@ class DatabaseBackupCommand extends Command
      * template so nothing is interpolated into the command line (`MYSQL_PWD`
      * also keeps the password out of the process list). `--host` wins over the
      * connection's own hosts, so a backup can read from a replica the app
-     * itself never routes reads to.
+     * itself never routes reads to. Both sides of the pipe run at the lowest CPU
+     * priority: the scheduled dump shares its container with `schedule:run`, and
+     * a long dump must not slow the app's own cron.
      */
     protected function dump(string $database, string $archive): bool
     {
@@ -161,9 +163,9 @@ class DatabaseBackupCommand extends Command
         $process = new Process(
             command: [
                 'sh', '-c',
-                'mysqldump --single-transaction --skip-lock-tables --quick'
+                'nice -n 19 mysqldump --single-transaction --skip-lock-tables --quick'
                 . ' --host="$BACKUP_HOST" --port="$BACKUP_PORT" --user="$BACKUP_USER"'
-                . ' --databases "$BACKUP_DATABASE" | zstd -T0 -q -f -o "$BACKUP_ARCHIVE"',
+                . ' --databases "$BACKUP_DATABASE" | nice -n 19 zstd -T0 -q -f -o "$BACKUP_ARCHIVE"',
             ],
             env: [
                 'BACKUP_HOST' => is_array($host) ? (string) Arr::first($host) : (string) $host,
