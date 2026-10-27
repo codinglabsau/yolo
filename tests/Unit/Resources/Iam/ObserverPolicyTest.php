@@ -151,7 +151,7 @@ it('grants the IAM enumeration reads the admin teardown walks, scoped to yolo id
         ->not->toContain('iam:ListAttachedGroupPolicies');
 });
 
-it('scopes s3 object reads to the env-shared config only — never secrets', function (): void {
+it('scopes config bucket object reads to the env-shared config only — never secrets', function (): void {
     $objectStatement = collect((new ObserverPolicy())->document()['Statement'])
         ->first(fn (array $s): bool => in_array('s3:GetObject', (array) $s['Action'], true));
 
@@ -172,6 +172,14 @@ it('scopes s3 object reads to the env-shared config only — never secrets', fun
     $onStar = collect((new ObserverPolicy())->document()['Statement'])
         ->first(fn (array $s): bool => $s['Resource'] === '*');
     expect($onStar['Action'])->not->toContain('s3:GetObject');
+});
+
+it('reads ALB access logs from the env logs bucket only', function (): void {
+    $albLogsStatement = collect((new ObserverPolicy())->document()['Statement'])
+        ->first(fn (array $s): bool => str_contains(implode(' ', (array) $s['Resource']), '-logs/'));
+
+    expect($albLogsStatement['Resource'])->toBe('arn:aws:s3:::yolo-111111111111-testing-logs/alb/yolo-testing/*')
+        ->and($albLogsStatement['Action'])->toBe(['s3:GetObject']);
 });
 
 it('scopes s3 bucket-config reads to the YOLO infrastructure buckets and excludes object contents', function (): void {
