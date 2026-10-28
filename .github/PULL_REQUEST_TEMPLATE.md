@@ -4,6 +4,9 @@ problem class, never an incident, and use placeholders (`my-app`, `acme`, `examp
 No client or app names, account ids, ARNs, real domains, ticket keys or people.
 -->
 
+### What is this?
+One or two plain sentences on what this PR changes, for someone who reads nothing else.
+
 ### Why is this needed?
 **One-sentence headline: what's broken, missing or worth improving, and who it affects.**
 
