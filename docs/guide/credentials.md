@@ -8,8 +8,8 @@ Access is granted by **grant-group membership**, never by attaching policies to 
 
 | Tier | Group | Grants |
 |---|---|---|
-| Observer — environment | `yolo-{env}-observers` | read every app in the environment, its data included (objects in every app data bucket, bring-your-own ones included) |
-| Observer — one app | `yolo-{env}-{app}-observers` | read one app and its data bucket (log content fenced to its log group) |
+| Observer — environment | `yolo-{env}-observers` | read every app in the environment, its data included (objects in every app data bucket, bring-your-own ones included), and run Logs Insights queries |
+| Observer — one app | `yolo-{env}-{app}-observers` | read one app and its data bucket (log content fenced to its log group, so no Logs Insights) |
 | Developer — environment | `yolo-{env}-developers` | observer, plus read the [database dumps](/guide/databases#logical-backups), plus every app's [deployer tier](#developers-deploy): `deploy` / `rollback` / `run` / `db:backup` / `env:pull` / `env:push` from a laptop — no infrastructure writes, no `sync` |
 | Developer — one app | `yolo-{env}-{app}-developers` | the same for one app: its own dump prefix and its deployer tier |
 | Admin — environment | `yolo-{env}-admins` | everything: `sync` / `scale` / `services` / `deploy` from a laptop / write app data / the environment's manifest and shared `.env` / manage access (**fresh MFA code per run**) |

@@ -77,6 +77,14 @@ it('drops ALB access log reads — the ALB serves every app in the env', functio
     expect($logsBucketStatements)->toBeEmpty();
 });
 
+it('never runs Logs Insights — query results cannot be fenced to one log group', function (): void {
+    $actions = collect(appObserverStatements())->flatMap(fn (array $s): array => (array) $s['Action']);
+
+    expect($actions)->not->toContain('logs:StartQuery')
+        ->and($actions)->not->toContain('logs:GetQueryResults')
+        ->and($actions)->not->toContain('logs:Get*');
+});
+
 it('keeps DescribeLogGroups on * — listing group names leaks nothing, reading content is fenced', function (): void {
     $describeStatement = collect(appObserverStatements())
         ->first(fn (array $s): bool => $s['Resource'] === '*' && in_array('logs:Describe*', (array) $s['Action'], true));

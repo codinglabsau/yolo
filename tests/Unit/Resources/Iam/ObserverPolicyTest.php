@@ -73,6 +73,12 @@ it('grants the operator-facing status reads its read-only commands invoke (logs 
     expect(observerGrants('ce:GetCostAndUsage'))->toBeTrue();
 });
 
+it('runs Logs Insights queries env-wide — start, cancel and read the results', function (): void {
+    expect(observerGrants('logs:StartQuery'))->toBeTrue();
+    expect(observerGrants('logs:StopQuery'))->toBeTrue();
+    expect(observerGrants('logs:GetQueryResults'))->toBeTrue();
+});
+
 it('reads log content env-wide (on *) — the per-app fence lives in AppObserverPolicy', function (): void {
     $logsStatement = collect((new ObserverPolicy())->document()['Statement'])
         ->first(fn (array $s): bool => in_array('logs:Filter*', (array) $s['Action'], true));
@@ -89,7 +95,10 @@ it('grants no write actions — read-only by construction', function (): void {
     // observer can never open a shell. See ObserverPolicy::sessionStatements().
     $sessionTransport = ['ssm:StartSession', 'ssm:TerminateSession', 'ssm:ResumeSession'];
 
-    foreach (array_diff(observerActions(), $sessionTransport) as $action) {
+    // Logs Insights queries are "Start"/"Stop" by name but only read log content.
+    $insightsQuery = ['logs:StartQuery', 'logs:StopQuery'];
+
+    foreach (array_diff(observerActions(), $sessionTransport, $insightsQuery) as $action) {
         [, $verb] = explode(':', (string) $action, 2);
 
         foreach ($writeVerbs as $write) {
