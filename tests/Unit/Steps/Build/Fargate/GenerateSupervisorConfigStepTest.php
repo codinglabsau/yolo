@@ -629,6 +629,23 @@ it('runs a multi-tenant standalone queue under supervisord even without a co-hos
     expect($queue)->not->toContain('nice');
 });
 
+it('groups every program so supervisord stops them at once, not one after another', function (string $manifest, string $file, string $programs): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        ...json_decode($manifest, true),
+    ]);
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    // An ungrouped program is its own group, and supervisord waits for each group to exit
+    // before signalling the next — so without this the graces would stack.
+    expect(file_get_contents(Paths::build($file)))->toEndWith("[group:app]\nprograms={$programs}\n");
+})->with([
+    'bundled web' => ['{"tasks":{"web":{"autoscaling":false}}}', 'docker/supervisord.conf', 'web,scheduler,queue'],
+    'standalone queue hosting the scheduler' => ['{"domain":"example.com","tasks":{"web":true,"queue":true}}', 'docker/supervisord.queue.conf', 'scheduler,queue'],
+    'dedicated tenants' => ['{"domain":"example.com","tasks":{"web":true,"queue":true,"scheduler":true},"multitenancy":{"queue-isolation":"dedicated","tenants":{"acme":null,"globex":null}}}', 'docker/supervisord.queue.conf', 'queue_landlord,queue_acme,queue_globex'],
+]);
+
 it('never bundles a saturation program — burst metrics ride the request, not a supervised loop', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',

@@ -44,6 +44,11 @@ class GenerateSupervisorConfigStep implements Step
      */
     private const string ROLE_VARIABLE = 'YOLO_BURST_ROLE';
 
+    /**
+     * Every program joins one group, so supervisorctl addresses each as `app:<program>`.
+     */
+    public const string GROUP = 'app';
+
     public function __construct(
         protected string $environment,
         protected $filesystem = new Filesystem()
@@ -104,6 +109,7 @@ class GenerateSupervisorConfigStep implements Step
     protected function config(ServerGroup $group, array $graces): string
     {
         $blocks = [$this->header()];
+        $programs = [];
 
         // programGraces only emits a 'web' grace for the web group, so its
         // presence is the co-location trigger for nicing background programs.
@@ -121,15 +127,35 @@ class GenerateSupervisorConfigStep implements Step
                     // Keyed on the tier, not the fanned-out program name — every per-scope
                     // program is the same workload.
                     $blocks[] = $this->program($name, $this->queueCommand($chain, $colocatesWebServer), stopwaitsecs: $graces['queue'], role: 'queue', processes: $processes);
+                    $programs[] = $name;
                 }
 
                 continue;
             }
 
             $blocks[] = $this->program($program, $this->command($program, $colocatesWebServer), stopwaitsecs: $graces[$program], role: $program);
+            $programs[] = $program;
         }
 
+        $blocks[] = $this->group($programs);
+
         return implode("\n\n", $blocks) . "\n";
+    }
+
+    /**
+     * supervisord stops one group at a time, waiting for it to exit before signalling the
+     * next, and an ungrouped program is a group of its own — so separate programs would stop
+     * in series, each grace stacking on the last. One group signals them all at once, the
+     * overlap {@see ShutdownTimings::stopTimeoutFor()} budgets on.
+     *
+     * @param  array<int, string>  $programs
+     */
+    protected function group(array $programs): string
+    {
+        return implode("\n", [
+            '[group:' . self::GROUP . ']',
+            'programs=' . implode(',', $programs),
+        ]);
     }
 
     /**
