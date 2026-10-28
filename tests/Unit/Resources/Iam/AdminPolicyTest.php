@@ -109,8 +109,6 @@ it('never grants a blanket wildcard or blanket IAM', function (): void {
 
     expect($actions)->not->toContain('*')
         ->and($actions)->not->toContain('iam:*')
-        ->and($actions)->not->toContain('iam:CreateUser')
-        ->and($actions)->not->toContain('iam:CreateAccessKey')
         ->and($actions)->not->toContain('sts:AssumeRole');
 });
 
@@ -134,7 +132,7 @@ it('scopes every IAM role/policy/oidc action to yolo-* resources', function (): 
         }
 
         foreach ((array) $statement['Resource'] as $resource) {
-            expect($resource)->toMatch('#(yolo-\*|:oidc-provider/\*|aws-service-role/\*|role/yolo-)#');
+            expect($resource)->toMatch('#(yolo-\*|:oidc-provider/\*|aws-service-role/\*|role/yolo-|user/yolo-testing-agent-user$|mfa/yolo-testing-agent-user$)#');
         }
     });
 });
@@ -155,11 +153,20 @@ it('manages YOLO grant groups + membership, fenced to yolo-* groups', function (
         'iam:RemoveUserFromGroup',
     );
 
-    // No user lifecycle — YOLO manages access (group membership), never identities.
-    expect(adminActions())
-        ->not->toContain('iam:CreateUser')
-        ->not->toContain('iam:DeleteUser')
-        ->not->toContain('iam:CreateAccessKey');
+});
+
+it('manages exactly one user — this environment\'s agent — by name, never a team member', function (): void {
+    $userStatements = collect((new AdminPolicy())->document()['Statement'])
+        ->filter(fn (array $statement): bool => collect((array) $statement['Action'])
+            ->contains(fn (string $action): bool => in_array($action, ['iam:CreateUser', 'iam:DeleteUser', 'iam:CreateAccessKey', 'iam:EnableMFADevice'], true)));
+
+    // Every user-lifecycle and credential action sits on one statement, fenced to
+    // the agent user and its MFA device by exact name — no wildcard reaches a human.
+    expect($userStatements)->toHaveCount(1);
+    expect($userStatements->first()['Resource'])->toBe([
+        'arn:aws:iam::111111111111:user/yolo-testing-agent-user',
+        'arn:aws:iam::111111111111:mfa/yolo-testing-agent-user',
+    ]);
 });
 
 it('fences AttachRolePolicy so only a yolo-* customer-managed policy can be attached (no escalation)', function (): void {

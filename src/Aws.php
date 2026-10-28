@@ -407,6 +407,22 @@ class Aws
     /**
      * @return array<string, string>
      */
+    public static function synchroniseIamUserTags(string $userName, array $tags, bool $apply): array
+    {
+        return static::reconcileTags(
+            $tags,
+            fn () => static::iam()->listUserTags(['UserName' => $userName])['Tags'] ?? [],
+            fn (array $missing) => static::iam()->tagUser([
+                'UserName' => $userName,
+                'Tags' => static::keyValueTags($missing),
+            ]),
+            $apply,
+        );
+    }
+
+    /**
+     * @return array<string, string>
+     */
     public static function synchroniseIamOidcProviderTags(string $arn, array $tags, bool $apply): array
     {
         return static::reconcileTags(
@@ -499,7 +515,20 @@ class Aws
 
     public static function profileAccountId(): string
     {
-        return static::sts()->getCallerIdentity()['Account'];
+        return static::profileIdentity()['Account'];
+    }
+
+    /**
+     * @return array{Account: string, Arn: string}
+     */
+    public static function profileIdentity(): array
+    {
+        $identity = static::sts()->getCallerIdentity();
+
+        return [
+            'Account' => (string) $identity['Account'],
+            'Arn' => (string) ($identity['Arn'] ?? ''),
+        ];
     }
 
     /**

@@ -8,7 +8,7 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 - **AWS authentication** — outside CI, YOLO reads a named AWS profile from `YOLO_<ENVIRONMENT>_AWS_PROFILE` in your local `.env`. Before any AWS call it verifies (via STS) that the profile resolves to the `account-id` declared in the manifest. The `default` profile is rejected. In CI it falls back to the AWS SDK default credential chain (GitHub OIDC, SSO).
 - **Permission tiers** — you authenticate as yourself; YOLO then assumes a scoped role per command and runs capped to it, so it can never exceed what the command needs: read commands (`status`, `audit`) → an observer role, the app lifecycle (`deploy`, `build`, `run`, `rollback`, and the app's env-file pair `env:pull` / `env:push`) → the per-app deployer role, and provisioning plus environment-level management (`sync`, `scale`, `services`, `cache:patch`, and the `environment:*` file commands) → the `yolo-*`-scoped admin role. The observer tier is **scope-aware**: a single-app read (`status`, `status:logs`) caps to a **per-app** observer role whose log-content reads are fenced to that app's log group, while an env-wide read (`status:environment`, every `audit`) caps to the env observer role. The guard is **fail-closed** — a command refuses if it can't assume its role rather than running on your full identity. See [provisioning](/guide/provisioning).
 - **Every tier requires MFA** — each tier role's trust demands `aws:MultiFactorAuthPresent`, even read-only observer, so a bare static key can't assume anything: the tier cap limits what YOLO does, not what the key pair could do elsewhere, and the weakest credential on the team is still an MFA'd one. Sessions minted by [`yolo configure`](#yolo-configure)'s helper carry the MFA context automatically, so observer and developer add **no prompts**. The **admin tier additionally demands a fresh 6-digit code** each run (`sync` / `scale` / `permissions` prompt for it), so escalating to admin is always an **explicit human act** an agent can't perform — AWS-enforced, not just a CLI prompt; a direct AssumeRole without MFA is denied. The CI path is unaffected: GitHub OIDC federation carries no MFA context and its trust statement doesn't ask for one. YOLO resolves your MFA device automatically (`iam:ListMFADevices`); set `YOLO_<ENVIRONMENT>_MFA_SERIAL` to the device ARN to skip discovery (or when it isn't permitted).
-- **Grant groups** — access is granted by **group membership**, not by editing identities. YOLO provisions convention-named IAM groups (`yolo-{env}-observers`, `yolo-{env}-{app}-observers`, `yolo-{env}-developers`, `yolo-{env}-{app}-developers`, `yolo-{env}-admins`), each allowing `sts:AssumeRole` on one tier role. Add a user to a group to grant the tier, remove to revoke — managed with [`permissions`](#yolo-permissions) (or the IAM console). YOLO never creates or owns the users themselves — see [Developer Credentials](/guide/credentials) for the full onboarding flow, including each developer's local credential setup.
+- **Grant groups** — access is granted by **group membership**, not by editing identities. YOLO provisions convention-named IAM groups (`yolo-{env}-observers`, `yolo-{env}-{app}-observers`, `yolo-{env}-developers`, `yolo-{env}-{app}-developers`, `yolo-{env}-admins`), each allowing `sts:AssumeRole` on one tier role. Add a user to a group to grant the tier, remove to revoke — managed with [`permissions`](#yolo-permissions) (or the IAM console). YOLO never creates or owns team members' users — see [Developer Credentials](/guide/credentials) for the full onboarding flow, including each developer's local credential setup. The one user YOLO does own is each environment's read-only [coding-agent user](/guide/credentials#coding-agents) (`yolo-{env}-agent-user`), whose only membership is `yolo-{env}-agents`.
 - **`--dangerously-skip-permissions`** — a global flag that bypasses the tier cap and runs on your full AWS identity (with a loud warning). It's the deliberate escape for **bootstrapping a fresh environment** (the first `yolo sync <env> --dangerously-skip-permissions` creates the tier roles) and for break-glass / diagnostics. Avoid it otherwise.
 - **Required manifest keys** — every command except `init` checks that `name`, `region`, and `account-id` are declared, and fails fast if not.
 
@@ -45,6 +45,7 @@ Every YOLO command, with its arguments and options. Run `vendor/bin/yolo` with n
 | [`cache:patch <env>`](#yolo-cache-patch) | Apply pending service updates to the shared cache with zero downtime, through a temporary replica |
 | [`scale <env> [count]`](#yolo-scale) | Adjust the web service's task count out of band |
 | [`permissions <env>`](#yolo-permissions) | Grant or revoke a team member's access by editing their YOLO group membership |
+| [`agent:rotate <env>`](#yolo-agent-rotate) | Issue the coding-agent user a fresh access key and store it in the shared 1Password item |
 | [`services <env>`](#yolo-services) | View and manage the services an environment offers |
 | [`sync <env>`](#yolo-sync) | Provision all resources (account → environment → app) |
 | [`sync:account <env>`](#yolo-sync-account) | Provision account-global resources |
@@ -84,11 +85,14 @@ Set this machine up to authenticate an environment — the developer-laptop half
 
 ```bash
 yolo configure <environment> [--driver=<driver>]
+yolo configure <environment> --agent [--vault=<vault>]
 ```
 
 | Option | Value | Description |
 |---|---|---|
 | `--driver` | `1password` \| `process` | Credential source. `1password` (default) uses the bundled `yolo-credentials-1password` helper; `process` accepts any `credential_process` command that emits credential JSON on stdout. |
+| `--agent` | — | Write the read-only [coding-agent profile](#agent-profile) instead of your own. |
+| `--vault` | vault name | With `--agent`: the 1Password vault holding the agent item. Default `YOLO Agents`. |
 
 It first asks the **profile name** (defaulting to `<app>-<environment>`). If that profile already exists, `configure` offers to just re-verify it and finish instead of walking the whole setup again — reconfiguring is the opt-in, defaulted on only when the existing block carries `sso_*` remnants that would break resolution (called out by name). Choosing verify-only jumps straight to the wire-and-verify + MFA checks below.
 
@@ -104,6 +108,17 @@ Otherwise it runs the full setup; each step is checked and offered a fix rather 
 8. **MFA gate** — a green verify can't show whether MFA was forwarded (the helper only warns on stderr), so `configure` checks explicitly: is an MFA device registered on the IAM user, and does the 1Password item carry a TOTP to forward? [Every tier requires MFA](#conventions), so a missing device or TOTP **fails the command** with the missing half named — the alternative is an opaque AccessDenied at the first real command.
 
 Profiles map to AWS **accounts**, not apps — run `configure` once per account, then reuse the profile name in each sibling app's `.env` (the `.env` wiring in step 7 is the only per-app part). See [Developer Credentials](/guide/credentials).
+
+### Agent profile
+
+`--agent` writes a second profile, `<your-profile>-agent`, for coding agents on this machine. It needs your own profile set up first, because it's derived from it:
+
+1. **Your identity** — resolves your IAM username through your own profile. That username becomes the **source identity** stamped on every agent session.
+2. **Item verification** — confirms the shared agent item (`YOLO <account-id> <environment> agent`) is readable from the vault. An admin creates it with [`agent:rotate`](#yolo-agent-rotate).
+3. **Profile write** — a `credential_process` that has the helper assume `yolo-{env}-agent-role` directly, with `--source-identity <you>` and a `--session-name agent-<you>@<host>`. Every caller, yolo and the raw AWS CLI alike, runs on the agent role, never the agent user.
+4. **Verify** — `aws sts get-caller-identity` must resolve to the agent role.
+
+It never touches `.env`. Point agent sessions at the profile with an environment override in the agent harness instead; see [Coding agents](/guide/credentials#coding-agents).
 
 ---
 
@@ -677,6 +692,30 @@ Interactive: pick an IAM user, then a checkbox list pre-ticked with their curren
 | Admin — entire environment | `yolo-{env}-admins` | `sync` / `scale` / `deploy` / manage access |
 
 The deployer role is never offered as a grant of its own: it's CI's (GitHub OIDC), and the developer and admin grants already include it for a laptop deploy. Toggling and confirming applies the membership diff — and only ever touches these YOLO groups, never a user's other group memberships. Only groups that have actually been [synced](#yolo-sync) are offered (you can't grant a tier that isn't provisioned). It runs under the **admin** tier, whose policy can manage `yolo-*` group membership, so a member of `yolo-{env}-admins` can grant access to others. To grant a per-app tier on a different app, run it in that app's directory. See [provisioning](/guide/provisioning), and [Developer Credentials](/guide/credentials) for the end-to-end onboarding flow this fits into (IAM user, MFA, local credential setup).
+
+---
+
+## `yolo agent:rotate`
+
+Issue the environment's coding-agent user a fresh access key and write it, with the MFA seed, into the shared 1Password item. It's the only way the agent's credentials are created: `sync` creates the user but never a key.
+
+```bash
+yolo agent:rotate <environment> [--vault=<vault>] [--reset-mfa]
+```
+
+| Option | Value | Description |
+|---|---|---|
+| `--vault` | vault name | 1Password vault holding the agent item. Default `YOLO Agents`. |
+| `--reset-mfa` | — | Replace the agent's MFA device. Needed only when its seed is no longer in the vault item. |
+
+It runs under the **admin** tier, so it prompts for your MFA code. In order:
+
+1. **MFA** — on the first run it enrols a virtual MFA device on the agent user, enabling it with two codes computed from the seed. On later runs it reuses the seed already in the item, and refuses to continue if the device exists but the seed is gone (use `--reset-mfa`).
+2. **Key** — creates a new access key. With two keys already present, it deletes the older first (IAM allows two).
+3. **Vault write** — creates the item `YOLO <account-id> <environment> agent` with `aws_access_key_id`, `aws_secret_access_key` and the TOTP, sent to `op` on stdin, never as arguments. If the write fails, the new key is deleted again and the old one stays in service.
+4. **Cleanup** — archives the previous item and deletes the previous key.
+
+Agent sessions minted from the old key keep working until they expire, at most an hour. Rotate whenever someone leaves the vault. See [Coding agents](/guide/credentials#coding-agents).
 
 ---
 

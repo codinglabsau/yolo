@@ -150,13 +150,53 @@ class Iam
         return Aws::iam()->listUsers()['Users'] ?? [];
     }
 
+    public static function user(string $name): array
+    {
+        try {
+            return Aws::iam()->getUser(['UserName' => $name])['User'];
+        } catch (AwsException $e) {
+            if ($e->getAwsErrorCode() === 'NoSuchEntity') {
+                throw new ResourceDoesNotExistException("Could not find IAM user $name", $e->getCode(), $e);
+            }
+
+            throw $e;
+        }
+    }
+
     /**
+     * [] when the user doesn't exist yet — the plan pass reads membership before the
+     * user's own create has run.
+     *
      * @return array<int, string>
      */
     public static function groupsForUser(string $userName): array
     {
-        $groups = Aws::iam()->listGroupsForUser(['UserName' => $userName])['Groups'] ?? [];
+        try {
+            $groups = Aws::iam()->listGroupsForUser(['UserName' => $userName])['Groups'] ?? [];
+        } catch (AwsException $e) {
+            if ($e->getAwsErrorCode() === 'NoSuchEntity') {
+                return [];
+            }
+
+            throw $e;
+        }
 
         return array_map(static fn (array $group): string => $group['GroupName'], $groups);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public static function accessKeys(string $userName): array
+    {
+        return Aws::iam()->listAccessKeys(['UserName' => $userName])['AccessKeyMetadata'] ?? [];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public static function mfaDevices(string $userName): array
+    {
+        return Aws::iam()->listMFADevices(['UserName' => $userName])['MFADevices'] ?? [];
     }
 }

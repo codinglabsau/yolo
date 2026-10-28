@@ -31,6 +31,9 @@ use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
  *    `s3:PutBucketPolicy` grant could re-open a per-app config bucket to read the
  *    developer `.env` it is otherwise denied. Closing either needs a permissions
  *    boundary on every YOLO-created role — deliberately not built.
+ *  - The one user it may manage is this environment's agent user, by exact name.
+ *    It can add that user to any `yolo-*` group (AddUserToGroup authorises on the
+ *    group), so sync pins the agent's membership and removes any other.
  *
  * Write wildcards per service mirror ObserverPolicy's read wildcards, so a new sync
  * write within an existing service can't AccessDenied-abort a sync. The document is
@@ -76,6 +79,7 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
     {
         $accountId = Aws::accountId();
         $envConfigBucket = Paths::s3EnvConfigBucket();
+        $agentUser = new AgentUser();
 
         return [
             'Version' => '2012-10-17',
@@ -230,7 +234,7 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                 ],
                 [
                     // Lifecycle of YOLO's own roles, policies and OIDC provider — scoped
-                    // to yolo-*; no iam:*User, no account-wide IAM.
+                    // to yolo-*; no account-wide IAM.
                     'Effect' => 'Allow',
                     'Resource' => [
                         sprintf('arn:aws:iam::%s:role/yolo-*', $accountId),
@@ -285,6 +289,23 @@ class AdminPolicy implements Deletable, Resource, SynchronisesConfiguration
                         'iam:GetGroupPolicy', 'iam:PutGroupPolicy', 'iam:DeleteGroupPolicy',
                         'iam:ListGroupPolicies',
                         'iam:AddUserToGroup', 'iam:RemoveUserFromGroup',
+                    ],
+                ],
+                [
+                    // The agent user is the one identity YOLO owns: sync creates it,
+                    // `agent:rotate` cuts its key and enrols its MFA device. Fenced to
+                    // this environment's agent by name — never any other user.
+                    'Effect' => 'Allow',
+                    'Resource' => [
+                        sprintf('arn:aws:iam::%s:user/%s', $accountId, $agentUser->name()),
+                        sprintf('arn:aws:iam::%s:mfa/%s', $accountId, $agentUser->mfaDeviceName()),
+                    ],
+                    'Action' => [
+                        'iam:CreateUser', 'iam:GetUser', 'iam:DeleteUser',
+                        'iam:TagUser', 'iam:UntagUser', 'iam:ListUserTags',
+                        'iam:CreateAccessKey', 'iam:ListAccessKeys', 'iam:DeleteAccessKey',
+                        'iam:CreateVirtualMFADevice', 'iam:DeleteVirtualMFADevice',
+                        'iam:EnableMFADevice', 'iam:DeactivateMFADevice', 'iam:ListMFADevices',
                     ],
                 ],
                 [

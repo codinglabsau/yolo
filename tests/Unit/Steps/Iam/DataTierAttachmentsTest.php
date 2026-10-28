@@ -5,6 +5,7 @@ use Codinglabs\Yolo\Enums\StepResult;
 use Codinglabs\Yolo\Steps\Sync\App\AttachDeployerRolePoliciesStep;
 use Codinglabs\Yolo\Steps\Sync\App\AttachAppObserverRolePolicyStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\AttachAdminRolePolicyStep;
+use Codinglabs\Yolo\Steps\Sync\Environment\AttachAgentRolePolicyStep;
 use Codinglabs\Yolo\Steps\Sync\App\AttachAppDeveloperRolePoliciesStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\AttachObserverRolePolicyStep;
 use Codinglabs\Yolo\Steps\Sync\Environment\AttachDeveloperRolePoliciesStep;
@@ -43,6 +44,12 @@ it('composes the env tiers: observer reads data, developer adds the dumps, admin
 
     expect(attachedByStep(new AttachAdminRolePolicyStep()))
         ->toBe(['yolo-testing-observer', 'yolo-testing-data-read', 'yolo-testing-data-write', 'yolo-testing-backups-read', 'yolo-testing-admin']);
+});
+
+it('gives the agent role its own read document and no data or dump document', function (): void {
+    writeManifest(['account-id' => '111111111111', 'region' => 'ap-southeast-2']);
+
+    expect(attachedByStep(new AttachAgentRolePolicyStep()))->toBe(['yolo-testing-agent']);
 });
 
 it('composes the per-app tiers the same way, fenced to this app', function (): void {

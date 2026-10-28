@@ -7,10 +7,12 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Symfony\Component\Process\Process;
 use Codinglabs\Yolo\Enums\CredentialsDriver;
+use Codinglabs\Yolo\Resources\Iam\AgentRole;
 use Codinglabs\Yolo\Contracts\RunsWithoutAws;
 use Codinglabs\Yolo\Credentials\SharedIniFile;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Console\Input\InputOption;
+use Codinglabs\Yolo\Credentials\AgentCredentials;
 use Symfony\Component\Console\Input\InputArgument;
 
 use function Laravel\Prompts\info;
@@ -43,11 +45,17 @@ class ConfigureCommand extends Command implements RunsWithoutAws
             ->setName('configure')
             ->setDescription('Set up this machine\'s AWS profile and credentials for an environment')
             ->addArgument('environment', InputArgument::REQUIRED, 'The environment name')
-            ->addOption('driver', null, InputOption::VALUE_REQUIRED, 'Credential source: 1password | process');
+            ->addOption('driver', null, InputOption::VALUE_REQUIRED, 'Credential source: 1password | process')
+            ->addOption('agent', null, InputOption::VALUE_NONE, 'Write the read-only coding-agent profile instead of your own')
+            ->addOption('vault', null, InputOption::VALUE_REQUIRED, 'With --agent: 1Password vault holding the agent item', AgentCredentials::DEFAULT_VAULT);
     }
 
     public function handle(): int
     {
+        if ($this->option('agent')) {
+            return $this->configureAgent();
+        }
+
         intro(sprintf('Configure AWS credentials — %s', Helpers::environment()));
 
         $profile = $this->askProfileName();
@@ -77,6 +85,114 @@ class ConfigureCommand extends Command implements RunsWithoutAws
         $this->writeEnvProfile($profile);
 
         return $this->verify($profile) ? self::SUCCESS : self::FAILURE;
+    }
+
+    /**
+     * The agent profile is derived from the developer's own: their identity is read
+     * here, while configure still runs as them, and baked into the profile as the
+     * source identity every agent session carries. The profile is named after
+     * theirs, so a committed agent-harness setting can name it on every machine.
+     */
+    protected function configureAgent(): int
+    {
+        intro(sprintf('Configure the coding-agent profile — %s', Helpers::environment()));
+
+        $own = Helpers::keyedEnv('AWS_PROFILE');
+
+        if (in_array($own, [null, ''], true)) {
+            error(sprintf('Set up your own profile first (`yolo configure %s`) — the agent profile is derived from it.', Helpers::environment()));
+
+            return self::FAILURE;
+        }
+
+        $identity = $this->callerIdentity($own);
+        $sourceIdentity = $identity === null ? null : AgentCredentials::sourceIdentityFrom((string) ($identity['Arn'] ?? ''));
+
+        if ($sourceIdentity === null) {
+            error(sprintf("Couldn't resolve your IAM user from the [%s] profile — the agent profile stamps it on every session.", $own));
+
+            return self::FAILURE;
+        }
+
+        if (! $this->ensureBinaries(CredentialsDriver::OnePassword)) {
+            return self::FAILURE;
+        }
+
+        $vault = (string) $this->option('vault');
+        $item = AgentCredentials::itemTitle();
+
+        if (! $this->verifyOnePasswordItem($item, $vault)) {
+            note(sprintf('An admin creates it with `yolo agent:rotate %s`, then shares the %s vault with you.', Helpers::environment(), $vault));
+
+            return self::FAILURE;
+        }
+
+        $profile = $own . '-agent';
+
+        $this->writeProfile($profile, $this->agentCredentialProcess($this->installHelper(), $item, $vault, $sourceIdentity, (string) gethostname()));
+        $this->ensureNoShadowingStaticKeys($profile);
+
+        return $this->verifyAgent($profile) ? self::SUCCESS : self::FAILURE;
+    }
+
+    protected function agentCredentialProcess(string $helper, string $item, string $vault, string $sourceIdentity, string $host): string
+    {
+        return sprintf(
+            '%s --role-arn %s --source-identity %s --session-name %s "%s" "%s"',
+            $helper,
+            sprintf('arn:aws:iam::%s:role/%s', Manifest::get('account-id'), (new AgentRole())->name()),
+            $sourceIdentity,
+            AgentCredentials::sessionName($sourceIdentity, $host),
+            $item,
+            $vault,
+        );
+    }
+
+    /**
+     * A green verify must prove the role, not just the key — a profile still on the
+     * bare agent user holds nothing but the assume.
+     */
+    protected function verifyAgent(string $profile): bool
+    {
+        $identity = $this->callerIdentity($profile);
+
+        if ($identity === null) {
+            return false;
+        }
+
+        if (! str_contains((string) ($identity['Arn'] ?? ''), sprintf(':assumed-role/%s/', (new AgentRole())->name()))) {
+            error(sprintf('[%s] resolved to %s, not the agent role.', $profile, $identity['Arn'] ?? 'unknown'));
+
+            return false;
+        }
+
+        outro(sprintf('Agents on this machine run as %s.', $identity['Arn']));
+        note(sprintf(
+            "Point agent sessions at it with an environment override in the agent harness (e.g. an app repo's .claude/settings.json):\n  %s=%s\n  AWS_PROFILE=%s\nyolo reads real environment variables before .env, so your own terminal keeps your profile.",
+            Helpers::keyedEnvName('AWS_PROFILE'),
+            $profile,
+            $profile,
+        ));
+
+        return true;
+    }
+
+    /**
+     * @return array<string, string>|null null (with the error shown) when the profile doesn't resolve
+     */
+    protected function callerIdentity(string $profile): ?array
+    {
+        $process = new Process(['aws', 'sts', 'get-caller-identity', '--profile', $profile, '--output', 'json']);
+        $process->setTimeout(120);
+        $process->run();
+
+        if (! $process->isSuccessful()) {
+            error(sprintf('Verification failed: %s', trim($process->getErrorOutput())));
+
+            return null;
+        }
+
+        return json_decode($process->getOutput(), true);
     }
 
     protected function askProfileName(): string
@@ -335,17 +451,11 @@ class ConfigureCommand extends Command implements RunsWithoutAws
      */
     protected function verify(string $profile): bool
     {
-        $process = new Process(['aws', 'sts', 'get-caller-identity', '--profile', $profile, '--output', 'json']);
-        $process->setTimeout(120);
-        $process->run();
+        $identity = $this->callerIdentity($profile);
 
-        if (! $process->isSuccessful()) {
-            error(sprintf('Verification failed: %s', trim($process->getErrorOutput())));
-
+        if ($identity === null) {
             return false;
         }
-
-        $identity = json_decode($process->getOutput(), true);
 
         if (($identity['Account'] ?? null) !== (string) Manifest::get('account-id')) {
             error(sprintf(

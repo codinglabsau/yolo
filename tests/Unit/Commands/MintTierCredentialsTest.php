@@ -133,6 +133,7 @@ beforeEach(function (): void {
     // binding from one case would otherwise leak into the next — forget it.
     Helpers::app()->forgetInstance('yoloAssumedCredentials');
     Helpers::app()->forgetInstance('yoloTierApplied');
+    Helpers::app()->forgetInstance('yoloProfileArn');
 
     $buffer = new BufferedOutput();
     Prompt::setOutput($buffer);
@@ -154,6 +155,7 @@ afterEach(function (): void {
 
     Helpers::app()->forgetInstance('yoloAssumedCredentials');
     Helpers::app()->forgetInstance('yoloTierApplied');
+    Helpers::app()->forgetInstance('yoloProfileArn');
 
     putenv('CI');
     unset($_ENV['CI'], $_SERVER['CI']);
@@ -678,3 +680,60 @@ it('treats only a refused code as retryable', function (string $message, bool $r
     'a trust policy refusal' => ['User is not authorized to perform: sts:AssumeRole', false],
     'a missing role' => ['access denied assuming role', false],
 ]);
+
+it('runs a read as-is on an agent session — the profile is already the agent tier', function (Command $command): void {
+    Helpers::app()->instance('yoloProfileArn', 'arn:aws:sts::111111111111:assumed-role/yolo-testing-agent-role/agent-jane.doe@laptop');
+
+    $captured = [];
+    bindAssumeRoleStsClient($captured, assumeRoleResult());
+
+    expect(mint($command))->toBeNull();
+
+    // No self-assume, and nothing minted for subprocesses: they keep the agent profile.
+    expect($captured)->toBe([]);
+    expect(Helpers::app()->bound('yoloTierApplied'))->toBeTrue();
+    expect(Helpers::app()->bound('yoloAssumedCredentials'))->toBeFalse();
+})->with([
+    'status' => fn (): Command => new StatusCommand(),
+    'audit' => fn (): Command => new AuditCommand(),
+]);
+
+it('refuses every write tier on an agent session before any assume', function (Command $command): void {
+    Helpers::app()->instance('yoloProfileArn', 'arn:aws:sts::111111111111:assumed-role/yolo-testing-agent-role/agent-jane.doe@laptop');
+
+    $captured = [];
+    bindAssumeRoleStsClient($captured, assumeRoleResult());
+
+    expect(mint($command))->toBe(Command::FAILURE);
+    expect($captured)->toBe([]);
+    expect(test()->promptOutput->fetch())->toContain('the agent tier is read-only');
+})->with([
+    'deploy' => fn (): Command => new DeployCommand(),
+    'env:pull' => fn (): Command => new EnvPullCommand(),
+    'run' => fn (): Command => new RunCommand(),
+    'sync' => fn (): Command => new SyncCommand(),
+    'permissions' => fn (): Command => new PermissionsCommand(),
+]);
+
+it('refuses the bare agent user and points at the agent profile', function (): void {
+    Helpers::app()->instance('yoloProfileArn', 'arn:aws:iam::111111111111:user/yolo-testing-agent-user');
+
+    $captured = [];
+    bindAssumeRoleStsClient($captured, assumeRoleResult());
+
+    expect(mint(new StatusCommand()))->toBe(Command::FAILURE);
+    expect($captured)->toBe([]);
+    expect(test()->promptOutput->fetch())->toContain('yolo configure testing --agent');
+});
+
+it('mints as usual for a developer whose profile is their own user', function (): void {
+    Helpers::app()->instance('yoloProfileArn', 'arn:aws:iam::111111111111:user/jane.doe');
+
+    $captured = [];
+    bindAssumeRoleStsClient($captured, assumeRoleResult());
+
+    mint(new StatusCommand());
+
+    expect($captured)->toHaveCount(1)
+        ->and($captured[0]['args']['RoleArn'])->toBe('arn:aws:iam::111111111111:role/yolo-testing-my-app-observer-role');
+});

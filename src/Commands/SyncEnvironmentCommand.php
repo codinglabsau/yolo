@@ -128,10 +128,18 @@ class SyncEnvironmentCommand extends SyncSteppedCommand
                 Steps\Sync\Environment\SyncAdminPolicyStep::class,
                 Steps\Sync\Environment\SyncAdminRoleStep::class,
                 Steps\Sync\Environment\AttachAdminRolePolicyStep::class,
+                // The coding-agent tier: read-only, no data, no tunnels.
+                Steps\Sync\Environment\SyncAgentPolicyStep::class,
+                Steps\Sync\Environment\SyncAgentRoleStep::class,
+                Steps\Sync\Environment\AttachAgentRolePolicyStep::class,
                 // YOLO owns the grant groups + their policies, never membership.
                 Steps\Sync\Environment\SyncObserversGroupStep::class,
                 Steps\Sync\Environment\SyncDevelopersGroupStep::class,
                 Steps\Sync\Environment\SyncAdminsGroupStep::class,
+                // The agent user is the one identity YOLO owns, so it also owns that
+                // membership — after the group, which the user's create joins.
+                Steps\Sync\Environment\SyncAgentsGroupStep::class,
+                Steps\Sync\Environment\SyncAgentUserStep::class,
                 // The env manifest is seeded exactly once, then operator-owned — sync
                 // only ever converges toward it, never rewrites it.
                 Steps\Sync\Environment\SyncEnvConfigBucketStep::class,

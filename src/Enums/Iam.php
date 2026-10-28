@@ -21,9 +21,13 @@ enum Iam: string
     case DEVELOPER_ROLE = 'developer-role';
     case ADMIN_POLICY = 'admin';
     case ADMIN_ROLE = 'admin-role';
+    case AGENT_POLICY = 'agent';
+    case AGENT_ROLE = 'agent-role';
+    case AGENT_USER = 'agent-user';
 
     // Grant groups are plural so the name stays distinct from the singular role/policy they assume.
     case OBSERVERS_GROUP = 'observers';
     case DEVELOPERS_GROUP = 'developers';
     case ADMINS_GROUP = 'admins';
+    case AGENTS_GROUP = 'agents';
 }

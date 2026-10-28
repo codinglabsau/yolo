@@ -1,5 +1,7 @@
 <?php
 
+use Codinglabs\Yolo\Resources\Iam\AgentRole;
+use Codinglabs\Yolo\Resources\Iam\AgentPolicy;
 use Codinglabs\Yolo\Resources\Iam\EcsTaskRole;
 use Codinglabs\Yolo\Resources\Iam\DeployerRole;
 use Codinglabs\Yolo\Resources\Iam\DeveloperRole;
@@ -64,4 +66,12 @@ it('keeps every data-tier description safe for the IAM API', function (object $r
 
 it('rejects an em dash so the regex actually catches the original bug', function (): void {
     expect('YOLO managed ECS task role — shared default')->not->toMatch(IAM_DESCRIPTION_PATTERN);
+});
+
+it('AgentRole description is safe for the IAM API', function (): void {
+    expect((new AgentRole())->description())->toMatch(IAM_DESCRIPTION_PATTERN);
+});
+
+it('AgentPolicy description is safe for the IAM API', function (): void {
+    expect((new AgentPolicy())->description())->toMatch(IAM_DESCRIPTION_PATTERN);
 });

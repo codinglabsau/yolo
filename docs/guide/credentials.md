@@ -13,6 +13,7 @@ Access is granted by **grant-group membership**, never by attaching policies to 
 | Developer — environment | `yolo-{env}-developers` | observer, plus read the [database dumps](/guide/databases#logical-backups), plus every app's [deployer tier](#developers-deploy): `deploy` / `rollback` / `run` / `db:backup` / `env:pull` / `env:push` from a laptop — no infrastructure writes, no `sync` |
 | Developer — one app | `yolo-{env}-{app}-developers` | the same for one app: its own dump prefix and its deployer tier |
 | Admin — environment | `yolo-{env}-admins` | everything: `sync` / `scale` / `services` / `deploy` from a laptop / write app data / the environment's manifest and shared `.env` / manage access (**fresh MFA code per run**) |
+| Coding agent — environment | `yolo-{env}-agents` | read the environment's infrastructure and logs: no app data, no dumps, no database tunnels. Its only member is the YOLO-owned agent user; see [Coding agents](#coding-agents) |
 
 The tiers split along two axes — **infrastructure** and **data**, each read or write — and a tier is a composition of them. The observer reads both; the developer adds the database dumps and ships code, but writes neither axis directly; the admin adds the data and infrastructure writes. Data lives in its own policy documents (`yolo-{env}-data-read` / `-data-write` / `-backups-read`, with per-app `data-read` / `backups-read` twins) rather than on the observer document, because the per-app observer document is also what the CI deployer role carries for its pre-deploy drift check — a deploy grant must never be able to read user uploads. The env-wide documents cover the YOLO-named data buckets by wildcard and add every bring-your-own bucket named in a published app claim. That is safe only because the claim is written by `sync:app` alone — an admin act — never by a deploy: the deployer role holds no write on it, and a claim that lags the manifest is drift the deploy gate refuses on. Developers never write user uploads directly: a data fix goes through the app (`yolo run`), so it runs the app's own code and validation.
 
@@ -106,11 +107,66 @@ credential_process = /Users/you/.local/bin/yolo-credentials-1password "AWS my-ap
 region = ap-southeast-2
 ```
 
+## Coding agents
+
+An AI coding agent on a developer's machine is a useful operator for read work: `yolo status`, `audit`, log reads, AWS describe calls while diagnosing. On the developer's own profile it holds everything the developer holds. The developer tier needs no per-run prompt, so the agent could deploy, `run` or `env:pull`. Permission rules in the agent harness only match command text, so they're easy to bypass.
+
+Instead, each environment has **one shared, read-only agent identity**, capped by AWS rather than by the harness:
+
+| Resource | Name | What it is |
+|---|---|---|
+| IAM user | `yolo-{env}-agent-user` | The one user YOLO owns. Its key and MFA seed live in a shared 1Password item. |
+| Grant group | `yolo-{env}-agents` | Lets the agent user assume the agent role, **only with a source identity set**. No self-service: holding the shared key can't cut a second one. Sync pins the user's membership to this group and removes any other. |
+| Tier role | `yolo-{env}-agent-role` | MFA-gated like every tier. |
+| Policy | `yolo-{env}-agent` | The env observer document **minus** the `db:tunnel` port-forward. No data or dump document is attached. |
+
+On an agent session, read commands run as-is. Every other tier (`deploy`, `run`, `env:*`, `sync`, `permissions`) refuses up front with a clear message. The env-wide role means an agent reads every app's logs in the environment; per-app log fencing isn't applied to agents.
+
+### Admin: issue the agent key
+
+1. `yolo sync:environment <env>` creates the user, group, role and policy.
+2. `yolo agent:rotate <env>` enrols the MFA device, creates the key and writes the item `YOLO <account-id> <env> agent` to the **YOLO Agents** vault (override with `--vault`). See [`agent:rotate`](/reference/commands#yolo-agent-rotate).
+3. Share that vault with the environment's observers. **Vault access is what lets a developer's agent run**, so it mirrors `yolo-{env}-observers` membership by hand. Re-run `agent:rotate` whenever someone leaves the vault; the key never touches disk, so rotation is cheap.
+
+MFA on this identity proves "has access to the vault", not "a human is present". That's acceptable for a read-only tier, and the trust policies stay unchanged.
+
+### Developer: point your agents at it
+
+```bash
+yolo configure <env> --agent
+```
+
+This writes `<your-profile>-agent`, whose helper assumes the agent role with your IAM username as the **source identity** and `agent-<you>@<host>` as the session name. Then set an environment override in the agent harness, for example in the app repo's `.claude/settings.json`:
+
+```json
+{
+  "env": {
+    "YOLO_PRODUCTION_AWS_PROFILE": "my-app-production-agent",
+    "AWS_PROFILE": "my-app-production-agent"
+  }
+}
+```
+
+yolo loads `.env` without overriding real environment variables, so only agent sessions see the agent profile; your terminal keeps yours. Committing this works because `configure` derives the agent profile's name from your own, so it matches on every machine that follows the same profile naming. A teammate without the profile gets "profile not found" in agent sessions, which is the safe failure.
+
+### Attribution
+
+Every agent session carries:
+
+- `SourceIdentity` = your IAM username. It appears on every CloudTrail event, carries through any further role chaining, and can't be changed for the life of the session. Audit keys on this.
+- `RoleSessionName` = `agent-<you>@<host>`, for telling machines apart.
+
+Both are **self-declared**: anyone in the vault can stamp any name. It's a tracing label, not authentication.
+
+### Fence your own credentials
+
+The agent profile only sets the default. While the agent runs as your macOS user it can still read your cached session and pass `--profile <your-profile>`. To close that, configure the harness sandbox to deny reads of `~/.aws/codinglabs-cache/**`, and run the agent's `op` on a 1Password service account scoped to the agents vault (`OP_SERVICE_ACCOUNT_TOKEN`). A service account can't see your Employee vault, so the agent can't fetch your key or TOTP. Keep `ask` rules on `deploy` / `run` / `env:*` as a backstop.
+
 ## Short-lived sessions with `yolo-credentials-1password`
 
 The helper ([`bin/yolo-credentials-1password`](https://github.com/codinglabsau/yolo/blob/main/bin/yolo-credentials-1password)) reads the long-lived key from 1Password at mint time, calls `sts:GetSessionToken` — forwarding MFA automatically when the user has a device registered — and caches the short-lived session (4 hours, under `~/.aws/codinglabs-cache` with owner-only permissions) so the CLI doesn't re-prompt, and never reuses a TOTP, on every call. Long-lived keys never touch disk; only the expiring session does.
 
-Its `credential_process` arguments: the 1Password item name, plus an optional second argument naming the vault (default `Employee`). Dependencies (`op`, the AWS CLI, `jq`) on macOS:
+Its `credential_process` arguments: the 1Password item name, plus an optional second argument naming the vault (default `Employee`). The [agent profile](#coding-agents) adds `--role-arn`, `--source-identity` and `--session-name`: the helper then calls `sts:AssumeRole` with the MFA pair instead of `GetSessionToken` and emits the role's credentials, cached for up to an hour. Dependencies (`op`, the AWS CLI, `jq`) on macOS:
 
 ```bash
 brew install awscli jq

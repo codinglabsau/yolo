@@ -66,6 +66,7 @@ class Yolo
 
         // Access management
         Commands\PermissionsCommand::class,
+        Commands\AgentRotateCommand::class,
 
         // Services
         Commands\ServicesCommand::class,

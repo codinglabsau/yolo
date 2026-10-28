@@ -158,6 +158,17 @@ class ObserverPolicy implements Deletable, Resource, SynchronisesConfiguration
                     ],
                 ],
                 [
+                    // The gate also plans the agent user — YOLO's one owned identity —
+                    // and its pinned membership.
+                    'Effect' => 'Allow',
+                    'Resource' => sprintf('arn:aws:iam::%s:user/yolo-*', $accountId),
+                    'Action' => [
+                        'iam:GetUser',
+                        'iam:ListUserTags',
+                        'iam:ListGroupsForUser',
+                    ],
+                ],
+                [
                     // Bucket-level configuration reads on the infrastructure buckets;
                     // the bucket ARN excludes object contents (granted narrowly below).
                     // The app data buckets are deliberately outside: ListBucket there

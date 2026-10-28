@@ -188,3 +188,23 @@ it('passes with a forwarding reminder for the custom-process driver', function (
     expect(invokeConfigure(configureCommand(), 'enforceMfaPosture', true, null))->toBeTrue()
         ->and(test()->promptOutput->fetch())->toContain('forwards a TOTP');
 });
+
+it('writes an agent credential_process that assumes the agent role, stamped with the developer', function (): void {
+    $process = invokeConfigure(configureCommand(), 'agentCredentialProcess', '/Users/you/.local/bin/yolo-credentials-1password', 'YOLO 111111111111 testing agent', 'YOLO Agents', 'jane.doe', 'laptop-01.local');
+
+    expect($process)->toBe(
+        '/Users/you/.local/bin/yolo-credentials-1password'
+        . ' --role-arn arn:aws:iam::111111111111:role/yolo-testing-agent-role'
+        . ' --source-identity jane.doe'
+        . ' --session-name agent-jane.doe@laptop-01'
+        . ' "YOLO 111111111111 testing agent" "YOLO Agents"'
+    );
+});
+
+it('refuses to configure the agent profile before the developer has their own', function (): void {
+    putenv('YOLO_TESTING_AWS_PROFILE');
+    unset($_ENV['YOLO_TESTING_AWS_PROFILE'], $_SERVER['YOLO_TESTING_AWS_PROFILE']);
+
+    expect(invokeConfigure(configureCommand(), 'configureAgent'))->toBe(ConfigureCommand::FAILURE);
+    expect(test()->promptOutput->fetch())->toContain('Set up your own profile first');
+});

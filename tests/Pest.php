@@ -254,8 +254,9 @@ function bindMockIamClient(array $roles): void
 /**
  * Bind a mock IAM client with command-routed responses, capturing every call.
  * A command's value may be a single Result (repeated) or an array of Results
- * used as a queue (the last entry repeats once exhausted). Mirrors the EC2 mock
- * in SyncRdsSecurityGroupStepTest.
+ * used as a queue (the last entry repeats once exhausted). A Closure receives the
+ * command and may return a Result or a Throwable (an AWS error). Mirrors the EC2
+ * mock in SyncRdsSecurityGroupStepTest.
  *
  * @param  array<string, Result|array<int, Result>>  $byCommand
  * @param  array<int, array{name: string, args: array<string, mixed>}>  $captured
@@ -282,7 +283,13 @@ function bindRoutedIamClient(array $byCommand, array &$captured): void
                 $entry = $entry[$index];
             }
 
-            return Create::promiseFor($entry);
+            if ($entry instanceof Closure) {
+                $entry = $entry($cmd);
+            }
+
+            return $entry instanceof Throwable
+                ? Create::rejectionFor($entry)
+                : Create::promiseFor($entry);
         }
     };
 

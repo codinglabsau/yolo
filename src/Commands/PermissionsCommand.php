@@ -7,6 +7,7 @@ use Codinglabs\Yolo\Helpers;
 use Codinglabs\Yolo\Manifest;
 use Codinglabs\Yolo\Aws\Iam as IamClient;
 use Codinglabs\Yolo\Contracts\AdminCommand;
+use Codinglabs\Yolo\Resources\Iam\AgentUser;
 use Codinglabs\Yolo\Resources\Iam\AdminsGroup;
 use Codinglabs\Yolo\Resources\Iam\ObserversGroup;
 use Codinglabs\Yolo\Resources\Iam\AssumeRoleGroup;
@@ -27,7 +28,7 @@ use function Laravel\Prompts\multiselect;
  * Group membership is the entire access lever. Offers the env-wide tiers plus the
  * per-app tiers for THIS app — to grant deploy on another app, run it in that app's
  * directory. Admin-tier because the admin policy is what may manage yolo-* group
- * membership. YOLO never creates or deletes the IAM users themselves.
+ * membership. YOLO never creates or deletes team members' IAM users.
  */
 class PermissionsCommand extends Command implements AdminCommand
 {
@@ -53,8 +54,11 @@ class PermissionsCommand extends Command implements AdminCommand
             return self::SUCCESS;
         }
 
+        // The agent user's membership is sync-owned (pinned to the agents group),
+        // so it is never a team member to grant.
         $users = collect(IamClient::users())
             ->pluck('UserName')
+            ->reject(fn (string $user): bool => $user === (new AgentUser())->name())
             ->sort()
             ->values();
 

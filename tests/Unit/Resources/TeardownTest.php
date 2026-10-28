@@ -30,6 +30,7 @@ use Codinglabs\Yolo\Resources\Ecs\EcsService;
 use Codinglabs\Yolo\Resources\S3\AssetBucket;
 use Codinglabs\Yolo\Resources\Iam\AdminPolicy;
 use Codinglabs\Yolo\Resources\Iam\AdminsGroup;
+use Codinglabs\Yolo\Resources\Iam\AgentsGroup;
 use Codinglabs\Yolo\Resources\Iam\EcsTaskRole;
 use Codinglabs\Yolo\Resources\S3\S3LogsBucket;
 use Codinglabs\Yolo\Resources\Ec2\PublicSubnet;
@@ -691,7 +692,7 @@ it('empties members before deleting every env grant group', function (string $cl
 
     $names = array_column($captured, 'name');
     expect($names)->toContain('RemoveUserFromGroup')->toContain('DeleteGroupPolicy')->toContain('DeleteGroup');
-})->with([ObserversGroup::class, DevelopersGroup::class, AdminsGroup::class]);
+})->with([ObserversGroup::class, DevelopersGroup::class, AdminsGroup::class, AgentsGroup::class]);
 
 it('deletes the Valkey replication group and waits for it to go', function (): void {
     $captured = [];

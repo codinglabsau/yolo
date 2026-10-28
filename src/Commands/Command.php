@@ -20,6 +20,8 @@ use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Concerns\RegistersAws;
 use Codinglabs\Yolo\Contracts\AdminCommand;
 use Codinglabs\Yolo\Resources\Iam\AdminRole;
+use Codinglabs\Yolo\Resources\Iam\AgentRole;
+use Codinglabs\Yolo\Resources\Iam\AgentUser;
 use Codinglabs\Yolo\Contracts\RunsWithoutAws;
 use Codinglabs\Yolo\Contracts\DeployerCommand;
 use Codinglabs\Yolo\Contracts\ReadOnlyCommand;
@@ -649,12 +651,17 @@ abstract class Command extends SymfonyCommand
     protected function ensureAccountMatchesProfile(): bool
     {
         try {
-            $actual = Aws::profileAccountId();
+            $identity = Aws::profileIdentity();
         } catch (\Throwable $e) {
             error(sprintf('Failed to verify AWS account via STS: %s', $e->getMessage()));
 
             return false;
         }
+
+        $actual = $identity['Account'];
+
+        // Kept for the tier mint, so recognising an agent session costs no extra call.
+        Helpers::app()->instance('yoloProfileArn', $identity['Arn']);
 
         if (Aws::accountId() !== $actual) {
             error(sprintf(
@@ -718,6 +725,10 @@ abstract class Command extends SymfonyCommand
 
         if (! $tier instanceof Iam) {
             return null;
+        }
+
+        if (($agent = $this->capAgentSession($tier)) !== false) {
+            return $agent;
         }
 
         if ($this->skipsPermissions()) {
@@ -898,6 +909,49 @@ abstract class Command extends SymfonyCommand
         return Helpers::app()->bound('yoloAssumedCredentials')
             ? null
             : Helpers::keyedEnv('AWS_PROFILE');
+    }
+
+    /**
+     * An agent profile arrives already on the agent tier — its credential helper
+     * assumed the agent role, stamping the developer as source identity — so there
+     * is nothing to mint. Reads run as-is; every write tier is refused up front
+     * rather than as an opaque AccessDenied. The bare agent user (a profile that
+     * skips the role) is refused too: it holds nothing but the agent assume.
+     *
+     * Returns false when the caller isn't an agent, null to proceed, or an exit code.
+     */
+    protected function capAgentSession(Iam $tier): int|false|null
+    {
+        $arn = Helpers::app()->bound('yoloProfileArn') ? (string) Helpers::app('yoloProfileArn') : '';
+
+        if (str_ends_with($arn, ':user/' . (new AgentUser())->name())) {
+            error(sprintf(
+                "Refusing to run '%s' on the bare agent user: agents run on the agent role.\n"
+                . 'Point the profile at the agent role with `yolo configure %s --agent`.',
+                $this->getName(),
+                Helpers::environment(),
+            ));
+
+            return self::FAILURE;
+        }
+
+        if (! str_contains($arn, sprintf(':assumed-role/%s/', (new AgentRole())->name()))) {
+            return false;
+        }
+
+        if ($tier !== Iam::OBSERVER_ROLE) {
+            error(sprintf(
+                "Refusing to run '%s' as a coding agent: the agent tier is read-only.\n"
+                . "Deploys, runs, .env reads and every admin command need a developer's own profile.",
+                $this->getName(),
+            ));
+
+            return self::FAILURE;
+        }
+
+        Helpers::app()->instance('yoloTierApplied', true);
+
+        return null;
     }
 
     /**

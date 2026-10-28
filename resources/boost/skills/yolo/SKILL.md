@@ -28,6 +28,7 @@ This mirrors the operator's standing rule: infrastructure commands never run aga
 
 - `codinglabsau/yolo` installed (`vendor/bin/yolo` exists) and a `yolo.yml` manifest in the project root.
 - AWS auth resolves outside CI from `YOLO_<ENV>_AWS_PROFILE` in `.env`; YOLO STS-verifies the profile matches the manifest `account-id` before any call. If a command errors on auth, surface it — don't try to "fix" credentials.
+- Agent sessions usually run on the read-only **agent profile** (`<profile>-agent`, set through the harness environment). Reads work; `deploy`, `run`, `env:*`, `sync` and `permissions` refuse by design. Hand those to the human; never switch to their own profile to get around it.
 - `<env>` is a key under `environments` in `yolo.yml` (usually `production` / `staging`). Read the manifest first if you don't know the env names.
 
 ## The data surface
