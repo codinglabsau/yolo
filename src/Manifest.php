@@ -58,6 +58,7 @@ class Manifest
         'multitenancy.queue-isolation',
         'multitenancy.tenants.*.domain',
         'multitenancy.tenants.*.wildcard-subdomains',
+        'multitenancy.tenants.*.queue.workers',
         'queues.*',
         'queue-visibility-timeout',
         'bucket',
@@ -1120,6 +1121,28 @@ class Manifest
     public static function fansQueuesPerTenant(): bool
     {
         return static::hasTenants() && static::queueIsolation() === QueueIsolation::Dedicated;
+    }
+
+    /**
+     * Worker processes on the tenant's own queue program, per queue-carrying task. Raw
+     * read, not via {@see tenants()} — that normaliser pays a Route 53 round-trip per tenant.
+     */
+    public static function tenantQueueWorkers(string $tenantId): int
+    {
+        $queue = (static::get('multitenancy.tenants') ?? [])[$tenantId]['queue'] ?? [];
+
+        // A bare `queue: 3` passes the key sweep (a path may stop short of its pattern).
+        if (! is_array($queue)) {
+            throw new IntegrityCheckException(sprintf(
+                'multitenancy.tenants.%s.queue must be a map (e.g. `queue:\n  workers: 3`)',
+                $tenantId,
+            ));
+        }
+
+        return Helpers::validatePositiveInt(
+            $queue['workers'] ?? 1,
+            "multitenancy.tenants.{$tenantId}.queue.workers",
+        );
     }
 
     public static function isHeadless(): bool

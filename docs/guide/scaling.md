@@ -196,6 +196,8 @@ On a multi-tenant app the backlog signal follows [`queue-isolation`](/reference/
 
 Only the `default` tier of each queue set counts toward the backlog; a `high` tier ([`queues:`](/reference/manifest#queues)) is meant to stay near-empty, so the base backlog is the throughput signal.
 
+Because the sum is app-wide, one tenant backing up while the rest sit idle barely moves it — the tier won't scale out for that tenant alone, and each new task would only add one more worker to it anyway. Give a consistently busy tenant more worker processes on every task instead with [`queue.workers`](/reference/manifest#multitenancy-tenants).
+
 ## The scheduler
 
 The scheduler ([supercronic](https://github.com/aptible/supercronic) firing `schedule:run` every minute) must run as a **singleton** — if it runs on N tasks, every scheduled job fires N times (N× emails, N× billing, N× reports). The queue is safe to multiply (SQS hands each message to one worker); the scheduler is not. There's no stable per-task identity on Fargate to elect one from, so pick one of two strategies.

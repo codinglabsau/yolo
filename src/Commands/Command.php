@@ -157,6 +157,7 @@ abstract class Command extends SymfonyCommand
             && $this->ensureAutoscalingDeclared()
             && $this->ensureSchedulerHostNotScaleToZero()
             && $this->ensureQueueIsolationValid()
+            && $this->ensureTenantQueueWorkersValid()
             && $this->ensureWildcardSubdomainsValid();
     }
 
@@ -247,6 +248,40 @@ abstract class Command extends SymfonyCommand
 
         try {
             Manifest::queueIsolation();
+        } catch (IntegrityCheckException $e) {
+            error($e->getMessage());
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Under `shared` isolation there is no per-tenant worker program to size, so the key
+     * is refused rather than silently ignored.
+     */
+    protected function ensureTenantQueueWorkersValid(): bool
+    {
+        $declared = collect(Manifest::get('multitenancy.tenants') ?? [])
+            ->filter(fn (?array $config): bool => isset($config['queue']))
+            ->keys();
+
+        if ($declared->isEmpty()) {
+            return true;
+        }
+
+        if (! Manifest::fansQueuesPerTenant()) {
+            error(sprintf(
+                'yolo.yml declares `multitenancy.tenants.%s.queue` but `multitenancy.queue-isolation` is not `dedicated` — shared tenants drain one queue set through one worker program, so there is no per-tenant worker count to set. Remove it, or set `queue-isolation: dedicated`.',
+                $declared->first(),
+            ));
+
+            return false;
+        }
+
+        try {
+            $declared->each(fn (string $tenantId): int => Manifest::tenantQueueWorkers($tenantId));
         } catch (IntegrityCheckException $e) {
             error($e->getMessage());
 

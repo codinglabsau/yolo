@@ -535,6 +535,60 @@ it('bails on an unknown queue-isolation value', function (): void {
     expect(test()->promptOutput->fetch())->toContain('queue-isolation');
 });
 
+describe('a tenant queue worker count', function (): void {
+    it('passes for a dedicated multi-tenant app', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => ['acme' => ['queue' => ['workers' => 3]]]],
+        ]);
+
+        expect(invokeManifestIntegrity())->toBeTrue();
+    });
+
+    it('bails under shared isolation, where there is no per-tenant program to size', function (string $isolation): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'multitenancy' => [...json_decode($isolation, true), 'tenants' => ['acme' => ['queue' => ['workers' => 3]]]],
+        ]);
+
+        expect(invokeManifestIntegrity())->toBeFalse();
+        expect(test()->promptOutput->fetch())->toContain('multitenancy.tenants.acme.queue');
+    })->with([
+        'explicit' => '{"queue-isolation":"shared"}',
+        'defaulted' => '{}',
+    ]);
+
+    it('bails on a count that is not a positive integer', function (mixed $workers): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => ['acme' => ['queue' => ['workers' => $workers]]]],
+        ]);
+
+        expect(invokeManifestIntegrity())->toBeFalse();
+        expect(test()->promptOutput->fetch())->toContain('multitenancy.tenants.acme.queue.workers must be a positive integer');
+    })->with([0, -1, 'lots', 1.5]);
+
+    it('bails on a bare count missing the workers key', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => ['acme' => ['queue' => 3]]],
+        ]);
+
+        expect(invokeManifestIntegrity())->toBeFalse();
+        expect(test()->promptOutput->fetch())->toContain('multitenancy.tenants.acme.queue must be a map');
+    });
+
+    it('refuses an unknown key under the tenant queue block', function (): void {
+        writeManifest([
+            'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+            'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => ['acme' => ['queue' => ['worker' => 3]]]],
+        ]);
+
+        expect(invokeManifestIntegrity())->toBeFalse();
+        expect(test()->promptOutput->fetch())->toContain('multitenancy.tenants.acme.queue.worker');
+    });
+});
+
 it('passes for a shared multi-tenant app', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',

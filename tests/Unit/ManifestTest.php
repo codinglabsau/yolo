@@ -188,6 +188,18 @@ describe('queue isolation', function (): void {
         expect(Manifest::fansQueuesPerTenant())->toBeFalse();
     });
 
+    it('defaults a tenant to one queue worker', function (): void {
+        writeManifest([
+            'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => [
+                'acme' => ['queue' => ['workers' => 3]],
+                'globex' => null,
+            ]],
+        ]);
+
+        expect(Manifest::tenantQueueWorkers('acme'))->toBe(3);
+        expect(Manifest::tenantQueueWorkers('globex'))->toBe(1);
+    });
+
     it('hard-fails on an unknown isolation value', function (): void {
         writeManifest([
             'multitenancy' => ['queue-isolation' => 'sometimes', 'tenants' => ['acme' => []]],

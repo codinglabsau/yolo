@@ -117,10 +117,10 @@ class GenerateSupervisorConfigStep implements Step
             }
 
             if ($program === 'queue') {
-                foreach ($this->queuePrograms() as $name => $chain) {
+                foreach ($this->queuePrograms() as $name => [$chain, $processes]) {
                     // Keyed on the tier, not the fanned-out program name — every per-scope
                     // program is the same workload.
-                    $blocks[] = $this->program($name, $this->queueCommand($chain, $colocatesWebServer), stopwaitsecs: $graces['queue'], role: 'queue');
+                    $blocks[] = $this->program($name, $this->queueCommand($chain, $colocatesWebServer), stopwaitsecs: $graces['queue'], role: 'queue', processes: $processes);
                 }
 
                 continue;
@@ -137,20 +137,22 @@ class GenerateSupervisorConfigStep implements Step
      * drains a comma list in strict priority, so a whale tenant's backlog would
      * starve the others. Chains come from Helpers::queueChain — the same source
      * the SQS queues are provisioned from — so a worker never polls a queue that
-     * wasn't created.
+     * wasn't created. Only a tenant program takes a worker count: a busy tenant's
+     * backlog is summed with everyone else's for scale-out, so adding tasks can't
+     * target it — more workers on its own program can.
      *
-     * @return array<string, string|null>
+     * @return array<string, array{0: string|null, 1: int}>
      */
     protected function queuePrograms(): array
     {
         if (! Manifest::fansQueuesPerTenant()) {
-            return ['queue' => Helpers::queueChain()];
+            return ['queue' => [Helpers::queueChain(), 1]];
         }
 
-        $programs = ['queue_landlord' => Helpers::queueChain('landlord')];
+        $programs = ['queue_landlord' => [Helpers::queueChain('landlord'), 1]];
 
         foreach (array_keys(Manifest::tenants()) as $tenantId) {
-            $programs["queue_{$tenantId}"] = Helpers::queueChain($tenantId);
+            $programs["queue_{$tenantId}"] = [Helpers::queueChain($tenantId), Manifest::tenantQueueWorkers($tenantId)];
         }
 
         return $programs;
@@ -335,11 +337,17 @@ class GenerateSupervisorConfigStep implements Step
         return $colocatesWebServer ? (self::PROGRAM_NICE[$program] ?? null) : null;
     }
 
-    protected function program(string $name, string $command, int $stopwaitsecs = 10, ?string $role = null): string
+    /**
+     * A single process keeps supervisord's default process name, so an app that never
+     * raises its worker count sees no change to its generated config.
+     */
+    protected function program(string $name, string $command, int $stopwaitsecs = 10, ?string $role = null, int $processes = 1): string
     {
         return implode("\n", array_filter([
             "[program:$name]",
             "command=$command",
+            $processes === 1 ? null : "numprocs=$processes",
+            $processes === 1 ? null : 'process_name=%(program_name)s_%(process_num)02d',
             $role === null ? null : 'environment=' . self::ROLE_VARIABLE . "=$role",
             'autostart=true',
             'autorestart=true',

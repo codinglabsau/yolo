@@ -535,6 +535,31 @@ it('fans the bundled queue worker into one program per scope for a dedicated mul
     expect($config)->toContain('--queue=yolo-testing-my-app-globex');
 });
 
+it('runs a tenant program with its declared worker count, leaving the others single-process', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => false]],
+        'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => [
+            'acme' => ['queue' => ['workers' => 3]],
+            'globex' => [],
+        ]],
+    ]);
+
+    $config = generatedSupervisorConfig();
+
+    // supervisord refuses numprocs > 1 without a per-process name.
+    expect(supervisorProgram($config, 'queue_acme'))
+        ->toContain('numprocs=3')
+        ->toContain('process_name=%(program_name)s_%(process_num)02d');
+
+    // An undeclared count renders exactly as before — no numprocs, no renamed process.
+    foreach (['queue_globex', 'queue_landlord'] as $program) {
+        expect(supervisorProgram($config, $program))
+            ->not->toContain('numprocs')
+            ->not->toContain('process_name');
+    }
+});
+
 it('chains each per-tenant program over the declared priority tiers', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',

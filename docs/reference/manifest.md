@@ -234,6 +234,19 @@ tenants:
 
 A tenant's `apex` is derived from its `domain` exactly as the app's is — never declared. A tenant whose domain the landlord's certificate already covers provisions no DNS/TLS resources of its own; see [Graduating a tenant onto its own domain](/guide/multi-tenancy#graduating-a-tenant-onto-its-own-domain).
 
+Under [`queue-isolation: dedicated`](#multitenancy-queue-isolation) a tenant can also take more than one worker process with `queue.workers` — a positive integer, default `1`, counted **per queue-carrying task**:
+
+```yaml
+queue-isolation: dedicated
+tenants:
+  acme:
+    queue:
+      workers: 3              # three queue:work processes on acme's program, on every task
+  globex:                     # one, as before
+```
+
+It raises that tenant's throughput without adding tasks, which matters because the queue tier [scales on the backlog summed across every tenant](/guide/scaling#multi-tenant-queues) — one busy tenant's pile-up barely moves the sum, so scale-out can't target it. The landlord program stays single-process. Declared under `shared` (or with `queue-isolation` unset) it is refused: every tenant drains through one worker program, so there is no per-tenant count to set. Each extra process is another full `queue:work` in memory, so check the queue task's [`memory`](#tasks-queue) headroom before raising it.
+
 #### `multitenancy.queue-isolation`
 
 How tenants map onto SQS queues and worker programs — `shared` (default) or `dedicated`. Only valid alongside `multitenancy.tenants`; with a single scope (a solo app, or a landlord-only block) there is nothing to isolate, so the key is refused rather than silently ignored.
@@ -241,7 +254,7 @@ How tenants map onto SQS queues and worker programs — `shared` (default) or `d
 | Value | Queues | Workers | Trade |
 | --- | --- | --- | --- |
 | `shared` (default) | one queue set at the app name, the same shape a solo app has; the tenant rides the job payload | one worker per tier drains every tenant | Scales to any tenant count. A whale tenant's backlog delays the others. |
-| `dedicated` | one queue set per tenant (`…-{tenant}[-tier]`), plus a landlord set | supervisord runs one `queue:work` per tenant | Fair — no tenant can starve another. N tenants means N queues and N worker programs per tier, so it scales to dozens, not hundreds. |
+| `dedicated` | one queue set per tenant (`…-{tenant}[-tier]`), plus a landlord set | supervisord runs one `queue:work` program per tenant — one process unless the tenant sets [`queue.workers`](#multitenancy-tenants) | Fair — no tenant can starve another. N tenants means N queues and N worker programs per tier, so it scales to dozens, not hundreds. |
 
 A `shared` app pins `SQS_QUEUE` at build; a `dedicated` one resolves the per-tenant queue at runtime, so nothing is pinned.
 
