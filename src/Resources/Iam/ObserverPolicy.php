@@ -13,6 +13,7 @@ use Codinglabs\Yolo\EnvironmentVersion;
 use Codinglabs\Yolo\Resources\Resource;
 use Codinglabs\Yolo\Resources\Deletable;
 use Codinglabs\Yolo\Resources\ResolvesTags;
+use Codinglabs\Yolo\Resources\ElbV2\LoadBalancer;
 use Codinglabs\Yolo\Resources\SynchronisesConfiguration;
 
 /**
@@ -255,6 +256,15 @@ class ObserverPolicy implements Deletable, Resource, SynchronisesConfiguration
                     // FilterLogEvents is NOT a Get* action (status:logs tails through it).
                     'logs:Filter*',
                     'logs:ListTagsForResource',
+                ],
+            ],
+            [
+                // ALB access logs are log content too; the ALB serves every app in
+                // the env, so they stay off the per-app variant.
+                'Effect' => 'Allow',
+                'Resource' => sprintf('arn:aws:s3:::%s/%s/*', Paths::s3LogsBucket(), (new LoadBalancer())->accessLogsPrefix()),
+                'Action' => [
+                    's3:GetObject',
                 ],
             ],
         ];

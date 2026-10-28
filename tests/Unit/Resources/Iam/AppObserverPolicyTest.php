@@ -70,6 +70,13 @@ it('scopes log-group TAG reads to the bare ARN, not the :* stream form (the depl
     expect($contentStatement['Action'])->not->toContain('logs:ListTagsForResource');
 });
 
+it('drops ALB access log reads — the ALB serves every app in the env', function (): void {
+    $logsBucketStatements = collect(appObserverStatements())
+        ->filter(fn (array $s): bool => str_contains(implode(' ', (array) $s['Resource']), '-logs/'));
+
+    expect($logsBucketStatements)->toBeEmpty();
+});
+
 it('keeps DescribeLogGroups on * — listing group names leaks nothing, reading content is fenced', function (): void {
     $describeStatement = collect(appObserverStatements())
         ->first(fn (array $s): bool => $s['Resource'] === '*' && in_array('logs:Describe*', (array) $s['Action'], true));
