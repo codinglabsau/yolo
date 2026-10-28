@@ -210,7 +210,7 @@ multitenancy:
       wildcard-subdomains: true
 ```
 
-Every key is validated explicitly — there is no free-form subtree, so a misremembered or hand-written key (`apex`, say, which is always derived) fails the manifest check rather than being silently accepted and ignored. A root [`domain`](#domain) or [`wildcard-subdomains`](#wildcard-subdomains) alongside the block is refused with a message naming where it belongs (`multitenancy.landlord.domain`; the flag onto the landlord or the tenant whose domain it wildcards).
+Every key is validated explicitly — there is no free-form subtree, so a misremembered or hand-written key (`apex`, say, which is always derived) fails the manifest check rather than being silently accepted and ignored. Its shape is checked too: the block, `landlord`, `tenants` and each tenant must be a map or left bare, so `tenants: [acme]` or `acme: acme.example.com` is refused. A root [`domain`](#domain) or [`wildcard-subdomains`](#wildcard-subdomains) alongside the block is refused with a message naming where it belongs (`multitenancy.landlord.domain`; the flag onto the landlord or the tenant whose domain it wildcards).
 
 #### `multitenancy.landlord`
 
@@ -242,7 +242,7 @@ tenants:
   acme:
     queue:
       workers: 3              # three queue:work processes on acme's program, on every task
-  globex:                     # one, as before
+  globex:                     # one, the default
 ```
 
 It raises that tenant's throughput without adding tasks, which matters because the queue tier [scales on the backlog summed across every tenant](/guide/scaling#multi-tenant-queues) — one busy tenant's pile-up barely moves the sum, so scale-out can't target it. The landlord program stays single-process. Declared under `shared` (or with `queue-isolation` unset) it is refused: every tenant drains through one worker program, so there is no per-tenant count to set. Each extra process is another full `queue:work` in memory, so check the queue task's [`memory`](#tasks-queue) headroom before raising it.

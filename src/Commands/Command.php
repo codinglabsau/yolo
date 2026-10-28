@@ -145,6 +145,7 @@ abstract class Command extends SymfonyCommand
         return $this->ensureNameDeclared()
             && $this->ensureNameNotReserved()
             && $this->ensureMultitenancyKeysNested()
+            && $this->ensureMultitenancyWellFormed()
             && $this->ensureNoUnknownManifestKeys()
             && $this->ensureManifestKeyDeclared('region')
             && $this->ensureManifestKeyDeclared('account-id')
@@ -187,6 +188,47 @@ abstract class Command extends SymfonyCommand
                 "yolo.yml declares both `wildcard-subdomains` and `multitenancy` — the flag belongs to the landlord or tenant whose domain it wildcards.\n"
                 . 'Move it to `multitenancy.landlord.wildcard-subdomains`, or onto the tenant as `multitenancy.tenants.<id>.wildcard-subdomains`.'
             );
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * The key sweep can't see a block's shape — a scalar or a list is a leaf, and a path
+     * may stop short of its pattern — so `tenants: [acme]` or `acme: acme.example.com`
+     * would otherwise pass it and reach readers that assume a map.
+     */
+    protected function ensureMultitenancyWellFormed(): bool
+    {
+        if (! Manifest::has('multitenancy')) {
+            return true;
+        }
+
+        $blocks = ['multitenancy' => Manifest::get('multitenancy')];
+
+        if (is_array($blocks['multitenancy'])) {
+            $blocks['multitenancy.landlord'] = Manifest::get('multitenancy.landlord');
+            $blocks['multitenancy.tenants'] = Manifest::get('multitenancy.tenants');
+
+            if (is_array($blocks['multitenancy.tenants'])) {
+                foreach ($blocks['multitenancy.tenants'] as $tenantId => $config) {
+                    $blocks["multitenancy.tenants.{$tenantId}"] = $config;
+                }
+            }
+        }
+
+        foreach ($blocks as $path => $value) {
+            if ($value === null || $value === [] || (is_array($value) && ! array_is_list($value))) {
+                continue;
+            }
+
+            error(sprintf(
+                'yolo.yml `%s` must be a map of keys or left bare — got %s.',
+                $path,
+                json_encode($value),
+            ));
 
             return false;
         }
@@ -264,7 +306,7 @@ abstract class Command extends SymfonyCommand
     protected function ensureTenantQueueWorkersValid(): bool
     {
         $declared = collect(Manifest::get('multitenancy.tenants') ?? [])
-            ->filter(fn (?array $config): bool => isset($config['queue']))
+            ->filter(fn (?array $config): bool => array_key_exists('queue', $config ?? []))
             ->keys();
 
         if ($declared->isEmpty()) {
@@ -281,7 +323,7 @@ abstract class Command extends SymfonyCommand
         }
 
         try {
-            $declared->each(fn (string $tenantId): int => Manifest::tenantQueueWorkers($tenantId));
+            $declared->each(fn (int|string $tenantId): int => Manifest::tenantQueueWorkers((string) $tenantId));
         } catch (IntegrityCheckException $e) {
             error($e->getMessage());
 

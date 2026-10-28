@@ -615,14 +615,14 @@ it('runs a multi-tenant standalone queue under supervisord even without a co-hos
         // queue task would be a single exec'd worker, but a dedicated multi-tenant app
         // needs supervisord to run one program per tenant.
         'tasks' => ['web' => true, 'queue' => true, 'scheduler' => true],
-        'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => ['acme' => []]],
+        'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => ['acme' => ['queue' => ['workers' => 3]]]],
     ]);
 
     (new GenerateSupervisorConfigStep('testing'))();
 
     $queue = file_get_contents(Paths::build('docker/supervisord.queue.conf'));
     expect($queue)->toContain('[program:queue_landlord]');
-    expect($queue)->toContain('[program:queue_acme]');
+    expect(supervisorProgram($queue, 'queue_acme'))->toContain('numprocs=3');
     // The scheduler is its own service, so it isn't in the queue container.
     expect($queue)->not->toContain('[program:scheduler]');
     // Standalone queue: no web server to protect, so the workers run un-niced.
