@@ -145,6 +145,7 @@ abstract class Command extends SymfonyCommand
         return $this->ensureNameDeclared()
             && $this->ensureNameNotReserved()
             && $this->ensureMultitenancyKeysNested()
+            && $this->ensureMultitenancyWellFormed()
             && $this->ensureNoUnknownManifestKeys()
             && $this->ensureManifestKeyDeclared('region')
             && $this->ensureManifestKeyDeclared('account-id')
@@ -157,6 +158,7 @@ abstract class Command extends SymfonyCommand
             && $this->ensureAutoscalingDeclared()
             && $this->ensureSchedulerHostNotScaleToZero()
             && $this->ensureQueueIsolationValid()
+            && $this->ensureTenantQueueWorkersValid()
             && $this->ensureWildcardSubdomainsValid();
     }
 
@@ -186,6 +188,47 @@ abstract class Command extends SymfonyCommand
                 "yolo.yml declares both `wildcard-subdomains` and `multitenancy` — the flag belongs to the landlord or tenant whose domain it wildcards.\n"
                 . 'Move it to `multitenancy.landlord.wildcard-subdomains`, or onto the tenant as `multitenancy.tenants.<id>.wildcard-subdomains`.'
             );
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * The key sweep can't see a block's shape — a scalar or a list is a leaf, and a path
+     * may stop short of its pattern — so `tenants: [acme]` or `acme: acme.example.com`
+     * would otherwise pass it and reach readers that assume a map.
+     */
+    protected function ensureMultitenancyWellFormed(): bool
+    {
+        if (! Manifest::has('multitenancy')) {
+            return true;
+        }
+
+        $blocks = ['multitenancy' => Manifest::get('multitenancy')];
+
+        if (is_array($blocks['multitenancy'])) {
+            $blocks['multitenancy.landlord'] = Manifest::get('multitenancy.landlord');
+            $blocks['multitenancy.tenants'] = Manifest::get('multitenancy.tenants');
+
+            if (is_array($blocks['multitenancy.tenants'])) {
+                foreach ($blocks['multitenancy.tenants'] as $tenantId => $config) {
+                    $blocks["multitenancy.tenants.{$tenantId}"] = $config;
+                }
+            }
+        }
+
+        foreach ($blocks as $path => $value) {
+            if ($value === null || $value === [] || (is_array($value) && ! array_is_list($value))) {
+                continue;
+            }
+
+            error(sprintf(
+                'yolo.yml `%s` must be a map of keys or left bare — got %s.',
+                $path,
+                json_encode($value),
+            ));
 
             return false;
         }
@@ -247,6 +290,40 @@ abstract class Command extends SymfonyCommand
 
         try {
             Manifest::queueIsolation();
+        } catch (IntegrityCheckException $e) {
+            error($e->getMessage());
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Under `shared` isolation there is no per-tenant worker program to size, so the key
+     * is refused rather than silently ignored.
+     */
+    protected function ensureTenantQueueWorkersValid(): bool
+    {
+        $declared = collect(Manifest::get('multitenancy.tenants') ?? [])
+            ->filter(fn (?array $config): bool => array_key_exists('queue', $config ?? []))
+            ->keys();
+
+        if ($declared->isEmpty()) {
+            return true;
+        }
+
+        if (! Manifest::fansQueuesPerTenant()) {
+            error(sprintf(
+                'yolo.yml declares `multitenancy.tenants.%s.queue` but `multitenancy.queue-isolation` is not `dedicated` — shared tenants drain one queue set through one worker program, so there is no per-tenant worker count to set. Remove it, or set `queue-isolation: dedicated`.',
+                $declared->first(),
+            ));
+
+            return false;
+        }
+
+        try {
+            $declared->each(fn (int|string $tenantId): int => Manifest::tenantQueueWorkers((string) $tenantId));
         } catch (IntegrityCheckException $e) {
             error($e->getMessage());
 

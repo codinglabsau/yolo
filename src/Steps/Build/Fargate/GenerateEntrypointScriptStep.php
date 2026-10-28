@@ -150,7 +150,7 @@ SH,
         }
 
         $body = Manifest::schedulerHost() === ServerGroup::WEB
-            ? "supervisorctl -c /etc/supervisord.conf stop scheduler >/dev/null 2>&1 &\n"
+            ? sprintf("supervisorctl -c /etc/supervisord.conf stop %s:scheduler >/dev/null 2>&1 &\n", GenerateSupervisorConfigStep::GROUP)
             : '';
 
         return $body . "sleep $drain\n";

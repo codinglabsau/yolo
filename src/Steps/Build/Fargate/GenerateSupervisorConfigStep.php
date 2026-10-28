@@ -44,6 +44,11 @@ class GenerateSupervisorConfigStep implements Step
      */
     private const string ROLE_VARIABLE = 'YOLO_BURST_ROLE';
 
+    /**
+     * Every program joins one group, so supervisorctl addresses each as `app:<program>`.
+     */
+    public const string GROUP = 'app';
+
     public function __construct(
         protected string $environment,
         protected $filesystem = new Filesystem()
@@ -104,6 +109,7 @@ class GenerateSupervisorConfigStep implements Step
     protected function config(ServerGroup $group, array $graces): string
     {
         $blocks = [$this->header()];
+        $programs = [];
 
         // programGraces only emits a 'web' grace for the web group, so its
         // presence is the co-location trigger for nicing background programs.
@@ -117,19 +123,39 @@ class GenerateSupervisorConfigStep implements Step
             }
 
             if ($program === 'queue') {
-                foreach ($this->queuePrograms() as $name => $chain) {
+                foreach ($this->queuePrograms() as $name => [$chain, $processes]) {
                     // Keyed on the tier, not the fanned-out program name — every per-scope
                     // program is the same workload.
-                    $blocks[] = $this->program($name, $this->queueCommand($chain, $colocatesWebServer), stopwaitsecs: $graces['queue'], role: 'queue');
+                    $blocks[] = $this->program($name, $this->queueCommand($chain, $colocatesWebServer), stopwaitsecs: $graces['queue'], role: 'queue', processes: $processes);
+                    $programs[] = $name;
                 }
 
                 continue;
             }
 
             $blocks[] = $this->program($program, $this->command($program, $colocatesWebServer), stopwaitsecs: $graces[$program], role: $program);
+            $programs[] = $program;
         }
 
+        $blocks[] = $this->group($programs);
+
         return implode("\n\n", $blocks) . "\n";
+    }
+
+    /**
+     * supervisord stops one group at a time, waiting for it to exit before signalling the
+     * next, and an ungrouped program is a group of its own — so separate programs would stop
+     * in series, each grace stacking on the last. One group signals them all at once, the
+     * overlap {@see ShutdownTimings::stopTimeoutFor()} budgets on.
+     *
+     * @param  array<int, string>  $programs
+     */
+    protected function group(array $programs): string
+    {
+        return implode("\n", [
+            '[group:' . self::GROUP . ']',
+            'programs=' . implode(',', $programs),
+        ]);
     }
 
     /**
@@ -137,20 +163,22 @@ class GenerateSupervisorConfigStep implements Step
      * drains a comma list in strict priority, so a whale tenant's backlog would
      * starve the others. Chains come from Helpers::queueChain — the same source
      * the SQS queues are provisioned from — so a worker never polls a queue that
-     * wasn't created.
+     * wasn't created. Only a tenant program takes a worker count: a busy tenant's
+     * backlog is summed with everyone else's for scale-out, so adding tasks can't
+     * target it — more workers on its own program can.
      *
-     * @return array<string, string|null>
+     * @return array<string, array{0: string|null, 1: int}>
      */
     protected function queuePrograms(): array
     {
         if (! Manifest::fansQueuesPerTenant()) {
-            return ['queue' => Helpers::queueChain()];
+            return ['queue' => [Helpers::queueChain(), 1]];
         }
 
-        $programs = ['queue_landlord' => Helpers::queueChain('landlord')];
+        $programs = ['queue_landlord' => [Helpers::queueChain('landlord'), 1]];
 
         foreach (array_keys(Manifest::tenants()) as $tenantId) {
-            $programs["queue_{$tenantId}"] = Helpers::queueChain($tenantId);
+            $programs["queue_{$tenantId}"] = [Helpers::queueChain($tenantId), Manifest::tenantQueueWorkers($tenantId)];
         }
 
         return $programs;
@@ -335,11 +363,17 @@ class GenerateSupervisorConfigStep implements Step
         return $colocatesWebServer ? (self::PROGRAM_NICE[$program] ?? null) : null;
     }
 
-    protected function program(string $name, string $command, int $stopwaitsecs = 10, ?string $role = null): string
+    /**
+     * A single process keeps supervisord's default process name, so an app that never
+     * raises its worker count sees no change to its generated config.
+     */
+    protected function program(string $name, string $command, int $stopwaitsecs = 10, ?string $role = null, int $processes = 1): string
     {
         return implode("\n", array_filter([
             "[program:$name]",
             "command=$command",
+            $processes === 1 ? null : "numprocs=$processes",
+            $processes === 1 ? null : 'process_name=%(program_name)s_%(process_num)02d',
             $role === null ? null : 'environment=' . self::ROLE_VARIABLE . "=$role",
             'autostart=true',
             'autorestart=true',

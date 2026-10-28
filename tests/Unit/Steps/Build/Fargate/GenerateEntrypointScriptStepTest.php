@@ -57,7 +57,8 @@ it('dispatches the web role to supervisord and signals the bundled scheduler bef
     // drain window so no new schedule:run launches while web keeps serving —
     // backgrounded, so waiting out the in-flight run overlaps the window instead
     // of delaying the forward.
-    expect($script)->toContain("supervisorctl -c /etc/supervisord.conf stop scheduler >/dev/null 2>&1 &\n");
+    // Addressed through its group — a bare `scheduler` would fail silently behind the redirect.
+    expect($script)->toContain("supervisorctl -c /etc/supervisord.conf stop app:scheduler >/dev/null 2>&1 &\n");
     expect($script)->toContain("sleep 15\n");
 });
 

@@ -143,7 +143,7 @@ deploy:
 
 `multitenancy.tenants` is optional, and the [route](#tenant-in-the-route) and [subdomain](#tenant-in-the-subdomain) shapes leave it out entirely — YOLO has nothing to provision per tenant, so a list it can only fall out of step with buys nothing.
 
-The one reason to declare a tenant anyway is [`queue-isolation`](/reference/manifest#multitenancy-queue-isolation): on `dedicated`, each declared tenant gets its own SQS queue, depth alarm and worker program. Everything else about it stays exactly as it was.
+The one reason to declare a tenant anyway is [`queue-isolation`](/reference/manifest#multitenancy-queue-isolation): on `dedicated`, each declared tenant gets its own SQS queue, depth alarm and worker program — one process by default, more with [`queue.workers`](/reference/manifest#multitenancy-tenants) for a tenant that needs the throughput. Everything else about it stays exactly as it was.
 
 ## Tearing down
 

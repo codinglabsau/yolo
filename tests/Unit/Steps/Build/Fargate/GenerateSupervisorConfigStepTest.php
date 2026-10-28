@@ -535,6 +535,31 @@ it('fans the bundled queue worker into one program per scope for a dedicated mul
     expect($config)->toContain('--queue=yolo-testing-my-app-globex');
 });
 
+it('runs a tenant program with its declared worker count, leaving the others single-process', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        'tasks' => ['web' => ['autoscaling' => false]],
+        'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => [
+            'acme' => ['queue' => ['workers' => 3]],
+            'globex' => [],
+        ]],
+    ]);
+
+    $config = generatedSupervisorConfig();
+
+    // supervisord refuses numprocs > 1 without a per-process name.
+    expect(supervisorProgram($config, 'queue_acme'))
+        ->toContain('numprocs=3')
+        ->toContain('process_name=%(program_name)s_%(process_num)02d');
+
+    // An undeclared count renders exactly as before — no numprocs, no renamed process.
+    foreach (['queue_globex', 'queue_landlord'] as $program) {
+        expect(supervisorProgram($config, $program))
+            ->not->toContain('numprocs')
+            ->not->toContain('process_name');
+    }
+});
+
 it('chains each per-tenant program over the declared priority tiers', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2',
@@ -590,19 +615,36 @@ it('runs a multi-tenant standalone queue under supervisord even without a co-hos
         // queue task would be a single exec'd worker, but a dedicated multi-tenant app
         // needs supervisord to run one program per tenant.
         'tasks' => ['web' => true, 'queue' => true, 'scheduler' => true],
-        'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => ['acme' => []]],
+        'multitenancy' => ['queue-isolation' => 'dedicated', 'tenants' => ['acme' => ['queue' => ['workers' => 3]]]],
     ]);
 
     (new GenerateSupervisorConfigStep('testing'))();
 
     $queue = file_get_contents(Paths::build('docker/supervisord.queue.conf'));
     expect($queue)->toContain('[program:queue_landlord]');
-    expect($queue)->toContain('[program:queue_acme]');
+    expect(supervisorProgram($queue, 'queue_acme'))->toContain('numprocs=3');
     // The scheduler is its own service, so it isn't in the queue container.
     expect($queue)->not->toContain('[program:scheduler]');
     // Standalone queue: no web server to protect, so the workers run un-niced.
     expect($queue)->not->toContain('nice');
 });
+
+it('groups every program so supervisord stops them at once, not one after another', function (string $manifest, string $file, string $programs): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2',
+        ...json_decode($manifest, true),
+    ]);
+
+    (new GenerateSupervisorConfigStep('testing'))();
+
+    // An ungrouped program is its own group, and supervisord waits for each group to exit
+    // before signalling the next — so without this the graces would stack.
+    expect(file_get_contents(Paths::build($file)))->toEndWith("[group:app]\nprograms={$programs}\n");
+})->with([
+    'bundled web' => ['{"tasks":{"web":{"autoscaling":false}}}', 'docker/supervisord.conf', 'web,scheduler,queue'],
+    'standalone queue hosting the scheduler' => ['{"domain":"example.com","tasks":{"web":true,"queue":true}}', 'docker/supervisord.queue.conf', 'scheduler,queue'],
+    'dedicated tenants' => ['{"domain":"example.com","tasks":{"web":true,"queue":true,"scheduler":true},"multitenancy":{"queue-isolation":"dedicated","tenants":{"acme":null,"globex":null}}}', 'docker/supervisord.queue.conf', 'queue_landlord,queue_acme,queue_globex'],
+]);
 
 it('never bundles a saturation program — burst metrics ride the request, not a supervised loop', function (): void {
     writeManifest([
