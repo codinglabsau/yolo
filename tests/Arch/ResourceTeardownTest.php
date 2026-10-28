@@ -28,7 +28,7 @@ it('every app-scoped resource is deletable, except the ones marked Undeletable',
     $instantiate = function (ReflectionClass $reflection): object {
         $constructor = $reflection->getConstructor();
 
-        if ($constructor === null) {
+        if (! $constructor instanceof ReflectionMethod) {
             return $reflection->newInstance();
         }
 
