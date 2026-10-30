@@ -106,62 +106,6 @@ credential_process = /Users/you/.local/bin/yolo-credentials-1password "AWS my-ap
 region = ap-southeast-2
 ```
 
-## Coding agents
-
-A coding agent on your machine (Claude Code, Codex, Cursor) inherits whatever AWS profile its shell resolves — usually yours, which reaches every tier you hold. Harness permission rules only match command text, so they can't reliably keep it to reads (`php yolo deploy`, a script, or a raw `aws sts assume-role` all slip past a `yolo deploy` rule). Give the agent a read-only identity of its own instead: AWS then enforces the cap, and you can let the agent run `yolo` and `aws` without approving each call.
-
-The setup is one shared IAM user per environment, held in an observers group, with its key and TOTP in a shared 1Password item. No YOLO resource is involved — it is an ordinary team member as far as YOLO is concerned.
-
-### Admin: create the agent user
-
-Once per environment, in the console:
-
-1. Create a user (e.g. `yolo-production-agent`) with **no console password**.
-2. **Assign a virtual MFA device** to it (*Security credentials → Assign MFA device → Authenticator app*), scanning the QR into a new 1Password item in a vault the team shares.
-3. **Create an access key** and add `aws_access_key_id` and `aws_secret_access_key` to the same item — the [same fields](#developer-store-the-keys-in-1password) as a developer's.
-4. Grant it an observer tier with [`yolo permissions`](/reference/commands#yolo-permissions): `yolo-{env}-observers` for every app, or `yolo-{env}-{app}-observers` to fence it to one app's data and logs.
-
-Share the vault with the people who may run agents against that environment.
-
-### Developer: add the agent profiles
-
-Two profiles in `~/.aws/config` — one for YOLO, one for raw `aws` calls:
-
-```ini
-# Base identity — YOLO mints the observer tier from it, the same way it does from yours
-[profile my-app-production-agent]
-credential_process = /Users/you/.local/bin/yolo-credentials-1password "AWS my-app production agent" "Shared"
-region = ap-southeast-2
-
-# The observer role directly, for the agent's own `aws` calls
-[profile my-app-production-agent-observer]
-source_profile = my-app-production-agent
-role_arn = arn:aws:iam::123456789012:role/yolo-production-observer-role
-role_session_name = agent-yourname
-region = ap-southeast-2
-```
-
-The helper forwards the item's TOTP as it does for your own profile, so nothing prompts: read commands mint the observer role as usual, and anything above observer (`deploy`, `run`, `env:pull`, `sync`) fails with AccessDenied because the user isn't in a group that grants it. `role_session_name` puts your name on the agent's sessions in CloudTrail — a label you set, not proof of who ran it.
-
-Point the agent at those profiles in the app repo's harness settings, e.g. `.claude/settings.json`:
-
-```json
-{
-  "env": {
-    "YOLO_PRODUCTION_AWS_PROFILE": "my-app-production-agent",
-    "AWS_PROFILE": "my-app-production-agent-observer"
-  }
-}
-```
-
-Real environment variables win over the app's `.env` (YOLO loads it without overwriting), so your own terminal keeps your profile while the agent gets its own. With AWS holding the cap, allowing `Bash(yolo:*)` and `Bash(aws:*)` in the same file is safe.
-
-::: warning What this does and doesn't cover
-- **Observers read data.** The environment observer tier reads every app's data bucket and can open a [`db:tunnel`](/reference/commands#yolo-db-tunnel); the per-app tier narrows that to one app. Pick the tier with that in mind.
-- **It caps the agent's profile, not the agent.** An agent that deliberately switches to your profile, or reads your own 1Password item, still has your access. Fencing that needs a sandbox around the agent, not IAM.
-- **The key is shared.** Rotate it when someone leaves the vault — and since observers can manage their own keys with MFA, check for any extra key while you're there.
-:::
-
 ## Short-lived sessions with `yolo-credentials-1password`
 
 The helper ([`bin/yolo-credentials-1password`](https://github.com/codinglabsau/yolo/blob/main/bin/yolo-credentials-1password)) reads the long-lived key from 1Password at mint time, calls `sts:GetSessionToken` — forwarding MFA automatically when the user has a device registered — and caches the short-lived session (4 hours, under `~/.aws/codinglabs-cache` with owner-only permissions) so the CLI doesn't re-prompt, and never reuses a TOTP, on every call. Long-lived keys never touch disk; only the expiring session does.
