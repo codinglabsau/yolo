@@ -51,8 +51,9 @@ class AppObserverPolicy extends ObserverPolicy
         $accountId = Aws::accountId();
         $logGroupName = (new TaskLogGroup())->name();
 
-        // Log *content* uses the ':*' ARN; the group itself (tagging API) uses the
-        // bare ARN. A ':*' grant does not match a bare-ARN request.
+        // Stream-level reads (GetLogEvents) match the ':*' ARN; group-level ones
+        // (FilterLogEvents, GetLogGroupFields, tagging) match only the bare ARN.
+        // A ':*' grant does not match a bare-ARN request.
         $logContentArn = sprintf('arn:aws:logs:%s:%s:log-group:%s:*', $region, $accountId, $logGroupName);
         $logGroupArn = sprintf('arn:aws:logs:%s:%s:log-group:%s', $region, $accountId, $logGroupName);
 
@@ -67,7 +68,7 @@ class AppObserverPolicy extends ObserverPolicy
                 // GetQueryResults (Insights) omitted: results are unscopeable and would
                 // re-open the fence this policy exists to close.
                 'Effect' => 'Allow',
-                'Resource' => $logContentArn,
+                'Resource' => [$logGroupArn, $logContentArn],
                 'Action' => [
                     'logs:GetLogEvents',
                     'logs:GetLogGroupFields',
