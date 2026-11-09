@@ -74,7 +74,7 @@ it('classifies a gaugeless 200 as absent (metrics off)', function (): void {
 });
 
 it('classifies a connection failure as a failure', function (): void {
-    Http::fake(fn () => throw new ConnectionException('timed out'));
+    Http::fake(fn (): never => throw new ConnectionException('timed out'));
 
     expect((new MetricsScraper())->scrape()->outcome)->toBe(ScrapeOutcome::Failure);
 });
