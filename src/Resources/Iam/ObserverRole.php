@@ -17,10 +17,12 @@ use Codinglabs\Yolo\Exceptions\ResourceDoesNotExistException;
  * The read-only tier: carries {@see ObserverPolicy}, so a profile assuming it can
  * inspect exactly YOLO's services and nothing mutating — safe by construction.
  *
- * Trust is the account root with MFA required — by design. Same-account root trust
- * still needs an `sts:AssumeRole` allow on the caller's own identity, so
- * {@see ObserversGroup} membership is the gate; pinning principals here would only
- * churn the trust document on every membership change.
+ * Trust is the account root with no MFA condition, so a bare key pair can hold the
+ * tier — automation reads without a human factor. Every tier that writes adds MFA
+ * ({@see requiresMfa()}). Same-account root trust still needs an `sts:AssumeRole`
+ * allow on the caller's own identity, so {@see ObserversGroup} membership is the
+ * gate; pinning principals here would only churn the trust document on every
+ * membership change.
  */
 class ObserverRole implements Deletable, Resource, SynchronisesConfiguration
 {
@@ -119,14 +121,22 @@ class ObserverRole implements Deletable, Resource, SynchronisesConfiguration
                     'Effect' => 'Allow',
                     'Principal' => ['AWS' => sprintf('arn:aws:iam::%s:root', Aws::accountId())],
                     'Action' => 'sts:AssumeRole',
-                    // MFA even for read-only: the tier caps what YOLO does, not what the
-                    // key pair could do elsewhere. yolo-credentials-1password sessions
-                    // carry the MFA context; bare static keys are denied.
-                    'Condition' => [
-                        'Bool' => ['aws:MultiFactorAuthPresent' => 'true'],
-                    ],
+                    ...$this->requiresMfa() ? [
+                        'Condition' => [
+                            'Bool' => ['aws:MultiFactorAuthPresent' => 'true'],
+                        ],
+                    ] : [],
                 ],
             ],
         ];
+    }
+
+    /**
+     * Subclasses inherit this trust document, so a tier that grants more than reads
+     * must opt back in here or it silently loses its MFA gate.
+     */
+    protected function requiresMfa(): bool
+    {
+        return false;
     }
 }

@@ -195,7 +195,7 @@ class ConfigureCommand extends Command implements RunsWithoutAws
             label: '1Password item holding the AWS access key',
             placeholder: 'eg. AWS Acme Production',
             required: true,
-            hint: 'Required fields: aws_access_key_id, aws_secret_access_key, and a one-time-password (TOTP) field — every YOLO tier requires MFA.',
+            hint: 'Required fields: aws_access_key_id, aws_secret_access_key, and a one-time-password (TOTP) field — every YOLO tier above observer requires MFA.',
         );
 
         $vault = text(label: '1Password vault', default: 'Employee');
@@ -384,33 +384,34 @@ class ConfigureCommand extends Command implements RunsWithoutAws
 
     /**
      * MFA is invisible in a green verify (a successful credential_process never
-     * surfaces the helper's stderr warning), yet every tier role's trust demands
-     * `aws:MultiFactorAuthPresent` — fail at setup with the missing half named,
-     * not at the first real command with an opaque AccessDenied.
+     * surfaces the helper's stderr warning), yet every tier role above observer
+     * demands `aws:MultiFactorAuthPresent` — fail at setup with the missing half
+     * named, not at the first deploy with an opaque AccessDenied. Configure sets up
+     * a human's machine; a key-only observer identity for automation skips it.
      */
     protected function enforceMfaPosture(?bool $deviceRegistered, ?bool $itemHasTotp): bool
     {
         if ($deviceRegistered === false) {
-            error('No MFA device is registered on this IAM user. Every YOLO tier requires MFA to assume — register a device in IAM, add its TOTP to your credential source, then re-run configure.');
+            error('No MFA device is registered on this IAM user. Every YOLO tier above observer requires MFA to assume — register a device in IAM, add its TOTP to your credential source, then re-run configure.');
 
             return false;
         }
 
         if ($deviceRegistered === null) {
-            warning('MFA posture unknown — iam:ListMFADevices was denied for this user. Every YOLO grant group allows it on self, so add the user to a tier group (yolo permissions) — or the account admin grants it directly. Every YOLO tier requires MFA, so commands will refuse if sessions mint without it.');
+            warning('MFA posture unknown — iam:ListMFADevices was denied for this user. Every YOLO grant group allows it on self, so add the user to a tier group (yolo permissions) — or the account admin grants it directly. Every YOLO tier above observer requires MFA, so deploys and syncs will refuse if sessions mint without it.');
 
             return true;
         }
 
         if ($itemHasTotp === false) {
-            error('An MFA device is registered, but the 1Password item has no one-time-password field — sessions will mint WITHOUT MFA, and every YOLO tier requires it. Seed a TOTP field from the IAM device, then re-run configure.');
+            error('An MFA device is registered, but the 1Password item has no one-time-password field — sessions will mint WITHOUT MFA, and every YOLO tier above observer requires it. Seed a TOTP field from the IAM device, then re-run configure.');
 
             return false;
         }
 
         info($itemHasTotp === true
             ? 'MFA device registered and TOTP present — sessions will be MFA-forwarded.'
-            : 'MFA device registered — every YOLO tier requires MFA, so make sure your credential_process forwards a TOTP.');
+            : 'MFA device registered — every YOLO tier above observer requires MFA, so make sure your credential_process forwards a TOTP.');
 
         return true;
     }
