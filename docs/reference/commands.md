@@ -670,8 +670,8 @@ Interactive: pick an IAM user, then a checkbox list pre-ticked with their curren
 
 | Tier offered | Group | Grants |
 |---|---|---|
-| Observer — entire environment | `yolo-{env}-observers` | read every app in the environment and its data |
-| Observer — this app only | `yolo-{env}-{app}-observers` | read this app and its data (log content fenced to its log group) |
+| Observer — entire environment | `yolo-{env}-observers` | read every app in the environment and its data, and run Logs Insights queries |
+| Observer — this app only | `yolo-{env}-{app}-observers` | read this app and its data (log content fenced to its log group, so no Logs Insights) |
 | Developer — entire environment | `yolo-{env}-developers` | observer + read the database dumps + every app's deployer tier (`deploy` / `run` / `env:*`); no data or infrastructure writes |
 | Developer — this app only | `yolo-{env}-{app}-developers` | observer + read its dumps + this app's deployer tier |
 | Admin — entire environment | `yolo-{env}-admins` | `sync` / `scale` / `deploy` / manage access |

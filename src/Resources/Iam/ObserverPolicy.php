@@ -255,6 +255,10 @@ class ObserverPolicy implements Deletable, Resource, SynchronisesConfiguration
                     'logs:Get*',
                     // FilterLogEvents is NOT a Get* action (status:logs tails through it).
                     'logs:Filter*',
+                    // Logs Insights: GetQueryResults rides on Get*, but a query has to be
+                    // started (and may be cancelled) first. Both only read log content.
+                    'logs:StartQuery',
+                    'logs:StopQuery',
                     'logs:ListTagsForResource',
                 ],
             ],
