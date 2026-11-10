@@ -12,9 +12,9 @@ use Codinglabs\Yolo\Enums\Iam;
  * developer ships through the per-app deployer roles, which {@see DevelopersGroup}
  * also grants, so deploy, `run` and `.env` stay capped to that deploy policy.
  *
- * Same account-root + MFA trust as the observer role; {@see DevelopersGroup}
- * membership is the gate. No YOLO command mints this tier — it's assumed
- * directly from a developer's profile.
+ * Same account-root trust as the observer role, plus MFA: a human tier, never
+ * automation. {@see DevelopersGroup} membership is the gate. No YOLO command mints
+ * this tier — it's assumed directly from a developer's profile.
  */
 class DeveloperRole extends ObserverRole
 {
@@ -28,5 +28,11 @@ class DeveloperRole extends ObserverRole
     public function description(): string
     {
         return 'YOLO managed developer role: read-only inspection plus database dump reads';
+    }
+
+    #[\Override]
+    protected function requiresMfa(): bool
+    {
+        return true;
     }
 }
