@@ -177,10 +177,32 @@ it('blocks public access on a newly created app bucket', function (): void {
         'CreateBucket' => new Result(),
         'PutBucketTagging' => new Result(),
         'PutPublicAccessBlock' => new Result(),
+        'PutBucketVersioning' => new Result(),
     ], $captured);
 
     expect((new SyncS3BucketStep())([]))->toBe(StepResult::CREATED);
     expect(array_column($captured, 'name'))->toContain('PutPublicAccessBlock');
+});
+
+it('versions a newly created app bucket', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => true,
+    ]);
+
+    $captured = [];
+
+    bindMockS3Client([
+        'HeadBucket' => [s3NotFound(), new Result(['@metadata' => ['statusCode' => 200]])],
+        'CreateBucket' => new Result(),
+        'PutBucketTagging' => new Result(),
+        'PutPublicAccessBlock' => new Result(),
+        'PutBucketVersioning' => new Result(),
+    ], $captured);
+
+    expect((new SyncS3BucketStep())([]))->toBe(StepResult::CREATED);
+
+    $versioning = collect($captured)->firstWhere('name', 'PutBucketVersioning');
+    expect($versioning['args']['VersioningConfiguration']['Status'])->toBe('Enabled');
 });
 
 it('does not flip public access on an existing app bucket', function (): void {
@@ -212,6 +234,7 @@ it('applies the browser-upload CORS to a newly created app bucket', function ():
         'PutBucketTagging' => new Result(),
         'PutPublicAccessBlock' => new Result(),
         'PutBucketCors' => new Result(),
+        'PutBucketVersioning' => new Result(),
     ], $captured);
 
     expect((new SyncS3BucketStep())([]))->toBe(StepResult::CREATED);
@@ -220,7 +243,7 @@ it('applies the browser-upload CORS to a newly created app bucket', function ():
         ->toContain('PutBucketCors');
 });
 
-it('leaves an existing YOLO-named app bucket completely untouched — create-only, never reconciled', function (): void {
+it('leaves an existing YOLO-named app bucket untouched except for a versioning probe — create-only otherwise', function (): void {
     writeManifest([
         'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => true,
     ]);
@@ -230,18 +253,63 @@ it('leaves an existing YOLO-named app bucket completely untouched — create-onl
     bindMockS3Client([
         // exists — the data bucket is probed through ListBuckets, never HeadBucket
         'ListBuckets' => new Result(['Buckets' => [['Name' => 'yolo-111111111111-testing-my-app-data']]]),
+        'GetBucketVersioning' => new Result(['Status' => 'Enabled']),
     ], $captured);
 
     expect((new SyncS3BucketStep())([]))->toBe(StepResult::SYNCED);
 
-    // Reference-only after create: no attribute is read or written on an existing
-    // bucket — not CORS, not tags, not BPA. YOLO hands the bucket over at birth.
+    // Reference-only after create except for versioning: no other attribute is read
+    // or written on an existing bucket — not CORS, not tags, not BPA. Versioning is
+    // the sole exception (see S3Bucket's docblock) and here it's already Enabled,
+    // so the probe finds no drift to write.
     expect(array_column($captured, 'name'))
         ->not->toContain('GetBucketCors')
         ->not->toContain('PutBucketCors')
         ->not->toContain('GetBucketTagging')
         ->not->toContain('PutBucketTagging')
+        ->not->toContain('PutPublicAccessBlock')
+        ->not->toContain('PutBucketVersioning');
+});
+
+it('reconciles versioning back to Enabled on an existing app bucket found drifted', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => true,
+    ]);
+
+    $captured = [];
+
+    bindMockS3Client([
+        'ListBuckets' => new Result(['Buckets' => [['Name' => 'yolo-111111111111-testing-my-app-data']]]),
+        'GetBucketVersioning' => new Result(['Status' => 'Suspended']),
+        'PutBucketVersioning' => new Result(),
+    ], $captured);
+
+    expect((new SyncS3BucketStep())([]))->toBe(StepResult::SYNCED);
+
+    $versioning = collect($captured)->firstWhere('name', 'PutBucketVersioning');
+    expect($versioning['args']['VersioningConfiguration']['Status'])->toBe('Enabled');
+
+    // Still nothing else is touched — versioning is the sole reconciled attribute.
+    expect(array_column($captured, 'name'))
+        ->not->toContain('PutBucketCors')
+        ->not->toContain('PutBucketTagging')
         ->not->toContain('PutPublicAccessBlock');
+});
+
+it('reports app-bucket versioning drift but writes nothing on a dry run', function (): void {
+    writeManifest([
+        'account-id' => '111111111111', 'region' => 'ap-southeast-2', 'bucket' => true,
+    ]);
+
+    $captured = [];
+
+    bindMockS3Client([
+        'ListBuckets' => new Result(['Buckets' => [['Name' => 'yolo-111111111111-testing-my-app-data']]]),
+        'GetBucketVersioning' => new Result(['Status' => 'Suspended']),
+    ], $captured);
+
+    expect((new SyncS3BucketStep())(['dry-run' => true]))->toBe(StepResult::WOULD_SYNC);
+    expect(array_column($captured, 'name'))->not->toContain('PutBucketVersioning');
 });
 
 it('never touches a bring-your-own bucket — not even an existence probe', function (): void {
