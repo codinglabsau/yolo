@@ -24,9 +24,22 @@ The per-app deployer role is CI's — assumed keylessly from GitHub Actions ([CI
 
 Broader tiers **subsume narrower ones in the grant itself**: commands always mint the least-privileged role for their job (reads mint observer roles, deploys the per-app deployer) regardless of who runs them — so the env observers and developers grants include every per-app observer role, the developers grants the deployer roles, and the admins grant includes the whole hierarchy. An admin, developer or env observer runs app-scoped commands (`status`, `db:tunnel`) without per-app membership; only the admin-role assume itself prompts for a fresh MFA code. No YOLO command mints the developer role itself — a developer assumes it directly (a profile pointed at `yolo-{env}-developer-role`, or `yolo-{env}-{app}-developer-role`) to reach the dump reads.
 
-**Every tier requires MFA to assume** — the trust condition is on every tier role, AWS-enforced, so a bare static key can't hold even read-only access. Sessions minted by the `yolo-credentials-1password` helper carry the MFA context automatically; only the admin tier adds a per-run prompt. Most developers want **environment observer**, plus **developer on the apps whose data they work with**. Keep the admins group small.
+**Every tier above observer requires MFA to assume** — the developer, deployer and admin roles carry the trust condition, AWS-enforced, so no write or destructive path is reachable from a bare static key. The observer roles deliberately don't: a key pair alone can hold read access, which is what [automation](#automation-identities) needs. Sessions minted by the `yolo-credentials-1password` helper carry the MFA context automatically; only the admin tier adds a per-run prompt. Most developers want **environment observer**, plus **developer on the apps whose data they work with**. Keep the admins group small.
 
 Each code mints exactly one session, so back-to-back admin commands need a **different code each time** — reusing the one still on screen is refused by AWS for the rest of its window. The prompt handles that itself: a refused code is re-prompted (a few attempts) rather than failing the command, and a code AWS has already rejected is caught at the prompt instead of being sent back.
+
+## Automation identities
+
+A script, scheduled job or coding agent that only needs to read an environment can hold the observer tier on a plain access key — no MFA device, no TOTP:
+
+1. Create an IAM user with **no console password** and one **access key**. Store the key wherever the automation reads its secrets.
+2. Add it to `yolo-{env}-observers`, or `yolo-{env}-{app}-observers` to fence it to one app, with [`yolo permissions`](/reference/commands#yolo-permissions).
+
+Its own identity holds nothing but that group's grant, so the observer role is all it can reach: `status`, `audit` and the other read commands work, and anything above observer is denied by AWS. Point YOLO at it the usual way (`YOLO_<ENVIRONMENT>_AWS_PROFILE`, a profile holding the key); for raw `aws` calls, a profile with `role_arn` set to the observer role and `source_profile` set to the key's profile.
+
+::: warning A key-only observer still reads data
+The observer tier reads every app data bucket in its scope and can open a [`db:tunnel`](/reference/commands#yolo-db-tunnel) port-forward (no shell, and the database password isn't readable from this tier). Treat the key as access to that data: prefer the per-app group, keep the key out of shared places, and rotate it from an admin identity — rotating its own key requires MFA, so the automation user can't do it, and neither can anyone holding a leaked copy.
+:::
 
 ## Onboard a developer
 

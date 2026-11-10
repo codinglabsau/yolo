@@ -122,9 +122,10 @@ class AdminRole implements Deletable, Resource, SynchronisesConfiguration
                     'Effect' => 'Allow',
                     'Principal' => ['AWS' => sprintf('arn:aws:iam::%s:root', Aws::accountId())],
                     'Action' => 'sts:AssumeRole',
-                    // Every tier requires MFA; admin additionally demands a FRESH TOTP at
-                    // mint time, so escalating is an explicit human act an agent can't
-                    // perform. AWS-enforced, so it can't be bypassed by going around YOLO.
+                    // Every tier above observer requires MFA; admin additionally demands
+                    // a FRESH TOTP at mint time, so escalating is an explicit human act an
+                    // agent can't perform. AWS-enforced, so it can't be bypassed by going
+                    // around YOLO.
                     'Condition' => [
                         'Bool' => ['aws:MultiFactorAuthPresent' => 'true'],
                     ],

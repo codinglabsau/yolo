@@ -81,10 +81,11 @@ class EcsTaskPolicy implements Deletable, Resource, SynchronisesConfiguration
             ],
             [
                 // Env WAF request logs so the app can attribute blocks to rules for
-                // ban decisions. Content (':*') form — the read actions address
-                // streams. Insights omitted: results are unscopeable.
+                // ban decisions. Bare ARN for the group-level reads (FilterLogEvents,
+                // GetLogGroupFields), ':*' for the stream-level GetLogEvents.
+                // Insights omitted: results are unscopeable.
                 'Effect' => 'Allow',
-                'Resource' => (new WafLogGroup())->arn() . ':*',
+                'Resource' => [(new WafLogGroup())->arn(), (new WafLogGroup())->arn() . ':*'],
                 'Action' => [
                     'logs:GetLogEvents',
                     'logs:GetLogGroupFields',

@@ -874,7 +874,7 @@ abstract class Command extends SymfonyCommand
                 )
                 : sprintf(
                     "Refusing to run '%s' on your full AWS identity: could not assume %s (%s).\n"
-                    . 'Every YOLO tier requires MFA — sessions minted without it are denied, so if this is an AccessDenied check your credentials carry MFA (`yolo configure %s` sets that up and verifies it). '
+                    . 'Every tier above observer requires MFA — sessions minted without it are denied, so if this is an AccessDenied check your credentials carry MFA (`yolo configure %s` sets that up and verifies it). '
                     . 'Bootstrap a fresh environment once with --dangerously-skip-permissions; otherwise check the role exists and that your identity may assume it.',
                     $this->getName(),
                     $role->name(),

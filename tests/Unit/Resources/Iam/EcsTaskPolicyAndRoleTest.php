@@ -58,9 +58,13 @@ it('grants SES send scoped to this region\'s verified identities', function (): 
     ]);
 });
 
-it('grants read-only access to the env WAF request-log stream', function (): void {
+it('grants read-only access to the env WAF request-log group on both ARN forms', function (): void {
+    // Group-level reads (FilterLogEvents) match only the bare ARN; GetLogEvents the ':*' form.
     $statement = collect((new EcsTaskPolicy())->document()['Statement'])
-        ->firstWhere('Resource', 'arn:aws:logs:ap-southeast-2:111111111111:log-group:aws-waf-logs-yolo-testing:*');
+        ->firstWhere('Resource', [
+            'arn:aws:logs:ap-southeast-2:111111111111:log-group:aws-waf-logs-yolo-testing',
+            'arn:aws:logs:ap-southeast-2:111111111111:log-group:aws-waf-logs-yolo-testing:*',
+        ]);
 
     expect($statement)->not->toBeNull();
     expect($statement['Effect'])->toBe('Allow');

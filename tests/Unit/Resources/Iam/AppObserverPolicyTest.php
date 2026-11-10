@@ -34,14 +34,16 @@ it('inherits the full env read surface — only the logs reads differ', function
 });
 
 it('fences log CONTENT to this app\'s log group, never account-wide', function (): void {
-    $logContentArn = 'arn:aws:logs:ap-southeast-2:111111111111:log-group:/yolo/yolo-testing-my-app:*';
-
     $contentStatement = collect(appObserverStatements())
         ->first(fn (array $s): bool => in_array('logs:FilterLogEvents', (array) $s['Action'], true));
 
     // FilterLogEvents/GetLogEvents are scoped to exactly this app's log group —
-    // an operator granted this role cannot tail another app's logs.
-    expect($contentStatement['Resource'])->toBe($logContentArn);
+    // an operator granted this role cannot tail another app's logs. Both ARN forms:
+    // group-level reads match only the bare ARN, GetLogEvents the ':*' stream form.
+    expect($contentStatement['Resource'])->toBe([
+        'arn:aws:logs:ap-southeast-2:111111111111:log-group:/yolo/yolo-testing-my-app',
+        'arn:aws:logs:ap-southeast-2:111111111111:log-group:/yolo/yolo-testing-my-app:*',
+    ]);
     expect($contentStatement['Action'])->toContain('logs:FilterLogEvents', 'logs:GetLogEvents');
 
     // No log content read is ever granted on "*".
